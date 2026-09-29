@@ -1,14 +1,22 @@
 # AC-4: a decoder, an encoder and the applications
 
-!!! note "Status as of 2026-09-25: D1 to D5 and E1 to E4 merged; the rest built in parallel; the ESP32 work is D14, the P4 first"
+!!! note "Status as of 2026-09-30: built except I6, D14c, D14d and N1"
+    The decoder (D1 to D11), the encoder (E1 to E10), the application phases (I1 to I5b), the golden
+    masters (G0, G1) and the first two parts of D14, the ESP32 work (D14a on the host, D14b on the
+    ESP32-P4), are merged; [State on 2026-09-30](#state-on-2026-09-30) lists each phase with its pull
+    request. Not built: the ESP32 sinks taking AC-4 in a Sendspin group (I6), the S3 and C6 parts of
+    D14 (D14c, D14d), and N1, the program names and the layout of `src/`, which
+    [a study](layout.md) has priced and the user has not yet decided. The design sections below say
+    what was proposed and why, and where the built code differs from a sketch they say so.
+
     Written on 2026-09-15 as phase D0 of chip D in the Hearth plan, as a plan for a decoder.
     Extended on 2026-09-24, when the user widened the scope to a decoder, an encoder and their
     integration into the applications: [What encoding AC-4 involves](#what-encoding-ac-4-involves),
     the encoder's design, [The oracles](#the-oracles), the encoder's ladder, the
     [encoder phases](#encoder-phases), the [application phases](#application-phases) and
-    decisions 13 to 23 are new. The page was kept on a local branch, `feature/ac4-decoder-plan`
+    decisions 13 to 23 were added then. The page was kept on a local branch, `feature/ac4-decoder-plan`
     ([decision 11](#decisions)), until the user moved it to main as `planning/ac4.md`
-    ([decision 22](#decisions-for-the-encoder-and-the-applications)).
+    ([decision 22](#decisions-for-the-encoder-and-the-applications), #1003).
 
     D1, the library and the channel-coded syntax, merged as #700 on 2026-09-16, with the readings
     settled in #712 and #715. The inspector gained `oamd_common_data()` and the HSF extension's
@@ -16,24 +24,26 @@
 
     The twelve decisions under [Decisions](#decisions) were put to the user on 2026-09-15 and
     answered the same day. Five answers went against the recommendation and two were given in the
-    user's own words; both kinds are marked. The phases follow the answers: D1 to D10 are approved,
-    D11 can start after D1 (the user supplied IEC 61937-14:2017, 61937-1:2021 and 61937-2:2026 on
-    2026-09-15), and D12 and D13, the `float` and fixed-point tiers, are planned and confirmed with
-    the user when D10 lands. Decisions 13 to 23, which the wider scope raises, were put to the user
-    on 2026-09-24 and answered the same day: the four put as questions (13, 14, 20 and 22) took the
-    recommendation, and the recommendations stated for the rest were taken without objection.
+    user's own words; both kinds are marked. The phases followed the answers: D1 to D10 were approved,
+    D11 waited only for IEC 61937-14:2017, 61937-1:2021 and 61937-2:2026, which the user supplied on
+    2026-09-15, and D12 and D13, the `float` and fixed-point tiers, were to be confirmed with the user
+    when D10 landed (D14 took their work on 2026-09-25). Decisions 13 to 23, which the wider scope
+    raised, were put to the user on 2026-09-24 and answered the same day: the four put as questions
+    (13, 14, 20 and 22) took the recommendation, and the recommendations stated for the rest were
+    taken without objection.
 
-    D2 to D5 and E1 to E4 merged by 2026-09-25; D6 and E5 are open as #1037 and #1046. That day the
-    user asked for the remaining phases to be built in parallel, D11 and the ESP32 phases included,
-    and answered four more questions: DEE's licence will not be renewed, so G1 makes the golden
-    masters the remaining phases need before it ends ([decision 23](#decisions-for-the-encoder-and-the-applications));
-    the ESP32-P4, the family's part with the most CPU and memory, is AC-4's first ESP32 target, with
-    the S3 and the C6 to follow as the decoder is optimised, which [D14](#d14-ac-4-on-the-esp32s)
-    plans in place of D12 and D13; AC-4 follows AC-3's and E-AC-3's arithmetic, `double`, `float`
-    and fixed point by target; and the programs named `ac3` are renamed, since `ac3cli` doing AC-4
-    reads wrongly, while the family's name and the library's identifiers stay
-    ([N1](#n1-the-names)). Decisions 24 to 35, under
-    [Decisions of 2026-09-25](#decisions-of-2026-09-25), record them.
+    On 2026-09-25, with D2 to D5 and E1 to E4 merged, the user asked for the remaining phases to be
+    built in parallel, D11 and the ESP32 phases included, and answered four more questions: DEE's
+    licence will not be renewed, so G1 made the golden masters the remaining phases needed before it
+    ended ([decision 23](#decisions-for-the-encoder-and-the-applications)); the ESP32-P4, the family's
+    part with the most CPU and memory, is AC-4's first ESP32 target, with the S3 and the C6 to follow
+    as the decoder is optimised, which [D14](#d14-ac-4-on-the-esp32s) plans in place of D12 and D13;
+    AC-4 follows AC-3's and E-AC-3's arithmetic, `double`, `float` and fixed point by target; and the
+    programs named `ac3` are renamed, since `ac3cli` doing AC-4 reads wrongly. The family's name and
+    the library's identifiers were to stay; on 2026-09-29 the user widened the ask to the whole tree,
+    which [N1](#n1-the-names) records. Decisions 24 to 35, under
+    [Decisions of 2026-09-25](#decisions-of-2026-09-25), record the 2026-09-25 answers, and decisions
+    36 to 39, under [Decisions of 2026-09-29](#decisions-of-2026-09-29), those of 2026-09-29.
 
     Shape follows the Hearth plan: design sections say what is proposed and why, each phase carries
     an exit criterion and how it is verified, [Decisions](#decisions) gives the options with a
@@ -44,9 +54,77 @@
     reading behind the encoder and the applications (the specifications again, the tools installed
     here, the AC-3 and E-AC-3 validation machinery and each application's code) on 2026-09-24.
 
+## State on 2026-09-30
+
+Each phase with its pull request and where it stands. Dates are UTC, as GitHub records a merge.
+"Exit met" is as the phase's pull request reports it, and any exit criterion not met in the pull
+request is named in the last column; the phase's own section below says what it built and how it was
+checked. The table is of `main` at `5ef9eeafc`.
+
+| Phase | Builds | Pull request | State |
+|---|---|---|---|
+| G0 | the gold set: DEE streams that can be scored against their sources | #1006, 2026-09-25 | merged; exit met |
+| G1 | golden masters for the phases still to come, before DEE's licence ends | #1051, 2026-09-25 | merged; exit met. G2 (#1054, 2026-09-26) made the same for DEE's AC-3, E-AC-3, E-AC-3 JOC and TrueHD encoders |
+| D1 | the decoder library and the channel-coded syntax | #700, 2026-09-16 (readings #712, #715; #739, #744; HSF content #786) | merged; exit met |
+| D2 | waveform-coded stereo to PCM; the shared core | #1009, 2026-09-25 | merged; exit met |
+| D3 | the QMF domain and A-SPX | #1012, 2026-09-25 | merged; exit met |
+| D4 | the 5.X element (and 3.0, 7.X) | #1014, 2026-09-25 | merged; exit met |
+| D5 | A-CPL | #1027, 2026-09-25 | merged; exit met |
+| D6 | output processing: every frame rate, DRC, dialogue enhancement, downmix, concealment | #1037, 2026-09-25 | merged; exit met |
+| D7 | presentations | #1055, 2026-09-26 | merged; exit met |
+| D8 | the decoder's API, CLI options, media information, packaging | #1059, 2026-09-26 | merged; exit met |
+| D9 | channel-based immersive, in full and core decoding | #1057, 2026-09-26 | merged; exit met, the delivery kit's 5.1.4 streams checked in #1069 |
+| D10 | A-JOC and direct-coded objects | #1060, 2026-09-26 | merged; exit met but the listening, which is the user's; the DEE criterion did not apply |
+| D11 | AC-4 over IEC 61937 | #1052, 2026-09-26 | merged; exit met; no device here accepts AC-4 |
+| D12, D13 | the `float` and fixed-point tiers | | folded into D14 |
+| D14a | the scalar and the decoder's size, on the host | #1096, #1102, #1123, 2026-09-29 | merged; exit met |
+| D14b | AC-4 on the ESP32-P4 | #1118, 2026-09-29 | merged; the P4 decodes 2.0 in real time and nothing wider; decision 26's identical output does not hold on the five plays with companding |
+| D14a4 | libm parity and the frame-rate converter at `float` | open, 2026-09-30 | exit met: the `float` PCM equal on the host, the Cortex-M3 leg and the P4 for D14b's twenty plays; the converter takes 7.3 ms a frame at 24 and 25 fps, and 1001/960 still has a 5.9 s first frame |
+| D14c | the S3 | | not built |
+| D14d | the C6, fixed point | | not built |
+| E1 | the encoder library, the frame writer, SIMPLE mono and stereo | #1011, 2026-09-25 | merged; exit met |
+| E2 | A-SPX and companding | #1013, 2026-09-25 | merged; exit met |
+| E3 | the 5.X element | #1025, 2026-09-25 | merged; exit met |
+| E4 | A-CPL | #1029, 2026-09-25 | merged; exit met |
+| E5 | metadata, frame rates, I-frames | #1046, 2026-09-26 | merged; exit met |
+| E6 | presentations and several substreams | #1058, 2026-09-26 | merged; exit met |
+| E7 | the encoder's API, CLI options, packaging | #1061, 2026-09-26 | merged; exit met |
+| E8 | channel-based immersive | #1071, 2026-09-26 | merged; exit met; the sweep legs' gap to DEE was closed by E10 |
+| E9 | A-JOC and direct-coded objects | #1082, 2026-09-29 | merged; exit met, MediaInfo's object count and bed run afterwards (#1103); the listening is the user's; no race, since DEE refuses the masters |
+| E10 | A-SPX noise floors on sweeps | #1113, 2026-09-29 | merged; exit met |
+| I1 | the rest of `ac3cli` | #1070, 2026-09-26 | merged; exit met |
+| I2 | Hearth desktop | #1068, 2026-09-26 | merged; exit met |
+| I3 | Forge GUI | #1084, 2026-09-29 | merged; exit met |
+| I4 | the C API, Python, Rust, WebAssembly | #1094, 2026-09-29 | merged; exit met; the WebAssembly module's C++ side and the Android NDK build are checked by CI alone |
+| I4b | the object encoder in those | #1119, 2026-09-29 | merged; exit met; no WebAssembly demo page |
+| I5 | immersive and object content in the applications | #1100, 2026-09-29 | merged; exit met, apart from two failures in suites it did not touch (fixed since) |
+| I5b | the encoder page's AC-4 objects | #1117, 2026-09-29 | merged; exit met, with the ADM master's audio as the page's source and its scene authored there: the page has no ADM or IAB reader |
+| I6 | the ESP32 sinks | | not built |
+| N1 | the program names and the layout of `src/` | study #1122, 2026-09-29 | not built; N1A and N1B are studied and the study's 14 decisions await the user; the PyPI project and the Homebrew names are decided (40, 41) and the open vcpkg pull request is not |
+
+Not built, beside those: a quality series for the encoder (the decoder's has one, `ac4-quality-main.jsonl`;
+the encoder's scores and the race against DEE are held to pinned floors and keep no history), Pro
+Logic II from Hearth's Decoder page, an AC-4 live session in the Forge GUI, and AC-4 in Matroska,
+which registers no codec ID for it. AC-4's speed and memory are measured and gated: `ac3perf` holds
+AC-4's stereo and 5.1 encode and decode to real time in the gate's build legs, the speed, kernel and
+memory benchmarks carry AC-4's rows (and the transforms of `src/ac4core`), and since #1132
+(2026-09-29) a merge queue entry that changes `src/` fails if any workload, AC-4's included, takes
+twice as long as at the commit it is queued on, or doubles its heap churn.
+
+Left to the user, each with its options in the pull request or section named: N1's 14 decisions
+([the study](layout.md#i-decisions)) and what to do with the open vcpkg pull request
+([N1B](#n1-the-names)); D14b's four, of which the libm change and the frame-rate converter were taken on
+2026-09-30 and are D14a4, and the allocation policy and what comes next on the P4 are still open (#1118);
+D14a4's, which are what to do about the 1001/960 table's 5.9 s first frame and PSRAM reads;
+I5's two, whether to spend a check on the `zone_mask` reading and a native
+check of the Arabic, Hebrew and Yiddish strings (#1100); I5b's four, which are an ADM or IAB master
+as a source on the encoder page, static beds for channels assigned to speakers, a Preview from a
+decode of the AC-4 stream and AC-4 in Guided's Movement step (#1117); and the listening for D10 and
+E9.
+
 ## What is asked
 
-The Hearth desktop application is designed with AC-4 pages that stay disabled until a decoder
+The Hearth desktop application was designed with AC-4 pages that stay disabled until a decoder
 exists: presentation selection, main and associated mixing, dialogue enhancement, DRC and downmix.
 This page first planned that decoder. On 2026-09-24 the user asked for more: a feature-complete
 decoder producing PCM, a feature-complete encoder, and both in the applications once the library is
@@ -68,6 +146,10 @@ The user has cleared the patent position. It is recorded here and does not gate 
 
 ## Where things stand
 
+The inspector and the applications are described as they are on 2026-09-30. The decoder after D1
+is the position the decoder phases started from, and the specifications, the material and what DEE
+writes are what the phases worked from, with what the phases added to them.
+
 ### The inspector
 
 `src/ac4` (`ac4::ac4`, roadmap IM4, PR #442) reads sync frames and their CRC (Annex G), the table
@@ -75,80 +157,104 @@ of contents, presentation information v0 and v1, substream group information for
 A-JOC, direct-coded object and OAMD substreams, and the substream index table. It builds `dac4`,
 reports samples per frame and writes the RFC 6381 codec string. It reports `audio_data()` and
 `metadata()` as byte ranges. Since #739 it reads the `oamd_common_data()` an
-`ac4_substream_info_ajoc()` embeds, and since #744 each substream's `hsf_ext_substream_index`. Other
-facts the decoder and the encoder meet:
+`ac4_substream_info_ajoc()` embeds, and since #744 each substream's `hsf_ext_substream_index`. The
+decoder phases added to it, and what the decoder and the encoder meet in it now:
 
-- Nothing installs or exports the library (`docs/library/index.md:10-12`), so only an in-tree
-  build links it.
-- Its bit reader reads one bit at a time inside an anonymous namespace
-  (`src/ac4/src/ac4.cpp:24-93`). Its public types give each substream's byte offset and
-  `audio_size`, but not the position where `audio_data()` starts.
-- `ac4::scan` stops at a partial frame, and there is no AC-4 counterpart to
-  `io::AccessUnitAccumulator` for input that arrives in pieces.
-- `ac3cli probe` writes `presentations_v0` to its JSON and no v1 presentations
-  (`apps/common/probe_json.cpp:622`). Every stream DEE writes has v1 presentations.
-- `ac4::build_dac4()` and `ac4::rfc6381_codec_string()` take an `ac4::Toc`, so they can describe a
-  stream the encoder writes as well as one the inspector reads.
-- The ESP-IDF component forces `AC3FORGE_BUILD_AC4` off (`esp-idf/ac3forge/CMakeLists.txt:217`),
-  and the root `CMakeLists.txt` refuses it in the minimal profile.
-- The two defects found while planning are fixed: `fuzz_ac4_parse` now links an instrumented
-  inspector (`fuzz/CMakeLists.txt:117-118`), and an EMDF-only presentation reads its EMDF substream
+- The library is installed and exported (D8): `ac4::ac4_static` and `ac4::ac4_shared`, and
+  pkg-config's `ac4`, with the decoder and the encoder in one export set
+  (`cmake/InstallLibrary.cmake`).
+- `ac4::scan` stops at a partial frame, and `ac4::SyncFrameSplitter` holds one between reads for
+  input that arrives in pieces, in the pattern of `io::AccessUnitAccumulator` (D8).
+- `ac3cli probe` writes `presentations_v1` and the selected presentation's metadata beside
+  `presentations_v0` (D8), and the `oamd_common_data()` of an A-JOC substream and of a group's own
+  OAMD substream (I5, #1114). Every stream DEE writes has v1 presentations.
+- `ac4::build_dac4()` and `ac4::rfc6381_codec_string()` take an `ac4::Toc`, so they describe a
+  stream the encoder writes as well as one the inspector reads. `ac4::dac4_refusal()` and
+  `ac4::cmaf_refusal()` name what a `dac4` box or a CMAF track cannot carry (E7).
+- The ESP-IDF component leaves `AC3FORGE_BUILD_AC4` off, since that option also builds the
+  encoder, the applications and the tests, and the root `CMakeLists.txt` refuses it in the minimal
+  profile. `CONFIG_AC3FORGE_AC4` (D14b) builds the inspector, the core and the decoder into the
+  component through `AC3FORGE_MINIMAL_AC4`.
+- The two defects found while planning are fixed: `fuzz_ac4_parse` links an instrumented
+  inspector (`fuzz/CMakeLists.txt`), and an EMDF-only presentation reads its EMDF substream
   list on both table-of-contents paths, checked by frames built in both languages.
 
 The Python reference parser `tools/references/ac4_parse.py` reads the same framing, transcribed
 independently; CI runs it through `ac4_syntax.py`'s digest test. `tests/ac4/test_ac4.cpp` checks one
 committed DEE stream, `tests/golden/external-baseline/ac4-stereo-64/dee.ac4`, against MediaInfo's
-reading of it; ten more committed DEE streams sit beside it.
+reading of it; fifteen more committed DEE streams sit beside it (G0 and G1 added the later ones).
 
 ### The decoder after D1
 
-`src/ac4dec` (`ac4::decoder`) reads every syntax element of a channel-coded frame and produces no
-audio (`src/ac4dec/include/ac4dec/decoder.hpp:23-35`): the presentation substream, the Part 1
-channel elements with ASF, stereo processing, companding, A-SPX and A-CPL data, `metadata()` with
-DRC and dialogue enhancement, EMDF payload substreams, and a channel-coded substream's HSF extension
-(#786). It refuses, by name, the speech frontend, the immersive and 22.2 elements, object
-substreams, and the efficient high frame rate mode. `src/ac4dec/ERRATA.md` records every reading
-taken where the text is ambiguous or defective, with its evidence.
+The position when D1 merged (2026-09-16), which the decoder phases started from. `src/ac4dec`
+(`ac4::decoder`) read every syntax element of a channel-coded frame and produced no audio: the
+presentation substream, the Part 1 channel elements with ASF, stereo processing, companding, A-SPX
+and A-CPL data, `metadata()` with DRC and dialogue enhancement, EMDF payload substreams, and a
+channel-coded substream's HSF extension (#786). It refused, by name, the speech frontend, the
+immersive and 22.2 elements, object substreams, and the efficient high frame rate mode. Since then
+D2 to D10 made it decode all of them but the speech frontend, the 9.X.4 and 22.2 layouts and the
+efficient high frame rate mode, which it still refuses; the header
+`src/ac4dec/include/ac4dec/decoder.hpp` says what it decodes and what it refuses.
+`src/ac4dec/ERRATA.md` records every reading taken where the text is ambiguous or defective, with
+its evidence.
 
 The syntax is transcribed twice, in C++ and in `tools/references/ac4_syntax.py`, and the two traces
 must agree record for record: `tests/golden/ac4dec/*.tsv` holds the Python parser's digests of the
-committed streams, `tests/ac4dec/test_ac4dec_syntax.cpp` holds the decoder to them on every CI leg,
-and `tools/checks/test_ac4_syntax_digests.py` holds the Python parser to the same files. Over the
-local census (107 DEE streams, 50,728 frames) and 6,670 frames of public streams from other Dolby
-encoders, every digest agrees. `tools/checks/ac4_syntax_differential.py` compares the two on
-mutated, synthetic and fuzzed streams; it runs nightly, and does not gate. `fuzz_ac4_decode` is
+committed streams, `tests/ac4dec/test_ac4dec_syntax.cpp` holds the decoder to them in `ac3tests`,
+which every build leg runs, and `tools/checks/test_ac4_syntax_digests.py` holds the Python parser
+to the same files. Over the local census (107 DEE streams, 50,728 frames) and 6,670 frames of
+public streams from other Dolby encoders, every digest agreed when D1 merged.
+`tools/checks/ac4_syntax_differential.py` compares the two on mutated, synthetic and fuzzed
+streams; it runs nightly in the SonarCloud workflow, and does not gate. `fuzz_ac4_decode` is
 instrumented and has regression inputs.
 
-Five contract items from the review of #700 are open, and D8 closes them: `DecoderConfig` stores a
-`SyntaxSink` that its comment gives a call-scoped lifetime, so a temporary lambda dangles once the
-decoder copies the configuration (`src/ac4dec/src/decoder.cpp:367-378`); an ASF Huffman miss reports
-`kInvalidStream` where A-SPX, A-CPL and metadata report `kTruncated` for the same failure
-(`src/ac4dec/src/syntax/asf.cpp:515-517` and six more sites); an HSF extension substream that
-nothing claims gets no report, although the header says HSF is refused; there is no
+Five contract items from the review of #700 were open after D1, and D8 closed them: `DecoderConfig`
+stored a `SyntaxSink` that its comment gave a call-scoped lifetime, so a temporary lambda dangled
+once the decoder copied the configuration; an ASF Huffman miss reported `kInvalidStream` where
+A-SPX, A-CPL and metadata reported `kTruncated` for the same failure; an HSF extension substream
+that nothing claimed got no report, although the header said HSF was refused; there was no
 `tools/ci/abi-allowlist/libac4dec.so.txt`; and the Android, WASM and Python wheel configurations
-compile both AC-4 libraries without linking them, since `AC3FORGE_BUILD_AC4` is on by default and
+compiled both AC-4 libraries without linking them, since `AC3FORGE_BUILD_AC4` is on by default and
 their targets are not `EXCLUDE_FROM_ALL`.
 
 ### The applications today
 
-Status board: [ROADMAP.md](../ROADMAP.md) (reviewed 2026-09-26). This section records what is on
-`main` today; phase numbers below are the plan's, not the roadmap's.
+Status board: [ROADMAP.md](../ROADMAP.md). This section records what is on `main` on 2026-09-30;
+phase numbers below are the plan's, not the roadmap's.
 
-**`ac3cli` (phase I1, shipped).** Reads and writes AC-4 in `probe`, `decode`, `transcode`,
-`monitor`, `play`, `qc`, `levels`, `loudness`, `spdif`, `record`, `live`, `mp4`, `ts` and `fmp4`;
-`ac4-encode` writes mono, stereo, 5.0 and 5.1; `mkv` refuses it (Matroska registers no codec ID).
-The banner and man page still name AC-3 and E-AC-3 only — see ROADMAP Proposed.
+**`ac3cli` (I1, I5).** Reads and writes AC-4 in `probe`, `decode`, `transcode`, `monitor`, `play`,
+`qc`, `levels`, `loudness`, `spdif`, `unspdif`, `record`, `live`, `mp4`, `ts`, `fmp4` and `demux`;
+`ac4-encode` writes mono, stereo, 5.0, 5.1, 5.0.4 and 5.1.4; `atmos-encode`, `atmos-adm` and
+`atmos-iab` write AC-4 objects with `codec=ac4`, and `decode` exports objects (`objects_dir`,
+`adm_out`); `mkv` refuses AC-4 (Matroska registers no codec ID for it). The banner names AC-4; the
+man page's name and description lines still name AC-3 and E-AC-3 only (ROADMAP, Proposed).
 
-**Hearth desktop (phase I2, shipped for channel-based content).** The engine plays channel-based
-AC-4 through `ac4::Decoder`'s public API, up to 7.1.4, with the Decoder page's AC-4 tab and the
-Media page's AC-4 information. A network group gets the stream as IEC 61937-14 bursts for members
-that list AC-4; only the development test sink decodes those bursts today — ESP32 sinks still
-advertise AC-3 and E-AC-3 only. AC-4 objects in the app and a user guide are not done yet.
+**Hearth desktop (I2, I5).** The engine plays AC-4 through `ac4::Decoder`'s public API: channel-based
+content up to 7.1.4, and A-JOC and direct-coded objects rendered through the layout renderer the CLI
+plays them with, in full or core decoding and in an immersive layout the Decoder page's controls
+choose; the Decoder page's AC-4 tab and the Media page's AC-4 information are live. A network group
+gets the stream as IEC 61937-14 bursts for members on the extension role that list `"ac4"`; only the
+development test sink decodes those bursts, and the ESP32 sinks advertise AC-3 and E-AC-3 only (I6).
+The Decoder page follows the stream's preferred downmix and cannot ask for Pro Logic II.
 
-**Not in the applications yet (phases I3–I6).** Forge GUI, Crucible, the C API, the Python and
-Rust bindings, the WebAssembly modules, and AC-4 decode on ESP32 (`AC3FORGE_BUILD_AC4` is off in
-the ESP-IDF build). `docs/assets/data/support-catalogue.json` and
-`docs-snippets/generated/application-capabilities.md` record the CLI and Hearth rows.
+**Forge GUI (I3, I5, I5b).** Encodes one source in its own layout, mono to 5.1, to a raw AC-4 stream
+or an MP4 file, and authors AC-4 objects (A-JOC, or direct-coded) on the encoder page; each echoes the
+`ac3cli` command that writes the same bytes. QC, the stream player and the object inspector read
+AC-4, and the player exports its objects. A live session under AC-4 is refused.
+
+**The C API and the bindings (I4, I4b).** `ac3forge_ac4_*` decoder and encoder functions, a Rust
+`ac3forge::ac4` module, a Python `ac4` submodule, and a WebAssembly module with a JavaScript wrapper
+(`js/src/ac4.ts`, the package's `./ac4` export), each covering channel-based and channel-based
+immersive content and the encoder's object substream. Android's CMake builds the AC-4 libraries and
+nothing in that app links them.
+
+**The ESP32s (D14b).** With `CONFIG_AC3FORGE_AC4` the P4's component decodes AC-4 and `hearth_sink`
+plays it from its HTTP source; Hearth does not send AC-4 to a board (I6).
+
+**Not in the applications.** Crucible, which takes no AC-4 (decision 20); an AC-4 live session in the
+Forge GUI; AC-4 for the boards of a Sendspin group (I6); Pro Logic II from Hearth's Decoder page.
+`docs/assets/data/support-catalogue.json` and `docs-snippets/generated/application-capabilities.md`
+record each application's rows.
 
 ### The specifications
 
@@ -188,7 +294,8 @@ literally:
 - A-JOC's differential decoding, which writes the wrong wet-matrix index (Part 2 5.7.3.2).
 
 The implementation keeps a register of them: for each, the clause, the reading taken, and the
-evidence for that reading.
+evidence for that reading. `src/ac4dec/ERRATA.md` has 165 entries today and `src/ac4enc/ERRATA.md`,
+for the readings only the writer needs, 48.
 
 ### Material
 
@@ -228,7 +335,7 @@ evidence for that reading.
   - Chromium's `media/test/data`: raw streams made by Dolby, `ac4-ajoc.ac4` (A-JOC, level 3),
     `ac4-channel-based-coding.ac4` and `ac4-ims.ac4`.
   - AndroidX Media3's test data: a stereo clip and a 21-channel level 4 clip in MP4.
-- **Other decoders.** None runs here:
+- **Other decoders.** Only librempeg's runs here, and it decodes part of what the phases needed:
   - FFmpeg has an AC-4 demuxer and muxer (since 6.1) and no decoder; a 2020 decoder patch was not
     merged. The FFmpeg installed here, 8.0.1 (gyan.dev's full build, and Ubuntu's in WSL), lists
     `ac4` as a codec with no decoder or encoder. Its raw demuxer finds each sync frame and reports
@@ -239,7 +346,14 @@ evidence for that reading.
     version 3 or later and partly derived from Emby's code. It publishes no releases or binaries,
     and the tags in its repository (`github.com/librempeg/librempeg`, about 159 MB packed) are
     FFmpeg's from 2010, so a build pins a commit.
-    Emby's, Kodi's and NextPVR's AC-4 decoding come from the same code. It is not built here.
+    Emby's, Kodi's and NextPVR's AC-4 decoding come from the same code. It is built in WSL under
+    `D:\ac3bld\librempeg` from commit `5854b48e` (git 2026-09-24), called by its full path, and is
+    the second decoder of [The oracles](#the-oracles). Its output is 736 samples earlier than this
+    project's decoder's and agrees with it to 77 to 93 dB on SIMPLE streams and, below A-SPX's
+    crossover, to 83 dB where companding is off and 33 to 36 dB where it is on (D2 to D4). The
+    phases record where it stops: A-CPL's rebuilt channels, which it leaves silent (D5), anything
+    but a presentation's first substream group, tables of contents of more than 16 presentations
+    and `bitstream_version` 1 (D7), the immersive element (D9) and object coding (D10).
   - The Dolby Reference Player's `dlbac4dec` returned no samples for any frame when it was tried
     for IM4 (`docs/verification.md`, AC-4 section). Dolby's release notes for the player say an
     install may lack the AC-4 decoder, which Dolby supplies on request; the player is now sold, with
@@ -584,28 +698,32 @@ Three libraries beside the inspector, none linking `ac3::forge`
 - **The shared core**, `src/ac4core/` (`ac4::core`): what both directions compute, built and tested
   once ([DSP](#dsp)). It is a static library of position-independent code with hidden symbols,
   linked privately by the other two, so each shared library carries the part it uses, a static
-  build links it once, and it has no public headers and no ABI of its own. D2 creates it and moves
-  D1's tables, bit reader and Huffman decoder into it.
+  build links it once, and it has no public headers and no ABI of its own. D2 created it and moved
+  D1's generated tables into it. The bit reader and the Huffman decoder stayed in `src/ac4dec`,
+  since they carry the syntax trace and its sink, and the encoder has a bit writer of its own in
+  `src/ac4enc`.
 
 The syntax stays apart. The decoder's reader and the encoder's writer are separate transcriptions of
 the syntax tables, in opposite directions, and the Python reference stays independent of both. A
 stream the encoder writes is therefore read by the decoder, which shares only the core's tables and
 kernels with it, and by the Python parser, which shares nothing with it, down to its own tables.
 
-`AC3FORGE_BUILD_AC4` gates all of them. They stay out of the ESP-IDF component and the minimal
-profile until D14 brings the decoder and the core in; the encoder never goes there. Each is added
-where the peer libraries are: its own `CMakeLists.txt`, the root option and subdirectory,
+`AC3FORGE_BUILD_AC4` gates all of them, and is on by default. The ESP-IDF component leaves it off and
+the minimal profile refuses it: `CONFIG_AC3FORGE_AC4` (D14b) builds the inspector, the core and the
+decoder into the component through `AC3FORGE_MINIMAL_AC4`, and the encoder never goes there. Each was
+added where the peer libraries are: its own `CMakeLists.txt`, the root option and subdirectory,
 `tests/CMakeLists.txt`, an instrumented fuzz target, an ABI allowlist, the coverage table,
-`docs/building.md`, `docs/library/` and `docs/verification.md`. Once their APIs are stable, D8 and
-E7 install and export them in `cmake/InstallLibrary.cmake` and `cmake/ac3forgeConfig.cmake.in`,
-since an exported target cannot link one that is not exported.
+`docs/building.md`, `docs/library/` and `docs/verification.md`. D8 and E7 installed and exported
+them in `cmake/InstallLibrary.cmake` and `cmake/ac3forgeConfig.cmake.in`, since an exported target
+cannot link one that is not exported.
 
 ### What the inspector grows
 
 - The fields of the table of contents the decoder needs: `add_ch_base`, the per-instance
   `b_iframe`/`b_audio_ndot` flags, `presentation_id`, `b_pre_virtualized`, `b_alternative`,
   `b_pres_ndot`, the presentation substream's index and the EMDF payload substreams' indices (D1).
-- A splitter that holds a partial frame between reads, for streams that arrive in pieces (D8).
+- A splitter that holds a partial frame between reads, for streams that arrive in pieces
+  (`ac4::SyncFrameSplitter`, D8).
 - `presentations_v1` and the metadata listed under [Media information](#media-information) in
   `ac3cli probe`'s JSON, added under `ac3forge.probe/1` (D8).
 
@@ -616,7 +734,8 @@ the table of contents and the substream framing. Media information takes present
 the decoder's reading in D8.
 
 Since #739 the inspector reads the `oamd_common_data()` of an `ac4_substream_info_ajoc()`. The OAMD
-substream's own content, which can carry a second one, waits for the object phase.
+substream's own content, which can carry a second one, is the decoder's, read in D10
+(`SubstreamReport::oamd_common_data`).
 
 ### DSP
 
@@ -627,15 +746,19 @@ The two directions carry their own ([decision 7](#decisions)), in the shared cor
   forward transform);
 - KBD windows computed from their formula, with the alphas of Part 1 Table 186;
 - the QMF analysis and synthesis banks with `QWIN`;
-- the kernels of reconstruction an encoder also runs, to see what a decoder will produce:
-  dequantisation, the stereo and multichannel matrices, companding, the A-SPX HF generator and
-  envelope adjustment, and the three A-CPL decorrelators with the transient ducker, which A-JCC and
-  A-JOC reuse;
+- the kernels of reconstruction an encoder also runs, to see what a decoder will produce. As built,
+  the core holds A-SPX's subband tables and HF generator, A-CPL's parameter bands, tables,
+  interpolation, three decorrelators and transient ducker, and A-JCC's and A-JOC's reconstruction,
+  which reuse the decorrelators (`src/ac4core/src/aspx`, `acpl`, `ajcc` and `ajoc`).
+  Dequantisation, the stereo and multichannel matrices, companding and A-SPX's envelope adjustment
+  stayed in the decoder (`src/ac4dec/src/pcm`), and the encoder has the matrices' inverses of its own
+  (`src/ac4enc/src/asf`);
 - the sample rate converters in both directions: from the internal rate to 48 kHz for the decoder,
   and from 48 kHz to the internal rate for the encoder;
 - the tables: the Huffman codebooks, in the decoder's order and in the index order an encoder looks
   codewords up by, generated together from the attachment; the scale factor band tables; and the
-  A-SPX, A-CPL, dialogue enhancement and DRC tables.
+  QMF window, the noise tables and the ISF rendering matrices. The dialogue enhancement and DRC
+  values are not shared: each side holds what it applies or writes.
 
 `ac3::forge`'s FFT kernel and QMF bank are the pattern for the transforms and the QMF bank, and are
 not linked.
@@ -651,34 +774,37 @@ point ([decision 8](#decisions)). So from D2 the DSP is written against a scalar
 floating type and a fixed-point type can instantiate, in the pattern of forge's decode path
 (`planning/arithmetic-tiers.md`): arithmetic through the type's operators, functions through
 overload sets, and a block exponent carried with each block of coefficients where a fixed store
-would otherwise lose a small value's bits. Only `double` is built until D14 adds `float`, for the
-P4 and then the S3, and fixed point, for the C6. The QMF-domain tools make the fixed tier harder
+would otherwise lose a small value's bits. `double` and `float` are built (D14a and D14b); fixed
+point, for the C6, is D14d and is not built. The QMF-domain tools make the fixed tier harder
 than forge's was: every codec mode except SIMPLE runs a complex filterbank, A-SPX's envelope
 estimates and, in the A-CPL modes, IIR decorrelators on every channel, and forge's own JOC
 reconstruction still runs in `float` in every build because of the same filterbank. The speech
 frontend's arithmetic decoder uses integer arithmetic in every build, as the text specifies.
 
-As built by D6, the pattern holds for about a third of the DSP: `src/ac4core`'s kernels are
+As D6 left it, the pattern held for about a third of the DSP: `src/ac4core`'s kernels were
 templates on `Real`, instantiated only at `double` and over `std::complex<Real>`, which a
-fixed-point type cannot instantiate, and the reconstruction in `src/ac4dec/src/pcm` spells `double`
+fixed-point type cannot instantiate, and the reconstruction in `src/ac4dec/src/pcm` spelled `double`
 directly. On 2026-09-25 the user asked that AC-4 follow AC-3's and E-AC-3's approach, `double`,
-`float` and fixed point by target ([decision 25](#decisions-of-2026-09-25)): D14's first part puts
-the reconstruction on the scalar, with a complex type of the project's own, and AC-4 joins
-`AC3FORGE_DECODE_SCALAR` and the ESP-IDF component's choice by `CONFIG_SOC_CPU_HAS_FPU`. Until then,
-new kernels in `src/ac4core` are templates on `Real` like their neighbours, new QMF-domain code in
-`src/ac4dec/src/pcm` names its sample through one alias (`QmfValue`), and no phase adds a
-function-local static, a stack object over 4 KiB, or a heap allocation each frame where a member
-buffer would do.
+`float` and fixed point by target ([decision 25](#decisions-of-2026-09-25)), and D14a did it: the
+kernels and the reconstruction are templates on `Real` over `dsp::Complex<Real>`, a complex type of
+the project's own, and AC-4 joined `AC3FORGE_DECODE_SCALAR`, so one source builds the `double` and
+the `float` decoder. The ESP-IDF component builds the `float` one behind `CONFIG_AC3FORGE_AC4`,
+offered only on a part with a floating-point unit (D14b). With `AC3FORGE_DECODE_SCALAR=fixed` the core
+still builds at `double`, since the fixed tier has not instantiated these kernels. The rules for new
+code stand: kernels are templates on `Real`, and no phase adds a function-local static, a stack
+object over 4 KiB, or a heap allocation each frame where a member buffer would do.
 
 The encoder runs on computers only. It is built at `double`, on the same scalar type as the core it
-shares, with no `float` or fixed-point tier and no place in the ESP32 builds. Its output is
+shares, with no `float` or fixed-point tier and no place in the ESP32 builds; the core's kernels it
+calls are also instantiated at `double` in a `float` build (`AC4CORE_ALSO_AT_DOUBLE`). Its output is
 deterministic for one toolchain, as `ac3::forge`'s encoders' is, and is not promised byte-identical
 across toolchains.
 
 ### The API
 
-The decoder takes one `raw_ac4_frame` at a time and returns PCM for one presentation. A sketch; the
-names are not final:
+The decoder takes one `raw_ac4_frame` at a time and returns PCM for one presentation. This is the
+sketch the design started from; `src/ac4dec/include/ac4dec/decoder.hpp` is the API as built, and the
+notes after the sketch say where it differs:
 
 ```cpp
 namespace ac4 {
@@ -738,19 +864,29 @@ class Decoder {  // a Pimpl, as the library's other stateful classes are
   the renderer that Hearth's phase A1 moves into `ac3::forge`.
 - **Errors.** A frame that cannot be decoded returns an error, or, under a concealment policy, a
   frame of concealed output and a record of what was done, as forge's decoders do.
-- **The syntax trace.** D8 settles the sink's lifetime, which `DecoderConfig` gets wrong today: the
-  decoder either owns a copy of the callable or takes the sink with each call, and the encoder's
-  write trace follows the same rule.
+- **The syntax trace.** D8 settled the sink's lifetime, which `DecoderConfig` had wrong, by
+  ownership: the configuration owns a copy of the callable, and the encoder's write trace follows the
+  same rule.
 - **Hearth.** The engine's `StreamDecoder` (`apps/hearth/engine/stream_decoder.hpp`) decodes a unit
   into blocks rendered onto a `render::OutputLayout`; `decode_by_block` and the frame's layout are
   what an adapter there needs, and the adapter lives in the engine, since the decoder does not link
   `ac3::forge`'s renderer.
 
+As built, the header differs from the sketch in more places than
+[D8](#d8-the-api-the-cli-media-information-and-packaging) lists. `OutputConfig::output_level_dbfs` is a `std::optional<double>`, and unset, its default, leaves
+the stream at its coded level and compresses nothing, since Part 1 gives `Lout` no default (D6);
+`headphones` chooses between the two portable DRC modes; `downmix` names one of the layouts the
+renderer gives (as coded, 5.X, stereo, Lo/Ro, Lt/Rt, mono, and the immersive 7.X.4, 7.X.2, 7.X.0,
+5.X.4 and 5.X.2) and replaces `target` and `layout` (D9); and there is no `sample_rate_hz`: the
+decoder outputs 48 kHz, or 44.1 kHz at index 13, and refuses a 96 or 192 kHz substream, whose HSF
+extension it reads and does not decode.
+
 ### The encoder's API
 
 The encoder takes PCM at 48 kHz, or at 44.1 kHz for `frame_rate_index` 13, the one index Part 1
 Table 84 defines at that rate, in blocks of any length, and returns each `raw_ac4_frame` as it
-completes. A sketch; the names are not final:
+completes. This is the design's sketch; `src/ac4enc/include/ac4enc/encoder.hpp` is the API as built,
+and the notes after the sketch say where it differs:
 
 ```cpp
 namespace ac4 {
@@ -813,7 +949,17 @@ class Encoder {  // a Pimpl
 - **Objects**, from E9: each object's PCM and its metadata in Annex F's terms, which the
   applications convert from ADM BWF, IAB or `ObjectScene`.
 - **The trace.** The encoder writes a `SyntaxRecord` for each element it writes, in the shape the
-  decoder reads, under the lifetime rule D8 settles.
+  decoder reads, under the lifetime rule D8 settled.
+
+As built, `Encoder::create()` returns a `std::expected` in place of a constructor, and
+`Encoder::refusal_reason()` names the rule a configuration breaks (E7). `RateControl` is `RateMode`.
+`EncoderConfig` gained `channels`, `sample_rate_hz`, `iframes`, `fragment_starts`, `dialnorm_db`,
+`loudness`, `drc`, `downmix` and `dialogue`, its substreams are `SubstreamConfig`s, each
+`PresentationConfig` names one of Part 2 Table 53's configurations, and `experimental` is a struct of
+flags in place of `experimental_tools`: `aspx_balance`, `aspx_varvar`, `aspx_interleave`,
+`coding_configs`, `seven_x`, `acpl`, `back_pair`, `ajcc`, `drc_gains`, `three_zero` and `objects`. The
+CRC is an argument of `sync_frame()`, `latency()` is `delay_samples()` and `decoder_delay_samples()`,
+and `encode()` has overloads for a dialogue stem and for the metadata updates of objects.
 
 ### Rate control and the psychoacoustic model
 
@@ -832,10 +978,13 @@ class Encoder {  // a Pimpl
   noise is loudest (E1).
 - **The three rates.** A constant rate fills each frame to its size with fill bits; an average rate
   carries unused bits forward within the buffer Part 1 6.2.4 sets, and signals the wait
-  `wait_frames` needs; a variable rate fixes quality and lets the size follow.
-- **The closed loop.** The encoder can reconstruct its own frame with the core's kernels and
-  measure the error per band, as `ac3::quality`'s distortion criterion does for AC-3. It uses that
-  to calibrate the model, and inside the loop only where the measurements show it pays.
+  `wait_frames` needs; a variable rate is an average rate without the buffer, in which frames lend
+  each other up to two seconds' share of the rate (`wait_frames` 7).
+- **The closed loop.** The rate loop is open: it estimates each band's noise from the quantiser's
+  step (`src/ac4enc/src/asf/psycho.hpp`) and does not reconstruct the frame to measure it. The
+  encoder runs the core's kernels where a tool's choice depends on what the decoder will make of it:
+  A-SPX's envelopes, noise floors and tones against the HF generator (E2, E10), and A-JOC's dry
+  matrices against its reconstruction (E9).
 
 ### What the encoder writes by default
 
@@ -855,6 +1004,15 @@ with the encoder's use of it: MediaInfo's trace for the table of contents, the p
 substream and `metadata()`, and a second decoder for audio data
 ([decision 16](#decisions-for-the-encoder-and-the-applications)). Where a reading is settled that
 way, the errata register records it.
+
+As built, the second set is `EncoderConfig::experimental` (`ac3cli ac4-encode experimental=`):
+balance, VARVAR framing and frequency-interleaved waveform coding in A-SPX (`aspx_balance`,
+`aspx_varvar`, `aspx_interleave`), the 5.X element's other coding configurations (`coding_configs`),
+7.0 and 7.1 (`seven_x`), ASPX_ACPL_1 and A-CPL in stereo (`acpl`), 7.0.4 and 7.1.4 (`back_pair`),
+A-JCC (`ajcc`), transmitted DRC gains (`drc_gains`), a 3.0 substream (`three_zero`) and objects
+(`objects`). Mono, several presentations and substreams, and the Mid and cross-channel dialogue
+enhancement methods are options without the flag. Noise fill and time-interleaved waveform coding
+are not written at all.
 
 ### One control for both formats
 
@@ -902,38 +1060,40 @@ properties. `ac3cli probe json=1` writes the same fields.
   or Dolby MAT onward. No IEC 61937 AC-4 format exists in FFmpeg's S/PDIF muxer, Android's S/PDIF
   encoder, Linux's HDMI header or Windows' compressed-audio subformats. CTA-861 signals AC-4 as
   audio coding extension type 12.
-- **In this project.** IEC 61937-14 is implemented from its text ([decision 9](#decisions)): the
-  user buys the standard, and D11 starts when it is here. D11 gives `ac3::iec61937` the AC-4 burst
-  types with their repetition periods and `Pc` fields, `PassthroughSink` an AC-4 format, and the
-  extension role `_ac3forge_player@v1` an AC-4 data type. The extension role is this project's own
-  protocol, whose bursts drop IEC 61937's sync words and stuffing, and its receivers decode with
-  this library. No device here can check passthrough.
+- **In this project.** IEC 61937-14 is implemented from its text ([decision 9](#decisions)), which
+  the user supplied on 2026-09-15. D11 gave `ac3::iec61937` the AC-4 burst types with their
+  repetition periods and `Pc` fields, `PassthroughSink` an AC-4 format on the backends whose
+  operating system has a way to send it (ALSA and Android), and the extension role
+  `_ac3forge_player@v1` an AC-4 data type. The extension role is this project's own protocol, whose
+  bursts drop IEC 61937's sync words and stuffing, and its receivers decode with this library. No
+  device here can check passthrough.
 
 ### The ESP32
 
 D14, after D10: the P4 first, in `float`, since it has the most CPU and memory of the family's
 parts; then the S3 in `float` and the C6 in fixed point, as the decoder's optimisation lets them
-([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component builds without AC-4 today; the
-minimal profile carries the decoder for the Cortex-M3 probe (D14a). The parts decode only; the
-encoder is built for none of them
-([decision 34](#decisions-of-2026-09-25)).
+([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component builds AC-4 only with
+`CONFIG_AC3FORGE_AC4` (D14b); the minimal profile carries the decoder for the Cortex-M3 probe
+(D14a). The parts decode only; the encoder is built for none of them
+([decision 34](#decisions-of-2026-09-25)). D14a and D14b are built and D14c and D14d are not.
 
 - **What they face.** Every AC-4 codec mode, SIMPLE included, runs QMF analysis and synthesis on
   each channel (D3), and the A-CPL modes add three decorrelators per band. Read from the code as
-  D6 left it, the QMF pair is about three quarters of a frame's arithmetic at 2.0 and 5.1, and a
-  decoder holds about 1 MB at 2.0 and 2 MB at 5.1 in `double`, where the S3's probe allows a heap
-  of 245,000 bytes. In E-AC-3, forge's JOC reconstruction through its QMF bank peaked at 449,826
-  bytes on the ESP32-S3, where a decode leaves a largest free block of 116,736
-  (`docs/platforms/bare-metal/esp32-s3.md`). A frame at index 13 lasts 42.7 ms.
+  D6 left it, the QMF pair was about three quarters of a frame's arithmetic at 2.0 and 5.1, and a
+  decoder held about 1 MB at 2.0 and 2 MB at 5.1 in `double`, where the S3's probe allows a heap
+  of 245,000 bytes; D14a's figures for what it did about both are in its section. In E-AC-3,
+  forge's JOC reconstruction through its QMF bank peaked at 449,826 bytes on the ESP32-S3, where a
+  decode leaves a largest free block of 116,736 (`docs/platforms/bare-metal/esp32-s3.md`). A frame
+  at index 13 lasts 42.7 ms.
 - **What AC-3 and E-AC-3 manage on each part is the guide** to what AC-4 aims for there, less what
-  AC-4's heavier frame costs. AC-4's estimates are read from the code, before D14's work on it; the
-  boards measure.
+  AC-4's heavier frame costs. The aims below were read from the code before D14's work on it; the
+  boards measure, and the last column has what they have measured.
 
-| Part | Arithmetic | AC-3 and E-AC-3 on the board, per 32 ms frame | AC-4's aim |
-|---|---|---|---|
-| **P4**: 2 × RV32 at 360 MHz on this board's v1.3 silicon, single-precision FPU, 768 KB SRAM, 32 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.18 of real time, 7.1.4 at 0.43 | 2.0, 5.1 and 5.1.4 in full decoding in real time, first |
-| **S3**: 2 × LX7 at 240 MHz, single-precision FPU, 512 KB SRAM, 8 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.34, 7.1.4 at 0.90 | 2.0 and 5.1; 5.1.4 measured, heard through core decoding or folded to 2.0 |
-| **C6**: 1 × RV32 at 160 MHz, no FPU, 512 KB SRAM shared with WiFi, no PSRAM | fixed point | 5.1 with WiFi at 0.82 (AC-3) and 0.96 (E-AC-3); 7.1.4 misses, at 1.88 | 2.0 in core decoding if it keeps up with WiFi; otherwise Hearth sends it PCM |
+| Part | Arithmetic | AC-3 and E-AC-3 on the board, per 32 ms frame | AC-4's aim | Measured |
+|---|---|---|---|---|
+| **P4**: 2 × RV32 at 360 MHz on this board's v1.3 silicon, single-precision FPU, 768 KB SRAM, 32 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.18 of real time, 7.1.4 at 0.43 | 2.0, 5.1 and 5.1.4 in full decoding in real time, first | D14b: 2.0 in real time (SIMPLE at 0.53 of a frame, A-SPX at 0.74); 5.1 at 1.4 to 4.1 and 5.1.4 in full decoding at 2.8 to 3.7 |
+| **S3**: 2 × LX7 at 240 MHz, single-precision FPU, 512 KB SRAM, 8 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.34, 7.1.4 at 0.90 | 2.0 and 5.1; 5.1.4 measured, heard through core decoding or folded to 2.0 | not built (D14c) |
+| **C6**: 1 × RV32 at 160 MHz, no FPU, 512 KB SRAM shared with WiFi, no PSRAM | fixed point | 5.1 with WiFi at 0.82 (AC-3) and 0.96 (E-AC-3); 7.1.4 misses, at 1.88 | 2.0 in core decoding if it keeps up with WiFi; otherwise Hearth sends it PCM | not built (D14d) |
 
 - **The P4 here** is pre-production silicon: 400 MHz takes its CPLL down, and its I2S has no PLL
   clock, so it plays one or two channels over standard I2S and no TDM. On this board AC-4's
@@ -955,10 +1115,10 @@ and the encoder's.
 | DEE | encodes of known sources | its streams, scored against their source | the race: the same sources at the same settings | locally, while its licence runs ([decision 23](#decisions-for-the-encoder-and-the-applications)) |
 | librempeg | PCM from a second decoder | its decode of the same streams | its decode of the encoder's streams | locally ([decision 13](#decisions-for-the-encoder-and-the-applications)) |
 | MediaInfo | the table of contents, the presentation substream, `metadata()`, EMDF payloads and `crc_word`, frame by frame | DEE's and third-party streams | each value the encoder was asked to write | locally |
-| FFmpeg 8.0.1 | sync frames in raw AC-4; the AC-4 track of an MP4 file | framing only | framing of raw output and of MP4 and TS carriage | CI, in FFmpeg Validate |
+| FFmpeg 8.0.1 | sync frames in raw AC-4; the AC-4 track of an MP4 file | framing only | framing of raw output and of MP4 and TS carriage | CI, in FFmpeg Validate, which runs in the nightly tier ([the CI stages](../docs/ci-agentic.md#the-tiers)) |
 | DEE's MP4 muxer | reads an AC-4 elementary stream to write its sample entry | | the encoder's raw output muxes, and the `dac4` it writes equals the encoder's | locally |
 | The decoder | PCM | | every stream the encoder writes | CI |
-| Listening | rendering and objects, where numbers do not reach | D9, D10 | E8, E9 | locally |
+| Listening | rendering and objects, where numbers do not reach | D10 | E9 | locally, by the user: not done, and each phase's pull request gives the streams and the commands |
 
 **FFmpeg cannot be the second decoder.** For AC-3 and E-AC-3, FFmpeg's decoder is what the gold
 gate, the FATE interoperability run and the encoder-space harnesses compare against. FFmpeg has no
@@ -988,8 +1148,9 @@ which is what moves a tool out of the encoder's experimental set
 install.
 
 **DEE's licence runs out on 2026-11-06.** DEE is the gold standard in both directions, so phases
-G0 and G1 ([G0](#g0-the-gold-set)) make every DEE stream the later phases need before that date;
-the licence is not renewed.
+G0 and G1 ([G0](#g0-the-gold-set)) made every DEE stream the later phases need before that date,
+and G2 (#1054) the same for its AC-3, E-AC-3, E-AC-3 JOC and TrueHD encoders; the licence is not
+renewed.
 
 The Dolby Reference Player's `dlbac4dec` stays installed and unused ([decision 5](#decisions)).
 
@@ -1041,11 +1202,11 @@ the ones it uses.
    ([decision 4](#decisions)).
 6. **Constructed streams reach what no encoder here writes.** A test multiplexer builds
    presentations of several substreams from the substreams of separate DEE encodes, rewriting their
-   `extended_metadata`. An independent bit writer, as `tests/ac4/test_ac4.cpp` uses for A-JOC
-   framing today, builds syntax no encoder here writes: A-CPL mode 1, A-JCC, transmitted DRC gains,
-   and dialogue enhancement methods 1 to 3. From E1 on, the encoder's streams reach it too. These
-   check parsing, the invariants, and gains on known input; the writer, the encoder and the decoder
-   can share a misreading.
+   `extended_metadata`. The encoder's writer, driven directly by the tests
+   (`tests/ac4dec/ac4dec_constructed.cpp`), builds syntax no encoder here writes by default: A-CPL
+   mode 1, A-JCC, transmitted DRC gains, and dialogue enhancement methods 1 to 3. The encoder's own
+   streams reach it too. These check parsing, the invariants, and gains on known input; the writer,
+   the encoder and the decoder can share a misreading.
 7. **A second decoder.** librempeg's experimental AC-4 decoder is built outside the tree and its
    output compared on the same streams ([decision 6](#decisions)), as [The oracles](#the-oracles)
    sets out; the Reference Player is not pursued ([decision 5](#decisions)). At
@@ -1084,73 +1245,83 @@ that proves most to the one that proves least:
    with its audio-altering defaults off, and by the encoder; both are decoded by the decoder and by
    librempeg, and scored against the source as in item 4. The encoder's scores and its gap to DEE's
    are recorded per leg and pinned against regression
-   ([decision 19](#decisions-for-the-encoder-and-the-applications)). `quality_race.py` gains the
-   AC-4 legs, and the trend series track them as they track E-AC-3's.
+   ([decision 19](#decisions-for-the-encoder-and-the-applications)). As built, `score_ac4_encode.py`
+   holds the encoder's scores to pinned floors in FFmpeg Validate, which runs nightly, and its
+   `--gold` race against DEE runs locally, with DEE's streams and ViSQOL; `quality_race.py` has no
+   AC-4 legs. The decoder's scores have a trend series of 10 legs, which the nightly run writes
+   ([Quality trend](../docs/quality-trend.md#ac-4-decode-quality)); the encoder's scores, a
+   comparison with other tools and AC-4's objects have none. AC-4 does have speed, allocation and
+   kernel series ([Performance trend](../docs/performance-trend.md)).
 6. **Metadata gains match their formulas.** Through the decoder's output processing (D6), the
    encoder's streams give the dialogue enhancement, output level, downmix and mixing gains their
    configuration asks for, to 0.01 dB, with one tone per channel.
 7. **The encoder space.** A harness in the pattern of `tools/ci/fuzz_eac3_encoder_space.py` draws
    configurations (layout, rate, frame rate, codec mode, tools, presentations and metadata) and
    short signals, encodes them, and requires items 1 and 3's FFmpeg framing and a clean decode.
-   Seeds that once failed are replayed as regressions; it runs for 120 seconds on each pull request
-   and 900 nightly, as E-AC-3's does, and locally it adds librempeg and MediaInfo.
+   Seeds that once failed are replayed as regressions; it runs for 120 seconds in FFmpeg Validate
+   and 900 in the nightly fuzz workflow, as E-AC-3's does. MediaInfo's readings come from
+   `tools/checks/check_ac4_encode_readers.py`, which runs locally, from DEE's install.
 8. **Robustness and determinism.** An instrumented fuzz target over the encoder's configuration and
    input (silence, DC, full-scale square waves, clipped signals, and non-finite samples, which are
    refused); the sanitizer legs; and the same bytes from the same input and configuration on one
-   toolchain, pinned by hashes as `tests/golden/bitstream-hashes.json` pins AC-3's and E-AC-3's.
+   toolchain. As built, that is held for the committed streams the encoder wrote, which the tests
+   rebuild and compare byte for byte; `tests/golden/bitstream-hashes.json` has no AC-4 entries.
 
 **What goes in the tree.** Short DEE streams (about five seconds each) under `tests/golden/`, with a
-generator that makes them from committed sources as `tools/generators/gen_ac4_baseline.py` does
-now, and never runs in CI; each stream's manifest entry records its scores, as the AC-3 and E-AC-3
-legs' `manifest.json` does. The encoder's streams are not committed: CI makes them, and their hashes
-are pinned. The full census, G0's full set and librempeg's outputs stay local on `D:`. Third-party
-streams are committed only where their licence allows it.
+generator that makes them from committed sources as `tools/generators/gen_ac4_baseline.py` does,
+and never runs in CI. As built, each stream's manifest entry records its source's SHA-256 and the
+properties its trace shows, and the scorers pin the scores. The encoder's streams are committed
+only as cases for syntax that no DEE stream reaches (`tests/golden/ac4dec/constructed`,
+`presentations` and `objects`, with the Python parser's digests), which the tests rebuild byte for
+byte; CI makes the rest, and no hashes of them are pinned. The full census, the gold set (G0, G1)
+and librempeg's outputs stay local on `D:`, and so do the third-party streams: none is committed.
 
 ## Phases
 
 ### Order
 
-G0 comes first, because DEE's licence runs out on 2026-11-06. After it, each encoder phase follows
+G0 came first, because DEE's licence runs out on 2026-11-06. After it, each encoder phase followed
 the decoder phase that decodes what it writes, so that what the two share is built once, with both
 directions' tests, and each encoder phase is checked by a decoder the phase before checked on DEE's
 streams ([decision 14](#decisions-for-the-encoder-and-the-applications)). The applications follow
-the channel-based library.
+the channel-based library. The table is the order the phases were planned in, with what each needs
+and, in the last column, where it stands; [State on 2026-09-30](#state-on-2026-09-30) has the dates.
 
-| # | Phase | What it builds | Needs |
-|---|---|---|---|
-| 1 | [G0](#g0-the-gold-set) | the gold set: every DEE stream the phases need | |
-| 2 | [D2](#d2-waveform-coded-stereo-to-pcm) | waveform-coded stereo to PCM, and the shared core | D1 |
-| 3 | [E1](#e1-the-encoder-library-the-frame-writer-and-simple-mono-and-stereo) | the encoder library, the frame writer, SIMPLE mono and stereo | D2 |
-| 4 | [D3](#d3-the-qmf-domain-and-a-spx) | the QMF domain and A-SPX | D2 |
-| 5 | [E2](#e2-a-spx-and-companding) | A-SPX and companding | D3, E1 |
-| 6 | [D4](#d4-the-5x-element) | the 5.X element | D3 |
-| 7 | [E3](#e3-the-5x-element) | the 5.X element | D4, E2 |
-| 8 | [D5](#d5-a-cpl) | A-CPL | D4 |
-| 9 | [E4](#e4-a-cpl) | A-CPL | D5, E3 |
-| 10 | [D6](#d6-output-processing) | output processing | D5 |
-| 11 | [E5](#e5-metadata-frame-rates-and-i-frames) | metadata, frame rates and I-frames | D6, E4 |
-| 12 | [D7](#d7-presentations) | presentations | D6 |
-| 13 | [E6](#e6-presentations-and-several-substreams) | presentations and several substreams | D7, E5 |
-| 14 | [D8](#d8-the-api-the-cli-media-information-and-packaging) | the decoder's API, CLI, media information and packaging | D7 |
-| 15 | [E7](#e7-the-encoders-api-the-cli-and-packaging) | the encoder's API, CLI and packaging | D8, E6 |
-| 16 | [I1](#i1-the-rest-of-ac3cli) to [I4](#i4-the-c-api-python-rust-and-webassembly) | the applications, for channel-based content | D8, E7 |
-| 17 | [D9](#d9-channel-based-immersive) | channel-based immersive | D8 |
-| 18 | [E8](#e8-channel-based-immersive) | channel-based immersive | D9, E7 |
-| 19 | [D10](#d10-a-joc-objects) | A-JOC objects | D9 |
-| 20 | [E9](#e9-a-joc-objects) | A-JOC objects | D10, E8 |
-| 21 | [I5](#i5-immersive-and-object-content-in-the-applications) | immersive and object content in the applications | D10, E9 |
-| | [I4b](#i4b-the-object-encoder-in-the-c-api-python-rust-and-webassembly) | the object encoder in the bindings, and I4's leftovers | I4, E9 |
-| 21b | [I5b](#i5b-the-encoder-pages-ac-4-objects) | the encoder page's AC-4 objects | I3, I5 |
-| 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 |
-| | [D14a4](#d14a4-libm-parity-and-the-converter-at-float) | libm parity and the frame-rate converter at `float`: what D14b's board work left in D14a's build | D14a, D14b |
-| 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures |
-| 24 | [N1](#n1-the-names) | the names | I5 |
-| | [G1](#g0-the-gold-set) | the golden masters, extending G0's set | any time before DEE's licence ends on 2026-11-06 |
-| | [D11](#d11-ac-4-over-iec-61937) | AC-4 over IEC 61937 | D1; any time |
-| | [E10](#e10-a-spx-noise-floors-on-sweeps) | A-SPX noise floors on sweeps: the gap E8 left to DEE | E2, E8 |
+| # | Phase | What it builds | Needs | State |
+|---|---|---|---|---|
+| 1 | [G0](#g0-the-gold-set) | the gold set: every DEE stream the phases need | | merged, #1006 |
+| 2 | [D2](#d2-waveform-coded-stereo-to-pcm) | waveform-coded stereo to PCM, and the shared core | D1 | merged, #1009 |
+| 3 | [E1](#e1-the-encoder-library-the-frame-writer-and-simple-mono-and-stereo) | the encoder library, the frame writer, SIMPLE mono and stereo | D2 | merged, #1011 |
+| 4 | [D3](#d3-the-qmf-domain-and-a-spx) | the QMF domain and A-SPX | D2 | merged, #1012 |
+| 5 | [E2](#e2-a-spx-and-companding) | A-SPX and companding | D3, E1 | merged, #1013 |
+| 6 | [D4](#d4-the-5x-element) | the 5.X element | D3 | merged, #1014 |
+| 7 | [E3](#e3-the-5x-element) | the 5.X element | D4, E2 | merged, #1025 |
+| 8 | [D5](#d5-a-cpl) | A-CPL | D4 | merged, #1027 |
+| 9 | [E4](#e4-a-cpl) | A-CPL | D5, E3 | merged, #1029 |
+| 10 | [D6](#d6-output-processing) | output processing | D5 | merged, #1037 |
+| 11 | [E5](#e5-metadata-frame-rates-and-i-frames) | metadata, frame rates and I-frames | D6, E4 | merged, #1046 |
+| 12 | [D7](#d7-presentations) | presentations | D6 | merged, #1055 |
+| 13 | [E6](#e6-presentations-and-several-substreams) | presentations and several substreams | D7, E5 | merged, #1058 |
+| 14 | [D8](#d8-the-api-the-cli-media-information-and-packaging) | the decoder's API, CLI, media information and packaging | D7 | merged, #1059 |
+| 15 | [E7](#e7-the-encoders-api-the-cli-and-packaging) | the encoder's API, CLI and packaging | D8, E6 | merged, #1061 |
+| 16 | [I1](#i1-the-rest-of-ac3cli) to [I4](#i4-the-c-api-python-rust-and-webassembly) | the applications, for channel-based content | D8, E7 | merged, #1070, #1068, #1084, #1094 |
+| 17 | [D9](#d9-channel-based-immersive) | channel-based immersive | D8 | merged, #1057 |
+| 18 | [E8](#e8-channel-based-immersive) | channel-based immersive | D9, E7 | merged, #1071 |
+| 19 | [D10](#d10-a-joc-objects) | A-JOC objects | D9 | merged, #1060 |
+| 20 | [E9](#e9-a-joc-objects) | A-JOC objects | D10, E8 | merged, #1082 |
+| 21 | [I5](#i5-immersive-and-object-content-in-the-applications) | immersive and object content in the applications | D10, E9 | merged, #1100 |
+| | [I4b](#i4b-the-object-encoder-in-the-c-api-python-rust-and-webassembly) | the object encoder in the bindings, and I4's leftovers | I4, E9 | merged, #1119 |
+| 21b | [I5b](#i5b-the-encoder-pages-ac-4-objects) | the encoder page's AC-4 objects | I3, I5 | merged, #1117 |
+| 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 | D14a and D14b merged (#1096, #1102, #1123, #1118); D14c and D14d not built |
+| | [D14a4](#d14a4-libm-parity-and-the-converter-at-float) | libm parity and the frame-rate converter at `float`: what D14b's board work left in D14a's build | D14a, D14b | open |
+| 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures | not built |
+| 24 | [N1](#n1-the-names) | the names | I5 | not built; studied in #1122 |
+| | [G1](#g0-the-gold-set) | the golden masters, extending G0's set | any time before DEE's licence ends on 2026-11-06 | merged, #1051 |
+| | [D11](#d11-ac-4-over-iec-61937) | AC-4 over IEC 61937 | D1; any time | merged, #1052 |
+| | [E10](#e10-a-spx-noise-floors-on-sweeps) | A-SPX noise floors on sweeps: the gap E8 left to DEE | E2, E8 | merged, #1113 |
 
 Hearth's AC-4 pages activate for channel-based content in I2, for immersive content and objects in
-I5.
+I5, and are live.
 
 How each phase is run:
 
@@ -1170,13 +1341,19 @@ How each phase is run:
 - Before pushing: the MSVC `/W4 /WX` build, the touched translation units under clang-cl, and the
   WSL GCC and Clang `-Werror` gates; for documentation, `tools/checks/check_doc_paths.py` and
   `mkdocs build --strict`.
-- From 2026-09-25 the phases left run in parallel, as agents under one session that coordinates
+- From 2026-09-25 the phases left ran in parallel, as agents under one session that coordinated
   them, each in a worktree of its own made at its base and working from a common brief of these
-  rules. A phase whose predecessor is still open branches from it and says so at the top of its
-  pull request; a phase built beside the one the order puts first (D9 beside D7) takes that phase
-  in by merging. Pull requests are merged when their checks pass, the lowest of a stack first.
+  rules. A phase whose predecessor was still open branched from it and said so at the top of its
+  pull request; a phase built beside the one the order puts first (D9 beside D7) took that phase
+  in by merging. Pull requests were merged when their checks passed, the lowest of a stack first.
 
 ### G0: the gold set
+
+**Status:** merged as #1006 on 2026-09-25. Exit met: 137 streams (45.5 MB, 32,787 frames, from 10 s
+sources) in `D:\ac3bld\ac4-gold`, both transcriptions reading every substream to its end but the
+immersive element of the 22 5.1.4 streams, which D9 took on, and MediaInfo's trace beside each.
+`dee_ac4ajoc_encoder` and `dee_ac4ims_encoder` refused the ADM master, so the set has no A-JOC
+stream.
 
 Every DEE stream the later phases need, made while DEE's licence runs, and kept on `D:`. The
 generator is `tools/generators/gen_ac4_baseline.py`, extended; it runs locally and never in CI.
@@ -1209,12 +1386,14 @@ is saved beside each.
 **Verified by:** the generator's own checks; the census comparison in `test_ac4dec_syntax.cpp` over
 the set.
 
-**G1, the golden masters (2026-09-26).** On 2026-09-25 the user said DEE's licence will not be
-renewed and asked for golden masters to test against now. G1 made 439 legs beside G0's in
-`D:\ac3bld\ac4-gold` (433 streams, 188 MB, gold version 4), listed under the manifest's `g1_legs`.
-G0's legs, sources and files are as G0 left them, and the scorers that read `legs` fail a leg they
-have not pinned, so a phase takes G1's legs into its scorer as it pins them. `gen_ac4_baseline.py`
-makes each leg from committed material and groups them by the phases they serve:
+**G1, the golden masters (merged as #1051 on 2026-09-25; exit met under G0's criterion).** On
+2026-09-25 the user said DEE's licence will not be renewed and asked for golden masters to test
+against now. G1 listed 439 legs beside G0's in `D:\ac3bld\ac4-gold` under the manifest's `g1_legs`
+(gold version 4): 427 made (433 streams, 188 MB, 133,163 frames) and 12 attempts DEE refuses, kept
+with its messages. G0's legs, sources and files are as G0 left them, and the scorers that read
+`legs` fail a leg they have not pinned, so a phase takes G1's legs into its scorer as it pins
+them. `gen_ac4_baseline.py` makes each leg from committed material and groups them by the phases
+they serve:
 
 - D2 to D5 and E1 to E4: sweeps, pink noise and silence-then-transient at every 2.0 and 5.1 rate.
 - D9 and E8: film, speech, sweeps, noise and transients at every 5.1.4 rate; stepped tones under
@@ -1233,8 +1412,8 @@ makes each leg from committed material and groups them by the phases they serve:
 - D7 and E6: substreams for the test multiplexer, a dialogue tone, an associated tone, and dialogue
   and associated speech in 2.0, on the I-frame grid of G0's 2.0 and 5.1 legs; immersive stereo with
   seven language tags, on six sources.
-- D12, D13 and I6: 60 s programmes, 2.0 from 48 to 256 kbps, 5.1 from 96 to 448, 5.1.4 at 192,
-  256, 512 and 768, and immersive stereo at five frame rates.
+- D12, D13 (whose work D14 took) and I6: 60 s programmes, 2.0 from 48 to 256 kbps, 5.1 from 96 to
+  448, 5.1.4 at 192, 256, 512 and 768, and immersive stereo at five frame rates.
 - I1 and I5: E-AC-3 and AC-3 from `dee_ddp_encoder`, and E-AC-3 JOC from `dee_ddpjoc_encoder`'s
   channel-based immersive input at 5.1.4, 7.1.4 and 9.1.6, of the same sources; 7.1 input; and
   DEE's own downmix of 5.1 and 7.1 input to 2.0.
@@ -1242,11 +1421,11 @@ makes each leg from committed material and groups them by the phases they serve:
 Each leg keeps DEE's command and log, MediaInfo's trace with a table of contents for every frame
 (`--ParseSpeed=1`) and its summary, and DEE's MP4 of the stream; the manifest holds the SHA-256s
 and what main's `ac3cli` made of each stream, and G0's streams have their MP4s under `mp4\`. Both
-transcriptions agree on all 396 AC-4 streams (the census comparison), and main's decoder decodes
-each 2.0 and 5.1 stream at index 13; it refuses the 5.1.4 streams' immersive element (D9) and the
-other frame rates (D6, not yet on main), which is where those phases start. Three 5 s streams of
-one tone per channel at 5.1.4, one in each immersive codec mode, are committed, with their digests
-left to D9.
+transcriptions agree on all 396 AC-4 streams (the census comparison). On the day G1 merged main's
+decoder decoded each 2.0 and 5.1 stream at index 13 and refused the 5.1.4 streams' immersive
+element (D9) and the other frame rates (D6), which is where those phases started. Three 5 s streams
+of one tone per channel at 5.1.4, one in each immersive codec mode, are committed; their digests
+came with D9.
 
 What DEE could not be made to write:
 
@@ -1284,14 +1463,15 @@ A phase after 2026-11-06 cannot get a DEE stream of any configuration outside th
 muxer's `dac4` for the encoder's own streams if the muxer stops with the licence (the encoder's
 ladder item 3; the set holds DEE's MP4 of each DEE stream, so a configuration's `dac4` can still be
 compared), or new E-AC-3 and AC-3 encodes for `gen_external_baseline.py`, whose encoders are the
-same install.
+same install. G2 (#1054, 2026-09-26) made the last for AC-3, E-AC-3, E-AC-3 JOC and TrueHD with
+`tools/generators/gen_dee_gold.py`: 1,111 legs (1,086 streams, 986 MB) in `D:\ac3bld\dee-gold`.
 
 ### Decoder phases
 
 #### D1: the library and the channel-coded syntax
 
-**Built:** merged as #700 on 2026-09-16, with the readings of #712 and #715; the HSF extension's
-content followed in #786.
+**Status:** merged as #700 on 2026-09-16, with the readings of #712 and #715; the HSF extension's
+content followed in #786. Exit met: every criterion below, the third-party streams included.
 
 - `src/ac4dec/` with its CMake, tests and an instrumented fuzz target, and the inspector additions
   under [What the inspector grows](#what-the-inspector-grows).
@@ -1320,18 +1500,21 @@ locally over the whole set; the fuzz target.
 
 #### D2: waveform-coded stereo to PCM
 
+**Status:** merged as #1009 on 2026-09-25. Exit met.
+
 - The shared core, `src/ac4core/` ([Where the libraries live](#where-the-libraries-live)): D1's
-  tables, bit reader and Huffman decoder move into it, and this phase's transforms are written
-  there, the forward MDCT beside the inverse, so that E1 finds them built and tested.
+  generated tables moved into it, and this phase's transforms are written there, the forward MDCT
+  beside the inverse, so that E1 finds them built and tested. The bit reader and the Huffman
+  decoder stayed in `src/ac4dec`, since they carry the syntax trace and its sink.
 - ASF reconstruction: scale factors, dequantisation, noise fill, ungrouping.
 - Stereo processing: M/S and prediction.
 - The inverse MDCT on the FFT for 2^a · 3^b · 5^c, the direct form it is tested against, KBD
   windows, block switching, overlap-add and the frame alignment delay.
 - Mono and stereo in SIMPLE mode. `ac3cli decode` reads AC-4 and writes the coded channels, and
-  the scripts that score E-AC-3 (`quality_race.py`'s scoring, the gold gate's comparison) take the
-  decoder's output. Frame rates other than index 13 are refused until D6.
-- librempeg built as [The oracles](#the-oracles) describes, once the user has confirmed it
-  (decision 13), and measured on the committed and census streams.
+  `tools/checks/score_ac4_decode.py` scores the decoder's output against the sources with
+  `quality_race.py`'s metrics. Frame rates other than index 13 were refused until D6.
+- librempeg, built as [The oracles](#the-oracles) describes (G0 had built it, once the user had
+  confirmed it, decision 13), and measured on the committed and census streams.
 
 **Exit:**
 
@@ -1342,10 +1525,12 @@ locally over the whole set; the fuzz target.
   within 0.2 dB of the prediction, its per-channel SNR at or above its pinned floor, its alignment
   at the computed latency, and each channel's tone on its own channel.
 
-**Verified by:** `ac3tests`; a scoring script over the committed streams on the legs that run the
-gold-reference gate, and over the full set locally.
+**Verified by:** `ac3tests`; `score_ac4_decode.py` over the committed streams in FFmpeg Validate,
+and over the full set locally.
 
 #### D3: the QMF domain and A-SPX
+
+**Status:** merged as #1012 on 2026-09-25. Exit met.
 
 - The QMF bank with `QWIN`, following Pseudocode 66's modulation offset; control data held for its
   one, two or four frames. Every codec mode passes through the banks, SIMPLE included, as Part 1
@@ -1374,6 +1559,8 @@ gold-reference gate, and over the full set locally.
 
 #### D4: the 5.X element
 
+**Status:** merged as #1014 on 2026-09-25. Exit met.
+
 - `5_X_channel_element` in SIMPLE and ASPX modes: the LFE path, the multichannel matrices (Part 1
   Tables 178 to 185), `2ch_mode`, and A-SPX's channel pairing. The 3.0 and 7.X elements in the same
   modes, tested on constructed streams.
@@ -1397,6 +1584,8 @@ channel, and one tone per channel lands on its own channel, the LFE included. Co
 **Verified by:** as D2.
 
 #### D5: A-CPL
+
+**Status:** merged as #1027 on 2026-09-25. Exit met.
 
 - The three decorrelators (Part 1 Tables 199 to 201), the transient ducker, interpolation and
   dequantisation.
@@ -1426,6 +1615,8 @@ channel, and one tone per channel lands on its own channel, the LFE included. Co
 
 #### D6: output processing
 
+**Status:** merged as #1037 on 2026-09-25. Exit met.
+
 - DRC: default profiles and compression curves as DEE writes them, with a level detector chosen
   and documented, since Part 1 leaves it open; transmitted gains on constructed streams; the output
   level gain; mode selection.
@@ -1436,6 +1627,15 @@ channel, and one tone per channel lands on its own channel, the LFE included. Co
 - The sample rate converter for every frame rate, with Part 2 5.11's phase lock, and in the shared
   core beside it the encoder's converter in the other direction, which E5 uses.
 - Start-up at I-frames, DEE's priming frame, splices, and the concealment policies.
+- As built, the pull request recorded four choices. The library's default output level is none:
+  Part 1 leaves `Lout` to the system, so `OutputConfig::output_level_dbfs` unset leaves the stream
+  at its coded level and compresses nothing, where the API sketch had −31 dBFS. A change of source
+  forgets what was read from the stream and keeps the signal, so a splice or a switch at an
+  I-frame is seamless (Part 1 6.2.19). A frame whose table of contents does not read counts as
+  the frame the stream expected. A decode begun at an I-frame is right from the next frame's
+  audio, except that A-SPX's noise and tone indices run from the decoder's first frame and A-CPL's
+  decorrelators settle within four frames (`src/ac4dec/ERRATA.md`, "What an I-frame does not
+  restore").
 
 **Exit:**
 
@@ -1457,6 +1657,8 @@ channel, and one tone per channel lands on its own channel, the LFE included. Co
 **Verified by:** `ac3tests`; the scoring and gain scripts over the committed and full sets.
 
 #### D7: presentations
+
+**Status:** merged as #1055 on 2026-09-26. Exit met.
 
 - Selection: level, enabled flag, language, content classifier, associated types and
   `b_pre_virtualized`, for version 0 and version 1 presentations.
@@ -1491,6 +1693,8 @@ three angles Part 1 Table 216 defines; the multiplexed streams parse in both imp
 **Verified by:** `ac3tests`; the gain scripts.
 
 #### D8: the API, the CLI, media information and packaging
+
+**Status:** merged as #1059 on 2026-09-26. Exit met.
 
 - `DecoderConfig`, `OutputConfig` and `Decoder` in their final form, with the controls of
   [One control for both formats](#one-control-for-both-formats).
@@ -1540,9 +1744,10 @@ three angles Part 1 Table 216 defines; the multiplexed streams parse in both imp
   library now links the inspector of its own kind. The member functions of `ac4::Decoder::Impl`
   were exported from `libac4dec.so` with the class they are nested in; they are hidden now, and
   `tools/ci/abi-allowlist/libac4dec.so.txt` lists the header's API alone.
-- Over DEE's local set the test standing in for Hearth's engine decodes 406 of 533 streams, and
-  refuses the 127 5.1.4 streams by the immersive channel element's name; over the 13 third-party
-  streams it decodes 12, and refuses Chromium's A-JOC stream naming the substream it does not decode.
+- Over DEE's local set the test standing in for Hearth's engine decoded 406 of 533 streams when D8
+  merged, and refused the 127 5.1.4 streams by the immersive channel element's name; over the 13
+  third-party streams it decoded 12, and refused Chromium's A-JOC stream naming the substream it
+  did not decode. D9 and D10 took those on.
 
 **Exit:** the Hearth engine, or a test standing in for it, decodes every stream in the set through
 the public API alone; the CLI tests cover every option; the packages contain the libraries; each
@@ -1553,6 +1758,10 @@ contract item has a test that failed before it was fixed; `mkdocs build --strict
 gates.
 
 #### D9: channel-based immersive
+
+**Status:** merged as #1057 on 2026-09-26. Exit met: the delivery kit's 5.1.4 streams were not on
+the machine when the pull request merged, and #1069 (2026-09-26) recorded that they decode in full
+and core decoding.
 
 - The immersive element and `immers_cfg`, in both transcriptions; Part 2 5.2's track assignment;
   S-CPL; A-SPX's immersive pairing and gains; A-CPL for immersive; A-JCC in full decoding, on
@@ -1606,6 +1815,10 @@ gates.
 
 #### D10: A-JOC objects
 
+**Status:** merged as #1060 on 2026-09-26. Exit met, with two exceptions. The DEE criterion did not
+apply (G0 and G1 found no master DEE's A-JOC encoder accepts), and the listening, that the objects
+move as their metadata says, is the user's to do; the numbers hold in `test_ac4dec_object_render.cpp`.
+
 - `audio_data_ajoc`, `var_channel_element`, A-JOC in full decoding, object audio metadata (common,
   timing and dynamic data), dialogue enhancement for A-JOC (Part 2 5.8.2.3), and the ISF renderer.
 - Core decoding: the downmix signals or static bed as the objects, the first object metadata portion
@@ -1653,6 +1866,9 @@ gates.
 
 #### D11: AC-4 over IEC 61937
 
+**Status:** merged as #1052 on 2026-09-26. Exit met; no device here accepts AC-4, so passthrough to
+one is not checked.
+
 From IEC 61937-14:2017, with 61937-1:2021 and 61937-2:2026 for the burst format they extend
 ([decision 9](#decisions)); the user supplied all three on 2026-09-15, read in place and not copied
 into the tree.
@@ -1699,6 +1915,9 @@ optimised ([decision 24](#decisions-of-2026-09-25)). D14 carries both phases' wo
 
 #### D14: AC-4 on the ESP32s
 
+**Status on 2026-09-30:** D14a merged as #1096, #1102 and #1123 and D14b as #1118, all on
+2026-09-29; D14c and D14d are not built.
+
 After D10. One implementation with three scalars, as `ac3::forge`'s decoder has
 (`planning/arithmetic-tiers.md`, [decision 25](#decisions-of-2026-09-25)): `double` on computers,
 `float` on parts with a floating-point unit, fixed point on parts without, chosen by
@@ -1706,7 +1925,7 @@ After D10. One implementation with three scalars, as `ac3::forge`'s decoder has
 first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3 manage on each part
 ([The ESP32](#the-esp32)) sets what AC-4 aims for there. One pull request per part.
 
-- **D14a, the scalar and the decoder's size, on the host.**
+- **D14a, the scalar and the decoder's size, on the host** (merged as #1096, #1102 and #1123).
   - `src/ac4dec/src/pcm` on the decoder's scalar, as `src/ac4core` is, with a complex type of the
     project's own in place of `std::complex<Real>`; AC-4 in `AC3FORGE_DECODE_SCALAR`, the `float`
     build compiling with `-Wdouble-promotion` as an error; `ac3::forge`'s `Fixed32`, vector types
@@ -1856,11 +2075,11 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   both are scored again. Met; the figures are above.
 
   **Verified by:** `ac3tests`; the `float` gate and the scorers in CI; `run_baremetal_probe.sh`.
-- **D14b, the P4.** The component builds the inspector, the core and the decoder in `float`,
-  behind a switch off by default. On the board, at 360 MHz with the network up: 2.0, 5.1 and 5.1.4
-  in full and core decoding, in each mode DEE writes, and the converter's three ratios, with stage
-  timers per part of the decode. The `float` output is identical on the host, the Cortex-M3 leg and
-  the P4 ([decision 26](#decisions-of-2026-09-25)).
+- **D14b, the P4** (merged as #1118). The component builds the inspector, the core and the decoder
+  in `float`, behind a switch off by default. On the board, at 360 MHz with the network up: 2.0,
+  5.1 and 5.1.4 in full and core decoding, in each mode DEE writes, and the converter's three
+  ratios, with stage timers per part of the decode. The `float` output is identical on the host,
+  the Cortex-M3 leg and the P4 ([decision 26](#decisions-of-2026-09-25)).
 
   **Built in D14b.** `CONFIG_AC3FORGE_AC4` builds the inspector, the core and the decoder into the
   component in `float`, behind a switch that is off by default and offered only on a part with a
@@ -1909,19 +2128,19 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   AC-3 and E-AC-3 do there.
 
   **Verified by:** the gates in CI; the board (no QEMU runs the P4).
-- **D14c, the S3.** The same build under the S3's limits: 2.0 in internal RAM, checked under QEMU
-  in CI within the probe's limits; 5.1 and wider with PSRAM, on the board
+- **D14c, the S3.** Not built. The same build under the S3's limits: 2.0 in internal RAM, checked
+  under QEMU in CI within the probe's limits; 5.1 and wider with PSRAM, on the board
   ([decision 29](#decisions-of-2026-09-25)). 5.1.4 in full decoding is measured, not aimed at
   ([decision 28](#decisions-of-2026-09-25)). A PIE kernel, integer and so fixed point inside the
   `float` decode, only where the board's timers show one kernel holding back a stream
   ([decision 30](#decisions-of-2026-09-25)).
 
   **Exit and verified by:** as D14b for the S3, with the QEMU rows in CI.
-- **D14d, the C6.** `Fixed32` with a block exponent per QMF slot and per transform block; A-SPX's
-  energies, gains and limiter and the decorrelators' energies as a mantissa and a power of two; the
-  decorrelators and the converter's taps on 64-bit accumulators; AC-4 rows in the fixed-point
-  hashes, identical on x86, the Cortex-M3 leg and the C3 under QEMU. On the board with WiFi, core
-  decoding first; where 2.0 does not keep up, Hearth sends the C6 PCM
+- **D14d, the C6.** Not built. `Fixed32` with a block exponent per QMF slot and per transform
+  block; A-SPX's energies, gains and limiter and the decorrelators' energies as a mantissa and a
+  power of two; the decorrelators and the converter's taps on 64-bit accumulators; AC-4 rows in the
+  fixed-point hashes, identical on x86, the Cortex-M3 leg and the C3 under QEMU. On the board with
+  WiFi, core decoding first; where 2.0 does not keep up, Hearth sends the C6 PCM
   ([decision 32](#decisions-of-2026-09-25)). Follows Hearth's phase C1 bring-up.
 
   **Exit:** the fixed tier's agreement with `double` stated; hashes equal on every architecture;
@@ -2001,6 +2220,8 @@ decode with the invariants holding and MediaInfo's and librempeg's readings reco
 
 #### E1: the encoder library, the frame writer, and SIMPLE mono and stereo
 
+**Status:** merged as #1011 on 2026-09-25. Exit met.
+
 - `src/ac4enc/`, with its CMake, tests, an instrumented fuzz target over its configuration and
   input, the write trace, and `src/ac4enc/ERRATA.md`.
 - The frame writer: `ac4_toc()` at bitstream version 2 with one version 1 presentation, one
@@ -2018,7 +2239,7 @@ decode with the invariants holding and MediaInfo's and librempeg's readings reco
   its size, and I-frames at an interval the caller sets, which predict nothing across time.
 - `ac3cli ac4-encode` writes AC-4 in these modes, raw or through the MP4 muxer, as `eac3-encode`
   writes E-AC-3.
-- Mono, in the `single_channel_element`, as an option.
+- Mono, in the `single_channel_element`, written without a flag: MediaInfo reads it as configured.
 
 **Exit:**
 
@@ -2034,6 +2255,8 @@ decode with the invariants holding and MediaInfo's and librempeg's readings reco
 
 #### E2: A-SPX and companding
 
+**Status:** merged as #1013 on 2026-09-25. Exit met.
+
 - QMF analysis from D3's core, aligned to the decoder's delays (Part 1 Tables 188 and 192).
 - The A-SPX encoder: `aspx_config` (crossover, master frequency table, noise subband groups) from
   the rate; framing from a transient detector, in FIXFIX, FIXVAR and VARFIX, with a FIX end followed
@@ -2042,8 +2265,8 @@ decode with the invariants holding and MediaInfo's and librempeg's readings reco
   stereo; and Part 1's limits of five noise groups, five patches and four or five envelopes.
 - Companding: the compressor, as the inverse of the decoder's expander, on and off by rate as DEE
   uses it.
-- The ASPX codec mode for stereo. Mono, VARVAR framing and interleaved waveform coding as options.
-  E2 writes balance, VARVAR and frequency interleaving behind `experimental=`, and not time
+- The ASPX codec mode for mono and stereo. VARVAR framing and interleaved waveform coding as
+  options. E2 writes balance, VARVAR and frequency interleaving behind `experimental=`, and not time
   interleaving, whose slots take the spectral frontend's output across the whole band and would need
   it coded full band in two frames around each.
 - E2 found the spectral frontend's rate loop of E1 unfit below 64 kbps a channel: no frame there
@@ -2061,6 +2284,8 @@ pinned tolerance; log-spectral distance and ViSQOL pinned. The race at 2.0 and 4
 **Verified by:** as E1.
 
 #### E3: the 5.X element
+
+**Status:** merged as #1025 on 2026-09-25. Exit met.
 
 - 5.1 and 5.0 in SIMPLE and ASPX modes: the coding configuration and matrices of Part 1 Tables 178
   to 185, chosen per frame by the energy they save; the LFE; one budget shared across the channels;
@@ -2090,6 +2315,8 @@ and E2's checks; the race at 5.1 from 192 to 768 kbps.
 **Verified by:** as E1.
 
 #### E4: A-CPL
+
+**Status:** merged as #1029 on 2026-09-25. Exit met.
 
 - Parameter extraction per parameter band and time slot, quantisation at the fine or coarse step,
   differential coding in time or frequency, and the downmix that is coded, normalised as the
@@ -2134,6 +2361,8 @@ meet E1's and E2's checks; the race at 5.1 and 96, 128 and 144 kbps.
 
 #### E5: metadata, frame rates and I-frames
 
+**Status:** merged as #1046 on 2026-09-26. Exit met.
+
 - Loudness: dialnorm and the further loudness values, as the caller supplies them; `ac3cli`
   measures them with the BS.1770 meter it has.
 - DRC: each decoder mode configured with a default profile, a compression curve or a repeat of
@@ -2164,6 +2393,8 @@ meet E1's and E2's checks; the race at 5.1 and 96, 128 and 144 kbps.
 **Verified by:** `ac3tests`; the gain scripts; MediaInfo locally.
 
 #### E6: presentations and several substreams
+
+**Status:** merged as #1058 on 2026-09-26. Exit met.
 
 - Several substreams and substream groups, and presentations of each `presentation_config` Part 1
   Table 85 lists: music and effects with dialogue (0), main with dialogue enhancement (1), whose
@@ -2210,6 +2441,8 @@ languages and levels as configured.
 
 #### E7: the encoder's API, the CLI and packaging
 
+**Status:** merged as #1061 on 2026-09-26. Exit met.
+
 - `EncoderConfig` and `Encoder` in their final form, and the function that wraps a frame in a sync
   frame.
 - `ac3cli ac4-encode`, which E1 to E5 grew, in its final form: options for layout, bit rate and
@@ -2243,7 +2476,7 @@ languages and levels as configured.
   out and when `b_presentation_core_differs` is set.
 - A configuration 6 presentation has no field for the `presentation_id` Annex H.1.2.1 asks of every
   presentation of a CMAF track. `ac4::cmaf_refusal()` names the rule a table of contents breaks, and
-  `ac3cli fmp4`, which fragments no AC-4 yet (I1), refuses such a stream by it; an MP4 that is not
+  `ac3cli fmp4`, which fragments AC-4 since I1, refuses such a stream by it; an MP4 that is not
   fragmented carries it.
 - The encoder is installed and exported beside the decoder, `ac4::encoder_static` and
   `ac4::encoder_shared` with pkg-config `ac4enc`, in the shape D8 gave the decoder: each library links
@@ -2275,6 +2508,9 @@ gates.
 
 #### E8: channel-based immersive
 
+**Status:** merged as #1071 on 2026-09-26. Exit met. The race's sweep legs stood 0.03 to 0.18 under
+DEE's ViSQOL from 256 to 512 kbps, which [E10](#e10-a-spx-noise-floors-on-sweeps) closed.
+
 - The immersive element for 5.1.4 in SCPL, ASPX_SCPL and ASPX_ACPL_2, as DEE writes it; S-CPL's
   matrices; A-SPX's immersive pairing; the height downmix values.
 - ASPX_ACPL_1, 7.1.4 with every channel present, and A-JCC, as options.
@@ -2301,6 +2537,11 @@ under DEE's ViSQOL from 256 to 512 kbps, which [E10](#e10-a-spx-noise-floors-on-
 librempeg does not decode the immersive element.
 
 #### E9: A-JOC objects
+
+**Status:** merged as #1082 on 2026-09-29. Exit met: MediaInfo's object count and bed were run
+afterwards (#1103), which names a static bed and cannot tell a bed object from a dynamic one; the
+listening is the user's to do; there is no race, since DEE refuses this project's masters, and
+librempeg refuses object coding.
 
 - Objects and their metadata in, converted by the applications from the scene descriptions they read
   (ADM BWF through `ac3adm`, IAB through `ac3iab`, `ObjectScene`).
@@ -2336,11 +2577,14 @@ metadata; the encoder's trace, the decoder's and the Python parser's agree on th
 `ac3cli ac4-encode objects=` takes a scene file of the library's terms for the harness and the listening
 streams; the applications' scene readers are I5's. DEE writes no A-JOC from this project's masters, so
 there is no race, and librempeg refuses object coding, so there is no second decode; MediaInfo's reading
-(`tools/checks/check_ac4_encode_readers.py --only objects`) needs DEE's install. Bed objects in
-direct-coded substreams, objects beside channel-coded substreams, frame rates other than index 13 and
+(`tools/checks/check_ac4_encode_readers.py --only objects`) needs DEE's install, and was run
+afterwards (#1103): it counts the objects and names a static bed, and cannot tell a bed object from
+a dynamic one. Bed objects in direct-coded substreams, objects beside channel-coded substreams, frame rates other than index 13 and
 the intermediate spatial format are refused.
 
 #### E10: A-SPX noise floors on sweeps
+
+**Status:** merged as #1113 on 2026-09-29. Exit met.
 
 - E8's race left the shared A-SPX encoder 0.03 to 0.18 under DEE's ViSQOL on 5.1.4's sweeps from 256 to
   512 kbps, the band above the crossover emptier than DEE's. Which layouts and rates show it, the two
@@ -2412,10 +2656,14 @@ E7 give it AC-4 encoding, because the scripts that check each phase drive it. Th
 the rest of each application. They start when the channel-based library is complete (D8 and E7);
 immersive and object content follows in I5
 ([decision 20](#decisions-for-the-encoder-and-the-applications)). Each updates the support catalogue
-(`docs/assets/data/support-catalogue.json`, which generates `docs/library/application-coverage.md`
-through `tools/checks/generate_support_matrices.py`).
+(`docs/assets/data/support-catalogue.json`, which `tools/checks/generate_support_matrices.py` turns
+into the snippets under `docs-snippets/generated/`, one of which `docs/library/application-coverage.md`
+includes).
 
 #### I1: the rest of `ac3cli`
+
+**Status:** merged as #1070 on 2026-09-26. Exit met; `record`, `live` and `monitor` were not run
+against a real device (the software-ALSA tests run on Linux CI).
 
 - `transcode` between AC-4 and AC-3 or E-AC-3 in both directions, through PCM, carrying what maps:
   dialnorm, the downmix levels, the DRC profile Part 1 5.7.9.4 names for a transcoder, and a
@@ -2423,13 +2671,14 @@ through `tools/checks/generate_support_matrices.py`).
 - `monitor` and `play` decode AC-4 live to `MonitorSink`.
 - `qc`, `levels` and `loudness` read AC-4, so a stream's measured loudness is checked against its
   dialnorm as E-AC-3's is.
-- `fmp4`, with its HLS and DASH output, and `mkv` take the encoder's output, under CMAF's rules;
-  `probe` reads AC-4 inside MP4, TS and Matroska as well as raw.
+- `fmp4`, with its HLS and DASH output, takes the encoder's output, under CMAF's rules; `mkv`
+  refuses AC-4, since Matroska registers no codec ID for it; `probe` reads AC-4 inside MP4 and TS as
+  well as raw.
 - `spdif` and `unspdif` for AC-4, from D11; `record` and `live` encode AC-4 with `codec=ac4`.
 - `ac3::plan::Codec` gains AC-4, and every helper that decides by codec becomes a switch that
-  refuses a codec it does not know: today they are two-way ternaries, under which a third codec
-  reads as E-AC-3 (`src/forge/include/ac3/encoder/plan.hpp`). The help topics' bitmask, which is
-  full (`apps/cli/usage.hpp`), is widened.
+  refuses a codec it does not know: they were two-way ternaries, under which a third codec read as
+  E-AC-3 (`src/forge/include/ac3/encoder/plan.hpp`). The help topics' bitmask, which was full
+  (`apps/cli/usage.hpp`), is widened.
 
 - Built: `transcode` decodes an AC-4 presentation as coded, since 5.7.9.4 asks a transcoder for no
   DRC, and hands the AC-3 or E-AC-3 encoder the profile the stream names; 5.7.9.4 calls the field
@@ -2456,6 +2705,8 @@ through `tools/checks/generate_support_matrices.py`).
 
 #### I2: Hearth desktop
 
+**Status:** merged as #1068 on 2026-09-26. Exit met.
+
 - An AC-4 decoder in the engine's `StreamDecoder` shape (`apps/hearth/engine/stream_decoder.hpp`),
   rendering onto `render::OutputLayout`, and `Session::open` accepting AC-4
   (`apps/hearth/engine/ac4_stream.hpp`). An item's units are its sync frames, each as long as Part 2
@@ -2481,7 +2732,7 @@ through `tools/checks/generate_support_matrices.py`).
   A presentation other than the one a sink chooses with no preferences is decoded here, for every
   member.
 - I2 found three things. A sink on the extension role that does not list `"ac4"`, which is every
-  board until D14, is sent nothing for an AC-4 item; the pull request gives the options. The page
+  board until I6, is sent nothing for an AC-4 item; the pull request gives the options. The page
   cannot ask for Pro Logic II, since the decoder takes Lt/Rt's Pro Logic II form only where the
   stream prefers it (Table 150), so the design's third downmix segment became "Follow the stream's
   preferred downmix". And a group item whose burst type differed from what the group carried, AC-3
@@ -2489,8 +2740,9 @@ through `tools/checks/generate_support_matrices.py`).
   now starts again.
 
 Decided on 2026-09-29 about what I2's pull request recorded. A sink on the extension role that
-does not list `"ac4"` is sent nothing for an AC-4 item until D14 puts the decoder on its part; I6
-settles what such a sink is sent. The decoder's latency, 1 313 samples at index 13, is not
+does not list `"ac4"` is sent nothing for an AC-4 item until a part decodes AC-4 in a group (D14b
+put the decoder on the P4, whose sink does not yet list `"ac4"`); I6 settles what such a sink is
+sent. The decoder's latency, 1 313 samples at index 13, is not
 trimmed at an item's start, so two AC-4 items in a queue have a gap of about 27 ms between them;
 I6 trims it. The page's downmix control stays as it is, following the stream's preferred
 downmix; Pro Logic II is a follow-up after I6.
@@ -2506,10 +2758,11 @@ effect tone by tone at the fake device); the gain scripts through the engine, wi
 
 #### I3: Forge GUI
 
-- AC-4 in the codec list, which maps index 1 to E-AC-3 and every other index to AC-3 today
+**Status:** merged as #1084 on 2026-09-29. Exit met.
+
+- AC-4 in the codec list, which mapped index 1 to E-AC-3 and every other index to AC-3
   (`apps/gui/encoder_controller.cpp`), with its encode options and the command line the page echoes.
-- AC-4 decode in the QC, object and stream player controllers, which dispatch on `stream_bsid`
-  today.
+- AC-4 decode in the QC, object and stream player controllers, which dispatched on `stream_bsid`.
 - I3 built both. The page encodes one source in its own layout, mono to 5.1, to a raw stream or an
   MP4 file, as `ac4-encode` takes a WAV file; its AC-4 tab carries the frame rate, the rate and
   codec modes, the I-frame interval, the CRC, dialnorm, the loudness values, the DRC profile, the
@@ -2524,8 +2777,8 @@ effect tone by tone at the fake device); the gain scripts through the engine, wi
 - I3 left to the command line what one source in one layout cannot say: several substreams and
   presentations, dialogue stems and hybrid dialogue enhancement, a DRC profile per decoder mode,
   Lt/Rt's own levels, the LFE mix, the downmix corrections, I-frames at named frames, and the
-  3.0, 7.X and immersive layouts. A live session under AC-4 is refused, since `ac3cli live` has
-  none.
+  3.0, 7.X and immersive layouts. A live session under AC-4 is refused: the page's live path takes
+  AC-3 and E-AC-3, though `ac3cli live` takes `codec=ac4` for a channel session (I1).
 
 **Exit:** each control has a test, and the command line the page echoes, run through `ac3cli`,
 writes the same bytes as the page.
@@ -2533,6 +2786,9 @@ writes the same bytes as the page.
 **Verified by:** the GUI tests.
 
 #### I4: the C API, Python, Rust and WebAssembly
+
+**Status:** merged as #1094 on 2026-09-29. Exit met; the WebAssembly module's C++ side and the
+Android NDK build were not built on the machine that made it, and are checked by CI.
 
 - The C API gains `ac3forge_ac4_*` decoder and encoder functions, with their own status range,
   embedding the AC-4 libraries as it embeds `ac3::forge`
@@ -2568,10 +2824,10 @@ writes the same bytes as the page.
   `js/src/ac4.ts` is a plain ES module wrapping `Ac4Decoder`/`Ac4Encoder` directly, not a Worker
   wrapper like `decoder-worker.ts`'s realtime pipeline: nothing about that protocol's shape (built
   for one decode-only class with a channels-vs-fold output choice) fits a module that covers both
-  decode and encode with a wider decoder surface. `apps/wasm/ac4/` has no demo page — optional
-  polish this phase left to a later pass — so the compiled module lands in its own output directory
-  with nothing to serve it yet; `js/src/ac4.ts` compiles into `js/dist/ac4.js` but is not yet added
-  to `package.json`'s `exports` map.
+  decode and encode with a wider decoder surface. There is no `ac4` directory under `apps/wasm` and
+  no demo page — optional polish this phase left to a later pass — so the compiled module lands in
+  its own output directory (`bin/wasm_ac4_demo`) with nothing to serve it yet; `js/src/ac4.ts` compiles
+  into `js/dist/ac4.js`, which I4b added to `package.json`'s `exports` map.
 - Android's CMake wrapper (`apps/android/app/src/main/cpp/CMakeLists.txt`) no longer forces
   `AC3FORGE_BUILD_AC4` off: the libraries depend on nothing outside this tree and cross-compile
   cleanly under the NDK, unlike the third-party dependencies (MbedTLS, httplib, FLAC, Opus, mdns)
@@ -2584,10 +2840,10 @@ writes the same bytes as the page.
   presets are untouched, still off (D14's territory).
 - Every binding covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
   5.1, 5.0.4, 5.1.4) — the encoder's own scope as of this phase, matching the C++ encoder itself;
-  each decoder's object accessors read whatever object audio a stream actually carries regardless,
+  each decoder's object accessors read whatever object audio a stream carries regardless,
   so a stream encoded elsewhere with objects decodes through every one of these bindings even
-  though this project's own encoder cannot yet produce one to round-trip end to end (A-JOC and
-  direct-coded objects are E9, still open).
+  though this project's own encoder could not yet produce one to round-trip end to end (E9's
+  A-JOC and direct-coded objects reached the bindings in I4b).
 
 **Exit:** each binding's tests decode a committed stream and encode one that the decoder reads back;
 the package checks pass. Met: the C API's `tests/capi/test_capi.cpp` adds 8 Catch2 test cases (600
@@ -2601,12 +2857,16 @@ environment, and stays CI-only until `build-wasm` confirms it.
 
 **Verified by:** the binding tests on their CI legs.
 
-For a later phase: E9's objects need matching encoder-side C API and binding work, since every
-binding here follows the C++ encoder's own scope (phase I4b, below); and the WebAssembly module
-needs a real Emscripten build, in CI or otherwise, to confirm the C++ Embind side beyond what
-`js/tests/ac4.test.js`'s fake-module harness can reach.
+Left for later phases when I4 merged: E9's objects needed matching encoder-side C API and binding
+work, since every binding here followed the C++ encoder's own scope (phase I4b, below); and the
+WebAssembly module needs a real Emscripten build, in CI or otherwise, to confirm the C++ Embind
+side beyond what `js/tests/ac4.test.js`'s fake-module harness can reach. The first was I4b's; the
+second stands.
 
 #### I4b: the object encoder in the C API, Python, Rust and WebAssembly
+
+**Status:** merged as #1119 on 2026-09-29. Exit met; leftover (e), the WebAssembly demo page, is
+not done.
 
 After I4 and E9. I4 bound the encoder as E7 left it, for channel-based content, and its closing
 paragraph left E9's objects to a later phase; I5 then drove them from the command line.
@@ -2706,6 +2966,10 @@ Not done: the WebAssembly demo page; a build of `ac4_bindings.cpp` with Emscript
 
 #### I5: immersive and object content in the applications
 
+**Status:** merged as #1100 on 2026-09-29. Exit met, apart from two failures in suites it did not
+touch, which its pull request named: a Hearth diagnostics test, since fixed, and the Qt teardown
+crash of the GUI's AC-4 decode suite, fixed in #1109.
+
 After D9, E8, D10 and E9.
 
 - `ac3cli`: encoding 5.1.4 and 7.1.4, and objects from ADM BWF and IAB as `atmos-adm` and
@@ -2783,6 +3047,9 @@ path, which this list named when the phase merged, landed as I5b, below.
 
 #### I5b: the encoder page's AC-4 objects
 
+**Status:** merged as #1117 on 2026-09-29. Exit met, with the ADM master's audio as the page's
+source and its scene authored on the page, which has no ADM or IAB reader.
+
 After I3 and I5. I5 left the encoder page's Atmos and object authoring to E-AC-3 and gave the
 options in its report; the user asked for the page to author AC-4 objects.
 
@@ -2836,11 +3103,12 @@ offset=] codec=ac4 [coding=direct] [dialnorm=] [crc=off]`, with `out.mp4` for an
 Encoding writes the scene the command reads beside the stream, as `<name>-paths.json`, and
 **Export paths...** suggests the same name.
 
-A live session refuses AC-4, since `ac3cli live` has none; Guided's Movement step writes E-AC-3
-objects; and Preview plays an AC-4 object encode through the E-AC-3 object encoder's bed, the
-first fifteen objects, whichever codec is chosen. The page reads audio, with the scene authored on
-it, and has no reader for ADM BWF or IAB masters, which `atmos-adm` and `atmos-iab` write to AC-4
-with `codec=ac4`. The exit's ADM master is therefore the one `tests/cli/test_cli_atmos_adm.cpp`
+A live session refuses AC-4, since the page's live path takes AC-3 and E-AC-3 (`ac3cli live` takes
+`codec=ac4` for a channel session, not for objects); Guided's Movement step writes E-AC-3 objects;
+and Preview plays an AC-4 object encode through the E-AC-3 object encoder's bed, the first fifteen
+objects, whichever codec is chosen. The page reads audio, with the scene authored on it, and has no
+reader for ADM BWF or IAB masters, which `atmos-adm` and `atmos-iab` write to AC-4 with
+`codec=ac4`. The exit's ADM master is therefore the one `tests/cli/test_cli_atmos_adm.cpp`
 builds, written to `apps/gui/tests/fixtures/adm-two-beds-one-object.wav` with its `axml` and `chna`
 chunks as that test builds them. The page reads its audio, and the scene is authored on the page:
 the two bed channels assigned to L and R, and the third channel an object at azimuth -110 degrees
@@ -2868,6 +3136,9 @@ I5 put the export; it had said the export would arrive in a later release.
 
 #### I6: the ESP32 sinks
 
+**Status:** not built. The P4's decoder is D14b's and plays from `hearth_sink`'s HTTP source; no
+sink lists `"ac4"` among its Sendspin data types, and Hearth sends a board nothing for an AC-4 item.
+
 On each part after its D14 figures: the P4 first, then the S3 and the C6.
 
 - The ESP-IDF component carries the inspector, the decoder and the core; `hearth_sink` decodes AC-4
@@ -2888,6 +3159,9 @@ accepts AC-4 ([decision 20](#decisions-for-the-encoder-and-the-applications)).
 
 #### N1: the names
 
+**Status:** not built. The pull request that studied N1B (#1122, 2026-09-29) moved no source file;
+the study's 14 decisions await the user, and no program, library or path has been renamed.
+
 Asked by the user on 2026-09-25, since libraries and programs named `ac3` now do AC-4. A survey of
 the tree found `ac3forge` already the family's name for parts with no AC-3 in them (Hearth,
 Sendspin, Crucible, the ADM and IAB readers), the recasting plan's decisions of 2026-09-05 keeping
@@ -2895,10 +3169,14 @@ the identifiers until the 1.0 freeze and the program names through 0.x
 (`planning/recasting.md`, decision 6 there), and AC-4 named `ac4` on purpose
 ([decision 15](#decisions-for-the-encoder-and-the-applications)). The man page, the CLI's banner,
 the CMake project's description (which reaches pkg-config and the Debian packages), README, the
-site's description, the Homebrew formula, the desktop entries and the Windows file-type label say
-AC-3 and E-AC-3 alone, and a few pages describe `ac4dec::` and `ac4enc::` namespaces the code does
-not have. The user found a program called `ac3cli` doing AC-4 wrong in itself, and took renaming the
-programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's scheme S3 costed.
+site's description, the Homebrew formula, the desktop entries and the Windows file-type label said
+AC-3 and E-AC-3 alone, and a few pages described `ac4dec::` and `ac4enc::` namespaces the code does
+not have. #1076, #1077, #1078 and #1133 corrected most of that. On 2026-09-30 the man page's name
+and description lines (`apps/cli/usage.cpp`) and some of the GUI's own strings (#1133 lists them)
+still name AC-3 and E-AC-3 alone. The Windows file-type label (`cmake/Packaging.cmake`) names the
+two extensions the installer registers, `.ac3` and `.ec3`, and is wrong only once `.ac4` is
+registered. The user found a program called `ac3cli` doing AC-4 wrong in itself, and took renaming
+the programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's scheme S3 costed.
 
 On 2026-09-29 the user extended the ask from the programs to the whole tree: "while this started out
 as an AC3 or an EAC3 based application, it now supports AC4 and it's kind of weird to say it's an AC3
@@ -2906,7 +3184,7 @@ XYZW ... Hearth should be Hearth, not AC3 Hearth. Forge should be Forge ... it m
 the future if there was like an AC5 or DTS or whatever", and to where the code sits: "the old stuff is
 over here in forge and the new AC4 stuff's over here which is two folders higher, not as a sibling,
 it's all kind of weirdly structured". N1 is now two tasks that share one quiet window after the
-current wave of phase branches has merged, N1B first:
+wave of phase branches has merged (it has), N1B first:
 
 - **N1A** names the programs and what they register with the system (below).
 - **N1B** names and lays out the libraries. It is studied in [The layout of `src/`](layout.md), with
@@ -2920,13 +3198,18 @@ current wave of phase branches has merged, N1B first:
   `ac3crucible` `crucible`, and Hearth's test sink and server `hearth-testsink` and
   `hearth-testserver`. `forge` is also the name of Foundry's command and of Laravel Forge's, so on
   a computer with either, the first on the path wins; the documentation says so. The internal
-  programs (`ac3tests`, the benchmarks, the probe) keep their names.
-- The old names kept working through a stated period, printing the new name; the completions for
-  four shells, the man page, the Homebrew formula and cask, winget's aliases, the desktop entries
-  and bundle identifiers, the Windows file-type command lines, the firewall rules' names and the
-  translation catalogues named after the programs; `ac3forge <version>` as the version line, as
-  now. Nothing is published, so the decisions of 2026-09-29 drop the kept-working period: the old
-  names are not kept, and no launcher is written.
+  programs (`ac3tests`, the benchmarks, the probe) keep their names unless the user takes decision
+  13 of [the study](layout.md#i-decisions), which recommends renaming them in N1A.
+- What the programs register with the system follows their names: the completions for four shells,
+  the man page, winget's aliases, the desktop entries and bundle identifiers, the Windows file-type
+  command lines, the firewall rules' names and the translation catalogues named after the programs,
+  and the version line, which names the family as N1B names it (`ac3forge <version>` today). The
+  Homebrew formula and cask take the family's name instead ([decision 41](#decisions-of-2026-09-30)).
+  The old plan kept the old names working through a stated period, printing the new name. The
+  decisions of 2026-09-29 drop that: the old names are not kept, and no
+  launcher is written ([decision 38](#decisions-of-2026-09-29)). The pre-releases and the Homebrew
+  tap ship `ac3cli` and `ac3gui` (see N1B below), so someone who installed one keeps those names at
+  that version, and a release made after N1 carries the new names only.
 - Wording that names the formats the family handles, AC-4 among them, wherever it says AC-3 and
   E-AC-3 alone.
 
@@ -2945,15 +3228,45 @@ for the old names and the stale phrases; `mkdocs build --strict` and
 - The family is named "ICL Forge" (organisation `iainchesworthlabs`; identifiers `iclforge`,
   `ICLFORGE_`) in place of `ac3forge`: plain `forge` is taken on PyPI, npm, crates.io and Homebrew core,
   and `iclforge` and `icl-forge` are free. The programs keep the plain names above.
-- Nothing is published: no package is on a registry, and Sendspin and the ESP32 firmware have not left
-  this repository. The C API prefix, the CMake package, the Kconfig prefix, the environment variables
-  and the wire strings are therefore renamed outright, with no shim. The costs are GitHub's: the
-  repository's name, the Pages address, existing release tags and asset names, and the packaging files.
+- The C API prefix, the CMake package, the Kconfig prefix, the environment variables and the wire
+  strings are renamed outright, with no shim ([decision 38](#decisions-of-2026-09-29)). That decision
+  was taken on the statement that nothing is published, which holds in part. Checked on 2026-09-30:
+  - **Published.** On GitHub, the repository, the Pages address and ten pre-releases, `v0.2.0-beta.1`
+    (2026-08-10) to `v0.10.0-beta.1` (2026-09-01), whose assets carry the old names: `ac3forge-*` and
+    `ac3gui-*` files, and Debian and RPM packages named `ac3forge`, `libac3forge0` and
+    `libac3forge-dev` (RPM: `ac3forge-devel`). On PyPI, the project `ac3forge`, at 0.9.0b1
+    (2026-08-22) and 0.10.0b1 (2026-09-01); `docs/releasing.md` says its publishing is live. In
+    Homebrew, the public tap `iainchesworthlabs/homebrew-ac3forge`, with the formula `ac3forge` and
+    the cask `ac3gui`.
+  - **Submitted, not merged.** A vcpkg port named `ac3forge` (microsoft/vcpkg #53470, open and a
+    draft since 2026-08-18) and a winget package `iainchesworthlabs.ac3forge` (microsoft/winget-pkgs
+    #419594, which winget-pkgs' policy bot closed on 2026-09-29 for want of author feedback). No
+    ConanCenter submission was found.
+  - **Not published.** Nothing under the family's names is on npm or crates.io, and the ESP Component
+    Registry has never had the component (`.github/workflows/esp-component.yml`; the registry itself
+    was not queried). Sendspin and the ESP32 firmware have not left this repository, on the user's
+    word.
+  - **Free.** `iclforge` and `icl-forge` on PyPI, npm and crates.io.
+- What that means for N1: the rename can still be outright in the repository, with no shim, and the
+  stages do not change. What happens outside the repository was decided on 2026-09-30
+  ([decisions 40 and 41](#decisions-of-2026-09-30)), in the study's stages S4 and S5, the publishing
+  steps being the user's. `ac3forge` stays on PyPI as an old project, untouched, and `iclforge` is
+  published as a new one after the repository is renamed; the old project's trusted publisher names
+  the repository `ac3forge` (`docs/releasing.md`), so the new project gets its own. The Homebrew
+  formula, cask and tap take the new name, with the old names mapped to it, and the `brew tap` path
+  changes. Someone who installed a pre-release keeps the old program names, C API, CMake package and
+  pkg-config names at that version, and meets the new ones, without a shim, when moving to a release
+  made after N1.
+- Open on 2026-09-30, and the user's: whether the open vcpkg pull request, which names the port
+  `ac3forge`, is replaced by a port `iclforge` (the winget submission was closed unmerged).
 - N1B is layout and naming only: no algorithm changes and every output byte stays the same. It covers
   where the code sits, the C++ namespaces, the header roots and the CMake target names. The duplicated
   DSP (FFT, MDCT, QMF and resampler in `src/forge` and `src/ac4core`) is a later phase.
-- The study recommends AC-3 and E-AC-3 as `src/ac3` beside the AC-4 libraries, over five codec-blind
-  libraries cut out of `src/forge`, in stages S0 to S6 with N1A in the same freeze.
+- The study recommends renaming `src/forge` to `ac3`, beside the AC-4 libraries, with five
+  codec-blind libraries cut out of it, in stages S0 to S6 with N1A in the same freeze. The user has not
+  yet answered its 14 decisions ([its section (i)](layout.md#i-decisions)): the layout, the
+  namespace root, grouping, the order with N1A, the merge method, the repository and Pages names,
+  TrueHD's directory and the EMDF container among them.
 
 **Exit (N1B):** the tree has the layout the user chose, in the stages the study sets out, each proven by
 the builds, the whole `ac3tests`, the pinned bitstream hashes and the bytes of a fixed CLI corpus;
@@ -3006,8 +3319,8 @@ recommendation, what each costs, and what was taken; the table at the end sums t
    of (a): an embedded AC-4 decoder would add core decoding later, mostly as separate paths (S-CPL's
    seven outputs, A-JCC's core modules, Part 2 Tables 44 to 46).
 
-   **Taken: (b), full and core decoding**, against the recommendation. Core decoding joins D9 and
-   D10, and is the mode D13 tries first on the C6.
+   **Taken: (b), full and core decoding**, against the recommendation. Core decoding joined D9 and
+   D10 (both built), and is the mode D14d tries first on the C6.
 
 4. **Third-party streams.**
    - (a) **Fetch the public streams** (DASH-IF, CTA WAVE, DVB, Dolby's delivery kit, Chromium's and
@@ -3087,7 +3400,8 @@ recommendation, what each costs, and what was taken; the table at the end sums t
    D10.
 
    On 2026-09-25 the user confirmed the ESP32 work, made the P4 its first target, and D14 took
-   D12's and D13's work ([decisions 24 and 25](#decisions-of-2026-09-25)).
+   D12's and D13's work ([decisions 24 and 25](#decisions-of-2026-09-25)). D12 and D13 were not
+   built under those names: D14a and D14b are built, D14c and D14d are not.
 
 9. **AC-4 in IEC 61937 and the extension role.**
    - (a) **The extension role carries AC-4 as `Pc` data type 24 bursts of one sync frame each**,
@@ -3102,8 +3416,8 @@ recommendation, what each costs, and what was taken; the table at the end sums t
    Cost of (a): a data type and a packer in `ac3::iec61937`, and a paragraph on the extension page.
    Cost of (b): the standard's price, and a mode nothing here can test.
 
-   **Taken: (b), buy IEC 61937-14 and implement it**, against the recommendation. Buying it is the
-   user's step; D11 starts when the text is here.
+   **Taken: (b), buy IEC 61937-14 and implement it**, against the recommendation. Buying it was the
+   user's step; D11 started when the text was here, and is merged (#1052).
 
 10. **Immersive stereo.**
     - (a) **Decode DEE's IMS streams by the observed rule**: `presentation_version` 2 with that
@@ -3128,7 +3442,9 @@ recommendation, what each costs, and what was taken; the table at the end sums t
     named in prose, without a link.
 
     **Taken: (b), local only, as the Hearth plan is**, against the recommendation. Each phase's pull
-    request branches from main and states its own exit criterion.
+    request branches from main and states its own exit criterion. **Superseded by
+    [decision 22](#decisions-for-the-encoder-and-the-applications)**: the page moved to main on
+    2026-09-25.
 
 12. **Dynamic range and dialogue level in Hearth.**
     - (a) **One dynamic range control** (off, home theatre, TV, portable speakers, portable
@@ -3225,7 +3541,9 @@ stand. Each lists its options, the recommendation, what each costs, and what was
     its ABI, or builds the decoder into the encoder, which a static build linking both then carries
     twice. (c) puts the encoder into every decoder-only build unless an option splits it again.
 
-    **Taken: (a)**, as recommended; the user raised no objection.
+    **Taken: (a)**, as recommended; the user raised no objection. As built, D2 moved the generated
+    tables into the core and the transforms were written there; the bit reader and the Huffman
+    decoder stayed in `src/ac4dec`, and the encoder has a bit writer of its own in `src/ac4enc`.
 
 16. **What the encoder writes by default.**
     - (a) **The syntax DEE's streams exercise**, and everything else behind options named
@@ -3240,7 +3558,10 @@ stand. Each lists its options, the recommendation, what each costs, and what was
     presentations and objects need the experimental option until MediaInfo or librempeg agrees, and
     quality at low rates may trail what the extra tools would give.
 
-    **Taken: (a)**, as recommended; the user raised no objection.
+    **Taken: (a)**, as recommended; the user raised no objection. As built, the experimental set is
+    smaller than this cost list: several presentations and substreams are written without the flag,
+    since MediaInfo reads their tables of contents as configured (E6), and noise fill is not written
+    at all. [What the encoder writes by default](#what-the-encoder-writes-by-default) lists the flags.
 
 17. **The psychoacoustic model.**
     - (a) **The encoder's own**, written for AC-4's bands and transform lengths from the published
@@ -3275,13 +3596,16 @@ stand. Each lists its options, the recommendation, what each costs, and what was
     and the gap shows what to work on, as it does for the E-AC-3 legs. Cost: a phase can merge
     behind DEE. (b) can hold phases on tuning.
 
-    **Taken: (a)**, as recommended; the user raised no objection.
+    **Taken: (a)**, as recommended; the user raised no objection. As built, each phase's pull
+    request recorded the gap to DEE, `score_ac4_encode.py` pins the scores as floors that fail
+    FFmpeg Validate's nightly run, the race against DEE runs locally, and the encoder's scores have
+    no trend series.
 
 20. **The applications, and their order.**
     - (a) **`ac3cli` with each library phase; once the channel-based library is complete, the rest
       of `ac3cli`, then Hearth desktop, then Forge GUI, then the C API with Python, Rust and
       WebAssembly; immersive and object content in each after D9 to E9; the ESP32 sinks with D12 and
-      D13; and no AC-4 in Crucible.**
+      D13 (D14 and I6, since decision 24); and no AC-4 in Crucible.**
     - (b) As (a), with the bindings before Forge GUI.
     - (c) No application beyond `ac3cli` until every decoder and encoder phase is done.
 
@@ -3383,7 +3707,10 @@ words, asked for 25 in their own words, and took the recommendations for the res
     - (b) An agreement in decibels only, which admits fused multiply-add kernels.
 
     **Recommend (a):** the emulators then stand in for the boards on correctness. Cost: the
-    fastest `float` kernels stay out of the portable tier. **Taken: (a).**
+    fastest `float` kernels stay out of the portable tier. **Taken: (a).** As measured in D14b, the
+    output is identical on the host, the Cortex-M3 leg and the P4 for the probe's five fixtures and
+    for every stream without companding, and differs on the five plays with companding, where
+    `std::pow` and `std::exp2` at `float` give another last bit in each C library.
 
 27. **The P4's role.**
     - (a) **The `float` tier's part for 5.1 and full 5.1.4.**
@@ -3392,6 +3719,7 @@ words, asked for 25 in their own words, and took the recommendations for the res
 
     **Recommend (a):** it needs no arithmetic of its own and has the most memory. Cost: its figures
     come from a board only, at 360 MHz on early silicon. **Taken: (a)**, and first (decision 24).
+    D14b measured it: real time at 2.0, and 5.1 and 5.1.4 at 1.4 to 4.1 and 2.8 to 3.7 times a frame.
 
 28. **Full 5.1.4 decoding on the S3.**
     - (a) **Measured and recorded only**: the S3 aims at 2.0 and 5.1, and 5.1.4 reaches it through
@@ -3443,7 +3771,13 @@ words, asked for 25 in their own words, and took the recommendations for the res
     - (c) Index 13 only on the ESP32s, other frame rates as PCM.
 
     **Recommend (a):** broadcast AC-4 at 29.97 fps needs the converter, whose phase table alone is
-    752,752 bytes in `double` as D6 left it. **Taken: (a).**
+    752,752 bytes in `double` as D6 left it. **Taken: (a).** D14b measured the design: the converter
+    runs in `double` on a single-precision FPU at 185 to 231 ms a frame, five times real time by
+    itself, so the shorter filter the decision allows for is now what the board asks for. D14a4
+    ran the dot product in `float` with the table designed once in `double`, which takes 7.3 ms a
+    frame at 25/24 and 15/16; what is left at 1001/960 is the first frame's 5.9 s and a table read
+    from PSRAM (22 to 98 ms a frame), and a shorter filter is one of the options D14a4's pull
+    request puts.
 
 34. **The encoder on an ESP32.**
     - (a) **Never**, as decision 15 has it.
@@ -3473,7 +3807,9 @@ words, asked for 25 in their own words, and took the recommendations for the res
     names. I feel that “ac3cli” doing ac4 stuff seems incorrect". Offered the family's name with
     the member (`ac3forge`, `ac3forge-gui`, ...) or the members' own (`forge`, `forge-gui`,
     `hearth`, `crucible`), whose `forge` other tools also use, the user chose the members' own
-    ("I like option b for program names"); N1 does the rest.
+    ("I like option b for program names"); N1 does the rest. On 2026-09-29 the user widened the
+    rename to the family and the layout, and dropped the aliases
+    ([decisions 36 to 38](#decisions-of-2026-09-29)).
 
 | # | Question | Recommended | **Taken** |
 |---|---|---|---|
@@ -3490,50 +3826,126 @@ words, asked for 25 in their own words, and took the recommendations for the res
 | 34 | The encoder on an ESP32 | Never | **Never** |
 | 35 | The names | Keep them; correct the wording | **Rename the programs: `forge`, `forge-gui`, `hearth`, `crucible`** ← against, in the user's words |
 
+### Decisions of 2026-09-29
+
+Made while N1 was scoped, and on what I2's pull request left open. Unlike the decisions above they
+were given as directions, not put as options, so each says what was taken. They extend decision 35
+and supersede two lines the plan held after it: that the old program names keep working for a stated
+period, and that the family's name, the library's identifiers and the C API stay.
+
+36. **The family's name.** **Taken, on the user's proposal: "ICL Forge"**, organisation
+    `iainchesworthlabs`, identifiers `iclforge` and `ICLFORGE_`, in place of `ac3forge`, for the
+    family and its packages. The programs keep the plain names of decision 35. Plain `forge` is taken
+    on PyPI, npm, crates.io and Homebrew core, and `iclforge` and `icl-forge` were free when checked
+    on 2026-09-29, and on PyPI, npm and crates.io still were on 2026-09-30.
+
+37. **What N1 covers, and when.** **Taken, the defaults offered.** N1 is two tasks: N1A names the
+    programs and what they register with the system, and N1B lays out and names the libraries,
+    including the C++ namespaces, the header roots and the CMake target names. N1B is layout and
+    naming only: no algorithm changes, and the duplicated DSP is a later phase. A study came first
+    ([the layout study](layout.md), #1122), and the execution is one quiet window after the wave of
+    phase branches has merged, N1B first.
+
+38. **Shims for the old names.** **Taken: none.** The user's premise was that "no package has been
+    published nor has the sendspin/esp32 been published outside this repo". Package names, the C API
+    prefix, the CMake package, the Kconfig prefix, the environment variables and the wire strings are
+    renamed outright, with no shim, and no launcher is written for an old program name. The costs
+    outside the repository were taken to be GitHub's: its name, the Pages address, existing release
+    tags and asset names.
+
+    **The premise held in part** when checked on 2026-09-30. Nothing is on npm, crates.io or the ESP
+    Component Registry, and Sendspin and the ESP32 firmware are unpublished, but ten pre-releases are
+    on GitHub, the project `ac3forge` is on PyPI (0.9.0b1 and 0.10.0b1), a public Homebrew tap holds a
+    formula and a cask, and a vcpkg port is open upstream. The decision is unchanged, since it asks for
+    no shim and the rename can still be outright. What follows was decided the next day
+    ([decisions 40 and 41](#decisions-of-2026-09-30)): `ac3forge` stays on PyPI as an old project and
+    `iclforge` is published as a new one, the tap's names and its `brew tap` path change, and someone
+    on a pre-release meets the new names without a shim.
+
+39. **What I2 left open.** **Taken:** a sink on the extension role that does not list `"ac4"` is sent
+    nothing for an AC-4 item until a part decodes AC-4 in a group, and I6 settles what it is sent;
+    I6 trims the decoder's latency at an item's start; the Decoder page's downmix control stays as
+    it is, following the stream's preferred downmix, and Pro Logic II is a follow-up after I6.
+
+| # | Question | **Taken** |
+|---|---|---|
+| 36 | The family's name | **ICL Forge (`iclforge`), on the user's proposal** |
+| 37 | What N1 covers, and when | **N1A the programs and N1B the libraries; a study, then one quiet window, N1B first** |
+| 38 | Shims for the old names | **None: renamed outright, no launchers.** The premise, that nothing is published, held in part |
+| 39 | What I2 left open | **I6 settles the unlisted sink and trims the latency; Pro Logic II after I6** |
+
+### Decisions of 2026-09-30
+
+Made once the names outside the repository had been checked ([N1B](#n1-the-names)), and like those
+of the day before given as directions. Both are carried out in the study's stages S4 and S5, and the
+publishing steps are the user's. Neither changes decision 38: the rename inside the repository stays
+outright, with no compatibility shim.
+
+40. **The PyPI project.** **Taken:** `ac3forge` stays as it is, untouched, at 0.9.0b1 and 0.10.0b1,
+    and the new project's description says "formerly ac3forge". `iclforge` is published as a new
+    project after the repository is renamed. The user creates its pending trusted publisher: owner
+    `iainchesworthlabs`, repository `iclforge`, workflow `wheels.yml`, environment `pypi`. The
+    repository name is the one the study recommends ([its decision 11](layout.md#i-decisions)).
+
+41. **The Homebrew names.** **Taken:** the formula and the cask are renamed to `iclforge`, a
+    `tap_migrations.json` in the tap maps the old names to the new, and the tap repository is renamed
+    to `homebrew-iclforge`, which GitHub redirects from the old path.
+
+| # | Question | **Taken** |
+|---|---|---|
+| 40 | The PyPI project | **`ac3forge` untouched; `iclforge` a new project, published after the repository rename** |
+| 41 | The Homebrew names | **Formula and cask `iclforge`, the old names mapped in the tap; the tap becomes `homebrew-iclforge`** |
+
 ## What cannot be verified, and why
 
 | Claim | Can it be verified | Blocker |
 |---|---|---|
 | The decoder's output agrees with Dolby's decoder | **no** | No Dolby AC-4 decoder runs here and the Reference Player is not pursued (decision 5); at every frame rate but index 13 the converter is the implementer's choice |
-| The decoder's output agrees with another decoder | **partly** | librempeg is experimental and partly derived from Emby's code, so agreement with it is evidence and disagreement is settled from the text |
+| The decoder's output agrees with another decoder | **partly** | librempeg is experimental and partly derived from Emby's code, so agreement with it is evidence and disagreement is settled from the text; it does not decode A-CPL's rebuilt channels, the immersive element, objects, or a presentation's second and later substreams |
 | A-SPX, A-CPL and S-CPL reconstruct what the encoder intended | **partly** | Scored against the source; an error that stays close to the source passes |
 | A-JCC, A-CPL mode 1, SSF, transmitted DRC gains, dialogue enhancement methods 1 to 3 | **syntax, and gains on known input** | No other encoder here writes them; constructed streams and the encoder's own share this project's readings |
 | Presentations of several substreams as an encoder writes them | **partly** | DEE writes one presentation; streams multiplexed from DEE substreams stand in, and the encoder's own, which MediaInfo's trace reads |
-| A-JOC objects | **partly** | One encoded stream and no source; object rendering is not normative |
+| A-JOC objects | **partly** | One encoded stream (Chromium's) and no source; object rendering is not normative, and the listening that would stand in for it has not been done |
 | Absolute output level | **partly** | Part 1 states no full-scale convention; it is settled against DEE's source, which assumes DEE's input convention is the decoder's |
 | Compression-curve DRC agrees with another decoder | **no** | The level detector is not normative |
 | The readings chosen for the errata | **partly** | A reading is checked where an encoder's stream exercises the tool; elsewhere it rests on the text |
 | Immersive stereo (`presentation_version` 2) | **by observation** | V1.3.1 names the version without defining it |
 | Core decoding matches what a core decoder of Dolby's produces | **partly** | Checked against the text's matrices and gains on DEE and constructed streams; nothing here decodes the core otherwise |
 | AC-4 over IEC 61937 to a device | **no** | No device found that accepts it; D11 is checked against IEC 61937-14's tables only |
-| Real time on the ESP32-P4 and S3 in `float` and the C6 in fixed point | **on boards, in D14** | QEMU has no cache model and a fabricated clock, and none runs the P4 or the C6; the boards measure time |
+| Real time on the ESP32-P4 and S3 in `float` and the C6 in fixed point | **on boards, in D14** | QEMU has no cache model and a fabricated clock, and none runs the P4 or the C6; the boards measure time. D14b measured the P4 (real time at 2.0 only, and no CI leg runs it); the S3 and the C6 are not built |
 | The encoder's streams decode as a Dolby decoder would decode them | **no** | No Dolby AC-4 decoder runs here; the decoder and librempeg stand in, and the decoder is checked on DEE's streams first |
 | The encoder's syntax outside DEE's set is read as Dolby reads it | **partly** | MediaInfo's trace covers the table of contents, the presentation substream and `metadata()`; audio data has only librempeg, which is experimental |
-| The encoder's quality against DEE's | **yes, through two decoders** | Both decoders' readings of the tools concerned are checked on DEE's own streams first |
+| The encoder's quality against DEE's | **yes, through the decoder, and librempeg where it decodes the tool** | The decoder's reading of the tools concerned is checked on DEE's own streams first; the race runs locally, while DEE's licence does |
 | Objects the encoder writes render as Dolby's renderer would render them | **no** | Object rendering is not normative; listening stands in |
 | Compression-curve DRC from the encoder's streams behaves alike in every decoder | **no** | The level detector is the decoder's own |
-| Any DEE stream after 2026-11-06 | **no** | The licence is not renewed; G0 and G1 make the set before then (decision 23) |
+| AC-4 in Matroska | **no** | Matroska registers no `A_AC4` codec ID (issue 176 and pull request 874 of its specification are open, checked 2026-09-29); `ac3cli mkv` refuses AC-4 until the registry has an ID and a mapping |
+| The WebAssembly module's C++ side and the Android build of the AC-4 libraries | **by CI only** | No Emscripten or NDK on the machine that made I4; I4b compiled `ac4_bindings.cpp` natively against a host model of `emscripten::val` |
+| Any DEE stream after 2026-11-06 | **no** | The licence is not renewed; G0, G1 and G2 made the sets before then (decision 23) |
+| What is published under the family's names | **partly** | Checked by hand on 2026-09-30 on GitHub, PyPI, npm, crates.io, the Homebrew tap and the two upstream pull requests. Not checked: the ESP Component Registry (its site was not queried), ConanCenter beyond a search of its pull requests, and the user's statement that Sendspin and the ESP32 firmware are unpublished |
 
 ## Coordination
 
-- Branch names start with `feature/` or `bugfix/`, which CI's branch-name gate requires.
-- Before each phase, `gh pr list` and `ListAgents`: the session that planned the decoder, "04. Plan
-  and build an AC-4 decoder", spawned the one that extended this page, and more sessions may take
-  phases.
+- Branch names are `<type>/<kebab-name>` with the type `feature`, `bugfix`, `hotfix`, `docs` or
+  `chore`, which CI's branch-name gate (`pr-gate.yml`) requires; the phases' branches are `feature/`
+  or `bugfix/`.
+- Before each of the phases that remain, `gh pr list` and `ListAgents`: the phases so far were built
+  by sessions working in parallel under one that coordinated them (see [How each phase is
+  run](#order)), and more than one session may take a phase.
 - Hearth: phase A0 drew the AC-4 pages with dynamic range and output level separate from E-AC-3's
-  (decision 12); I2 enables them through A3's engine; A4's extension page gains the AC-4 data type
-  in D11; A1 moves the renderer that D10 and I5 hand objects to; C1's bring-up of the C6 comes
-  before D14's C6 part and I6 there.
-- Files other chips edit: the root `CMakeLists.txt`, `tests/CMakeLists.txt`, `fuzz/CMakeLists.txt`,
-  `cmake/InstallLibrary.cmake`, `tools/ci/classify_changes.py`, `CHANGELOG.md`,
-  `docs/verification.md`, `tools/checks/check_doc_paths.py`; and, from the encoder and application
-  phases, `tools/ci/quality_race.py`, `tools/checks/verify_gold_reference.sh`,
-  `tools/ci/run_codec_matrix.sh`, `.github/workflows/_ci-core.yml` (FFmpeg Validate),
-  `apps/cli/main.cpp`'s command table, `ac3::plan::Codec`,
+  (decision 12), and I2 enabled them through the engine; the extension role has the AC-4 data type
+  from D11; the renderer that D10 and I5 hand objects to is the one Hearth's phase A1 moved into
+  `ac3::forge`.
+- Files several phases edit, where merges conflict first: the root `CMakeLists.txt`,
+  `tests/CMakeLists.txt`, `fuzz/CMakeLists.txt`, `cmake/InstallLibrary.cmake`,
+  `tools/ci/classify_changes.py`, `CHANGELOG.md`, `docs/verification.md`,
+  `tools/checks/check_doc_paths.py`, `tools/ci/run_codec_matrix.sh`, `.github/workflows/_ci-core.yml`
+  (FFmpeg Validate), `apps/cli/main.cpp`'s command table, `ac3::plan::Codec`,
   `docs/assets/data/support-catalogue.json`, `src/capi/`, `python/`, `rust/` and `apps/wasm/`.
-- `tools/ci/classify_changes.py` maps no path to AC-4, and `tools/generators/` and
-  `tools/references/` match no lane, so every lane runs when they change; the first encoder phase
-  gives AC-4 a lane.
+- `tools/ci/classify_changes.py` has no lane of its own for AC-4 (`src/ac4*` is in the core lane),
+  and `tools/generators/` and `tools/references/` match no lane, so every lane runs when they
+  change. No phase gave AC-4 a lane. The ESP32 lane lights after a merge for `src/forge/`,
+  `src/arithmetic/` and `cmake/` (#1131) and leaves the AC-4 trees, which the component's pack stages
+  only for `--with-ac4`, to the nightly run.
 - librempeg's binary is named `ffmpeg`; nothing puts it on `PATH` ([The oracles](#the-oracles)).
 - D11's change sits in `ac3::iec61937`, inside `ac3::forge`, beside the passthrough work of
   Hearth's A3.
@@ -3543,10 +3955,11 @@ words, asked for 25 in their own words, and took the recommendations for the res
 - Transcoding without decoding, from AC-4 to AC-3 or E-AC-3 or back; `ac3cli transcode` goes through
   PCM (I1), carrying the DRC profile Part 1 5.7.9.4 names for a transcoder.
 - Linking FFmpeg, librempeg or any codec library, or reading another decoder's or encoder's source.
-- Rendering objects inside the decoder, headphone virtualisation and head tracking.
-- The HSF extension for 96 and 192 kHz beyond its syntax: a 48 kHz decoder may ignore it (Part 1
-  4.2.4.3, 5.4), the converter provides 96 and 192 kHz output, and the encoder takes 96 and 192 kHz
-  input only after converting it to 48 kHz.
+- Rendering objects inside the decoder (bar the intermediate spatial format, whose renderer Part 2
+  specifies), headphone virtualisation and head tracking.
+- 96 and 192 kHz, the HSF extension, beyond its syntax: the decoder reads it (D1) and refuses to
+  decode such a substream, so its output is 48 kHz, or 44.1 kHz at index 13 (a 48 kHz decoder may
+  ignore the extension, Part 1 4.2.4.3 and 5.4), and the encoder takes 48 and 44.1 kHz input alone.
 - 22.2 and 9.X.4, until a stream exists.
 - Presentations spread over several elementary streams (Part 2 5.1.2), and the efficient high frame
   rate mode (Part 2 5.1.3), in either direction, until a stream uses them.
@@ -3557,6 +3970,7 @@ words, asked for 25 in their own words, and took the recommendations for the res
   (decision 10).
 - Protected (encrypted) AC-4 tracks.
 - MPEG-2 TS under ATSC A/342-2's profile, which `ac3cli ts` refuses; DVB's is carried.
-- AC-4 on the ESP32-C3 and the other ESP32 parts; D14 covers the P4, the S3 and the C6. The encoder
-  on any ESP32.
+- AC-4 on the ESP32-C3 and the other ESP32 parts; D14 plans the P4, the S3 and the C6, and has built
+  the P4. The encoder on any ESP32.
 - AC-4 in Crucible (decision 20).
+- AC-4 in Matroska, until the registry has a codec ID (`ac3cli mkv` refuses it).
