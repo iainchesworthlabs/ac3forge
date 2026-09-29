@@ -20,11 +20,9 @@
 #include "ac3/version.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <limits>
 #include <optional>
 #include <span>
@@ -1207,17 +1205,19 @@ void HearthController::start() {
     // report Save/Copy/View live already produce from a second terminal.
     // Unset, empty, or not a plain port number leaves this null - the same
     // "refused silently" shape an out-of-range trim or delay already has
-    // elsewhere on this controller.
-    if (const char* port_env = std::getenv("AC3FORGE_HEARTH_DIAGNOSTICS_PORT")) {
-        const std::string_view text(port_env);
-        std::uint16_t port = 0;
-        const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), port);
-        if (ec == std::errc{} && ptr == text.data() + text.size() && port != 0) {
-            diagnostics_server_ = std::make_unique<ac3::hearth::DiagnosticsHttpServer>(
-                [this] { return diagnosticsReport().toStdString(); });
-            if (!diagnostics_server_->start(port)) {
-                diagnostics_server_.reset();
-            }
+    // elsewhere on this controller. Qt's own qEnvironmentVariableIntValue()
+    // rather than std::getenv() + std::from_chars(): main.cpp's own
+    // QSG_RENDER_LOOP check already reads the environment the Qt way
+    // elsewhere in this app, and doing it here too means nothing here
+    // triggers the platform CRT's "getenv is deprecated" warning under
+    // clang-cl's stricter defaults.
+    bool port_ok = false;
+    const int port_value = qEnvironmentVariableIntValue("AC3FORGE_HEARTH_DIAGNOSTICS_PORT", &port_ok);
+    if (port_ok && port_value > 0 && port_value <= std::numeric_limits<std::uint16_t>::max()) {
+        diagnostics_server_ = std::make_unique<ac3::hearth::DiagnosticsHttpServer>(
+            [this] { return diagnosticsReport().toStdString(); });
+        if (!diagnostics_server_->start(static_cast<std::uint16_t>(port_value))) {
+            diagnostics_server_.reset();
         }
     }
 }
