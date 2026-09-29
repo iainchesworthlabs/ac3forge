@@ -1,0 +1,69 @@
+# After each post-merge run of ci.yml: advance the `verified` ref if it passed,
+# rerun a known flake once if that is all that failed, and otherwise name the
+# merges it could be blamed on. tools/ci/main_health.py holds the logic and its
+# header explains each case; docs/ci-agentic.md has the design.
+#
+# Post-merge verification is batched (see ci.yml's `concurrency`), so a red run
+# means "one of the merges since the last green run", and this is what turns that
+# into a `main-red` issue with the failed jobs, their evidence, the suspect pull
+# requests and the command that reproduces each. It reverts nothing.
+#
+# Trust: `workflow_run` runs with a write token in the context of the default
+# branch, which is why this job checks out main and nothing else, runs only
+# code from main, and takes every value from the triggering run through `env`
+# rather than into the script text. The pull-request-controlled part of the
+# run (its branch name) is excluded by the `branches` filter and never used.
+name: Main health
+
+on:
+  # zizmor: ignore[dangerous-triggers] see the trust note above: main's own code only, event fields via env
+  workflow_run:
+    workflows: [ CI ]
+    types: [ completed ]
+    branches: [ main ]
+
+concurrency:
+  # One at a time, in order, so an issue is never opened twice for the same red.
+  group: main-health
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  health:
+    name: Verify, rerun or report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write        # advance the `verified` ref
+      actions: write         # rerun the failed jobs of a flaky run, once
+      issues: write          # the single main-red issue
+      pull-requests: write   # one comment on each suspect pull request
+    steps:
+      # Full history: the suspects are the merges in verified..head, and
+      # `origin/verified` is a branch. The credentials stay in the checkout because
+      # the one push this job does (the `verified` ref, fast-forward only) uses them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify, rerun or report
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/main_health.py \
+            --repo "$REPO" \
+            --run-id "$RUN_ID" \
+            --head-sha "$HEAD_SHA" \
+            --conclusion "$CONCLUSION" \
+            --attempt "$ATTEMPT" \
+            --run-url "$RUN_URL"

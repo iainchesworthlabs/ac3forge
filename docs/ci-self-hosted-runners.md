@@ -1,5 +1,12 @@
 # Self-hosted CI runners
 
+The fleet serves the run on main (`ci.yml`), not the pull-request gate. Pull requests and
+merge-queue entries run `pr-gate.yml` on GitHub-hosted runners, which are free for this public
+repository and do not wait behind the fleet; see [CI for many agents](ci-agentic.md). The
+repository variables `GATE_RUNNER_JSON` and `GATE_WINDOWS_RUNNER_JSON` move the gate onto the
+fleet if the hosted pool is queueing. Everything below describes how the run on main chooses
+between the fleet and GitHub-hosted runners.
+
 The six plain Windows/Linux legs in the split `_ci-windows.yml` and
 `_ci-linux.yml` matrices (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM,
 Linux LLVM ASan+UBSan, Linux LLVM TSan) can each run on a

@@ -1,0 +1,468 @@
+# PR gate: the checks a change passes to merge.
+#
+# This is the only workflow that reports `CI Status` and `Branch Name`, the
+# required checks on main, on a pull request and in the merge queue. It is small
+# on purpose. The full matrix (every compiler, every platform, the sanitizers,
+# coverage, the QEMU legs) runs after the merge instead, in ci.yml, batched: see
+# docs/ci-agentic.md for the whole design and the numbers behind it.
+#
+#   pull request   static checks + Linux GCC (build, every ctest case, gold
+#                  reference; the Qt GUI too when the change touches it)
+#   merge queue    the same on the merged tree, with Qt always, plus Windows MSVC
+#   push to main   the same jobs again, only to save the compiler caches every
+#                  other run restores from (cache entries are only visible to
+#                  runs on the branch that saved them, and to pull requests
+#                  through main)
+#
+# What a Linux gate cannot see - another compiler, another OS, an architecture,
+# the sanitizers, a QEMU board - is caught by the post-merge run, and main-health.yml
+# says which merge did it. That trade is deliberate: a Linux-GCC gate would have
+# caught 71% of the failures pull requests actually had, in about a tenth of the
+# compute, and the queue's Windows job takes the largest share of the rest.
+#
+# Where it runs: GitHub-hosted, which is free for this public repository and
+# does not wait behind the self-hosted fleet. Set the repository variable
+# GATE_RUNNER_JSON (e.g. ["self-hosted","Linux","X64"]) to move the Linux and
+# control jobs onto the fleet if the hosted pool is queueing, and
+# GATE_WINDOWS_RUNNER_JSON for the Windows job. Fork pull requests are pinned to
+# hosted regardless: untrusted code does not belong on the fleet.
+name: PR Gate
+
+on:
+  pull_request:
+    branches: [ main ]
+  merge_group:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: "Also run the Windows MSVC job (it runs in the merge queue and on main by default)."
+        type: boolean
+        default: false
+      save_cache:
+        description: "Save the compiler cache entries this run builds (main-branch runs do this by themselves)."
+        type: boolean
+        default: false
+
+concurrency:
+  # A newer push to a pull request supersedes the run in flight. Queue entries
+  # are separate refs, so they never cancel each other. On main only the newest
+  # push matters, since its job here is the cache.
+  group: pr-gate-${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.GATE_RUNNER_JSON || '["ubuntu-latest"]') }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      gui: ${{ steps.plan.outputs.gui }}
+      docs_only: ${{ steps.plan.outputs.docs_only }}
+      windows: ${{ steps.plan.outputs.windows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/ci/plan_gate.py
+          sparse-checkout-cone-mode: false
+
+      # A pull request is planned from its own file list, a queue entry from the
+      # diff its merge group adds to the base, and everything else (a push to
+      # main, a dispatch) as a full run. An API hiccup leaves the list empty,
+      # which plans a full build: same rule as tools/ci/classify_changes.py.
+      - name: Plan the gate
+        id: plan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD: ${{ github.event.merge_group.head_sha }}
+          WANT_WINDOWS: ${{ inputs.windows }}
+        run: |
+          set -euo pipefail
+          files=""
+          args=()
+          case "$EVENT_NAME" in
+            pull_request)
+              files="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' || true)" ;;
+            merge_group)
+              files="$(gh api --paginate "repos/$REPO/compare/$MG_BASE...$MG_HEAD" --jq '.files[].filename' || true)"
+              args=(--gui-on-build) ;;
+            *)
+              args=(--force-all) ;;
+          esac
+          printf '%s\n' "$files" | python3 tools/ci/plan_gate.py "${args[@]}" > plan.out
+          cat plan.out >> "$GITHUB_OUTPUT"
+          build="$(sed -n 's/^build=//p' plan.out)"
+          gui="$(sed -n 's/^gui=//p' plan.out)"
+          docs_only="$(sed -n 's/^docs_only=//p' plan.out)"
+          machinery="$(sed -n 's/^machinery=//p' plan.out)"
+          reason="$(sed -n 's/^reason=//p' plan.out)"
+          gui_reason="$(sed -n 's/^gui_reason=//p' plan.out)"
+          # Windows: in the queue, on main (which is where its compiler cache is
+          # saved), on request, and for a change to the gate itself, which should
+          # be proven on every platform the gate covers. Otherwise never on a
+          # pull request push. (GitHub only dispatches a workflow file that is
+          # already on main, so a change to this file is proven on its own pull
+          # request, and this is what runs Windows there.)
+          windows=false
+          if [ "$build" = true ]; then
+            case "$EVENT_NAME" in
+              merge_group | push) windows=true ;;
+            esac
+            if [ "$WANT_WINDOWS" = true ] || [ "$machinery" = true ]; then windows=true; fi
+          fi
+          echo "windows=$windows" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Gate plan"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Linux GCC build and tests | ${build} (${reason}) |"
+            echo "| Qt GUI | ${gui} (${gui_reason:-not needed}) |"
+            echo "| Windows MSVC | ${windows} |"
+            echo "| Documentation only | ${docs_only} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Required check `Branch Name`. Skipped (a pass) on anything that is not a
+  # pull request, exactly as it was in ci.yml.
+  branch-name:
+    name: Branch Name
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.GATE_RUNNER_JSON || '["ubuntu-latest"]') }}
+    timeout-minutes: 5
+    steps:
+      # Enforce trunk-based (GitHub Flow) branch naming on every PR. A topic branch
+      # is <type>/<name> where type is feature, bugfix, hotfix, docs, or chore -
+      # every topic branch merges straight to main. The name is lowercase
+      # alphanumeric segments separated by single hyphens (no underscores, dots,
+      # spaces, other special characters, or trailing hyphens). main itself is
+      # accepted as a PR head for the rare revert-by-PR case, and dependabot/** is
+      # accepted because Dependabot's branch names are not configurable.
+      - name: Validate head branch name
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REF" == "main" ]]; then
+            echo "Core branch '$HEAD_REF' - allowed."
+            exit 0
+          fi
+          if [[ "$HEAD_REF" == dependabot/* ]]; then
+            echo "Dependabot branch '$HEAD_REF' - allowed (names are not configurable)."
+            exit 0
+          fi
+          pattern='^(feature|bugfix|hotfix|docs|chore)/[a-z0-9]+(-[a-z0-9]+)*$'
+          if [[ "$HEAD_REF" =~ $pattern ]]; then
+            echo "Branch '$HEAD_REF' conforms to <type>/<name>."
+            exit 0
+          fi
+          echo "::error title=Invalid branch name::'$HEAD_REF' must be <type>/<kebab-name> where <type> is feature, bugfix, hotfix, docs, or chore; the name is lowercase letters and digits separated by single hyphens (no underscores, dots, spaces, or trailing hyphens). Example: feature/eac3-decoder. See CONTRIBUTING.md."
+          exit 1
+
+  # Lint, unit-test the oracles, check the docs' paths, the packaging, the
+  # fixture corpus and the quarantine. One job: see _static.yml. Not repeated on
+  # main - the queue already ran it on each merged tree.
+  static:
+    name: Static
+    if: github.event_name != 'push'
+    uses: ./.github/workflows/_static.yml
+    permissions:
+      contents: read
+    with:
+      runner: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || vars.GATE_RUNNER_JSON || '["ubuntu-latest"]' }}
+
+  toolchain-versions:
+    name: Toolchain versions
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    uses: ./.github/workflows/_toolchain-versions.yml
+    permissions:
+      contents: read
+    with:
+      runner: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || vars.GATE_RUNNER_JSON || '["ubuntu-latest"]' }}
+
+  linux-gcc:
+    name: Linux GCC
+    needs: [plan, toolchain-versions]
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.GATE_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # The pinned Ubuntu 26.04 container the post-merge Linux legs use: it is
+    # where the distribution archive carries gcc-16, and pinning it stops a
+    # runner-image bump changing the compiler under the gate.
+    container: ubuntu:26.04
+    # Cold, this is a full build and takes about as long as the post-merge leg;
+    # warm it is minutes. The limit is a backstop against a hang, not a budget.
+    timeout-minutes: 60
+    steps:
+      # Before checkout: the bare image has no git, and actions/checkout silently
+      # degrades to a tarball download without it. ccache is here for the compiler
+      # cache (build-leg configures it), and libasound2-dev because its absence
+      # is not a build failure: src/audio would fall back to the no-op backend
+      # and the gate would go green having compiled none of the ALSA one.
+      # Three attempts, 30 s apart, each re-running the index update: a mirror
+      # mid-sync fails a single attempt outright now and then.
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates ccache cmake curl file git gnupg libasound2-dev lsb-release \
+            ninja-build pkg-config rpm software-properties-common tar unzip wget zip
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
+
+      # The same package list as _ci-linux.yml's Linux GUI leg (which explains
+      # each entry); installed here only when the plan says the GUI is in play.
+      - name: Install Qt6 (Linux GUI)
+        if: needs.plan.outputs.gui == 'true'
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+            qt6-l10n-tools qt6-tools-dev \
+            qml6-module-qtcore qml6-module-qtqml-models qml6-module-qtqml-workerscript \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
+            qml6-module-qtquick-window qml6-module-qt-labs-folderlistmodel
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install GCC 16
+        run: |
+          set -eu
+          if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/02-gcc-toolchain.sh
+          else bash .github/toolchain/02-gcc-toolchain.sh; fi
+
+      # ffmpeg is the gold-reference gate's decode oracle.
+      - name: Install ffmpeg (Linux)
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends ffmpeg
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
+
+      # Configure, build and every ctest case, through the same action every
+      # post-merge leg uses. Two things differ from those legs, both opt-in:
+      # the compiler goes through ccache (saved only by a run on main or a
+      # dispatch that asks), and ctest runs in parallel with one retry for a
+      # failing case.
+      - uses: ./.github/actions/build-leg
+        with:
+          preset: linux-gcc
+          gui: ${{ needs.plan.outputs.gui }}
+          crucible: ""
+          version-tag: ""
+          gcc-version: ${{ needs.toolchain-versions.outputs.gcc_version }}
+          llvm-version: ${{ needs.toolchain-versions.outputs.llvm_version }}
+          msvc-toolset: ""
+          cmake-min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+          ccache: "true"
+          ccache-save: ${{ (github.event_name == 'push' || inputs.save_cache) && 'true' || 'false' }}
+          ctest-jobs: auto
+
+      - name: Gold reference gate
+        uses: ./.github/actions/gold-reference-gate
+        with:
+          preset: linux-gcc
+
+      # ctest covers the codec; this covers the one thing it cannot: that
+      # ac3gui starts, loads its QML and drives a real encode through the Qt
+      # event loop. offscreen needs no display.
+      - name: Smoke test ac3gui (headless)
+        if: needs.plan.outputs.gui == 'true'
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          set -euo pipefail
+          build/config-linux-gcc/bin/ac3gui --smoke \
+            fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav \
+            "${RUNNER_TEMP}/ac3gui-smoke.ac3" \
+            "${RUNNER_TEMP}/ac3gui-smoke.png"
+
+      # A qsTr() string added or edited without re-running lupdate rots silently
+      # otherwise. Re-runs lupdate against the sources and fails if that changed
+      # a catalogue. Here rather than only after the merge because a Hearth or
+      # GUI pull request is where it happens.
+      - name: Check translations are up to date
+        if: needs.plan.outputs.gui == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build --preset build-linux-gcc --target ac3gui_lupdate -- -k 0
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          cd "${GITHUB_WORKSPACE}"
+          git diff --exit-code -- apps/gui/translations || {
+            echo "::error::a qsTr() string changed without regenerating the catalogues - build the ac3gui_lupdate target and commit apps/gui/translations"
+            exit 1
+          }
+
+  # The merge queue's second platform. Windows MSVC is where the failures a Linux
+  # gate cannot see mostly turn out to be, so every queue entry builds it once on
+  # the merged tree. A pull request push does not: agents iterate on Linux, and
+  # pay for Windows once, at the end. Also runs on main, to save the compiler
+  # cache the queue restores.
+  windows-msvc:
+    name: Windows MSVC
+    needs: [plan, toolchain-versions]
+    if: needs.plan.outputs.windows == 'true'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["windows-latest"]') || fromJSON(vars.GATE_WINDOWS_RUNNER_JSON || '["windows-latest"]') }}
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The gold-reference gate's decode oracle, as on the post-merge leg.
+      - name: Install ffmpeg (Windows)
+        shell: bash
+        run: choco install ffmpeg -y --no-progress --requirechecksums
+
+      # cl.exe, INCLUDE and LIB are not on the default PATH, and Ninja does not
+      # set them up itself.
+      - name: Setup MSVC environment
+        uses: ./.github/actions/setup-msvc-env
+
+      - name: Install Ninja
+        shell: bash
+        run: choco install ninja -y --no-progress --requirechecksums
+
+      # The prebuilt Qt kit (cmake/FindQt6.cmake never takes Qt from vcpkg), with
+      # the embeddable Python install-qt-action v4.4.0 needs on a runner that has
+      # no bare `python` - see _ci-windows.yml's comment on the same two steps.
+      - name: Setup Python (for install-qt-action)
+        uses: ./.github/actions/setup-embeddable-python
+
+      - name: Install Qt (prebuilt)
+        uses: jurplel/install-qt-action@bcb88e3bed2e992f5f9e24c0f9e364a231d278eb # v4.4.0
+        with:
+          version: ${{ needs.toolchain-versions.outputs.qt_version }}
+          modules: qtquick3d qtshadertools
+          cache: true
+          setup-python: false
+
+      - uses: ./.github/actions/build-leg
+        with:
+          preset: windows-msvc
+          # AC3FORGE_BUILD_GUI is already ON in both Windows presets.
+          gui: "false"
+          crucible: ""
+          version-tag: ""
+          gcc-version: ""
+          llvm-version: ${{ needs.toolchain-versions.outputs.llvm_version }}
+          msvc-toolset: ${{ needs.toolchain-versions.outputs.msvc_toolset }}
+          cmake-min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+          ccache: "true"
+          ccache-save: ${{ (github.event_name == 'push' || inputs.save_cache) && 'true' || 'false' }}
+          ctest-jobs: auto
+
+      - name: Gold reference gate
+        uses: ./.github/actions/gold-reference-gate
+        with:
+          preset: windows-msvc
+
+      # The Hearth catalogue drift check, on the Qt pinned in
+      # .github/toolchain-versions.json (the Linux lupdate is whichever Ubuntu
+      # ships, and a check that compares generated files should only move when
+      # this repository moves its pin). -I drops the hunks made only of line
+      # numbers: those change whenever a line is added above a qsTr().
+      - name: Check the Hearth translations are up to date
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "build/config-windows-msvc" --target ac3hearth_lupdate
+          git diff --exit-code -I '^[[:space:]]*<location filename="[^"]*" line="[0-9]+"/>' \
+            -- apps/hearth/ui/translations || {
+            echo "::error::a qsTr() string changed without regenerating the catalogues - build the ac3hearth_lupdate target and commit apps/hearth/ui/translations"
+            exit 1
+          }
+
+  # The one check branch protection points at. It fails closed: a job that was
+  # meant to run and was skipped is a failure here, not a pass. Skipped is only
+  # a pass for a job the plan did not ask for.
+  ci-status:
+    name: CI Status
+    if: ${{ !cancelled() }}
+    needs: [plan, branch-name, static, toolchain-versions, linux-gcc, windows-msvc]
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.GATE_RUNNER_JSON || '["ubuntu-latest"]') }}
+    timeout-minutes: 5
+    steps:
+      - name: Gate on required job results
+        shell: bash
+        env:
+          R_PLAN: ${{ needs.plan.result }}
+          R_BRANCH: ${{ needs.branch-name.result }}
+          R_STATIC: ${{ needs.static.result }}
+          R_TOOLCHAIN: ${{ needs.toolchain-versions.result }}
+          R_LINUX: ${{ needs.linux-gcc.result }}
+          R_WINDOWS: ${{ needs.windows-msvc.result }}
+          WANT_BUILD: ${{ needs.plan.outputs.build }}
+          WANT_WINDOWS: ${{ needs.plan.outputs.windows }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          fail=0
+          check() {
+            name="$1"; result="$2"; must_run="$3"
+            echo "  ${name}: ${result}"
+            case "$result" in
+              success) ;;
+              skipped)
+                if [ "$must_run" = true ]; then
+                  echo "::error::${name} was skipped but the plan needs it."
+                  fail=1
+                fi ;;
+              *)
+                echo "::error::${name} reported '${result}'."
+                fail=1 ;;
+            esac
+          }
+          check plan "$R_PLAN" true
+          check branch-name "$R_BRANCH" "$([ "$EVENT_NAME" = pull_request ] && echo true || echo false)"
+          check static "$R_STATIC" "$([ "$EVENT_NAME" != push ] && echo true || echo false)"
+          check toolchain-versions "$R_TOOLCHAIN" "$([ "$WANT_BUILD" = true ] && echo true || echo false)"
+          check linux-gcc "$R_LINUX" "$([ "$WANT_BUILD" = true ] && echo true || echo false)"
+          check windows-msvc "$R_WINDOWS" "$([ "$WANT_WINDOWS" = true ] && echo true || echo false)"
+          if [ "$fail" -ne 0 ]; then
+            echo "The gate failed - see the failing job(s) above."
+            exit 1
+          fi
+          echo "Every required job passed, or was not needed for this change."

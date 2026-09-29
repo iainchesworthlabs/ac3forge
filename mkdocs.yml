@@ -187,5 +187,6 @@ nav:
       - Releasing: releasing.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
       - CI lane partitions: ci-lanes.md
+      - CI for many agents: ci-agentic.md
       - History: history.md
       - Roadmap: roadmap.md

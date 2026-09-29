@@ -27,16 +27,27 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
   if a second maintainer ever does leave one) while letting a green PR merge
   through the normal button instead of only through an admin override.
 - **Require status checks to pass before merging**, selecting:
-  - `Branch Name` (from `ci.yml`)
-  - `CI Status` (from `ci.yml` - aggregates every required CI job; add or
-    rename a matrix leg without ever touching this rule)
+  - `Branch Name` (from `pr-gate.yml`)
+  - `CI Status` (from `pr-gate.yml` - aggregates the gate's jobs and fails
+    closed: a job the plan asked for that was skipped is a failure)
   - `Scan dependency diff` (from `dependency-review.yml`) - fails on a
     moderate-or-worse known vulnerability newly introduced by the PR
     (`vcpkg.json` or a GitHub Actions dependency)
 
-  `No Quarantine On Main` is not selected in its own right - it sits in
-  `CI Status`'s `needs` list, so it still gates every merge through that one
-  aggregate check. `Analyze (C++)` was removed 2026-08-31: `codeql.yml`'s PR
+  **Since 2026-09-29 these come from `pr-gate.yml`, not `ci.yml`.** A pull
+  request and each merge-queue entry run the gate: the static checks (one job,
+  `_static.yml`), Linux GCC, and in the queue Windows MSVC. `ci.yml` runs the full
+  matrix after the merge, one run at a time, and its aggregate is named
+  `Verify Status` so it can never be mistaken for the required check on a commit
+  both ran on. The names of the three required checks did not change, so this
+  needed no rule edit. See [CI for many agents](../docs/ci-agentic.md). The
+  sections below that mention `ci.yml` jobs as members of `CI Status` (Script
+  Lint, the performance and memory gates, `Python coverage` and the rest) record
+  the arrangement before that date: those jobs now run after the merge and are
+  not required.
+
+  `No Quarantine On Main` is not selected in its own right - it is a step of the
+  gate's static job, so it still gates every merge through `CI Status`. `Analyze (C++)` was removed 2026-08-31: `codeql.yml`'s PR
   trigger then `paths-ignore`d `docs/**`/`**/*.md`, so on a docs-only PR the
   required context never reported and the PR sat green-but-BLOCKED forever (the
   code-scanning ruleset section below records the fuller version of the same
@@ -150,13 +161,19 @@ also trigger on the `merge_group` event**, not just `push`/`pull_request` -
 GitHub only runs workflows that opt into `merge_group` on the queue's
 temporary `gh-readonly-queue/main/...` ref, so a workflow missing that
 trigger never reports its check there and every queue entry sits until
-`check_response_timeout_minutes` expires. `ci.yml` and
+`check_response_timeout_minutes` expires. `pr-gate.yml` and
 `dependency-review.yml` carry it (see each workflow's own `merge_group`
 comment) - add it to anything else that later becomes a required check on
 `main`. The converse also holds: a workflow that produces no required check
 must NOT carry `merge_group`, or every queue entry burns a run of it for
 nothing - which is why `codeql.yml` and `msvc-analysis.yml` lost theirs in
-2026-09.
+2026-09, and why `ci.yml` lost its on 2026-09-29 when the gate took over.
+
+With a gate that finishes in about a quarter of an hour,
+`min_entries_to_merge_wait_minutes` (5) is a large share of each merge's
+latency, and `check_response_timeout_minutes` (180) is far longer than a
+healthy entry needs. Lowering the first to 1 and the second to 60 are ruleset
+edits for the repository admin; this change does not make them.
 
 ## Code-scanning gate (ruleset, deleted)
 
