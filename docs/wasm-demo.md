@@ -33,8 +33,12 @@ object's decoded position (OAMD,
 top-down/elevation room view, and a "solo object" control plays that object's own
 JOC-reconstructed audio ([`ac3::forge#169`](https://github.com/iainchesworthlabs/ac3forge/pull/169)) —
 its isolated waveform, decoded from the bitstream, rather than a re-panned approximation of its
-slice of the bed. Drop in your own `.ec3`/`.ac3` file to decode something other than the bundled
-fixture; a plain (non-Atmos) stream simply has zero objects.
+slice of the bed. Drop in your own `.ac3`, `.ec3` or `.eac3` file to decode something other than
+the bundled fixture; a plain (non-Atmos) stream simply has zero objects.
+
+The page decodes AC-3 and E-AC-3 only. The AC-4 decoder is a separate WebAssembly module,
+`ac3forge_wasm_ac4`, built in the same CI job; it has no demo page yet. See
+[WebAssembly → AC-4 module](platforms/wasm.md#ac-4-module).
 
 ## Third-party notices
 
@@ -57,7 +61,7 @@ rebuilds this embed fresh from source on every deploy to `main`; see
 [Release / CI](platforms/wasm.md#release-ci).
 
 This page is a consumer of `ac3forge-wasm-decoder`
-(source: [`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js), roadmap UX5) rather
+(source: [`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)) rather
 than a parallel implementation of its own: the decode, the §7.8 fold and (in the demo's realtime
 section further down) the AudioWorklet playback pipeline all come from that package.
 
@@ -76,5 +80,6 @@ compiled `.wasm` of its own: `decodeFile()` and `PushDecoder` take the instantia
 as their first argument, and `Ac3ForgeDecoderNode` takes a `wasmGlueUrl` pointing at the Emscripten
 glue, so you also need the module built from `apps/wasm/`; [WebAssembly](platforms/wasm.md) covers
 that build. The [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md) is
-the package's own API documentation. The package exists at all because
-[Chrome still cannot decode EC-3](https://github.com/videojs/http-streaming/issues/1297).
+the package's own API documentation. The package exists at all because a browser cannot be
+relied on to decode EC-3: [Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297)
+when an EC-3 track turns up in an MPD, in a report that has been open since 2023.
