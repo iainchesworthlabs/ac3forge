@@ -63,7 +63,7 @@ if(WIN32)
         # user looks - the Start Menu folder CPack always makes held nothing
         # but the Uninstall shortcut, so an installed copy was reachable only
         # by browsing to the folder it went into. The Linux .deb has had a
-        # menu entry since GUI AppStream packaging (apps/gui/packaging/linux/ac3gui.desktop);
+        # menu entry (apps/gui/packaging/linux/ac3gui.desktop);
         # Windows had never been given the same thing.
         #
         # CPACK_PACKAGE_EXECUTABLES is the shape CPack's NSIS generator wants:
@@ -203,8 +203,8 @@ if(WIN32)
         # DR7: this used to be silent - a missing makensis just meant the ZIP
         # packaged alone with no diagnostic anywhere, which is how the
         # Windows release shipped installer-less for several releases running
-        # before anyone noticed (see docs/releasing.md#winget-manifest and
-        # Windows NSIS installer). CI now installs makensis explicitly
+        # before anyone noticed (see docs/releasing.md#winget-manifest).
+        # CI now installs makensis explicitly
         # (.github/workflows/_build.yml's "Install NSIS (Windows)" step) and
         # asserts packages/*.exe exists after Package, so this warning firing
         # THERE means that install broke and the leg fails outright; degrading
@@ -536,7 +536,7 @@ endif()
 # DEB/RPM get their own *_COMPONENT_INSTALL switch, set inside their own
 # find_program() blocks above, now that the split is real work rather than
 # a placeholder.
-# The `runtime` component is ac3cli/ac3gui plus, since CLI shell completions, the
+# The `runtime` component is ac3cli/ac3gui plus the
 # generated ac3cli.1 man page and the bash/zsh/fish/PowerShell completion
 # scripts - all install()'d with COMPONENT runtime from
 # apps/cli/CMakeLists.txt, so every generator below picks them up with the

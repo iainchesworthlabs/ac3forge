@@ -9,7 +9,8 @@ It is the "best" tier of the shared C6/S3/P4 sink family
 ([`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)):
 closed 2026-09-08 as a replacement for the S3 Wi-Fi Sendspin sink (no on-die radio, the S3 probe
 already real-time), reopened 2026-09-21 as a complementary module once a board existed to measure
-it on. This page is that plan's Phase P1 — the probe and a board timing table, no network yet.
+it on. This page is that plan's Phase P1 — the probe and a board timing table, with no network —
+and, in its [AC-4](#ac-4) section, what `hearth_sink` measured on the same board with Wi-Fi up.
 
 Every figure on this page outside its [AC-4](#ac-4) section was measured on a board on 2026-09-23, with no network.
 
@@ -21,11 +22,11 @@ Every figure on this page outside its [AC-4](#ac-4) section was measured on a bo
 | Real time, no network | **Every fixture and every stream-set file**, from 0.027x (`ac3_mono`) to 0.448x (`eac3_714_fold`, 7.1.4 folded to Lo/Ro) among the fixtures, up to 0.700x (`714-ecpl`) among the stream set — comfortably inside a 32 ms frame even at this chip's 360 MHz ceiling, not the part's 400 MHz datasheet maximum (see [The chip revision](#the-chip-revision-and-what-it-blocks)) |
 | Memory | 514,820 bytes free at boot, largest block 385,024; peak heap across every fixture 195,025 (`eac3_atmos_render`), leaving well over half the free total unused at the worst point measured |
 | AC-4 decode | Behind `CONFIG_AC3FORGE_AC4`, off by default. Twenty plays of DEE's streams (2.0, 5.1 and 5.1.4; SIMPLE, A-SPX, A-CPL and S-CPL; the converter's four frame rates) run from an HTTP source with the network up, and the probe's five fixtures decode to its pinned `float` PCM hashes exactly. The board's hash equals the host's on 15 of the twenty and on all six core-decoding plays. On the other five, the plays with companding, three `float` libm calls differ; routed through the project's own functions they agreed on the host, the Cortex-M3 leg and the board, see [AC-4](#ac-4) |
-| AC-4 real time | 2.0 in SIMPLE mode (0.53) and in A-SPX mode (0.74) only, with D14a's third part in the decoder (0.86 and 1.04 before it). 5.1 takes 1.4 to 4.1, 5.1.4 2.8 to 3.7 and the converter's frame rates 5.6 to 6.6. E-AC-3 through the same image takes 0.20 for 5.1 and 0.38 for 7.1.4 |
+| AC-4 real time | Only 2.0 streams in SIMPLE mode (0.53 of a frame) and in A-SPX mode (0.74), played to a 2.0 layout, with D14a's third part in the decoder (0.86 and 1.04 before it). 5.1 takes 1.4 to 4.1, 5.1.4 2.8 to 3.7 and the converter's frame rates 5.6 to 6.6. AC-3 and E-AC-3 5.1 through the same image take 0.20, and E-AC-3 7.1.4 0.38 |
 | AC-4 memory | A peak heap of 0.60 MB at 2.0 to 2.2 MB at 5.1.4, with internal RAM used up under ESP-IDF's default allocation policy (2 to 14 KB free at its least). The decode task uses 20 to 24 KB of a 64 KB stack, from 49 to 50 KB before D14a's third part |
 | Encode | Not measured. Both encoders are floating-point; nothing here rules it out |
 | QEMU | Not emulated, see [QEMU](#qemu) |
-| CI | The component pack builds for `esp32p4` from its archive; `.github/workflows/_build.yml` builds this probe target (decoder direction) and runs nothing, the same gap the ESP32-C6 leg has |
+| CI | The component pack builds for `esp32p4` from its archive, with the AC-4 decoder too (`pack_esp_component.py --with-ac4 --verify --verify-targets esp32p4`); `.github/workflows/_build.yml` builds this probe target (decoder direction) and `hearth_sink` for the part, with and without AC-4, and runs nothing, the same gap the ESP32-C6 leg has. These are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)) |
 
 ## The board
 
@@ -35,8 +36,10 @@ and display, GPIO headers along both edges, no separate UART bridge chip). It ca
 - The ESP32-P4 itself, chip revision v1.3, efuse block revision v0.3 — pre-production silicon,
   not the v3.x this part's mass-production runs ship as (see below).
 - An ESP32-C6-MINI-1 module wired to the P4 over SDIO (`GPIO14`-`GPIO19`) for Wi-Fi 6 and
-  Bluetooth LE, per DFRobot's documentation. This probe does not touch it; the sink-tiers plan's
-  Phase P3 is where a hosted Wi-Fi shape over that link would be measured.
+  Bluetooth LE, per DFRobot's documentation. This probe does not touch it. `hearth_sink` does: it
+  reaches Wi-Fi through `esp_hosted` over that link ([the example's
+  README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-p4)),
+  and the [AC-4](#ac-4) figures were measured that way.
 - **Two USB-C connectors**, wired to two different on-die USB peripherals, not one connector
   shared between them: one silkscreened "USB 2.0 OTG", reaching the part's native high-speed
   USB-OTG controller (`SOC_USB_OTG_SUPPORTED`; the ROM's download mode answers here — esptool
@@ -263,7 +266,8 @@ play with the lines this section's figures come from ([Building](#building-with-
 Every figure in this section is from the board above on 2026-09-29 and 2026-09-30, at 360 MHz, with
 the network up (Wi-Fi over the C6, mDNS, the Sendspin player idle, the HTTP source's fetch task and
 the decode task running), 32 MB of PSRAM in the heap, the decode task's stack at 64 KB, a null sink
-that paces its writes as a DAC would, and ESP-IDF's default allocation policy
+that takes a block and returns at once (it paces only a Sendspin stream's timed writes, so a play
+runs as fast as the decoder does), and ESP-IDF's default allocation policy
 (`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL` at 16 KB) unless a column says otherwise. The main figures
 are for the decoder with D14a's third part in it (the QMF bank on split planes, the cached bit
 reader and table Huffman decoder, one transform scratch a substream); the same streams on the tree
@@ -289,14 +293,14 @@ inside it, the stage table gives.
 
 ### What it decodes in real time
 
-At 360 MHz with the network up, the AC-4 decoder keeps up with real time for 2.0 in SIMPLE mode,
-which takes 0.53 of a frame, and 2.0 in A-SPX mode, which takes 0.74. Nothing wider does. 5.1 takes
-1.4 to 4.1 times a frame's duration to 5.1, one for each of the four codec modes, and 1.4 to 4.5
-folded to 2.0. 5.1.4 in full decoding takes 2.8 to 3.7 to its own layout and 2.5 to 3.4 folded to
-2.0, and core decoding 2.3 to 3.1 to 5.1.4 and 2.1 to 2.9 to 2.0. The converter's four frame rates
-take 5.6 to 6.6, of which the converter is 84 to 88%. Before D14a's third part the same streams took
-0.86 and 1.04 at 2.0, 3.5 to 6.7 at 5.1 and 5.4 to 6.1 at 5.1.4: the part made a frame 1.1 to 2.5
-times faster, and the converter's streams not at all.
+At 360 MHz with the network up, the AC-4 decoder keeps up with real time, to a 2.0 layout, for 2.0
+streams in SIMPLE mode, which take 0.53 of a frame, and in A-SPX mode, which take 0.74. Nothing
+wider does. 5.1 takes 1.4 to 4.1 times a frame's duration to 5.1, one for each of the four codec
+modes, and 1.4 to 4.5 folded to 2.0. 5.1.4 in full decoding takes 2.8 to 3.7 to its own layout and
+2.5 to 3.4 folded to 2.0, and core decoding 2.3 to 3.1 to 5.1.4 and 2.1 to 2.9 to 2.0. The
+converter's four frame rates take 5.6 to 6.6, of which the converter is 84 to 88%. Before D14a's
+third part the same streams took 0.86 and 1.04 at 2.0, 3.5 to 6.7 at 5.1 and 5.4 to 6.1 at 5.1.4:
+the part made a frame 1.1 to 2.5 times faster, and the converter's streams not at all.
 
 Beside them, AC-3 and E-AC-3 through the same image, network and server, decoder time as above:
 
@@ -308,7 +312,13 @@ Beside them, AC-3 and E-AC-3 through the same image, network and server, decoder
 
 The probe above, with no network and other streams, has 0.18 for 5.1 and 0.43 for 7.1.4. A 2.0
 AC-4 stream in SIMPLE mode takes 2.7 times as long per second of audio as E-AC-3 5.1, and a 5.1
-AC-4 stream 7 to 21 times.
+AC-4 stream played to 5.1 takes 7 to 21 times as long.
+
+The board's `float` output equals the host's and the Cortex-M3 leg's on the probe's five fixtures,
+and the host's on 15 of the twenty plays and all six core-decoding plays. On the other five, the
+plays with companding, which is on in stereo A-SPX at these rates, some samples differ: over 24
+frames of one such stream, 8,960 of 92,160, by a median of one unit in the last place and at most
+12,307 ([below](#float-output-on-the-host-the-cortex-m3-leg-and-the-board)).
 
 ### Decode time and memory
 
@@ -409,7 +419,7 @@ banks 5.0, which are 22% of it and 29% of a 5.1 SIMPLE frame's 60.7. The inverse
 ms at 5.1 in three modes and A-CPL mode 3 118 ms, two thirds of that play's frame. Parse grows with
 the bit rate: 5.4 to 6.6 ms in stereo (11.3 at 29.97 fps), 7.3 to 12.5 at 5.1 and 13.9 to 24.9 at
 5.1.4. A-SPX takes 5.2 to 7.1 ms in stereo (8.8 at 29.97 fps), 6.7 to 16.6 at 5.1 and 21.1 to 38.1
-at 5.1.4. A-CPL mode 2 takes 29 ms at 5.1 (43 at
+at 5.1.4. A-CPL mode 2 takes 29 ms at 5.1 (42 to 43 at
 5.1.4), the same at 2.0 as at 5.1 because its decorrelators run before the fold. The QMF banks
 take 1.1 to 1.4 ms a channel-frame for analysis and 1.1 to 1.6 for synthesis, with exceptions under
 the default policy: synthesis in `51-music-96` at 2.0 took 13.6 ms a channel (1.3 with the 512-byte
@@ -520,7 +530,9 @@ and goes to the board with `tools/hearth/ota.py push`. A play's location can car
 for core decoding and `?hash=off` for a play without the hash. A play ends with `ac4.lap` (frames,
 samples, the decoder's time, the worst frame's, the hash), `ac4.heap` and one `play.stage[...]`
 line for each stage. The packer leaves the AC-4 sources out of the archive unless it is given
-`--with-ac4`, and `--verify` then builds an ESP32-P4 project against the archive.
+`--with-ac4`; with `--verify` it then builds a throwaway project against the archive for each of
+the manifest's parts that has a floating-point unit, with the decoder switched on and constructed.
+CI narrows that to the ESP32-P4 with `--verify-targets esp32p4`.
 
 ## QEMU
 
@@ -568,12 +580,13 @@ the same reason (see that step's own comment).
 ## Where to go next
 
 - [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) —
-  the plan this page is Phase P1 of; Phase P2 is a networked shape (Ethernet or the onboard C6
-  over `esp_hosted`) onto TDM and a pair of ES9080 DACs.
+  the plan this page is Phase P1 of, with the Ethernet shape (P2, for a board that has a PHY,
+  which this one does not) and the Wi-Fi shape over the onboard C6 and `esp_hosted` (P3), both
+  onto TDM and a pair of ES9080 DACs, and where each stands.
 - [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md) —
   phase D14b, of which the [AC-4](#ac-4) section is the measurement, and D14a's third part, which
   reworks what it found to cost most.
 - [ESP32-S3](esp32-s3.md) — the "better" tier, hardware-verified, the primary Wi-Fi Sendspin sink.
-- [ESP32-C6](esp32-c6.md) — the "good" tier, and the sibling page with the same "no QEMU for this
-  part" gap.
+- [ESP32-C6](esp32-c6.md) — the "OK" tier (a C61 is proposed as "good" between it and the S3), and
+  the sibling page with the same "no QEMU for this part" gap.
 - [Bare metal overview](index.md) — how the pages in this section relate.

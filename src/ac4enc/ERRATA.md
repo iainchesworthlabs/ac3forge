@@ -6,10 +6,11 @@ The readings this encoder takes where ETSI TS 103 190-1 V1.4.1 (Part 1) and ETSI
 
 The evidence for a reading is one of:
 
-- **Readers**: what the encoder writes is read back as written. The decoder's reader, the Python parser
-  (`tools/references/ac4_syntax.py`) and the encoder's own trace agree record for record on every stream
-  the tests, the fuzz target `fuzz_ac4_encode` and the encoder-space harness
-  (`tools/ci/fuzz_ac4_encoder_space.py`) write, and FFmpeg's raw AC-4 and mov demuxers frame them.
+- **Readers**: what the encoder writes is read back as written. The decoder's reader and the encoder's own
+  trace agree record for record on every stream the tests and the fuzz target `fuzz_ac4_encode` write. The
+  encoder-space harness (`tools/ci/fuzz_ac4_encoder_space.py`) holds them and the Python parser
+  (`tools/references/ac4_syntax.py`) to one trace on every stream it writes, and FFmpeg's raw AC-4 and mov
+  demuxers frame them.
 - **Streams**: DEE's streams, or a reader outside this project, settle it.
 - **Text**: the text alone.
 
@@ -189,8 +190,8 @@ equal on every ASPX stream they write:
 
 ### The CRC of a sync frame
 
-- **Where:** Part 2 Annex G.4.2 gives the generator polynomial and initial state of `crc_word`, and G.3.1
-  places it after the raw frame.
+- **Where:** Part 1 Annex G.4.2, p. 316, gives the generator polynomial and initial state of `crc_word`, and
+  G.3.1, p. 315, places it after the raw frame; Part 2 Annex C points at that annex.
 - **Reading:** the CRC-16 of polynomial 0x8005, from 0, over `frame_size` (two bytes, or five with the
   24-bit extension) and the raw frame.
 - **Evidence:** Streams. The inspector's check of this coverage passes on every frame of DEE's 0xAC41
@@ -207,9 +208,13 @@ equal on every ASPX stream they write:
 
 ### An MP4 track's channel count
 
-- **Where:** Part 2 E.4.5: `channelcount` of the `ac-4` sample entry "should be set to 2".
-- **Reading:** 2, for mono as for stereo; the presentation says what the stream holds.
-- **Evidence:** Text. FFmpeg's mov demuxer reads the track.
+- **Where:** Part 2 E.4, Table E.3, p. 223: `channelcount` of the `ac-4` sample entry "shall be ignored" on
+  decoding and, on encoding, "should be set to the total number of audio output channels of the first
+  presentation of that track".
+- **Reading:** 2, for mono and for a multichannel first presentation as for stereo. The `dac4` says what
+  the stream holds and a reader ignores this field, so the writer departs from the text's "should" for
+  every presentation of other than two channels.
+- **Evidence:** Text, for the two rules; nothing reads the value. FFmpeg's mov demuxer reads the track.
 
 ## The 5.X and 7.X elements
 
@@ -590,7 +595,7 @@ sample (E.3) and listing each sample's flags where a fragment holds a frame that
 
 - **Where:** Part 1 4.3.12.2.1: the dialogue level in 0.25 dB steps from 0 to -31.75 dBFS.
 - **Reading:** `dialnorm_bits` is the level's magnitude over 0.25, rounded; `ac3cli ac4-encode`'s
-  `dialnorm=` gives it in whole decibels, as the AC-3 encoders take it.
+  `dialnorm=` takes it in steps of 0.25 dB from 0 to 31.75, as the field is coded.
 - **Evidence:** Readers.
 
 ### A drc_frame() with no DRC
@@ -626,8 +631,8 @@ The writer takes the decoder's reading of each of these (phase E5):
 - **Reading:** the formula's: the size counts `drc_version`'s two bits and `drc_gains()`, which is what
   a reader skipping a gainset by its size needs. The decoder accepts either reading at `drc_version` 0
   ([drc_gainset_size does and does not count drc_version](../ac4dec/ERRATA.md#drc_gainset_size-does-and-does-not-count-drc_version)).
-- **Evidence:** Readers. Transmitted gains are experimental (`experimental=drc-gains`): no stream DEE
-  writes sends them.
+- **Evidence:** Readers. Transmitted gains are experimental (`experimental=drc-gains-0` to
+  `drc-gains-3`, one for each DRC mode): no stream DEE writes sends them.
 
 ## Presentations
 
@@ -740,7 +745,7 @@ these:
   effects. A presentation of one substream group, which gives it no other role, may also play it alone,
   so long as a music and effects presentation carries it as dialogue. 3.0 as main or associated audio, or
   as dialogue beside a complete main, is refused. The 3.0 element is experimental
-  (`experimental.three_zero`): no DEE stream has one.
+  (`experimental=three-zero`): no DEE stream has one.
 - **Evidence:** Readers. The decoder and the Python parser read the committed 3.0 stream
   (`tests/golden/ac4dec/presentations/encoder-three-zero.ac4`) as the encoder wrote it, MediaInfo lists
   it as configured, and the decoder mixes the dialogue channel to channel into the music and effects'
@@ -806,8 +811,8 @@ these:
 - **Reading:** the presentation's main or music and effects substream's input alone. The decoder's side
   chain is the mix of the substreams ([Where the substreams are mixed](../ac4dec/ERRATA.md#where-the-substreams-are-mixed)),
   so these gains leave the dialogue's and the associated audio's level out; transmitted gains are
-  experimental (`experimental=drc-gains`), and computing them from the mix, with the presentation's
-  gains, pans and scaling, is left for later.
+  experimental (`experimental=drc-gains-0` to `drc-gains-3`), and the encoder does not compute them from
+  the mix, with the presentation's gains, pans and scaling.
 - **Evidence:** Text.
 
 ## Rates
