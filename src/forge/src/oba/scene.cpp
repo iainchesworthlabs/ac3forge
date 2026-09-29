@@ -15,8 +15,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/placement.hpp"
 #include "scene_text.hpp"
 
 namespace ac3::oba {

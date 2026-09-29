@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "ac3/export.hpp"
-#include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/placement.hpp"
 
 // Per-object placement as a function of time. AtmosEncoder::encode_frame
 // already takes a fresh ObjectPlacement every call and ramps the bed

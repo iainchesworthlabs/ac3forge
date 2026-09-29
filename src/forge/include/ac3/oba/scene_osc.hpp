@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "ac3/export.hpp"
-#include "ac3/oba/atmos.hpp"
+#include "ac3/oba/placement.hpp"
 
 // The OSC 1.0 wire form of a live scene update - the third reader of a
 // per-object placement, beside the JSON and keyframe-text forms in scene.hpp

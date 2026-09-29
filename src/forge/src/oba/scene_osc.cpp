@@ -14,8 +14,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/placement.hpp"
 
 // OSC 1.0, transcribed from the published specification
 // (opensoundcontrol.org, "OSC 1.0 Specification") one grammar element at a
