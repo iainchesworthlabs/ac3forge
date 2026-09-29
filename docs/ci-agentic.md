@@ -71,7 +71,11 @@ a time; nothing has shown that overlapping them breaks them, and the gate curren
 the CPU count to find out, because that phase is the longest part of a warm run. The throughput
 guards (label `Performance`) run alone last. A failing case is retried once, and a
 case that fails and then passes is reported as a warning, since that can be two tests sharing a
-resource. When a run fails, its summary page lists the compiler errors or the failed tests and the
+resource. A parallel phase that still has failures runs them again one at a time: a test that
+passes alone passes the phase, with a warning that names it, and one that fails alone is a
+failure. That rule exists because a concurrency test whose threads had not started when its main
+thread finished failed on every hosted Windows run, twice in a row in some of them, and refused a
+queue entry for a change that broke nothing. When a run fails, its summary page lists the compiler errors or the failed tests and the
 command that reproduces them. The checks that only need the built binaries (the gold-reference
 gate, the GUI smoke test, the translation checks) run whenever the build succeeded, even if a test
 failed, so one run reports every failure.
