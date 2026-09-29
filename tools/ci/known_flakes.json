@@ -1,0 +1,38 @@
+[
+  {
+    "id": "runner-lost",
+    "job": ".*",
+    "pattern": "The runner has received a shutdown signal|lost communication with the server",
+    "why": "A self-hosted or spot runner died mid-job. GitHub reports it as an annotation, and the job's log is usually gone (BlobNotFound), so the annotation is the evidence."
+  },
+  {
+    "id": "apt-mirror",
+    "job": ".*",
+    "pattern": "Mirror sync in progress|File has unexpected size \\([0-9]+ != [0-9]+\\)|E: Failed to fetch \\S+\\s+(404|502|503)",
+    "why": "An Ubuntu mirror served an index or a pool file it did not have. Every apt step already retries three times, so seeing this means the mirror stayed bad for over a minute."
+  },
+  {
+    "id": "launchpad-503",
+    "job": "AppImage",
+    "pattern": "lazr\\.restfulclient\\.errors\\.ServerError: HTTP Error 503",
+    "why": "Launchpad answered 503 while add-apt-repository fetched a PPA for the AppImage leg."
+  },
+  {
+    "id": "android-sdk-zip",
+    "job": "Android",
+    "pattern": "Error on ZipFile unknown archive",
+    "why": "sdkmanager downloaded a truncated SDK package before anything was built."
+  },
+  {
+    "id": "qemu-restart-segfault",
+    "job": "ESP32",
+    "pattern": "QEMU exited with status -11",
+    "why": "A fresh QEMU segfaulted at restart with an empty board console: a QEMU signal, not the board's firmware."
+  },
+  {
+    "id": "hdiutil-busy",
+    "job": "macOS",
+    "pattern": "hdiutil: create failed - Resource busy",
+    "why": "CPack's DMG step lost a race for the disk-image driver on a GitHub-hosted macOS runner."
+  }
+]

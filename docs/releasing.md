@@ -182,7 +182,7 @@ Most of what used to be a manual post-release checklist here is now automated (r
    uses - but does need "Allow GitHub Actions to create and approve pull requests" enabled under
    Settings > Actions > General > Workflow permissions, if it is not already.
 4. `tools/checks/check_packaging_versions.sh -r .` also carries a latest-tag advisory now (still
-   run as `ci.yml`'s `packaging-consistency` job on every push): a `::warning::`, never a failure,
+   run in the static checks (`_static.yml`) on every pull request and queue entry): a `::warning::`, never a failure,
    per manifest that does not yet match the latest tag - see that script's own header for why
    this stayed a warning rather than becoming a hard gate.
 

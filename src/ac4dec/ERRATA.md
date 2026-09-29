@@ -441,7 +441,11 @@ encoder's writers, and the differential check, which mutates them, reach the res
 - **Reading:** each portion's objects are, in order, the LFE where `b_lfe` is set (so `is_lfe[0]` is the
   LFE, as the syntax sets it), the objects the portion's `bed_dyn_obj_assignment()` lists, and dynamic
   objects to make up the portion's fullband count. An assignment of more objects than that count, which
-  §6.3.2.8.1 leaves undefined, is refused as invalid. An object's metadata and its essence pair by that
+  §6.3.2.8.1 leaves undefined, is refused as invalid. A portion of more objects than an OAMD portion holds
+  (64) is refused as unsupported, whatever count the stream sends: `n_fullband_upmix_signals` escapes
+  through `variable_bits(3)`, which the syntax bounds no further, so the list of its objects is built no
+  further than one past 64, and a count that does not fit an `int` is kept as `INT_MAX`. An object's
+  metadata and its essence pair by that
   order: the LFE is the downmix's LFE, `Q'inAJOC[0]`, and the reconstruction's `QoutAJOC[o]` is the `o`th
   object after it; Pseudocode 15's position is an order of output, not a pairing.
 - **Why:** the portions' metadata are read in the order the syntax lists the objects, and `is_lfe[0]` is

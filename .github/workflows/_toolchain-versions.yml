@@ -20,6 +20,15 @@ name: Resolve pinned toolchain versions
 
 on:
   workflow_call:
+    inputs:
+      runner:
+        description: >-
+          Runner labels as a JSON array, e.g. ["ubuntu-latest"]. Empty (the
+          default) keeps the routing described on `resolve` below, through
+          vars.CONTROL_RUNNER_JSON. pr-gate.yml passes its own so the gate's
+          pipeline does not wait on the self-hosted fleet for a ten-second job.
+        type: string
+        default: ""
     # No longer read by anything in this file (its internal check-runner
     # job is gone - `resolve` routes via vars.CONTROL_RUNNER_JSON, see the
     # jobs comment below), but the declaration stays: a caller passing a
@@ -74,7 +83,7 @@ jobs:
   # fleet even when no step executes it.
   resolve:
     name: Resolve pinned toolchain versions
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    runs-on: ${{ inputs.runner != '' && fromJSON(inputs.runner || '["ubuntu-latest"]') || ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]')) }}
     outputs:
       gcc_version: ${{ steps.read.outputs.gcc_version }}
       llvm_version: ${{ steps.read.outputs.llvm_version }}

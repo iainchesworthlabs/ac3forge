@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <set>
 #include <string_view>
@@ -992,4 +993,101 @@ TEST_CASE("a substream named by two object elements is read as the first names i
     CHECK(find(report, 0).kind == SubstreamReport::Kind::kOamd);
     check_refused(find(report, 0), DecodeError::kMissingIFrame);
     CHECK(find(report, 0).refused_reason.find("oamd_timing_data") != std::string_view::npos);
+}
+
+namespace {
+
+// One object group of two A-JOC substreams, and the presentation substream
+// after them. Substream 0 sends `upmix_signals` fullband upmix signals
+// (through n_fullband_upmix_signals_minus1's escape from 16 on) and the LFE
+// where `b_lfe`; substream 1 sends one signal. Neither has audio: the first is
+// refused before it is read where it has too many, and the second shows that
+// the group's next substream is reached all the same.
+std::vector<std::byte> ajoc_upmix_signals_frame(std::uint32_t upmix_signals, bool b_lfe) {
+    BitWriter toc;
+    ac4_toc_test::toc_start(toc, {});
+    PresV1 p;
+    p.presentation_substream = 2;
+    ac4_toc_test::presentation_v1(toc, p);
+    toc.flag(true);   // b_substreams_present
+    toc.flag(false);  // b_hsf_ext
+    toc.flag(false);  // b_single_substream
+    toc.put(0, 2);    // two substreams
+    toc.flag(false);  // b_channel_coded
+    toc.flag(false);  // b_oamd_substream
+    for (int index = 0; index < 2; ++index) {
+        const std::uint32_t signals = index == 0 ? upmix_signals : 1;
+        toc.flag(true);                 // b_ajoc
+        toc.flag(index == 0 && b_lfe);  // b_lfe
+        toc.flag(true);                 // b_static_dmx
+        toc.flag(false);                // b_oamd_common_data_present
+        if (signals < 16) {
+            toc.put(signals - 1, 4);  // n_fullband_upmix_signals_minus1
+        } else {
+            toc.put(15, 4);                      // the escape: 16 signals and
+            toc.variable_bits(signals - 16, 3);  // as many more as it says
+        }
+        toc.flag(true);   // bed_dyn_obj_assignment(): b_dyn_objects_only
+        toc.flag(false);  // b_sf_multiplier
+        toc.flag(false);  // b_bitrate_info
+        toc.flag(true);   // b_audio_ndot
+        ac4_toc_test::substream_index(toc, index);
+    }
+    toc.flag(false);  // b_content_type
+    const std::vector<std::byte> blank(4, std::byte{0});
+    const std::vector<std::vector<std::byte>> substreams = {blank, blank, presentation(1, true)};
+    ac4_toc_test::index_table(toc, ac4_toc_test::sizes_of(substreams));
+    toc.align();
+    return ac4_toc_test::assemble(toc, substreams);
+}
+
+}  // namespace
+
+// Regression: n_fullband_upmix_signals escapes through variable_bits(3), which
+// the syntax bounds no further, and the decoder listed that many objects for
+// every A-JOC substream of a group before it checked how many one may
+// describe. The 391-byte frame at fuzz/regressions/fuzz_ac4_decode/
+// ajoc-upmix-signals-runaway-count sends 1,227,133,139, and fuzz_ac4_decode
+// stopped on malloc(3221225472) as the list grew. The substream is refused as
+// unsupported without one, as it is at any count over the limit.
+TEST_CASE("an A-JOC substream of more upmix signals than the decoder describes is refused unread",
+          "[ac4dec][frames]") {
+    struct Case {
+        std::uint32_t signals;
+        bool b_lfe;
+        bool refused;
+    };
+    // An OAMD portion holds 64 objects, and the LFE is one of them.
+    for (const Case c :
+         {Case{64, false, false}, Case{65, false, true}, Case{63, true, false},
+          Case{64, true, true}, Case{1U << 30, false, true}, Case{0x8000'0000U, false, true},
+          Case{0xFFFF'FFFFU, false, true}, Case{0xFFFF'FFFFU, true, true}}) {
+        CAPTURE(c.signals, c.b_lfe);
+        const std::vector<std::byte> frame = ajoc_upmix_signals_frame(c.signals, c.b_lfe);
+        const auto report = decode(frame);
+        REQUIRE(report.substreams.size() == 3);
+        const SubstreamReport& first = find(report, 0);
+        const bool too_many =
+            first.refused == DecodeError::kUnsupported &&
+            first.refused_reason.find("more A-JOC objects") != std::string_view::npos;
+        CHECK(too_many == c.refused);
+        if (c.refused) {
+            check_refused(first, DecodeError::kUnsupported);
+            CHECK(first.bits_read == 0);
+        }
+        // The group's next substream is reached: its four zero bytes are what
+        // refuse it.
+        check_refused(find(report, 1), DecodeError::kTruncated);
+        check_read(find(report, 2), SubstreamReport::Kind::kPresentation);
+
+        // The count itself is the table of contents' to report; one past
+        // what an int holds is kept as INT_MAX, not wrapped to a negative
+        // count that would be refused as invalid instead.
+        const auto parsed = ac4::parse_raw_frame(frame);
+        REQUIRE(parsed.has_value());
+        const ac4::AjocSubstreamInfo& ajoc =
+            *parsed->toc.substream_groups.at(0).substreams.at(0).ajoc;
+        constexpr std::uint32_t kIntMax = std::numeric_limits<int>::max();
+        CHECK(ajoc.n_fullband_upmix_signals == static_cast<int>(std::min(c.signals, kIntMax)));
+    }
 }
