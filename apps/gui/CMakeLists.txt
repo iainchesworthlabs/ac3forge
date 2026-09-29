@@ -374,12 +374,12 @@ elseif(APPLE)
     target_sources(ac3gui PRIVATE "${AC3_GUI_ICON_ICNS}")
     set_target_properties(ac3gui PROPERTIES MACOSX_BUNDLE_ICON_FILE ac3forge.icns)
 
-    # GUI AppStream packaging: a custom Info.plist (Info.plist.in, beside this file) so
-    # .ac3/.ec3 get CFBundleDocumentTypes/UTExportedTypeDeclarations - the
-    # default Info.plist CMake generates when MACOSX_BUNDLE_INFO_PLIST is
-    # left unset carries neither, and supplying a template of our own means
-    # opting out of that default entirely, so every variable it would have
-    # substituted is set explicitly here too. These are plain CMake
+    # GUI AppStream packaging: a custom Info.plist (Info.plist.in, beside this file). It
+    # carried .ac3/.ec3's CFBundleDocumentTypes/UTExportedTypeDeclarations until
+    # ac3hearth took them over (Info.plist.in says why) and declares none now. Supplying
+    # a template of our own means opting out of the default Info.plist CMake
+    # generates when MACOSX_BUNDLE_INFO_PLIST is left unset, so every variable
+    # that default would have substituted is set explicitly here too. These are plain CMake
     # variables (not target properties) because that is what CMake's own
     # bundle-generation logic - the same logic MACOSX_BUNDLE_ICON_FILE's
     # target property above already reaches through - substitutes into

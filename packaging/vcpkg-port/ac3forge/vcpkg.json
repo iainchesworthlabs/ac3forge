@@ -27,7 +27,7 @@
       "description": "Standalone MPEG-2 Transport Stream container writer (mpegts::mpegts) - depends on nothing in ac3::forge"
     },
     "capi": {
-      "description": "Stable, minimal C11 API over the encode/decode core (ac3::forge_c) - for bindings and embedding by callers that cannot or do not want to link C++23"
+      "description": "Stable, minimal C11 API over the AC-3 and E-AC-3 encode/decode core, and over AC-4 when the ac4 feature is also on (ac3::forge_c) - for bindings and embedding by callers that cannot or do not want to link C++23"
     },
     "ac4": {
       "description": "AC-4 (ETSI TS 103 190) sync frame and table of contents reader, decoder and encoder (ac4::ac4, ac4::decoder, ac4::encoder) - depends on nothing in ac3::forge"

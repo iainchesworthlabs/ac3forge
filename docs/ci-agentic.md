@@ -99,6 +99,18 @@ where a library change and a GUI caller written against the old API first meet. 
 once per entry, on GitHub's `windows-latest`. Entries build in parallel and merge in groups, per
 the `merge-queue-main` ruleset (see [branch protection](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)).
 
+An entry that changes `src/` also runs two comparisons ([`_compare.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_compare.yml)):
+the encoder's speed (`ac3bench` and `ac3kernelbench`) and its heap churn (`ac3membench`), built and
+measured at the commit the entry is queued on, which is main or the entry ahead of it, and at the
+entry's head. A workload that takes twice as long, or whose heap churn at least doubles, fails the
+entry, unless its pull request carries the `perf-regression-approved` or
+`memory-regression-approved` label. The gate reads the label when it runs, so add it before the
+entry gets there, or after a failure and queue the pull request again. A comparison that cannot
+measure, such as a build that flaked, blocks nothing. The comparisons run beside the Windows job and
+take less time than it, so a queue entry waits no longer for them. They took 5 to 10 minutes each on
+the fleet before the gate replaced `ci.yml` on pull requests. Their tables are in the summary of
+each job, and the trend jobs after a merge fail at the same +100% thresholds, after the fact.
+
 ## After the merge
 
 `ci.yml` runs on every push to main, but only one run executes at a time and at most one waits,
@@ -157,7 +169,9 @@ The run after a merge also picks its lanes from what changed. It lists the files
 `verified` (the range a failure is blamed on) and runs the lanes they touch, so a batch of
 documentation or a Python-only change builds little or nothing. A satellite lane runs only when a
 path in its own tree changed: a change to the core library lights the desktop platforms and reaches
-the satellites in the nightly run. Anything the classifier does not recognise, and any change to
+the satellites in the nightly run. The ESP-IDF lane also lights for the trees its component ships
+(`src/forge/`, `src/arithmetic/`, `cmake/` and the root `CMakeLists.txt`), because a change there is
+what breaks its package and its QEMU images. Anything the classifier does not recognise, and any change to
 the workflows themselves, lights every lane. With no `verified` ref yet, every lane runs.
 
 The nightly run is wanted at about 19:47 UTC. GitHub starts this repository's scheduled workflows
@@ -174,13 +188,6 @@ is a cheap way to see what that run will cost a change.
 The leg and job placement is a decision, and it is in three places: `tier` and `deep_only` in
 `.github/ci/legs.jsonc`, the `inputs.tier` conditions in `_ci-core.yml` and `_build.yml`, and the
 satellite rule in `classify_changes.py`. Moving something between tiers is a change to one of them.
-
-Two comparisons made only on pull requests, `performance-compare` and `memory-compare` in
-`_ci-core.yml` with their `perf-regression-approved` and `memory-regression-approved` labels, have
-not run since the gate replaced `ci.yml` on pull requests. Their absolute guards still do: `ac3perf`
-runs in the gate, and the performance and memory trend jobs after a merge fail at the same +100%
-thresholds, after the fact. Bringing the comparisons back before the merge would cost two Release
-builds per pull request that touches `src/`, and the compiler cache makes the base build cheap.
 
 ## The legs
 
@@ -234,9 +241,11 @@ builds without it and says so in a warning.
 |---|---|
 | repository variable `GATE_RUNNER_JSON` | Runner labels for the gate's Linux and control jobs, e.g. `["self-hosted","Linux","X64"]`. Unset means `ubuntu-latest`. Fork pull requests stay hosted regardless. |
 | repository variable `GATE_WINDOWS_RUNNER_JSON` | Runner labels for the Windows job. Unset means `windows-latest`. |
+| repository variable `GATE_COMPARE_RUNNER_JSON` | Runner labels for the queue's performance and memory comparisons. Unset means `GATE_RUNNER_JSON`, then `ubuntu-latest`. They time two builds against each other, which a dedicated fleet machine does with less noise. |
 | repository variable `CONTROL_RUNNER_JSON` | Control jobs of `ci.yml`, as before. |
 | `pr-gate.yml` input `windows` | Adds Windows MSVC to a dispatched run. |
 | `pr-gate.yml` input `save_cache` | Saves the compiler caches from a dispatched run. |
+| `pr-gate.yml` inputs `compare`, `compare_base`, `compare_pr` | Runs the performance and memory comparisons on a dispatched run, against `compare_base` (empty means main), reading the approval labels of pull request `compare_pr` (empty means none does). |
 | `ci.yml` input `legs` | Comma-separated presets. A dispatch runs exactly those build legs and nothing else. |
 | `ci.yml` input `tier` | `all` (the default) or `t2`: the legs of the run after a merge, without their nightly-only passes. With `legs`, `t2` runs those legs that way. |
 | label `ci:deep` on a pull request | Runs `ci.yml` (tier `all`) on the pull request's branch. Add it again to run it again. The label has to exist in the repository. |

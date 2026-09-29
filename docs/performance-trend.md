@@ -9,11 +9,13 @@ Five separate mechanisms, not one, and it matters which is which:
   Not run under the ASan/UBSan leg: instrumented code has nothing useful to say about
   throughput at any slack factor, so that leg excludes the `Performance` label entirely
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
-- **The pull-request comparison and gate**: `performance-compare` measures the
-  PR head against its merge base and publishes the table. Its infrastructure is
-  informational (`continue-on-error`), but an explicit hard-regression verdict
-  is passed to the separate blocking `performance-gate` job. No measurement or
-  an approved `perf-regression-approved` label passes the gate.
+- **The merge queue's comparison and gate**: for an entry that changes `src/`,
+  `performance-compare` (`_compare.yml`, called from `pr-gate.yml`) measures the
+  entry's head against the commit it is queued on and publishes the table. Its
+  infrastructure is informational (`continue-on-error`), but an explicit
+  hard-regression verdict is passed to the separate blocking `performance-gate`
+  job. No measurement or an approved `perf-regression-approved` label on the
+  pull request passes the gate.
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
   runs the same configurations for longer (200 frames) and records the actual
   ms/frame number, not just a pass/fail, on every push to `main`. It exists
@@ -609,19 +611,22 @@ already-merged commit, blocking nothing and belonging to whoever pushed next.
 The E-AC-3 encode step from 67 to 199 allocs/frame in 2026-08 (issue #544) is
 exactly how it was found: the gate fired on the merge, and by then the merge
 was the thing it was reporting on. The
-`Memory vs merge base` job (`tools/ci/compare_memory.py`) closes that: it
-builds `ac3membench` at the pull request's head and at its merge base and runs
+`Memory vs base` job (`tools/ci/compare_memory.py`, in `_compare.yml`, run for a
+merge queue entry that changes `src/`) closes that: it
+builds `ac3membench` at the entry's head and at the commit it is queued on and runs
 each once, comparing the same two churn metrics against the same thresholds,
 imported from `append_memory_history.py` so the two gates cannot disagree. One
 run per side is the whole measurement - these counts do not move between runs
 of a fixed binary, which is why this gate needs none of the repetition and
-interleaving the `Performance vs merge base` job uses to see past timing
-noise. Its hard tier fails the `Memory gate` check;
+interleaving the `Performance vs base` job uses to see past timing
+noise. Its hard tier fails the `Memory gate` job, and with it the queue entry;
 `memory-regression-approved` on the pull request turns that back into an
-annotation, the way `perf-regression-approved` does for speed.
+annotation, the way `perf-regression-approved` does for speed. The gate reads
+the label when it runs, so add it before the entry gets there, or after a
+failure and queue the pull request again.
 
 In that pre-merge job the leak check keeps its absolute thresholds but applies
-them to what the branch changed - crossing a threshold the merge base was
+them to what the entry changed - crossing a threshold the base was
 under, or growing by more than one. Three of the six workloads already retain
 bytes across their steady state and two of them sit past the 4 KiB warn line,
 so a per-PR check copied over unchanged would annotate every pull request for
