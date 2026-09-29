@@ -1,9 +1,10 @@
 # ac3cli
 
-`ac3cli` is the command-line front end over `ac3::forge` — 44 commands covering
+`ac3cli` is the command-line front end over the ac3forge library — 44 commands covering
 synthesis, file encoding/decoding, container wrapping, inspection, live capture/playback, and the
-tool's own self-description (`help`, `man`, `completions`).
-Two of the 43 (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
+tool's own self-description (`help`, `man`, `completions`). It reads and writes AC-3, E-AC-3 (with
+the Atmos object layer) and AC-4; the [Commands](commands.md) page says which command takes which.
+Two of the 44 (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
 `-DAC3FORGE_BUILD_ADM=ON`, but are always *listed* — the same "shown, not hidden" treatment
 this page's own live-audio commands get when the platform can't run them either (see
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
@@ -32,23 +33,26 @@ prebuilt archives, Homebrew, winget, and source-build paths.
 ac3cli --version
 ```
 
-Prints the semantic version plus git provenance — commit, branch, and a dirty flag. The version
-itself is derived from the nearest reachable `v*` git tag at configure time, so it tracks the
-latest release tag (see [Releasing](../../releasing.md) and `cmake/GitVersionDerivation.cmake`);
-the rest is stamped in at build time by `cmake/GenerateVersion.cmake`:
+Prints the semantic version plus git provenance — commit, branch, the build target, the vector
+kernel set the codec was compiled with, and a dirty flag. The version itself is derived from the
+nearest reachable `v*` git tag at configure time, so it tracks the latest release tag (see
+[Releasing](../../releasing.md) and `cmake/GitVersionDerivation.cmake`); the rest is stamped in at
+build time by `cmake/GenerateVersion.cmake`. A build from past the tag looks like this:
 
 ```
-ac3forge 0.5.0-beta.1
-  release: v0.5.0-beta.1
-  commit:  971a547390ff21560e370fb5cb2a22ef362f75de
+ac3forge 0.10.0-beta.1+2637
+  release: v0.10.0-beta.1-2637-g8d797cb05
+  commit:  8d797cb05765bacfc61ef23c72429d8fd3aff045
   branch:  main
-  target:  Windows x86_64 (MSVC 1951)
+  target:  Windows x86_64 (MSVC 19.51.36260.0)
+  kernels: x86_64-sse2
 ```
 
-A build from past the tag says so in the headline, as semver build metadata: `ac3forge
-0.10.0-beta.1+100` is a hundred commits past `v0.10.0-beta.1` (the `release:` line carries
-git's own describe of it), so it is not mistaken for the tagged release. A tree with
-uncommitted changes adds a `state: dirty` line.
+The headline carries the commits past the tag as semver build metadata: `+2637` is 2 637 commits
+past `v0.10.0-beta.1` (the `release:` line carries git's own describe of it), so a build from
+between releases is not mistaken for the tagged one. `kernels:` is `generic`, `x86_64-sse2` or
+`aarch64-neon`, the `src/arithmetic/arch/` directory the binary was built from. A tree with
+uncommitted changes adds a `state:   dirty (uncommitted changes)` line.
 
 `--version` (or its `-v` alias) is a flag, not one of the 44 commands — it's handled
 before argument parsing and exits immediately. So are `--help` and `-h`, which print the named
@@ -63,11 +67,18 @@ command's own help (or the full listing when no command was named).
   (e.g. `L,C,R,LFE,Vhl,Vhr`) for a channel set none of the named layouts cover — AC-3 accepts
   one too, as long as it needs no dependent substream — see
   [Options & grammars](metadata-options.md) for the full grammar.
-- **`out.ac3` vs. `out.ec3`** is how commands tell AC-3 output from E-AC-3 output; extensions
-  aren't enforced, they're just the convention the examples follow.
-- **`-` means stdin or stdout** for `encode`, `eac3-encode`, `atmos-encode`, `decode`,
-  `strip-objects`, `probe` and `unspdif`'s WAV/AC-3/E-AC-3 path arguments — the conventional Unix
-  pipe convention, so a WAV or stream never needs to touch a disk at all:
+- **`out.ac3`, `out.ec3` and `out.ac4`** are the convention the examples follow. Most commands
+  ignore the suffix: the command decides the codec (`encode` writes AC-3, `eac3-encode` E-AC-3,
+  `ac4-encode` AC-4). Four read it: `transcode` takes its output codec from it (`codec=ac3|eac3|ac4`
+  where the name cannot say, such as `-`), `ac4-encode` and `atmos-encode` with `codec=ac4` write an
+  MP4 file when the name ends in `.mp4`, `.m4a` or `.mov` and a raw stream otherwise, and `remux`
+  picks the container from the extension of its output.
+- **`ac4-encode` takes no `[layout]`.** It takes its layout from the WAV's channel count (1 mono,
+  2 stereo, 5 and 6 5.0 and 5.1, 9 and 10 5.0.4 and 5.1.4; see
+  [`ac4-encode`](commands.md#ac4-encode)), and `record`/`live` with `codec=ac4` take `layout=`
+  from mono, stereo, 5.0 (`layout=L,C,R,Ls,Rs`) and 5.1.
+- **`-` means stdin or stdout** in place of a path, the conventional Unix pipe convention, so a
+  WAV or stream never needs to touch a disk at all:
 
   ```bash
   ac3cli encode - - 448 couple < in.wav > out.ac3
@@ -75,9 +86,18 @@ command's own help (or the full listing when no command was named).
   ```
 
   Everything else about the command is unchanged; only the argument's meaning changes from "open
-  this path" to "use the standard stream instead". Windows needs no special handling on the
-  caller's part — ac3cli puts stdin/stdout into binary mode itself before the first byte crosses
-  either one.
+  this path" to "use the standard stream instead". As an input, `-` reads an encoded stream or
+  container for `decode`, `probe`, `qc`, `levels`, `loudness`, `transcode`, `metadata`,
+  `normalize`, `cut`, `cat` (one of its inputs), `strip-objects`, `demux`, `remux`, `mp4`, `mkv`,
+  `ts`, `fmp4` and `spdif`, IEC 61937 bursts for `unspdif`, and a WAV file for `encode`,
+  `eac3-encode`, `ac4-encode`, `atmos-encode` and `atmos-cbi`; `levels` and `loudness` cannot take
+  a WAV file on `-`. As an
+  output, `-` writes stdout for `encode`, `eac3-encode`, `ac4-encode`, `atmos-encode`,
+  `atmos-cbi`, `decode`, `transcode`, `metadata`, `normalize`, `cut`, `cat`, `strip-objects`,
+  `unspdif`, `demux` and the generators (`silence`, `sine`, `orbit`, `atmos`, `atmos-path`,
+  `eac3-silence`, `eac3-sine`). `mp4`, `mkv`, `ts` and `spdif` take `-` as the name of a file to
+  write, and `remux` refuses it. Windows needs no special handling on the caller's part — ac3cli
+  puts stdin/stdout into binary mode itself before the first byte crosses either one.
 - **Metadata options** (`drc=`, `heavy`, `dialnorm=`, `cmixlev=`, …) can follow the positional
   arguments of any encoding command, in any order — see
   [Options & grammars](metadata-options.md), including which commands ignore which options.
@@ -95,9 +115,10 @@ command's own help (or the full listing when no command was named).
 - **`help <command>`, `--help` and `-h`** print one command's own row and the grammars it uses;
   `man` and `completions <shell>` print a generated man page and shell completion script, all
   four rendered from the same command table so none of them can drift from what dispatch accepts.
-- **Commands needing audio hardware** (`devices`, `record`, `monitor`, `live`, `outputs`, `play`,
-  `spatial`) report themselves unavailable on a build with no capture, passthrough, monitor or
-  spatial backend, rather than failing to link — see the per-OS Platform notes pages
+- **Commands needing audio hardware** (`devices`, `record`, `monitor`, `live`, `outputs`,
+  `identify`, `play`, `spatial`) report themselves unavailable on a build with no capture,
+  passthrough, monitor or spatial backend, rather than failing to link — see the per-OS Platform
+  notes pages
   ([Windows](../../platforms/windows.md), [Linux](../../platforms/linux.md),
   [Raspberry Pi](../../platforms/raspberry-pi.md), [macOS](../../platforms/macos.md),
   [Android](../../platforms/android.md)) for what's actually hardware-confirmed on each OS.

@@ -11,48 +11,49 @@ The six plain Windows/Linux legs in `.github/ci/legs.jsonc`, the matrices of the
 `_ci-windows.yml` and `_ci-linux.yml` (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM,
 Linux LLVM ASan+UBSan, Linux LLVM TSan; each has a `runner_slot`) can each run on a
 self-hosted runner instead of a GitHub-hosted one - whenever the fleet is *online* at all,
-and up to however many runners are online: with the fleet at its normal size (13 Linux, 7
-Windows) that means every leg, and the per-leg fan-out only reappears as graceful
-degradation when most of the fleet is gone (one surviving runner takes one leg,
-the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
-runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
-(Detect changes and the cheap gate jobs) route the same way through its
-`check-runner` job; FFmpeg Validate, ADM Module, ABI gate and Performance vs
-merge base moved into `_ci-core.yml` with the CI lane partitions split
-(docs/ci-lanes.md) but still route through that same decision - `ci.yml`'s
+and up to however many runners are online: with enough of the fleet online that means every
+leg, and the per-leg fan-out only reappears as graceful degradation when most of the fleet is
+gone (one surviving runner takes one leg, the rest overflow to GitHub-hosted). The fleet
+launches runners on demand, so how many are online varies. macOS and the arm64 legs always stay on
+GitHub-hosted runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg
+jobs (Detect changes, and the jobs of the core lane) route the same way through its
+`check-runner` job; ADM Module, Hearth Sendspin, the ABI gate and FFmpeg Validate live in
+`_ci-core.yml` (docs/ci-lanes.md) but still route through that same decision - `ci.yml`'s
 `core` job forwards `check-runner`'s output in as a plain input, since
 `_ci-core.yml`'s jobs cannot reach across the `workflow_call` boundary to
 `needs: check-runner` directly. The Windows wheel leg routes through a
 decider of its own in
 `wheels.yml`. `_build.yml`'s build-footprint, ESP32-S3 and ESP32-C3 jobs use
-Linux runner slots 5-7. One queue entry can put up to three Windows consumers (two
-build legs, the wheel leg) onto the 7-runner Windows fleet at once. The nightly analysis
+Linux runner slots 5-7. A run of `ci.yml` can put up to three Windows consumers (two
+build legs, the wheel leg) onto the Windows fleet at once. The nightly analysis
 workflows (`codeql.yml`, `msvc-analysis.yml`, `static-analysis.yml`) have deciders of their
-own too, but run against `main` once a night rather than per queue entry - see
+own too, but run against `main` once a night rather than per run of `ci.yml` - see
 [Nightly analysis window](#nightly-analysis-window). Several jobs stay on GitHub-hosted deliberately: Coverage (see its
 own comment in `_ci-core.yml` for the undiagnosed shutdown-signal failure); build-wasm /
 build-android / build-rust (they run bare and lean on toolchains the hosted image
 pre-bakes - emsdk, Android SDK/NDK, rustup - that the fleet image does not; route them
-only if/when `ci-runners` bakes those in); Platform Macros (`check_platform_macros.ps1`
-needs pwsh, which the fleet's Linux image does not ship - see the job's own comment in
-`ci.yml`); and the wheels workflow's Linux and macOS legs (the fleet's Python has no pip,
-which `cibuildwheel` needs before it can do anything - see `wheels.yml`'s own comment).
+only if/when `ci-runners` bakes those in); the jobs of `pr-gate.yml`, which run hosted unless
+`GATE_RUNNER_JSON` and `GATE_WINDOWS_RUNNER_JSON` move them; and the wheels workflow's Linux and
+macOS legs (the fleet's Python has no pip, which `cibuildwheel` needs before it can do anything -
+see `wheels.yml`'s own comment).
 
 Control-plane jobs - the `check-runner`/`check-runners` deciders in `ci.yml`, `_build.yml`,
 `codeql.yml` and `static-analysis.yml`, `_toolchain-versions.yml`'s `resolve`, and the
-`CI Status` aggregator -
+`Verify Status` aggregator of `ci.yml` -
 route separately, via the repository variable `CONTROL_RUNNER_JSON` (a runner-label JSON
 array, e.g. `["self-hosted","Linux","X64"]`; unset means `ubuntu-latest`). These are
 seconds-long jobs that everything else waits on, and leaving them on the shared hosted pool
 meant that under saturation a 9-second decider queued for hours behind 25-minute build legs
 before the run could even choose runners (observed 2026-08-28). Deleting the variable is
 the kill switch that returns them all to GitHub-hosted - it is evaluated fresh on every
-run, so a dead self-hosted fleet can never lock the escape hatch shut.
-(`msvc-analysis.yml`'s and `wheels.yml`'s own deciders are pinned to `ubuntu-latest`
-instead and don't read the variable.) Fork PRs are pinned to
-GitHub-hosted unconditionally in `ci.yml`'s and `_build.yml`'s deciders: `check-runner`
-executes `decide-runner` from a checkout of the fork's merge ref, which is fork-controlled
-code (`codeql.yml`'s decider has no `pull_request` trigger and needs no pin).
+run, so a dead self-hosted fleet can never lock the escape hatch shut. The variable is set on this
+repository. (`msvc-analysis.yml`'s and `wheels.yml`'s own deciders are pinned to `ubuntu-latest`
+instead and don't read the variable, and the jobs of `pr-gate.yml` read `GATE_RUNNER_JSON` and
+`GATE_WINDOWS_RUNNER_JSON` instead: [CI for many agents](ci-agentic.md#settings).) Fork PRs are
+pinned to GitHub-hosted unconditionally in every job of `pr-gate.yml`, and in `ci.yml`'s and
+`_build.yml`'s deciders although neither runs on a pull request now: `check-runner` executes
+`decide-runner` from a checkout of the fork's merge ref, which is fork-controlled code
+(`codeql.yml`'s decider has no `pull_request` trigger and needs no pin).
 
 This page describes what ac3forge's CI does with a self-hosted runner once one exists. It
 does not describe how one comes to exist - the fleet itself (Packer images, provisioning
@@ -63,8 +64,8 @@ this one.
 
 ## How the decision gets made
 
-A `check-runners` job runs before the split platform workflows on every
-push/PR/release. It decides a runner-label set for seven Linux consumers (four
+A `check-runners` job runs before the split platform workflows in every run of `_build.yml`, which
+`ci.yml` and `release.yml` call. It decides a runner-label set for seven Linux consumers (four
 self-hosted-eligible matrix legs plus `build-footprint`, ESP32-S3 and ESP32-C3)
 and two Windows legs.
 `_build.yml` passes those labels into the platform workflows, whose matrices use
@@ -80,16 +81,16 @@ Per OS, in order:
    to every leg of that OS - if you force `self-hosted` and nothing is actually online, the
    job queues and waits, which is the expected cost of an explicit override.
 3. **`auto` counts online runners, then fans legs across both pools.** The count comes from
-   up to two API calls, summed:
+   up to two API calls, summed, each reading every page of the list (`--paginate`: the API
+   returns 30 runners a page, and an organisation with 45 once hid all four Windows runners
+   on its second page):
    - This repo's own registered runners (`GET /repos/iainchesworthlabs/ac3forge/actions/runners`,
-     using the workflow's own `GITHUB_TOKEN` - no extra setup). Empty until a runner is
-     actually registered directly against this repo, which may never happen under the
-     org-level model `ci-runners` uses.
+     using the workflow's own `GITHUB_TOKEN` - no extra setup). Empty, because the fleet is
+     registered at the organisation level, the model `ci-runners` uses.
    - `iainchesworthlabs`'s org-level runners (`GET /orgs/iainchesworthlabs/actions/runners`),
-     only attempted if the optional repository secret `ORG_RUNNERS_TOKEN` is set - an
-     org-scoped PAT or GitHub App token with "Self-hosted runners: read". This is what
-     actually starts mattering once the org migration and runner group in `ci-runners` are
-     in place; until then it's simply skipped, not an error.
+     only attempted if the repository secret `ORG_RUNNERS_TOKEN` is set - an org-scoped PAT or
+     GitHub App token with "Self-hosted runners: read". The secret is set on this repository, so
+     this is the count that matters; without it that call is skipped, not an error.
 
    Both counts include every runner that is `online` - busy or not, deliberately; see the
    next section - and labelled with both `self-hosted` and the right OS (`Linux` or
@@ -99,10 +100,6 @@ Per OS, in order:
    (`ubuntu-latest` / `windows-latest`). An online count of zero, or the API call itself
    failing for any reason, sends every leg of that OS to GitHub-hosted - this check being
    unavailable is never a reason to block CI.
-
-Today, before any runner is registered against ac3forge under either model, every leg simply
-keeps building on GitHub-hosted runners - a deliberate no-op, not a bug: the mechanism is
-inert until the infrastructure side catches up.
 
 ## Why the check, not a static switch
 
@@ -161,8 +158,8 @@ at that hour (`codeql.yml`'s decider reads `CONTROL_RUNNER_JSON` the way `ci.yml
 analysis lands on the self-hosted fleet whenever a Linux or Windows runner is online and on
 GitHub-hosted otherwise. `sonarcloud.yml` is the exception: it is pinned to
 GitHub-hosted and never routed, because the CFamily analyser does not fit the fleet's
-12 GB guests (its own header carries the measurements). The fleet is normally idle at
-02:00 UTC, which is the point of the slot. No workflow here asks for the `big` label;
+12 GB guests (its own header carries the measurements). The slot was chosen for a quiet fleet
+at 02:00 UTC. No workflow here asks for the `big` label;
 ac3forge does not use the big runners. A run
 that finds something new (or fails) opens or refreshes a `nightly-analysis` issue through
 `.github/actions/report-nightly-failure` - nothing reliably notifies anyone about a new
@@ -175,16 +172,26 @@ on-the-hour schedules). The agreed split: ac3forge owns 02:00-03:15 UTC on the f
 aqualink-automate takes the 04:00 hour (its code-scanning cron is Tuesday 21:42 UTC weekly
 today, plus per-PR and push runs; the move into 04:xx has not been made yet).
 
-| UTC | Repo | Workflow | Fleet use |
+| Cron (UTC) | Repo | Workflow | Fleet use |
 |---|---|---|---|
-| 02:17 | ac3forge | `codeql.yml` (C++ on self-hosted Linux ~9 min; Python/JS ~2 min) | Linux |
-| 02:23 | ac3forge | `msvc-analysis.yml` (PREfast, ~35 min) | Windows |
-| 02:29 | ac3forge | `static-analysis.yml` (clang-tidy, ~8 min) | Linux |
-| 02:35 | ac3forge | `sonarcloud.yml` (unmeasured here; 43-58 min on the sibling) | none (`ubuntu-latest`) |
+| 02:17 | ac3forge | `codeql.yml` (C++, JavaScript, Python and Kotlin) | Linux |
+| 02:23 | ac3forge | `msvc-analysis.yml` (PREfast) | Windows |
+| 02:29 | ac3forge | `static-analysis.yml` (clang-tidy) | Linux |
+| 02:35 | ac3forge | `sonarcloud.yml` | none (`ubuntu-latest`) |
 | 03:17 | ac3forge | `fuzz.yml` nightly jobs | none (hosted) |
 | 04:43 | ac3forge | `interop.yml` | none (hosted) |
+| 13:17 | ac3forge | `ci.yml`, the nightly run: every leg with every extra pass ([The tiers](ci-agentic.md#the-tiers)) | Linux and Windows, plus hosted |
 | Mon 03:45 / 03:50 / 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
 | Tue 21:42 / 22:17 / 22:27 / 22:37 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) / trivy / osv / scorecard - weekly today; code scanning is to move to 04:07, the minute that repo picked | Linux big, Windows big |
+
+These are the cron times. GitHub starts this repository's scheduled workflows hours after them:
+the CodeQL run for the 02:17 cron began at 08:36 UTC on 2026-09-29 and at 08:44 on 2026-09-28,
+and the other three analysis runs of each night began within 25 minutes after it, so the spacing
+between this repository's crons holds while the whole set starts about six and a half hours late.
+[CI for many agents](ci-agentic.md#the-tiers) has the measurement and why `ci.yml`'s cron is
+6.5 hours before the time the nightly run is wanted. Run times vary with the fleet's load: over
+the three nights to 2026-09-29 the CodeQL C++ job took 27 to 46 minutes, MSVC analysis 18 to
+78, clang-tidy 10 to 15 and SonarCloud 10 to 69, and the nightly fuzz job about 3.5 to 4 hours.
 
 When either repo adds or moves a cron that touches the fleet, update this table and the copy
 kept in [iainchesworthlabs/ci-runners](https://github.com/iainchesworthlabs/ci-runners).
@@ -192,8 +199,9 @@ kept in [iainchesworthlabs/ci-runners](https://github.com/iainchesworthlabs/ci-r
 ### SonarCloud setup
 
 `sonarcloud.yml` is the one nightly that needs configuration outside this repository, and
-it skips itself with a notice until that exists rather than failing every night. All of
-this is done by hand, once, by someone with admin on both sides:
+it skips itself with a notice when that is missing rather than failing every night. All of
+this was done by hand, once, by someone with admin on both sides, and is kept here in case the
+project has to be set up again:
 
 1. The project is already onboarded: organisation `iainchesworthlabs`, project key
    `iainchesworthlabs_ac3forge`, which is what `sonar-project.properties` declares.
@@ -211,14 +219,13 @@ this is done by hand, once, by someone with admin on both sides:
 4. Generate a token (My Account > Security, or a project analysis token) and add it as the
    repository secret **`SONAR_TOKEN`** under Settings > Secrets and variables > Actions.
    The workflow's `preflight` job checks for exactly this and skips the scan without it.
-5. Optionally add the quality-gate badge to `README.md`. Worth doing only after the first
-   run: the badge 404s until the project has been analysed once.
+5. Optionally add the quality-gate badge to `README.md` (it is there). Add it only after the
+   first run: the badge 404s until the project has been analysed once.
 
-Two things about the first run are unverified here and will show up in its log: whether
-`sonarqube-scan-action` runs cleanly inside this repo's `ubuntu:26.04` container (the
-sibling runs it directly on the hosted image), and whether the CFamily analyser accepts
-GCC 16. If the container is the problem, the fallback is to build in the container and
-scan outside it, keeping the compile database's paths consistent between the two.
+The scan runs inside this repository's `ubuntu:26.04` container (the sibling runs it
+directly on the hosted image) and has run every night since `SONAR_TOKEN` was set on
+2026-09-05. If the container ever becomes the problem, the fallback is to build in the
+container and scan outside it, keeping the compile database's paths consistent between the two.
 
 ## Toolchain version pins
 
@@ -234,7 +241,7 @@ below for what differs and why).
    [`.github/toolchain-versions.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/toolchain-versions.json)
    holds only the three pins that have no other canonical home in this repo: the MSVC
    toolset prefix (`msvc_toolset`), the Qt version (`qt`), and the exact LLVM point release
-   `_build.yml`'s Windows leg downloads as a win64 installer (`llvm_windows_version` -
+   the Windows LLVM leg (`_ci-windows.yml`) downloads as a win64 installer (`llvm_windows_version` -
    Windows has no versioned package to pin against the way apt does, and
    `_toolchain-versions.yml` asserts its major matches `llvm_version` so the two can't
    silently drift apart). Everything else this repo already pins
@@ -246,7 +253,7 @@ below for what differs and why).
    `CMakePresets.json`'s `cmakeMinimumRequired`, and vcpkg's baseline from `vcpkg.json`'s
    `builtin-baseline`.
    [`_toolchain-versions.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_toolchain-versions.yml)
-   is a small reusable `workflow_call` (same shape as the `check-runners` job above) that
+   is a small reusable `workflow_call` that
    reads the manifest plus those four other files once and exposes `gcc_version` / `llvm_version`
    / `llvm_windows_version` / `msvc_toolset` / `qt_version` / `cmake_min` / `vcpkg_commit`
    as outputs. Every workflow that used to
@@ -257,13 +264,16 @@ below for what differs and why).
    workflow files; bumping it meant finding and editing all nine by hand, with no error if
    one was missed. **Bump a version by editing whichever of the four files actually owns
    it** - nothing else in this repo needs to change.
-2. **Runtime assert, on every leg, both runner paths.** `_build.yml`'s existing "Report and
-   assert toolchain versions" step (unchanged in spirit, now manifest-driven) runs `g++`/
-   `clang++`/`clang-cl --version` or reads the MSVC environment's `VCToolsVersion`, compares
-   it against the matching `needs.toolchain-versions.outputs.*` pin, and fails the job with
-   an `::error::` annotation on a mismatch. It runs identically whether the leg landed on a
-   self-hosted or GitHub-hosted runner - see the next section for why that is the right
-   severity here, unlike the warn-only check `aqualink-automate` uses.
+2. **Runtime assert, on every leg, both runner paths.** The "Report and assert toolchain
+   versions" step of the `build-leg` composite action (`.github/actions/build-leg/action.yml`,
+   which every leg of `ci.yml` and both jobs of `pr-gate.yml` run) runs `g++`/`clang++`/
+   `clang-cl --version` or reads the MSVC environment's `VCToolsVersion`, compares it against the
+   matching `needs.toolchain-versions.outputs.*` pin, and fails the job with an `::error::`
+   annotation on a mismatch. It runs identically whether the leg landed on a self-hosted or
+   GitHub-hosted runner - see the next section for why that is the right severity here, unlike
+   the warn-only check `aqualink-automate` uses. Two kinds of leg only report: the macOS legs,
+   whose Homebrew LLVM has no versioned pin, and `windows-msvc-arm64`, whose hosted image ships an
+   older Build Tools generation than the x64 image the pin was resolved against.
 
 ### Why no separate drift-warning action
 
@@ -277,7 +287,8 @@ externally-provisioned image has drifted, which is `ci-runners`' problem to fix,
 to block a PR against unrelated code.
 
 ac3forge's own design already differs in the one place that matters: every Linux leg runs
-inside a pinned `ubuntu:26.04` **container** (see `build`'s own comment in `_build.yml`), so
+inside a pinned `ubuntu:26.04` **container** (the leg's `container:` in `_ci-linux.yml`, and the
+gate's Linux job in `pr-gate.yml`), so
 GCC/LLVM/Qt/ffmpeg/Ninja are installed fresh into that container on *every* run, self-hosted
 or GitHub-hosted alike - the host image's own toolchain, pre-baked or not, is never reachable
 from inside it. There is no self-hosted-only drift path for those tools to warn about; a

@@ -74,6 +74,10 @@ ac3cli atmos-encode in.wav out.ec3 448 0 paths.json sign-objects signing-key=/pa
 and refuses the whole command on a mismatch. `ac3cli probe` reports whether an authenticity tag is
 present, with no key. There is no CLI command that signs an existing stream after encoding.
 
+Signing is E-AC-3 only: it protects the EMDF container of a DD+ JOC stream. AC-4 objects are not
+signed, and both `sign-objects` with `codec=ac4` and `verify-objects` on an AC-4 stream are usage
+errors.
+
 ## Provenance
 
 The HMAC-SHA-256 construction (RFC 2104 / FIPS 180-4) and the choice of which frame regions are

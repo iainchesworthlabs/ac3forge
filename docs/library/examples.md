@@ -4,7 +4,8 @@ Every program in [`examples/`](https://github.com/iainchesworthlabs/ac3forge/tre
 builds by default (`AC3FORGE_BUILD_EXAMPLES=ON`) and registers as a `ctest` entry named
 `example.<name>`, so "the examples still work" is checked by the same command as everything else
 (`read_adm`, `encode_adm`, and `encode_iab` additionally need
-`-DAC3FORGE_BUILD_ADM=ON`). These programs are
+`-DAC3FORGE_BUILD_ADM=ON`; `decode_ac4` needs `AC3FORGE_BUILD_AC4` and the two C programs
+`AC3FORGE_BUILD_CAPI`, both on by default). These programs are
 also the source the library pages excerpt from — each page's "Full program" link lands on one of
 them.
 
