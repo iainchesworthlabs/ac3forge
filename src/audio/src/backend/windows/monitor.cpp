@@ -47,6 +47,18 @@ constexpr IID kIidAudioClient3 = {  // {7ed4ee07-8e67-4cd4-8c1a-2b7a5987ad42}
 constexpr GUID kSubtypeIeeeFloat = {  // {00000003-0000-0010-8000-00aa00389b71}
     0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 
+// The flags of the ordinary shared-mode initialise. AUTOCONVERTPCM is what puts
+// the engine's own sample-rate converter and channel matrixer between this
+// stream's format and the endpoint's mix format: without it shared mode takes
+// only the mix format's own rate and channel count (bit depth it converts
+// either way) and refuses the rest with AUDCLNT_E_UNSUPPORTED_FORMAT, so a
+// 44.1 kHz stream on a 48 kHz endpoint - the ordinary pair - could not open.
+// SRC_DEFAULT_QUALITY, valid only beside it, asks that converter for the
+// engine's better resampler rather than its cheapest.
+constexpr DWORD kSharedStreamFlags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                                     AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+                                     AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+
 // The mask the audio engine is given for a bare channel count, when a caller
 // does not name one: speakers.hpp's own table, so the arrangement a width
 // implies is decided in one place for every backend (0 there means "no
@@ -274,10 +286,11 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
 
     // Shared mode's audio engine carries its own sample-rate/channel-matrix
     // converter (unlike exclusive mode's IsFormatSupported, which is a strict
-    // yes/no), so Initialize's own result is the authoritative gate here
-    // rather than a separate pre-check: most devices accept an explicit
-    // float32 format at any reasonable rate/channel count and the engine
-    // adapts it to the mix format transparently.
+    // yes/no), and puts it in front of a stream that asks for it
+    // (kSharedStreamFlags). Initialize's own result is then the authoritative
+    // gate here rather than a separate pre-check: the engine adapts an
+    // explicit float32 format at any reasonable rate/channel count to the mix
+    // format, and a refusal means it could not.
     REFERENCE_TIME default_period = 0;
     REFERENCE_TIME minimum_period = 0;
     if (FAILED(client->GetDevicePeriod(&default_period, &minimum_period))) {
@@ -306,15 +319,17 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         }
     }
     if (FAILED(hr)) {
-        hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                                default_period, 0, &format.Format, nullptr);
+        hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, kSharedStreamFlags, default_period, 0,
+                                &format.Format, nullptr);
     }
     if (FAILED(hr)) {
         // AUDCLNT_E_UNSUPPORTED_FORMAT specifically means the engine refused
-        // this shared-mode sample rate/channel count (confirmed against a
-        // real HDMI/AVR endpoint locked to a non-48kHz rate); every other
-        // failure from either Initialize attempt above is a COM/WASAPI
-        // problem and stays kComFailure.
+        // this shared-mode format even with its converter in front of it.
+        // (Before kSharedStreamFlags asked for the converter, any rate but the
+        // mix format's own read like this: 48 kHz on an HDMI/AVR endpoint
+        // locked to another rate, 44.1 kHz on a Realtek one running at 48.)
+        // Every other failure from either Initialize attempt above is a
+        // COM/WASAPI problem and stays kComFailure.
         return std::unexpected(hr == AUDCLNT_E_UNSUPPORTED_FORMAT ? MonitorError::kFormatRejected
                                                                    : MonitorError::kComFailure);
     }

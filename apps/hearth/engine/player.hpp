@@ -368,6 +368,10 @@ public:
 
     [[nodiscard]] const std::vector<PlayedItem>& history() const { return history_; }
     [[nodiscard]] std::uint32_t output_opens() const { return opens_; }
+    // Why the last attempt failed, or empty: it stays until play(), next() or
+    // previous() starts another, which is when it is forgotten - not when a
+    // later open works, so an item a command skipped keeps its reason on the
+    // status line while the item after it plays.
     [[nodiscard]] const std::string& last_error() const { return last_error_; }
 
 private:

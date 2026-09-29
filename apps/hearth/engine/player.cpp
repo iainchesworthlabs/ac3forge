@@ -910,6 +910,13 @@ PlayPosition Player::position() const {
 }
 
 TransportOutcome Player::play() {
+    // A play, a next and a previous are the commands that try an output
+    // again. What the last try said is not this one's to show - the transport
+    // bar reads an error over the note, so one left standing outlives the
+    // failure and reads as if the output were still refusing. Whatever fails
+    // now sets it again; an item this command skips keeps its reason until
+    // the next one.
+    last_error_.clear();
     TransportOutcome outcome = transport_.play();
     perform(outcome, nullptr);
     return outcome;
@@ -928,12 +935,14 @@ TransportOutcome Player::stop() {
 }
 
 TransportOutcome Player::next() {
+    last_error_.clear();  // as play() says
     TransportOutcome outcome = transport_.next();
     perform(outcome, nullptr);
     return outcome;
 }
 
 TransportOutcome Player::previous() {
+    last_error_.clear();  // as play() says
     TransportOutcome outcome = transport_.previous();
     perform(outcome, nullptr);
     return outcome;

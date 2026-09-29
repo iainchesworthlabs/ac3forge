@@ -776,7 +776,10 @@ HRESULT, or the channel/rate `hw_params` calls specifically — while Core Audio
 channel-count and nominal-rate checks under the same code, since its property-set calls report
 only success or failure and never why. PipeWire and AAudio never return it: both hand format
 negotiation to a graph/mixer that converts rather than refuses, so there is no equivalent moment
-to report.
+to report. On Windows the stream asks the engine to resample and re-matrix it
+(`AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`), so a rate the endpoint's mix format lacks - a 44.1 kHz
+stream on a 48 kHz endpoint - plays rather than being refused; without that flag shared mode
+takes only the mix format's own rate and width.
 
 Unlike passthrough, **this one is confirmed against real hardware.** It has actually played
 decoded AC-3 and E-AC-3 (including an Atmos stream's 5.1 bed) through real Windows (Realtek)

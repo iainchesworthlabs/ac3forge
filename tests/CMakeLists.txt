@@ -917,6 +917,7 @@ if(AC3FORGE_BUILD_HEARTH)
     target_sources(ac3tests PRIVATE
         hearth/test_ac3_transcoder.cpp
         hearth/test_decoder_settings.cpp
+        hearth/test_device_sink_live.cpp
         hearth/test_diagnostics.cpp
         hearth/test_engine.cpp
         hearth/test_engine_queue_commands.cpp
