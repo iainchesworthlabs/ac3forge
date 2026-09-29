@@ -1219,7 +1219,11 @@ AjocSubstreamInfo parse_substream_info_ajoc(Reader& r, int fs_index, int frame_r
     if (n_fullband_upmix_signals == 16) {
         n_fullband_upmix_signals += variable_bits(r, 3);
     }
-    info.n_fullband_upmix_signals = static_cast<int>(n_fullband_upmix_signals);
+    // The escape reaches 2^32 - 1. A plain cast wraps a count from 2^31 on to a
+    // negative one, which the decoder refuses as invalid; kept as INT_MAX it is
+    // refused as too many objects, like every other count above what it holds.
+    info.n_fullband_upmix_signals = static_cast<int>(std::min<std::uint32_t>(
+        n_fullband_upmix_signals, static_cast<std::uint32_t>(std::numeric_limits<int>::max())));
     info.upmix_objects = parse_bed_dyn_obj_assignment(r, info.n_fullband_upmix_signals);
     if (fs_index == 1 && r.bits(1)) {  // b_sf_multiplier
         info.sf_multiplier = static_cast<int>(r.bits(1));
