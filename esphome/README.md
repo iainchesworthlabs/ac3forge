@@ -7,7 +7,9 @@ exposes a decoder plus the streaming framer.
 
 **Is:** the plumbing. `Ac3ForgeComponent` owns an `ac3::FrameDecoder` and an
 `ac3::io::AccessUnitAccumulator`; you feed it bytes and take planar float PCM
-back.
+back. `FrameDecoder` reads AC-3 alone: an E-AC-3 stream (bsid above 8), Atmos
+included, is framed but not decoded, and `decode()` then returns null with
+`failed()` set. There is no AC-4 here either.
 
 **Is not:** a `media_player` or a `speaker` source. ESPHome's `speaker` platform
 is ESP-IDF-only, so the frameworks are compatible and that is the obvious next
@@ -44,26 +46,32 @@ intend to keep working.
 syncframe plus the header of the next, which is what deciding where an access
 unit ends requires; below that no access unit can ever be assembled. 16 KB is
 the size to use when the stream's shape is not known in advance — it holds an
-independent substream plus three dependents, which covers Atmos.
+independent substream plus three dependents, the shape of an Atmos access unit,
+which the framer can hold and `FrameDecoder` cannot decode.
 
 ## Which chips
 
-**ESP32-S3 only**, and that is measured rather than cautious. The S3 has a
-single-precision FPU, which the decode path needs; the original ESP32 and the S2
-would software-emulate every floating-point operation, and the ESP32-P4's vector
-unit is integer-only so it inherits nothing (see
-[`docs/platforms/bare-metal/esp32-c3.md`](../docs/platforms/bare-metal/esp32-c3.md)). The C3 and C6 are
-RISC-V and a different port.
+**Tested on the ESP32-S3 only.** CI validates the configuration for an S3 board
+(`esp32-s3-devkitc-1`) and compiles nothing, and no ESPHome build of the
+component has been run on another part. What it wraps is the ESP-IDF
+component, whose manifest lists the ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-P4:
+the decode arithmetic follows the part, `float` on the S3 and the P4 and fixed
+point on the C3 and C6
+([`docs/platforms/bare-metal/esp32-s3.md`](../docs/platforms/bare-metal/esp32-s3.md#the-esp-idf-component)).
+The original ESP32 and the S2 are not in the manifest.
 
 ## Memory
 
-The decode peaks at about 233 KB of internal SRAM against roughly 280 KB free,
-before ESPHome's own components take their share. That is tight, and it is the
-reason PSRAM is worth having on a board that will also run WiFi — the library
-does not require it, but ESPHome is not the only thing on the part.
+The probe's AC-3 rows peak at 47,772 to 58,645 bytes of heap, in the block form
+of the decoder; this component uses the whole-frame form and has not been
+measured. The part has 304,680 bytes of internal SRAM free under QEMU before
+ESPHome's own components and WiFi take their share, which is why PSRAM is worth
+having on a board that will also run WiFi — the library does not require it,
+but ESPHome is not the only thing on the part.
 
-Real-time decode on this chip is **still unmeasured**. Everything CI knows comes
-from QEMU, which is not cycle-accurate.
+The S3 decodes AC-3 5.1 in real time on a board (0.31x of a frame in the probe's
+timing runs of 2026-09-09 to 2026-09-11; [the S3 page](../docs/platforms/bare-metal/esp32-s3.md#timing)
+has the table). It has not been timed through this component.
 
 ## Why a git dependency and not the registry
 
