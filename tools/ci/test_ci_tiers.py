@@ -127,6 +127,16 @@ class WhatRunsAfterAMerge(unittest.TestCase):
         self.assertIn("--satellites-direct", changes)
         self.assertIn('[ "$tier" = t2 ]', changes)
 
+    def test_a_failed_lookup_is_told_by_its_exit_status_not_by_what_it_printed(self):
+        # gh prints a failed request's JSON body on stdout, so a lookup that only
+        # checked for output took the 404 body of a missing `verified` ref for a
+        # commit id and logged it as one.
+        changes = job("ci.yml", "changes")
+        self.assertIn('if verified="$(gh api "repos/$REPO/git/ref/heads/verified"', changes)
+        self.assertIn('[ "${#verified}" -eq 40 ]', changes)
+        self.assertIn('if files="$(gh api --paginate "repos/$REPO/compare/$verified', changes)
+        self.assertNotIn("|| true)", changes)
+
     def test_the_nightly_run_and_a_dispatch_force_every_lane(self):
         changes = job("ci.yml", "changes")
         self.assertIn('[ "$EVENT_NAME" = "schedule" ]', changes)
