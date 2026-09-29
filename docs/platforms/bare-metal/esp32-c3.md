@@ -22,8 +22,8 @@ target and the arithmetic tier differ.
 
 ## Why this part, and not another ESP32 variant
 
-Whether a part is viable comes down to floating point, not RAM. Espressif measure a cosine at
-~2,377 cycles on an ESP32-C3 against 121 on an ESP32-S3
+Whether a part is viable comes down to floating point, not RAM. Espressif measure a
+single-precision cosine at ~2,377 cycles on an ESP32-C3 against 121 on an ESP32-S3
 ([Floating-Point Units on Espressif SoCs](https://developer.espressif.com/blog/2025/10/cores_with_fpu/)).
 
 | Part | Usable RAM | Clock | FPU | Vector unit | Viable |

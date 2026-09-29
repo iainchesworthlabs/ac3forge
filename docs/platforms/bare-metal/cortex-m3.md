@@ -23,7 +23,7 @@ target and the first with hardware floating point.
 | Image size | 355,709 bytes — 293,092 `.text`, 400 `.data`, 62,217 `.bss` |
 | Peak heap | 195,025 bytes, the height-object fixture placed onto 7.1.4 (`eac3_atmos_render`); 194,655 with Atmos objects reconstructed, 173,794 for the 7.1.4 fixture folded to stereo, 167,386 as coded |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
-| Allocations per frame | 1 to 27, by fixture — see [the footprint table](../../performance-trend.md#minimum-footprint-decoder) |
+| Allocation per frame | 1 to 27, by fixture — see [the footprint table](../../performance-trend.md#minimum-footprint-decoder) |
 | Audio output | None. The probe decodes built-in fixtures and prints levels |
 | Real silicon | None. Correctness is established under emulation |
 | CI | `build-footprint` in `.github/workflows/_build.yml`, in the `esp` lane of `ci.yml`: after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and in the nightly run ([CI for many agents](../../ci-agentic.md#the-tiers)). A pull request's gate builds none of it |

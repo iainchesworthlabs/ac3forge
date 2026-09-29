@@ -1104,7 +1104,7 @@ CI exercises first. `sd` cannot: QEMU has no SD host, so CI runs the same file
 layer from a FAT volume in flash (`fatfs`) and only the SDMMC host waits for a
 board. `http` **runs under QEMU too**, since 2026-09-10: QEMU has no WiFi but
 `idf.py qemu` attaches an OpenCores Ethernet MAC to the host's network, so the
-source has a network seam of its own — [`main/source/http/network.hpp`](main/source/http/network.hpp),
+source has a network seam of its own — [`main/network.hpp`](main/network.hpp),
 `net/wifi/` for a board and `net/openeth/` for the emulator — and
 `sdkconfig.ci-http` selects the latter with the stream served from the host:
 
