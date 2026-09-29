@@ -48,6 +48,7 @@ it directly. Four tiers, assigned per header below:
 | `ac3/render/layout.hpp`, `render.hpp`, `serving.hpp`, `routing.hpp`, `trim_delay.hpp`, `identify.hpp`, `float_biquad.hpp` | **Experimental** — the output layout, renderer and speaker management the ESP32 player and Hearth share ([Hearth reference-player plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md)), outside the `v1.0.0` freeze while Hearth's phases settle their shape; see [Experimental modules](#experimental-modules). |
 | `ac3/oba/atmos.hpp`, `joc.hpp`, `oamd.hpp`, `motion.hpp`, `scene.hpp` | Public — `ac3::oba::joc` included, now that AP2 folded it into `ac3::oba` proper. |
 | `ac3/emdf/emdf.hpp` | Public. |
+| `ac3/oba/placement.hpp` | Public — `ObjectPlacement` is what `AtmosEncoder::encode_frame` takes, as it was when `atmos.hpp` declared it. |
 | `ac3/iec61937/iec61937.hpp` | Public. |
 | `ac3/dsp/qmf.hpp` | Public — `oba::joc::Domain::kQmf` is selected through public `AtmosConfig`. |
 | `ac3/dsp/biquad.hpp`, `resampler.hpp` | Public — `dsp::resample`/`resample_planar` is a documented multi-source-rate-conversion utility, not purely an implementation detail (see `header-map.md`). |
