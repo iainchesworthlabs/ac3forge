@@ -9,13 +9,22 @@
     Only the null-sink driver keeps its old names, under `apps/windows/driver/`, until
     attestation signing lands.
 
+    Read the names below through this table. The window `ac3desk` is `ac3crucible`, and the
+    runner `ac3windemo` is `ac3crucible-run`. `apps/windows/{engine,runner,ui,translations,spikes}`
+    are under `apps/crucible/`, and `tests/windemo/` is `tests/crucible/`. The CMake option
+    `AC3FORGE_BUILD_WINDEMO` is `AC3FORGE_BUILD_CRUCIBLE`, the archive
+    `ac3forge-desktop-atmos-<version>-win64.zip` is `ac3forge-crucible-<version>-win64.zip`,
+    `tools/ci/check_windemo_package.py` is `tools/ci/check_crucible_package.py`, and the legs'
+    `windemo: true` is `crucible: true`, now in `.github/ci/legs.jsonc`.
+
 !!! note "Status: built, one item open"
     Phases 1 to 5 landed 2026-09-03: the library taps and watcher, the engine
     and its console runner, the `ac3desk` window, the null-sink driver verified in a throwaway
     guest, and the fast follows. Phase 6 (docs, CI, release) is done except for one thing: the
     driver ships **test-signed only** and will not load on a normal Windows machine yet. It
-    installs and runs in the CI-built package and in the throwaway VM used for verification,
-    where test signing is turned on; a machine with default settings refuses it. That closes
+    installs and runs in the throwaway VM used for verification, where test signing is turned
+    on; CI builds the package and installs it nowhere, and a machine with default settings
+    refuses it. That closes
     once an EV code-signing certificate and attestation submission are in place — see
     [The driver, and its licence](#the-driver-and-its-licence) below.
     The driver itself was rewritten on 2026-09-04, from a PortCls miniport to ACX (Microsoft's
@@ -25,9 +34,10 @@
     [verification section](#what-has-and-has-not-been-verified) says what has been checked on
     real hardware and what has not.
 
-This is a demo app, not a shipping product. It works differently from the Shield app: the
-Shield app plays one authored stream and lets a controller move one object, while the Windows
-app, **Desktop Atmos Demo** (`apps/windows/`, working name), installs itself as the PC's output
+This describes the Windows demo as it was planned and built, before it became a product. It
+works differently from the Shield app: the Shield app plays one authored stream and lets a
+controller move one object, while the Windows app, **Desktop Atmos Demo** (`apps/windows/`, the
+working name; now `apps/crucible/`), installs itself as the PC's output
 device the way FxSound does, takes every application that is playing sound, and lets the user
 drag each one to a position in the room. What comes out over HDMI is a live E-AC-3 JOC (Atmos)
 stream in which each application is an object at the position it was dragged to. Chrome playing
@@ -37,8 +47,8 @@ and an AV receiver renders exactly that. A full-screen application becomes the b
 Nobody needs their spreadsheet audio to come from overhead; the point of building it is to
 exercise, live and in real time, parts of the library the Shield app does not: per-application
 capture, a dynamic object count, a headphone path, output hot-switching, and the Windows
-exclusive-mode bitstream path that is still unconfirmed on
-real hardware.
+exclusive-mode bitstream path, which was unconfirmed on real hardware when this was written and
+has since been confirmed through `ac3cli` (see [Windows](windows.md#audio-backend-wasapi)).
 
 ## How it works
 
@@ -95,8 +105,8 @@ Nothing in `src/forge/` changes. The library additions are two Windows-backend f
 Registering as an output device and separating every application's audio are two different
 problems on Windows, with two different solutions.
 
-**Separation** is solved without a driver. Windows 11 (build 20348 and later) has process
-loopback capture: `ActivateAudioInterfaceAsync` with
+**Separation** is solved without a driver. Windows from build 20348 (Windows 11 included) has
+process loopback capture: `ActivateAudioInterfaceAsync` with
 `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK` opens a capture stream that carries only what one
 process tree renders. One client per application, each on its own thread, each delivering that
 application's contribution to the mix in the endpoint's mix format. The Volume Mixer's session
@@ -504,7 +514,7 @@ does is behind an interface the tests can fake. Exit: a console runner that take
 stdin, streams Atmos to the receiver, and switches to headphones when HDMI is pulled.
 
 **Progress, 2026-09-03:** the pure half landed first, with its tests (36 cases at the time,
-every platform; the same four modules hold 42 today): the slot plan with the full-screen rule
+every platform; the same four modules held 42 at the end of Phase 5): the slot plan with the full-screen rule
 and a waiting list for the eleventh application, the bed mixer and mono fold with the channel
 maps above, placement smoothing, and
 the output policy. The policy holds the S1 rule and one more the tests forced: shared-mode
@@ -713,7 +723,7 @@ what follows records each.
 
 **Test remediation first.** When Phase 5 began on 2026-09-03 the demo's automated tests were
 37 Catch2 cases over its four pure modules (slots, bed fold, placement smoothing, output
-policy; those four hold 42 today, after split and size). The engine loop, the output stage,
+policy; those four held 42 at the end of Phase 5, after split and size). The engine loop, the output stage,
 the tap pool, the signing hook, the four Windows platform files, the controller and every
 QML file had no automated test, and no coverage figure existed: the repository's coverage
 gate is gcov on the Linux preset and the demo is Windows-only. Three steps, in this order:
@@ -748,11 +758,11 @@ All three landed on 2026-09-03. `ac3desk_qmltests` runs five suites (shell, sett
 room, language) under the `desk` label; `AudioDevices` (`engine/audio_devices.hpp`) is the
 seam, with `wasapi_devices.cpp` behind it in the app and `tests/windemo/fake_devices.hpp` in
 the tests, and the tap pool and output stage now compile into `ac3tests` on every platform
-(59 `windemo` cases today, 17 of them over the fakes in `test_tap_pool.cpp` and
+(59 `windemo` cases at the end of Phase 5, 17 of them over the fakes in `test_tap_pool.cpp` and
 `test_output_stage.cpp`: the five routes with real access units, the bypass fold, a mode
 switch mid-stream, a sink that refuses, a full sink's underrun, a starved tap). The first
 measurement, `coverage_windemo.ps1` over the `config-windows-llvm-coverage` build with both
-labels, 57 ctest entries at the time (64 today: the 59 `windemo` cases and the five `desk`
+labels, 57 ctest entries at the time (64 at the end of Phase 5: the 59 `windemo` cases and the five `desk`
 suites), all passing:
 
 | File | Lines | Branches | Note |
@@ -1105,8 +1115,9 @@ rather than demonstrated because the verification guest runs with memory integri
 port, what it keeps, its steps and the findings from Phase 4 that carry into it are planned
 and recorded on [their own page](windows-driver-acx.md); it was made the same day. Signing
 waits for it, so it is paid once. The driver is built, test-signed and Code-Analysed in CI
-on every push (`_build.yml`'s `windows-driver` job, from the WDK's NuGet packages on
-GitHub's hosted image) and uploaded as an artifact; the dynamic tier stays in the guest.
+whenever the Windows lane runs (`_build.yml`'s `windows-driver` job, from the WDK's NuGet
+packages on GitHub's hosted image; the run after a merge that lights the lane, and the nightly
+run) and uploaded as an artifact; the dynamic tier stays in the guest.
 
 On how the driver reaches a machine once it is signed: with the installer, not from inside
 the window. The package installs the driver (`pnputil /add-driver /install` on the attested
@@ -1158,9 +1169,10 @@ each other.
     refuses below roughly 1.5 Mb/s because the object metadata no longer fits. Same file.
 
 What the phase records above claim was checked on the workstation or in the guest, as each
-record says; the spatial path and a real device-arrival switch still wait on hardware, and so
-does the demo's own app, though S2 has now confirmed the `PassthroughSink` primitive it would
-use — see [Windows](windows.md#audio-backend-wasapi).
+record says; a by-ear check of the spatial path and a real device-arrival switch still wait on
+hardware, and so does the demo's own app, though S2 has now confirmed the `PassthroughSink`
+primitive it would use, and `ac3cli spatial` has driven a real spatial endpoint through
+`SpatialObjectSink` — see [Windows](windows.md#audio-backend-wasapi).
 
 ## Open questions this plan does not settle
 
@@ -1170,7 +1182,8 @@ use — see [Windows](windows.md#audio-backend-wasapi).
 - Whether the foreground full-screen check should use the shell's full-screen notification
   (`SHQueryUserNotificationState`) or a window-rect comparison. Either is app-level; the
   first is cheaper and the plan starts there.
-- The app's real name. "Desktop Atmos Demo" and "Desktop Atmos Speakers" are placeholders.
+- The app's real name. It was settled on 2026-09-04 as AC3Forge Crucible; "Desktop Atmos
+  Speakers" is still the silent device's name, until the driver is rebuilt and re-signed.
 
 ## Deliberately not in scope
 

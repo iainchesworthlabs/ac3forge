@@ -1,18 +1,28 @@
-# The null-sink driver on ACX: plan
+# The null-sink driver on ACX: plan and record
 
 AC3Forge Crucible's silent output device ([windows-demo.md](windows-demo.md), "Routing:
 separation and silencing") is a kernel driver because Windows offers no other way to make an
-audio endpoint. The one in the tree today is derived from Microsoft's Simple Audio Sample: a
-PortCls/WaveRT miniport, about 9,700 lines of sample code kept so that a few dozen lines of
-ours can discard what they are given. It works, it is verified to the WDK's standard, and it
-proved the model. This page plans its replacement on ACX, Microsoft's current framework for
-audio drivers, decided on 2026-09-04 after a review of the options (recorded under
+audio endpoint. The driver in the tree is an ACX driver, about 1,800 lines of C++. On 2026-09-04
+it replaced a PortCls/WaveRT miniport derived from Microsoft's Simple Audio Sample, which held
+about 9,700 lines of sample code so that a few dozen lines of ours could discard what they are
+given. ACX is Microsoft's current framework for audio drivers, and it was chosen on 2026-09-04
+after a review of the options (recorded under
 [Phase 6](windows-demo.md#phase-6-docs-ci-release)).
 
-*The port was made the same day. The plan below is kept as it was written; what each step
-actually found, where it departed from the plan (the install API, the header version, the
-timing simulation lifted into a testable header) and the verification record are under
-[Progress](#progress) at the end.*
+| | |
+|---|---|
+| Driver | An ACX driver on KMDF in `apps/windows/driver/`; [its README](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/windows/driver/README.md) says what each file does |
+| Signing | **Test-signed only.** It loads with test signing on and memory integrity off. The EV certificate and the attestation submission are not done |
+| CI | The `windows-driver` job builds and test-signs the package and runs Code Analysis at the driver rule set. It installs nothing |
+| Verification | Static tier and dynamic tier (Driver Verifier with DDI compliance and code-integrity checking, the KMDF verifier, KASAN) clean in a throwaway VMware guest on 2026-09-04. A guest sleep and resume is not done |
+| Under HVCI | Not exercised. The guest runs with memory integrity off, so the first test under HVCI is a signed build on a default install |
+| Distribution | Not a release asset. Crucible's Windows archive carries the install scripts and no driver |
+
+*The plan below is kept as it was written; what each step actually found, where it departed
+from the plan (the install API, the header version, the timing simulation lifted into a
+testable header) and the verification record are under [Progress](#progress) at the end. The
+plan's file names did not survive: `Source/Main/` holds `driver.cpp`, `device.cpp`,
+`circuit.cpp`, `stream.cpp`, `stream.h`, `position.h`, `nullsink.h` and `NewDelete.cpp`.*
 
 ## Why ACX, in three sentences
 

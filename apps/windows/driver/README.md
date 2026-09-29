@@ -8,7 +8,7 @@ hears while the demo taps each one individually; a game that can render surround
 into it and reaches the demo's bed intact.
 
 It is an ACX driver (Audio Class eXtensions, Microsoft's current audio driver framework) on
-KMDF: a plain WDF driver of about 1,900 lines, half of them comments, in place of the
+KMDF: a plain WDF driver of about 1,800 lines of C++, about 1,270 of them code, in place of the
 PortCls/WaveRT miniport that held this directory until 2026-09-04 and carried 9,700 lines of
 sample code to do the same job. Why the port was made, what it keeps and how it was verified
 are on [docs/platforms/windows-driver-acx.md](../../../docs/platforms/windows-driver-acx.md).
@@ -112,7 +112,8 @@ to `x64\Release-kasan\`). The build was confirmed on the EWDK for Windows 11 26H
 valid. The driver compiles at `/W4 /WX`.
 
 **Without the EWDK, and in CI.** The WDK and SDK are also NuGet packages, which is how
-Microsoft's own driver-samples CI builds and how this driver is built on every push
+Microsoft's own driver-samples CI builds and how this driver is built whenever the Windows
+lane runs, in the run after a merge that lights it and in the nightly run
 (`.github/workflows/_build.yml`, the `windows-driver` job on GitHub's `windows-latest`
 image): `packages.config` names the three packages, `Directory.Build.props` imports them
 when they are present and is inert when they are not, so the EWDK build above is
