@@ -122,6 +122,26 @@ token that can start workflows, which the built-in one cannot.
 If a comment names your pull request, read the issue and decide: revert with the command it
 gives, or push a fix. A fix goes through the gate like any other change.
 
+## The legs
+
+The build matrix is data. [`.github/ci/legs.jsonc`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/ci/legs.jsonc)
+lists every leg of the Linux, Windows and macOS builds, with the flags its steps read and the
+comments that used to sit beside the matrices. [`tools/ci/plan_legs.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/plan_legs.py)
+picks the legs a run needs. The `plan-legs` job in `_build.yml` runs it and passes each platform's
+list to `_ci-linux.yml`, `_ci-windows.yml` or `_ci-macos.yml`, which run it as their matrix. A
+platform with no leg in the run is skipped, because Actions rejects an empty matrix.
+
+Each leg has a `tier`: `t2` for the legs of the run on main after a merge, `deep` for the legs only
+a scheduled run has. Every leg is `t2` for now. The planner's inputs are `TIER` (`all`, `t2` or
+`deep`) and `LEGS`, a comma-separated list of presets such as `linux-gcc,windows-msvc` that runs
+exactly those legs whatever their tier.
+
+To add a leg, add it to the catalogue with either `runner` (labels as written) or `runner_slot` (a
+`check-runners` output, for a leg that may run on the fleet). `python3 tools/ci/plan_legs.py
+--check` validates the file. The unit tests also check that the platform workflows read no field the
+catalogue lacks and that no leg sets a field the workflows never read, which `actionlint` can no
+longer check now that the matrix arrives at run time.
+
 ## Caches
 
 The gate, the queue and the legs of the run on main restore compiler caches (ccache); only a

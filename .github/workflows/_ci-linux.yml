@@ -1,24 +1,30 @@
 # Linux leg of the CI lane partitions plan's reusable-workflow split
-# (docs/ci-lanes.md) - the six Linux matrix.include entries _build.yml's
-# `build` job used to carry (linux-gcc, linux-llvm, linux-gcc-arm64,
-# linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan) plus every
-# Linux-only follow-on step (the linux-gcc-only scalar-tier gold-reference
-# variants, the ALSA fallback pass, the Linux Crucible/PipeWire pass, the
-# BUILD_SHARED_LIBS=ON pass, the sanitizer leg's codec-matrix run), moved
-# out so `_build.yml` can gate this whole platform on `run_linux` with a
-# plain job-level `if:` - see _ci-windows.yml's own header for why that
-# was not possible while these were matrix entries of one job spanning
-# three OSes.
+# (docs/ci-lanes.md) - the Linux build matrix (linux-gcc, linux-llvm,
+# linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan)
+# plus every Linux-only follow-on step (the linux-gcc-only scalar-tier
+# gold-reference variants, the ALSA fallback pass, the Linux Crucible/PipeWire
+# pass, the BUILD_SHARED_LIBS=ON pass, the sanitizer leg's codec-matrix run),
+# moved out so `_build.yml` can gate this whole platform on `run_linux` with a
+# plain job-level `if:` - see _ci-windows.yml's own header for why that was not
+# possible while these were matrix entries of one job spanning three OSes.
 #
-# Called only from _build.yml, which still owns check-runners and
-# toolchain-versions and forwards their outputs here as plain inputs.
-# Every step below is otherwise byte-for-byte the same as it was inline in
-# _build.yml's `build` job.
+# The legs are not listed in this file. They are in .github/ci/legs.jsonc,
+# with a comment on each; _build.yml's `plan-legs` job picks the ones a run
+# needs (tools/ci/plan_legs.py) and passes them in as `inputs.matrix`, and the
+# steps below read that file's fields as `matrix.<field>`.
+#
+# Called only from _build.yml, which still owns toolchain-versions and
+# forwards its outputs here as plain inputs. Every step below is otherwise
+# byte-for-byte the same as it was inline in _build.yml's `build` job.
 name: Reusable Build (Linux)
 
 on:
   workflow_call:
     inputs:
+      matrix:
+        description: "The legs to run, as the JSON tools/ci/plan_legs.py prints: {\"include\": [...]}. The legs themselves are in .github/ci/legs.jsonc."
+        type: string
+        required: true
       do_package:
         type: boolean
         default: false
@@ -45,22 +51,6 @@ on:
         type: string
         required: true
       vcpkg_commit:
-        type: string
-        required: true
-      linux_runner_1:
-        description: "needs.check-runners.outputs.linux_runner_1, at the _build.yml call site (linux-gcc's runner-label JSON array)."
-        type: string
-        required: true
-      linux_runner_2:
-        description: "needs.check-runners.outputs.linux_runner_2 (linux-llvm)."
-        type: string
-        required: true
-      linux_runner_3:
-        description: "needs.check-runners.outputs.linux_runner_3 (linux-llvm-asan-ubsan)."
-        type: string
-        required: true
-      linux_runner_4:
-        description: "needs.check-runners.outputs.linux_runner_4 (linux-llvm-tsan)."
         type: string
         required: true
 
@@ -100,183 +90,11 @@ jobs:
     # mechanism `_ci-windows.yml`'s `continue-on-error: ${{ matrix.experimental
     # || false }}` still uses for windows-msvc-arm64. No Linux leg sets
     # `experimental: true` today, so this is hardcoded false rather than a
-    # reference to a matrix field none of this file's entries define.
+    # reference to a field none of the Linux legs in legs.jsonc define.
     continue-on-error: false
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # `ccache` and `parallel_tests` turn on build-leg's compiler cache and
-          # ctest's parallel phases for a leg (docs/ci-agentic.md). The four plain
-          # legs set them. The two sanitizer legs do not: their test presets carry
-          # label filters that the parallel phases' own filters would replace, and
-          # what makes them slow is the sanitizers' cost at run time, which a
-          # compiler cache does not touch.
-          - name: "Linux GCC"
-            runner: ${{ inputs.linux_runner_1 }}
-            container: ubuntu:26.04
-            preset: linux-gcc
-            ccache: true
-            parallel_tests: true
-            # Hearth (planning/hearth-reference-player.md, A7): src/sendspin and apps/hearth,
-            # with the [sendspin] and [hearth] cases ctest runs below. AC3FORGE_BUILD_HEARTH
-            # defaults ON (root CMakeLists.txt) and CMakePresets.json's "core" fragment selects
-            # vcpkg's "hearth" feature by default too, so every leg here builds and tests it
-            # without a matrix field asking for it - hearth-validate (_ci-core.yml) is the only
-            # place still naming it explicitly, for its own narrower A4 aiosendspin exit.
-            gcc: true
-            gui: true
-            packageable: true
-            release_package: true
-            alsa_fallback: true
-            gold_reference: true
-            conformance_vectors: true
-
-          - name: "Linux LLVM (clang)"
-            runner: ${{ inputs.linux_runner_2 }}
-            container: ubuntu:26.04
-            preset: linux-llvm
-            ccache: true
-            parallel_tests: true
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-            # AC3Forge Crucible's Linux half (Crucible cross-platform promotion). This leg and not
-            # a GCC one because the GCC legs carry alsa_fallback, which
-            # asserts that disabling ALSA falls back to posix - true only
-            # while no PipeWire headers are installed, and the Crucible pass
-            # below installs them. Keeping the two apart leaves that
-            # assertion meaning what it says.
-            crucible: true
-
-          # arm64 - Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu
-          # target (see docs/platforms/raspberry-pi.md). Real ARM hardware via
-          # GitHub's hosted ubuntu-24.04-arm runner label, not QEMU emulation -
-          # the same ubuntu:26.04 container image as the x64 legs, which pulls
-          # its arm64 variant automatically on an arm64 runner. Otherwise the
-          # same shape as linux-gcc/linux-llvm above, including which leg
-          # carries alsa_fallback (compiler and architecture both don't affect
-          # that switch - see linux-gcc's own comment).
-          - name: "Linux GCC (arm64)"
-            runner: '["ubuntu-24.04-arm"]'
-            container: ubuntu:26.04
-            preset: linux-gcc-arm64
-            ccache: true
-            parallel_tests: true
-            gcc: true
-            gui: true
-            packageable: true
-            release_package: true
-            alsa_fallback: true
-            gold_reference: true
-
-          - name: "Linux LLVM (arm64)"
-            runner: '["ubuntu-24.04-arm"]'
-            container: ubuntu:26.04
-            preset: linux-llvm-arm64
-            ccache: true
-            parallel_tests: true
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-            # AC3Forge Crucible's Linux half on aarch64 (Crucible cross-platform promotion). The
-            # Crucible pass further down is written against matrix.preset, so
-            # this leg only has to ask for it: same apt list, same configure
-            # assertions, same tests, same package as linux-llvm, and no
-            # second copy of any of them to drift out of step.
-            #
-            # aarch64 is the only hardware the Linux half is on record as
-            # having run on: it was written and verified against a receiver
-            # on a Raspberry Pi 4B on 2026-09-05, in Phase 4 of
-            # docs/crucible/design/promotion.md - a run that built the window,
-            # passed all five Qt Quick suites and produced the aarch64
-            # tarball and the arm64 .deb by hand. CI meanwhile built
-            # Crucible on x86_64 alone, so the architecture the whole
-            # record rests on was the one nothing checked, and an
-            # aarch64-only compilation fault would have reached a user
-            # through the .deb before anyone saw it.
-            #
-            # This leg and not "Linux GCC (arm64)" for two reasons. The first
-            # is the one that put the pass on linux-llvm rather than
-            # linux-gcc: that leg carries alsa_fallback, whose assertion that
-            # disabling ALSA falls back to posix holds only while no PipeWire
-            # headers are installed, and the pass installs them. The second
-            # is release_package, which the GCC arm64 leg also carries: the
-            # "Assert the AC3Forge Crucible was packaged (Windows)" step keys
-            # off matrix.crucible && matrix.release_package with no runner.os
-            # guard of its own, so on a do_package run it would go looking on
-            # Linux for a packages/ac3forge-crucible-*.zip that no Linux leg
-            # ever produces.
-            crucible: true
-
-          # AddressSanitizer + UndefinedBehaviorSanitizer (cmake/Sanitizers.cmake),
-          # -fno-sanitize-recover=all so a violation fails the job outright. Shares
-          # the Linux LLVM container/toolchain; `sanitizer: true` additionally runs
-          # the codec-matrix step below, since ctest's 200+ cases alone do not
-          # reach every layout/tool/atmos code path a sanitizer needs to see
-          # execute to be worth anything.
-          #
-          # Not `packageable`: there is no pack-linux-llvm-asan-ubsan preset
-          # and there should not be one - a sanitizer-instrumented debug build
-          # is a diagnostic tool, not something to ship.
-          - name: "Linux LLVM ASan+UBSan"
-            runner: ${{ inputs.linux_runner_3 }}
-            container: ubuntu:26.04
-            preset: linux-llvm-asan-ubsan
-            llvm: true
-            sanitizer: true
-            # 150, not the 90 every other leg gets. On 2026-09-21 this leg
-            # took about 36 minutes. The AC-4 encoder and decoder tests merged
-            # from 2026-09-25 on ran for minutes each under ASan+UBSan: main's
-            # run at f5aded47 spent 72 of its minutes in ctest before the codec
-            # matrix ran out of time at 90, and on #1057 ctest took 7,204 s,
-            # 5,964 of them in the AC-4 tests, before the leg ran out of 150.
-            # Under the sanitizers those tests now take fewer frames, shorter
-            # signals and fewer cases (tests/sanitized.hpp), which cut their
-            # serial time by 71 % in WSL; the 150 stays for the phases still to
-            # come.
-            timeout_minutes: 150
-
-          # ThreadSanitizer (ThreadSanitizer leg). A DIFFERENT question from the
-          # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask
-          # whether one thread's memory and arithmetic are sound, TSan asks
-          # whether two threads agree on who owns what - and no other gate in
-          # this repository can see a data race at all. src/audio is a
-          # lock-free SPSC ring, a silence watchdog and a clock-drift servo
-          # shared between a real-time callback thread and the encoder
-          # thread, which is exactly the shape where a missing
-          # acquire/release is both easy to write and invisible until it
-          # corrupts audio on someone else's machine.
-          #
-          # Its test preset runs `-L concurrency` rather than the whole
-          # suite (CMakePresets.json's test-linux-llvm-tsan filter): TSan's
-          # shadow memory makes every test several times slower, and the
-          # other ~600 cases are single-threaded codec maths where it has
-          # nothing to report. That keeps this leg to about the cost of a
-          # build rather than a second full matrix entry - the ctest run
-          # itself was 7 seconds over 36 tests when this landed.
-          #
-          # No `sanitizer: true`: that flag means the codec-matrix step, and
-          # driving every layout/tool combination through ac3cli is an
-          # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
-          # same reasoning as the ASan+UBSan leg's own comment above.
-          # Self-hosted-capable again (reverted to ubuntu-latest in #460).
-          # The failure was Docker's default seccomp profile rejecting the
-          # personality(ADDR_NO_RANDOMIZE) call TSan uses to disable ASLR
-          # from inside a container. The fleet image now sets
-          # kernel.randomize_va_space=0 on the VM (ci-runners#13, deployed
-          # 2026-08-28) - the sysctl is not namespaced, the container
-          # inherits it, and TSan never needs the blocked syscall. If this
-          # leg ever fails that way again, the fleet image regressed; the
-          # per-job fallback is container options --security-opt
-          # seccomp=unconfined, which is a much blunter instrument.
-          - name: "Linux LLVM TSan"
-            runner: ${{ inputs.linux_runner_4 }}
-            container: ubuntu:26.04
-            preset: linux-llvm-tsan
-            llvm: true
+      matrix: ${{ fromJSON(inputs.matrix) }}
     steps:
       # Before checkout: the bare ubuntu image has no git, and actions/checkout
       # silently degrades to a REST tarball download without it. Also installs

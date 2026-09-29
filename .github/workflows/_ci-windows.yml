@@ -1,26 +1,34 @@
 # Windows leg of the CI lane partitions plan's reusable-workflow split
-# (docs/ci-lanes.md) - the three Windows matrix.include entries
-# _build.yml's `build` job used to carry (windows-msvc, windows-llvm,
-# windows-msvc-arm64) plus windows-only follow-on steps (Crucible checks,
-# the NSIS/Crucible packaging asserts), moved out so `_build.yml` can gate
-# this whole platform on `run_windows` with a plain job-level `if:` -
-# something it could not do while these legs were matrix entries of one
-# job spanning three OSes (a job's `if:` cannot see the `matrix` context;
-# see docs/ci-lanes.md's "What's gated today" for how that was confirmed).
+# (docs/ci-lanes.md) - the Windows build matrix (windows-msvc, windows-llvm,
+# windows-msvc-arm64) plus windows-only follow-on steps (Crucible checks, the
+# NSIS/Crucible packaging asserts), moved out so `_build.yml` can gate this
+# whole platform on `run_windows` with a plain job-level `if:` - something it
+# could not do while these legs were matrix entries of one job spanning three
+# OSes (a job's `if:` cannot see the `matrix` context; see docs/ci-lanes.md's
+# "What's gated today" for how that was confirmed).
 #
-# Called only from _build.yml, which still owns check-runners and
-# toolchain-versions and forwards their outputs here as plain inputs -
-# `needs:` cannot cross a workflow_call boundary the way it can between two
-# jobs in the same file. Every step below is otherwise byte-for-byte the
-# same as it was inline in _build.yml's `build` job: same names, same
-# `if:` conditions (with `matrix.*`/`needs.toolchain-versions.outputs.*`
-# rewritten to this workflow's own `matrix.*`/`inputs.*`, since those still
-# exist here, just sourced differently), same run: bodies, same comments.
+# The legs are not listed in this file. They are in .github/ci/legs.jsonc,
+# with a comment on each; _build.yml's `plan-legs` job picks the ones a run
+# needs (tools/ci/plan_legs.py) and passes them in as `inputs.matrix`, and the
+# steps below read that file's fields as `matrix.<field>`.
+#
+# Called only from _build.yml, which still owns toolchain-versions and
+# forwards its outputs here as plain inputs - `needs:` cannot cross a
+# workflow_call boundary the way it can between two jobs in the same file.
+# Every step below is otherwise byte-for-byte the same as it was inline in
+# _build.yml's `build` job: same names, same `if:` conditions (with
+# `matrix.*`/`needs.toolchain-versions.outputs.*` rewritten to this workflow's
+# own `matrix.*`/`inputs.*`, since those still exist here, just sourced
+# differently), same run: bodies, same comments.
 name: Reusable Build (Windows)
 
 on:
   workflow_call:
     inputs:
+      matrix:
+        description: "The legs to run, as the JSON tools/ci/plan_legs.py prints: {\"include\": [...]}. The legs themselves are in .github/ci/legs.jsonc."
+        type: string
+        required: true
       do_package:
         description: "Package every packageable leg (best-effort), not just windows-msvc. See _build.yml's own input of the same name."
         type: boolean
@@ -52,14 +60,6 @@ on:
         type: string
         required: true
       vcpkg_commit:
-        type: string
-        required: true
-      windows_runner_1:
-        description: "needs.check-runners.outputs.windows_runner_1, at the _build.yml call site (windows-msvc's runner-label JSON array)."
-        type: string
-        required: true
-      windows_runner_2:
-        description: "needs.check-runners.outputs.windows_runner_2 (windows-llvm's runner-label JSON array)."
         type: string
         required: true
 
@@ -97,111 +97,7 @@ jobs:
     continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # `ccache` and `parallel_tests` turn on build-leg's compiler cache and
-          # ctest's parallel phases for a leg (docs/ci-agentic.md). Both MSVC legs
-          # set them. windows-llvm sets only the tests: clang-cl's use of ccache is
-          # not proven here yet, and the compiler cache never changes a result, so
-          # it can be added once a run shows it hitting.
-          - name: "Windows MSVC"
-            runner: ${{ inputs.windows_runner_1 }}
-            preset: windows-msvc
-            ccache: true
-            parallel_tests: true
-            # Declared once, here, so `matrix.experimental` in continue-on-error
-            # above resolves against a property the matrix actually defines -
-            # without it every leg silently reads null and actionlint reports the
-            # reference as undefined. Every other leg is non-experimental by
-            # omission (the `|| false` fallback); a leg that IS experimental sets
-            # this to true and continue-on-error keeps it out of CI Status.
-            experimental: false
-            # VS 2026 Build Tools / MSVC 14.5x, from the aka.ms/vs/18/stable
-            # channel. Pinned by channel, not exact version: the runner image
-            # ships whatever 18.x is current, and the assert step below fails
-            # loudly if that ever stops being a 14.5x toolset.
-            msvc: true
-            packageable: true
-            release_package: true
-            gold_reference: true
-            # AC3Forge Crucible (WASAPI loopback tap/UX12, apps/crucible): built and
-            # tested on both Windows legs, packaged on this one (the Package
-            # step's own condition already singles out windows-msvc), as its
-            # own archive - see cmake/Packaging.cmake's crucible component. The
-            # null-sink driver is NOT built on this leg: it needs the WDK,
-            # which the self-hosted fleet lacks, so it has its own
-            # GitHub-hosted job (windows-driver, below) that builds it from
-            # the WDK NuGet packages. Still test-signed only, so it stays out
-            # of the package until the EV certificate lands (Phase 6).
-            crucible: true
-
-          - name: "Windows LLVM (clang-cl)"
-            runner: ${{ inputs.windows_runner_2 }}
-            preset: windows-llvm
-            parallel_tests: true
-            msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
-            llvm: true
-            packageable: true
-            gold_reference: true
-            # Built and tested here too - clang-cl is stricter than MSVC about
-            # several things the demo's Qt and WASAPI code touches - but not
-            # packaged: this leg carries no release_package (see the Package
-            # step's condition).
-            crucible: true
-
-          # ARM64 - GitHub's hosted windows-11-vs2026-arm runner (Windows ARM64 / reach builds). Real
-          # ARM64 hardware, not emulation. Deliberately NOT routed through
-          # check-runners' self-hosted/hosted fan-out (the windows_runner_1/2
-          # outputs the two legs above use) - that logic is sized for exactly
-          # those two existing x64 Windows legs, and there is no self-hosted
-          # ARM64 Windows capacity to fan out to; the literal runner label is
-          # used directly instead.
-          #
-          # experimental: true, the same promotion path macos-llvm and
-          # build-android both went through (see this file's own header) -
-          # this leg's first real runs are exactly what confirms or corrects
-          # the toolchain/vcvarsall/Qt/ffmpeg choices made without hosted-
-          # runner access at authoring time. Delete this line once a run has
-          # gone green for real.
-          #
-          # msvc_arch: arm64 threads through to the "Setup MSVC environment"
-          # step, which otherwise always loads the x64 developer environment
-          # (see .github/actions/setup-msvc-env/action.yml) - every other
-          # matrix.msvc leg omits it and gets the action's own x64 default.
-          #
-          # No gui: true, unlike every other packageable leg. At authoring
-          # time, Qt's only Windows ARM64 kit for the pinned 6.9.3
-          # (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit that
-          # expects a paired win64_msvc2022_64 install for its host tools, and
-          # aqtinstall has a documented CI bug against exactly that
-          # combination (qtpaths.bat pointing at the wrong x64 setup) - real
-          # complexity this leg's native-ARM64-host build doesn't need to
-          # take on for a first pass. CMakePresets.json's windows-msvc-arm64
-          # preset defaults AC3FORGE_BUILD_GUI off for exactly this reason
-          # (see its own description) - the same "Qt kit not assumed present"
-          # shape linux-gcc/linux-llvm/macos-llvm already use below, not a new
-          # pattern. See docs/platforms/windows.md's ARM64 section.
-          #
-          # gold_reference: true - choco's ffmpeg package is x64-only, so this
-          # leg installs BtbN's static win-arm64 ffmpeg build instead (see the
-          # dedicated install step below).
-          #
-          # release_package: true, not just packageable: a genuinely new
-          # architecture earns its own canonical release artifact, the same
-          # precedent linux-gcc-arm64 already set sitting next to linux-gcc -
-          # not a redundant same-arch compiler variant like windows-llvm
-          # above (which stays non-canonical: no release_package there).
-          - name: "Windows MSVC (arm64)"
-            runner: '["windows-11-vs2026-arm"]'
-            preset: windows-msvc-arm64
-            ccache: true
-            parallel_tests: true
-            experimental: true
-            msvc: true
-            msvc_arch: arm64
-            packageable: true
-            release_package: true
-            gold_reference: true
+      matrix: ${{ fromJSON(inputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

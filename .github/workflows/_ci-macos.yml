@@ -1,24 +1,31 @@
 # macOS leg of the CI lane partitions plan's reusable-workflow split
-# (docs/ci-lanes.md) - the two macOS matrix.include entries _build.yml's
-# `build` job used to carry (macos-llvm, macos-llvm-x64) plus macOS-only
-# follow-on steps (the universal-binary merge's install-tree uploads),
-# moved out so `_build.yml` can gate this whole platform on `run_macos`
-# with a plain job-level `if:` - see _ci-windows.yml's own header for why
-# that was not possible while these were matrix entries of one job
+# (docs/ci-lanes.md) - the macOS build matrix (macos-llvm, macos-llvm-x64)
+# plus macOS-only follow-on steps (the universal-binary merge's install-tree
+# uploads), moved out so `_build.yml` can gate this whole platform on
+# `run_macos` with a plain job-level `if:` - see _ci-windows.yml's own header
+# for why that was not possible while these were matrix entries of one job
 # spanning three OSes.
 #
-# Called only from _build.yml, which still owns check-runners and
-# toolchain-versions and forwards their outputs here as plain inputs (no
-# runner-label inputs: macOS legs pin literal runner labels - macos-latest,
-# macos-15-intel - and never go through check-runners' self-hosted fan-out,
-# which has no macOS capacity to fan out to). Every step below is
-# otherwise byte-for-byte the same as it was inline in _build.yml's
-# `build` job.
+# The legs are not listed in this file. They are in .github/ci/legs.jsonc,
+# with a comment on each; _build.yml's `plan-legs` job picks the ones a run
+# needs (tools/ci/plan_legs.py) and passes them in as `inputs.matrix`, and the
+# steps below read that file's fields as `matrix.<field>`.
+#
+# Called only from _build.yml, which still owns toolchain-versions and
+# forwards its outputs here as plain inputs (no runner-label inputs: macOS
+# legs pin literal runner labels - macos-latest, macos-15-intel - and never go
+# through check-runners' self-hosted fan-out, which has no macOS capacity to
+# fan out to). Every step below is otherwise byte-for-byte the same as it was
+# inline in _build.yml's `build` job.
 name: Reusable Build (macOS)
 
 on:
   workflow_call:
     inputs:
+      matrix:
+        description: "The legs to run, as the JSON tools/ci/plan_legs.py prints: {\"include\": [...]}. The legs themselves are in .github/ci/legs.jsonc."
+        type: string
+        required: true
       do_package:
         type: boolean
         default: false
@@ -83,62 +90,7 @@ jobs:
     continue-on-error: false
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # `ccache` and `parallel_tests` turn on build-leg's compiler cache and
-          # ctest's parallel phases for a leg (docs/ci-agentic.md). Both legs set
-          # them: hosted macOS is the scarcest capacity this org has, so a leg
-          # that finishes sooner matters here more than anywhere.
-          - name: "macOS LLVM (Homebrew)"
-            runner: '["macos-latest"]'
-            preset: macos-llvm
-            ccache: true
-            parallel_tests: true
-            # Crucible compiles here and cannot be run here; see the Configure
-            # step's note.
-            crucible: true
-            mac_arch: arm64
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-            # Declared once, here, so `matrix.release_package` in the shared
-            # Package/asserts steps below resolves against a property this
-            # file's matrix actually defines - the same reason windows-msvc
-            # declares `experimental: false` in _ci-windows.yml. No macOS
-            # leg carries a release_package build any more (DR8) - see
-            # this matrix entry's own header comment further down.
-            release_package: false
-
-          # x86_64 half of DR8's macOS universal binaries. macos-15-intel is
-          # real native Intel hardware (confirmed against
-          # docs.github.com/en/actions/reference/runners/github-hosted-runners
-          # directly, not assumed), free for public repos - so this is a real
-          # build, not a cross-compile or Rosetta emulation. Same toolchain
-          # file, same install steps, same reasoning as the arm64 leg above
-          # throughout this job; only the preset/triplet (x64-macos-llvm) and
-          # runner label differ.
-          #
-          # No longer experimental: three consecutive real, hosted-runner runs
-          # went green on this brand-new macos-15-intel label before this line
-          # came off - the v0.0.0-alpha.1 and v0.0.0-alpha.2 release dry runs
-          # and this feature branch's own required PR CI - each with a real
-          # gold-reference pass (67.80/67.82/67.76 dB, matching the x86
-          # baseline every other non-arm64 leg reports), not just "it
-          # compiled." Same promotion process macos-llvm and build-android
-          # went through before it - see this file's own header.
-          - name: "macOS LLVM x64 (Homebrew, Intel)"
-            runner: '["macos-15-intel"]'
-            preset: macos-llvm-x64
-            ccache: true
-            parallel_tests: true
-            crucible: true
-            mac_arch: x64
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-
+      matrix: ${{ fromJSON(inputs.matrix) }}
     steps:
       # NOT Homebrew's "qt" formula (that was this step until the packaging
       # noise investigation below). Homebrew's Qt6 stages its QML plugins
