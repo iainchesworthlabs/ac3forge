@@ -701,6 +701,63 @@ TEST_CASE("player: a device that will not open stops playback without blaming th
     CHECK(player->history()[0].frames == 4 * 1536);
 }
 
+TEST_CASE("player: an error stays until the next command, and goes when that one works",
+          "[hearth][player]") {
+    Library library;
+    library.files["fine.ec3"] = eac3_stream(4);
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->refuse_open = true;
+    const auto player = make_player(library, log);
+    player->queue().add(item("fine.ec3"));
+
+    player->play();
+    REQUIRE(player->transport().state() == TransportState::kStopped);
+    const std::string refused = player->last_error();
+    REQUIRE_FALSE(refused.empty());
+
+    // Nothing has been tried since, so it is still what went wrong.
+    player->stop();
+    CHECK(player->last_error() == refused);
+
+    // The next command starts afresh. The transport bar reads the error over
+    // the note, so one left standing makes an item that is playing look as if
+    // the output were still refusing it.
+    log->refuse_open = false;
+    player->play();
+    CHECK(player->last_error().empty());
+    REQUIRE(play_out(*player, *log));
+    CHECK(player->last_error().empty());
+}
+
+TEST_CASE("player: an item a command skipped keeps its reason while the next one plays",
+          "[hearth][player]") {
+    Library library;
+    library.files["noise.ec3"] = std::vector<std::byte>(4096, std::byte{0x33});
+    library.files["fine.ec3"] = eac3_stream(40);
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    player->queue().add(item("noise.ec3"));
+    player->queue().add(item("fine.ec3"));
+
+    player->play();
+    REQUIRE(player->transport().state() == TransportState::kPlaying);
+    REQUIRE(player->queue().current_index() == 1);
+    // The skipped item's own reason is what the transport bar shows while
+    // the one after it plays: it is the same command's, not a stale one.
+    const std::string skipped = player->last_error();
+    CHECK_FALSE(skipped.empty());
+
+    player->pause();
+    CHECK(player->last_error() == skipped);
+
+    // A command of its own is what puts it away.
+    player->play();
+    CHECK(player->transport().state() == TransportState::kPlaying);
+    CHECK(player->last_error().empty());
+}
+
 TEST_CASE("player: pause holds the output still, and seek drops what was queued",
           "[hearth][player]") {
     Library library;

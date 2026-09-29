@@ -2176,6 +2176,12 @@ The sections below contain the complete change list and fixes.
   - A `PUT /name`, `/wiring` or `/slot-width` sent while the player was starting could be
     lost: the server started with the board's old description, which is what servers
     read in its hello. The server now gets the new one.
+- **Hearth's transport bar kept the last error for ever.** The player held the reason a play
+  had failed until another failure replaced it, and the bar shows an error over the note, so
+  after an output refused to open, "The output could not be opened..." stayed on screen over
+  items that were playing without trouble - including once another output had been chosen and
+  had worked. The error now goes when the next play, next or previous command starts. An item
+  a command skipped keeps its reason until the following command, as before.
 
 **Codec correctness**
 
@@ -2630,6 +2636,15 @@ The sections below contain the complete change list and fixes.
   and for the equivalent channel-count/nominal-rate checks on Core Audio. PipeWire and AAudio
   hand format negotiation to a graph or mixer that converts rather than refuses, so neither
   backend returns it.
+- **On Windows, `MonitorSink` refused every sample rate but the one its endpoint runs at.**
+  Shared mode takes only the mix format's own rate and channel count unless the stream is
+  initialised with `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`, and `start()` never set it, so a
+  44.1 kHz item on a 48 kHz endpoint - the ordinary pair - ended in `kFormatRejected`. Hearth
+  opens its output at each item's own rate, and could not play such a file on that machine at
+  all ("The output could not be opened at 44100 Hz"). `start()` now sets the flag, with
+  `AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY`, so the engine resamples; `kFormatRejected` stays
+  for a format the converter cannot take. `"[monitor-live]"` opens at 44.1, 48 and 96 kHz, and
+  `"[hearth-device]"` does the same through Hearth's own output sink.
 - **An output device that went away left the sink saying it was still playing.** A render
   thread that met a device failure - an unplugged endpoint answering
   `AUDCLNT_E_DEVICE_INVALIDATED`, ALSA giving up on `-ENODEV`, an AAudio write refused -
