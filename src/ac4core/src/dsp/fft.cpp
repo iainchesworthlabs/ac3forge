@@ -109,16 +109,15 @@ Fft<Real>::Fft(std::size_t length) : length_(length) {
         roots3_[j] = Complex(static_cast<Real>(w3.real()), static_cast<Real>(w3.imag()));
         roots5_[j] = Complex(static_cast<Real>(w5.real()), static_cast<Real>(w5.imag()));
     }
-    work_.resize(length_);
 }
 
 template <typename Real>
-void Fft<Real>::run(std::span<Complex> data, bool inverse) {
-    if (!valid_ || data.size() != length_ || stages_.empty()) {
+void Fft<Real>::run(std::span<Complex> data, std::span<Complex> work, bool inverse) {
+    if (!valid_ || data.size() != length_ || work.size() < length_ || stages_.empty()) {
         return;
     }
     Complex* x = data.data();
-    Complex* y = work_.data();
+    Complex* y = work.data();
     for (const Stage& stage : stages_) {
         const auto r = static_cast<std::size_t>(stage.radix);
         const std::size_t m = stage.n / r;

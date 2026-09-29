@@ -1,42 +1,26 @@
 #include "pcm/asf_reconstruct.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 
+#include "pcm/pow43.hpp"
 #include "tables/sfb_tables.hpp"
 
 namespace ac4::detail {
 namespace {
 
-// The note under clause 5.1.3.1's quant_spec: 8 191 is the largest magnitude,
-// which is also the most ext_code (Pseudocode 20, 21 bits) can escape to.
-constexpr std::size_t kMaxQuant = 8191;
-
-// sign(q) |q|^(4/3), clause 5.1.3.2. A namespace-scope table, not a
-// function-local static (planning/ac4.md, D14a's memory rules): the values
-// are the same 8 192 std::pow() calls either way, computed once before
-// main() rather than guarded and computed lazily on this function's first
-// call - no per-call thread-safety check, and no latency spike on whichever
-// frame happens to decode first. Still 64 KiB of RAM rather than flash: the
-// table is not constexpr (std::pow has no such guarantee), which a later
-// phase's own constexpr power routine could change without moving a value
-// here (this table's numbers are unaffected either way).
-const std::array<Real, kMaxQuant + 1> kPow43 = [] {
-    std::array<Real, kMaxQuant + 1> table{};
-    for (std::size_t m = 0; m < table.size(); ++m) {
-        table[m] = static_cast<Real>(std::pow(static_cast<double>(m), 4.0 / 3.0));
-    }
-    return table;
-}();
-
+// sign(q) |q|^(4/3), clause 5.1.3.2, from pcm/pow43.hpp's table in read-only
+// data. The note under clause 5.1.3.1's quant_spec makes 8 191 the largest
+// magnitude, and asf.cpp refuses a longer ext_code; the clamp is for a caller that
+// builds an SfData by hand.
 [[nodiscard]] Real reconstruct_line(std::int32_t q) noexcept {
     const std::int64_t wide = q;
     const auto magnitude = static_cast<std::uint64_t>(wide < 0 ? -wide : wide);
-    const Real value = magnitude < kPow43.size()
-                           ? kPow43[static_cast<std::size_t>(magnitude)]
-                           : static_cast<Real>(std::pow(static_cast<double>(magnitude), 4.0 / 3.0));
+    const Real value =
+        kPow43<Real>[static_cast<std::size_t>(std::min<std::uint64_t>(magnitude, kMaxQuant))];
     return q < 0 ? -value : value;
 }
 

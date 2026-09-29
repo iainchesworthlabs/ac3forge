@@ -99,14 +99,31 @@ constexpr double kAlphaSmooth = 0.25;
 constexpr double kGamma = 1.5;
 constexpr double kEpsilon = 1.0e-9;
 
-// The ducker's parameter bands are the 15 of acpl_max_num_param_bands.
-[[nodiscard]] std::array<int, kSubbands> ducker_bands() noexcept {
+// The parameter band of `subband` in Table 197's column `column` (0 for 15 bands,
+// then 12, 9 and 7): the last row that starts at or before it.
+[[nodiscard]] constexpr int param_band_of(std::size_t column, int subband) noexcept {
+    int param_band = 0;
+    for (const SbToPbRow& row : kSbToPb) {
+        if (row.first_subband > subband) {
+            break;
+        }
+        param_band = row.param_band[column];
+    }
+    return param_band;
+}
+
+// The ducker's parameter bands are the 15 of acpl_max_num_param_bands, by
+// subband: a table in the program's read-only data, not a function-local static
+// (planning/ac4.md, D14a's memory rules: nothing guarded, nothing lazy).
+[[nodiscard]] constexpr std::array<int, kSubbands> ducker_bands() noexcept {
     std::array<int, kSubbands> out{};
-    for (int sb = 0; sb < kSubbands; ++sb) {
-        out[at(sb)] = sb_to_pb(kMaxParamBands, sb);
+    for (std::size_t sb = 0; sb < out.size(); ++sb) {
+        out[sb] = param_band_of(0, static_cast<int>(sb));
     }
     return out;
 }
+
+constexpr std::array<int, kSubbands> kDuckerBand = ducker_bands();
 
 }  // namespace
 
@@ -131,14 +148,7 @@ int sb_to_pb(int num_param_bands, int subband) noexcept {
     if (subband < 0 || subband >= kSubbands) {
         return -1;
     }
-    int param_band = 0;
-    for (const SbToPbRow& row : kSbToPb) {
-        if (row.first_subband > subband) {
-            break;
-        }
-        param_band = row.param_band[column];
-    }
-    return param_band;
+    return param_band_of(column, subband);
 }
 
 Range quantised_range(Kind kind, Quant quant) noexcept {
@@ -333,7 +343,7 @@ void TransientDucker<Real>::process(std::span<Complex> inout, int num_ts) noexce
     if (num_ts <= 0 || inout.size() < n * kSubbands) {
         return;
     }
-    static const std::array<int, kSubbands> kBand = ducker_bands();
+    const std::array<int, kSubbands>& kBand = kDuckerBand;
     const auto alpha = static_cast<Real>(kAlpha);
     const auto smoothing = static_cast<Real>(kAlphaSmooth);
     const auto gamma = static_cast<Real>(kGamma);

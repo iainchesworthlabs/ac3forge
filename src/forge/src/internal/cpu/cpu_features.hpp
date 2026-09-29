@@ -4,7 +4,7 @@
 // Runtime CPU-feature detection, x86-64 only (SIMD kernels's follow-on
 // dynamic-dispatch work).
 //
-// The arch seam (src/forge/src/internal/arch/{generic,x86_64,aarch64}/) is
+// The arch seam (src/arithmetic/arch/{generic,x86_64,aarch64}/) is
 // compile-time only, deliberately: SSE2 and NEON are both part of their
 // architecture, guaranteed present, so nothing needs asking. AVX2 is
 // different - a real CPU FEATURE that may or may not be present on the

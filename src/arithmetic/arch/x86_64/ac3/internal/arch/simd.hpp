@@ -7,7 +7,7 @@
 
 // ---------------------------------------------------------------------------
 // The x86-64 (SSE2) member of the arch seam. See
-// src/forge/src/internal/arch/generic/ac3/internal/arch/simd.hpp for what the
+// src/arithmetic/arch/generic/ac3/internal/arch/simd.hpp for what the
 // seam is, how CMake selects between the three directories, and why no
 // header here needs a preprocessor conditional to name its architecture.
 //

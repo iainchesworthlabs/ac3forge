@@ -152,6 +152,9 @@ class AcplStage {
     std::vector<QmfValue> work_;
     std::array<std::vector<double>, 2> interp_{};
     std::vector<std::vector<double>> interp_scratch_;
+    // coupling()'s six gamma parameters with their acpl_param_prev: 4.5 KB, too much
+    // for a local.
+    std::array<Param, 6> coupling_g_{};
 };
 
 }  // namespace ac4::detail

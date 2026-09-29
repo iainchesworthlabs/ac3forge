@@ -300,7 +300,7 @@ endif()
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4enc/src")
 
 # test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
-# CMake selected in src/forge/CMakeLists.txt, so the test exercises the
+# CMake selected in src/arithmetic/CMakeLists.txt, so the test exercises the
 # f64x2/i32x4 the library was actually built with rather than a different
 # one - same white-box arrangement as src/signing/src just above and the ALSA
 # backend's internal header below.

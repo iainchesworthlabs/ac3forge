@@ -3493,6 +3493,24 @@ jobs:
       - name: Fixed-point instructions per frame under QEMU -icount
         run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "build/config-arm-none-eabi-minimal/icount-fixed.txt"
 
+      # The AC-4 decoder on the same leg (planning/ac4.md, D14a): its own probe
+      # and its own image, in float, since AC-4 shares nothing with ac3::forge and
+      # an image carries one probe. Five committed streams; each channel's level,
+      # the image, each fixture's peak heap, the stack a decode used, the
+      # allocations per frame and, below, the instructions per frame are gated
+      # against the ceilings in the runner. Into the FLOAT build directory of the
+      # first step, for the reason the -icount steps above give.
+      - name: Build and run the AC-4 probe under QEMU
+        run: ./tools/checks/run_baremetal_probe.sh --ac4 | tee "build/config-arm-none-eabi-minimal/ac4-arm.txt"
+
+      # decision 26: the float PCM is the same on the host, the Cortex-M3 and the
+      # P4. The host's run is _ci-linux.yml's, held to the same pinned hashes.
+      - name: AC-4 hashes against the pinned ones
+        run: python3 tools/checks/check_probe_hashes.py --expected tests/golden/ac4-probe-pcm-hashes.json "build/config-arm-none-eabi-minimal/ac4-arm.txt"
+
+      - name: AC-4 instructions per frame under QEMU -icount
+        run: ./tools/checks/run_baremetal_probe.sh --ac4 --icount | tee "build/config-arm-none-eabi-minimal/icount-ac4.txt"
+
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
       # check against the run that produced it is a claim, not a measurement.

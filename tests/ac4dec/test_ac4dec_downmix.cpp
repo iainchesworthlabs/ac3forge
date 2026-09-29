@@ -287,15 +287,15 @@ TEST_CASE("the downmix's gains hold from the frame that sends them until another
     detail::DownmixValues sent;
     sent.coeff = coefficients(6, 7, 6, 7, std::nullopt, 1);  // C at -6 dB, no surrounds
     stage.process(sent, in, out);
-    const double first = out[0][0].real();
+    const auto first = static_cast<double>(out[0][0].real());
     CHECK(std::abs(first - (1.0 + db(-6.0))) < kTolerance);
     // A frame that sends nothing keeps them.
     stage.process({}, in, out);
-    CHECK(out[0][0].real() == first);
+    CHECK(static_cast<double>(out[0][0].real()) == first);
     // A reset goes back to -3 dB.
     stage.reset();
     stage.process({}, in, out);
-    CHECK(std::abs(out[0][0].real() - (1.0 + 2.0 * db(-3.0))) < kTolerance);
+    CHECK(std::abs(static_cast<double>(out[0][0].real()) - (1.0 + 2.0 * db(-3.0))) < kTolerance);
 }
 
 TEST_CASE("DEE's 5.1 tones come out of each downmix at the stream's gains, to 0.01 dB",

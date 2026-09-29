@@ -30,30 +30,41 @@ std::vector<Complex> pre_twiddles(std::size_t length) {
 
 template <typename Real>
 Imdct<Real>::Imdct(std::size_t length)
-    : length_(length), fft_(length / 2), twiddle_(pre_twiddles<Complex>(length)), z_(length / 2) {}
+    : length_(length), fft_(length / 2), twiddle_(pre_twiddles<Complex>(length)) {}
 
 template <typename Real>
 void Imdct<Real>::inverse(std::span<const Real> spectrum, std::span<Real> out) {
+    if (scratch_.size() != length_) {
+        scratch_.resize(length_);
+    }
+    inverse(spectrum, out, scratch_);
+}
+
+template <typename Real>
+void Imdct<Real>::inverse(std::span<const Real> spectrum, std::span<Real> out,
+                          std::span<Complex> scratch) {
     const std::size_t n = length_;
-    if (!valid() || spectrum.size() != n || out.size() != 2 * n) {
+    if (!valid() || spectrum.size() != n || out.size() != 2 * n || scratch.size() < n) {
         return;
     }
     const std::size_t half = n / 2;
     const std::size_t quarter = n / 4;
+    const std::span<Complex> z = scratch.first(half);
+    const std::span<Complex> work = scratch.subspan(half, half);
 
     // Pseudocode 60: Z[k] = (X[N-2k-1] + j X[2k]) (xcos1[k] + j xsin1[k]).
     for (std::size_t k = 0; k < half; ++k) {
-        z_[k] = Complex(spectrum[n - 2 * k - 1], spectrum[2 * k]) * twiddle_[k];
+        z[k] = Complex(spectrum[n - 2 * k - 1], spectrum[2 * k]) * twiddle_[k];
     }
     // Pseudocode 61: the unscaled N/2-point inverse transform.
-    fft_.inverse(z_);
+    fft_.inverse(z, work);
     // Pseudocode 62: y[n] = z[n] (xcos1[n] + j xsin1[n]) / N.
     const Real scale = Real(1) / static_cast<Real>(n);
     for (std::size_t k = 0; k < half; ++k) {
-        z_[k] = z_[k] * twiddle_[k] * scale;
+        z[k] = z[k] * twiddle_[k] * scale;
     }
     // Pseudocode 63 without w[n].
-    const Complex* y = z_.data();
+    const Complex* y = z.data();
     for (std::size_t m = 0; m < quarter; ++m) {
         out[2 * m] = y[quarter + m].imag();
         out[2 * m + 1] = -y[quarter - m - 1].real();

@@ -1,0 +1,274 @@
+{
+  "_comment": "The AC-4 float decode's agreement with the double decode, per committed stream (tools/checks/check_ac4_decode_scalar_snr.py): the floors, in dB, of the worst channel's SNR below the lowest A-SPX crossover and above the highest, over half-overlapped Hann frames of 2048 samples, a channel with less than 1e-6 in a region (per frame) left out of it. Each is the figure measured on 2026-09-30 less 3.0 dB; MSVC, GCC 16 and Clang 22 gave figures within 0.1 dB of one another. Re-pin when a stream's decode changes on purpose.",
+  "margin_db": 3.0,
+  "streams": {
+    "apps/gui/tests/fixtures/ac4-objects.ac4": {
+      "below": 132.7,
+      "above": 98.5
+    },
+    "tests/golden/ac4dec/constructed/2_0-acpl1-stereoproc.ac4": {
+      "below": 131.1,
+      "above": 41.1
+    },
+    "tests/golden/ac4dec/constructed/2_0-acpl2-second.ac4": {
+      "below": 129.5,
+      "above": 37.4
+    },
+    "tests/golden/ac4dec/constructed/3_0-aspx-config1-matsel5.ac4": {
+      "below": 116.8,
+      "above": 37.6
+    },
+    "tests/golden/ac4dec/constructed/3_0-simple-config0.ac4": {
+      "below": 129.1,
+      "above": null
+    },
+    "tests/golden/ac4dec/constructed/5_0-acpl2-config0.ac4": {
+      "below": 128.7,
+      "above": 36.6
+    },
+    "tests/golden/ac4dec/constructed/5_0-simple-config2.ac4": {
+      "below": 129.1,
+      "above": null
+    },
+    "tests/golden/ac4dec/constructed/5_1-acpl1-config1-matsel7.ac4": {
+      "below": 130.7,
+      "above": 40.3
+    },
+    "tests/golden/ac4dec/constructed/5_1-acpl3-second-coarse.ac4": {
+      "below": 130.5,
+      "above": 43.8
+    },
+    "tests/golden/ac4dec/constructed/5_1-aspx-config3-matsel3.ac4": {
+      "below": 115.8,
+      "above": 37.7
+    },
+    "tests/golden/ac4dec/constructed/5_1-simple-config0-2ch1.ac4": {
+      "below": 128.7,
+      "above": null
+    },
+    "tests/golden/ac4dec/constructed/5_1-simple-config1-matsel9.ac4": {
+      "below": 129.1,
+      "above": null
+    },
+    "tests/golden/ac4dec/constructed/7_0-322-aspx-config0.ac4": {
+      "below": 108.6,
+      "above": 37.3
+    },
+    "tests/golden/ac4dec/constructed/7_0-340-aspx-config1-matsel6.ac4": {
+      "below": 108.6,
+      "above": 38.0
+    },
+    "tests/golden/ac4dec/constructed/7_0-520-acpl1-config3-base1.ac4": {
+      "below": 130.6,
+      "above": 38.3
+    },
+    "tests/golden/ac4dec/constructed/7_0-520-aspx-config3-matsel11-sap.ac4": {
+      "below": 106.4,
+      "above": 37.6
+    },
+    "tests/golden/ac4dec/constructed/7_0_4-aspx_scpl-grouping3-matsel4.ac4": {
+      "below": 108.2,
+      "above": 38.0
+    },
+    "tests/golden/ac4dec/constructed/7_1-322-acpl2-config0-second.ac4": {
+      "below": 130.8,
+      "above": 41.6
+    },
+    "tests/golden/ac4dec/constructed/7_1-322-simple-config2-sap.ac4": {
+      "below": 129.2,
+      "above": null
+    },
+    "tests/golden/ac4dec/constructed/7_1-340-acpl2-config2.ac4": {
+      "below": 130.5,
+      "above": 37.4
+    },
+    "tests/golden/ac4dec/constructed/7_1-340-simple-config0-2ch1-sap.ac4": {
+      "below": 129.3,
+      "above": null
+    },
+    "tests/golden/ac4dec/constructed/7_1-520-simple-config1-matsel0.ac4": {
+      "below": 129.1,
+      "above": null
+    },
+    "tests/golden/ac4dec/constructed/7_1_4-acpl1-grouping1-matsel10.ac4": {
+      "below": 130.6,
+      "above": 38.4
+    },
+    "tests/golden/ac4dec/constructed/7_1_4-acpl2-grouping2-second.ac4": {
+      "below": 130.3,
+      "above": 37.3
+    },
+    "tests/golden/ac4dec/constructed/7_1_4-ajcc-grouping0-2ch1-mode1-route2.ac4": {
+      "below": 130.2,
+      "above": 40.7
+    },
+    "tests/golden/ac4dec/constructed/7_1_4-scpl-grouping0-sap-prediction.ac4": {
+      "below": 128.9,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/ajoc-2to4-coarse.ac4": {
+      "below": 129.0,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/ajoc-3-config0.ac4": {
+      "below": 127.8,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/ajoc-4-oamd-substream.ac4": {
+      "below": 128.8,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/ajoc-5lfe-aspx-decorr-sparse.ac4": {
+      "below": 130.7,
+      "above": 34.5
+    },
+    "tests/golden/ac4dec/objects/ajoc-static-5_1.ac4": {
+      "below": 128.9,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/direct-bed-5_1.ac4": {
+      "below": 129.5,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/direct-dynamic.ac4": {
+      "below": 129.4,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/direct-isf-sr3100.ac4": {
+      "below": 129.4,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/encoder-ajoc-beds-decorr.ac4": {
+      "below": 126.6,
+      "above": null
+    },
+    "tests/golden/ac4dec/objects/encoder-ajoc-computed.ac4": {
+      "below": 123.1,
+      "above": 80.5
+    },
+    "tests/golden/ac4dec/objects/encoder-ajoc-static-5_1.ac4": {
+      "below": 126.8,
+      "above": 70.7
+    },
+    "tests/golden/ac4dec/objects/encoder-direct.ac4": {
+      "below": 132.5,
+      "above": 61.8
+    },
+    "tests/golden/ac4dec/presentations/encoder-broadcast.ac4": {
+      "below": 130.9,
+      "above": 58.0
+    },
+    "tests/golden/ac4dec/presentations/encoder-emdf.ac4": {
+      "below": 128.8,
+      "above": 52.9
+    },
+    "tests/golden/ac4dec/presentations/encoder-hybrid.ac4": {
+      "below": 132.0,
+      "above": 54.1
+    },
+    "tests/golden/ac4dec/presentations/encoder-three-zero.ac4": {
+      "below": 129.8,
+      "above": 61.4
+    },
+    "tests/golden/ac4dec/presentations/presentations-5_1.ac4": {
+      "below": 129.4,
+      "above": null
+    },
+    "tests/golden/ac4dec/presentations/presentations-hybrid.ac4": {
+      "below": 129.4,
+      "above": null
+    },
+    "tests/golden/ac4dec/presentations/presentations-v0.ac4": {
+      "below": 129.4,
+      "above": null
+    },
+    "tests/golden/ac4dec/presentations/sources/ad-mono.ac4": {
+      "below": 130.5,
+      "above": null
+    },
+    "tests/golden/ac4dec/presentations/sources/commentary-stereo.ac4": {
+      "below": 130.8,
+      "above": null
+    },
+    "tests/golden/ac4dec/presentations/sources/de-mono.ac4": {
+      "below": 131.0,
+      "above": null
+    },
+    "tests/golden/ac4dec/presentations/sources/dialogue-de-mono.ac4": {
+      "below": 131.5,
+      "above": null
+    },
+    "tests/golden/ac4dec/presentations/sources/dialogue-en-mono.ac4": {
+      "below": 131.2,
+      "above": null
+    },
+    "tests/golden/ac4dec/presentations/sources/dialogue-fr-stereo.ac4": {
+      "below": 131.4,
+      "above": null
+    },
+    "tests/golden/external-baseline/ac4-20-music-192/dee.ac4": {
+      "below": 130.5,
+      "above": null
+    },
+    "tests/golden/external-baseline/ac4-20-speech-128/dee.ac4": {
+      "below": 132.5,
+      "above": 82.8
+    },
+    "tests/golden/external-baseline/ac4-20-tones-192/dee.ac4": {
+      "below": 130.6,
+      "above": null
+    },
+    "tests/golden/external-baseline/ac4-51-drc-ltrt-192/dee.ac4": {
+      "below": 132.7,
+      "above": 60.1
+    },
+    "tests/golden/external-baseline/ac4-51-film-96/dee.ac4": {
+      "below": 129.1,
+      "above": 76.9
+    },
+    "tests/golden/external-baseline/ac4-51-music-128/dee.ac4": {
+      "below": 131.4,
+      "above": 62.2
+    },
+    "tests/golden/external-baseline/ac4-51-music-192/dee.ac4": {
+      "below": 132.7,
+      "above": 60.3
+    },
+    "tests/golden/external-baseline/ac4-51-music-384/dee.ac4": {
+      "below": 130.7,
+      "above": null
+    },
+    "tests/golden/external-baseline/ac4-51-tones-384/dee.ac4": {
+      "below": 129.6,
+      "above": null
+    },
+    "tests/golden/external-baseline/ac4-514-tones-256/dee.ac4": {
+      "below": 130.0,
+      "above": 46.1
+    },
+    "tests/golden/external-baseline/ac4-514-tones-512/dee.ac4": {
+      "below": 130.6,
+      "above": 44.2
+    },
+    "tests/golden/external-baseline/ac4-514-tones-768/dee.ac4": {
+      "below": 129.4,
+      "above": null
+    },
+    "tests/golden/external-baseline/ac4-ims-film-96-24/dee.ac4": {
+      "below": 133.0,
+      "above": 91.7
+    },
+    "tests/golden/external-baseline/ac4-ims-music-128-25/dee.ac4": {
+      "below": 130.3,
+      "above": 59.3
+    },
+    "tests/golden/external-baseline/ac4-ims-music-64-2997/dee.ac4": {
+      "below": 132.9,
+      "above": 95.2
+    },
+    "tests/golden/external-baseline/ac4-stereo-64/dee.ac4": {
+      "below": 130.3,
+      "above": 99.1
+    }
+  }
+}

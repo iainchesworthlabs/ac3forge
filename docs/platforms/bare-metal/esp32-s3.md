@@ -1239,7 +1239,7 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
   frame depending on fixture, from per-block geometry vectors and the `std::vector` members of the
   returned `DecodedFrame`. Reaching zero means those becoming fixed-capacity, which changes public
   types. The runner gates at 100 so the distance from zero cannot grow quietly.
-- **A vectorised float32 path.** `src/forge/src/internal/arch/` carries an `f32x4`, but it
+- **A vectorised float32 path.** `src/arithmetic/arch/` carries an `f32x4`, but it
   resolves to `generic/` here and compiles to four scalar operations: PIE's vector ALU is
   integer-only. What `esp-dsp` uses instead is `EE.LDF.128.IP`, a 128-bit load filling four FPU
   registers feeding four scalar `madd.s` — load bandwidth and instruction-level parallelism rather
