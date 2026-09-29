@@ -136,6 +136,13 @@ class LayeringCheck(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("src/codec/src/new.cpp", out)
 
+    def test_a_readme_beside_the_debt_files_is_not_read_as_one(self) -> None:
+        # Git has no empty directory: once the cuts have landed the README is what is left.
+        _write(self.root, "debt/README.md", "# Known debts\n\nonly-one-field\n")
+        code, out = self.run_check({"base": [], "codec": ["base"]}, debt="debt")
+        self.assertEqual(code, 0, out)
+        self.assertIn("0 known debts", out)
+
     def test_malformed_debt_line_is_an_error(self) -> None:
         _write(self.root, "debt/c1.txt", "only-one-field\n")
         with self.assertRaises(ValueError):
