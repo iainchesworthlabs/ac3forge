@@ -230,7 +230,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          build="build/config-${{ matrix.preset }}"
+          build="build/config-${MATRIX_PRESET}"
           suffix=''
           [ "$RUNNER_OS" = "Windows" ] && suffix='.exe'
           # ac3crucible is a MACOSX_BUNDLE target (apps/crucible/CMakeLists.txt),
@@ -264,6 +264,8 @@ jobs:
             exit 1
           fi
           ls -1 "$window" "$build/bin/ac3crucible-run$suffix"
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
@@ -310,6 +312,7 @@ jobs:
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
+          MATRIX_PRESET: ${{ matrix.preset }}
         # apps/gui/CMakeLists.txt sets MACOSX_BUNDLE ON unconditionally, but it
         # is a no-op everywhere except APPLE, where it moves the built
         # executable to bin/ac3gui.app/Contents/MacOS/ac3gui instead of plain
@@ -329,9 +332,9 @@ jobs:
         # macOS runner image by default.
         run: |
           set -euo pipefail
-          bin="build/config-${{ matrix.preset }}/bin/ac3gui"
+          bin="build/config-${MATRIX_PRESET}/bin/ac3gui"
           if [ "$RUNNER_OS" = "macOS" ]; then
-            bin="build/config-${{ matrix.preset }}/bin/ac3gui.app/Contents/MacOS/ac3gui"
+            bin="build/config-${MATRIX_PRESET}/bin/ac3gui.app/Contents/MacOS/ac3gui"
             export QSG_RENDER_LOOP=basic
           fi
           smoke_args=(--smoke
@@ -384,7 +387,9 @@ jobs:
            (inputs.do_package && matrix.release_package) ||
            ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
-        run: cpack --preset pack-${{ matrix.preset }}
+        run: cpack --preset pack-${MATRIX_PRESET}
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # The macOS counterpart to _ci-windows.yml's own "Assert the AC3Forge
       # Crucible was packaged" step. Same cpack pass as the Package step just
@@ -558,7 +563,9 @@ jobs:
       - name: Install runtime component (macOS universal merge)
         if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
         shell: bash
-        run: cmake --install "build/config-${{ matrix.preset }}" --prefix stage --component runtime
+        run: cmake --install "build/config-${MATRIX_PRESET}" --prefix stage --component runtime
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       - name: Upload install tree (macOS universal merge)
         if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
@@ -581,8 +588,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --install "build/config-${{ matrix.preset }}" --prefix stage-dev --component library
-          cmake --install "build/config-${{ matrix.preset }}" --prefix stage-dev --component libruntime
+          cmake --install "build/config-${MATRIX_PRESET}" --prefix stage-dev --component library
+          cmake --install "build/config-${MATRIX_PRESET}" --prefix stage-dev --component libruntime
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       - name: Upload dev install tree (macOS universal merge)
         if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
