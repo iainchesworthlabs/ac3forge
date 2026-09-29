@@ -54,10 +54,14 @@ set(AC3FORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
 # forge_c_objects/forge_c_static/forge_c_shared into every Shield build for nothing.
 set(AC3FORGE_BUILD_CAPI OFF CACHE BOOL "" FORCE)
 
-# Nor the AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc), which the root
-# CMakeLists.txt builds by default and nothing here links: off until plan phase I4 binds them
-# (planning/ac4.md), which tools/checks/test_ac4_build_configurations.py holds this to.
-set(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE)
+# The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) build at the root
+# CMakeLists.txt's own default (ON, plan phase I4): unlike Hearth above, they depend on
+# nothing outside this tree (packaging/vcpkg-port/ac3forge/vcpkg.json's "ac4" feature says
+# the same - "depends on nothing in ac3::forge"), so they cross-compile under the NDK with no
+# extra package friction. Nothing in this app's own target_link_libraries links them yet - a
+# later phase's application work (planning/ac4.md), not this one, which only has to keep the
+# sources building under the NDK toolchain; tools/checks/test_ac4_build_configurations.py holds
+# this build to that ON default.
 
 # The Shield app links none of the three standalone container writers either
 # (ac3forge_jni's own target_link_libraries below is ac3::forge/ac3::audio/
