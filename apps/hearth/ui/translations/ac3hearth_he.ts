@@ -62,391 +62,391 @@
 <context>
     <name>DecoderAc4</name>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="135"/>
-        <location filename="../qml/DecoderAc4.qml" line="141"/>
-        <location filename="../qml/DecoderAc4.qml" line="163"/>
+        <location filename="../qml/DecoderAc4.qml" line="137"/>
+        <location filename="../qml/DecoderAc4.qml" line="143"/>
+        <location filename="../qml/DecoderAc4.qml" line="165"/>
         <source>Presentation</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="48"/>
+        <location filename="../qml/DecoderAc4.qml" line="50"/>
         <source>main</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="49"/>
+        <location filename="../qml/DecoderAc4.qml" line="51"/>
         <source>music and effects</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="50"/>
+        <location filename="../qml/DecoderAc4.qml" line="52"/>
         <source>dialogue</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="51"/>
+        <location filename="../qml/DecoderAc4.qml" line="53"/>
         <source>audio description</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="52"/>
+        <location filename="../qml/DecoderAc4.qml" line="54"/>
         <source>hearing impaired</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="53"/>
+        <location filename="../qml/DecoderAc4.qml" line="55"/>
         <source>commentary</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="54"/>
+        <location filename="../qml/DecoderAc4.qml" line="56"/>
         <source>emergency</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="55"/>
+        <location filename="../qml/DecoderAc4.qml" line="57"/>
         <source>voice over</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="56"/>
+        <location filename="../qml/DecoderAc4.qml" line="58"/>
         <source>associated audio</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="61"/>
+        <location filename="../qml/DecoderAc4.qml" line="63"/>
         <source>%1 · %2 · %3 · %4</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="62"/>
+        <location filename="../qml/DecoderAc4.qml" line="64"/>
         <source>no language</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="65"/>
+        <location filename="../qml/DecoderAc4.qml" line="67"/>
         <source> (not decoded in this build)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="67"/>
+        <location filename="../qml/DecoderAc4.qml" line="69"/>
         <source> (disabled)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="106"/>
+        <location filename="../qml/DecoderAc4.qml" line="108"/>
         <source>home theatre</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="107"/>
+        <location filename="../qml/DecoderAc4.qml" line="109"/>
         <source>flat panel TV</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="108"/>
+        <location filename="../qml/DecoderAc4.qml" line="110"/>
         <source>portable speakers</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="109"/>
+        <location filename="../qml/DecoderAc4.qml" line="111"/>
         <source>portable headphones</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="110"/>
+        <location filename="../qml/DecoderAc4.qml" line="112"/>
         <source>mode %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="149"/>
-        <location filename="../qml/DecoderAc4.qml" line="374"/>
+        <location filename="../qml/DecoderAc4.qml" line="151"/>
+        <location filename="../qml/DecoderAc4.qml" line="376"/>
         <source>Automatic</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="155"/>
+        <location filename="../qml/DecoderAc4.qml" line="157"/>
         <source>presentation_id %1, not in this stream</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="157"/>
+        <location filename="../qml/DecoderAc4.qml" line="159"/>
         <source>presentation %1, not in this stream</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="177"/>
+        <location filename="../qml/DecoderAc4.qml" line="179"/>
         <source>From the stream&apos;s table of contents. With no choice made, the first presentation in your language plays.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="186"/>
+        <location filename="../qml/DecoderAc4.qml" line="188"/>
         <source>Nothing AC-4 is playing.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="201"/>
+        <location filename="../qml/DecoderAc4.qml" line="203"/>
         <source>#</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="203"/>
+        <location filename="../qml/DecoderAc4.qml" line="205"/>
         <source>Language</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="205"/>
+        <location filename="../qml/DecoderAc4.qml" line="207"/>
         <source>Channels</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="207"/>
+        <location filename="../qml/DecoderAc4.qml" line="209"/>
         <source>Content</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="209"/>
+        <location filename="../qml/DecoderAc4.qml" line="211"/>
         <source>Groups</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="239"/>
+        <location filename="../qml/DecoderAc4.qml" line="241"/>
         <source>Dialogue</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="245"/>
+        <location filename="../qml/DecoderAc4.qml" line="247"/>
         <source>Enhancement</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="252"/>
+        <location filename="../qml/DecoderAc4.qml" line="254"/>
         <source>Dialogue enhancement, dB</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="264"/>
-        <location filename="../qml/DecoderAc4.qml" line="299"/>
-        <location filename="../qml/DecoderAc4.qml" line="344"/>
+        <location filename="../qml/DecoderAc4.qml" line="266"/>
+        <location filename="../qml/DecoderAc4.qml" line="301"/>
+        <location filename="../qml/DecoderAc4.qml" line="346"/>
         <source>%1 dB</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="270"/>
+        <location filename="../qml/DecoderAc4.qml" line="272"/>
         <source>Raises dialogue against the rest of the mix where the stream carries dialogue enhancement data, up to the stream&apos;s own limit. 0 to 12 dB.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="273"/>
+        <location filename="../qml/DecoderAc4.qml" line="275"/>
         <source>This stream allows up to %1 dB.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="283"/>
+        <location filename="../qml/DecoderAc4.qml" line="285"/>
         <source>Dialogue level</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="290"/>
+        <location filename="../qml/DecoderAc4.qml" line="292"/>
         <source>Dialogue level, dB</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="305"/>
+        <location filename="../qml/DecoderAc4.qml" line="307"/>
         <source>The dialogue against the music and effects, where a presentation carries them apart, up to the most the stream allows.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="318"/>
+        <location filename="../qml/DecoderAc4.qml" line="320"/>
         <source>When the presentation carries an associated programme. A presentation that carries one plays first.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="362"/>
+        <location filename="../qml/DecoderAc4.qml" line="364"/>
         <source>AC-4 only</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="374"/>
+        <location filename="../qml/DecoderAc4.qml" line="376"/>
         <source>Flat panel TV</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="375"/>
+        <location filename="../qml/DecoderAc4.qml" line="377"/>
         <source>Portable speakers</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="375"/>
+        <location filename="../qml/DecoderAc4.qml" line="377"/>
         <source>Portable headphones</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="375"/>
+        <location filename="../qml/DecoderAc4.qml" line="377"/>
         <source>No compression</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="389"/>
+        <location filename="../qml/DecoderAc4.qml" line="391"/>
         <source>AC-4 carries a compression curve for each kind of device; this picks which one applies. Automatic takes the one for the output level: home theatre to −27 dBFS, flat panel TV to −17, portable above that.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="399"/>
+        <location filename="../qml/DecoderAc4.qml" line="401"/>
         <source>Output level</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="407"/>
+        <location filename="../qml/DecoderAc4.qml" line="409"/>
         <source>Output level, dBFS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="416"/>
+        <location filename="../qml/DecoderAc4.qml" line="418"/>
         <source>%1 dBFS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="426"/>
+        <location filename="../qml/DecoderAc4.qml" line="428"/>
         <source>Dialogue normalisation</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="427"/>
+        <location filename="../qml/DecoderAc4.qml" line="429"/>
         <source>Brings dialogue to the output level, cutting or boosting it. Off plays the stream at its coded level, with no compression.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="437"/>
+        <location filename="../qml/DecoderAc4.qml" line="439"/>
         <source>This stream&apos;s dialogue is at %1 dBFS.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="441"/>
+        <location filename="../qml/DecoderAc4.qml" line="443"/>
         <source>It carries compression for: %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="491"/>
+        <location filename="../qml/DecoderAc4.qml" line="493"/>
         <source>Follow the stream&apos;s preferred downmix</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="492"/>
+        <location filename="../qml/DecoderAc4.qml" line="494"/>
         <source>Where the stream names one, in place of the choice above. Lt/Rt takes its Pro Logic II form where the stream prefers that. AC-4 only.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="504"/>
+        <location filename="../qml/DecoderAc4.qml" line="506"/>
         <source>Mix the LFE in</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="505"/>
+        <location filename="../qml/DecoderAc4.qml" line="507"/>
         <source>At the stream&apos;s own LFE mix level, where it carries one. On for AC-4 until set here or on the AC-3 and E-AC-3 tab.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="520"/>
+        <location filename="../qml/DecoderAc4.qml" line="522"/>
         <source>Errors</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="527"/>
-        <location filename="../qml/DecoderAc4.qml" line="530"/>
+        <location filename="../qml/DecoderAc4.qml" line="529"/>
+        <location filename="../qml/DecoderAc4.qml" line="532"/>
         <source>Bad frame</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="533"/>
+        <location filename="../qml/DecoderAc4.qml" line="535"/>
         <source>Stop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="534"/>
+        <location filename="../qml/DecoderAc4.qml" line="536"/>
         <source>Repeat and fade</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="535"/>
+        <location filename="../qml/DecoderAc4.qml" line="537"/>
         <source>Mute</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="542"/>
+        <location filename="../qml/DecoderAc4.qml" line="544"/>
         <source>What plays in place of a frame that will not decode. AC-4 is back to what the stream carries at its next I-frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="317"/>
+        <location filename="../qml/DecoderAc4.qml" line="319"/>
         <source>Mix in audio description</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="327"/>
+        <location filename="../qml/DecoderAc4.qml" line="329"/>
         <source>Its level</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="335"/>
+        <location filename="../qml/DecoderAc4.qml" line="337"/>
         <source>Audio description level, dB</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="360"/>
+        <location filename="../qml/DecoderAc4.qml" line="362"/>
         <source>Dynamic range</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="367"/>
-        <location filename="../qml/DecoderAc4.qml" line="377"/>
+        <location filename="../qml/DecoderAc4.qml" line="369"/>
+        <location filename="../qml/DecoderAc4.qml" line="379"/>
         <source>Device</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="374"/>
+        <location filename="../qml/DecoderAc4.qml" line="376"/>
         <source>Home theatre</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="454"/>
+        <location filename="../qml/DecoderAc4.qml" line="456"/>
         <source>Stereo and mono</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="456"/>
-        <location filename="../qml/DecoderAc4.qml" line="522"/>
+        <location filename="../qml/DecoderAc4.qml" line="458"/>
+        <location filename="../qml/DecoderAc4.qml" line="524"/>
         <source>shared with AC-3 and E-AC-3</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="462"/>
+        <location filename="../qml/DecoderAc4.qml" line="464"/>
         <source>Used when the speaker layout is 2.0.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="464"/>
+        <location filename="../qml/DecoderAc4.qml" line="466"/>
         <source>Used when the speaker layout is 1.0.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="465"/>
+        <location filename="../qml/DecoderAc4.qml" line="467"/>
         <source>Not used: the current layout is rendered instead of folded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="473"/>
-        <location filename="../qml/DecoderAc4.qml" line="476"/>
+        <location filename="../qml/DecoderAc4.qml" line="475"/>
+        <location filename="../qml/DecoderAc4.qml" line="478"/>
         <source>Downmix</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="479"/>
+        <location filename="../qml/DecoderAc4.qml" line="481"/>
         <source>Lo/Ro</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderAc4.qml" line="480"/>
+        <location filename="../qml/DecoderAc4.qml" line="482"/>
         <source>Lt/Rt</source>
         <translation type="unfinished"></translation>
     </message>
@@ -454,366 +454,366 @@
 <context>
     <name>DecoderEac3</name>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="39"/>
-        <location filename="../qml/DecoderEac3.qml" line="103"/>
+        <location filename="../qml/DecoderEac3.qml" line="41"/>
+        <location filename="../qml/DecoderEac3.qml" line="105"/>
         <source>RF</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="39"/>
-        <location filename="../qml/DecoderEac3.qml" line="104"/>
+        <location filename="../qml/DecoderEac3.qml" line="41"/>
+        <location filename="../qml/DecoderEac3.qml" line="106"/>
         <source>Custom</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="39"/>
-        <location filename="../qml/DecoderEac3.qml" line="102"/>
+        <location filename="../qml/DecoderEac3.qml" line="41"/>
+        <location filename="../qml/DecoderEac3.qml" line="104"/>
         <source>Line</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="59"/>
-        <location filename="../qml/DecoderEac3.qml" line="370"/>
-        <location filename="../qml/DecoderEac3.qml" line="382"/>
-        <location filename="../qml/DecoderEac3.qml" line="397"/>
+        <location filename="../qml/DecoderEac3.qml" line="61"/>
+        <location filename="../qml/DecoderEac3.qml" line="372"/>
+        <location filename="../qml/DecoderEac3.qml" line="384"/>
+        <location filename="../qml/DecoderEac3.qml" line="399"/>
         <source>not carried</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="64"/>
+        <location filename="../qml/DecoderEac3.qml" line="66"/>
         <source>dialnorm %1 to %2, so %3 to %4 dB down</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="68"/>
+        <location filename="../qml/DecoderEac3.qml" line="70"/>
         <source>dialnorm %1, so %2 dB down</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="90"/>
-        <location filename="../qml/DecoderEac3.qml" line="365"/>
+        <location filename="../qml/DecoderEac3.qml" line="92"/>
+        <location filename="../qml/DecoderEac3.qml" line="367"/>
         <source>Dynamic range</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="96"/>
-        <location filename="../qml/DecoderEac3.qml" line="99"/>
+        <location filename="../qml/DecoderEac3.qml" line="98"/>
+        <location filename="../qml/DecoderEac3.qml" line="101"/>
         <source>Mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="111"/>
+        <location filename="../qml/DecoderEac3.qml" line="113"/>
         <source>Line: dialogue normalisation and the stream&apos;s dynamic range control in full (§7.7.1). RF: heavy compression and overload protection as well (§7.7.2). Custom: the settings below.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="126"/>
+        <location filename="../qml/DecoderEac3.qml" line="128"/>
         <source>Cut</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="147"/>
-        <location filename="../qml/DecoderEac3.qml" line="183"/>
+        <location filename="../qml/DecoderEac3.qml" line="149"/>
+        <location filename="../qml/DecoderEac3.qml" line="185"/>
         <source>%1%</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="162"/>
+        <location filename="../qml/DecoderEac3.qml" line="164"/>
         <source>Boost</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="198"/>
-        <location filename="../qml/DecoderEac3.qml" line="375"/>
+        <location filename="../qml/DecoderEac3.qml" line="200"/>
+        <location filename="../qml/DecoderEac3.qml" line="377"/>
         <source>Heavy compression</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="199"/>
+        <location filename="../qml/DecoderEac3.qml" line="201"/>
         <source>Uses the compr words where the stream carries them.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="211"/>
+        <location filename="../qml/DecoderEac3.qml" line="213"/>
         <source>Dialogue normalisation</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="212"/>
+        <location filename="../qml/DecoderEac3.qml" line="214"/>
         <source>Brings dialogue to −31 dBFS and never raises it. Line and RF turn it on.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="221"/>
+        <location filename="../qml/DecoderEac3.qml" line="223"/>
         <source>RF ceiling</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="229"/>
+        <location filename="../qml/DecoderEac3.qml" line="231"/>
         <source>dBFS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="242"/>
+        <location filename="../qml/DecoderEac3.qml" line="244"/>
         <source>RF ceiling, dBFS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="260"/>
+        <location filename="../qml/DecoderEac3.qml" line="262"/>
         <source>What RF mode holds the fold under. Full scale by default; no effect in Line or Custom mode.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="271"/>
+        <location filename="../qml/DecoderEac3.qml" line="273"/>
         <source>Stereo and mono</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="278"/>
+        <location filename="../qml/DecoderEac3.qml" line="280"/>
         <source>Used when the speaker layout is 2.0.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="280"/>
+        <location filename="../qml/DecoderEac3.qml" line="282"/>
         <source>Used when the speaker layout is 1.0.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="281"/>
+        <location filename="../qml/DecoderEac3.qml" line="283"/>
         <source>Not used: the current layout is rendered instead of folded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="289"/>
-        <location filename="../qml/DecoderEac3.qml" line="292"/>
+        <location filename="../qml/DecoderEac3.qml" line="291"/>
+        <location filename="../qml/DecoderEac3.qml" line="294"/>
         <source>Downmix</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="295"/>
+        <location filename="../qml/DecoderEac3.qml" line="297"/>
         <source>Lo/Ro</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="296"/>
+        <location filename="../qml/DecoderEac3.qml" line="298"/>
         <source>Lt/Rt</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="307"/>
+        <location filename="../qml/DecoderEac3.qml" line="309"/>
         <source>Phase-shift the surround sum</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="308"/>
+        <location filename="../qml/DecoderEac3.qml" line="310"/>
         <source>Lt/Rt only. Delays the output by 63 samples.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="319"/>
+        <location filename="../qml/DecoderEac3.qml" line="321"/>
         <source>Mix the LFE in</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="320"/>
+        <location filename="../qml/DecoderEac3.qml" line="322"/>
         <source>At the stream&apos;s own LFE mix level where it carries one, and +10 dB where it does not.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="338"/>
+        <location filename="../qml/DecoderEac3.qml" line="340"/>
         <source>This stream</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="345"/>
-        <location filename="../qml/DecoderEac3.qml" line="425"/>
+        <location filename="../qml/DecoderEac3.qml" line="347"/>
+        <location filename="../qml/DecoderEac3.qml" line="427"/>
         <source>Nothing playing.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="357"/>
+        <location filename="../qml/DecoderEac3.qml" line="359"/>
         <source>Dialogue level</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="369"/>
+        <location filename="../qml/DecoderEac3.qml" line="371"/>
         <source>carried, applied in full in %1 mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="380"/>
+        <location filename="../qml/DecoderEac3.qml" line="382"/>
         <source>carried, used in RF mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="381"/>
+        <location filename="../qml/DecoderEac3.qml" line="383"/>
         <source>carried, not used in %1 mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="387"/>
+        <location filename="../qml/DecoderEac3.qml" line="389"/>
         <source>Mix levels</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="391"/>
+        <location filename="../qml/DecoderEac3.qml" line="393"/>
         <source>centre %1 dB · surround %2 dB%3</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="395"/>
+        <location filename="../qml/DecoderEac3.qml" line="397"/>
         <source> · LFE %1 dB</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="402"/>
-        <location filename="../qml/DecoderEac3.qml" line="496"/>
+        <location filename="../qml/DecoderEac3.qml" line="404"/>
+        <location filename="../qml/DecoderEac3.qml" line="498"/>
         <source>Objects</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="406"/>
+        <location filename="../qml/DecoderEac3.qml" line="408"/>
         <source>none</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="408"/>
+        <location filename="../qml/DecoderEac3.qml" line="410"/>
         <source>%1 reconstructed from the %2, placed by position</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="410"/>
+        <location filename="../qml/DecoderEac3.qml" line="412"/>
         <source>%1 · %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="419"/>
-        <location filename="../qml/DecoderEac3.qml" line="442"/>
-        <location filename="../qml/DecoderEac3.qml" line="451"/>
+        <location filename="../qml/DecoderEac3.qml" line="421"/>
+        <location filename="../qml/DecoderEac3.qml" line="444"/>
+        <location filename="../qml/DecoderEac3.qml" line="453"/>
         <source>Programme</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="448"/>
+        <location filename="../qml/DecoderEac3.qml" line="450"/>
         <source>%1 · %2 · %3</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="458"/>
+        <location filename="../qml/DecoderEac3.qml" line="460"/>
         <source>This stream carries %1 programmes. Not adjustable from this build yet; the first one always plays.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="461"/>
+        <location filename="../qml/DecoderEac3.qml" line="463"/>
         <source>This stream carries one programme.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="471"/>
+        <location filename="../qml/DecoderEac3.qml" line="473"/>
         <source>For a 1+1 stream: which of its two unrelated programmes plays, or both, one to each side.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="479"/>
-        <location filename="../qml/DecoderEac3.qml" line="482"/>
+        <location filename="../qml/DecoderEac3.qml" line="481"/>
+        <location filename="../qml/DecoderEac3.qml" line="484"/>
         <source>Dual mono</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="485"/>
+        <location filename="../qml/DecoderEac3.qml" line="487"/>
         <source>Channel 1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="486"/>
+        <location filename="../qml/DecoderEac3.qml" line="488"/>
         <source>Channel 2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="487"/>
+        <location filename="../qml/DecoderEac3.qml" line="489"/>
         <source>Both</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="502"/>
-        <location filename="../qml/DecoderEac3.qml" line="505"/>
+        <location filename="../qml/DecoderEac3.qml" line="504"/>
+        <location filename="../qml/DecoderEac3.qml" line="507"/>
         <source>Reconstruct</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="508"/>
+        <location filename="../qml/DecoderEac3.qml" line="510"/>
         <source>Auto</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="509"/>
+        <location filename="../qml/DecoderEac3.qml" line="511"/>
         <source>Always</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="510"/>
+        <location filename="../qml/DecoderEac3.qml" line="512"/>
         <source>Never</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="517"/>
+        <location filename="../qml/DecoderEac3.qml" line="519"/>
         <source>Auto reconstructs the object layer when the speaker layout has heights.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="525"/>
-        <location filename="../qml/DecoderEac3.qml" line="528"/>
+        <location filename="../qml/DecoderEac3.qml" line="527"/>
+        <location filename="../qml/DecoderEac3.qml" line="530"/>
         <source>Domain</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="531"/>
+        <location filename="../qml/DecoderEac3.qml" line="533"/>
         <source>QMF</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="532"/>
+        <location filename="../qml/DecoderEac3.qml" line="534"/>
         <source>MDCT band</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="539"/>
+        <location filename="../qml/DecoderEac3.qml" line="541"/>
         <source>QMF is the domain TS 103 420 specifies. MDCT band costs less, and its objects lag the bed by 256 samples rather than 576.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="549"/>
+        <location filename="../qml/DecoderEac3.qml" line="551"/>
         <source>Errors and transform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="555"/>
-        <location filename="../qml/DecoderEac3.qml" line="558"/>
+        <location filename="../qml/DecoderEac3.qml" line="557"/>
+        <location filename="../qml/DecoderEac3.qml" line="560"/>
         <source>Bad frame</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="561"/>
+        <location filename="../qml/DecoderEac3.qml" line="563"/>
         <source>Stop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="562"/>
+        <location filename="../qml/DecoderEac3.qml" line="564"/>
         <source>Repeat and fade</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="563"/>
+        <location filename="../qml/DecoderEac3.qml" line="565"/>
         <source>Mute</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="573"/>
+        <location filename="../qml/DecoderEac3.qml" line="575"/>
         <source>Fast inverse transform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/DecoderEac3.qml" line="574"/>
+        <location filename="../qml/DecoderEac3.qml" line="576"/>
         <source>The FFT form. Off uses the reference form, to compare the two.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3680,13 +3680,23 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="474"/>
+        <location filename="../qml/Settings.qml" line="477"/>
         <source>Save diagnostics…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="475"/>
+        <location filename="../qml/Settings.qml" line="478"/>
         <source>Writes a plain-text support file where you choose. Nothing is sent anywhere.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Settings.qml" line="486"/>
+        <source>Copy diagnostics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Settings.qml" line="487"/>
+        <source>Copies the same report to the clipboard. Nothing is sent anywhere.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -4172,18 +4182,18 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/TransportBar.qml" line="167"/>
-        <location filename="../qml/TransportBar.qml" line="183"/>
+        <location filename="../qml/TransportBar.qml" line="176"/>
+        <location filename="../qml/TransportBar.qml" line="192"/>
         <source>Gapless</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/TransportBar.qml" line="221"/>
+        <location filename="../qml/TransportBar.qml" line="230"/>
         <source>Volume</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/TransportBar.qml" line="231"/>
+        <location filename="../qml/TransportBar.qml" line="240"/>
         <source>%1 dB</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4196,12 +4206,12 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../hearth_controller.cpp" line="2097"/>
+        <location filename="../hearth_controller.cpp" line="2114"/>
         <source>saved to %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../hearth_controller.cpp" line="2100"/>
+        <location filename="../hearth_controller.cpp" line="2117"/>
         <source>could not write %1: %2</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4209,12 +4219,12 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
 <context>
     <name>ac3::hearth::ui::NetworkController</name>
     <message>
-        <location filename="../network_controller.cpp" line="865"/>
+        <location filename="../network_controller.cpp" line="872"/>
         <source>it could not be read: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="868"/>
+        <location filename="../network_controller.cpp" line="875"/>
         <source>it is %1 bytes, more than any sink&apos;s app slot holds</source>
         <translation type="unfinished"></translation>
     </message>
