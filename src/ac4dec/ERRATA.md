@@ -1710,8 +1710,8 @@ it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.
   of a presentation with dialogue 6 dB under the same substream decoded alone, and make every level
   depend on the number of substreams.
 - **Evidence:** Text; every mix of the multiplexed streams measures each substream at its formula's
-  gain, and a decoder that divides fails five of the presentations test's eleven cases and 62 of
-  `mix_ac4_decode.py`'s 68 mixes.
+  gain (`mix_ac4_decode.py` now checks 114 mixes). When this entry was written, a decoder that
+  divided failed five of the presentations test's eleven cases and 62 of the script's 68 mixes.
 
 ### Substream group gains
 
