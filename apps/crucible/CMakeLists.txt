@@ -1,4 +1,4 @@
-# AC3Forge Crucible: docs/crucible/design/promotion.md, and
+# AC3Forge Crucible (WASAPI loopback tap and UX12): docs/crucible/design/promotion.md, and
 # docs/platforms/windows-demo.md for the demo it grew out of. Windows, Linux
 # and macOS - the third arrived on 2026-09-06. It compiles: the first CI
 # attempt stopped at the install() rule below for want of a BUNDLE

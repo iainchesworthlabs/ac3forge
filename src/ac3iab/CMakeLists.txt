@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # ac3iab::ac3iab - a standalone reader for SMPTE ST 2098-2:2022's Immersive
-# Audio Bitstream (IAB), phase 1 of 3 - a
+# Audio Bitstream (IAB). Roadmap item IM1 phase 1 of 3 () - a
 # codec-blind bitstream parser, the same shape matroska::matroska, mp4::mp4
 # and mpegts::mpegts already use for their own containers: it links nothing
 # from ac3::forge and knows nothing about AC-3, E-AC-3 or JOC, so it can be

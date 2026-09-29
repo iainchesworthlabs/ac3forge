@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
-# arm-none-eabi (bare metal, no OS) - the cross-compilation target of the
-# minimum-footprint profile, decoder and encoder, and the one the CI leg runs
+# arm-none-eabi (bare metal, no OS) - the cross-compilation target minimum-footprint decoder profile
+# names for the minimum-footprint decoder profile, and the one the CI leg runs
 # under QEMU.
 #
 # Cortex-M3 on QEMU's mps2-an385 board: an ARM reference platform QEMU models

@@ -327,8 +327,8 @@ target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include"
     "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/conversion/float")
 
-# test_simd_kernels.cpp's CPU-feature-detection cases (the runtime AVX2
-# dispatch) need cpu_features.cpp compiled a SECOND time,
+# test_simd_kernels.cpp's CPU-feature-detection cases (SIMD kernels's
+# dynamic-dispatch follow-on) need cpu_features.cpp compiled a SECOND time,
 # directly into this target, against the same resolved probe directory
 # src/forge/CMakeLists.txt selected for the library - rather than calling
 # into forge_objects's own copy of has_avx2(), which would need
@@ -759,7 +759,7 @@ target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common"
     "${CMAKE_SOURCE_DIR}/apps/gui")
 
-# AC3Forge Crucible's engine core (apps/crucible/
+# AC3Forge Crucible's engine core (WASAPI loopback tap/UX12, apps/crucible/
 # engine/): the slot plan, the bed mixer, placement smoothing and the
 # output-mode policy. All four are plain C++ over ac3::oba types with no
 # platform in them - the platform layer next to them is what talks to WASAPI

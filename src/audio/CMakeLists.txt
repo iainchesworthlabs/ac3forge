@@ -144,7 +144,7 @@ if(WIN32)
 
     # WASAPI: COM for the device enumerator, MMCSS for capture-thread priority,
     # and mmdevapi for ActivateAudioInterfaceAsync (the per-process loopback
-    # tap).
+    # tap, WASAPI loopback tap).
     target_link_libraries(ac3audio PRIVATE ole32 avrt mmdevapi)
 
     set(AC3FORGE_AUDIO_BACKEND windows)
