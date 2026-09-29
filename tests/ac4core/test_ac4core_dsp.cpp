@@ -15,6 +15,7 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <cstring>
 #include <limits>
 #include <numbers>
 #include <random>
@@ -31,6 +32,7 @@
 #include "dsp/qmf.hpp"
 #include "dsp/qmf_constants.hpp"
 #include "dsp/qmf_kernels.hpp"
+#include "dsp/qmf_vector.hpp"
 #include "dsp/synthesis.hpp"
 #include "tables/qmf_tables.hpp"
 
@@ -917,6 +919,164 @@ TEST_CASE("the QMF's 64-point transform equals the DFT", "[ac4core][dsp][qmf]") 
     CHECK(run(double{}) <= 1e-14);
     // Float's rounding through three passes: a few times its epsilon.
     CHECK(run(float{}) <= 16.0 * static_cast<double>(std::numeric_limits<float>::epsilon()));
+}
+
+TEST_CASE("each QMF vector kernel gives the bits of the scalar loop it replaces",
+          "[ac4core][dsp][qmf][simd]") {
+    namespace k = dsp::qmf;
+    namespace v = dsp::qmf::vec;
+    const auto run = [](auto tag, unsigned seed) {
+        using R = decltype(tag);
+        const auto draw = [&](std::size_t count, unsigned s) {
+            const std::vector<double> x = random_values(count, s);
+            std::vector<R> out(x.size());
+            for (std::size_t i = 0; i < x.size(); ++i) {
+                out[i] = static_cast<R>(x[i]);
+            }
+            return out;
+        };
+        // Equal as bit patterns: a vector kernel that fused a multiply and an add,
+        // or summed in another order, differs in the last bit of some value here.
+        const auto same = [](const auto& a, const auto& b) {
+            return a.size() == b.size() &&
+                   std::memcmp(a.data(), b.data(), a.size() * sizeof(a[0])) == 0;
+        };
+        for (unsigned round = 0; round < 8; ++round) {
+            const std::vector<R> analysis_line = draw(640, seed + 10 * round);
+            const std::vector<R> synthesis_line = draw(1280, seed + 10 * round + 1);
+            const std::vector<R> plane_re = draw(64, seed + 10 * round + 2);
+            const std::vector<R> plane_im = draw(64, seed + 10 * round + 3);
+            const std::vector<R> samples = draw(128, seed + 10 * round + 4);
+            std::vector<dsp::Complex<R>> subbands(64);
+            for (std::size_t i = 0; i < 64; ++i) {
+                subbands[i] = {plane_re[i], plane_im[63 - i]};
+            }
+            // Both windows, at every position of the delay line's head.
+            for (std::size_t head = 0; head < 10; ++head) {
+                std::vector<R> u0(128);
+                std::vector<R> u1(128);
+                k::analysis_window<R>(analysis_line.data(), head, u0.data());
+                v::analysis_window<R>(analysis_line.data(), head, u1.data());
+                CHECK(same(u0, u1));
+                std::vector<R> w0(64);
+                std::vector<R> w1(64);
+                k::synthesis_window<R>(synthesis_line.data(), head, w0.data());
+                v::synthesis_window<R>(synthesis_line.data(), head, w1.data());
+                CHECK(same(w0, w1));
+            }
+            std::vector<R> zr0(64);
+            std::vector<R> zi0(64);
+            std::vector<R> zr1(64);
+            std::vector<R> zi1(64);
+            k::analysis_rotate<R>(samples.data(), zr0.data(), zi0.data());
+            v::analysis_rotate<R>(samples.data(), zr1.data(), zi1.data());
+            CHECK(same(zr0, zr1));
+            CHECK(same(zi0, zi1));
+            // The transform clobbers its input, so each takes its own copy.
+            std::vector<R> xr0 = plane_re;
+            std::vector<R> xi0 = plane_im;
+            std::vector<R> xr1 = plane_re;
+            std::vector<R> xi1 = plane_im;
+            std::vector<R> yr0(64);
+            std::vector<R> yi0(64);
+            std::vector<R> yr1(64);
+            std::vector<R> yi1(64);
+            k::fft64<R>(xr0.data(), xi0.data(), yr0.data(), yi0.data());
+            v::fft64<R>(xr1.data(), xi1.data(), yr1.data(), yi1.data());
+            CHECK(same(yr0, yr1));
+            CHECK(same(yi0, yi1));
+            CHECK(same(xr0, xr1));
+            CHECK(same(xi0, xi1));
+            std::vector<dsp::Complex<R>> q0(64);
+            std::vector<dsp::Complex<R>> q1(64);
+            k::analysis_unpack<R>(plane_re.data(), plane_im.data(), q0.data());
+            v::analysis_unpack<R>(plane_re.data(), plane_im.data(), q1.data());
+            CHECK(same(q0, q1));
+            std::vector<R> tr0(64);
+            std::vector<R> ti0(64);
+            std::vector<R> tr1(64);
+            std::vector<R> ti1(64);
+            k::synthesis_pack<R>(subbands.data(), tr0.data(), ti0.data());
+            v::synthesis_pack<R>(subbands.data(), tr1.data(), ti1.data());
+            CHECK(same(tr0, tr1));
+            CHECK(same(ti0, ti1));
+            std::vector<R> b0(128);
+            std::vector<R> b1(128);
+            k::synthesis_rotate<R>(plane_re.data(), plane_im.data(), b0.data());
+            v::synthesis_rotate<R>(plane_re.data(), plane_im.data(), b1.data());
+            CHECK(same(b0, b1));
+        }
+    };
+    run(double{}, 7100);
+    run(float{}, 7200);
+}
+
+TEST_CASE("the QMF banks give the bits of the scalar kernels run one after another",
+          "[ac4core][dsp][qmf][simd]") {
+    namespace k = dsp::qmf;
+    const auto run = [](auto tag, unsigned seed) {
+        using R = decltype(tag);
+        using RComplex = dsp::Complex<R>;
+        // 33 slots: the delay line's head goes round more than three times.
+        constexpr std::size_t kSlots = 33;
+        const std::vector<double> x = random_values(64 * kSlots, seed);
+        std::vector<R> pcm(x.size());
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            pcm[i] = static_cast<R>(x[i]);
+        }
+        // The analysis as the scalar kernels compose it: the newest block at the
+        // head of ten, reversed, then the four steps.
+        std::vector<RComplex> expected(pcm.size());
+        {
+            std::array<R, 640> filt{};
+            std::size_t head = 0;
+            std::array<R, 128> u{};
+            std::array<R, 64> ar{};
+            std::array<R, 64> ai{};
+            std::array<R, 64> br{};
+            std::array<R, 64> bi{};
+            for (std::size_t ts = 0; ts < kSlots; ++ts) {
+                head = head == 0 ? 9 : head - 1;
+                for (std::size_t sb = 0; sb < 64; ++sb) {
+                    filt[head * 64 + sb] = pcm[ts * 64 + 63 - sb];
+                }
+                k::analysis_window<R>(filt.data(), head, u.data());
+                k::analysis_rotate<R>(u.data(), ar.data(), ai.data());
+                k::fft64<R>(ar.data(), ai.data(), br.data(), bi.data());
+                k::analysis_unpack<R>(br.data(), bi.data(), expected.data() + ts * 64);
+            }
+        }
+        dsp::QmfAnalysis<R> analysis;
+        std::vector<RComplex> got(pcm.size());
+        analysis.process(pcm, got);
+        CHECK(std::memcmp(got.data(), expected.data(), got.size() * sizeof(RComplex)) == 0);
+
+        // And the synthesis, from the analysis's own subbands.
+        std::vector<R> expected_pcm(pcm.size());
+        {
+            std::array<R, 1280> filt{};
+            std::size_t head = 0;
+            std::array<R, 64> ar{};
+            std::array<R, 64> ai{};
+            std::array<R, 64> br{};
+            std::array<R, 64> bi{};
+            for (std::size_t ts = 0; ts < kSlots; ++ts) {
+                head = head == 0 ? 9 : head - 1;
+                k::synthesis_pack<R>(got.data() + ts * 64, ar.data(), ai.data());
+                k::fft64<R>(ar.data(), ai.data(), br.data(), bi.data());
+                k::synthesis_rotate<R>(br.data(), bi.data(), filt.data() + head * 128);
+                k::synthesis_window<R>(filt.data(), head, expected_pcm.data() + ts * 64);
+            }
+        }
+        dsp::QmfSynthesis<R> synthesis;
+        std::vector<R> got_pcm(pcm.size());
+        synthesis.process(got, got_pcm);
+        CHECK(std::memcmp(got_pcm.data(), expected_pcm.data(), got_pcm.size() * sizeof(R)) == 0);
+    };
+    // The banks are instantiated at the decoder's scalar and at double, whichever
+    // that is (AC4CORE_ALSO_AT_DOUBLE), and at nothing else.
+    run(double{}, 8100);
+    run(ac4::detail::Real{}, 8200);
 }
 
 TEST_CASE("the transforms take a scratch of the caller's and give the same values",
