@@ -2,17 +2,17 @@
 
 #include <pybind11/pybind11.h>
 
-// The extension's two optional submodules, behind declarations so the one
+// The extension's three optional submodules, behind declarations so the one
 // PYBIND11_MODULE body can register them without knowing whether they have
 // anything to register.
 //
-// `ac3.signing` and `ac3.containers` exist only when the configure that built
-// this extension also built the libraries behind them - ac3::signing, and the
-// matroska/mp4/mpegts trio (see python/CMakeLists.txt, and the options'
-// comments in the root CMakeLists.txt). A trimmed developer build - codec only
-// - still produces a working extension without them; the wheel build
-// (python/pyproject.toml) turns every one of those targets ON, so a published
-// wheel always carries the full surface.
+// `ac3.signing`, `ac3.containers` and `ac3.ac4` exist only when the configure
+// that built this extension also built the libraries behind them - ac3::signing,
+// the matroska/mp4/mpegts trio, and ac4::ac4/ac4::decoder/ac4::encoder (see
+// python/CMakeLists.txt, and the options' comments in the root CMakeLists.txt).
+// A trimmed developer build - codec only - still produces a working extension
+// without them; the wheel build (python/pyproject.toml) turns every one of
+// those targets ON, so a published wheel always carries the full surface.
 //
 // That used to be two `#ifdef AC3FORGE_PY_HAVE_*` blocks, about three hundred
 // lines of them, inside bindings.cpp's module body. Each is now its own
@@ -36,5 +36,9 @@ void register_signing(pybind11::module_& m);
 // Adds the `containers` submodule to `m`, or does nothing in a build with no
 // matroska/mp4/mpegts behind it.
 void register_containers(pybind11::module_& m);
+
+// Adds the `ac4` submodule to `m`, or does nothing in a build with no
+// ac4::ac4/ac4::decoder/ac4::encoder behind it.
+void register_ac4(pybind11::module_& m);
 
 }  // namespace ac3::python
