@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstddef>
 #include <initializer_list>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -31,6 +32,12 @@ namespace {
 
 namespace detail = ac4::detail;
 using S = ac4::Speaker;
+
+// A relative-tolerance scale for a value that has gone through
+// through() below, so through DownmixStage's own Real (possibly float):
+// double-only comparisons (render_matrix()'s own values, RenderGains'
+// fields, both stay double regardless of the decoder's scalar) keep 1e-12.
+const double kRelativeTolerance = 1e4 * static_cast<double>(std::numeric_limits<detail::Real>::epsilon());
 
 // The generalized rendering matrix's indices (5.10.2.2).
 constexpr int kIndices = 14;
@@ -583,7 +590,7 @@ std::vector<double> through(detail::DownmixStage& stage, const detail::DownmixVa
     std::vector<std::vector<detail::QmfValue>> matrices(in.size());
     std::vector<std::vector<detail::QmfValue>*> pointers;
     for (std::size_t c = 0; c < in.size(); ++c) {
-        matrices[c] = {detail::QmfValue{in[c], 0.0}};
+        matrices[c] = {detail::QmfValue(static_cast<detail::Real>(in[c]), detail::Real{})};
         pointers.push_back(&matrices[c]);
     }
     std::vector<std::vector<detail::QmfValue>> out;
@@ -615,6 +622,13 @@ TEST_CASE(
     }
     const detail::ImmersiveLayout layout{.backs = true, .tops = 3, .lfe = true};
     detail::DownmixStage stage;
+    const auto check_near = [](const std::vector<double>& got, const std::vector<double>& want) {
+        REQUIRE(got.size() == want.size());
+        for (std::size_t i = 0; i < got.size(); ++i) {
+            CAPTURE(i);
+            CHECK(std::abs(got[i] - want[i]) < kRelativeTolerance * std::max(1.0, std::abs(want[i])));
+        }
+    };
 
     // As coded, 7.X.4 to itself: through.
     stage.configure(decoded, false, ac4::DownmixTarget::kAsCoded, true, layout);
@@ -627,7 +641,7 @@ TEST_CASE(
     const detail::RenderPlan plan = detail::render_plan(layout, ac4::DownmixTarget::k5X);
     const auto defaults =
         detail::render_matrix(layout, decoded, plan, detail::render_gains(nullptr, 0));
-    CHECK(through(stage, {}, in) == apply_rows(defaults, in));
+    check_near(through(stage, {}, in), apply_rows(defaults, in));
 
     detail::DownmixValues sent;
     sent.cdmx.emplace();
@@ -647,13 +661,6 @@ TEST_CASE(
     for (double& v : expected) {
         v *= std::exp2(-3.0 / 6.0);
     }
-    const auto check_near = [](const std::vector<double>& got, const std::vector<double>& want) {
-        REQUIRE(got.size() == want.size());
-        for (std::size_t i = 0; i < got.size(); ++i) {
-            CAPTURE(i);
-            CHECK(std::abs(got[i] - want[i]) < 1e-12 * std::max(1.0, std::abs(want[i])));
-        }
-    };
     check_near(through(stage, sent, in), expected);
     // A frame that sends nothing keeps them.
     check_near(through(stage, {}, in), expected);
@@ -714,13 +721,13 @@ TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X
             const double l_lfe = mix_lfe ? lfe * rows[3] : 0.0;
             const double lo = correction * (rows[0] + cmg * rows[2] + smg * rows[4] + l_lfe);
             const double ro = correction * (rows[1] + cmg * rows[2] + smg * rows[5] + l_lfe);
-            CHECK(std::abs(got[0] - lo) < 1e-12 * std::abs(lo));
-            CHECK(std::abs(got[1] - ro) < 1e-12 * std::abs(ro));
+            CHECK(std::abs(got[0] - lo) < kRelativeTolerance * std::abs(lo));
+            CHECK(std::abs(got[1] - ro) < kRelativeTolerance * std::abs(ro));
             detail::DownmixStage mono;
             mono.configure(channels, false, ac4::DownmixTarget::kMono, mix_lfe, layout);
             const std::vector<double> c = through(mono, values, x);
             REQUIRE(c.size() == 1);
-            CHECK(std::abs(c[0] - (lo + ro)) < 1e-12 * std::abs(lo + ro));
+            CHECK(std::abs(c[0] - (lo + ro)) < kRelativeTolerance * std::abs(lo + ro));
         }
     }
 }
@@ -758,7 +765,7 @@ TEST_CASE("core decoding's renderer never passes the core through: Table 45 take
     const std::vector<double> gains = {1.0, 1.0, 1.0, 1.0, db(3.0), db(3.0), db(-6.0), db(-6.0)};
     for (std::size_t c = 0; c < in.size(); ++c) {
         CAPTURE(c);
-        CHECK(std::abs(got[c] - k * gains[c] * in[c]) < 1e-12 * in[c]);
+        CHECK(std::abs(got[c] - k * gains[c] * in[c]) < kRelativeTolerance * in[c]);
     }
 }
 

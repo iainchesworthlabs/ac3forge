@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -47,10 +48,11 @@ class ToneFrames {
     explicit ToneFrames(double hz) : hz_(hz) {}
 
     std::vector<QmfValue> next(double amplitude) {
-        std::vector<double> pcm(kFrame);
-        for (double& x : pcm) {
-            x = 32768.0 * amplitude *
-                std::sin(2.0 * std::numbers::pi * hz_ * static_cast<double>(n_) / 48000.0);
+        std::vector<detail::Real> pcm(kFrame);
+        for (detail::Real& x : pcm) {
+            x = static_cast<detail::Real>(
+                32768.0 * amplitude *
+                std::sin(2.0 * std::numbers::pi * hz_ * static_cast<double>(n_) / 48000.0));
             ++n_;
         }
         std::vector<QmfValue> q(pcm.size());
@@ -61,7 +63,7 @@ class ToneFrames {
    private:
     double hz_;
     long long n_ = 0;
-    detail::dsp::QmfAnalysis<double> analysis_;
+    detail::dsp::QmfAnalysis<detail::Real> analysis_;
 };
 
 // The amplitude of a 997 Hz sine in one channel whose loudness is `relative`
@@ -376,7 +378,8 @@ TEST_CASE("transmitted DRC gains apply by channel group, band and subframe", "[a
                 const double gain =
                     2.0 * std::exp2(static_cast<double>(kGroup[c] * 10 + sf - band_of(k)) / 6.0);
                 const QmfValue got = channels[c][static_cast<std::size_t>(slot * 64 + k)];
-                if (std::abs(got.real() - gain) > 1e-9 * gain) {
+                if (std::abs(got.real() - gain) >
+                    1e4 * static_cast<double>(std::numeric_limits<ac4::detail::Real>::epsilon()) * gain) {
                     FAIL("channel " << c << " slot " << slot << " subband " << k << ": "
                                     << got.real() << ", expected " << gain);
                 }

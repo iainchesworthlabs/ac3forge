@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <random>
 #include <span>
 #include <string>
@@ -27,10 +28,10 @@
 namespace {
 
 using ac4::Speaker;
-using ac4::detail::Abcd;
 using ac4::detail::ChannelElement;
 using ac4::detail::ElementKind;
 using ac4::detail::ElementRoute;
+using ac4::detail::Real;
 using ac4::detail::SubstreamContext;
 using ac4dec_test::entry;
 using ac4dec_test::kFourChannel;
@@ -38,27 +39,50 @@ using ac4dec_test::kTable178;
 using ac4dec_test::kTable179;
 using ac4dec_test::rows_of;
 
-std::vector<Abcd> random_parameters(std::mt19937& rng, std::size_t count) {
+// Random parameter sets in both forms this file needs: `real`, fed to the
+// production matrix functions (ac4::detail::Abcd, Real - possibly float),
+// and `reference`, fed to entry()'s exact double formula
+// (ac4dec_test::Abcd, always double - a table transcription independent of
+// the decoder's own scalar). The two hold the same values, `real`'s narrowed
+// once from `reference`'s.
+struct RandomParams {
+    std::vector<ac4::detail::Abcd> real;
+    std::vector<ac4dec_test::Abcd> reference;
+};
+
+RandomParams random_parameters(std::mt19937& rng, std::size_t count) {
     std::uniform_real_distribution<double> value(-2.0, 2.0);
-    std::vector<Abcd> p(count);
-    for (Abcd& set : p) {
-        for (double& x : set) {
-            x = value(rng);
+    RandomParams out;
+    out.real.resize(count);
+    out.reference.resize(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        for (std::size_t k = 0; k < 4; ++k) {
+            const double v = value(rng);
+            out.reference[i][k] = v;
+            out.real[i][k] = static_cast<Real>(v);
         }
     }
-    return p;
+    return out;
 }
 
+// The tolerance a matrix entry (a product or sum of a handful of the
+// parameters above) can differ from entry()'s double formula by: a few ulps
+// of Real, since the double build's own bit-exactness is checked separately
+// (tests/ac4core and this suite's other assertions) and this test's job is
+// the formula, not the scalar.
 template <std::size_t N>
-void check_printed(const ac4::detail::Matrix<N>& m, std::string_view printed, std::span<const Abcd> p) {
+void check_printed(const ac4::detail::Matrix<N>& m, std::string_view printed,
+                   std::span<const ac4dec_test::Abcd> p) {
     const auto rows = rows_of(printed);
     REQUIRE(rows.size() == N);
+    const double tolerance = 1e4 * static_cast<double>(std::numeric_limits<Real>::epsilon());
     for (std::size_t o = 0; o < N; ++o) {
         REQUIRE(rows[o].size() == N);
         for (std::size_t i = 0; i < N; ++i) {
             CAPTURE(o, i, rows[o][i]);
             const double expected = entry(rows[o][i], p);
-            CHECK(std::abs(m[o][i] - expected) <= 1e-12 * (1.0 + std::abs(expected)));
+            const double got = static_cast<double>(m[o][i]);
+            CHECK(std::abs(got - expected) <= tolerance * (1.0 + std::abs(expected)));
         }
     }
 }
@@ -94,12 +118,12 @@ std::vector<Speaker> destinations(const ElementRoute& route) {
 TEST_CASE("Table 178's matrices equal the table's printed entries", "[ac4dec][multichannel]") {
     std::mt19937 rng(178);
     for (int trial = 0; trial < 20; ++trial) {
-        const std::vector<Abcd> p = random_parameters(rng, 2);
+        const RandomParams p = random_parameters(rng, 2);
         for (int matsel = 0; matsel < 12; ++matsel) {
             CAPTURE(trial, matsel);
-            const auto m = ac4::detail::three_channel_matrix(matsel, p[0], p[1]);
+            const auto m = ac4::detail::three_channel_matrix(matsel, p.real[0], p.real[1]);
             REQUIRE(m.has_value());
-            check_printed<3>(*m, kTable178[static_cast<std::size_t>(matsel)], p);
+            check_printed<3>(*m, kTable178[static_cast<std::size_t>(matsel)], p.reference);
         }
     }
 }
@@ -107,12 +131,13 @@ TEST_CASE("Table 178's matrices equal the table's printed entries", "[ac4dec][mu
 TEST_CASE("Table 179's matrices equal the table's printed entries", "[ac4dec][multichannel]") {
     std::mt19937 rng(179);
     for (int trial = 0; trial < 20; ++trial) {
-        const std::vector<Abcd> p = random_parameters(rng, 5);
+        const RandomParams p = random_parameters(rng, 5);
         for (int matsel = 0; matsel < 12; ++matsel) {
             CAPTURE(trial, matsel);
-            const auto m = ac4::detail::five_channel_matrix(matsel, std::span<const Abcd, 5>(p.data(), 5));
+            const auto m = ac4::detail::five_channel_matrix(
+                matsel, std::span<const ac4::detail::Abcd, 5>(p.real.data(), 5));
             REQUIRE(m.has_value());
-            check_printed<5>(*m, kTable179[static_cast<std::size_t>(matsel)], p);
+            check_printed<5>(*m, kTable179[static_cast<std::size_t>(matsel)], p.reference);
         }
     }
 }
@@ -120,16 +145,18 @@ TEST_CASE("Table 179's matrices equal the table's printed entries", "[ac4dec][mu
 TEST_CASE("clause 5.3.3.4's matrix equals its printed entries", "[ac4dec][multichannel]") {
     std::mt19937 rng(334);
     for (int trial = 0; trial < 20; ++trial) {
-        const std::vector<Abcd> p = random_parameters(rng, 4);
-        check_printed<4>(ac4::detail::four_channel_matrix(std::span<const Abcd, 4>(p.data(), 4)), kFourChannel, p);
+        const RandomParams p = random_parameters(rng, 4);
+        check_printed<4>(
+            ac4::detail::four_channel_matrix(std::span<const ac4::detail::Abcd, 4>(p.real.data(), 4)),
+            kFourChannel, p.reference);
     }
 }
 
 TEST_CASE("every chel_matsel's matrix is the identity when its parameters are", "[ac4dec][multichannel]") {
     // sap_mode 0 sets a = d = 1 and b = c = 0 (Pseudocode 59): the tracks are
     // the channels, whatever chel_matsel says.
-    const Abcd one = {1.0, 0.0, 0.0, 1.0};
-    const std::array<Abcd, 5> ones = {one, one, one, one, one};
+    const ac4::detail::Abcd one = {Real{1}, Real{}, Real{}, Real{1}};
+    const std::array<ac4::detail::Abcd, 5> ones = {one, one, one, one, one};
     for (int matsel = 0; matsel < 12; ++matsel) {
         CAPTURE(matsel);
         const auto three = ac4::detail::three_channel_matrix(matsel, one, one);
@@ -138,7 +165,7 @@ TEST_CASE("every chel_matsel's matrix is the identity when its parameters are", 
         REQUIRE(five.has_value());
         for (std::size_t o = 0; o < 5; ++o) {
             for (std::size_t i = 0; i < 5; ++i) {
-                const double expected = o == i ? 1.0 : 0.0;
+                const Real expected = o == i ? Real{1} : Real{};
                 if (o < 3 && i < 3) {
                     CHECK((*three)[o][i] == expected);
                 }
@@ -160,25 +187,25 @@ TEST_CASE("three_channel_data() takes its two parameter sets and reads no third"
     layout.sect_sfb_offset[0][2] = 8;
     std::vector<ac4::detail::StereoParameters> sets(2);
     for (ac4::detail::StereoParameters& set : sets) {
-        set.abcd[0][0] = {1.0, 1.0, 1.0, -1.0};
-        set.abcd[0][1] = {1.0, 1.0, 1.0, -1.0};
+        set.abcd[0][0] = {Real{1}, Real{1}, Real{1}, Real{-1}};
+        set.abcd[0][1] = {Real{1}, Real{1}, Real{1}, Real{-1}};
     }
-    std::vector<std::vector<double>> lines(3, std::vector<double>(8));
+    std::vector<std::vector<Real>> lines(3, std::vector<Real>(8));
     for (std::size_t t = 0; t < 3; ++t) {
         for (std::size_t k = 0; k < 8; ++k) {
-            lines[t][k] = static_cast<double>(10 * t + k);
+            lines[t][k] = static_cast<Real>(10 * t + k);
         }
     }
-    const std::vector<std::vector<double>> tracks_in = lines;
-    const std::array<std::vector<double>*, 3> tracks = {&lines[0], &lines[1], &lines[2]};
+    const std::vector<std::vector<Real>> tracks_in = lines;
+    const std::array<std::vector<Real>*, 3> tracks = {&lines[0], &lines[1], &lines[2]};
     REQUIRE(static_cast<bool>(ac4::detail::apply_channel_data(info, layout, 0, sets, tracks)));
     // chel_matsel 0 with M/S in both sets: O0 = I0 + I1 + I2, O1 = I0 - I1,
     // O2 = I0 + I1 - I2.
     for (std::size_t k = 0; k < 8; ++k) {
         CAPTURE(k);
-        const double i0 = tracks_in[0][k];
-        const double i1 = tracks_in[1][k];
-        const double i2 = tracks_in[2][k];
+        const Real i0 = tracks_in[0][k];
+        const Real i1 = tracks_in[1][k];
+        const Real i2 = tracks_in[2][k];
         CHECK(lines[0][k] == i0 + i1 + i2);
         CHECK(lines[1][k] == i0 - i1);
         CHECK(lines[2][k] == i0 + i1 - i2);
@@ -186,8 +213,8 @@ TEST_CASE("three_channel_data() takes its two parameter sets and reads no third"
 }
 
 TEST_CASE("chel_matsel 12 to 15, which the tables leave out, make no matrix", "[ac4dec][multichannel]") {
-    const Abcd one = {1.0, 0.0, 0.0, 1.0};
-    const std::array<Abcd, 5> ones = {one, one, one, one, one};
+    const ac4::detail::Abcd one = {Real{1}, Real{}, Real{}, Real{1}};
+    const std::array<ac4::detail::Abcd, 5> ones = {one, one, one, one, one};
     for (int matsel = 12; matsel < 16; ++matsel) {
         CHECK_FALSE(ac4::detail::three_channel_matrix(matsel, one, one).has_value());
         CHECK_FALSE(ac4::detail::five_channel_matrix(matsel, ones).has_value());

@@ -39,6 +39,13 @@ namespace {
 namespace fs = std::filesystem;
 using ac3::test::kSanitized;
 
+// align_tracks()'s and apply_stereo()'s own test below moves values of a
+// few thousand through Real (possibly float); this holds them within a
+// tolerance scaled to that magnitude and Real's own epsilon, not to
+// double's exactness.
+const double kTolerance =
+    3000.0 * 1e4 * static_cast<double>(std::numeric_limits<ac4::detail::Real>::epsilon());
+
 // The frames of a DEE leg a test decodes: every one, or under the sanitizers
 // the first 72, three seconds. Past the half second tone_levels() and
 // tone_phasors() leave out at each end, that is two seconds, over which a
@@ -195,19 +202,20 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
     first.max_sfb = {10, 8};
     second.max_sfb = {4, 6};
     const auto lines_of = [&](const ac4::detail::SfData& data, double track) {
-        std::vector<double> lines;
+        std::vector<ac4::detail::Real> lines;
         for (int g = 0; g < 2; ++g) {
             for (int sfb = 0; sfb < data.max_sfb[static_cast<std::size_t>(g)]; ++sfb) {
                 const auto si = static_cast<std::size_t>(sfb);
                 for (int k = offsets[si]; k < offsets[si + 1]; ++k) {
-                    lines.push_back(1000.0 * track + 100.0 * g + (k - offsets[si]) + 0.01 * sfb);
+                    lines.push_back(static_cast<ac4::detail::Real>(1000.0 * track + 100.0 * g +
+                                                                   (k - offsets[si]) + 0.01 * sfb));
                 }
             }
         }
         return lines;
     };
-    std::vector<double> track0 = lines_of(first, 1.0);
-    std::vector<double> track1 = lines_of(second, 2.0);
+    std::vector<ac4::detail::Real> track0 = lines_of(first, 1.0);
+    std::vector<ac4::detail::Real> track1 = lines_of(second, 2.0);
     ac4::detail::SfData common;
     ac4::detail::align_tracks(ctx, psy, first, second, track0, track1, common);
     CHECK(common.max_sfb[0] == 10);
@@ -220,9 +228,15 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
             const auto si = static_cast<std::size_t>(sfb);
             const std::size_t at = common.sect_sfb_offset[gi][si];
             INFO("group " << g << ", band " << sfb);
-            CHECK(track0[at] == 1000.0 + 100.0 * g + 0.01 * sfb);
+            // track0/track1 hold Real (possibly float, lines_of() above), so
+            // compared to the double formula within a tolerance scaled to
+            // Real's own epsilon and this test's magnitudes (a few
+            // thousand), not held to double's exactness.
+            CHECK(std::abs(static_cast<double>(track0[at]) - (1000.0 + 100.0 * g + 0.01 * sfb)) <
+                  kTolerance);
             const bool sent = sfb < second.max_sfb[gi];
-            CHECK(track1[at] == (sent ? 2000.0 + 100.0 * g + 0.01 * sfb : 0.0));
+            CHECK(std::abs(static_cast<double>(track1[at]) -
+                           (sent ? 2000.0 + 100.0 * g + 0.01 * sfb : 0.0)) < kTolerance);
         }
     }
 
@@ -236,11 +250,13 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
     }
     ac4::detail::apply_stereo(info, common, parameters, track0, track1);
     const std::size_t sixth = common.sect_sfb_offset[0][6];
-    CHECK(track0[sixth] == 1000.0 + 0.01 * 6);
-    CHECK(track1[sixth] == 1000.0 + 0.01 * 6);
+    CHECK(std::abs(static_cast<double>(track0[sixth]) - (1000.0 + 0.01 * 6)) < kTolerance);
+    CHECK(std::abs(static_cast<double>(track1[sixth]) - (1000.0 + 0.01 * 6)) < kTolerance);
     const std::size_t second_band = common.sect_sfb_offset[1][2];
-    CHECK(track0[second_band] == (1100.0 + 0.01 * 2) + (2100.0 + 0.01 * 2));
-    CHECK(track1[second_band] == (1100.0 + 0.01 * 2) - (2100.0 + 0.01 * 2));
+    CHECK(std::abs(static_cast<double>(track0[second_band]) -
+                   ((1100.0 + 0.01 * 2) + (2100.0 + 0.01 * 2))) < kTolerance);
+    CHECK(std::abs(static_cast<double>(track1[second_band]) -
+                   ((1100.0 + 0.01 * 2) - (2100.0 + 0.01 * 2))) < kTolerance);
 }
 
 TEST_CASE("a SIMPLE stereo stream decodes each tone to its own channel", "[ac4dec][pcm]") {

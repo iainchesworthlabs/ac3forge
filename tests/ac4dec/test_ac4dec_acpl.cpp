@@ -9,6 +9,7 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <limits>
 #include <numbers>
 #include <vector>
 
@@ -31,11 +32,17 @@ using ac4::detail::AcplQuantHistory;
 using ac4::detail::ChannelElement;
 using ac4::detail::ElementKind;
 using ac4::detail::QmfValue;
+using ac4::detail::Real;
 using Catch::Approx;
 namespace codec_mode = ac4::detail::codec_mode;
 
 constexpr int kSlots = 32;
 constexpr std::size_t kValues = static_cast<std::size_t>(kSlots) * 64;
+
+// Table entries here are unit-scale sums and products of a handful of test
+// tones (matrix() below); this holds by hand-worked pseudocode at whatever
+// scalar the decoder runs at - a few ulps of Real, not of double.
+const double kTolerance = 1e4 * static_cast<double>(std::numeric_limits<Real>::epsilon());
 
 // One parameter set of `bands` bands: along frequency, the first band's F0
 // index and DF indices at cb_off (no change) after it; along time, DT
@@ -62,9 +69,11 @@ ChannelElement pair_element(const AcplData1ch& data) {
 
 std::vector<QmfValue> matrix(double scale) {
     std::vector<QmfValue> out(kValues);
+    const auto s = static_cast<ac4::detail::Real>(scale);
     for (std::size_t i = 0; i < kValues; ++i) {
         const double angle = 0.37 * static_cast<double>(i);
-        out[i] = scale * QmfValue(std::cos(angle), std::sin(angle));
+        out[i] = s * QmfValue(static_cast<ac4::detail::Real>(std::cos(angle)),
+                              static_cast<ac4::detail::Real>(std::sin(angle)));
     }
     return out;
 }
@@ -183,14 +192,14 @@ TEST_CASE("steep interpolation switches a pair between its outputs at each set's
             const std::size_t i = ts * 64 + sb;
             CAPTURE(ts, sb);
             if (ts < 8) {  // alpha 0: both the downmix
-                CHECK(abs(left[i] - x0[i]) < 1e-12);
-                CHECK(abs(right[i] - x0[i]) < 1e-12);
+                CHECK(abs(left[i] - x0[i]) < kTolerance);
+                CHECK(abs(right[i] - x0[i]) < kTolerance);
             } else if (ts < 20) {  // alpha 1: all in L
-                CHECK(abs(left[i] - 2.0 * x0[i]) < 1e-12);
-                CHECK(abs(right[i]) < 1e-12);
+                CHECK(abs(left[i] - Real{2} * x0[i]) < kTolerance);
+                CHECK(abs(right[i]) < kTolerance);
             } else {  // alpha -1: all in R
-                CHECK(abs(left[i]) < 1e-12);
-                CHECK(abs(right[i] - 2.0 * x0[i]) < 1e-12);
+                CHECK(abs(left[i]) < kTolerance);
+                CHECK(abs(right[i] - Real{2} * x0[i]) < kTolerance);
             }
         }
     }
@@ -212,7 +221,8 @@ TEST_CASE("ASPX_ACPL_3 makes the centre of gamma5 and gamma6", "[ac4dec][acpl]")
     const std::array<Speaker, 5> speakers = {Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
                                              Speaker::kLeftSurround, Speaker::kRightSurround};
     ac4::detail::AcplStage stage;
-    const double gain = std::numbers::sqrt2 * (1.0 + std::numbers::sqrt2) * 0.5;
+    const auto gain =
+        static_cast<Real>(std::numbers::sqrt2 * (1.0 + std::numbers::sqrt2) * 0.5);
     for (int frame = 0; frame < 2; ++frame) {
         std::vector<QmfValue> l = matrix(1.0);
         std::vector<QmfValue> r = matrix(0.5);
@@ -229,11 +239,11 @@ TEST_CASE("ASPX_ACPL_3 makes the centre of gamma5 and gamma6", "[ac4dec][acpl]")
         }
         for (std::size_t i = 0; i < kValues; i += 97) {
             CAPTURE(i);
-            CHECK(abs(c[i] - gain * (x0[i] + x1[i])) < 1e-12);
-            CHECK(abs(l[i]) < 1e-12);
-            CHECK(abs(r[i]) < 1e-12);
-            CHECK(abs(ls[i]) < 1e-12);
-            CHECK(abs(rs[i]) < 1e-12);
+            CHECK(abs(c[i] - gain * (x0[i] + x1[i])) < kTolerance);
+            CHECK(abs(l[i]) < kTolerance);
+            CHECK(abs(r[i]) < kTolerance);
+            CHECK(abs(ls[i]) < kTolerance);
+            CHECK(abs(rs[i]) < kTolerance);
         }
     }
 }
