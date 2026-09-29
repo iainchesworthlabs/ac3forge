@@ -34,8 +34,8 @@
 # same .dmg installs on both architectures.
 cask "ac3gui" do
   version "0.10.0-beta.1"
-  # Pinned from v0.9.0-beta.1's actual release asset (GitHub's own reported
-  # digest for ac3forge-0.9.0-Darwin.dmg - the same CPACK_PACKAGE_CHECKSUM
+  # Pinned from the release's actual .dmg asset (GitHub's own reported digest
+  # for ac3forge-<MAJOR.MINOR.PATCH>-Darwin.dmg - the same CPACK_PACKAGE_CHECKSUM
   # SHA512 cmake/Packaging.cmake also computes and publishes alongside it,
   # just a different digest algorithm; Homebrew Casks pin sha256). If
   # `brew install` reports a mismatch, trust brew's reported hash over this
@@ -53,7 +53,7 @@ cask "ac3gui" do
 
   url "https://github.com/iainchesworthlabs/ac3forge/releases/download/v#{version}/ac3forge-#{dmg_version}-Darwin.dmg"
   name "ac3gui"
-  desc "Qt6 GUI for ac3forge, a clean-room AC-3/E-AC-3 encoder, decoder and Atmos object-layer toolkit"
+  desc "GUI to encode, decode, play and check AC-3, E-AC-3 and AC-4 streams"
   homepage "https://github.com/iainchesworthlabs/ac3forge"
 
   # No `depends_on arch:` restriction (DR8): the .dmg is a universal binary,
