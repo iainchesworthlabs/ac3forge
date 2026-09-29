@@ -33,7 +33,7 @@ Measured over 3.5 days in September 2026, across 300 runs of `ci.yml` and about 
 | Pull request | every push to the branch | [`pr-gate.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml): static checks, then Linux GCC build, every ctest case and the gold-reference gate | GitHub-hosted |
 | Merge queue | each queue entry | the same on the merged tree, with the Qt GUI always built, plus Windows MSVC | GitHub-hosted |
 | After a merge | every push to main, one at a time | [`ci.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/ci.yml), tier `t2`: the legs and lanes a merge can break (see [The tiers](#the-tiers)), then [`main-health.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/main-health.yml) | the fleet, plus hosted for macOS, arm64 and the satellites |
-| Nightly | about 19:47 UTC (05:47 in Sydney), and on request | `ci.yml`, tier `all`: every leg with every extra pass, every lane | the same |
+| Nightly | about 19:47 UTC (05:47 in Sydney until daylight saving starts, 06:47 after), and on request | `ci.yml`, tier `all`: every leg with every extra pass, every lane | the same |
 
 A Linux gate cannot see another compiler, another operating system, an architecture, the
 sanitizers or a QEMU board. The run after a merge covers the first three and the nightly run the
@@ -49,10 +49,13 @@ failure, so a wiring mistake cannot turn it green.
 A planner ([`tools/ci/plan_gate.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/plan_gate.py))
 reads the changed files and decides:
 
-- **Documentation only**: the static checks run, nothing is built.
+- **Documentation only** (`docs/`, `docs-snippets/`, `planning/`, `overrides/`, `assets/`, any
+  `.md` file, `LICENSE`, `mkdocs.yml`): the static checks run, nothing is built.
 - **Nothing a Linux C++ build reads** (`python/`, `rust/`, `js/`, `esp-idf/`, `esphome/`,
-  `apps/android/`, `apps/wasm/`, `apps/baremetal/`, `packaging/`, other workflows, editor and
-  lint configuration): the static checks run, nothing is built. Those lanes run after the merge.
+  `apps/android/`, `apps/wasm/`, `apps/baremetal/`, `apps/linux/`, `packaging/`, `requirements/`,
+  the scripts under `tools/ci/`, `tools/hearth/`, `tools/packaging/` and `tools/release/`, other
+  workflows, editor and lint configuration): the static checks run, nothing is built. Those lanes
+  run after the merge.
 - **Anything else builds Linux GCC**, and installs Qt and builds the GUI only when the change is
   in `apps/gui`, `apps/hearth`, `apps/crucible`, `apps/common`, their tests, `cmake/`, or the
   top-level CMake and vcpkg files. A path the planner does not recognise builds everything.
@@ -61,8 +64,11 @@ reads the changed files and decides:
 
 The static checks are one job, [`_static.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_static.yml):
 ruff, shellcheck, actionlint, the unit tests of the oracle scripts, the documentation path check,
-packaging consistency, the fixture corpus, the quarantine check and patch attribution. Every
-check runs even when an earlier one failed, so one run lists every failure.
+the platform-matrix and generated-support-matrix checks, packaging consistency, the fixture
+corpus, the quarantine check, the no-preprocessor-conditional rule, the ESP-IDF settings that
+would stop USB recovery, and patch attribution (pull requests only). Every check runs even when
+an earlier one failed, so one run lists every failure. They run on pull requests and queue
+entries and are not repeated after the merge, because the queue ran them on the merged tree.
 
 The build goes through ccache and runs ctest in three phases. The Catch2 cases run in parallel.
 The Qt Quick suites (`*_qml_tests_*`) then run in a phase of their own, `ctest-qml-jobs` at a time.
@@ -125,8 +131,8 @@ reads each finished run:
   `git bisect` recipe. Each suspect pull request gets one comment.
 - **A green run** closes the issue.
 
-A scheduled run (the nightly run, planned below) keeps its own books, because it runs legs the
-run after a merge leaves out. A green one moves `verified-nightly` as well as `verified` and closes
+A scheduled run (the nightly run, described under [The tiers](#the-tiers)) keeps its own books,
+because it runs legs the run after a merge leaves out. A green one moves `verified-nightly` as well as `verified` and closes
 both issues, since it proves everything the other run does. A red one is blamed on the merges since
 the last green nightly, not since `verified` (a sanitizer failure can come from a merge the run
 after it passed without running the sanitizers), goes to its own `main-red-nightly` issue, and
@@ -149,7 +155,7 @@ the first leaves out is found within a day.
 | | After a merge | Nightly only |
 |---|---|---|
 | Build legs | Linux GCC and LLVM (x64), Linux GCC (arm64), Windows MSVC and LLVM, macOS arm64 | Linux LLVM (arm64), ASan+UBSan, TSan, Windows MSVC (arm64), macOS x64 |
-| Extra passes inside a leg | | Linux GCC's no-ALSA pass and its float32 and fixed-point variants, Linux LLVM's shared-library pass, macOS packaging |
+| Extra passes inside a leg | | The no-ALSA pass of Linux GCC (x64 and arm64), Linux GCC's float32 and fixed-point variants, Linux LLVM's shared-library pass, macOS packaging |
 | Core jobs | ADM module, Hearth Sendspin, the performance trend | coverage, ABI gate, FFmpeg Validate and the two trend publishers that read it |
 | Other jobs | the lane's own build, when the lane's own tree changed | Linux AppImage, and each satellite (Android, WASM, ESP-IDF, Rust, wheels, npm) whatever changed |
 
@@ -235,6 +241,7 @@ builds without it and says so in a warning.
 | repository variable `GATE_RUNNER_JSON` | Runner labels for the gate's Linux and control jobs, e.g. `["self-hosted","Linux","X64"]`. Unset means `ubuntu-latest`. Fork pull requests stay hosted regardless. |
 | repository variable `GATE_WINDOWS_RUNNER_JSON` | Runner labels for the Windows job. Unset means `windows-latest`. |
 | repository variable `CONTROL_RUNNER_JSON` | Control jobs of `ci.yml`, as before. |
+| repository variable `PAUSE_NONESSENTIAL_CI` | `true` skips the pull-request runs of OSV-Scanner, Zizmor and Fuzz Regress, which are not required checks, to free hosted runners for the ones that gate merging; runs on main and scheduled runs are unaffected. It has been set to `true` since 2026-09-25. |
 | `pr-gate.yml` input `windows` | Adds Windows MSVC to a dispatched run. |
 | `pr-gate.yml` input `save_cache` | Saves the compiler caches from a dispatched run. |
 | `ci.yml` input `legs` | Comma-separated presets. A dispatch runs exactly those build legs and nothing else. |
