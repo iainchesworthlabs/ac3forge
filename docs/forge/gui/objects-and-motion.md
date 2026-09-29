@@ -231,9 +231,9 @@ the writer's own reason.
 folds to one, and a trim applies as it does for E-AC-3. A channel assigned to a speaker is an
 object held at that speaker's place on the ring ADM's polar coordinates give a bed channel
 (the left speaker at 0.25, 0.067), at unity; one assigned to an LFE is the stream's LFE object.
-The LFE send has no AC-4 counterpart, so its slider is off, and there is no bed: the room plan
-and the meters show the objects as a 5.1 monitor sees them. An object with no path keeps the
-inverse-root gain E-AC-3 gives it, which AC-4 codes in whole dB.
+The LFE send has no AC-4 counterpart, so its slider is off, and there is no bed: the meters show
+the objects panned to 5.1, as a monitor would. An object with no path keeps the inverse-root gain
+E-AC-3 gives it, which AC-4 codes in whole dB.
 
 **The command.** The command bar echoes one command,
 `ac3cli atmos-encode <source> out.ac4 <kbps> <objects> <name>-paths.json [src=… map=… offset=…]
@@ -250,8 +250,9 @@ sits, the audio each object carries, the metadata updates and the call into the 
 **What it leaves out.** A live session encodes AC-3 or E-AC-3 only, so a live session is refused
 under AC-4, and Guided's Movement step writes E-AC-3 objects. **Preview** plays the objects
 through the E-AC-3 object encoder's 5.1 bed, the first fifteen of them, whichever codec is
-chosen: it shows the motion, not the AC-4 stream's own rendering. The page reads audio, not ADM
-BWF or IAB files; `ac3cli atmos-adm` and `atmos-iab` write those to AC-4 with `codec=ac4`.
+chosen, which shows the motion the objects follow; the file the encode writes opens in Open stream
+and Inspect objects. The page reads audio files. An ADM BWF or IAB master goes through
+`ac3cli atmos-adm` or `atmos-iab`, which write AC-4 with `codec=ac4`.
 
 ## Next
 

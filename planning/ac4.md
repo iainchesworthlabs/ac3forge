@@ -2473,12 +2473,14 @@ A live session refuses AC-4, since `ac3cli live` has none; Guided's Movement ste
 objects; and Preview plays an AC-4 object encode through the E-AC-3 object encoder's bed, the
 first fifteen objects, whichever codec is chosen. The page reads audio, with the scene authored on
 it, and has no reader for ADM BWF or IAB masters, which `atmos-adm` and `atmos-iab` write to AC-4
-with `codec=ac4`. The exit's ADM master is therefore the fixture's audio, written to
-`apps/gui/tests/fixtures/adm-two-beds-one-object.wav`, with its scene authored on the page: the
-two bed channels assigned to L and R, and the third channel an object at azimuth -110 degrees for
-0.096 s and then dead ahead. The stream the page writes, read by `ObjectDecodeController` as the
-object page reads it, has its three objects at those places at unity within 0.06 in each axis and
-2 dB, before the jump and after it, and the object's jump is there.
+with `codec=ac4`. The exit's ADM master is therefore the one `tests/cli/test_cli_atmos_adm.cpp`
+builds, written to `apps/gui/tests/fixtures/adm-two-beds-one-object.wav` with its `axml` and `chna`
+chunks as that test builds them. The page reads its audio, and the scene is authored on the page:
+the two bed channels assigned to L and R, and the third channel an object at azimuth -110 degrees
+for 0.096 s and then dead ahead. The stream the page writes, read by `ObjectDecodeController` as
+the object page reads it, has its three objects at those places at unity within 0.06 in each axis
+and 2 dB, before the jump and after it (0.0081 and 0.000 dB at worst), and the object's jump is
+there.
 
 Checks: `tests/cli/test_cli_atmos_encode_ac4.cpp` (new, 6 Catch2 test cases: the raw and
 direct-coded bytes equal the shared core's, `crc=off` and an MP4 file, `src=`, `map=` and
