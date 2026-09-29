@@ -12,14 +12,18 @@ See [README.md](README.md) for the project overview and
 
 This release adds:
 
-- Hearth's ESP32-S3 Sendspin sink, desktop engine, and development tools;
+- an AC-4 decoder and encoder, written from ETSI TS 103 190-1 and -2, with A-JOC and direct-coded
+  objects, in `ac3cli`, the Forge GUI and Hearth's desktop player, and in the C API, Python, Rust
+  and WebAssembly bindings; AC-4 in MP4, CMAF, MPEG-TS and IEC 61937-14 bursts; AC-4 on the
+  ESP32-P4; and Android building the AC-4 libraries;
+- Hearth's desktop player, with its network sinks on the ESP32-S3, ESP32-C6 and ESP32-P4, firmware
+  updates over the network, and diagnostics;
 - fixed-point decoding for ESP32-C3 and ESP32-C6, with real-time ESP32-S3 work;
 - Crucible on Windows and Linux, with macOS code built and tested in CI;
 - per-channel quality gates and continued performance, quality, and memory histories;
-- AC-4 container support, wider WebAssembly encoding, microphone capture, and expanded Rust
-  bindings;
-- AC-4 decode and encode bindings for the C API, Python, Rust and WebAssembly, with the object
-  encoder in each, and Android building the AC-4 libraries.
+- wider WebAssembly encoding, microphone capture, and expanded Rust bindings;
+- a pull-request gate, a verified branch and a nightly run in place of the full CI matrix on
+  every change.
 
 The sections below contain the complete change list and fixes.
 
@@ -334,7 +338,7 @@ The sections below contain the complete change list and fixes.
   UX11): `Capture::start_process_loopback` taps one process tree's render output at a
   caller-stated format (Windows 10 build 20348+), and `DeviceWatcher` delivers endpoint
   add/remove/state/default-changed events on a callback instead of requiring polling.
-  Every other backend refuses both honestly.
+  Every other backend refuses both.
 - Crucible places each captured application in a room and streams E-AC-3 JOC over HDMI or
   AC-3, PCM, Spatial Sound, or stereo as the endpoint requires. `ac3crucible-run` is the
   console runner and `ac3crucible` is the Qt Quick window.
@@ -387,12 +391,10 @@ The sections below contain the complete change list and fixes.
   already-built `MediaInfo` and `MediaInspector`, off a thread of their own): codec, sample rate,
   measured bitrate, duration and container for AC-3, E-AC-3 and AC-4 alike; dialogue level, mix
   levels and the programme list for AC-3/E-AC-3; the table of contents, presentations and
-  substream groups for AC-4, which this build still cannot play but can now describe. A "Showing"
-  picker follows the item playing now by default and can point at any other queue item instead -
-  the only way to reach an AC-4 item's own information, since it never plays here. Copy and Export
-  JSON reuse `media_info_json()`'s own document. `ItemFacts` gains a measured `bitrate_kbps`, and
-  the file loader accepts `.ac4` for reading (never for playback) so the Media page can describe
-  one.
+  substream groups for AC-4. A "Showing" picker follows the item playing now by default and can
+  point at any other queue item instead. Copy and Export JSON reuse `media_info_json()`'s own
+  document. `ItemFacts` gains a measured `bitrate_kbps`, and the file loader accepts `.ac4` so the
+  Media page can describe one.
 - **The Media page's Objects · OAMD table, Container card, and AC-4 Immersive card.**
   `describe_media()` now walks with `detail`/`on_access_unit` on, capturing the first OAMD
   payload's full per-object detail (`MediaInfo::objects`) alongside the bed/count summary
@@ -401,13 +403,12 @@ The sections below contain the complete change list and fixes.
   `oba::describe_objects()` result. A new Container card (format, track, edit list, dec3/codec
   box, or MPEG-TS's programme/PID/stream type) shows the container facts
   `media_container_to_map()` already computed but nothing read; AC-4's new "Immersive" card says
-  whether an A-JOC substream is present, honestly, since this build's inspector reads no further
-  into it. Card numbers on both sides of the page now run as one sequence over whichever optional
-  card actually renders, rather than the AC-4 cards' own fixed 03-05 that skipped 04/05 on every
-  non-AC4 file. Lt/Rt mix levels join the existing Lo/Ro pair, EMDF payload ids show their own
-  name ("OAMD (11)"), dynamic range and heavy compression show their real dB range rather than a
-  bare carried/not-carried boolean, and the Container row no longer reads an item not yet probed
-  as a confirmed elementary stream.
+  whether an A-JOC substream is present. Card numbers on both sides of the page now run as one
+  sequence over whichever optional card actually renders, rather than the AC-4 cards' own fixed
+  03-05 that skipped 04/05 on every non-AC4 file. Lt/Rt mix levels join the existing Lo/Ro pair,
+  EMDF payload ids show their own name ("OAMD (11)"), dynamic range and heavy compression show
+  their real dB range rather than a bare carried/not-carried boolean, and the Container row no
+  longer reads an item not yet probed as a confirmed elementary stream.
 - **`ac3hearth` gets an About dialog and a Licences view of the generated notices.** About
   states what the player does, its version and build provenance, and the GPL/Dolby-trademark
   line, with a Licences… button that opens the full third-party `NOTICES.txt` this build
@@ -714,7 +715,9 @@ The sections below contain the complete change list and fixes.
     access unit's bitstream information: service, surround and headphone modes, copyright,
     audio production, time codes, Annex D's alternate syntax and the mixing metadata, with the
     fold levels they give.
-  - For AC-4, which Hearth cannot play: the sync frames and the table of contents.
+  - For AC-4: the sync frames and the table of contents, then the decoder's own report of the
+    frame rate, bit rate, I-frames, splices, presentations and the selected presentation's
+    metadata.
   - The container's facts arrive with the item from its loader. `apps/common`'s container
     input now reports the track, its language, an MP4 track's codec configuration box and
     edit list, and an MPEG-TS stream's programme, PIDs and signalling.
@@ -763,6 +766,27 @@ The sections below contain the complete change list and fixes.
     Windows, POSIX, UNC and relative forms; the file's sections and limits; and what the
     player and the engine note, in order, for a queue with a missing item, a join, a reopen,
     damaged units and a refused output.
+- **Hearth's diagnostics leave a running app four ways**, all the same scrubbed report
+  (Settings > Diagnostics).
+  - **Copy diagnostics** puts the text "Save diagnostics…" writes on the clipboard. The transport
+    bar's error and note text now shows in full on hover when it is elided, where it was cut off
+    at its 180-pixel slot.
+  - **View live…** opens a dialog that asks for the report every 500 ms while it is open. It
+    follows `HearthController`'s poll-not-push design: a QML timer, no new signal.
+  - **A native debug channel on Windows.** Every note the ring keeps also reaches
+    `OutputDebugString`. `DiagnosticLog::add_observer()` is the cross-platform channel, for
+    registrations that last the process's life; exactly one `platform/<os>/native_log_sink.cpp`,
+    chosen by CMake, defines `install_native_log_sink()` (an empty function on POSIX). `main()`
+    installs it, so `ac3tests` and the Qt Quick tests never register one.
+  - **A loopback HTTP endpoint**, off unless `AC3FORGE_HEARTH_DIAGNOSTICS_PORT` names a port:
+    `GET /diagnostics` on 127.0.0.1 returns exactly the report the other three give, from a
+    `DiagnosticsHttpServer` (`apps/hearth/engine/diagnostics_server.hpp`). It has no Settings
+    toggle, needs no firewall rule, and `HearthController`'s destructor stops it before any
+    member is destroyed.
+  - In `ac3tests`: an observer receives the ring's stamped text and nothing noted before it was
+    added (`tests/hearth/test_diagnostics.cpp`); the server serves fresh content per request, stops
+    listening when stopped, refuses a start while started and starts again after a stop
+    (`tests/hearth/test_diagnostics_server.cpp`).
 - **Hearth's settings model** (`apps/hearth/engine/settings_model.hpp` and
   `pairing_store.hpp`): what the Settings page's Playback and Network cards hold, the queue
   kept for the next start, and the pairing records.
@@ -938,56 +962,6 @@ The sections below contain the complete change list and fixes.
     when it was due on each board (its own `worst_error_us`). A hidden `ac3tests` case,
     `[hearth-network-live]`, repeats that against the sinks named in `AC3HEARTH_LIVE_SINKS`, and
     withdraws its pairings afterwards.
-- **Hearth plays AC-4** (phase I2 of `planning/ac4.md`), through `ac4::Decoder`'s public API alone.
-  - `Session::open()` takes an AC-4 elementary stream. Its units are the sync frames, each as long
-    as Part 2 Table 47 makes it for the frame's place in the `sequence_counter` cycle, so an item's
-    duration and a join's sample count are exact at 29.97 fps too. A seek starts the decoder at an
-    I-frame at least 6 144 samples before the point asked for, and what plays from that point
-    equals an unbroken decode. A stream with no presentation the decoder decodes is refused when
-    it opens, with the decoder's reason.
-  - `StreamDecoder` decodes 256 samples at a time and renders onto the speaker layout; a change of
-    settings reaches the playing item at its next frame, in the same decoder.
-  - `DecoderSettings::ac4` holds AC-4's own controls: the presentation, by `presentation_id` or
-    place; the listener's language, which the window sets from its own; audio description and its
-    level; the dialogue level; dialogue enhancement; dialogue normalisation, with the output level
-    and the DRC decoder mode, which stay apart from AC-3's and E-AC-3's operating mode
-    (decision 12); and a fold by the stream's preferred downmix. The stereo fold, the LFE in a fold
-    and concealment are the settings AC-3 and E-AC-3 use. The LFE is unset until the listener sets
-    it, and unset means off for AC-3 and E-AC-3 and on for AC-4.
-  - The Decoder page's AC-4 tab loses its "Not in this build" banner, and each of those settings
-    is a control on it; the tab turns to the format of the item playing. The Media page drops its
-    "Not playable" banner and shows what the decoder reads of a stream: frame rate, bit rate,
-    I-frames, splices, each presentation, and the loudness, DRC, dialogue enhancement and downmix
-    metadata of the presentation a decoder selects with no preferences.
-  - AC-4 is decoded for every output. A network group is also sent the stream as IEC 61937-14
-    bursts, of the type its largest frame needs and timed from the session's units, for members on
-    the extension role that list `"ac4"`; an item whose bursts differ from what the group carries
-    starts the group again, which now also holds for AC-3 against E-AC-3.
-  - Checked: `[hearth][ac4]` cases play every committed AC-4 stream through the engine sample for
-    sample as `ac4::Decoder` decodes it, and hold each control on tone streams to Part 1's formula
-    for it; `tst_decoder_ac4.qml` drives each control from the page and measures what reaches the
-    fake device tone by tone, to 0.1 dB. `ac3hearth-render` plays an item through the engine into a
-    WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds its output level, downmixes and
-    dialogue enhancement to the formulas it holds `ac3cli decode` to, on the committed streams and
-    the encoder's, in the Hearth CI job.
-- **The Forge GUI encodes and reads AC-4** (phase I3 of `planning/ac4.md`).
-  - AC-4 is the codec picker's third choice. The AC-4 tab, in place of Coding tools and Metadata,
-    sets the frame rate, the rate and codec modes, the I-frame interval, the CRC, dialnorm (or
-    measures it), the loudness values, the DRC profile, the stereo downmix of a 5.0 or 5.1 source
-    and dialogue enhancement. The page encodes one source in its own layout, mono to 5.1, to a raw
-    stream or an MP4 file, and echoes the `ac3cli ac4-encode` line that reproduces it; run through
-    `ac3cli`, the line writes the same bytes, which `tst_e2e_ac4.qml` and `tst_ac4_encode.qml`
-    check for a raw stream, an MP4 file and a 5.1 downmix. The steps that decide those bytes, the
-    channel order, the BS.1770 measurement and the packaging, moved from `ac4-encode` to
-    `apps/common` so both run the same code.
-  - QC, Open stream and Inspect objects recognise AC-4 by its sync word. QC measures a chosen
-    presentation as `ac3cli qc` does, with AC-4's quarter-dB dialnorm and the stream's stated
-    loudness; the player decodes a chosen presentation through `ac4::Decoder` as `ac3cli play`
-    does; the object page lists the presentations and the beds and objects the decoder reports,
-    read-only, and says that exporting AC-4 objects comes later (I5).
-  - Substreams and presentations, dialogue stems, per-mode DRC profiles, the LFE mix and the
-    layouts past 5.1 stay with `ac3cli ac4-encode`. A live session under AC-4 is refused, as
-    `ac3cli live` has no AC-4.
 
 **Audio outputs**
 
@@ -1096,7 +1070,7 @@ The sections below contain the complete change list and fixes.
   writes into the part of the stream to play. Hearth's player applies it; `ac3cli` and the GUI
   do not yet.
 
-**AC-4 decoding**
+**AC-4 decoder, encoder and command line**
 
 - **The first phase of an AC-4 decoder** (`src/ac4dec`, `ac4::Decoder`), written from
   TS 103 190-1 and -2: it reads every syntax element of the presentation substream,
@@ -1141,7 +1115,7 @@ The sections below contain the complete change list and fixes.
   `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
   `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
   rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
-- **Golden masters for the AC-4 phases still to come** (phase G1 of `planning/ac4.md`). DEE's
+- **Golden masters for the AC-4 phases after the first** (phase G1 of `planning/ac4.md`). DEE's
   licence ends on 2026-11-06 and is not renewed, so the gold set gains 439 legs beside G0's, each
   made from committed material by `gen_ac4_baseline.py` and grouped by the phases it serves: sweeps,
   noise and transients at every 2.0, 5.1 and 5.1.4 rate; film and speech at 5.1.4, with the
@@ -1159,8 +1133,8 @@ The sections below contain the complete change list and fixes.
   (dequantisation, scale factors, noise fill), stereo processing (M/S and prediction), the inverse
   transform with block switching, and frame alignment, and returns planar PCM for a stream's first
   channel-coded substream; `ac3cli decode` reads AC-4, raw or in MP4. Other codec modes, layouts and
-  frame rates are refused by name. The transforms and tables sit in a new shared core, `src/ac4core`,
-  which the encoder will link too, and each transform is tested against its formula. DEE's 2.0
+  frame rates were refused by name at this phase. The transforms and tables sit in a new shared core,
+  `src/ac4core`, which the encoder links too, and each transform is tested against its formula. DEE's 2.0
   streams from 192 to 768 kbps decode at unity gain within 0.03 dB, with per-leg SNR floors in
   `tools/checks/score_ac4_decode.py`, which FFmpeg Validate runs on the committed streams;
   librempeg's decode of the same 24 streams agrees with this one to 77 dB or better. The readings
@@ -1233,7 +1207,7 @@ The sections below contain the complete change list and fixes.
 - **AC-4 decodes the A-CPL codec modes** (phase D5 of `planning/ac4.md`): ASPX_ACPL_1 and 2 in the
   channel pair, 5.X and 7.X elements and ASPX_ACPL_3 in the 5.X element, with the three decorrelators,
   the transient ducker, interpolation and dequantisation of Part 1 clause 5.7.7 in `src/ac4core`, where
-  the encoder will reuse them. Each decorrelator's impulse response equals its difference equation and
+  the encoder reuses them. Each decorrelator's impulse response equals its difference equation and
   its magnitude response is flat to 1e-9. DEE's 5.1 streams at 96, 128 and 144 kbps decode: the coded
   downmixes, recovered from the output, meet the source's as waveforms (21 to 25 dB SNR below the
   crossover on music), and per A-CPL parameter band the level difference and correlation of (L, Ls) and
@@ -1465,9 +1439,9 @@ The sections below contain the complete change list and fixes.
   temporary. A Huffman codeword the substream ends inside is `kTruncated` in every tool, where the
   audio spectral frontend called it `kInvalidStream`. An HSF extension substream that nothing in
   the table of contents names is reported, as refused and unread, with every other substream of
-  the substream index table. The Android app, the WebAssembly preset and the Python wheel no
-  longer compile the AC-4 libraries they do not link, until phase I4 binds them. Each has a test
-  that failed before its fix.
+  the substream index table. The Android app, the WebAssembly preset and the Python wheel stopped
+  compiling the AC-4 libraries they did not link; phase I4's bindings, below, build them again.
+  Each has a test that failed before its fix.
 - **AC-4 decodes object audio: A-JOC in full and core decoding, direct-coded objects, and their
   metadata** (phase D10 of `planning/ac4.md`). Both transcriptions read `audio_data_ajoc()` with its
   `var_channel_element()` downmix and A-JOC's `ajoc()` (Part 2 6.2.3.4 to 6.2.6), `audio_data_objs()`,
@@ -1586,9 +1560,9 @@ The sections below contain the complete change list and fixes.
   new header-only target, `src/arithmetic`, that `ac3::forge` and `src/ac4core` both link, so neither
   carries its own copy. The decoder's `QmfValue` and the encoder's `QmfSample` take the same complex
   type, since both call straight into these kernels at `double`; the double build's output is
-  unchanged bit for bit as far as the whole test suite can tell. `src/ac4dec/src/pcm` and
-  `src/ac4enc`'s own QMF-domain code are not yet templated on `Real` - retemplating them, so a full
-  decoder or encoder build at `float` can exist at all, is the next part of the phase.
+  unchanged bit for bit as far as the whole test suite can tell. `src/ac4dec/src/pcm` follows in the
+  next entry; `src/ac4enc`'s own QMF-domain code stays at `double`, since the encoder has no `float`
+  tier.
 - **Three memory findings from D14a's survey are fixed.** `bitrate_kbps()`'s lookup was a
   function-local static `std::unordered_map`, guarded and heap-allocating on first call; Table 90's
   `brate_ind` column is a contiguous range, so a `constexpr` array indexed directly replaces it.
@@ -1654,7 +1628,7 @@ The sections below contain the complete change list and fixes.
   `tests/golden/ac4dec/scalar-agreement.json`; the same to 0.1 dB on MSVC, GCC 16 and Clang 22).
   The `double` output moves in float ulps of near-silent samples (61 of the 66 streams under
   `tests/golden`, by at most 2.3e-10); the encoder's output does not move. The ESP-IDF component
-  builds without AC-4 until D14b's switch sets the same option.
+  builds without AC-4 unless D14b's switch, in the next entry, sets the same option.
 - **AC-4 plays on the ESP32-P4, behind `CONFIG_AC3FORGE_AC4` (phase D14b).** The ESP-IDF component's
   new switch, off by default and offered only on a part with a floating-point unit, builds
   `src/ac4`, `src/ac4core` and `src/ac4dec` in `float` in the minimum-footprint profile
@@ -1750,7 +1724,9 @@ The sections below contain the complete change list and fixes.
   builds and compares `ac3membench` at the PR's head and merge base; the hard tier
   (churn at least doubled) fails the gate, with `memory-regression-approved` as the
   override. The `steady_live_growth` leak check now applies its absolute thresholds to
-  what the branch changed rather than the head alone.
+  what the branch changed rather than the head alone. Since the pull-request gate replaced
+  `ci.yml` on pull requests, the comparison runs in the merge queue (`_compare.yml`), against the
+  commit the entry is queued on.
 - **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and shell
   completions** (`check_cli_docs_package.py`), so the packaging bug fixed below cannot
   come back unseen — nothing had checked these five files before, and the only test that
@@ -1782,6 +1758,16 @@ The sections below contain the complete change list and fixes.
   way playback settings and the resumed queue already are - previously every restart reset the
   whole page to stereo defaults. One setup today, not one per output device, despite the page's
   own "a setup for each output" wording.
+- **AC-4 joins the performance and quality reporting.** Stereo and 5.1 encode and decode are
+  workloads of `ac3perf`, `ac3bench` and `ac3membench`, which link the AC-4 libraries
+  unconditionally, and the transforms the AC-4 encoder and decoder share are kernels of
+  `ac3kernelbench`. An AC-4 frame at `frame_rate_index` 13 is 2,048 samples, 42.67 ms;
+  `ac3bench` writes a real-time budget with each result, and the performance history and the
+  speed card rank a workload against its own. AC-4 decode quality, from
+  `score_ac4_decode.py --json-out`, is appended to `ac4-quality-main.jsonl` on `quality-history`
+  with its own `ac4_hard_regression` output and failing step, and charted at the end of the
+  Quality trend page. The encode side has floors in CI and a local race against DEE, and no
+  history.
 - **Golden masters from Dolby's encoders for AC-3, E-AC-3, E-AC-3 JOC and TrueHD.** DEE's licence
   ends on 2026-11-06 and is not renewed, so `tools/generators/gen_dee_gold.py` makes, and keeps
   on a local disk, every stream a later piece of work could want from it: 1,111 legs (1,086
@@ -1860,8 +1846,58 @@ The sections below contain the complete change list and fixes.
   WebAssembly wrapper is tested against the fake Embind module and a loopback codec model; its C++
   side is built in `build-wasm`.
 
-**AC-4 immersive and object content in the applications**
+**AC-4 in the applications**
 
+- **Hearth plays AC-4** (phase I2 of `planning/ac4.md`), through `ac4::Decoder`'s public API alone.
+  - `Session::open()` takes an AC-4 elementary stream. Its units are the sync frames, each as long
+    as Part 2 Table 47 makes it for the frame's place in the `sequence_counter` cycle, so an item's
+    duration and a join's sample count are exact at 29.97 fps too. A seek starts the decoder at an
+    I-frame at least 6 144 samples before the point asked for, and what plays from that point
+    equals an unbroken decode. A stream with no presentation the decoder decodes is refused when
+    it opens, with the decoder's reason.
+  - `StreamDecoder` decodes 256 samples at a time and renders onto the speaker layout; a change of
+    settings reaches the playing item at its next frame, in the same decoder.
+  - `DecoderSettings::ac4` holds AC-4's own controls: the presentation, by `presentation_id` or
+    place; the listener's language, which the window sets from its own; audio description and its
+    level; the dialogue level; dialogue enhancement; dialogue normalisation, with the output level
+    and the DRC decoder mode, which stay apart from AC-3's and E-AC-3's operating mode
+    (decision 12); and a fold by the stream's preferred downmix. The stereo fold, the LFE in a fold
+    and concealment are the settings AC-3 and E-AC-3 use. The LFE is unset until the listener sets
+    it, and unset means off for AC-3 and E-AC-3 and on for AC-4.
+  - The Decoder page's AC-4 tab loses its "Not in this build" banner, and each of those settings
+    is a control on it; the tab turns to the format of the item playing. The Media page drops its
+    "Not playable" banner and shows what the decoder reads of a stream: frame rate, bit rate,
+    I-frames, splices, each presentation, and the loudness, DRC, dialogue enhancement and downmix
+    metadata of the presentation a decoder selects with no preferences.
+  - AC-4 is decoded for every output. A network group is also sent the stream as IEC 61937-14
+    bursts, of the type its largest frame needs and timed from the session's units, for members on
+    the extension role that list `"ac4"`; an item whose bursts differ from what the group carries
+    starts the group again, which now also holds for AC-3 against E-AC-3.
+  - Checked: `[hearth][ac4]` cases play every committed AC-4 stream through the engine sample for
+    sample as `ac4::Decoder` decodes it, and hold each control on tone streams to Part 1's formula
+    for it; `tst_decoder_ac4.qml` drives each control from the page and measures what reaches the
+    fake device tone by tone, to 0.1 dB. `ac3hearth-render` plays an item through the engine into a
+    WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds its output level, downmixes and
+    dialogue enhancement to the formulas it holds `ac3cli decode` to, on the committed streams and
+    the encoder's, in the Hearth CI job.
+- **The Forge GUI encodes and reads AC-4** (phase I3 of `planning/ac4.md`).
+  - AC-4 is the codec picker's third choice. The AC-4 tab, in place of Coding tools and Metadata,
+    sets the frame rate, the rate and codec modes, the I-frame interval, the CRC, dialnorm (or
+    measures it), the loudness values, the DRC profile, the stereo downmix of a 5.0 or 5.1 source
+    and dialogue enhancement. The page encodes one source in its own layout, mono to 5.1, to a raw
+    stream or an MP4 file, and echoes the `ac3cli ac4-encode` line that reproduces it; run through
+    `ac3cli`, the line writes the same bytes, which `tst_e2e_ac4.qml` and `tst_ac4_encode.qml`
+    check for a raw stream, an MP4 file and a 5.1 downmix. The steps that decide those bytes, the
+    channel order, the BS.1770 measurement and the packaging, moved from `ac4-encode` to
+    `apps/common` so both run the same code.
+  - QC, Open stream and Inspect objects recognise AC-4 by its sync word. QC measures a chosen
+    presentation as `ac3cli qc` does, with AC-4's quarter-dB dialnorm and the stream's stated
+    loudness; the player decodes a chosen presentation through `ac4::Decoder` as `ac3cli play`
+    does; the object page lists the presentations and the beds and objects the decoder reports,
+    read-only, and points to Open stream for exporting AC-4 objects (phase I5).
+  - Substreams and presentations, dialogue stems, per-mode DRC profiles, the LFE mix and the
+    layouts past 5.1 stay with `ac3cli ac4-encode`. A live session under AC-4 is refused; `ac3cli
+    live` takes AC-4 with `codec=ac4`, and the GUI's live session does not.
 - **`ac3cli atmos-adm`/`atmos-iab` take `codec=ac4`** (phase I5 of `planning/ac4.md`): every
   bed/object channel the ADM or IAB source resolves becomes an AC-4 A-JOC object (the default) or,
   with `coding=direct`, a direct-coded one, its position sampled once a frame against
@@ -1909,7 +1945,7 @@ The sections below contain the complete change list and fixes.
   `order.empty()` - the WAV channel order, computed from the frame's speakers - as its "has the
   first frame been read" flag. A presentation of objects alone has no channels or speakers at all,
   so `order` never became non-empty for one, and the function reported "no frame decoded; the
-  stream sent no I-frame" for every pure-object AC-4 file, even though every frame had genuinely
+  stream sent no I-frame" for every pure-object AC-4 file, even though every frame had
   decoded. Fixed with an explicit `initialized` flag, the pattern
   `ObjectDecodeController::measure_ac4_objects()` already used correctly. Shipped with I3
   (channel-based AC-4 only, so nothing exercised the all-objects case until this phase's own
@@ -2103,6 +2139,50 @@ The sections below contain the complete change list and fixes.
 
 **CI and static analysis**
 
+- **Pull requests are gated on a Linux build, and `main` is verified after the merge**
+  (`pr-gate.yml`, `ci.yml`, `main-health.yml`; the measurements and the design are in
+  `docs/ci-agentic.md`). Over 3.5 days in September, 300 runs of `ci.yml` and about 15,000 jobs
+  asked for roughly 1,750 runner-hours, of which 51% went into runs that were cancelled and 19%
+  into runs that failed; one full run took 6 to 10 runner-hours and every change paid for it on
+  each push, in the merge queue and again on `main`. A Linux GCC build with every ctest case would
+  have caught 20 of the 28 failures that pull requests and queue entries actually had. A pull
+  request and each queue entry now run `pr-gate.yml`: the static checks as one job
+  (`_static.yml`), then Linux GCC through ccache with the tests in three phases (the Catch2 cases
+  in parallel, the Qt Quick suites in a phase of their own, the throughput guards alone; a failing
+  case is retried once, and a parallel phase's failures are rerun one at a time), the
+  gold-reference gate and, when the change touches the GUI trees or in the queue, the Qt GUI; the
+  queue adds Windows MSVC once per entry and, for an entry that changes `src/`, the performance
+  and memory comparisons (`_compare.yml`): `ac3bench`, `ac3kernelbench` and `ac3membench` built
+  and measured at the commit the entry is queued on and at its head, and a workload that takes
+  twice as long, or whose heap churn at least doubles, fails the entry unless its pull request
+  carries `perf-regression-approved` or `memory-regression-approved`. A planner
+  (`tools/ci/plan_gate.py`) skips the build for documentation and for trees a Linux C++ build
+  does not read. `Branch Name` and `CI Status` keep their names, so no ruleset edit was needed,
+  and `CI Status` fails closed. `ci.yml` runs on a
+  push to `main` and on dispatch, one run at a time with the newest push waiting, and its
+  aggregate is `Verify Status`. `main-health.yml` reads each finished run: a green one advances
+  the `verified` branch and closes the `main-red` issue, a failure that matches
+  `tools/ci/known_flakes.json` is rerun once, and any other opens one `main-red` issue with the
+  failed jobs' log excerpts (the compiler error included), the merges since `verified`, the
+  commands that reproduce them and a revert command or a bisect recipe. A run of its own for each
+  finished CI run means no event replaces another. Nothing is reverted automatically.
+  `tools/ci/precheck.py` runs the static checks locally.
+- **The build matrix is data, and a nightly run does what the run after a merge leaves out.**
+  `.github/ci/legs.jsonc` lists the 11 legs, `tools/ci/plan_legs.py` picks them, and a dispatch
+  can name legs (`-f legs=linux-llvm,macos-llvm`) or a tier. The run after a merge builds the
+  legs a merge can break (Linux GCC and LLVM, Linux GCC on arm64, Windows MSVC and clang-cl,
+  macOS arm64) and picks its lanes from the files merged since `verified`; a satellite lane
+  (Android, WebAssembly, ESP-IDF, Rust, wheels, npm) runs only for a change in its own tree, and
+  the ESP-IDF lane also for the trees its component is built from (`src/forge`, `src/arithmetic`,
+  `cmake/`, the root `CMakeLists.txt`). The nightly run does the rest: the sanitizers, coverage,
+  the ABI gate, FFmpeg Validate and the trend publishers that read it, Linux LLVM and Windows
+  MSVC on arm64, macOS x64, the extra passes inside the Linux legs, the AppImage and every
+  satellite. Its cron is set 6.5 hours before the time it is wanted (19:47 UTC), because GitHub
+  starts this repository's scheduled workflows four to six and a half hours late; a nightly run
+  keeps its own `verified-nightly` and `main-red-nightly`, and blames the merges since the last
+  green one. The `ci:deep` label runs the nightly tier on a pull request's branch. ccache and
+  parallel ctest apply in the run after a merge as well; a cache is saved only by a push to
+  `main`.
 - **Code analysis now runs nightly against `main` instead of on every PR/push/merge-
   queue entry**: CodeQL, MSVC Code Analysis and clang-tidy (moved to its own workflow)
   each open or refresh a `nightly-analysis` issue on a finding. `CI Status` no longer
@@ -2113,7 +2193,8 @@ The sections below contain the complete change list and fixes.
   shared fleet.
 - The ABI gate no longer runs on merge-queue entries — the PR run already produced the
   comparison it exists for, and while `ABI_ENFORCE` is off nobody reads the release-
-  relative second view before the merge lands.
+  relative second view before the merge lands. It has since moved to the nightly run, with the
+  other checks the pull-request gate does not run.
 
 **Quality gates**
 
@@ -2148,8 +2229,9 @@ The sections below contain the complete change list and fixes.
   ESP32-P4 has its row, and its page is in the navigation.
 - The front page, the README and the site description name AC-4 and say where it is and is not
   supported.
-- The performance and quality pages say which codecs their series cover: AC-4 has no speed, memory
-  or quality history, and its scoring scripts and the local race against DEE are named.
+- The performance and quality pages say which codecs their series cover, and name AC-4's scoring
+  scripts and the local race against DEE. AC-4 joined the series afterwards (see Verification and
+  CI), decode quality first.
 - CONTRIBUTING.md lists the four AC-4 directories and their header layout. The file I/O, Rust API
   and signing pages were checked against their headers and corrected.
 - ROADMAP.md lists the Hearth work as it stands and the gaps found in the documentation.
@@ -2160,6 +2242,16 @@ The sections below contain the complete change list and fixes.
   files and the Debian package summary), the vcpkg port, the Conan recipe, the Homebrew formula and
   the winget manifest template. The homepage names AC-4 and describes the Hearth player as it is,
   and its Probe a stream card links to the CLI reference, which had moved.
+- **The descriptions that ship inside packages say what each program does today, AC-4
+  included.** The GUI's and Hearth's desktop entries and AppStream records, Hearth's Debian text,
+  the Homebrew cask, the vcpkg port's `capi` feature and `usage`, `ac3forge_c.pc`, the Conan
+  topics, the winget tags and the Python, Rust, npm and ESP component descriptions and keywords
+  name AC-4 where the component supports it; Crucible takes none, since no receiver accepts
+  AC-4. The taglines that followed a program's name are gone. `ac3forge.pc` no longer carries the
+  project description that names AC-4, since `libac3forge` is AC-3 and E-AC-3 only (the AC-4
+  libraries have `.pc` files of their own), Hearth's macOS bundle string is no longer the
+  library's description, and the Debian descriptions' continuation lines no longer come out with
+  two leading spaces, which Debian shows as preformatted text.
 - `ac3::version_details()` (and `ac3cli --version`) now puts commits-past-tag in the
   headline as semver build metadata (`0.10.0-beta.1+100`), so it no longer reads as a
   tagged release when it isn't.
@@ -2422,7 +2514,7 @@ The sections below contain the complete change list and fixes.
   re-announce and an ARP round can all delay a reply the same way, could agree with itself
   as well as an accurate run and read as converged on an offset that was still several
   milliseconds off. `ac3::sendspin::ClockSync` now takes convergence in two steps: once a
-  run reads as converged, one more burst, a learning interval later and so genuinely apart
+  run reads as converged, one more burst, a learning interval later and so apart
   in time, must measure within a millisecond of that run's own last reading before the
   clock is reported converged and a stream is let start. A confirming burst that disagrees
   is not trusted; the run starts over.
@@ -2483,10 +2575,11 @@ The sections below contain the complete change list and fixes.
   copy.** A tone sweeping through the band (or a steady high tone in a quiet programme) has nothing
   in the low band for A-SPX's patch to copy, and the decoder's noise, a share of the envelope
   whatever the patch holds, is the only thing that can fill the group (Part 1 Pseudocodes 94 and
-  95); the encoder sent the least noise floor there, and the band decoded 30 to 68 dB under the
-  source's energy in 5.1 and 5.1.4, where DEE's floors bring it to 15 to 17 dB under. The encoder
-  now measures the share of each noise group's energy that the decoder's patch delivers and sends
-  the floor that brings it to three quarters. Against DEE's streams of the same sweeps ViSQOL, up
+  95); the encoder sent the least noise floor there, and the band decoded 32 to 61 dB under the
+  source's energy in 5.1 and 48 to 61 in 5.1.4, where DEE's floors bring it to 15 to 17 dB under.
+  The encoder now measures the share of each noise group's energy that the decoder's patch
+  delivers and sends the floor that brings it to three quarters. Against DEE's streams of the
+  same sweeps ViSQOL, up
   to 0.18 under DEE's at 5.1.4 from 256 to 512 kbps and 0.04 under at 2.0 and 48 kbps, is over
   DEE's on every leg at 2.0, 5.1 and 5.1.4 (0.05 to 0.66); log-spectral distance, 0.2 to 0.9 dB
   higher on sweeps, stays under DEE's but at 2.0 from 48 to 96 kbps (0.55 to 1.14 dB over).
@@ -2495,6 +2588,15 @@ The sections below contain the complete change list and fixes.
   and holds each band above 16.5 kHz to 6 dB of the source's energy, which it missed by 8 to 13 dB
   before. `tools/checks/score_ac4_encode.py --gold` takes G1's sweeps at 2.0 and 5.1 into the race,
   and `src/ac4enc/ERRATA.md` records the reading.
+- **The AC-4 encoder's ASPX_ACPL_1 in the immersive layouts, an experimental option, switched a
+  difference group's blocks apart from its sum group's, and the in-repo decoder refused the frame
+  on transient material.** (H'', I'') and (J'', K'') sat in transform-layout groups of their own
+  and switched independently of (D'', E'') and (F'', G''), which step 4 of Part 2 clause 5.2.3.2
+  pairs them with line for line. Each difference group now takes its sum group's transform
+  layouts, and the sum group's transient detection reads both groups' channels. The encoder-space
+  harness found it once its `--check-envelope` read the immersive rate table for 9 to 12 channels
+  and `gain_ac4_decode.py --engine` had layouts for 5.0.4, 5.1.4 and 7.1.4; two of the six failing
+  seeds are kept as regression seeds.
 - **E-AC-3 streams from the Dolby Encoding Engine that use transient pre-noise processing would
   not decode.** DEE turns §3.7's tool on at its lower rates - all 23 such streams in the DEE
   golden-master set, stereo at 96-144 kbit/s, 5.1 at 192-368 and a 5.1 programme at 256 - and
@@ -2844,7 +2946,7 @@ The sections below contain the complete change list and fixes.
   channel SNR floors taught the docs page to report the tightest per-channel margin, but
   the badge generator kept the old scalar rule (worst absolute dB) — on one commit the
   badge read 18.3 dB (a surround 1.3 dB clear of its floor) while the page read 58.1 dB
-  (the front channel genuinely closest to failing), and the badge's colour could stay
+  (the front channel closest to failing), and the badge's colour could stay
   green while the gold-reference gate itself failed. The badge now runs the same
   computation as the page.
 
@@ -2943,6 +3045,16 @@ The sections below contain the complete change list and fixes.
   own. The two trees the linux-llvm leg installed name the shared library in their `.pc` files, so
   the leg now configures a third tree with one linkage for it. `docs/library/index.md` and
   `docs/library/c-api.md` describe what pkg-config prints.
+- **The Linux wheels built again under GCC 14.** The wheels build in manylinux with
+  `gcc-toolset-14` at `-O3 -DNDEBUG -Werror`, and GCC 14 reported a maybe-uninitialized vector
+  pointer, a false positive, in the destructor of a moved-from `SubstreamReport::oamd_common_data`
+  (an `optional` holding vectors), reached from the heap-sort fallback of the
+  `std::ranges::sort` that orders a frame's substream reports; the report gained that member with
+  the direct-coded group's OAMD common data. The pull-request gate builds with GCC 16, which does
+  not report it, so nothing before the merge saw it. The decoder now orders the reports by
+  sorting an array of positions and moves each report once into a new vector: the list and its
+  order are the same. All 75 translation units of `src/ac4`, `src/ac4core`, `src/ac4dec` and
+  `src/ac4enc` compile clean with GCC 14.3 at the wheel build's flags.
 
 **Audio backend and object signing**
 
@@ -3039,10 +3151,30 @@ The sections below contain the complete change list and fixes.
   reply ever seen — reproduced against `ac3hearth-testsink` under CPU contention, where
   it reliably dropped an entire PCM stream paired by dynamic code while the same stream
   paired by token, or encoded as FLAC or Opus, kept its lead time. `PlayerSession` now
-  delivers what is held before forgetting it when a stream genuinely ends (a
+  delivers what is held before forgetting it when a stream ends (a
   `stream/end` message or a deactivating `server/activate`), on whatever time mapping
   the clock can give pre-convergence; a stream/clear or a format change within a
-  running stream still discards it, since that data really is stale.
+  running stream still discards it, since that data is stale.
+- **Pairing a network sink never said it still needed a group, so a paired sink's first Play
+  fell back to the local output without a word.** The first-run dialog's step 3 said pairing was
+  enough; it now says a group is required, and that a group of one plays to a single sink. A
+  Hearth sink's own settings page had no group hint at all, where the generic paired-sink card
+  had one; it has the same now. The Play page's signal-path card hints, when a sink is paired
+  and no group is chosen as the output, at the Choose… button and the Network page. The Network
+  page shows a banner whenever the selected sink is paired and in no group: "Create a group",
+  named after the sink, when none exists, or a picker with "Add to the group" when one does;
+  "Not now" dismisses it for the visit. `NetworkController.selectedSink` gains an `inGroup` fact,
+  computed in `poll()` from every group's members. The QML suites cover both prompts, the
+  rejoin through the picker, the dismissal and the Play page's hint.
+- **Decoder settings changed within one poll undid each other.** `setDecoderSettings()` built
+  each write on the engine's applied status, and the Decoder pages sent a copy of the polled
+  settings, so two changes inside one poll put the first back: Lt/Rt then "Mix the LFE in" left
+  the fold at Lo/Ro, and quick arrow keys on the AC-4 device combo box settled a few steps
+  back. The controller now keeps the last requested settings until the engine's status matches,
+  builds each write on them and shows them at once, and the pages send only the key a control
+  changed. Two QML tests (`test_twoWritesInOneTurnBothLand`, `test_twoChangesInOneTurnBothLand`)
+  fail without the change. The AC-4 Decoder page's audio checks now fail with the level the wait
+  ended on and the settings in force, where they showed the level it started from.
 
 ## [0.10.0-beta.1] - 2026-09-01
 

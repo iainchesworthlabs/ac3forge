@@ -2,7 +2,8 @@
 
 [Concepts](index.md) introduced Dolby Atmos as E-AC-3 (see [AC-3 & E-AC-3](ac3-eac3.md)) plus
 an extra object layer. This page explains what an "object" is, how that layer actually rides
-inside an ordinary E-AC-3 stream, and two limitations of the technique.
+inside an ordinary E-AC-3 stream, and two limitations of the technique. AC-4 codes objects in its
+own way, which the [AC-4](ac4.md) page describes.
 
 ## Channels vs. objects
 
@@ -168,7 +169,10 @@ things advertise the object layer and they have to agree:
   treats its sync word as a commitment to object decoding: if the field doesn't check out it
   refuses the whole stream rather than falling back to the bed. So an empty or unusable
   container is worse than no container — with nothing to find, that decoder plays ordinary 5.1.
-  This is what `ac3cli atmos ... bed51` and `AtmosConfig::emit_object_metadata` are for.
+  This is what `ac3cli atmos ... bed51` and `AtmosConfig::emit_object_metadata` are for. Receivers
+  differ: the Atmos receiver in the [Raspberry Pi test](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)
+  played the 5.1 bed from an unsigned container instead of refusing the stream, and the rule
+  protects against the decoders that do refuse.
 - The **`addbsi` object marker** (ETSI TS 103 420 §8.3.1's `flag_ec3_extension_type_a` and
   §8.3.2.2's `complexity_index_type_a`). This is a few bits in the bitstream header, and it is
   the only thing a *reader* — as opposed to a decoder — has to go on: it is what
