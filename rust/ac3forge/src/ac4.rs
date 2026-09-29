@@ -58,27 +58,19 @@ impl Speaker {
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_CENTRE => Speaker::Centre,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LFE => Speaker::Lfe,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LEFT_SURROUND => Speaker::LeftSurround,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_RIGHT_SURROUND => {
-                Speaker::RightSurround
-            }
+            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_RIGHT_SURROUND => Speaker::RightSurround,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LEFT_BACK => Speaker::LeftBack,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_RIGHT_BACK => Speaker::RightBack,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LEFT_WIDE => Speaker::LeftWide,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_RIGHT_WIDE => Speaker::RightWide,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_FRONT_LEFT => {
-                Speaker::TopFrontLeft
-            }
+            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_FRONT_LEFT => Speaker::TopFrontLeft,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_FRONT_RIGHT => {
                 Speaker::TopFrontRight
             }
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_BACK_LEFT => Speaker::TopBackLeft,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT => {
-                Speaker::TopBackRight
-            }
+            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT => Speaker::TopBackRight,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_SIDE_LEFT => Speaker::TopSideLeft,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_SIDE_RIGHT => {
-                Speaker::TopSideRight
-            }
+            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_SIDE_RIGHT => Speaker::TopSideRight,
             sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LFE2 => Speaker::Lfe2,
             // An unrecognized ordinal cannot happen from this crate's own calls (every
             // accessor's C side clamps out-of-range indices to AC3FORGE_AC4_SPEAKER_LEFT
@@ -135,9 +127,7 @@ impl DownmixTarget {
                 sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_AS_CODED
             }
             DownmixTarget::FiveX => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_5X,
-            DownmixTarget::Stereo => {
-                sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_STEREO
-            }
+            DownmixTarget::Stereo => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_STEREO,
             DownmixTarget::LoRo => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_LORO,
             DownmixTarget::LtRt => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_LTRT,
             DownmixTarget::Mono => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_MONO,
@@ -579,7 +569,12 @@ impl Decoder {
         // SAFETY: `frame` is a valid slice for the duration of this call; `out` is a valid
         // out-parameter.
         let status = unsafe {
-            sys::ac3forge_ac4_decoder_decode(self.raw.as_ptr(), frame.as_ptr(), frame.len(), &mut out)
+            sys::ac3forge_ac4_decoder_decode(
+                self.raw.as_ptr(),
+                frame.as_ptr(),
+                frame.len(),
+                &mut out,
+            )
         };
         Error::check(status)?;
         Ok(ptr::NonNull::new(out).map(|raw| DecodedFrame { raw }))
@@ -595,8 +590,10 @@ impl Decoder {
                 // SAFETY: `index` is in `[0, count)`, so every accessor below reads a real
                 // presentation rather than taking its null-safety fallback.
                 unsafe {
-                    let speaker_count =
-                        sys::ac3forge_ac4_decoder_presentation_speaker_count(self.raw.as_ptr(), index);
+                    let speaker_count = sys::ac3forge_ac4_decoder_presentation_speaker_count(
+                        self.raw.as_ptr(),
+                        index,
+                    );
                     let speakers = (0..speaker_count)
                         .map(|s| {
                             Speaker::from_raw(sys::ac3forge_ac4_decoder_presentation_speaker(
@@ -821,18 +818,25 @@ impl DecodedFrame {
 
     /// `channel_index` in `[0, channel_count())`. Panics if out of range.
     pub fn channel_samples(&self, channel_index: usize) -> &[f32] {
-        assert!(channel_index < self.channel_count(), "channel index out of range");
+        assert!(
+            channel_index < self.channel_count(),
+            "channel index out of range"
+        );
         // SAFETY: the pointer is valid until `self` is destroyed (ac3forge.h's own
         // convention); samples_per_channel() gives the real length.
         unsafe {
-            let ptr = sys::ac3forge_ac4_decoded_frame_channel_samples(self.raw.as_ptr(), channel_index);
+            let ptr =
+                sys::ac3forge_ac4_decoded_frame_channel_samples(self.raw.as_ptr(), channel_index);
             std::slice::from_raw_parts(ptr, self.samples_per_channel())
         }
     }
 
     /// `channel_index` in `[0, channel_count())`. Panics if out of range.
     pub fn speaker(&self, channel_index: usize) -> Speaker {
-        assert!(channel_index < self.channel_count(), "channel index out of range");
+        assert!(
+            channel_index < self.channel_count(),
+            "channel index out of range"
+        );
         Speaker::from_raw(unsafe {
             sys::ac3forge_ac4_decoded_frame_speaker(self.raw.as_ptr(), channel_index)
         })
@@ -865,16 +869,15 @@ impl DecodedFrame {
         let samples_per_channel = self.samples_per_channel();
         (0..count)
             .map(|index| unsafe {
-                let speaker = (sys::ac3forge_ac4_decoded_frame_object_has_speaker(
-                    self.raw.as_ptr(),
-                    index,
-                ) != 0)
-                    .then(|| {
-                        Speaker::from_raw(sys::ac3forge_ac4_decoded_frame_object_speaker(
-                            self.raw.as_ptr(),
-                            index,
-                        ))
-                    });
+                let speaker =
+                    (sys::ac3forge_ac4_decoded_frame_object_has_speaker(self.raw.as_ptr(), index)
+                        != 0)
+                        .then(|| {
+                            Speaker::from_raw(sys::ac3forge_ac4_decoded_frame_object_speaker(
+                                self.raw.as_ptr(),
+                                index,
+                            ))
+                        });
                 let ptr = sys::ac3forge_ac4_decoded_frame_object_samples(self.raw.as_ptr(), index);
                 let samples = if ptr.is_null() {
                     Vec::new()
@@ -1048,14 +1051,18 @@ impl Toc {
         let has_value = unsafe {
             sys::ac3forge_ac4_media_timing(self.raw.as_ptr(), &mut timescale, &mut sample_delta)
         };
-        (has_value != 0).then_some(MediaTiming { timescale, sample_delta })
+        (has_value != 0).then_some(MediaTiming {
+            timescale,
+            sample_delta,
+        })
     }
 
     /// Samples per AC-4 frame at the stream's own sample rate; `None` for a frame rate whose
     /// length alternates (see [`Toc::media_timing`]).
     pub fn samples_per_frame(&self) -> Option<u32> {
         let mut samples = 0u32;
-        let has_value = unsafe { sys::ac3forge_ac4_samples_per_frame(self.raw.as_ptr(), &mut samples) };
+        let has_value =
+            unsafe { sys::ac3forge_ac4_samples_per_frame(self.raw.as_ptr(), &mut samples) };
         (has_value != 0).then_some(samples)
     }
 }
@@ -1123,7 +1130,8 @@ impl Encoder {
         let mut out: *mut *mut sys::ac3forge_ac4_encoded_frame_t = ptr::null_mut();
         let mut count: usize = 0;
         // SAFETY: `out`/`count` are valid out-parameters.
-        let status = unsafe { sys::ac3forge_ac4_encoder_flush(self.raw.as_ptr(), &mut out, &mut count) };
+        let status =
+            unsafe { sys::ac3forge_ac4_encoder_flush(self.raw.as_ptr(), &mut out, &mut count) };
         Error::check(status)?;
         Ok(Self::collect_frames(out, count))
     }
