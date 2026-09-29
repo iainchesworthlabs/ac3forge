@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <numbers>
@@ -3586,10 +3587,12 @@ DecodedScene decode_with_c_api(const EncodedStream& stream) {
     std::int64_t start = 0;
     for (const std::vector<std::uint8_t>& bytes : stream.frames) {
         ac3forge_ac4_decoded_frame_t* frame = nullptr;
-        REQUIRE(ac3forge_ac4_decoder_decode(decoder, bytes.data(), bytes.size(), &frame) ==
-                AC3FORGE_OK);
+        const auto status =
+            ac3forge_ac4_decoder_decode(decoder, bytes.data(), bytes.size(), &frame);
+        const DecodedFrameGuard guard(frame);
+        REQUIRE(status == AC3FORGE_OK);
         if (frame == nullptr) {
-            continue;
+            continue;  // held back pending configuration - not an error
         }
         const size_t count = ac3forge_ac4_decoded_frame_object_count(frame);
         const size_t samples = ac3forge_ac4_decoded_frame_samples_per_channel(frame);
@@ -3614,7 +3617,6 @@ DecodedScene decode_with_c_api(const EncodedStream& stream) {
             }
         }
         start += static_cast<std::int64_t>(samples);
-        ac3forge_ac4_decoded_frame_destroy(frame);
     }
     ac3forge_ac4_decoder_destroy(decoder);
     return out;
@@ -3784,11 +3786,14 @@ TEST_CASE(
 
 namespace {
 
-// An enumeration's value outside its enumerators, which a caller's C code can hold: taken through
-// a function argument so that no compiler sees a constant converted out of the range.
+// An enumeration's storage set to a value its enumerators do not name, which a caller's C code can
+// store. The bytes are written: converting an int outside the enumeration's range is undefined in
+// C++, and so is reading such a value as the enumeration, which the library does not do either
+// (internal_ac4.hpp's stored_value()).
 template <typename E>
-E enumerator(int value) {
-    return static_cast<E>(value);
+void set_raw(E& target, int value) {
+    static_assert(sizeof(E) == sizeof(int));
+    std::memcpy(&target, &value, sizeof value);
 }
 
 std::string refusal_of(const ac3forge_ac4_encoder_config_t& config) {
@@ -3914,19 +3919,18 @@ TEST_CASE("the object configuration's limits and refusals are the encoder's", "[
         CHECK(refusal_of(scene->config) == not_an_argument);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->objects_config.objects = scene->objects.data();
-        scene->objects[3].bed =
-            enumerator<ac3forge_ac4_bed_channel_t>(3);  // no loudspeaker has code 3
+        set_raw(scene->objects[3].bed, 3);  // no loudspeaker has code 3
         CHECK(refusal_of(scene->config) == not_an_argument);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->objects[3].bed = AC3FORGE_AC4_BED_TOP_BACK_RIGHT;
         CHECK(refusal_of(scene->config).empty());
-        scene->objects_config.coding = enumerator<ac3forge_ac4_object_coding_t>(2);
+        set_raw(scene->objects_config.coding, 2);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->objects_config.coding = AC3FORGE_AC4_OBJECT_CODING_AJOC;
-        scene->objects_config.downmix = enumerator<ac3forge_ac4_ajoc_downmix_t>(3);
+        set_raw(scene->objects_config.downmix, 3);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->objects_config.downmix = AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED;
-        scene->config.experimental.seven_x = enumerator<ac3forge_ac4_additional_pair_t>(4);
+        set_raw(scene->config.experimental.seven_x, 4);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->config.experimental.seven_x = AC3FORGE_AC4_PAIR_NONE;
         scene->config.iframes = nullptr;

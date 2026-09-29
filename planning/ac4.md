@@ -2403,7 +2403,14 @@ writes the screen factor and the depth exponent as one group of fields whose fac
 0, so an object with a depth exponent other than 1 and a screen factor of 0 decodes with a factor of
 1/8; the tests give such an object a factor, and the encoder is unchanged. Python binds the C++
 structs, so its streams are the C++ encoder's by construction: its test holds two ways of
-configuring the same scene to the same bytes, and the decoder's read-back holds each field.
+configuring the same scene to the same bytes, and the decoder's read-back holds each field. A C
+caller can store any int in an enumeration-typed field, and reading a value the enumeration does not
+name is undefined in C++ (Clang's `-fsanitize=enum` reports it), so the checks on the object coding,
+the downmix, a bed object's channel and the seven-channel pair read the field's bytes
+(`stored_value()` in `internal_ac4.hpp`), and the tests that hand them such values write the bytes.
+The AC-4 entry points' argument and error arms, and the accessors the round trips do not reach, are
+held by `tests/capi/test_capi_ac4_arguments.cpp` against the C++ decoder and encoder they wrap.
+`src/capi`'s branch coverage is 81.1% with them, against a floor of 74% that main's 71.1% had missed.
 
 **Exit:** in each of the C API, Rust, Python and JavaScript, a test encodes a small object scene,
 A-JOC and direct-coded, that the same binding's decoder reads back with the objects' positions and
@@ -2423,8 +2430,8 @@ demo page, is not.
 
 **Verified by:** the binding tests on their CI legs and locally where the tool exists (`ac3tests`,
 `cargo test`, `pytest` and `stubtest`, `npm test`), `cargo fmt --check` and `cargo clippy -D
-warnings`, `ruff`, `tools/checks/test_ac4_build_configurations.py`, the WSL GCC and Clang gates and
-the whole of `ac3tests` once.
+warnings`, `ruff`, `tools/checks/test_ac4_build_configurations.py`, the WSL GCC and Clang gates, the
+C API's cases under AddressSanitizer, UBSan and LeakSanitizer, and the whole of `ac3tests` once.
 
 Not done: the WebAssembly demo page; a build of `ac4_bindings.cpp` with Emscripten, which is
 `build-wasm`'s to do in CI (it was compiled and run natively against a host model of

@@ -16,6 +16,8 @@
 // touches stays an incomplete pointer, which is all a NULL comparison or a
 // pass-through needs.
 
+#include <cstring>
+
 #include "internal.hpp"
 
 #include "ac4/ac4.hpp"
@@ -232,28 +234,40 @@ namespace ac3forge_c {
     return static_cast<ac3forge_ac4_additional_pair_t>(pair);
 }
 
+// The int an enumeration-typed C field stores. A C caller can store any int
+// there, and loading a value the enumeration does not name is undefined in C++
+// (Clang's -fsanitize=enum reports it), so the checks below read the bytes and
+// never the enumeration. The underlying type of these enumerations is unsigned
+// on some compilers, where `>= 0` on it is a -Wtype-limits finding: the int
+// is compared instead.
+template <typename E>
+[[nodiscard]] inline int stored_value(const E& value) {
+    static_assert(sizeof(E) == sizeof(int));
+    int out = 0;
+    std::memcpy(&out, &value, sizeof out);
+    return out;
+}
+
 // The new enumerations' values as ac3forge.h defines them, for the boundary
 // checks ac4_encoder.cpp makes on what a caller hands in: a C enumeration can
 // hold any int, and the encoder's own refusal_reason() speaks only of
 // configurations it can be asked about.
-// (Compared as int: the underlying type of these enumerations is unsigned on
-// some compilers, where `>= 0` is a -Wtype-limits finding.)
-[[nodiscard]] inline bool valid(ac3forge_ac4_bed_channel_t channel) {
+[[nodiscard]] inline bool valid(const ac3forge_ac4_bed_channel_t& channel) {
     // Table 66's codes: 3 is not a loudspeaker a bed object can name.
-    const int code = static_cast<int>(channel);
+    const int code = stored_value(channel);
     return code >= 0 && code <= static_cast<int>(AC3FORGE_AC4_BED_RIGHT_WIDE) && code != 3;
 }
-[[nodiscard]] inline bool valid(ac3forge_ac4_object_coding_t coding) {
-    const int code = static_cast<int>(coding);
+[[nodiscard]] inline bool valid(const ac3forge_ac4_object_coding_t& coding) {
+    const int code = stored_value(coding);
     return code == static_cast<int>(AC3FORGE_AC4_OBJECT_CODING_AJOC) ||
            code == static_cast<int>(AC3FORGE_AC4_OBJECT_CODING_DIRECT);
 }
-[[nodiscard]] inline bool valid(ac3forge_ac4_ajoc_downmix_t downmix) {
-    const int code = static_cast<int>(downmix);
+[[nodiscard]] inline bool valid(const ac3forge_ac4_ajoc_downmix_t& downmix) {
+    const int code = stored_value(downmix);
     return code >= 0 && code <= static_cast<int>(AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51);
 }
-[[nodiscard]] inline bool valid(ac3forge_ac4_additional_pair_t pair) {
-    const int code = static_cast<int>(pair);
+[[nodiscard]] inline bool valid(const ac3forge_ac4_additional_pair_t& pair) {
+    const int code = stored_value(pair);
     return code >= 0 && code <= static_cast<int>(AC3FORGE_AC4_PAIR_TOP_FRONT);
 }
 
