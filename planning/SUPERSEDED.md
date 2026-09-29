@@ -30,6 +30,7 @@ linked from [planning/README.md](README.md).
 |---|---|
 | [recasting.md](recasting.md) § The roadmap | Written 2026-09-05 for the old nine-theme ID model. **Superseded** by the 2026-09-17 slim [ROADMAP.md](../ROADMAP.md). Family/CI phases in recasting remain valid. |
 | [player-appliance.md](player-appliance.md) § The roadmap entry | Proposed `PLn` ID for the old appliance form — **never adopted**; Hearth shipped under [hearth-reference-player.md](hearth-reference-player.md) instead. |
+| [recasting.md](recasting.md) § Decisions 5 and 6 and the rules under S1 (package tokens, binary names and the family's identifiers stay) | **Superseded** by the user's decisions of 2026-09-25 and 2026-09-29 ([N1 in ac4.md](ac4.md#n1-the-names)): the programs take the names `forge`, `forge-gui`, `hearth` and `crucible`, and the family becomes `iclforge`, with no old name kept. Nothing is renamed yet, so the tree still carries the names that plan describes until N1 runs. |
 
 ## Do not merge or delete
 

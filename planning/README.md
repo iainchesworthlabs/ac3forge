@@ -21,13 +21,13 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 
 ## Active plans
 
-| Page | What it is | State as of 2026-09-26 |
+| Page | What it is | State (as of 2026-09-26 unless the row says otherwise) |
 |---|---|---|
 | [hearth-reference-player.md](hearth-reference-player.md) | Hearth desktop app (`ac3hearth`) and ESP32 Sendspin sinks (`hearth_sink`) | Desktop window, engine, Network page and packages shipped; S3, C6 and P4 rev1 sinks with OTA; user guide and Music Assistant exit still open. See [ROADMAP.md](../ROADMAP.md) Hearth section. |
 | [hearth-sendspin-extension.md](hearth-sendspin-extension.md) | Sendspin conformance, Music Assistant compatibility, `_ac3forge_player@v1` | Server in app and aiosendspin CI exit merged; Music Assistant on real hardware not verified |
 | [esp32-ota.md](esp32-ota.md) | Firmware updates over the network for `hearth_sink` boards (S3, C6, P4): A/B slots, rollback, integrity checks, flash mode; firmware published by CI, and a user guide | Built: network update, rollback, CI packaging, [Sink firmware](../docs/hearth/sink-firmware.md) |
 | [recasting.md](recasting.md) | Library / Forge / Crucible family naming and docs | Phases 1–5 in; Phase 6 partly; Phase 7 waits on driver signing |
-| [ac4.md](ac4.md) | AC-4 in full: a decoder beside the inspector, an encoder, and both in the applications; the oracles, the phases and the decisions | D2–D11 and E1–E8 merged on `main`; I1 (`ac3cli`) and I2 (Hearth channel-based) shipped; I3–I6 and D14 (ESP32) open; G1 adds DEE streams before 2026-11-06 |
+| [ac4.md](ac4.md) | AC-4 in full: a decoder beside the inspector, an encoder, and both in the applications; the oracles, the phases and the decisions | As of 2026-09-30: G0, G1, D1–D11, E1–E10, I1–I5b and D14a–D14b (the ESP32-P4) merged; not built: I6 (ESP32 sinks), D14c (S3), D14d (C6) and N1 (program names and layout); DEE's licence ends 2026-11-06. See its [state table](ac4.md#state-on-2026-09-30) |
 
 ---
 
@@ -39,7 +39,7 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 | [host-plugin.md](host-plugin.md) | DAW/NLE metering/QC plugin feasibility | [Proposed — DAW/NLE host plugin](../ROADMAP.md#proposed) |
 | [qc-report.md](qc-report.md) | Delivery-shaped QC report file | [Proposed — QC delivery report file](../ROADMAP.md#proposed) |
 | [eac3-programme-mixing-metadata.md](eac3-programme-mixing-metadata.md) | `mixmdate` reporting/API completeness and decode-time associated-service mixing | [Partial tails — Multi-programme E-AC-3 encode](../ROADMAP.md#partial-tails-on-shipped-work); scoped alongside two sibling efforts (CLI `programmeN=` authoring, MPEG-TS `mainid`/`asvc`) |
-| [layout.md](layout.md) | The layout and names of `src/` (N1B): codecs as peers over a codec-blind base, three layouts, the migration stages and a prototype; with an [inventory](layout-inventory.md) | [N1 in the AC-4 plan](ac4.md#n1-the-names) |
+| [layout.md](layout.md) | The layout and names of `src/` (N1B): codecs as peers over a codec-blind base, three layouts, the migration stages and a prototype, with an [inventory](layout-inventory.md); its 14 decisions await the user | [N1 in the AC-4 plan](ac4.md#n1-the-names) |
 | [esp32-sink-tiers.md](esp32-sink-tiers.md) | C6 / S3 / P4 good·better·best modules on one dual-ES9080 PCB | [Proposed — ESP32 sink tiers](../ROADMAP.md#proposed) |
 
 ---
