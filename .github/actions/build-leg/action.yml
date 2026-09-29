@@ -176,29 +176,49 @@ runs:
     #     hosted runner, a fleet runner and a container.
     #   - compression on: what gets saved is the compressed directory, and the
     #     10 GB repository cache budget is shared with vcpkg and every other leg.
-    # The install is a no-op on the fleet images, which ship ccache.
+    # ccache only makes a build faster, so a runner that cannot provide it (an
+    # image without it and a package source that is down) builds without it and
+    # says so, rather than failing a leg over an optimisation. Every later ccache
+    # step keys off `enabled`, not off the input. The Linux legs install it in
+    # their bootstrap step, which retries; the install here is the fallback.
     - name: Install and configure ccache
+      id: ccache_setup
       if: inputs.ccache == 'true'
       shell: bash
       env:
         CCACHE_SIZE: ${{ inputs.ccache-size }}
       run: | # zizmor: ignore[github-env] CCACHE_DIR/CCACHE_BASEDIR are $HOME- and workspace-derived, not attacker-influenced
-        set -euo pipefail
+        set -uo pipefail
         if ! command -v ccache >/dev/null 2>&1; then
           case "$RUNNER_OS" in
             Linux)
               export DEBIAN_FRONTEND=noninteractive
               if command -v sudo >/dev/null 2>&1; then
-                sudo apt-get install -y -qq --no-install-recommends ccache
+                sudo apt-get install -y -qq --no-install-recommends ccache || true
               else
-                apt-get install -y -qq --no-install-recommends ccache
+                apt-get install -y -qq --no-install-recommends ccache || true
               fi ;;
-            macOS)   brew install ccache ;;
-            Windows) choco install ccache -y --no-progress --requirechecksums ;;
+            macOS)   brew install ccache || true ;;
+            Windows) choco install ccache -y --no-progress --requirechecksums || true ;;
           esac
         fi
+        if ! command -v ccache >/dev/null 2>&1; then
+          echo "::warning title=ccache::ccache is not available on this runner and could not be installed; building without it."
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        set -e
         ccache --version | head -1
-        cache_dir="$HOME/.cache/ccache"
+        # In the job's temp directory, which the runner empties before and after
+        # every job, and not under $HOME. Two reasons. What gets saved is the whole
+        # directory, so a persistent runner (the Windows fleet reuses its
+        # machines) would keep adding to it and upload every leg's objects it has
+        # ever built. And GitHub versions a cache by the directory's path relative
+        # to the workspace: under $HOME that path differs between a hosted runner
+        # and a fleet one (a different user, a different drive on Windows), so the
+        # two never see each other's entries, while the temp directory sits at the
+        # same place relative to the workspace on both.
+        cache_dir="$RUNNER_TEMP/ccache"
         mkdir -p "$cache_dir"
         if command -v cygpath >/dev/null 2>&1; then
           cache_dir="$(cygpath -w "$cache_dir")"
@@ -211,6 +231,7 @@ runs:
           echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
           echo "CCACHE_NOHASHDIR=1"
         } >> "$GITHUB_ENV"
+        echo "enabled=true" >> "$GITHUB_OUTPUT"
 
     # Keyed by leg, OS and architecture only. What is inside is content-addressed
     # by ccache itself, so a different compiler or flag set simply misses; it
@@ -218,16 +239,16 @@ runs:
     # immutable: a later save needs a new name, and `restore-keys` then finds the
     # newest one.
     - name: Restore the ccache cache
-      if: inputs.ccache == 'true'
+      if: steps.ccache_setup.outputs.enabled == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/ccache
+        path: ${{ runner.temp }}/ccache
         key: ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
         restore-keys: |
           ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Zero the ccache counters
-      if: inputs.ccache == 'true'
+      if: steps.ccache_setup.outputs.enabled == 'true'
       shell: bash
       run: ccache --zero-stats
 
@@ -270,7 +291,7 @@ runs:
         LEG_PRESET: ${{ inputs.preset }}
         LEG_GUI: ${{ inputs.gui }}
         LEG_CRUCIBLE: ${{ inputs.crucible }}
-        LEG_CCACHE: ${{ inputs.ccache }}
+        LEG_CCACHE: ${{ steps.ccache_setup.outputs.enabled }}
       run: |
         set -euo pipefail
         extra_args=()
@@ -361,7 +382,7 @@ runs:
     # nothing worth uploading.
     - name: ccache statistics
       id: ccache_stats
-      if: ${{ !cancelled() && inputs.ccache == 'true' }}
+      if: ${{ !cancelled() && steps.ccache_setup.outputs.enabled == 'true' }}
       shell: bash
       env:
         SAVE_MIN_MISSES: ${{ inputs.ccache-save-min-misses }}
@@ -493,8 +514,8 @@ runs:
     # success(): a red Test step still leaves a valid cache, and the objects are
     # the expensive part.
     - name: Save the ccache cache
-      if: ${{ !cancelled() && inputs.ccache == 'true' && inputs.ccache-save == 'true' && steps.ccache_stats.outputs.worth_saving == 'true' }}
+      if: ${{ !cancelled() && steps.ccache_setup.outputs.enabled == 'true' && inputs.ccache-save == 'true' && steps.ccache_stats.outputs.worth_saving == 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/ccache
+        path: ${{ runner.temp }}/ccache
         key: ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}

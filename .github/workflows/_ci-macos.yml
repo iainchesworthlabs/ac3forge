@@ -85,9 +85,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `ccache` and `parallel_tests` turn on build-leg's compiler cache and
+          # ctest's parallel phases for a leg (docs/ci-agentic.md). Both legs set
+          # them: hosted macOS is the scarcest capacity this org has, so a leg
+          # that finishes sooner matters here more than anywhere.
           - name: "macOS LLVM (Homebrew)"
             runner: '["macos-latest"]'
             preset: macos-llvm
+            ccache: true
+            parallel_tests: true
             # Crucible compiles here and cannot be run here; see the Configure
             # step's note.
             crucible: true
@@ -124,6 +130,8 @@ jobs:
           - name: "macOS LLVM x64 (Homebrew, Intel)"
             runner: '["macos-15-intel"]'
             preset: macos-llvm-x64
+            ccache: true
+            parallel_tests: true
             crucible: true
             mac_arch: x64
             llvm: true
@@ -247,6 +255,13 @@ jobs:
           msvc-toolset: ""  # no macOS leg needs an MSVC toolset assert
           cmake-min: ${{ inputs.cmake_min }}
           vcpkg-commit: ${{ inputs.vcpkg_commit }}
+          # A release build (do_package, from release.yml) compiles everything and
+          # runs ctest as it always did. The cache is saved only by a push to main,
+          # so that pushes and dispatches on branches restore it and never add to it
+          # (build-leg's ccache-save description says why).
+          ccache: ${{ matrix.ccache && !inputs.do_package && 'true' || 'false' }}
+          ccache-save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
+          ctest-jobs: ${{ matrix.parallel_tests && !inputs.do_package && 'auto' || '' }}
 
       - name: Assert the AC3Forge Crucible was built
         # Windows and macOS, which are the two platforms whose matrix build

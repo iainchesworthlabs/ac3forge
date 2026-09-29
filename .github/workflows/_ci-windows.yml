@@ -99,9 +99,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `ccache` and `parallel_tests` turn on build-leg's compiler cache and
+          # ctest's parallel phases for a leg (docs/ci-agentic.md). Both MSVC legs
+          # set them. windows-llvm sets only the tests: clang-cl's use of ccache is
+          # not proven here yet, and the compiler cache never changes a result, so
+          # it can be added once a run shows it hitting.
           - name: "Windows MSVC"
             runner: ${{ inputs.windows_runner_1 }}
             preset: windows-msvc
+            ccache: true
+            parallel_tests: true
             # Declared once, here, so `matrix.experimental` in continue-on-error
             # above resolves against a property the matrix actually defines -
             # without it every leg silently reads null and actionlint reports the
@@ -131,6 +138,7 @@ jobs:
           - name: "Windows LLVM (clang-cl)"
             runner: ${{ inputs.windows_runner_2 }}
             preset: windows-llvm
+            parallel_tests: true
             msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
             llvm: true
             packageable: true
@@ -186,6 +194,8 @@ jobs:
           - name: "Windows MSVC (arm64)"
             runner: '["windows-11-vs2026-arm"]'
             preset: windows-msvc-arm64
+            ccache: true
+            parallel_tests: true
             experimental: true
             msvc: true
             msvc_arch: arm64
@@ -804,6 +814,13 @@ jobs:
           msvc-toolset: ${{ inputs.msvc_toolset }}
           cmake-min: ${{ inputs.cmake_min }}
           vcpkg-commit: ${{ inputs.vcpkg_commit }}
+          # A release build (do_package, from release.yml) compiles everything and
+          # runs ctest as it always did. The cache is saved only by a push to main,
+          # so that pushes and dispatches on branches restore it and never add to it
+          # (build-leg's ccache-save description says why).
+          ccache: ${{ matrix.ccache && !inputs.do_package && 'true' || 'false' }}
+          ccache-save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
+          ctest-jobs: ${{ matrix.parallel_tests && !inputs.do_package && 'auto' || '' }}
 
       # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
       # inside that), which is right for a source build on a machine with no
