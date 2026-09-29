@@ -342,7 +342,7 @@ TEST_CASE("the converter's table is the double design rounded once to the scalar
     }
 }
 
-TEST_CASE("the converter's table, rounded to float, is the same on every platform",
+TEST_CASE("the converter's table rounded to float is the same on every platform",
           "[ac4core][dsp][src]") {
     // FNV-1a over the bit pattern of every coefficient of every phase as a float, the double
     // design's entries rounded once. The design calls sin and sqrt at double, whose last bit the C
@@ -373,7 +373,7 @@ TEST_CASE("the converter's table, rounded to float, is the same on every platfor
     }
 }
 
-TEST_CASE("the converter's float dot product is four lanes' sums, added in the order it states",
+TEST_CASE("the converter's float dot product is the sum of four lanes added in the order it states",
           "[ac4core][dsp][src]") {
     std::uint32_t state = 7U;
     const auto next = [&state] {
