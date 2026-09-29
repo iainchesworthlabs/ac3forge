@@ -198,22 +198,18 @@ target_include_directories(forge_minimal
         # above this target_sources() block: the application supplies the
         # clock and the table, the library only calls in.
         "${_ac3_minimal_profiling_dir}"
-        # SIMD kernels's SIMD arch seam, resolved by src/forge/CMakeLists.txt
-        # above the branch that included this file - see the comment there for
-        # why it is resolved that early. mdct.cpp/bitalloc.cpp/exponents.cpp
-        # include ac3/internal/arch/simd.hpp unconditionally, so this profile
-        # needs a directory the same way the ordinary build does.
+        # The SIMD arch seam is resolved by src/arithmetic/CMakeLists.txt and comes
+        # with ac3::arithmetic, linked below: mdct.cpp/bitalloc.cpp/exponents.cpp
+        # include ac3/internal/arch/simd.hpp unconditionally, so this profile needs
+        # a directory the same way the ordinary build does.
         #
-        # This named generic/ literally until f32x4 arrived. Both of the
-        # profile's bare-metal targets still resolve to it - an arm-none-eabi
-        # Cortex-M3 has no vector unit at all, and the ESP32-S3's PIE is
-        # fixed-point, so its float32 path is the scalar FPU either way
-        # (docs/platforms/bare-metal/esp32-s3.md) - and both get there through
-        # AC3FORGE_SIMD's own "anything else lands on generic" arm rather than
-        # by being spelled out here. What the literal cost was a
-        # minimum-footprint build for aarch64, whose float32 decode path NEON
-        # holds four lanes of.
-        "${AC3FORGE_ARCH_INCLUDE_DIR}"
+        # Both of the profile's bare-metal targets resolve to generic/ - an
+        # arm-none-eabi Cortex-M3 has no vector unit at all, and the ESP32-S3's PIE
+        # is fixed-point, so its float32 path is the scalar FPU either way
+        # (docs/platforms/bare-metal/esp32-s3.md) - through AC3FORGE_SIMD's own
+        # "anything else lands on generic" arm rather than by being spelled out
+        # here; a minimum-footprint build for aarch64 takes the NEON directory, whose
+        # float32 decode path holds four lanes.
         # The runtime-AVX2 seam's three directories, resolved exactly as
         # src/forge/CMakeLists.txt resolves them for the full library and for
         # the same reason - the include SPELLING must not depend on which

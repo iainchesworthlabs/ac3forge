@@ -15,6 +15,8 @@
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <cstring>
+#include <limits>
 #include <numbers>
 #include <random>
 #include <span>
@@ -22,11 +24,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "ac4/detail/real.hpp"
 #include "dsp/complex.hpp"
 #include "dsp/fft.hpp"
 #include "dsp/kbd.hpp"
 #include "dsp/mdct.hpp"
 #include "dsp/qmf.hpp"
+#include "dsp/qmf_constants.hpp"
+#include "dsp/qmf_kernels.hpp"
+#include "dsp/qmf_vector.hpp"
 #include "dsp/synthesis.hpp"
 #include "tables/qmf_tables.hpp"
 
@@ -733,4 +739,426 @@ TEST_CASE("the QMF banks leave their output alone when given the wrong sizes, an
     synthesis.reset();
     synthesis.process(first, out_again);
     CHECK(out_first == out_again);
+}
+
+TEST_CASE("the QMF banks give the same output however the slots are split across calls",
+          "[ac4core][dsp][qmf]") {
+    // 47 slots is more than four laps of the ten blocks of each delay line, and
+    // calls of 1, 2, 3, 5, 7 and 11 slots start the laps at every block.
+    constexpr std::size_t kSlots = 47;
+    const std::vector<double> x = random_values(64 * kSlots, 4701);
+    const std::array<std::size_t, 6> calls = {1, 2, 3, 5, 7, 11};
+
+    dsp::QmfAnalysis<double> whole;
+    std::vector<Complex> q_whole(x.size());
+    whole.process(x, q_whole);
+    dsp::QmfAnalysis<double> split;
+    std::vector<Complex> q_split(x.size());
+    // One scratch serves both banks, as a substream's does.
+    dsp::QmfScratch<double> scratch{};
+    std::size_t at = 0;
+    for (std::size_t call = 0; at < kSlots; ++call) {
+        const std::size_t n = std::min(calls[call % calls.size()], kSlots - at);
+        split.process(std::span<const double>(x).subspan(at * 64, n * 64),
+                      std::span<Complex>(q_split).subspan(at * 64, n * 64), scratch);
+        at += n;
+    }
+    CHECK(q_split == q_whole);
+
+    dsp::QmfSynthesis<double> synth_whole;
+    std::vector<double> y_whole(x.size());
+    synth_whole.process(q_whole, y_whole);
+    dsp::QmfSynthesis<double> synth_split;
+    std::vector<double> y_split(x.size());
+    at = 0;
+    for (std::size_t call = 0; at < kSlots; ++call) {
+        const std::size_t n = std::min(calls[(call + 3) % calls.size()], kSlots - at);
+        synth_split.process(std::span<const Complex>(q_whole).subspan(at * 64, n * 64),
+                            std::span<double>(y_split).subspan(at * 64, n * 64), scratch);
+        at += n;
+    }
+    CHECK(y_split == y_whole);
+}
+
+TEST_CASE("the QMF banks at the decoder's scalar agree with the banks at double",
+          "[ac4core][dsp][qmf]") {
+    using Scalar = ac4::detail::Real;
+    using ScalarComplex = dsp::Complex<Scalar>;
+    // Where the decoder's scalar is double these are one type and the difference
+    // is exactly 0; at float it is float's rounding through the window and the
+    // three passes of the transform.
+    constexpr double kBound = 64.0 * static_cast<double>(std::numeric_limits<Scalar>::epsilon());
+    const std::vector<double> x = random_values(64 * 40, 811);
+    std::vector<Scalar> xs(x.size());
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        xs[i] = static_cast<Scalar>(x[i]);
+    }
+    dsp::QmfAnalysis<double> analysis_double;
+    dsp::QmfAnalysis<Scalar> analysis_scalar;
+    std::vector<Complex> q(x.size());
+    std::vector<ScalarComplex> qs(x.size());
+    analysis_double.process(x, q);
+    analysis_scalar.process(xs, qs);
+    const double q_peak = max_abs(q);
+    double q_error = 0.0;
+    for (std::size_t i = 0; i < q.size(); ++i) {
+        const Complex widened(static_cast<double>(qs[i].re), static_cast<double>(qs[i].im));
+        q_error = std::max(q_error, abs(widened - q[i]));
+    }
+    CHECK(q_error <= kBound * q_peak);
+
+    // The synthesis takes the double analysis's subbands, narrowed to the scalar.
+    std::vector<ScalarComplex> q_narrow(q.size());
+    for (std::size_t i = 0; i < q.size(); ++i) {
+        q_narrow[i] = ScalarComplex(static_cast<Scalar>(q[i].re), static_cast<Scalar>(q[i].im));
+    }
+    dsp::QmfSynthesis<double> synthesis_double;
+    dsp::QmfSynthesis<Scalar> synthesis_scalar;
+    std::vector<double> y(x.size());
+    std::vector<Scalar> ys(x.size());
+    synthesis_double.process(q, y);
+    synthesis_scalar.process(q_narrow, ys);
+    const double y_peak = max_abs(y);
+    double y_error = 0.0;
+    for (std::size_t i = 0; i < y.size(); ++i) {
+        y_error = std::max(y_error, std::abs(static_cast<double>(ys[i]) - y[i]));
+    }
+    CHECK(y_error <= kBound * y_peak);
+
+    // The pair at the scalar reconstructs to the 78 dB QWIN allows: float's own
+    // rounding sits far below that.
+    std::vector<Scalar> back(x.size());
+    synthesis_scalar.reset();
+    synthesis_scalar.process(qs, back);
+    double signal = 0.0;
+    double noise = 0.0;
+    for (std::size_t n = 1280; n + 577 < x.size(); ++n) {
+        const double error = static_cast<double>(back[n + 577]) - x[n];
+        signal += x[n] * x[n];
+        noise += error * error;
+    }
+    CHECK(10.0 * std::log10(signal / noise) >= 78.0);
+}
+
+TEST_CASE("the QMF twiddle factors are cosines and sines of whole units of pi over 256",
+          "[ac4core][dsp][qmf]") {
+    namespace q = dsp::qmf;
+    for (long long j = -1100; j <= 1100; ++j) {
+        const double c = q::cos_units(j);
+        const double s = q::sin_units(j);
+        // Against the library's own value of the angle, rounded once (up to
+        // 14 radians here, so about 2e-15 either way).
+        const double angle = std::numbers::pi * static_cast<double>(j) / 256.0;
+        CHECK(std::abs(c - std::cos(angle)) <= 4e-15);
+        CHECK(std::abs(s - std::sin(angle)) <= 4e-15);
+        // The identities the reduction rests on hold exactly, since each side is
+        // a lookup of the same table entry.
+        CHECK(q::cos_units(j + 512) == c);
+        CHECK(q::cos_units(-j) == c);
+        CHECK(q::cos_units(256 - j) == -c);
+        CHECK(q::sin_units(128 - j) == c);
+        CHECK(std::abs(c * c + s * s - 1.0) <= 4e-16);
+    }
+    CHECK(q::cos_units(0) == 1.0);
+    CHECK(q::sin_units(128) == 1.0);
+    CHECK(q::cos_units(128) == 0.0);
+    CHECK(q::cos_units(256) == -1.0);
+    CHECK(q::cos_units(64) == q::sin_units(64));
+
+    // Each constant is the scalar nearest its exact value, so the float table is
+    // the double table rounded, and the scale factors are powers of two.
+    const auto& d = q::kConstants<double>;
+    const auto& f = q::kConstants<float>;
+    for (std::size_t m = 0; m < 64; ++m) {
+        CHECK(f.rot_re[m] == static_cast<float>(d.rot_re[m]));
+        CHECK(f.rot_im[m] == static_cast<float>(d.rot_im[m]));
+    }
+    for (std::size_t k = 0; k < 32; ++k) {
+        CHECK(std::abs(d.pre_re[k] * d.pre_re[k] + d.pre_im[k] * d.pre_im[k] - 1.0 / 16384.0) <=
+              1e-19);
+        CHECK(std::abs(d.prho_re[k] * d.prho_re[k] + d.prho_im[k] * d.prho_im[k] - 1.0 / 16384.0) <=
+              1e-19);
+        CHECK(std::abs(4.0 * (d.post_cos[k] * d.post_cos[k] + d.post_sin[k] * d.post_sin[k]) -
+                       1.0) <= 4e-16);
+    }
+}
+
+TEST_CASE("the QMF's 64-point transform equals the DFT", "[ac4core][dsp][qmf]") {
+    const std::vector<double> re = random_values(64, 641);
+    const std::vector<double> im = random_values(64, 642);
+    std::vector<Complex> expected(64);
+    double peak = 0.0;
+    for (std::size_t k = 0; k < 64; ++k) {
+        Complex sum{};
+        for (std::size_t m = 0; m < 64; ++m) {
+            // The angle 2 pi (k m mod 64) / 64 reduced first, as the Fft's are.
+            const double angle = 2.0 * std::numbers::pi * static_cast<double>((k * m) % 64) / 64.0;
+            sum += Complex(re[m], im[m]) * Complex(std::cos(angle), std::sin(angle));
+        }
+        expected[k] = sum;
+        peak = std::max(peak, abs(sum));
+    }
+    const auto run = [&](auto tag) {
+        using R = decltype(tag);
+        std::array<R, 64> xr{};
+        std::array<R, 64> xi{};
+        std::array<R, 64> yr{};
+        std::array<R, 64> yi{};
+        for (std::size_t m = 0; m < 64; ++m) {
+            xr[m] = static_cast<R>(re[m]);
+            xi[m] = static_cast<R>(im[m]);
+        }
+        dsp::qmf::fft64<R>(xr.data(), xi.data(), yr.data(), yi.data());
+        double error = 0.0;
+        for (std::size_t k = 0; k < 64; ++k) {
+            const Complex got(static_cast<double>(yr[k]), static_cast<double>(yi[k]));
+            error = std::max(error, abs(got - expected[k]));
+        }
+        return error / peak;
+    };
+    CHECK(run(double{}) <= 1e-14);
+    // Float's rounding through three passes: a few times its epsilon.
+    CHECK(run(float{}) <= 16.0 * static_cast<double>(std::numeric_limits<float>::epsilon()));
+}
+
+TEST_CASE("each QMF vector kernel gives the bits of the scalar loop it replaces",
+          "[ac4core][dsp][qmf][simd]") {
+    namespace k = dsp::qmf;
+    namespace v = dsp::qmf::vec;
+    const auto run = [](auto tag, unsigned seed) {
+        using R = decltype(tag);
+        const auto draw = [&](std::size_t count, unsigned s) {
+            const std::vector<double> x = random_values(count, s);
+            std::vector<R> out(x.size());
+            for (std::size_t i = 0; i < x.size(); ++i) {
+                out[i] = static_cast<R>(x[i]);
+            }
+            return out;
+        };
+        // Equal as bit patterns: a vector kernel that fused a multiply and an add,
+        // or summed in another order, differs in the last bit of some value here.
+        const auto same = [](const auto& a, const auto& b) {
+            return a.size() == b.size() &&
+                   std::memcmp(a.data(), b.data(), a.size() * sizeof(a[0])) == 0;
+        };
+        for (unsigned round = 0; round < 8; ++round) {
+            const std::vector<R> analysis_line = draw(640, seed + 10 * round);
+            const std::vector<R> synthesis_line = draw(1280, seed + 10 * round + 1);
+            const std::vector<R> plane_re = draw(64, seed + 10 * round + 2);
+            const std::vector<R> plane_im = draw(64, seed + 10 * round + 3);
+            const std::vector<R> samples = draw(128, seed + 10 * round + 4);
+            std::vector<dsp::Complex<R>> subbands(64);
+            for (std::size_t i = 0; i < 64; ++i) {
+                subbands[i] = {plane_re[i], plane_im[63 - i]};
+            }
+            // Both windows, at every position of the delay line's head.
+            for (std::size_t head = 0; head < 10; ++head) {
+                std::vector<R> u0(128);
+                std::vector<R> u1(128);
+                k::analysis_window<R>(analysis_line.data(), head, u0.data());
+                v::analysis_window<R>(analysis_line.data(), head, u1.data());
+                CHECK(same(u0, u1));
+                std::vector<R> w0(64);
+                std::vector<R> w1(64);
+                k::synthesis_window<R>(synthesis_line.data(), head, w0.data());
+                v::synthesis_window<R>(synthesis_line.data(), head, w1.data());
+                CHECK(same(w0, w1));
+            }
+            std::vector<R> zr0(64);
+            std::vector<R> zi0(64);
+            std::vector<R> zr1(64);
+            std::vector<R> zi1(64);
+            k::analysis_rotate<R>(samples.data(), zr0.data(), zi0.data());
+            v::analysis_rotate<R>(samples.data(), zr1.data(), zi1.data());
+            CHECK(same(zr0, zr1));
+            CHECK(same(zi0, zi1));
+            // The transform clobbers its input, so each takes its own copy.
+            std::vector<R> xr0 = plane_re;
+            std::vector<R> xi0 = plane_im;
+            std::vector<R> xr1 = plane_re;
+            std::vector<R> xi1 = plane_im;
+            std::vector<R> yr0(64);
+            std::vector<R> yi0(64);
+            std::vector<R> yr1(64);
+            std::vector<R> yi1(64);
+            k::fft64<R>(xr0.data(), xi0.data(), yr0.data(), yi0.data());
+            v::fft64<R>(xr1.data(), xi1.data(), yr1.data(), yi1.data());
+            CHECK(same(yr0, yr1));
+            CHECK(same(yi0, yi1));
+            CHECK(same(xr0, xr1));
+            CHECK(same(xi0, xi1));
+            std::vector<dsp::Complex<R>> q0(64);
+            std::vector<dsp::Complex<R>> q1(64);
+            k::analysis_unpack<R>(plane_re.data(), plane_im.data(), q0.data());
+            v::analysis_unpack<R>(plane_re.data(), plane_im.data(), q1.data());
+            CHECK(same(q0, q1));
+            std::vector<R> tr0(64);
+            std::vector<R> ti0(64);
+            std::vector<R> tr1(64);
+            std::vector<R> ti1(64);
+            k::synthesis_pack<R>(subbands.data(), tr0.data(), ti0.data());
+            v::synthesis_pack<R>(subbands.data(), tr1.data(), ti1.data());
+            CHECK(same(tr0, tr1));
+            CHECK(same(ti0, ti1));
+            std::vector<R> b0(128);
+            std::vector<R> b1(128);
+            k::synthesis_rotate<R>(plane_re.data(), plane_im.data(), b0.data());
+            v::synthesis_rotate<R>(plane_re.data(), plane_im.data(), b1.data());
+            CHECK(same(b0, b1));
+        }
+    };
+    run(double{}, 7100);
+    run(float{}, 7200);
+}
+
+TEST_CASE("the QMF banks give the bits of the scalar kernels run one after another",
+          "[ac4core][dsp][qmf][simd]") {
+    namespace k = dsp::qmf;
+    const auto run = [](auto tag, unsigned seed) {
+        using R = decltype(tag);
+        using RComplex = dsp::Complex<R>;
+        // 33 slots: the delay line's head goes round more than three times.
+        constexpr std::size_t kSlots = 33;
+        const std::vector<double> x = random_values(64 * kSlots, seed);
+        std::vector<R> pcm(x.size());
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            pcm[i] = static_cast<R>(x[i]);
+        }
+        // The analysis as the scalar kernels compose it: the newest block at the
+        // head of ten, reversed, then the four steps.
+        std::vector<RComplex> expected(pcm.size());
+        {
+            std::array<R, 640> filt{};
+            std::size_t head = 0;
+            std::array<R, 128> u{};
+            std::array<R, 64> ar{};
+            std::array<R, 64> ai{};
+            std::array<R, 64> br{};
+            std::array<R, 64> bi{};
+            for (std::size_t ts = 0; ts < kSlots; ++ts) {
+                head = head == 0 ? 9 : head - 1;
+                for (std::size_t sb = 0; sb < 64; ++sb) {
+                    filt[head * 64 + sb] = pcm[ts * 64 + 63 - sb];
+                }
+                k::analysis_window<R>(filt.data(), head, u.data());
+                k::analysis_rotate<R>(u.data(), ar.data(), ai.data());
+                k::fft64<R>(ar.data(), ai.data(), br.data(), bi.data());
+                k::analysis_unpack<R>(br.data(), bi.data(), expected.data() + ts * 64);
+            }
+        }
+        dsp::QmfAnalysis<R> analysis;
+        std::vector<RComplex> got(pcm.size());
+        analysis.process(pcm, got);
+        CHECK(std::memcmp(got.data(), expected.data(), got.size() * sizeof(RComplex)) == 0);
+
+        // And the synthesis, from the analysis's own subbands.
+        std::vector<R> expected_pcm(pcm.size());
+        {
+            std::array<R, 1280> filt{};
+            std::size_t head = 0;
+            std::array<R, 64> ar{};
+            std::array<R, 64> ai{};
+            std::array<R, 64> br{};
+            std::array<R, 64> bi{};
+            for (std::size_t ts = 0; ts < kSlots; ++ts) {
+                head = head == 0 ? 9 : head - 1;
+                k::synthesis_pack<R>(got.data() + ts * 64, ar.data(), ai.data());
+                k::fft64<R>(ar.data(), ai.data(), br.data(), bi.data());
+                k::synthesis_rotate<R>(br.data(), bi.data(), filt.data() + head * 128);
+                k::synthesis_window<R>(filt.data(), head, expected_pcm.data() + ts * 64);
+            }
+        }
+        dsp::QmfSynthesis<R> synthesis;
+        std::vector<R> got_pcm(pcm.size());
+        synthesis.process(got, got_pcm);
+        CHECK(std::memcmp(got_pcm.data(), expected_pcm.data(), got_pcm.size() * sizeof(R)) == 0);
+    };
+    // The banks are instantiated at the decoder's scalar and at double, whichever
+    // that is (AC4CORE_ALSO_AT_DOUBLE), and at nothing else.
+    run(double{}, 8100);
+    run(ac4::detail::Real{}, 8200);
+}
+
+TEST_CASE("the transforms take a scratch of the caller's and give the same values",
+          "[ac4core][dsp]") {
+    // The FFT and the inverse MDCT work in buffers of their own, made by the first
+    // call, or in one the caller lends; the values do not depend on which.
+    for (const std::size_t n :
+         {std::size_t{48}, std::size_t{120}, std::size_t{512}, std::size_t{960}}) {
+        const std::vector<double> re = random_values(n, static_cast<unsigned>(n) + 1);
+        const std::vector<double> im = random_values(n, static_cast<unsigned>(n) + 2);
+        std::vector<Complex> input(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            input[i] = Complex(re[i], im[i]);
+        }
+        dsp::Fft<double> own(n);
+        dsp::Fft<double> lent(n);
+        std::vector<Complex> scratch(n);
+        std::vector<Complex> a = input;
+        std::vector<Complex> b = input;
+        own.forward(a);
+        lent.forward(b, scratch);
+        CHECK(a == b);
+        own.inverse(a);
+        lent.inverse(b, scratch);
+        CHECK(a == b);
+        // A scratch too short for the plan leaves the data alone.
+        std::vector<Complex> short_scratch(n - 1);
+        b = input;
+        lent.forward(b, short_scratch);
+        CHECK(b == input);
+    }
+    for (const std::size_t n :
+         {std::size_t{128}, std::size_t{480}, std::size_t{512}, std::size_t{2048}}) {
+        const std::vector<double> spectrum = random_values(n, static_cast<unsigned>(n) + 3);
+        dsp::Imdct<double> own(n);
+        dsp::Imdct<double> lent(n);
+        std::vector<double> out_own(2 * n);
+        std::vector<double> out_lent(2 * n);
+        std::vector<Complex> scratch(n);
+        own.inverse(spectrum, out_own);
+        lent.inverse(spectrum, out_lent, scratch);
+        CHECK(out_own == out_lent);
+        std::vector<Complex> short_scratch(n - 1);
+        std::vector<double> untouched(2 * n, -1.0);
+        lent.inverse(spectrum, untouched, short_scratch);
+        CHECK(untouched == std::vector<double>(2 * n, -1.0));
+    }
+}
+
+TEST_CASE("channels that share one transform set give what channels with their own give",
+          "[ac4core][dsp]") {
+    // A substream's channels inverse transform one block after another in the set's
+    // scratch, at block lengths that change from one block to the next.
+    constexpr int kFull = 2048;
+    const std::array<int, 12> lengths = {2048, 1024, 1024, 256, 256,  256,
+                                         256,  512,  512,  128, 2048, 2048};
+    dsp::TransformSet<double> shared(kFull, 1);
+    dsp::TransformSet<double> set_a(kFull, 1);
+    dsp::TransformSet<double> set_b(kFull, 1);
+    REQUIRE(shared.valid());
+    dsp::ChannelSynthesis<double> a_shared(kFull);
+    dsp::ChannelSynthesis<double> b_shared(kFull);
+    dsp::ChannelSynthesis<double> a_alone(kFull);
+    dsp::ChannelSynthesis<double> b_alone(kFull);
+    unsigned seed = 900;
+    for (const int length : lengths) {
+        const auto n = static_cast<std::size_t>(length);
+        const std::vector<double> spectrum_a = random_values(n, seed++);
+        const std::vector<double> spectrum_b = random_values(n, seed++);
+        std::vector<double> pcm_a_shared(n);
+        std::vector<double> pcm_b_shared(n);
+        std::vector<double> pcm_a_alone(n);
+        std::vector<double> pcm_b_alone(n);
+        REQUIRE(a_shared.block(shared, spectrum_a, pcm_a_shared));
+        REQUIRE(b_shared.block(shared, spectrum_b, pcm_b_shared));
+        REQUIRE(a_alone.block(set_a, spectrum_a, pcm_a_alone));
+        REQUIRE(b_alone.block(set_b, spectrum_b, pcm_b_alone));
+        CHECK(pcm_a_shared == pcm_a_alone);
+        CHECK(pcm_b_shared == pcm_b_alone);
+    }
+    // The set owns the working space: a block of the full length, and the values
+    // the longest transform takes.
+    CHECK(shared.block_scratch().size() == 2 * static_cast<std::size_t>(kFull));
+    CHECK(shared.transform_scratch().size() == static_cast<std::size_t>(kFull));
 }

@@ -1621,10 +1621,40 @@ The sections below contain the complete change list and fixes.
   `<double>` when `Real` is not already `double`, through a new `AC4CORE_ALSO_AT_DOUBLE` macro the
   per-scalar `real.hpp` defines, which adds nothing to a `double`-configured build. The `double` build's output is unchanged bit for bit:
   the whole test suite - 2,389 cases, 11,171,235 assertions - passes identically before and after,
-  on both scalars. The QMF bank rewrite (real and imaginary planes, an index-moving delay line), the
-  wider memory audit beyond the three findings above, the cached bit reader and Huffman table, the
-  host's vector kernels, and the probe's AC-4 rows remain - D14b (the P4 board) does not start until
-  those land.
+  on both scalars.
+- **The AC-4 decoder's size and speed on the host, and its probe rows** (plan phase D14a, the rest
+  of it). The QMF banks are each one 64-point complex transform between a rotation and a pairwise
+  butterfly (Pseudocodes 65 and 66 reduced algebraically), on separate real and imaginary planes,
+  with delay lines that move an index and twiddle factors that are `constexpr` arrays built from one
+  generated quarter-wave table: a 64-sample slot takes 0.77 us in analysis and 0.83 us in synthesis
+  at `double`, from 3.15 and 3.3, and the banks are held to the printed pseudocodes, the 78 dB
+  reconstruction and a direct sum. Vector kernels on `f32x4` and `f64x2` (`qmf_vector.hpp`) are each
+  bit for bit the scalar loop they replace, 2.2 to 3.9 times faster per slot at `float` on the
+  x86-64 seam and 0.9 to 1.6 at `double`; the SIMD seam (`ac3/internal/arch/simd.hpp` and its
+  `AC3FORGE_SIMD` selection) moved from `src/forge` to `src/arithmetic` for it, so `src/ac4core`
+  reaches it through `ac3::arithmetic`. `SubstreamPcm` is 10.9 KB at `double` from 299 KB, since
+  A-CPL, A-JCC and A-JOC build their state when the first frame that uses them arrives and one
+  transform scratch serves a substream's channels; the |q|^(4/3) table is `constexpr` and exact
+  to the `double` nearest each power (`std::pow(m, 4.0 / 3.0)` is up to 6.7e-16 relative off);
+  no guarded function-local static and no object built on the stack to be reset or returned
+  remain in `src/ac4core`, `src/ac4dec` or `src/ac4`, and `SubstreamPcm::decode`'s frame fell from
+  15.1 KB to 3.4 KB. The bit reader reads through a 64-bit cache and each of the 84 Huffman
+  codebooks has a 256-entry table for its codewords of 8 bits or fewer (43 KB of flash); every
+  syntax digest is unchanged. The `float` build compiles clean with `-Werror` on GCC 16 and
+  Clang 22, which it did not: two int-to-`Real` conversions had left the CI's float32 decoder leg
+  unbuildable, and the test suite had not built for `float` on Linux at all. The decode profile
+  can now carry the AC-4 decoder (`AC3FORGE_MINIMAL_AC4` with `AC3FORGE_MINIMAL_DECODER`, static, no
+  exceptions, the encoder not built; `config-*-minimal-ac4` presets), with a probe of its own,
+  `tools/checks/run_baremetal_probe.sh --ac4`: five committed streams on the Cortex-M3 leg
+  decode with their levels exact and their PCM bit-identical to the x86-64 host's, in an image of
+  486,192 bytes, 432 KB to 1.93 MB of peak heap, 50 to 191 allocations a frame, 18.3 to 19.5 KB
+  of stack and 54.5 M to 205.8 M instructions a frame, each pinned. The `float` decode agrees with
+  the `double` one on every committed stream to 109 dB or better below A-SPX's crossover and 37 dB
+  or better above it (`tools/checks/check_ac4_decode_scalar_snr.py`, pinned in
+  `tests/golden/ac4dec/scalar-agreement.json`; the same to 0.1 dB on MSVC, GCC 16 and Clang 22).
+  The `double` output moves in float ulps of near-silent samples (61 of the 66 streams under
+  `tests/golden`, by at most 2.3e-10); the encoder's output does not move. The ESP-IDF component
+  builds without AC-4 until D14b's switch sets the same option.
 
 **Browser (WASM)**
 

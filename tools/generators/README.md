@@ -132,6 +132,8 @@ All of these are run from the repo root.
 | `gen_dee_tpn_fixture.py` | `tests/golden/external-baseline/eac3-transient-stereo-128/` | needs the local DEE golden-master set (`--gold`) |
 | `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | encoder/decoder tables | read spec text, not committed |
 | `gen_mdct_goldens.py` | filterbank golden vectors | |
+| `gen_ac4_qmf_twiddles.py` | `src/ac4core/src/tables/qmf_twiddles.hpp`, the cosines the AC-4 QMF banks' twiddle factors are built from | stdlib only; `--check` compares the committed header |
+| `gen_baremetal_ac4_fixture.py` | `apps/baremetal/ac4_fixture.hpp`, the committed AC-4 streams the bare-metal AC-4 probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`); the E-AC-3 probe's `fixture.hpp` is `gen_baremetal_fixture.py`'s |
 
 Regenerating a programme fixture:
 

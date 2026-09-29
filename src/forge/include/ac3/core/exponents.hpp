@@ -180,7 +180,7 @@ template <std::floating_point Scalar>
 // because it can do the rounding two lanes at a time through the
 // architecture seam, and because on x86-64 that replaces an out-of-line call
 // to libm's round() per element with in-line SSE2 arithmetic - see
-// src/forge/src/internal/arch/x86_64/ac3/internal/arch/simd.hpp. The spans
+// src/arithmetic/arch/x86_64/ac3/internal/arch/simd.hpp. The spans
 // must be the same length.
 AC3FORGE_EXPORT void to_fixed25_block(std::span<const double> coefficients,
                                       std::span<std::int32_t> fixed);

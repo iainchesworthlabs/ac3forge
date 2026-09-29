@@ -116,7 +116,27 @@ struct AspxInterval {
 [[nodiscard]] ParseResult check_aspx(const AspxFrame& frame,
                                      std::span<const AspxChannel* const> channels);
 
-// Clause 5.7.6 for the one or two channels of an aspx_data element.
+// The matrices one channel's assembly works in, per envelope and A-SPX subband:
+// 16 KB at double and 8 KB at float, too much for the stack, so the caller keeps
+// them (SubstreamPcm makes one when its first A-SPX frame needs it). Each channel
+// takes them zeroed.
+struct AspxScratch {
+    using EnvelopeMatrix = std::array<std::array<Real, 64>, kAspxMaxSignalEnvelopes>;
+    using FlagMatrix = std::array<std::array<bool, 64>, kAspxMaxSignalEnvelopes>;
+    EnvelopeMatrix est_sig{};
+    EnvelopeMatrix scf_sig{};
+    EnvelopeMatrix scf_noise{};
+    FlagMatrix sine_idx{};
+    FlagMatrix sine_area{};
+    EnvelopeMatrix sine_lev{};
+    EnvelopeMatrix noise_lev{};
+    EnvelopeMatrix sig_gain{};
+};
+
+// Clause 5.7.6 for the one or two channels of an aspx_data element, in `scratch`
+// or, without one, in a scratch of its own on the heap.
+[[nodiscard]] ParseResult decode_aspx(const AspxFrame& frame, std::span<AspxChannelIo> channels,
+                                      AspxScratch& scratch);
 [[nodiscard]] ParseResult decode_aspx(const AspxFrame& frame, std::span<AspxChannelIo> channels);
 
 }  // namespace ac4::detail

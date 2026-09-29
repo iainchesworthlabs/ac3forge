@@ -6,8 +6,8 @@
 // ---------------------------------------------------------------------------
 // The portable (no-SIMD) member of the arch seam.
 //
-// One of src/forge/src/internal/arch/{generic,x86_64,aarch64}/ is put on
-// forge_objects's PRIVATE include path by src/forge/CMakeLists.txt, so every
+// One of src/arithmetic/arch/{generic,x86_64,aarch64}/ is put on
+// the include path by src/arithmetic/CMakeLists.txt (ac3::arithmetic's INTERFACE), so every
 // `#include "ac3/internal/arch/simd.hpp"` in the codec core resolves to
 // exactly one of these three identically-pathed headers - the mechanism
 // src/internal/profiling/tracy_{enabled,disabled}/ already uses for the

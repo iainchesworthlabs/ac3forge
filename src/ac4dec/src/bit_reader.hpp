@@ -1,8 +1,11 @@
 #pragma once
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <span>
 #include <string_view>
 
@@ -13,6 +16,11 @@
 // does not read out of bounds: it returns zeros and sets a sticky flag, which
 // each syntax function checks at the points where carrying on would loop on
 // a count read from nothing.
+//
+// The bits are read through a cache of 8 bytes, as a 64-bit word: a peek of up
+// to 32 bits is a shift of it, and the word is loaded again only when the
+// position has moved 4 bytes on. The bytes past the end of the data are zeros in
+// it, which is what a read past the end returns.
 //
 // Every read that corresponds to a syntax element names that element, and
 // when a SyntaxSink is attached the reader emits one SyntaxRecord for it (see
@@ -91,11 +99,13 @@ class BitReader {
     // The peeks and the recorded-read helpers below exist for the Huffman and
     // escape decoders, which decide a width before they know it.
     [[nodiscard]] std::uint32_t peek_raw(int bits) const noexcept {
-        std::uint32_t value = 0;
-        for (int i = 0; i < bits; ++i) {
-            value = (value << 1U) | bit_at(pos_ + static_cast<std::size_t>(i));
+        if (bits <= 0) {
+            return 0;
         }
-        return value;
+        if (bits > 32) {
+            return peek_slow(bits);
+        }
+        return static_cast<std::uint32_t>(window() >> static_cast<unsigned>(64 - bits));
     }
 
     void consume(int bits) noexcept { advance(bits); }
@@ -159,6 +169,43 @@ class BitReader {
    private:
     static constexpr std::uint64_t kMaxRecordBits = 65535;
 
+    // The 64 bits from the current position on, the first in the top bit, zeros
+    // past the end of the data. The cache holds the 8 bytes from cache_byte_ on; the
+    // position is inside its first 4 bytes, so at least 33 of the bits are real.
+    [[nodiscard]] std::uint64_t window() const noexcept {
+        const std::size_t byte = pos_ >> 3U;
+        if (byte < cache_byte_ || byte - cache_byte_ > 3U) {
+            load(byte);
+        }
+        return cache_ << (pos_ - cache_byte_ * 8U);
+    }
+
+    void load(std::size_t byte) const noexcept {
+        cache_byte_ = byte;
+        std::uint64_t word = 0;
+        if (byte + 8U <= data_.size()) {
+            std::memcpy(&word, data_.data() + byte, sizeof word);
+            if constexpr (std::endian::native == std::endian::little) {
+                word = std::byteswap(word);
+            }
+        } else {
+            for (std::size_t i = 0; i < 8U; ++i) {
+                word = (word << 8U) |
+                       (byte + i < data_.size() ? static_cast<std::uint64_t>(data_[byte + i]) : 0U);
+            }
+        }
+        cache_ = word;
+    }
+
+    // A peek wider than the word holds, bit by bit: the low 32 bits of the value.
+    [[nodiscard]] std::uint32_t peek_slow(int bits) const noexcept {
+        std::uint32_t value = 0;
+        for (int i = 0; i < bits; ++i) {
+            value = (value << 1U) | bit_at(pos_ + static_cast<std::size_t>(i));
+        }
+        return value;
+    }
+
     [[nodiscard]] std::uint32_t bit_at(std::size_t bit) const noexcept {
         if (bit >= size_bits()) {
             return 0;
@@ -181,6 +228,11 @@ class BitReader {
     int substream_ = 0;
     SyntaxSink sink_{};
     bool overflow_ = false;
+    // The cache of window(): the 8 bytes from cache_byte_ on, as a big-endian word.
+    // The data does not change, so it needs no invalidating; it is mutable because a
+    // peek fills it.
+    mutable std::uint64_t cache_ = 0;
+    mutable std::size_t cache_byte_ = std::numeric_limits<std::size_t>::max();
 };
 
 }  // namespace ac4::detail

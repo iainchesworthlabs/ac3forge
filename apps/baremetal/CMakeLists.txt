@@ -61,13 +61,17 @@ endif()
 # main.cpp is the entry point both hosted shapes share; probe.cpp is the probe
 # itself, which defines ac3probe::run() rather than main() so that ESP-IDF (which
 # calls app_main) can run the same code. See apps/baremetal/probe.hpp.
-# One probe or the other, never both: the two profiles are mutually exclusive
+# One probe of three, never more than one: the profiles are mutually exclusive
 # at the root (no two of decode / AC-3 encode / E-AC-3 encode fit in an
-# ESP32-S3's internal SRAM at once). Both define ac3probe::run() rather than
-# main(), so main.cpp and the ESP-IDF application run whichever was built
-# without knowing which it is.
+# ESP32-S3's internal SRAM at once), and the AC-4 decoder is a third shape of the
+# decode profile, with its own probe, since AC-4 shares nothing with ac3::forge
+# (planning/ac4.md, D14a). All three define ac3probe::run() rather than main(),
+# so main.cpp and the ESP-IDF application run whichever was built without
+# knowing which it is.
 if(AC3FORGE_MINIMAL_ENCODER)
     add_executable(ac3probe encode_probe.cpp main.cpp)
+elseif(AC3FORGE_MINIMAL_AC4)
+    add_executable(ac3probe ac4_probe.cpp main.cpp)
 else()
     add_executable(ac3probe probe.cpp main.cpp)
 endif()
@@ -118,7 +122,24 @@ set(AC3FORGE_PROBE_HEAP_BUDGET_BYTES "0" CACHE STRING
 target_compile_definitions(ac3probe PRIVATE
     AC3FORGE_PROBE_HEAP_BUDGET_BYTES=${AC3FORGE_PROBE_HEAP_BUDGET_BYTES})
 
-target_link_libraries(ac3probe PRIVATE ac3::forge_minimal ac3::warnings)
+# What the AC-4 probe decodes with is ac4::decoder, whose archives bring the inspector
+# and the core; it links nothing of ac3::forge, and has no use for its decoders.
+if(AC3FORGE_MINIMAL_AC4)
+    target_link_libraries(ac3probe PRIVATE ac4::decoder_static ac3::minimal_profile
+                                           ac3::warnings)
+else()
+    target_link_libraries(ac3probe PRIVATE ac3::forge_minimal ac3::warnings)
+endif()
+
+# How much stack the AC-4 probe paints before a decode, to read the stack the decode
+# used from what it left (ac4_probe.cpp), in bytes. The window has to fit the stack of
+# the task the probe runs in: 256 KiB is a fraction of the mps2-an385's 4 MB and of a
+# desktop's 8 MB; an ESP-IDF application sets its own. A decode that uses all of it
+# fails the run, since its figure would then be a floor.
+set(AC3FORGE_PROBE_STACK_WINDOW_BYTES "262144" CACHE STRING
+    "Stack the AC-4 probe paints and reads back, in bytes")
+target_compile_definitions(ac3probe PRIVATE
+    AC3FORGE_PROBE_STACK_WINDOW_BYTES=${AC3FORGE_PROBE_STACK_WINDOW_BYTES})
 
 # A measurement switch for the ENCODE probe, off by default: adds a 7.1
 # access-unit fixture (an independent 5.1 substream plus a dependent, two

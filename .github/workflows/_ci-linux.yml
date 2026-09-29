@@ -1,24 +1,30 @@
 # Linux leg of the CI lane partitions plan's reusable-workflow split
-# (docs/ci-lanes.md) - the six Linux matrix.include entries _build.yml's
-# `build` job used to carry (linux-gcc, linux-llvm, linux-gcc-arm64,
-# linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan) plus every
-# Linux-only follow-on step (the linux-gcc-only scalar-tier gold-reference
-# variants, the ALSA fallback pass, the Linux Crucible/PipeWire pass, the
-# BUILD_SHARED_LIBS=ON pass, the sanitizer leg's codec-matrix run), moved
-# out so `_build.yml` can gate this whole platform on `run_linux` with a
-# plain job-level `if:` - see _ci-windows.yml's own header for why that
-# was not possible while these were matrix entries of one job spanning
-# three OSes.
+# (docs/ci-lanes.md) - the Linux build matrix (linux-gcc, linux-llvm,
+# linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan)
+# plus every Linux-only follow-on step (the linux-gcc-only scalar-tier
+# gold-reference variants, the ALSA fallback pass, the Linux Crucible/PipeWire
+# pass, the BUILD_SHARED_LIBS=ON pass, the sanitizer leg's codec-matrix run),
+# moved out so `_build.yml` can gate this whole platform on `run_linux` with a
+# plain job-level `if:` - see _ci-windows.yml's own header for why that was not
+# possible while these were matrix entries of one job spanning three OSes.
 #
-# Called only from _build.yml, which still owns check-runners and
-# toolchain-versions and forwards their outputs here as plain inputs.
-# Every step below is otherwise byte-for-byte the same as it was inline in
-# _build.yml's `build` job.
+# The legs are not listed in this file. They are in .github/ci/legs.jsonc,
+# with a comment on each; _build.yml's `plan-legs` job picks the ones a run
+# needs (tools/ci/plan_legs.py) and passes them in as `inputs.matrix`, and the
+# steps below read that file's fields as `matrix.<field>`.
+#
+# Called only from _build.yml, which still owns toolchain-versions and
+# forwards its outputs here as plain inputs. Every step below is otherwise
+# byte-for-byte the same as it was inline in _build.yml's `build` job.
 name: Reusable Build (Linux)
 
 on:
   workflow_call:
     inputs:
+      matrix:
+        description: "The legs to run, as the JSON tools/ci/plan_legs.py prints: {\"include\": [...]}. The legs themselves are in .github/ci/legs.jsonc."
+        type: string
+        required: true
       do_package:
         type: boolean
         default: false
@@ -45,22 +51,6 @@ on:
         type: string
         required: true
       vcpkg_commit:
-        type: string
-        required: true
-      linux_runner_1:
-        description: "needs.check-runners.outputs.linux_runner_1, at the _build.yml call site (linux-gcc's runner-label JSON array)."
-        type: string
-        required: true
-      linux_runner_2:
-        description: "needs.check-runners.outputs.linux_runner_2 (linux-llvm)."
-        type: string
-        required: true
-      linux_runner_3:
-        description: "needs.check-runners.outputs.linux_runner_3 (linux-llvm-asan-ubsan)."
-        type: string
-        required: true
-      linux_runner_4:
-        description: "needs.check-runners.outputs.linux_runner_4 (linux-llvm-tsan)."
         type: string
         required: true
 
@@ -100,169 +90,11 @@ jobs:
     # mechanism `_ci-windows.yml`'s `continue-on-error: ${{ matrix.experimental
     # || false }}` still uses for windows-msvc-arm64. No Linux leg sets
     # `experimental: true` today, so this is hardcoded false rather than a
-    # reference to a matrix field none of this file's entries define.
+    # reference to a field none of the Linux legs in legs.jsonc define.
     continue-on-error: false
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: "Linux GCC"
-            runner: ${{ inputs.linux_runner_1 }}
-            container: ubuntu:26.04
-            preset: linux-gcc
-            # Hearth (planning/hearth-reference-player.md, A7): src/sendspin and apps/hearth,
-            # with the [sendspin] and [hearth] cases ctest runs below. AC3FORGE_BUILD_HEARTH
-            # defaults ON (root CMakeLists.txt) and CMakePresets.json's "core" fragment selects
-            # vcpkg's "hearth" feature by default too, so every leg here builds and tests it
-            # without a matrix field asking for it - hearth-validate (_ci-core.yml) is the only
-            # place still naming it explicitly, for its own narrower A4 aiosendspin exit.
-            gcc: true
-            gui: true
-            packageable: true
-            release_package: true
-            alsa_fallback: true
-            gold_reference: true
-            conformance_vectors: true
-
-          - name: "Linux LLVM (clang)"
-            runner: ${{ inputs.linux_runner_2 }}
-            container: ubuntu:26.04
-            preset: linux-llvm
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-            # AC3Forge Crucible's Linux half (Crucible cross-platform promotion). This leg and not
-            # a GCC one because the GCC legs carry alsa_fallback, which
-            # asserts that disabling ALSA falls back to posix - true only
-            # while no PipeWire headers are installed, and the Crucible pass
-            # below installs them. Keeping the two apart leaves that
-            # assertion meaning what it says.
-            crucible: true
-
-          # arm64 - Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu
-          # target (see docs/platforms/raspberry-pi.md). Real ARM hardware via
-          # GitHub's hosted ubuntu-24.04-arm runner label, not QEMU emulation -
-          # the same ubuntu:26.04 container image as the x64 legs, which pulls
-          # its arm64 variant automatically on an arm64 runner. Otherwise the
-          # same shape as linux-gcc/linux-llvm above, including which leg
-          # carries alsa_fallback (compiler and architecture both don't affect
-          # that switch - see linux-gcc's own comment).
-          - name: "Linux GCC (arm64)"
-            runner: '["ubuntu-24.04-arm"]'
-            container: ubuntu:26.04
-            preset: linux-gcc-arm64
-            gcc: true
-            gui: true
-            packageable: true
-            release_package: true
-            alsa_fallback: true
-            gold_reference: true
-
-          - name: "Linux LLVM (arm64)"
-            runner: '["ubuntu-24.04-arm"]'
-            container: ubuntu:26.04
-            preset: linux-llvm-arm64
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-            # AC3Forge Crucible's Linux half on aarch64 (Crucible cross-platform promotion). The
-            # Crucible pass further down is written against matrix.preset, so
-            # this leg only has to ask for it: same apt list, same configure
-            # assertions, same tests, same package as linux-llvm, and no
-            # second copy of any of them to drift out of step.
-            #
-            # aarch64 is the only hardware the Linux half is on record as
-            # having run on: it was written and verified against a receiver
-            # on a Raspberry Pi 4B on 2026-09-05, in Phase 4 of
-            # docs/crucible/design/promotion.md - a run that built the window,
-            # passed all five Qt Quick suites and produced the aarch64
-            # tarball and the arm64 .deb by hand. CI meanwhile built
-            # Crucible on x86_64 alone, so the architecture the whole
-            # record rests on was the one nothing checked, and an
-            # aarch64-only compilation fault would have reached a user
-            # through the .deb before anyone saw it.
-            #
-            # This leg and not "Linux GCC (arm64)" for two reasons. The first
-            # is the one that put the pass on linux-llvm rather than
-            # linux-gcc: that leg carries alsa_fallback, whose assertion that
-            # disabling ALSA falls back to posix holds only while no PipeWire
-            # headers are installed, and the pass installs them. The second
-            # is release_package, which the GCC arm64 leg also carries: the
-            # "Assert the AC3Forge Crucible was packaged (Windows)" step keys
-            # off matrix.crucible && matrix.release_package with no runner.os
-            # guard of its own, so on a do_package run it would go looking on
-            # Linux for a packages/ac3forge-crucible-*.zip that no Linux leg
-            # ever produces.
-            crucible: true
-
-          # AddressSanitizer + UndefinedBehaviorSanitizer (cmake/Sanitizers.cmake),
-          # -fno-sanitize-recover=all so a violation fails the job outright. Shares
-          # the Linux LLVM container/toolchain; `sanitizer: true` additionally runs
-          # the codec-matrix step below, since ctest's 200+ cases alone do not
-          # reach every layout/tool/atmos code path a sanitizer needs to see
-          # execute to be worth anything.
-          #
-          # Not `packageable`: there is no pack-linux-llvm-asan-ubsan preset
-          # and there should not be one - a sanitizer-instrumented debug build
-          # is a diagnostic tool, not something to ship.
-          - name: "Linux LLVM ASan+UBSan"
-            runner: ${{ inputs.linux_runner_3 }}
-            container: ubuntu:26.04
-            preset: linux-llvm-asan-ubsan
-            llvm: true
-            sanitizer: true
-            # 150, not the 90 every other leg gets. On 2026-09-21 this leg
-            # took about 36 minutes. The AC-4 encoder and decoder tests merged
-            # from 2026-09-25 on ran for minutes each under ASan+UBSan: main's
-            # run at f5aded47 spent 72 of its minutes in ctest before the codec
-            # matrix ran out of time at 90, and on #1057 ctest took 7,204 s,
-            # 5,964 of them in the AC-4 tests, before the leg ran out of 150.
-            # Under the sanitizers those tests now take fewer frames, shorter
-            # signals and fewer cases (tests/sanitized.hpp), which cut their
-            # serial time by 71 % in WSL; the 150 stays for the phases still to
-            # come.
-            timeout_minutes: 150
-
-          # ThreadSanitizer (ThreadSanitizer leg). A DIFFERENT question from the
-          # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask
-          # whether one thread's memory and arithmetic are sound, TSan asks
-          # whether two threads agree on who owns what - and no other gate in
-          # this repository can see a data race at all. src/audio is a
-          # lock-free SPSC ring, a silence watchdog and a clock-drift servo
-          # shared between a real-time callback thread and the encoder
-          # thread, which is exactly the shape where a missing
-          # acquire/release is both easy to write and invisible until it
-          # corrupts audio on someone else's machine.
-          #
-          # Its test preset runs `-L concurrency` rather than the whole
-          # suite (CMakePresets.json's test-linux-llvm-tsan filter): TSan's
-          # shadow memory makes every test several times slower, and the
-          # other ~600 cases are single-threaded codec maths where it has
-          # nothing to report. That keeps this leg to about the cost of a
-          # build rather than a second full matrix entry - the ctest run
-          # itself was 7 seconds over 36 tests when this landed.
-          #
-          # No `sanitizer: true`: that flag means the codec-matrix step, and
-          # driving every layout/tool combination through ac3cli is an
-          # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
-          # same reasoning as the ASan+UBSan leg's own comment above.
-          # Self-hosted-capable again (reverted to ubuntu-latest in #460).
-          # The failure was Docker's default seccomp profile rejecting the
-          # personality(ADDR_NO_RANDOMIZE) call TSan uses to disable ASLR
-          # from inside a container. The fleet image now sets
-          # kernel.randomize_va_space=0 on the VM (ci-runners#13, deployed
-          # 2026-08-28) - the sysctl is not namespaced, the container
-          # inherits it, and TSan never needs the blocked syscall. If this
-          # leg ever fails that way again, the fleet image regressed; the
-          # per-job fallback is container options --security-opt
-          # seccomp=unconfined, which is a much blunter instrument.
-          - name: "Linux LLVM TSan"
-            runner: ${{ inputs.linux_runner_4 }}
-            container: ubuntu:26.04
-            preset: linux-llvm-tsan
-            llvm: true
+      matrix: ${{ fromJSON(inputs.matrix) }}
     steps:
       # Before checkout: the bare ubuntu image has no git, and actions/checkout
       # silently degrades to a REST tarball download without it. Also installs
@@ -294,7 +126,7 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           attempt=1
           until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-            build-essential ca-certificates cmake curl file git gnupg libasound2-dev lsb-release \
+            build-essential ca-certificates ccache cmake curl file git gnupg libasound2-dev lsb-release \
             ninja-build pkg-config rpm software-properties-common tar unzip wget zip
           do
             echo "::warning title=apt-get::attempt $attempt of 3 failed"
@@ -450,6 +282,13 @@ jobs:
           msvc-toolset: ""  # no Linux leg needs an MSVC toolset assert
           cmake-min: ${{ inputs.cmake_min }}
           vcpkg-commit: ${{ inputs.vcpkg_commit }}
+          # A release build (do_package, from release.yml) compiles everything and
+          # runs ctest as it always did. The cache is saved only by a push to main,
+          # so that pushes and dispatches on branches restore it and never add to it
+          # (build-leg's ccache-save description says why).
+          ccache: ${{ matrix.ccache && !inputs.do_package && 'true' || 'false' }}
+          ccache-save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
+          ctest-jobs: ${{ matrix.parallel_tests && !inputs.do_package && 'auto' || '' }}
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
@@ -494,7 +333,8 @@ jobs:
         env:
           TRANSFORM_MODE: reference
           RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
-        run: bash tools/checks/verify_gold_reference.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+          MATRIX_PRESET: ${{ matrix.preset }}
+        run: bash tools/checks/verify_gold_reference.sh "build/config-${MATRIX_PRESET}/bin/ac3cli"
 
       # A third run of the same gate, against a decoder built float32 rather
       # than double (minimum-footprint decoder profile). Unlike mode=reference above this cannot be a
@@ -518,8 +358,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
+          cmake --preset "config-${MATRIX_PRESET}" -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
           cmake --build build/decode-scalar-float --target ac3cli
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       - name: Gold reference gate (float32 decode)
         if: matrix.gold_reference && matrix.preset == 'linux-gcc'
@@ -543,11 +385,13 @@ jobs:
         run: |
           set -euo pipefail
           workdir="$(mktemp -d)"
-          build/config-${{ matrix.preset }}/bin/ac3cli encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
-          python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${{ matrix.preset }}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py               --double-cli "build/config-${MATRIX_PRESET}/bin/ac3cli"               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # The third scalar (planning/arithmetic-tiers.md): the fixed-point
       # decoder, Q7.24 in an int32, for parts with no FPU. The same two
@@ -561,8 +405,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
+          cmake --preset "config-${MATRIX_PRESET}" -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
           cmake --build build/decode-scalar-fixed --target ac3cli
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       - name: Gold reference gate (fixed-point decode)
         if: matrix.gold_reference && matrix.preset == 'linux-gcc'
@@ -578,11 +424,13 @@ jobs:
         run: |
           set -euo pipefail
           workdir="$(mktemp -d)"
-          build/config-${{ matrix.preset }}/bin/ac3cli encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
-          python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${{ matrix.preset }}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py --double-cli "build/config-${MATRIX_PRESET}/bin/ac3cli" --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # The tier's own gate, natively: the same fourteen fixtures the bare-metal
       # leg decodes under QEMU, decoded here on x86, their PCM hashes held to
@@ -596,6 +444,19 @@ jobs:
           set -euo pipefail
           ./tools/checks/run_baremetal_probe.sh --host --scalar=fixed | tee "$RUNNER_TEMP/fixed-host.txt"
           python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "$RUNNER_TEMP/fixed-host.txt"
+
+      # The AC-4 decoder's probe natively, in float (planning/ac4.md, D14a): the
+      # same five streams the bare-metal leg decodes under QEMU, their PCM hashes
+      # held to the same pinned ones (tests/golden/ac4-probe-pcm-hashes.json) - two
+      # architectures, two compilers, one set of hashes, decision 26's claim -
+      # and the heap, allocation and stack ceilings on the host's own figures.
+      - name: AC-4 probe natively, hashes against the pinned ones
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/checks/run_baremetal_probe.sh --ac4 --host | tee "$RUNNER_TEMP/ac4-host.txt"
+          python3 tools/checks/check_probe_hashes.py --expected tests/golden/ac4-probe-pcm-hashes.json "$RUNNER_TEMP/ac4-host.txt"
 
       # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
       # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
@@ -613,9 +474,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/encode-scalar-float \
+          cmake --preset "config-${MATRIX_PRESET}" -B build/encode-scalar-float \
                 -DAC3FORGE_ENCODE_SCALAR=float
           cmake --build build/encode-scalar-float --target ac3cli
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       - name: Gold reference gate (float32 encode)
         if: matrix.gold_reference && matrix.preset == 'linux-gcc'
@@ -631,9 +494,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/checks/check_encode_scalar_quality.py \
-              --double-cli build/config-${{ matrix.preset }}/bin/ac3cli \
+              --double-cli "build/config-${MATRIX_PRESET}/bin/ac3cli" \
               --float-cli build/encode-scalar-float/bin/ac3cli \
               --workdir "$(mktemp -d)"
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # Handed off to the quality-trend job below, which runs once (not once
       # per leg) after every gold_reference leg has passed - see that job's
@@ -659,6 +524,7 @@ jobs:
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
+          MATRIX_PRESET: ${{ matrix.preset }}
         # apps/gui/CMakeLists.txt sets MACOSX_BUNDLE ON unconditionally, but it
         # is a no-op everywhere except APPLE, where it moves the built
         # executable to bin/ac3gui.app/Contents/MacOS/ac3gui instead of plain
@@ -678,9 +544,9 @@ jobs:
         # macOS runner image by default.
         run: |
           set -euo pipefail
-          bin="build/config-${{ matrix.preset }}/bin/ac3gui"
+          bin="build/config-${MATRIX_PRESET}/bin/ac3gui"
           if [ "$RUNNER_OS" = "macOS" ]; then
-            bin="build/config-${{ matrix.preset }}/bin/ac3gui.app/Contents/MacOS/ac3gui"
+            bin="build/config-${MATRIX_PRESET}/bin/ac3gui.app/Contents/MacOS/ac3gui"
             export QSG_RENDER_LOOP=basic
           fi
           smoke_args=(--smoke
@@ -717,7 +583,7 @@ jobs:
         if: matrix.gui && matrix.name == 'Linux GCC'
         shell: bash
         run: |
-          cmake --build --preset build-${{ matrix.preset }} --target ac3gui_lupdate -- -k 0
+          cmake --build --preset "build-${MATRIX_PRESET}" --target ac3gui_lupdate -- -k 0
           echo "::group::translations git diff debug"
           pwd
           echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
@@ -727,6 +593,8 @@ jobs:
           echo "::endgroup::"
           cd "${GITHUB_WORKSPACE}"
           git diff --exit-code -- apps/gui/translations
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # Sanitizers only catch what actually executes. ctest's cases exercise
       # encoder/decoder logic in isolation; this drives the real CLI across
@@ -748,7 +616,8 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1
           AC3FORGE_CROSS_TIER_CHECK: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '0' }}
-        run: bash tools/ci/run_codec_matrix.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+          MATRIX_PRESET: ${{ matrix.preset }}
+        run: bash tools/ci/run_codec_matrix.sh "build/config-${MATRIX_PRESET}/bin/ac3cli"
 
       # conformance vectors publication: the conformance vector set - one stream per coding tool,
       # layout and sample rate this encoder can produce, each with the PCM it
@@ -828,7 +697,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/no-alsa \
+          cmake --preset "config-${MATRIX_PRESET}" -B build/no-alsa \
             -DCMAKE_DISABLE_FIND_PACKAGE_ALSA=TRUE 2>&1 | tee /tmp/no-alsa-configure.log
           grep -q 'Audio backend  : posix' /tmp/no-alsa-configure.log || {
             echo "::error::ALSA was disabled but the build did not fall back to the posix backend"
@@ -836,6 +705,8 @@ jobs:
           }
           cmake --build build/no-alsa -- -k 0
           ctest --test-dir build/no-alsa
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # AC3Forge Crucible on Linux (Crucible cross-platform promotion, docs/crucible/design/promotion.md).
       # One extra pass inside this leg rather than a matrix entry, the same
@@ -886,6 +757,7 @@ jobs:
         # assets.
         env:
           VERSION_TAG_INPUT: ${{ inputs.version_tag }}
+          MATRIX_PRESET: ${{ matrix.preset }}
         run: |
           set -euo pipefail
           if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
@@ -930,7 +802,7 @@ jobs:
           # tests `NOT "${DERIVED_VERSION_OVERRIDE}" STREQUAL ""` and falls
           # through to `git describe` when it is, which is what every ordinary
           # CI run wants.
-          cmake --preset config-${{ matrix.preset }} -B build/crucible \
+          cmake --preset "config-${MATRIX_PRESET}" -B build/crucible \
             -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_BUILD_TESTS=ON \
             -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
             -DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT" \
@@ -1239,7 +1111,9 @@ jobs:
            (inputs.do_package && matrix.release_package) ||
            ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
-        run: cpack --preset pack-${{ matrix.preset }}
+        run: cpack --preset "pack-${MATRIX_PRESET}"
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # The counterpart to the two Windows asserts above, for the files that
       # had no assertion at all: ac3cli's generated man page and its four

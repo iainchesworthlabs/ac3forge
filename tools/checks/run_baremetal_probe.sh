@@ -6,6 +6,7 @@
 #   tools/checks/run_baremetal_probe.sh --host           # natively, no emulator
 #   tools/checks/run_baremetal_probe.sh --icount         # QEMU, clock = instruction count, gated
 #   tools/checks/run_baremetal_probe.sh --encoder --icount   # the same for the encode probe
+#   tools/checks/run_baremetal_probe.sh --ac4 --icount       # the AC-4 decoder's probe, in float
 #
 # Two things are checked, and they fail for different reasons:
 #
@@ -32,6 +33,9 @@ HOST=0
 # AC-3 encode / E-AC-3 encode fit in an ESP32-S3's internal SRAM at once), so
 # this picks a preset rather than adding a fixture.
 DIRECTION=decoder
+# --ac4: the third profile, the AC-4 decoder (planning/ac4.md, D14a) in float, with its own
+# probe (apps/baremetal/ac4_probe.cpp) and its own presets, since AC-4 shares nothing with
+# ac3::forge and an image carries one probe.
 # --stage-timers: build the library with AC3FORGE_STAGE_TIMERS, so the probe
 # prints where each fixture's decode time goes stage by stage. On this leg
 # that is shape only - QEMU's clock describes the host, and the host shape's
@@ -55,14 +59,19 @@ for arg in "$@"; do
         --host) HOST=1 ;;
         --encoder) DIRECTION=encoder ;;
         --decoder) DIRECTION=decoder ;;
+        --ac4) DIRECTION=ac4 ;;
         --stage-timers) STAGE_TIMERS=ON ;;
         --icount) ICOUNT=1 ;;
         --scalar=*) SCALAR="${arg#--scalar=}" ;;
-        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder] [--stage-timers] [--icount] [--scalar=float|fixed]" >&2; exit 2 ;;
+        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder|--ac4] [--stage-timers] [--icount] [--scalar=float|fixed]" >&2; exit 2 ;;
     esac
 done
 if [[ "$ICOUNT" == "1" && "$HOST" == "1" ]]; then
     echo "error: --icount is a QEMU mode; it cannot be combined with --host" >&2
+    exit 2
+fi
+if [[ "$DIRECTION" == "ac4" && ( -n "${SCALAR:-}" || "$STAGE_TIMERS" == "ON" ) ]]; then
+    echo "error: the AC-4 probe is float and has no stage timers; --scalar and --stage-timers do not apply" >&2
     exit 2
 fi
 
@@ -126,6 +135,40 @@ declare -A ICOUNT_CEILING_ENCODE=(
     [ac3]=43000000
     [eac3]=78000000
     [eac3_ecpl]=104000000
+)
+# The AC-4 decoder's rows (--ac4), in float on the same soft-float leg, measured 2026-09-30 with
+# GCC 14.2.1 under QEMU 10.2.1 (planning/ac4.md, D14a; docs/performance-trend.md's AC-4 table).
+# Each is the measured figure and about a tenth over it: the counts, the allocation counts and the
+# peaks are deterministic for these fixed streams, so a tenth only has to absorb a deliberate
+# change, and a change past one stops here to be explained in that table.
+#
+# Thumb-2 instructions per frame (--ac4 --icount), the generic seam's portable vector types
+# and all.
+declare -A ICOUNT_CEILING_AC4=(
+    [ac4_20_music]=60000000
+    [ac4_20_acpl]=64000000
+    [ac4_51_music]=130000000
+    [ac4_51_acpl]=137000000
+    [ac4_514_tones]=227000000
+)
+# Steady-state allocations per frame. The decoder's syntax layer still builds its element
+# vectors afresh each frame (planning/ac4.md, D14a's memory audit); these hold the distance
+# from the frame's own zero from growing while that is open.
+declare -A CHURN_CEILING_AC4=(
+    [ac4_20_music]=58
+    [ac4_20_acpl]=56
+    [ac4_51_music]=168
+    [ac4_51_acpl]=99
+    [ac4_514_tones]=210
+)
+# Each fixture's peak heap in bytes, on either leg: the host's 64-bit pointers put it a few
+# per cent above the Cortex-M3's, and one figure covers both.
+declare -A PEAK_CEILING_AC4=(
+    [ac4_20_music]=485000
+    [ac4_20_acpl]=690000
+    [ac4_51_music]=1100000
+    [ac4_51_acpl]=1330000
+    [ac4_514_tones]=2130000
 )
 
 # --- ceilings --------------------------------------------------------------
@@ -235,6 +278,24 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # being enforced, which is the part worth not repeating.
     AC3FORGE_MAX_HEAP_BYTES=${AC3FORGE_MAX_HEAP_BYTES_ENCODE:-250000}
 fi
+if [[ "$DIRECTION" == "ac4" ]]; then
+    PRESET="${PRESET}-ac4"
+    BUILD_PRESET="${BUILD_PRESET}-ac4"
+    # Plain assignments over the E-AC-3 defaults above, for the reason the encode block's
+    # comment gives. Measured 2026-09-30: image 486,192 bytes (483,540 .text, 392 .data, 2,260
+    # .bss); peak heap 1,931,680 (the 5.1.4 fixture); 0 retained; the stack a decode used, read
+    # by painting, 19,456 bytes on the Cortex-M3 and 25,968 on the x86-64 host, whose frames
+    # are larger. Every ceiling a tenth or so over its figure.
+    AC3FORGE_MAX_IMAGE_BYTES=${AC3FORGE_MAX_IMAGE_BYTES_AC4:-535000}
+    AC3FORGE_MAX_HEAP_BYTES=${AC3FORGE_MAX_HEAP_BYTES_AC4:-2130000}
+    AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME=${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_AC4:-210}
+    AC3FORGE_MAX_RETAINED_BYTES=${AC3FORGE_MAX_RETAINED_BYTES_AC4:-1024}
+    if [[ "$HOST" == "1" ]]; then
+        AC3FORGE_MAX_STACK_BYTES=${AC3FORGE_MAX_STACK_BYTES_AC4:-28500}
+    else
+        AC3FORGE_MAX_STACK_BYTES=${AC3FORGE_MAX_STACK_BYTES_AC4:-21500}
+    fi
+fi
 # Its own preset and build directory, so a plain run and an --icount run
 # never share a CMake cache (the clock is a cache variable).
 QEMU_ICOUNT=()
@@ -325,6 +386,35 @@ if (( retained > AC3FORGE_MAX_RETAINED_BYTES )); then
     exit 1
 fi
 
+# The AC-4 probe's own rows: the stack a decode used (read by painting, see
+# apps/baremetal/ac4_probe.cpp) and each fixture's peak heap against its own ceiling.
+if [[ "$DIRECTION" == "ac4" ]]; then
+    stack=$(sed -n 's/.*stack\.peak_bytes=\([0-9]*\).*/\1/p' "$OUTPUT" | head -1)
+    if [[ -z "$stack" ]]; then
+        echo "error: the probe reported no stack.peak_bytes line" >&2
+        exit 1
+    fi
+    echo "stack: ${stack} bytes (ceiling ${AC3FORGE_MAX_STACK_BYTES})"
+    if (( stack > AC3FORGE_MAX_STACK_BYTES )); then
+        echo "::error title=Footprint regression::a decode used $stack bytes of stack, ceiling is $AC3FORGE_MAX_STACK_BYTES" >&2
+        exit 1
+    fi
+    # The fixtures' own lines: heap.peak_bytes and stack.peak_bytes end the same way.
+    PEAKS=$(grep -o 'ac4_[a-z0-9_]*\.peak_bytes=[0-9]*' "$OUTPUT" | sed 's/\.peak_bytes=/ /')
+    while read -r codec peak; do
+        ceiling=${PEAK_CEILING_AC4[$codec]:-}
+        if [[ -z "$ceiling" ]]; then
+            echo "::error title=No peak ceiling::${codec} has no entry in run_baremetal_probe.sh's PEAK_CEILING_AC4 table - add one from a measured run" >&2
+            exit 1
+        fi
+        echo "peak heap: ${codec} = ${peak} bytes (ceiling ${ceiling})"
+        if (( peak > ceiling )); then
+            echo "::error title=Footprint regression::${codec} peaks at $peak bytes of heap, ceiling is $ceiling" >&2
+            exit 1
+        fi
+    done <<< "$PEAKS"
+fi
+
 # Every fixture's steady-state churn, held to one ceiling: they are the same
 # requirement and a regression in any of them is the same kind of news.
 #
@@ -354,6 +444,10 @@ if [[ -z "$CHURN" ]]; then
 fi
 while read -r codec per_frame; do
     ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME
+    # The AC-4 rows each have their own, from the table above.
+    if [[ "$DIRECTION" == "ac4" ]]; then
+        ceiling=${CHURN_CEILING_AC4[$codec]:-$ceiling}
+    fi
     echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${ceiling})"
     if (( per_frame > ceiling )); then
         echo "::error title=Footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $ceiling" >&2
@@ -382,6 +476,9 @@ if [[ "$ICOUNT" == "1" ]]; then
         if [[ "$DIRECTION" == "encoder" ]]; then
             table_ceiling=${ICOUNT_CEILING_ENCODE[$codec]:-}
             table_name=ICOUNT_CEILING_ENCODE
+        elif [[ "$DIRECTION" == "ac4" ]]; then
+            table_ceiling=${ICOUNT_CEILING_AC4[$codec]:-}
+            table_name=ICOUNT_CEILING_AC4
         else
             table_ceiling=${ICOUNT_CEILING[$codec]:-}
             table_name=ICOUNT_CEILING

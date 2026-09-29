@@ -19,6 +19,7 @@ target and the first with hardware floating point.
 | Atmos bed and objects | Correct. Objects reconstruct here, and are placed onto 7.1.4 by their positions (`eac3_atmos_render`, through the block form's object views); the flat newlib heap makes it easier than on the [ESP32-S3](esp32-s3.md#objects) |
 | Fixed-point decode | `-DAC3FORGE_DECODE_SCALAR=fixed` builds every decode row above in Q7.24 integers under a per-block exponent, for a part with no FPU at all - the plan is [arithmetic-tiers.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md). CI runs the probe twice on this leg, and the fixed build's PCM is identical to the x86 host's and to an ESP32-C3's under `qemu-riscv32` - three architectures, one pinned set of hashes (`tests/golden/fixed-probe-pcm-hashes.json`). It costs 0.37x the instructions the default build spends on the same frame: `eac3.instructions_per_frame=4827000` against 12,948,000, integer arithmetic where that one's is software floating point |
 | Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 242,589-byte image, 202,760 peak, 10.3 M to 80.7 M instructions a frame under `--encoder --icount` - see [Building](../../building.md#what-the-encode-direction-costs) |
+| AC-4 decode | A third probe, `run_baremetal_probe.sh --ac4`, for the AC-4 decoder in `float` (`ac4::decoder` with its inspector and core, static, without exceptions; the encoder is not built): five committed streams, 2.0 and 5.1 with and without A-CPL and 5.1.4, each channel's level exact against `apps/baremetal/ac4_fixture.hpp`, and the PCM bit-identical to the x86-64 host's (`tests/golden/ac4-probe-pcm-hashes.json`). 486,192-byte image, 432 KB to 1.93 MB peak heap by fixture, 50 to 191 allocations a frame, 18.3 to 19.5 KB of stack, 54.5 M to 205.8 M instructions a frame under `--ac4 --icount` - see [the AC-4 table](../../performance-trend.md#the-ac-4-decoder) |
 | Image size | 338,793 bytes — 276,188 `.text`, 400 `.data`, 62,205 `.bss` |
 | Peak heap | 237,206 bytes, the 7.1.4 fixture folded to stereo (230,798 as coded, 211,371 with Atmos objects) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
@@ -41,6 +42,11 @@ tools/checks/run_baremetal_probe.sh --host
 
 # Instructions per frame under QEMU -icount, deterministic and gated
 tools/checks/run_baremetal_probe.sh --icount
+
+# The AC-4 decoder's probe, in its own build: the same three ways
+tools/checks/run_baremetal_probe.sh --ac4
+tools/checks/run_baremetal_probe.sh --ac4 --host
+tools/checks/run_baremetal_probe.sh --ac4 --icount
 ```
 
 `--icount` is the one timing figure this leg can give. QEMU is not cycle-accurate and the probe's
@@ -55,7 +61,7 @@ figure never was, and it is what the [ESP32-C3](esp32-c3.md) row's speed estimat
 
 Both drive the presets, which you can also use directly: `config-arm-none-eabi-minimal` /
 `build-arm-none-eabi-minimal`, and `config-linux-gcc-minimal` or `config-linux-llvm-minimal` for
-the host. GCC and Clang only.
+the host; the AC-4 probe's are the same names with `-ac4` after `minimal`. GCC and Clang only.
 
 [Building from source](../../building.md#minimum-footprint-decoder-profile) covers what the profile
 changes and the gaps it has not closed. The measured figures are in
@@ -77,7 +83,8 @@ list if any component needing the full library is still switched on.
 every channel's level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines the
 runner gates on: the levels, image size, peak heap, retained bytes and allocations per frame.
 `encode_probe.cpp` is its counterpart, checking a byte count and FNV-1a hash against
-`encode_fixture.hpp`.
+`encode_fixture.hpp`, and `ac4_probe.cpp` the AC-4 decoder's, decoding five streams through
+`Decoder::decode_by_block` and reading the stack the decode used by painting a window of it first.
 
 It is not a unit test — the profile requires `AC3FORGE_BUILD_TESTS=OFF`, since nothing under
 `tests/` builds against this archive — and it answers three questions a test could not: does the
@@ -87,7 +94,8 @@ target, and what did it cost.
 Nothing regenerates the fixtures automatically and nothing detects that they have drifted from the
 encoder: the probe decodes a committed bitstream and compares it against committed levels, so both
 moving together is invisible to it. Regenerate with
-`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`.
+`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`, and the AC-4 fixtures with
+`python tools/generators/gen_baremetal_ac4_fixture.py --ac3cli <path>`.
 
 ## Porting to another part
 

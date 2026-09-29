@@ -163,6 +163,15 @@ class SubstreamPcm {
 
    private:
     struct Channel {
+        // Built where it stays (channels_.emplace_back): a Channel is 5 KB at double,
+        // too much for a temporary.
+        Channel(int full_length, std::size_t delay_samples, std::size_t ext_values,
+                std::size_t out_values)
+            : synthesis(full_length),
+              delay(delay_samples, Real{}),
+              ext(ext_values),
+              out(out_values) {}
+
         dsp::ChannelSynthesis<Real> synthesis;
         std::vector<Real> delay;  // the last d_pcm samples of the previous frame
         dsp::QmfAnalysis<Real> analysis;
@@ -223,9 +232,10 @@ class SubstreamPcm {
 
     // From the frame's spectra (spectra_ and lengths_) to its output: the
     // inverse transform, frame alignment and QMF analysis, the QMF domain with
-    // `control` queued d_ctrl frames, the output stages, synthesis and the
-    // converter.
-    [[nodiscard]] ParseResult render(Control control, const FrameInputs& frame_inputs,
+    // the frame's control data, which the caller has made at the back of held_
+    // (a Control is 7 KB, too much for a local), queued d_ctrl frames, the output
+    // stages, synthesis and the converter.
+    [[nodiscard]] ParseResult render(const FrameInputs& frame_inputs,
                                      std::vector<std::vector<float>>& channels,
                                      std::vector<Speaker>& speakers);
     [[nodiscard]] ParseResult configure(const SubstreamContext& ctx, DecodingMode decoding);
@@ -288,12 +298,18 @@ class SubstreamPcm {
     // A-CPL: the stage and its state, the quantised values DIFF_TIME refers
     // to, and the codec modes of the last frame read and of the last applied,
     // a change of which starts A-CPL from its first frame's state
-    // (src/ac4dec/ERRATA.md, "A change of codec mode").
-    AcplStage acpl_;
+    // (src/ac4dec/ERRATA.md, "A change of codec mode"). The stage is 119 KB at
+    // double and 65 KB at float, five decorrelators' history for the most part,
+    // so it is made by the first frame whose codec mode applies A-CPL: a stream
+    // with none holds none, and a stage just made is in the first frame's state.
+    std::unique_ptr<AcplStage> acpl_;
     AcplQuantHistory acpl_history_;
+    // The frame's A-CPL values, read before anything moves on and copied into the
+    // frame's control data once it has: 4.7 KB, made with the first A-CPL frame.
+    std::unique_ptr<AcplFrameValues> acpl_next_;
     // A-JCC's stage and the quantised values DIFF_TIME refers to, kept as
-    // A-CPL's are.
-    AjccStage ajcc_;
+    // A-CPL's are; it is 169 KB at double and 103 KB at float.
+    std::unique_ptr<AjccStage> ajcc_;
     AjccQuantHistory ajcc_history_;
     // A-JOC's stage, its quantised values DIFF_TIME refers to (and a copy to
     // decode a frame against), and the upmix objects' matrices of the frame;
@@ -344,6 +360,12 @@ class SubstreamPcm {
     bool side_kept_ = false;  // whether the last frame's side chain is side_ rather than the matrices
 
     // Scratch, kept to save an allocation per frame.
+    // The QMF banks' working space, which they use one after another: the banks
+    // of the substream's channels share this one.
+    dsp::QmfScratch<Real> qmf_scratch_{};
+    // A-SPX's per-channel matrices (16 KB at double), made by the first frame that
+    // decodes A-SPX.
+    std::unique_ptr<AspxScratch> aspx_scratch_;
     ElementRoute route_;
     std::vector<StereoParameters> parameters_;  // one channel data element's, 16 or 32 KiB each
     std::vector<std::vector<Real>> scaled_;     // per track, in bitstream order

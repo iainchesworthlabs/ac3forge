@@ -1570,6 +1570,29 @@ jobs:
       - name: AC-4 encode, decoded against its sources (SNR, LSD and ViSQOL floors)
         run: python3 tools/checks/score_ac4_encode.py --cli build/config-linux-llvm/bin/ac3cli
 
+      # The AC-4 decoder in float (planning/ac4.md, D14a): the two scorers above
+      # again with a decoder built AC3FORGE_DECODE_SCALAR=float, at the same pins,
+      # and the float decode against the double one on every committed stream,
+      # below and above A-SPX's crossover, at the floors pinned in
+      # tests/golden/ac4dec/scalar-agreement.json. The AC-4 encoder is double in
+      # every build (decision 34); its streams are decoded by the float decoder.
+      - name: Build a float32 ac3cli
+        run: |
+          cmake --preset config-linux-llvm -B build/decode-scalar-float -DAC3FORGE_DECODE_SCALAR=float
+          cmake --build build/decode-scalar-float --target ac3cli -- -k 0
+
+      - name: AC-4 decode against DEE's sources, float32 decoder
+        run: python3 tools/checks/score_ac4_decode.py --cli build/decode-scalar-float/bin/ac3cli
+
+      - name: AC-4 encode, decoded by the float32 decoder against its sources
+        run: python3 tools/checks/score_ac4_encode.py --cli build/decode-scalar-float/bin/ac3cli
+
+      - name: AC-4 float32 against double decode (below and above A-SPX's crossover)
+        run: |
+          python3 tools/checks/check_ac4_decode_scalar_snr.py \
+            --double-cli build/config-linux-llvm/bin/ac3cli \
+            --float-cli build/decode-scalar-float/bin/ac3cli
+
       - name: Matrix coverage (every CLI option is exercised somewhere)
         run: python3 tools/checks/check_matrix_coverage.py --cli build/config-linux-llvm/bin/ac3cli
 

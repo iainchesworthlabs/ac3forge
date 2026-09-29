@@ -512,7 +512,7 @@ set(AC3FORGE_AUDIO_BACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/backend/${AC3FOR
 # Two directories on their own axis is the smaller thing, and this project
 # already carries independent per-platform trees on more than one axis (see
 # docs/building.md, "SIMD kernels and the architecture tree", for
-# src/forge/src/internal/arch/'s own version of the same idea).
+# src/arithmetic/arch/'s own version of the same idea).
 #
 # No FATAL_ERROR fallback, unlike the backend selection above: an
 # unrecognised system gets posix/, because Berkeley sockets ARE the

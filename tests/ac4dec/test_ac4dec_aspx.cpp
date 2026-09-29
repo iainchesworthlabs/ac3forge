@@ -156,9 +156,9 @@ TEST_CASE(
             if (tic) {
                 CHECK(out == QmfValue(1000.0, -500.0));
             } else if (sb == 40 || sb == 41) {
-                CHECK(abs(out - QmfValue(1000.0, -500.0)) < 1.0);
+                CHECK(abs(out - QmfValue(1000.0, -500.0)) < Real{1});
             } else {
-                CHECK(abs(out) < 1.0);
+                CHECK(abs(out) < Real{1});
             }
         }
     }
@@ -177,17 +177,17 @@ TEST_CASE("a sinusoid sits in its group's middle subband, a quarter turn further
     const std::array<QmfValue, 4> unit = {QmfValue(1.0, 0.0), QmfValue(0.0, -1.0),
                                           QmfValue(-1.0, 0.0), QmfValue(0.0, 1.0)};
     const ac4::detail::Real level = abs(channel.at(0, 43));
-    REQUIRE(level > 1.0);
+    REQUIRE(level > Real{1});
     for (int ts = 0; ts < kSlots; ++ts) {
         CAPTURE(ts);
         CHECK(abs(channel.at(ts, 43) / level - unit[static_cast<std::size_t>((1 + ts) % 4)]) <
-              1e-3);
-        CHECK(abs(channel.at(ts, 42)) < 1e-3 * level);
-        CHECK(abs(channel.at(ts, 44)) < 1e-3 * level);
+              Real(1e-3));
+        CHECK(abs(channel.at(ts, 42)) < Real(1e-3) * level);
+        CHECK(abs(channel.at(ts, 44)) < Real(1e-3) * level);
     }
     // The next interval goes on where this one stopped: index (31 + 1 + 1) % 4.
     decode_one(frame_for(config, false), data, channel);
-    CHECK(abs(channel.at(0, 43) / level - unit[1]) < 1e-3);
+    CHECK(abs(channel.at(0, 43) / level - unit[1]) < Real(1e-3));
 }
 
 TEST_CASE("the noise generator's index runs on from one interval into the next", "[ac4dec][aspx]") {
@@ -199,7 +199,7 @@ TEST_CASE("the noise generator's index runs on from one interval into the next",
     Channel channel;
     const auto check_frame = [&](int base) {
         const QmfValue level = channel.at(0, 36) / noise_entry(base + 1);
-        REQUIRE(abs(level) > 1.0);
+        REQUIRE(abs(level) > Real{1});
         for (int ts = 0; ts < kSlots; ++ts) {
             for (int sb = 0; sb < 20; ++sb) {
                 const QmfValue expected = level * noise_entry(base + 20 * ts + sb + 1);
@@ -268,7 +268,7 @@ TEST_CASE("a balanced pair shares the sum's scale factors as the balance says", 
         double e = 0.0;
         for (int ts = 0; ts < kSlots; ++ts) {
             for (int sb = 36; sb < 56; ++sb) {
-                e += norm(channel.at(ts, sb));
+                e += static_cast<double>(norm(channel.at(ts, sb)));
             }
         }
         return e;
@@ -302,9 +302,9 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
         CAPTURE(ts);
         const double level = 0.9105 * 100.0 * (ts + 1) / kFullScale;  // E = |Re| for real values
         const double gain = ts >= 2 && ts < 34 ? std::pow(level, 0.35 / 0.65) * big_g : 1.0;
-        CHECK(std::abs(slot(ts, 0).real() - 100.0 * (ts + 1) * gain) <
+        CHECK(std::abs(static_cast<double>(slot(ts, 0).real()) - 100.0 * (ts + 1) * gain) <
               kRelativeTolerance * 100.0 * (ts + 1) * gain);
-        CHECK(std::abs(slot(ts, 35).real() - 100.0 * (ts + 1) * gain) <
+        CHECK(std::abs(static_cast<double>(slot(ts, 35).real()) - 100.0 * (ts + 1) * gain) <
               kRelativeTolerance * 100.0 * (ts + 1) * gain);
         CHECK(slot(ts, 36) ==
               before[static_cast<std::size_t>(ts + aspx::kTsOffsetHfadj) * 64 + 36]);
@@ -320,6 +320,7 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
         mean += 0.9105 * 100.0 * (ts + 1) / kFullScale / 32.0;
     }
     const double average = std::pow(mean, 0.35 / 0.65) * big_g;
-    CHECK(std::abs(slot(10, 0).real() - 1100.0 * average) < kRelativeTolerance * 1100.0 * average);
+    CHECK(std::abs(static_cast<double>(slot(10, 0).real()) - 1100.0 * average) <
+          kRelativeTolerance * 1100.0 * average);
     CHECK(slot(35, 0) == before[static_cast<std::size_t>(35 + aspx::kTsOffsetHfadj) * 64]);
 }

@@ -70,13 +70,21 @@ a time; nothing has shown that overlapping them breaks them, and the gate curren
 the CPU count to find out, because that phase is the longest part of a warm run. The throughput
 guards (label `Performance`) run alone last. A failing case is retried once, and a
 case that fails and then passes is reported as a warning, since that can be two tests sharing a
-resource. When a run fails, its summary page lists the compiler errors or the failed tests and the
+resource. A parallel phase that still has failures runs them again one at a time: a test that
+passes alone passes the phase, with a warning that names it, and one that fails alone is a
+failure. That rule exists because a concurrency test whose threads had not started when its main
+thread finished failed on every hosted Windows run, twice in a row in some of them, and refused a
+queue entry for a change that broke nothing. When a run fails, its summary page lists the compiler errors or the failed tests and the
 command that reproduces them. The checks that only need the built binaries (the gold-reference
 gate, the GUI smoke test, the translation checks) run whenever the build succeeded, even if a test
 failed, so one run reports every failure.
 
 To get more than the gate before merging (an ESP-IDF, Android or WASM change, a sanitizer
-question), dispatch the full matrix on the branch: `gh workflow run ci.yml --ref <branch>`.
+question), dispatch the full matrix on the branch: `gh workflow run ci.yml --ref <branch>`. A full
+run holds a dozen or more hosted runners for most of an hour, and the gate of every other pull
+request waits behind them, so when a change touches only how some builds are made, name the
+legs instead: `gh workflow run ci.yml --ref <branch> -f legs=linux-llvm,macos-llvm`. Only those
+builds run. The names are the presets in `.github/ci/legs.jsonc`.
 `gh workflow run pr-gate.yml --ref <branch> -f windows=true` adds Windows MSVC to a gate run.
 
 A pull request that was open when this arrived still shows the old `CI Status`. The merge queue
@@ -130,16 +138,50 @@ token that can start workflows, which the built-in one cannot.
 If a comment names your pull request, read the issue and decide: revert with the command it
 gives, or push a fix. A fix goes through the gate like any other change.
 
+## The legs
+
+The build matrix is data. [`.github/ci/legs.jsonc`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/ci/legs.jsonc)
+lists every leg of the Linux, Windows and macOS builds, with the flags its steps read and the
+comments that used to sit beside the matrices. [`tools/ci/plan_legs.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/plan_legs.py)
+picks the legs a run needs. The `plan-legs` job in `_build.yml` runs it and passes each platform's
+list to `_ci-linux.yml`, `_ci-windows.yml` or `_ci-macos.yml`, which run it as their matrix. A
+platform with no leg in the run is skipped, because Actions rejects an empty matrix.
+
+Each leg has a `tier`: `t2` for the legs of the run on main after a merge, `deep` for the legs only
+a scheduled run has. Every leg is `t2` for now. The planner's inputs are `TIER` (`all`, `t2` or
+`deep`) and `LEGS`, a comma-separated list of presets such as `linux-gcc,windows-msvc` that runs
+exactly those legs whatever their tier.
+
+To add a leg, add it to the catalogue with either `runner` (labels as written) or `runner_slot` (a
+`check-runners` output, for a leg that may run on the fleet). `python3 tools/ci/plan_legs.py
+--check` validates the file. The unit tests also check that the platform workflows read no field the
+catalogue lacks and that no leg sets a field the workflows never read, which `actionlint` can no
+longer check now that the matrix arrives at run time.
+
 ## Caches
 
-The gate and the queue restore compiler caches; only runs on main save them. GitHub cache
-entries are immutable and evicted against a 10 GB budget shared by the whole repository, so
-pull-request pushes that each saved a copy would push out the entry every other run restores
-from. A cache saved on main is visible to pull requests and to queue entries; one saved on a
-branch is not. That is why Linux GCC and Windows MSVC also run when a push reaches main: the run
-exists to save the cache. ccache is keyed by leg, operating system and architecture, and
-configured to hash the compiler binary rather than its file time, because each job installs a
-fresh copy of the compiler.
+The gate, the queue and the legs of the run on main restore compiler caches (ccache); only a
+push to main saves them. GitHub cache entries are immutable and evicted against a 10 GB budget
+shared by the whole repository, so pull-request pushes that each saved a copy would push out the
+entry every other run restores from. A cache saved on main is visible to pull requests and to
+queue entries; one saved on a branch is not. That is why Linux GCC and Windows MSVC also run in
+the gate when a push reaches main: the run exists to save the cache.
+
+In the run on main the plain legs use it: Linux GCC and LLVM on x64 and arm64, Windows MSVC on
+x64 and arm64, and both macOS legs. Each of them also runs ctest in the three phases described
+above. A leg saves its cache when it compiled at least 25 objects the restored cache did not
+have, so a push that changed two files does not upload another copy. The sanitizer legs use
+neither, because their test presets carry label filters the phases would replace. Windows LLVM
+(clang-cl) runs its tests in phases and compiles without the cache. A release build
+(`do_package`) uses neither. The first cache saved for Linux GCC was 51 MB.
+
+Each cache is keyed by leg, operating system and architecture, and ccache is configured to hash
+the compiler binary rather than its file time, because each job installs a fresh copy of the
+compiler. The directory is in the job's temp directory. The runner empties that around each job,
+so a persistent fleet machine does not add every leg it has ever built to the upload, and GitHub
+versions a cache by its path relative to the workspace, which is the same for a hosted and a
+fleet runner there and differs under the home directory. A runner that cannot install ccache
+builds without it and says so in a warning.
 
 ## Settings
 
@@ -150,14 +192,18 @@ fresh copy of the compiler.
 | repository variable `CONTROL_RUNNER_JSON` | Control jobs of `ci.yml`, as before. |
 | `pr-gate.yml` input `windows` | Adds Windows MSVC to a dispatched run. |
 | `pr-gate.yml` input `save_cache` | Saves the compiler caches from a dispatched run. |
+| `ci.yml` input `legs` | Comma-separated presets. A dispatch runs exactly those build legs and nothing else. |
+| `ci.yml` input `tier` | `all` (the default) or `t2`: which legs of the catalogue a dispatch runs. Ignored when `legs` is set. |
 
 ## Not built yet
 
 `ci.yml` still runs the whole matrix on each batch on main. Planned, in this order:
 
-1. ccache, parallel ctest and a cached ABI baseline in the post-merge legs. The `build-leg`
-   action already takes them as inputs; the legs do not pass them yet.
-2. A leg catalogue that lets the run on main skip legs, and a scheduled tier for the slow ones:
+1. A leg catalogue that lets the run on main skip legs, and a scheduled tier for the slow ones:
    ASan and UBSan, TSan, coverage, macOS x64, the wheels, Android, WASM, Rust, the AppImage and
    the no-ALSA and shared-library passes, with a `ci:deep` label to run it on a branch.
-3. Test-level impact selection, from a per-test coverage map built by the scheduled coverage run.
+2. Test-level impact selection, from a per-test coverage map built by the scheduled coverage run.
+
+The ABI gate rebuilds the last release tag on every run on main, and that build is identical until
+the next release. The gate is advisory before 1.0, so it fits the scheduled tier, where one build
+a day costs little. A cached baseline is worth adding only if it stays on main.

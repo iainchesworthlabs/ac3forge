@@ -103,10 +103,10 @@ TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands an
     for (std::size_t sfb = 0; sfb < 8; ++sfb) {
         CAPTURE(sfb);
         const auto [a, b, c, d] = prediction.abcd[0][sfb];
-        CHECK(a == 1.0);
-        CHECK(b == 0.0);
-        CHECK(c == expected[sfb]);
-        CHECK(d == 1.0);
+        CHECK(a == Real{1});
+        CHECK(b == Real{0});
+        CHECK(static_cast<double>(c) == expected[sfb]);
+        CHECK(d == Real{1});
     }
     // The same chparam_info() as a 2 x 2 step: Pseudocode 59's (1 + g, 1, 1 - g, -1).
     ac4::detail::StereoParameters pair;
@@ -282,8 +282,8 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
             CAPTURE(i);
             // z0, z2 and z4: L, R and C doubled.
             for (const Speaker front : {S::kLeft, S::kRight, S::kCentre}) {
-                CHECK(abs(value(channels, front, i) - Real{2} * value(in, front, i)) <
-                      kAbsoluteTolerance);
+                CHECK(static_cast<double>(abs(value(channels, front, i) -
+                                              Real{2} * value(in, front, i))) < kAbsoluteTolerance);
             }
             for (std::size_t m = 0; m < 4; ++m) {
                 // x_in = 2 x, and every output times the square root of 2.
@@ -291,8 +291,10 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
                     static_cast<Real>(2.0 * kSqrt2) * value(in, pairs[m][0], i);
                 const QmfValue first = m % 2 == 0 ? full : QmfValue{};
                 const QmfValue second = m % 2 == 0 ? QmfValue{} : full;
-                CHECK(abs(value(channels, pairs[m][0], i) - first) < kAbsoluteTolerance);
-                CHECK(abs(value(channels, pairs[m][1], i) - second) < kAbsoluteTolerance);
+                CHECK(static_cast<double>(abs(value(channels, pairs[m][0], i) - first)) <
+                      kAbsoluteTolerance);
+                CHECK(static_cast<double>(abs(value(channels, pairs[m][1], i) - second)) <
+                      kAbsoluteTolerance);
             }
         }
 
@@ -307,10 +309,12 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
         for (std::size_t i = 0; i < kValues; i += 131) {
             CAPTURE(i);
             for (const auto& [x, r] : pairs) {
-                CHECK(abs(value(channels, x, i) -
-                               kSqrt2Real * (value(in, x, i) + value(in, r, i))) < kAbsoluteTolerance);
-                CHECK(abs(value(channels, r, i) -
-                               kSqrt2Real * (value(in, x, i) - value(in, r, i))) < kAbsoluteTolerance);
+                CHECK(static_cast<double>(abs(value(channels, x, i) -
+                                              kSqrt2Real * (value(in, x, i) + value(in, r, i)))) <
+                      kAbsoluteTolerance);
+                CHECK(static_cast<double>(abs(value(channels, r, i) -
+                                              kSqrt2Real * (value(in, x, i) - value(in, r, i)))) <
+                      kAbsoluteTolerance);
             }
         }
     }
@@ -363,7 +367,8 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
                 for (std::size_t m = 0; m < 4; ++m) {
                     const QmfValue difference = channels[index_of(speakers, pairs[m][0])][i] -
                                                 channels[index_of(speakers, pairs[m][1])][i];
-                    CHECK(abs(difference - kSqrt2Real * y[m < 2 ? 0 : 1][i]) < kAbsoluteTolerance);
+                    CHECK(static_cast<double>(abs(difference - kSqrt2Real * y[m < 2 ? 0 : 1][i])) <
+                          kAbsoluteTolerance);
                 }
             }
         }
@@ -497,16 +502,18 @@ void check_ajcc(DecodingMode decoding, int core_mode, std::array<Decorrelated, 6
              {S::kRight, S::kRightSurround, S::kTopSideRight}}};
         for (std::size_t i = 0; i < kValues; i += 89) {
             CAPTURE(i);
-            CHECK(abs(channels[index_of(speakers, S::kCentre)][i] -
-                           static_cast<Real>(gain) * in[index_of(speakers, S::kCentre)][i]) < kAbsoluteTolerance);
+            CHECK(static_cast<double>(
+                      abs(channels[index_of(speakers, S::kCentre)][i] -
+                          static_cast<Real>(gain) * in[index_of(speakers, S::kCentre)][i])) <
+                  kAbsoluteTolerance);
             for (std::size_t side = 0; side < 2; ++side) {
                 for (std::size_t o = 0; o < (full ? 5U : 3U); ++o) {
                     CAPTURE(side, o);
                     const Speaker s = full ? full_out[side][o] : core_out[side][o];
                     // Pseudocode 8's sqrt 2 on every output but L, R and C.
                     const auto out_gain = static_cast<Real>(full && o > 0 ? kSqrt2 : 1.0);
-                    CHECK(abs(channels[index_of(speakers, s)][i] - out_gain * z[side][o][i]) <
-                          kAbsoluteTolerance);
+                    CHECK(static_cast<double>(abs(channels[index_of(speakers, s)][i] -
+                                                  out_gain * z[side][o][i])) < kAbsoluteTolerance);
                 }
             }
         }

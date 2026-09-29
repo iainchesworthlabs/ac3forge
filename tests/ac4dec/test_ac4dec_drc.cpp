@@ -378,8 +378,9 @@ TEST_CASE("transmitted DRC gains apply by channel group, band and subframe", "[a
                 const double gain =
                     2.0 * std::exp2(static_cast<double>(kGroup[c] * 10 + sf - band_of(k)) / 6.0);
                 const QmfValue got = channels[c][static_cast<std::size_t>(slot * 64 + k)];
-                if (std::abs(got.real() - gain) >
-                    1e4 * static_cast<double>(std::numeric_limits<ac4::detail::Real>::epsilon()) * gain) {
+                if (std::abs(static_cast<double>(got.real()) - gain) >
+                    1e4 * static_cast<double>(std::numeric_limits<ac4::detail::Real>::epsilon()) *
+                        gain) {
                     FAIL("channel " << c << " slot " << slot << " subband " << k << ": "
                                     << got.real() << ", expected " << gain);
                 }
@@ -434,7 +435,7 @@ TEST_CASE("transmitted DRC gains apply by Part 2 Table 69's groups to the immers
             CAPTURE(c);
             // -6 dB2 per group from the first: a half, a quarter, and so on.
             const double gain = std::exp2(-static_cast<double>(groups[c] + 1));
-            CHECK(std::abs(channels[c][100].real() - gain) < 1e-12);
+            CHECK(std::abs(static_cast<double>(channels[c][100].real()) - gain) < 1e-12);
         }
     }
 }

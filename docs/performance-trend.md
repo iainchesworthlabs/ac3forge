@@ -1116,6 +1116,43 @@ exponent-run planner were made cheaper (the ESP32-S3 page's Encoding section); t
 by the cached masking curves, some 200 bytes a run. [Building](building.md#what-the-encode-direction-costs)
 has what the encode direction cannot fit on an ESP32-S3, with the host profile's numbers.
 
+### The AC-4 decoder
+
+`tools/checks/run_baremetal_probe.sh --ac4` builds the decode profile with the AC-4 decoder in it
+(`AC3FORGE_MINIMAL_AC4=ON`, `AC3FORGE_DECODE_SCALAR=float`; the presets `config-arm-none-eabi-minimal-ac4`
+and its `-icount` and `config-linux-gcc-minimal-ac4`) and the AC-4 probe in place of the AC-3 and
+E-AC-3 one: AC-4 shares nothing with `ac3::forge`, so it is a build of its own. It decodes five
+committed streams (`apps/baremetal/ac4_fixture.hpp`, made by
+`tools/generators/gen_baremetal_ac4_fixture.py`): 2.0 from DEE with A-SPX, 2.0 constructed in
+A-CPL, 5.1 from DEE, 5.1 constructed in A-CPL, and DEE's 5.1.4 tones, three or four frames each
+(two for the last), all at frame rate index 13, 2 048 samples at 48 kHz. Measured on 2026-09-30 on
+the same arm-none-eabi leg as the tables above (GCC 14.2.1, QEMU 10.2.1, `-Os`, soft float), in
+`float`. The seam's directory here is `generic`, so the QMF banks' vector kernels run through its
+portable types: 0.2 to 0.3% fewer instructions than the scalar loops and 4.2 KB more image.
+
+| Fixture | Instructions per frame | Ceiling | Peak heap | Ceiling | Allocations per frame | Ceiling | Stack |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `ac4_20_music` | 54,530,000 | 60,000,000 | 431,805 | 485,000 | 52 | 58 | 18,288 |
+| `ac4_20_acpl` | 57,883,000 | 64,000,000 | 626,008 | 690,000 | 50 | 56 | 19,456 |
+| `ac4_51_music` | 117,580,000 | 130,000,000 | 996,954 | 1,100,000 | 153 | 168 | 19,456 |
+| `ac4_51_acpl` | 124,489,000 | 137,000,000 | 1,205,460 | 1,330,000 | 90 | 99 | 19,456 |
+| `ac4_514_tones` | 205,781,000 | 227,000,000 | 1,931,680 | 2,130,000 | 191 | 210 | 19,456 |
+
+The image is 486,192 bytes (483,540 `.text`, 392 `.data`, 2,260 `.bss`), the ceiling 535,000; the
+stack ceiling is 21,500 here and 28,500 on the host, whose frames are larger (24.7 to 26.0 KB read
+there); retained bytes after teardown 0, the ceiling 1,024. The ceilings are the runner's
+(`ICOUNT_CEILING_AC4`, `CHURN_CEILING_AC4`, `PEAK_CEILING_AC4`), each a tenth or so over its figure
+with the same rule as the tables above. On the x86-64 host (GCC 16, 64-bit pointers) the peaks
+are 442,193, 634,088, 1,024,014, 1,235,048 and 1,954,304. The PCM of every fixture is
+bit-identical on the two legs, and the hashes are pinned in
+`tests/golden/ac4-probe-pcm-hashes.json`.
+
+The first frame allocates 550 KB, 531 KB, 1.21 MB, 1.22 MB and 2.06 MB, the decoder's state
+built as the stream's layout is first seen; the steady state allocates 69 to 157 KB a frame at 2.0,
+387 to 408 KB at 5.1 and 673 KB at 5.1.4, the syntax layer's element vectors built afresh each
+frame (`vector<Track>` the largest). That is the gap to zero here, as it is for the AC-3 and E-AC-3
+decoders above, and the peak is what D14c has to bring under the S3's 245,000 bytes for 2.0.
+
 <div id="memory-trend-app">
   <p class="performance-trend-status">Loading memory trend data…</p>
 </div>
