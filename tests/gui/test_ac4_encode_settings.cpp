@@ -166,3 +166,77 @@ TEST_CASE("AC-4 presentation labels name the position and the channels", "[gui]"
     CHECK(rows.front().label.rfind("0: L R", 0) == 0);
     CHECK(rows.front().decodable);
 }
+
+TEST_CASE("AC-4 object mode echoes the coding, a dialnorm off 31 and a raw stream's CRC", "[gui]") {
+    Ac4EncodeSettings s;
+    // At every default the objects' command is plain, whatever the channels' settings hold.
+    CHECK(ac3gui::ac4_object_cli_tokens(s, false).empty());
+    s.frame_rate = 2;
+    s.rate_mode = 1;
+    s.loudness = 0;
+    s.drc = 1;
+    s.dialogue_left = true;
+    CHECK(ac3gui::ac4_object_cli_tokens(s, false).empty());
+    CHECK_FALSE(ac3gui::ac4_cli_tokens(s, false).empty());
+
+    s = {};
+    s.object_coding = 1;
+    s.dialnorm_db = 27;
+    s.crc = false;
+    CHECK(joined(ac3gui::ac4_object_cli_tokens(s, false)) == "coding=direct dialnorm=27 crc=off");
+    // An MP4 sample has no CRC to turn off, and atmos-encode refuses crc= there.
+    CHECK(joined(ac3gui::ac4_object_cli_tokens(s, true)) == "coding=direct dialnorm=27");
+    // Out of range or off the grid, the dialnorm is refused, not echoed.
+    s.dialnorm_db = 27.25;
+    CHECK(joined(ac3gui::ac4_object_cli_tokens(s, false)) == "coding=direct crc=off");
+}
+
+TEST_CASE("AC-4 object mode takes a dialnorm in whole dB, 1 to 31, and no measurement", "[gui]") {
+    Ac4EncodeSettings s;
+    CHECK(ac3gui::ac4_object_dialnorm(s) == 31);
+    CHECK_FALSE(ac3gui::ac4_object_settings_refusal(s).has_value());
+    s.dialnorm_db = 1;
+    CHECK(ac3gui::ac4_object_dialnorm(s) == 1);
+    for (const double db : {0.0, 31.25, 27.5, 32.0}) {
+        s.dialnorm_db = db;
+        CAPTURE(db);
+        CHECK_FALSE(ac3gui::ac4_object_dialnorm(s).has_value());
+        const auto refusal = ac3gui::ac4_object_settings_refusal(s);
+        REQUIRE(refusal.has_value());
+        CHECK(refusal->find("whole dB, 1 to 31") != std::string::npos);
+    }
+    s.dialnorm_db = 31;
+    s.measure_dialnorm = true;
+    CHECK_FALSE(ac3gui::ac4_object_dialnorm(s).has_value());
+    const auto measured = ac3gui::ac4_object_settings_refusal(s);
+    REQUIRE(measured.has_value());
+    CHECK(measured->find("no bed to measure") != std::string::npos);
+}
+
+TEST_CASE("AC-4 object parameters follow the settings", "[gui]") {
+    Ac4EncodeSettings s;
+    s.object_coding = 1;
+    s.dialnorm_db = 24;
+    const auto params = ac3gui::ac4_objects_params(s, 44100, 320);
+    CHECK(params.sample_rate_hz == 44100);
+    CHECK(params.bitrate_kbps == 320);
+    CHECK(params.dialnorm_db == 24.0);
+    CHECK(params.coding == ac4::ObjectCoding::kDirect);
+    s.object_coding = 0;
+    CHECK(ac3gui::ac4_objects_params(s, 48000, 192).coding == ac4::ObjectCoding::kAjoc);
+    // An index off the table is the first, as every choice here reads one.
+    s.object_coding = 9;
+    CHECK(ac3gui::ac4_objects_params(s, 48000, 192).coding == ac4::ObjectCoding::kAjoc);
+    CHECK(joined(ac3gui::ac4_object_cli_tokens(s, false)) == "dialnorm=24");
+}
+
+TEST_CASE("an output path names an MP4 file by its suffix, as remux does", "[gui]") {
+    for (const char* name : {"out.mp4", "dir/take.m4a", "clip.mov", "a b.mp4"}) {
+        CAPTURE(name);
+        CHECK(ac3::apps::ac4_output_names_mp4(name));
+    }
+    for (const char* name : {"out.ac4", "out.mp4.ac4", "mp4", "out.MP4", "", "-"}) {
+        CAPTURE(name);
+        CHECK_FALSE(ac3::apps::ac4_output_names_mp4(name));
+    }
+}

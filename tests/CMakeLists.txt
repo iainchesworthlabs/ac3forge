@@ -672,7 +672,7 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
         cli/test_cli.cpp cli/test_cli_ac4.cpp cli/test_cli_ac4_decode.cpp cli/test_cli_ac4_encode.cpp
-        cli/test_cli_atmos_cbi.cpp
+        cli/test_cli_atmos_cbi.cpp cli/test_cli_atmos_encode_ac4.cpp
         cli/test_cli_containers.cpp
         cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp
         cli/test_cli_options.cpp cli/test_cli_synth.cpp cli/test_cli_analysis.cpp
@@ -743,6 +743,7 @@ target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     gui/test_gui_diagnostics.cpp
     gui/test_ac4_encode_settings.cpp
+    gui/test_ac4_objects_core.cpp
     decoder/test_stream_playback.cpp
     audio/test_sink_wait.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
@@ -750,6 +751,7 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/stream_playback.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/ac4_encode_core.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/common/ac4_objects_core.cpp"
     "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/apps/gui/ac4_encode_settings.cpp"
     "${CMAKE_SOURCE_DIR}/apps/gui/ac4_presentations.cpp")
@@ -934,7 +936,7 @@ endif()
 # CMakeLists.txt) - test_capi.cpp (C API) only exists to build when it was actually built,
 # the same shape as the AC3FORGE_BUILD_ADM-gated sources above.
 if(AC3FORGE_BUILD_CAPI)
-    target_sources(ac3tests PRIVATE capi/test_capi.cpp)
+    target_sources(ac3tests PRIVATE capi/test_capi.cpp capi/test_capi_ac4_arguments.cpp)
     target_link_libraries(ac3tests PRIVATE ac3::forge_c)
 endif()
 

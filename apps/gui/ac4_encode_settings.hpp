@@ -2,11 +2,13 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "ac4_objects_core.hpp"
 #include "ac4enc/encoder.hpp"
 
 // The AC-4 page's choices, Qt-free so that ac3tests can hold them to the two
@@ -20,7 +22,8 @@
 // transmitted gains, Lt/Rt's own mix levels, the downmix corrections, the LFE
 // mix, I-frames at named frames or fragment boundaries, the syntax trace and
 // every experimental= tool. The page encodes one source, in its own layout,
-// as `ac4-encode` takes a WAV file.
+// as `ac4-encode` takes a WAV file; in object mode, the objects of its
+// sources as `atmos-encode ... codec=ac4` takes them (the last section).
 
 namespace ac3gui {
 
@@ -91,6 +94,13 @@ inline constexpr std::array<Ac4Choice, 4> kAc4PreferredDownmixes{{
 
 inline constexpr std::array<int, 4> kAc4DialogueMaxGains{3, 6, 9, 12};
 
+// How an object stream is coded (ac4::ObjectCoding), as atmos-encode's coding=
+// names it: index 0, A-JOC, is the default.
+inline constexpr std::array<Ac4Choice, 2> kAc4ObjectCodings{{
+    {"ajoc", "A-JOC (a downmix and the matrices that rebuild the objects)"},
+    {"direct", "Direct-coded (each object a channel of its own)"},
+}};
+
 struct Ac4EncodeSettings {
     std::size_t frame_rate = kAc4NativeFrameRate;  // into kAc4FrameRates
     std::size_t rate_mode = 0;                     // into kAc4RateModes
@@ -112,6 +122,9 @@ struct Ac4EncodeSettings {
     std::size_t dialogue_max_gain = 2;  // into kAc4DialogueMaxGains; 9 dB
     int iframe_interval = 24;
     bool crc = true;  // a raw stream's Annex G CRC; an MP4 sample has none
+    // Object mode's one choice of its own, into kAc4ObjectCodings; what it shares
+    // with the channels' encode is the dialnorm and the CRC.
+    std::size_t object_coding = 0;
 };
 
 [[nodiscard]] bool ac4_downmix_named(const Ac4EncodeSettings& settings);
@@ -140,5 +153,37 @@ struct Ac4EncodeSettings {
 // The practice loudness= names, where it names one.
 [[nodiscard]] std::optional<ac4::LoudnessPractice> ac4_loudness_practice(
     const Ac4EncodeSettings& settings);
+
+// --- Object mode ---------------------------------------------------------------
+//
+// Objects under the AC-4 codec are written by `ac3cli atmos-encode ... codec=ac4`
+// (apps/common/ac4_objects_core.hpp), which takes fewer options than the channels'
+// ac4-encode: an object stream is written at frame_rate_index 13 in a constant
+// rate, and the loudness values, DRC, the stereo downmix and dialogue enhancement
+// describe channels. What it takes is the coding (coding=), the dialnorm in whole
+// dB (dialnorm=, 1 to 31, as atmos-encode reads it) and a raw stream's CRC
+// (crc=). The other settings stay as they were, unread, for when the codec is
+// channels again.
+
+// The dialnorm object mode sends, in dB below full scale: the setting where it is
+// a whole number from 1 to 31, nothing where it is measured, fractional or 0.
+[[nodiscard]] std::optional<int> ac4_object_dialnorm(const Ac4EncodeSettings& settings);
+
+// The trailing tokens of `ac3cli atmos-encode <in> <out> <kbps> ... codec=ac4`
+// for these settings, without the codec=ac4 itself: coding=direct, a dialnorm
+// off 31, and crc=off on a raw stream. Empty at every default.
+[[nodiscard]] std::vector<std::string> ac4_object_cli_tokens(const Ac4EncodeSettings& settings,
+                                                             bool mp4);
+
+// Why atmos-encode refuses these settings for objects before it reads the audio,
+// in its words; nothing where it does not.
+[[nodiscard]] std::optional<std::string> ac4_object_settings_refusal(
+    const Ac4EncodeSettings& settings);
+
+// What E9's writer is given for these settings at `sample_rate_hz` and
+// `bitrate_kbps`: the coding and the dialnorm, and the rest at the writer's own.
+[[nodiscard]] ac3::apps::Ac4ObjectsParams ac4_objects_params(const Ac4EncodeSettings& settings,
+                                                             std::uint32_t sample_rate_hz,
+                                                             int bitrate_kbps);
 
 }  // namespace ac3gui

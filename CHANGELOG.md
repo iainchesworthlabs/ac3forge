@@ -18,8 +18,8 @@ This release adds:
 - per-channel quality gates and continued performance, quality, and memory histories;
 - AC-4 container support, wider WebAssembly encoding, microphone capture, and expanded Rust
   bindings;
-- AC-4 decode and encode bindings for the C API, Python, Rust and WebAssembly, and Android
-  building the AC-4 libraries.
+- AC-4 decode and encode bindings for the C API, Python, Rust and WebAssembly, with the object
+  encoder in each, and Android building the AC-4 libraries.
 
 The sections below contain the complete change list and fixes.
 
@@ -1820,10 +1820,45 @@ The sections below contain the complete change list and fixes.
   on nothing outside this tree and cross-compile cleanly under the NDK; nothing in the Shield app's
   own `target_link_libraries` links them yet — giving the app an AC-4 feature is later application
   work, not this phase's.
-- Every binding covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
-  5.1, 5.0.4, 5.1.4) — the encoder's own scope as of this phase; A-JOC and direct-coded objects are
-  a separate, in-flight phase. Each decoder's object accessors read whatever object audio a stream
-  actually carries regardless of what this project's own encoder can produce.
+- Every binding covered channel-based and channel-based-immersive content only (mono, stereo, 5.0,
+  5.1, 5.0.4, 5.1.4) as of this phase, the encoder's own scope then; the object encoder followed in
+  phase I4b (below). Each decoder's object accessors read whatever object audio a stream carries.
+
+**AC-4 object encoder in the bindings**
+
+- **The C API, Rust, Python and WebAssembly encode objects** (phase I4b of `planning/ac4.md`): one
+  object substream, A-JOC over a computed downmix or a static 5.0 or 5.1 bed, or direct-coded, with
+  each object's metadata (position, gain, size, zone constraint, screen factor, depth exponent,
+  distance, divergence, headphone render mode and the rest of Part 2 Annex F) and the changes to it
+  given with the input (`ac3forge_ac4_encoder_encode_objects()`, `Encoder::encode_objects()`,
+  `Encoder.encode(channels, updates=)`, `Ac4Encoder.encode(channels, updates)`). The object
+  substream is experimental: `experimental.objects` has to be set beside the objects, as in C++.
+  The frame-rate constraint (index 13 only) and the limits (1 to 64 objects, at most one the LFE, an
+  A-JOC downmix of 1 to 11 signals) are the encoder's, and the new
+  `ac3forge_ac4_encoder_refusal_reason()`, `Encoder::refusal_reason()`, `Encoder.refusal_reason()`
+  and WebAssembly's `constructionError` name the rule a configuration breaks. The C API gains 8
+  functions (76 in its AC-4 section, each with a stub for a build without AC-4).
+- **The encoder configuration is wider in each**: the I-frame lists (`iframes`, `fragment_starts`)
+  and the experimental flags that need no nested group (`aspx_balance`, `aspx_varvar`,
+  `aspx_interleave`, `coding_configs`, `seven_x`, `acpl`, `back_pair`, `ajcc`). Rust's
+  `EncoderConfig` owns vectors now, so it is `Clone` and no longer `Copy`; WebAssembly's
+  `Ac4Encoder` takes its configuration as one JS object in place of eight positional arguments,
+  and a field it leaves out keeps the C++ default.
+- **The decoder's objects report their update ramps**: the block updates within a frame, each at its
+  output sample with the ramp a renderer takes to reach it
+  (`ac3forge_ac4_decoded_frame_object_update()`, `DecodedObject::updates`,
+  `DecodedObject.updates`, `updates` on WebAssembly's objects, which now carry every property).
+- **Python's AC-4 failures are typed**: `Ac4Error` derives from `ValueError`, so code that caught
+  `ValueError` still catches them, with `Ac4DecodeError` and `Ac4EncodeError` under it, each
+  carrying the C++ enumerator as `.error`. `ObjectProperties` is settable, and a new one starts from
+  the encoder's defaults.
+- **`js/src/ac4.ts` is in the npm package's `exports` as `./ac4`**, with its declarations.
+- Tests: the C API, Rust and Python encode an A-JOC scene and a direct-coded one and read every
+  object back within what each field's code can hold, with its own tone and a metadata update at
+  the sample its input sample comes out; the C API's streams are `ac4::Encoder`'s byte for byte,
+  Rust's are the raw C API's, and Python's are the same from two ways of configuring them. The
+  WebAssembly wrapper is tested against the fake Embind module and a loopback codec model; its C++
+  side is built in `build-wasm`.
 
 **AC-4 immersive and object content in the applications**
 
@@ -1869,7 +1904,7 @@ The sections below contain the complete change list and fixes.
   the existing, already codec-agnostic export function needed no change of its own
   (`apps/gui/tests/qml/tst_e2e_inspect.qml`, 1 new test). The object inspector's own read-only
   listing already covered AC-4 before this phase and is unchanged; the encoder page's Atmos/object
-  authoring UI stays E-AC-3-only.
+  authoring follows in the next two entries (phase I5b).
 - **Fixed a pre-existing bug this phase's own new test found**: `decode_ac4_to_memory()` used
   `order.empty()` - the WAV channel order, computed from the frame's speakers - as its "has the
   first frame been read" flag. A presentation of objects alone has no channels or speakers at all,
@@ -1879,6 +1914,40 @@ The sections below contain the complete change list and fixes.
   `ObjectDecodeController::measure_ac4_objects()` already used correctly. Shipped with I3
   (channel-based AC-4 only, so nothing exercised the all-objects case until this phase's own
   export path did).
+- **`ac3cli atmos-encode` takes `codec=ac4`** (phase I5b of `planning/ac4.md`): a WAV file's
+  channels, or `src=`, `map=` and `offset=`, become AC-4 objects, A-JOC-coded or, with
+  `coding=direct`, direct-coded, moved by the optional scene file (the same formats as for E-AC-3), in a
+  raw stream (`crc=off` drops Part 2 Annex G's CRC) or, for an `.mp4`, `.m4a` or `.mov` name, an MP4
+  file; `dialnorm=` sets the stream's dialnorm, and `coding=` or `crc=` without `codec=ac4` are
+  refused rather than dropped. A channel mapped to a speaker is an object held at that speaker's
+  place on the ring ADM's polar coordinates give a bed channel, and one mapped to an LFE is the
+  stream's LFE object. The object steps (which channels become which objects, each one's audio, one
+  metadata update per object per frame, and the call into E9's writer) moved into
+  `apps/common/ac4_objects_core.hpp`; `atmos-adm` and `atmos-iab` call them for `codec=ac4` and
+  write the bytes they wrote, and the E-AC-3 paths of the three commands are unchanged
+  (`tests/cli/test_cli_atmos_encode_ac4.cpp`, 6 Catch2 test cases;
+  `tests/gui/test_ac4_objects_core.cpp`, 8).
+- **The Forge GUI's encoder page authors AC-4 objects** (phase I5b). With AC-4 chosen, the Objects
+  tab's switch writes AC-4 objects in place of E-AC-3's JOC over a 5.1 bed: the codec stays AC-4
+  (the codec list greys out AC-3 in object mode), and the AC-4 tab, which takes the place of Coding
+  tools and Metadata, carries what an object stream takes, A-JOC or direct coding, a dialnorm in
+  whole dB and the CRC. The frame rate and rate mode show as fixed, and the loudness values, DRC,
+  downmix and dialogue enhancement, which describe channels, are off. The page gives the writer's
+  limits in its own text (2 048 samples a frame, 64 objects at most with one LFE, a raw stream or an
+  MP4 file) and names what it cannot write, in the words Encode would refuse it with, on the
+  Objects tab and at the top of the AC-4 tab. It echoes one `ac3cli atmos-encode ... codec=ac4`
+  command, and encoding writes the scene that command reads beside the stream, as
+  `<name>-paths.json`; run through `ac3cli` with the sources beside it, the command writes the
+  same bytes, raw and MP4 (`tst_e2e_ac4_objects.qml`, 3 tests). An ADM master's scene (the two
+  bed channels and the one jumping object of I5's round trip) authored on the page decodes in the
+  GUI's object decoding with each object within I5's tolerances, 0.06 in each axis and 2 dB; the
+  fixture is `apps/gui/tests/fixtures/adm-two-beds-one-object.wav`. The controls have a test each
+  (`tst_ac4_objects.qml`, 10 tests; `tst_guided_wizard.qml`, 1; `tests/gui/test_ac4_encode_settings.cpp`,
+  4 new cases). A live session and Guided's Movement step stay with E-AC-3, Preview plays an AC-4
+  object encode through E-AC-3's bed, and the page reads audio with no ADM BWF or IAB reader; the
+  object inspector's note on exporting now points to Open stream, where I5 put the export. The
+  support catalogue's AC-4 encode row and the GUI's pages say so, and the translation catalogues
+  take the new strings.
 
 ### Changed
 

@@ -398,6 +398,7 @@ c++ -std=c++23 packager.cpp $(pkg-config --cflags --libs ac4enc)
 recipe install them where asked for, off by default: `vcpkg install ac3forge[ac4]`, or
 `-o "ac3forge/*:ac4=True"` (see [Using ac3::forge](index.md)). WebAssembly and the Python wheel
 now build the libraries and bind them (the C API, Python, Rust and WebAssembly bindings, phase
-I4 - see [C API](c-api.md#ac-4), [Python API](python-api.md#ac-4), [Rust API](rust-api.md#ac-4)
-and [WASM](../platforms/wasm.md#ac-4-module)); Android's own CMake wrapper builds them too but
-does not yet link them into the app. The ESP-IDF component builds without them until phase D14.
+I4, with the object encoder in each from phase I4b - see [C API](c-api.md#ac-4), [Python
+API](python-api.md#ac-4), [Rust API](rust-api.md#ac-4) and [WASM](../platforms/wasm.md#ac-4-module));
+Android's own CMake wrapper builds them too but does not yet link them into the app. The ESP-IDF
+component builds without them until phase D14.

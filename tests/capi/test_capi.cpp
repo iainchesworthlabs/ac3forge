@@ -21,8 +21,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <limits>
+#include <memory>
 #include <numbers>
+#include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -30,6 +35,9 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3forge_c/ac3forge.h"
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
+#include "ac4enc/encoder.hpp"
 
 namespace {
 
@@ -2912,12 +2920,11 @@ TEST_CASE("scan/metering C accessors take their documented defaults on null hand
 // requires AC3FORGE_BUILD_AC4 on whenever AC3FORGE_BUILD_TESTS is - so
 // ac3forge.h's AC-4 section, always declared either way (that header's own
 // comment), is always backed by the real ac4.cpp/ac4_encoder.cpp here, never
-// ac4_absent.cpp. Every round trip below is a stereo, 5.1 or 5.1.4
-// configuration (channel-based / channel-based-immersive - the encoder's own
-// scope as of this phase; A-JOC and direct-coded objects are phase E9,
-// tracked separately), so ac3forge_ac4_decoded_frame_object_count() is
-// exercised only at 0: there is no encoder here yet that can produce object
-// content to decode back.
+// ac4_absent.cpp. The first round trips below are a stereo, 5.1 or 5.1.4
+// configuration (channel-based / channel-based-immersive), so
+// ac3forge_ac4_decoded_frame_object_count() is exercised at 0 there; the
+// object scenes after them (phase I4b) are A-JOC and direct-coded objects,
+// encoded through the C API and through ac4::Encoder itself, byte for byte.
 
 TEST_CASE("ac3forge_ac4_*_config_init match their C++ struct defaults", "[capi][ac4]") {
     ac3forge_ac4_output_config_t output;
@@ -2952,6 +2959,76 @@ TEST_CASE("ac3forge_ac4_*_config_init match their C++ struct defaults", "[capi][
     CHECK(encoder_config.codec_mode == AC3FORGE_AC4_CODEC_AUTO);
     CHECK(encoder_config.iframe_interval == 24);
     CHECK(encoder_config.dialnorm_db == -31.0);
+    CHECK(encoder_config.iframes == nullptr);
+    CHECK(encoder_config.iframe_count == 0);
+    CHECK(encoder_config.fragment_starts == nullptr);
+    CHECK(encoder_config.fragment_start_count == 0);
+    CHECK(encoder_config.experimental.aspx_balance == 0);
+    CHECK(encoder_config.experimental.aspx_varvar == 0);
+    CHECK(encoder_config.experimental.aspx_interleave == 0);
+    CHECK(encoder_config.experimental.coding_configs == 0);
+    CHECK(encoder_config.experimental.seven_x == AC3FORGE_AC4_PAIR_NONE);
+    CHECK(encoder_config.experimental.acpl == 0);
+    CHECK(encoder_config.experimental.back_pair == 0);
+    CHECK(encoder_config.experimental.ajcc == 0);
+    CHECK(encoder_config.experimental.objects == 0);
+    CHECK(encoder_config.objects == nullptr);
+
+    // The object types' defaults are the C++ structs': room centre, unity gain,
+    // depth exponent 1 - what a zero-initialised struct is not.
+    const ac4::ObjectProperties cpp_properties{};
+    ac3forge_ac4_object_properties_t properties{};
+    ac3forge_ac4_object_properties_init(&properties);
+    CHECK(properties.active == 1);
+    CHECK(properties.gain_db == cpp_properties.gain_db);
+    CHECK(properties.priority == cpp_properties.priority);
+    CHECK(properties.x == cpp_properties.position[0]);
+    CHECK(properties.y == cpp_properties.position[1]);
+    CHECK(properties.z == cpp_properties.position[2]);
+    CHECK(properties.zone_mask == cpp_properties.zone_mask);
+    CHECK(properties.enable_elevation == 1);
+    CHECK(properties.snap == 0);
+    CHECK(properties.width_x == 0.0);
+    CHECK(properties.screen_factor == cpp_properties.screen_factor);
+    CHECK(properties.depth_exponent == cpp_properties.depth_exponent);
+    CHECK(properties.has_distance == 0);
+    CHECK(properties.divergence == cpp_properties.divergence);
+    CHECK(properties.trim_disabled == 0);
+    CHECK(properties.has_headphone_render_mode == 0);
+    CHECK(properties.head_track_disabled == 0);
+
+    ac3forge_ac4_object_config_t object;
+    ac3forge_ac4_object_config_init(&object);
+    CHECK(object.has_bed == 0);
+    CHECK(object.lfe == 0);
+    CHECK(object.properties.priority == cpp_properties.priority);
+    CHECK(object.properties.depth_exponent == cpp_properties.depth_exponent);
+
+    ac3forge_ac4_objects_config_t objects;
+    ac3forge_ac4_objects_config_init(&objects);
+    CHECK(objects.objects == nullptr);
+    CHECK(objects.object_count == 0);
+    CHECK(objects.coding == AC3FORGE_AC4_OBJECT_CODING_AJOC);
+    CHECK(objects.downmix == AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED);
+    CHECK(objects.has_downmix_signals == 0);
+    CHECK(objects.decorrelation == 0);
+    CHECK(objects.has_parameter_bands == 0);
+    CHECK(objects.has_coarse == 0);
+    CHECK(objects.has_screen_size_ratio_code == 0);
+    CHECK(objects.bed_object_chan_distribute == 0);
+
+    ac3forge_ac4_object_metadata_update_t update;
+    ac3forge_ac4_object_metadata_update_init(&update);
+    CHECK(update.object == 0);
+    CHECK(update.sample == 0);
+    CHECK(update.ramp_samples == 0);
+    CHECK(update.properties.depth_exponent == cpp_properties.depth_exponent);
+
+    // The documented limits are the encoder's.
+    ac3forge_ac4_object_properties_init(nullptr);  // documented no-ops
+    ac3forge_ac4_object_config_init(nullptr);
+    ac3forge_ac4_objects_config_init(nullptr);
+    ac3forge_ac4_object_metadata_update_init(nullptr);
 }
 
 namespace {
@@ -3207,6 +3284,966 @@ TEST_CASE("ac3forge_ac4_sync_frame wraps a raw frame", "[capi][ac4]") {
     ac3forge_bytes_destroy(wrapped_crc);
 }
 
+// --- AC-4 objects (ac3forge_ac4_objects_config_t and its neighbours) ---------
+//
+// A scene is written once as an ac4::EncoderConfig, in the C++ API's own terms:
+// the reference. An independent conversion below (not the library's) turns it
+// into the C structs, and the C API and ac4::Encoder itself then have to write
+// the same bytes from the same input; the C API's decoder has to read the
+// scene back as it was given, within what each field's code can hold.
+
+namespace {
+
+constexpr double kObjectRate = 48000.0;
+constexpr int kObjectFrame = 2048;
+// Each object's tone sits at the middle of a QMF subband of its own, each in a
+// parameter band of its own in A-JOC's matrices, and the LFE's at 47 Hz, as
+// tests/ac4enc/test_ac4enc_objects.cpp has them.
+constexpr std::array<int, 8> kObjectSubbands = {1, 3, 5, 7, 9, 12, 16, 22};
+constexpr double kObjectLfeHz = 47.0;
+// Six frames of input; the metadata update sits at sample 5000, in the third.
+constexpr std::size_t kObjectSamples = 6 * kObjectFrame;
+constexpr std::int64_t kObjectUpdateSample = 5000;
+constexpr int kObjectUpdateRamp = 1024;
+
+struct ObjectScene {
+    ac4::EncoderConfig config;
+    std::vector<ac4::ObjectMetadataUpdate> updates;
+
+    [[nodiscard]] const ac4::ObjectsConfig& objects() const {
+        return *config.substreams.at(0).objects;
+    }
+};
+
+ac4::ObjectConfig dynamic_object(double x, double y, double z, double gain_db) {
+    ac4::ObjectConfig object;
+    object.properties.position = {x, y, z};
+    object.properties.gain_db = gain_db;
+    return object;
+}
+
+ac4::ObjectConfig lfe_object() {
+    ac4::ObjectConfig object;
+    object.lfe = true;
+    return object;
+}
+
+ObjectScene make_scene(ac4::ObjectsConfig objects, int kbps) {
+    ObjectScene scene;
+    scene.config.bitrate_kbps = kbps;
+    scene.config.experimental.objects = true;
+    ac4::SubstreamConfig substream;
+    substream.objects = std::move(objects);
+    scene.config.substreams = {substream};
+    // The first dynamic object moves at the update's sample to a position and
+    // a gain of its own, over kObjectUpdateRamp samples.
+    ac4::ObjectMetadataUpdate update;
+    for (std::size_t o = 0; o < scene.objects().objects.size(); ++o) {
+        const ac4::ObjectConfig& object = scene.objects().objects[o];
+        if (!object.lfe && !object.bed) {
+            update.object = static_cast<int>(o);
+            break;
+        }
+    }
+    update.sample = kObjectUpdateSample;
+    update.ramp_samples = kObjectUpdateRamp;
+    update.properties.position = {0.75, 0.25, 0.4};
+    update.properties.gain_db = -12.0;
+    scene.updates = {update};
+    return scene;
+}
+
+// A-JOC over a computed downmix of two signals: the LFE among the objects, in
+// the middle of their list, a bed object and three dynamic objects, whose
+// metadata takes every field a dynamic object sends.
+ObjectScene ajoc_scene() {
+    ac4::ObjectsConfig objects;
+    ac4::ObjectConfig a = dynamic_object(0.1, 0.2, 0.0, -3.0);
+    ac4::ObjectConfig b = dynamic_object(0.9, 0.5, 7.0 / 15.0, -6.0);
+    b.properties.priority = 16.0 / 31.0;
+    b.properties.width = {0.2, 0.4, 0.6};
+    b.properties.zone_mask = 3;
+    b.properties.screen_factor = 0.5;
+    ac4::ObjectConfig bed;
+    bed.bed = ac4::BedChannel::kLeft;
+    bed.properties.gain_db = -12.0;
+    bed.properties.trim_disabled = true;
+    bed.properties.headphone_render_mode = 1;
+    bed.properties.head_track_disabled = true;
+    ac4::ObjectConfig c = dynamic_object(0.5, 1.0, -0.6, -4.4);
+    c.properties.snap = true;
+    c.properties.enable_elevation = false;
+    // The screen factor and the depth exponent share a group of fields, which
+    // has no code for a factor of 0: a factor is given with the exponent.
+    c.properties.screen_factor = 0.25;
+    c.properties.depth_exponent = 2.0;
+    c.properties.distance = 4.0;
+    c.properties.divergence = 0.75;
+    objects.objects = {a, lfe_object(), b, bed, c};
+    objects.downmix_signals = 2;
+    return make_scene(std::move(objects), 256);
+}
+
+// Direct-coded: four dynamic objects and the LFE, which rides the first
+// substream.
+ObjectScene direct_scene() {
+    ac4::ObjectsConfig objects;
+    ac4::ObjectConfig b = dynamic_object(0.33, 0.66, 0.2, -6.0);
+    b.properties.width = {0.1, 0.3, 0.5};
+    b.properties.zone_mask = 5;
+    ac4::ObjectConfig quiet = dynamic_object(0.67, 0.34, -0.2, 0.0);
+    quiet.properties.active = false;
+    objects.objects = {dynamic_object(0.0, 0.0, 0.0, -3.0), b, lfe_object(), quiet,
+                       dynamic_object(1.0, 1.0, 1.0, -9.0)};
+    objects.coding = ac4::ObjectCoding::kDirect;
+    return make_scene(std::move(objects), 256);
+}
+
+std::vector<std::vector<float>> object_input(const ac4::ObjectsConfig& objects,
+                                             std::size_t samples) {
+    std::vector<std::vector<float>> input;
+    std::size_t tones = 0;
+    for (const ac4::ObjectConfig& object : objects.objects) {
+        const double hz = object.lfe ? kObjectLfeHz
+                                     : (kObjectSubbands[tones++ % kObjectSubbands.size()] + 0.5) *
+                                           kObjectRate / 128.0;
+        std::vector<float> x(samples);
+        for (std::size_t n = 0; n < samples; ++n) {
+            x[n] = static_cast<float>(
+                0.1 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n) / kObjectRate));
+        }
+        input.push_back(std::move(x));
+    }
+    return input;
+}
+
+ac3forge_ac4_object_properties_t c_properties(const ac4::ObjectProperties& p) {
+    ac3forge_ac4_object_properties_t c;
+    ac3forge_ac4_object_properties_init(&c);
+    c.active = p.active ? 1 : 0;
+    c.gain_db = p.gain_db;
+    c.priority = p.priority;
+    c.x = p.position[0];
+    c.y = p.position[1];
+    c.z = p.position[2];
+    c.zone_mask = p.zone_mask;
+    c.enable_elevation = p.enable_elevation ? 1 : 0;
+    c.snap = p.snap ? 1 : 0;
+    c.width_x = p.width[0];
+    c.width_y = p.width[1];
+    c.width_z = p.width[2];
+    c.screen_factor = p.screen_factor;
+    c.depth_exponent = p.depth_exponent;
+    c.has_distance = p.distance.has_value() ? 1 : 0;
+    c.distance = p.distance.value_or(0.0);
+    c.divergence = p.divergence;
+    c.trim_disabled = p.trim_disabled ? 1 : 0;
+    c.has_headphone_render_mode = p.headphone_render_mode.has_value() ? 1 : 0;
+    c.headphone_render_mode = p.headphone_render_mode.value_or(0);
+    c.head_track_disabled = p.head_track_disabled ? 1 : 0;
+    return c;
+}
+
+// The scene as the C structs a caller of the C API would fill in. The arrays
+// live here, the pointers inside `config` and `objects_config` point into
+// them, so a scene is built in place and never moved.
+struct CObjectScene {
+    std::vector<ac3forge_ac4_object_config_t> objects;
+    ac3forge_ac4_objects_config_t objects_config{};
+    ac3forge_ac4_encoder_config_t config{};
+    std::vector<ac3forge_ac4_object_metadata_update_t> updates;
+};
+
+std::unique_ptr<CObjectScene> c_scene_of(const ObjectScene& scene) {
+    auto c = std::make_unique<CObjectScene>();
+    const ac4::ObjectsConfig& objects = scene.objects();
+    for (const ac4::ObjectConfig& object : objects.objects) {
+        ac3forge_ac4_object_config_t& out = c->objects.emplace_back();
+        ac3forge_ac4_object_config_init(&out);
+        out.has_bed = object.bed.has_value() ? 1 : 0;
+        if (object.bed) {
+            out.bed = static_cast<ac3forge_ac4_bed_channel_t>(*object.bed);
+        }
+        out.lfe = object.lfe ? 1 : 0;
+        out.properties = c_properties(object.properties);
+    }
+    ac3forge_ac4_objects_config_init(&c->objects_config);
+    c->objects_config.objects = c->objects.data();
+    c->objects_config.object_count = c->objects.size();
+    c->objects_config.coding = objects.coding == ac4::ObjectCoding::kDirect
+                                   ? AC3FORGE_AC4_OBJECT_CODING_DIRECT
+                                   : AC3FORGE_AC4_OBJECT_CODING_AJOC;
+    c->objects_config.downmix = static_cast<ac3forge_ac4_ajoc_downmix_t>(objects.downmix);
+    if (objects.downmix_signals) {
+        c->objects_config.has_downmix_signals = 1;
+        c->objects_config.downmix_signals = *objects.downmix_signals;
+    }
+    c->objects_config.decorrelation = objects.decorrelation ? 1 : 0;
+
+    ac3forge_ac4_encoder_config_init(&c->config);
+    c->config.bitrate_kbps = scene.config.bitrate_kbps;
+    c->config.experimental.objects = scene.config.experimental.objects ? 1 : 0;
+    c->config.objects = &c->objects_config;
+
+    for (const ac4::ObjectMetadataUpdate& update : scene.updates) {
+        ac3forge_ac4_object_metadata_update_t& out = c->updates.emplace_back();
+        ac3forge_ac4_object_metadata_update_init(&out);
+        out.object = static_cast<std::size_t>(update.object);
+        out.sample = update.sample;
+        out.ramp_samples = update.ramp_samples;
+        out.properties = c_properties(update.properties);
+    }
+    return c;
+}
+
+struct EncodedStream {
+    std::vector<std::vector<std::uint8_t>> frames;
+    int delay = 0;
+    int decoder_delay = 0;
+};
+
+EncodedStream encode_with_cpp(const ObjectScene& scene,
+                              const std::vector<std::vector<float>>& input) {
+    EncodedStream out;
+    auto encoder = ac4::Encoder::create(scene.config);
+    REQUIRE(encoder.has_value());
+    out.delay = encoder->delay_samples();
+    out.decoder_delay = encoder->decoder_delay_samples();
+    const std::vector<std::span<const float>> views(input.begin(), input.end());
+    auto frames = encoder->encode(views, scene.updates);
+    REQUIRE(frames.has_value());
+    auto rest = encoder->flush();
+    REQUIRE(rest.has_value());
+    for (const auto* list : {&*frames, &*rest}) {
+        for (const ac4::EncodedFrame& frame : *list) {
+            const auto* bytes = reinterpret_cast<const std::uint8_t*>(frame.raw_ac4_frame.data());
+            out.frames.emplace_back(bytes, bytes + frame.raw_ac4_frame.size());
+        }
+    }
+    return out;
+}
+
+EncodedStream encode_with_c_api(const CObjectScene& scene,
+                                const std::vector<std::vector<float>>& input) {
+    EncodedStream out;
+    ac3forge_ac4_encoder_t* encoder = nullptr;
+    INFO(ac3forge_ac4_encoder_refusal_reason(&scene.config));
+    REQUIRE(ac3forge_ac4_encoder_create(&scene.config, &encoder) == AC3FORGE_OK);
+    REQUIRE(encoder != nullptr);
+    out.delay = ac3forge_ac4_encoder_delay_samples(encoder);
+    out.decoder_delay = ac3forge_ac4_encoder_decoder_delay_samples(encoder);
+    std::vector<const float*> views;
+    for (const auto& channel : input) {
+        views.push_back(channel.data());
+    }
+    const auto take = [&out](ac3forge_ac4_encoded_frame_t** frames, size_t count) {
+        for (size_t i = 0; i < count; ++i) {
+            const std::uint8_t* bytes = ac3forge_ac4_encoded_frame_data(frames[i]);
+            REQUIRE(bytes != nullptr);
+            out.frames.emplace_back(bytes, bytes + ac3forge_ac4_encoded_frame_size(frames[i]));
+        }
+        ac3forge_ac4_encoded_frame_array_destroy(frames, count);
+    };
+    ac3forge_ac4_encoded_frame_t** frames = nullptr;
+    size_t count = 0;
+    REQUIRE(ac3forge_ac4_encoder_encode_objects(
+                encoder, views.data(), views.size(), input.front().size(), scene.updates.data(),
+                scene.updates.size(), &frames, &count) == AC3FORGE_OK);
+    take(frames, count);
+    frames = nullptr;
+    count = 0;
+    REQUIRE(ac3forge_ac4_encoder_flush(encoder, &frames, &count) == AC3FORGE_OK);
+    take(frames, count);
+    ac3forge_ac4_encoder_destroy(encoder);
+    return out;
+}
+
+struct DecodedObject {
+    ac3forge_ac4_object_kind_t kind = AC3FORGE_AC4_OBJECT_DYN;
+    bool lfe = false;
+    std::optional<ac3forge_ac4_speaker_t> speaker;
+    std::vector<float> samples;
+    ac3forge_ac4_object_properties_t properties{};  // in force at the last frame's first sample
+};
+
+struct DecodedUpdate {
+    std::size_t object = 0;
+    std::int64_t sample = 0;  // in the decoder's output, from its first sample
+    int ramp_samples = 0;
+    ac3forge_ac4_object_properties_t properties{};
+};
+
+struct DecodedScene {
+    std::vector<DecodedObject> objects;
+    std::vector<DecodedUpdate> updates;
+};
+
+DecodedScene decode_with_c_api(const EncodedStream& stream) {
+    DecodedScene out;
+    ac3forge_ac4_decoder_config_t config;
+    ac3forge_ac4_decoder_config_init(&config);
+    ac3forge_ac4_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_ac4_decoder_create(&config, &decoder) == AC3FORGE_OK);
+    std::int64_t start = 0;
+    for (const std::vector<std::uint8_t>& bytes : stream.frames) {
+        ac3forge_ac4_decoded_frame_t* frame = nullptr;
+        const auto status =
+            ac3forge_ac4_decoder_decode(decoder, bytes.data(), bytes.size(), &frame);
+        const DecodedFrameGuard guard(frame);
+        REQUIRE(status == AC3FORGE_OK);
+        if (frame == nullptr) {
+            continue;  // held back pending configuration - not an error
+        }
+        const size_t count = ac3forge_ac4_decoded_frame_object_count(frame);
+        const size_t samples = ac3forge_ac4_decoded_frame_samples_per_channel(frame);
+        out.objects.resize(count);
+        for (size_t o = 0; o < count; ++o) {
+            DecodedObject& object = out.objects[o];
+            object.kind = ac3forge_ac4_decoded_frame_object_kind(frame, o);
+            object.lfe = ac3forge_ac4_decoded_frame_object_lfe(frame, o) != 0;
+            object.speaker =
+                ac3forge_ac4_decoded_frame_object_has_speaker(frame, o) != 0
+                    ? std::optional(ac3forge_ac4_decoded_frame_object_speaker(frame, o))
+                    : std::nullopt;
+            const float* pcm = ac3forge_ac4_decoded_frame_object_samples(frame, o);
+            REQUIRE(pcm != nullptr);
+            object.samples.insert(object.samples.end(), pcm, pcm + samples);
+            object.properties = ac3forge_ac4_decoded_frame_object_properties(frame, o);
+            for (size_t u = 0; u < ac3forge_ac4_decoded_frame_object_update_count(frame, o); ++u) {
+                const ac3forge_ac4_object_update_t update =
+                    ac3forge_ac4_decoded_frame_object_update(frame, o, u);
+                out.updates.push_back({o, start + static_cast<std::int64_t>(update.sample),
+                                       update.ramp_samples, update.properties});
+            }
+        }
+        start += static_cast<std::int64_t>(samples);
+    }
+    ac3forge_ac4_decoder_destroy(decoder);
+    return out;
+}
+
+// The decoded objects' order: the LFE first, then the bed objects and the
+// dynamic objects, each in the order the configuration lists them.
+std::vector<std::size_t> decoded_order(const ac4::ObjectsConfig& objects) {
+    std::vector<std::size_t> order;
+    for (std::size_t o = 0; o < objects.objects.size(); ++o) {
+        if (objects.objects[o].lfe) {
+            order.push_back(o);
+        }
+    }
+    for (const bool beds : {true, false}) {
+        for (std::size_t o = 0; o < objects.objects.size(); ++o) {
+            const ac4::ObjectConfig& object = objects.objects[o];
+            if (!object.lfe && object.bed.has_value() == beds) {
+                order.push_back(o);
+            }
+        }
+    }
+    return order;
+}
+
+// The normalised correlation of `decoded`, `lag` samples later, with
+// `reference`, from two frames in to a frame before its end.
+double correlation(const std::vector<float>& reference, const std::vector<float>& decoded,
+                   std::size_t lag) {
+    double xx = 0.0;
+    double yy = 0.0;
+    double xy = 0.0;
+    for (std::size_t n = 2 * kObjectFrame;
+         n + kObjectFrame < reference.size() && n + lag < decoded.size(); ++n) {
+        const auto x = static_cast<double>(reference[n]);
+        const auto y = static_cast<double>(decoded[n + lag]);
+        xx += x * x;
+        yy += y * y;
+        xy += x * y;
+    }
+    return xy / std::sqrt(std::max(xx * yy, 1e-300));
+}
+
+// What one property's code can hold: X and Y in 62 steps, Z in 15, the gain in
+// 1 dB, the priority and each width in 31, the screen factor in 8, the
+// divergence and the distance in the tables of Annex F. An inactive object
+// sends none of them, only that it is not active.
+void check_properties_near(const ac3forge_ac4_object_properties_t& got,
+                           const ac4::ObjectProperties& want, bool dynamic) {
+    CHECK(got.active == (want.active ? 1 : 0));
+    if (!want.active) {
+        return;
+    }
+    CHECK(std::abs(got.gain_db - want.gain_db) <= 0.5 + 1e-9);
+    CHECK(std::abs(got.priority - want.priority) <= 1.0 / 62.0 + 1e-9);
+    CHECK(got.trim_disabled == (want.trim_disabled ? 1 : 0));
+    CHECK(got.has_headphone_render_mode == (want.headphone_render_mode.has_value() ? 1 : 0));
+    CHECK(got.headphone_render_mode == want.headphone_render_mode.value_or(0));
+    CHECK(got.head_track_disabled ==
+          (want.headphone_render_mode.has_value() && want.head_track_disabled ? 1 : 0));
+    if (!dynamic) {
+        return;
+    }
+    CHECK(std::abs(got.x - want.position[0]) <= 1.0 / 124.0 + 1e-9);
+    CHECK(std::abs(got.y - want.position[1]) <= 1.0 / 124.0 + 1e-9);
+    CHECK(std::abs(got.z - want.position[2]) <= 1.0 / 30.0 + 1e-9);
+    CHECK(got.zone_mask == want.zone_mask);
+    CHECK(got.enable_elevation == (want.enable_elevation ? 1 : 0));
+    CHECK(got.snap == (want.snap ? 1 : 0));
+    CHECK(std::abs(got.width_x - want.width[0]) <= 1.0 / 62.0 + 1e-9);
+    CHECK(std::abs(got.width_y - want.width[1]) <= 1.0 / 62.0 + 1e-9);
+    CHECK(std::abs(got.width_z - want.width[2]) <= 1.0 / 62.0 + 1e-9);
+    CHECK(std::abs(got.screen_factor - want.screen_factor) <= 1.0 / 16.0 + 1e-9);
+    CHECK(got.depth_exponent == want.depth_exponent);
+    CHECK(got.has_distance == (want.distance.has_value() ? 1 : 0));
+    if (want.distance) {
+        CHECK(std::abs(got.distance - *want.distance) <= 0.1 * *want.distance);
+    }
+    CHECK(std::abs(got.divergence - want.divergence) <= 0.02);
+}
+
+// Encodes `scene` through the C API and through ac4::Encoder, checks the two
+// streams are the same bytes, then decodes the C API's and checks each object
+// against the configuration, its audio and its metadata update.
+void check_object_scene(const ObjectScene& scene) {
+    const std::vector<std::vector<float>> input = object_input(scene.objects(), kObjectSamples);
+    const std::unique_ptr<CObjectScene> c_scene = c_scene_of(scene);
+    const EncodedStream from_c = encode_with_c_api(*c_scene, input);
+    const EncodedStream from_cpp = encode_with_cpp(scene, input);
+
+    REQUIRE_FALSE(from_c.frames.empty());
+    REQUIRE(from_c.frames.size() == from_cpp.frames.size());
+    for (std::size_t f = 0; f < from_c.frames.size(); ++f) {
+        CAPTURE(f);
+        CHECK(from_c.frames[f] == from_cpp.frames[f]);
+    }
+    CHECK(from_c.delay == from_cpp.delay);
+    CHECK(from_c.decoder_delay == from_cpp.decoder_delay);
+
+    const DecodedScene decoded = decode_with_c_api(from_c);
+    const std::vector<std::size_t> order = decoded_order(scene.objects());
+    REQUIRE(decoded.objects.size() == order.size());
+
+    const std::int64_t lag = from_c.delay + from_c.decoder_delay;
+    const ac4::ObjectMetadataUpdate& update = scene.updates.front();
+    for (std::size_t d = 0; d < order.size(); ++d) {
+        const std::size_t o = order[d];
+        const ac4::ObjectConfig& configured = scene.objects().objects[o];
+        const DecodedObject& object = decoded.objects[d];
+        CAPTURE(d, o);
+        CHECK(object.lfe == configured.lfe);
+        if (configured.bed) {
+            CHECK(object.kind == AC3FORGE_AC4_OBJECT_BED);
+            REQUIRE(object.speaker.has_value());
+            CHECK(*object.speaker == AC3FORGE_AC4_SPEAKER_LEFT);
+        } else if (!configured.lfe) {
+            CHECK(object.kind == AC3FORGE_AC4_OBJECT_DYN);
+        }
+        // The last frame's properties are the update's for the object it moved,
+        // the configuration's for the rest.
+        const bool moved = static_cast<std::size_t>(update.object) == o;
+        check_properties_near(object.properties, moved ? update.properties : configured.properties,
+                              !configured.lfe && !configured.bed);
+        // Its audio is its own tone (each object has one of its own, so an
+        // object decoded into the wrong place would not correlate), and no
+        // other object's.
+        if (configured.properties.active) {
+            CHECK(correlation(input[o], object.samples, static_cast<std::size_t>(lag)) > 0.98);
+            const std::size_t other = order[(d + 1) % order.size()];
+            CHECK(std::abs(correlation(input[other], object.samples,
+                                       static_cast<std::size_t>(lag))) < 0.5);
+        }
+    }
+
+    // The update comes out where its input sample does, to within 32 samples,
+    // with the ramp it was given.
+    const std::size_t moved_decoded = static_cast<std::size_t>(
+        std::find(order.begin(), order.end(), static_cast<std::size_t>(update.object)) -
+        order.begin());
+    const auto found =
+        std::find_if(decoded.updates.begin(), decoded.updates.end(), [&](const DecodedUpdate& u) {
+            return u.object == moved_decoded &&
+                   std::abs(u.properties.x - update.properties.position[0]) <= 1.0 / 124.0 + 1e-9 &&
+                   std::abs(u.properties.y - update.properties.position[1]) <= 1.0 / 124.0 + 1e-9;
+        });
+    REQUIRE(found != decoded.updates.end());
+    CHECK(found->sample <= update.sample + lag);
+    CHECK(found->sample > update.sample + lag - 32);
+    CHECK(found->ramp_samples == update.ramp_samples);
+    check_properties_near(found->properties, update.properties, true);
+}
+
+}  // namespace
+
+TEST_CASE(
+    "an A-JOC object scene encodes through the C API as ac4::Encoder writes it and decodes back",
+    "[capi][ac4]") {
+    check_object_scene(ajoc_scene());
+}
+
+TEST_CASE(
+    "a direct-coded object scene encodes through the C API as ac4::Encoder writes it and decodes "
+    "back",
+    "[capi][ac4]") {
+    check_object_scene(direct_scene());
+}
+
+namespace {
+
+// An enumeration's storage set to a value its enumerators do not name, which a caller's C code can
+// store. The bytes are written: converting an int outside the enumeration's range is undefined in
+// C++, and so is reading such a value as the enumeration, which the library does not do either
+// (internal_ac4.hpp's stored_value()).
+template <typename E>
+void set_raw(E& target, int value) {
+    static_assert(sizeof(E) == sizeof(int));
+    std::memcpy(&target, &value, sizeof value);
+}
+
+std::string refusal_of(const ac3forge_ac4_encoder_config_t& config) {
+    return ac3forge_ac4_encoder_refusal_reason(&config);
+}
+
+ac3forge_status_t create_status(const ac3forge_ac4_encoder_config_t& config) {
+    ac3forge_ac4_encoder_t* encoder = nullptr;
+    const ac3forge_status_t status = ac3forge_ac4_encoder_create(&config, &encoder);
+    CHECK((status == AC3FORGE_OK) == (encoder != nullptr));
+    ac3forge_ac4_encoder_destroy(encoder);
+    return status;
+}
+
+// `count` dynamic objects at the room's centre, as the C structs, over a
+// computed downmix of `signals` (0 for the encoder's own choice).
+std::unique_ptr<CObjectScene> many_objects(std::size_t count, int kbps, int signals = 0) {
+    auto scene = std::make_unique<CObjectScene>();
+    scene->objects.resize(count);
+    for (ac3forge_ac4_object_config_t& object : scene->objects) {
+        ac3forge_ac4_object_config_init(&object);
+    }
+    ac3forge_ac4_objects_config_init(&scene->objects_config);
+    scene->objects_config.objects = scene->objects.data();
+    scene->objects_config.object_count = count;
+    scene->objects_config.has_downmix_signals = signals > 0 ? 1 : 0;
+    scene->objects_config.downmix_signals = signals;
+    ac3forge_ac4_encoder_config_init(&scene->config);
+    scene->config.bitrate_kbps = kbps;
+    scene->config.experimental.objects = 1;
+    scene->config.objects = &scene->objects_config;
+    return scene;
+}
+
+}  // namespace
+
+TEST_CASE("the object configuration's limits and refusals are the encoder's", "[capi][ac4]") {
+    auto scene = c_scene_of(ajoc_scene());
+    CHECK(refusal_of(scene->config).empty());
+    CHECK(create_status(scene->config) == AC3FORGE_OK);
+
+    SECTION("objects are experimental") {
+        scene->config.experimental.objects = 0;
+        CHECK(refusal_of(scene->config) == "objects without experimental.objects");
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG);
+    }
+    SECTION("the object substream is frame_rate_index 13's alone") {
+        scene->config.frame_rate_index = 2;
+        CHECK(refusal_of(scene->config) == "objects at a frame_rate_index other than 13");
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG);
+        scene->config.frame_rate_index = 13;
+        CHECK(refusal_of(scene->config).empty());
+    }
+    SECTION("the most objects a substream takes") {
+        auto full = many_objects(AC3FORGE_AC4_MAX_OBJECTS, 384);
+        CHECK(refusal_of(full->config).empty());
+        CHECK(create_status(full->config) == AC3FORGE_OK);
+        auto over = many_objects(AC3FORGE_AC4_MAX_OBJECTS + 1, 384);
+        CHECK(refusal_of(over->config) == "more than 64 objects");
+        CHECK(create_status(over->config) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG);
+        // A count no caller's array holds is refused by count, not read.
+        over->objects_config.object_count = std::numeric_limits<std::size_t>::max() / 2;
+        CHECK(refusal_of(over->config) == "more than 64 objects");
+        auto none = many_objects(0, 256);
+        none->objects_config.objects = nullptr;
+        CHECK(refusal_of(none->config) == "an object substream without objects");
+    }
+    SECTION("the most downmix signals a computed A-JOC downmix takes") {
+        auto most =
+            many_objects(AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS, 512, AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS);
+        CHECK(refusal_of(most->config).empty());
+        CHECK(create_status(most->config) == AC3FORGE_OK);
+        auto over = many_objects(AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS + 1, 512,
+                                 AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS + 1);
+        CHECK(refusal_of(over->config) ==
+              "a computed downmix of no signal, of more than 11 or of more than its full-band "
+              "objects");
+        auto more_than_objects = many_objects(3, 256, 4);
+        CHECK(refusal_of(more_than_objects->config) ==
+              "a computed downmix of no signal, of more than 11 or of more than its full-band "
+              "objects");
+    }
+    SECTION("what the coding allows") {
+        scene->objects_config.coding = AC3FORGE_AC4_OBJECT_CODING_DIRECT;  // has a bed object
+        CHECK(refusal_of(scene->config) == "bed objects in direct-coded object substreams");
+        scene->objects_config.coding = AC3FORGE_AC4_OBJECT_CODING_AJOC;
+        scene->objects_config.has_parameter_bands = 1;
+        scene->objects_config.parameter_bands = 10;
+        CHECK(refusal_of(scene->config) ==
+              "A-JOC parameter bands other than Table 78's 23, 15, 12, 9, 7, 5, 3 or 1");
+        scene->objects_config.parameter_bands = 9;
+        CHECK(refusal_of(scene->config).empty());
+        scene->objects_config.downmix = AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_50;  // and an LFE object
+        CHECK(refusal_of(scene->config) == "an LFE object with a static 5.0 downmix");
+        scene->config.codec_mode = AC3FORGE_AC4_CODEC_ASPX_ACPL2;
+        scene->objects_config.downmix = AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED;
+        CHECK(refusal_of(scene->config) ==
+              "an object substream's codec mode other than kAuto, kSimple or kAspx");
+    }
+    SECTION("the metadata's ranges") {
+        scene->objects[0].properties.x = 1.5;
+        CHECK(refusal_of(scene->config) ==
+              "an object's properties off the ranges ObjectProperties gives them");
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG);
+        // What a zero-initialised properties struct is: a depth exponent no
+        // code holds. ac3forge_ac4_object_properties_init() is what fills it.
+        scene->objects[0].properties = ac3forge_ac4_object_properties_t{};
+        CHECK(refusal_of(scene->config) ==
+              "an object's properties off the ranges ObjectProperties gives them");
+        ac3forge_ac4_object_properties_init(&scene->objects[0].properties);
+        CHECK(refusal_of(scene->config).empty());
+        scene->objects[0].properties.gain_db = -std::numeric_limits<double>::infinity();
+        CHECK(refusal_of(scene->config).empty());  // -infinity is silence
+        scene->objects[0].properties.gain_db = 16.0;
+        CHECK_FALSE(refusal_of(scene->config).empty());
+    }
+    SECTION("arguments that are not a configuration at all") {
+        const std::string not_an_argument =
+            "an array pointer that is NULL where the array has entries, or an enumerator outside "
+            "its "
+            "enumeration";
+        scene->objects_config.objects = nullptr;
+        CHECK(refusal_of(scene->config) == not_an_argument);
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+        scene->objects_config.objects = scene->objects.data();
+        set_raw(scene->objects[3].bed, 3);  // no loudspeaker has code 3
+        CHECK(refusal_of(scene->config) == not_an_argument);
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+        scene->objects[3].bed = AC3FORGE_AC4_BED_TOP_BACK_RIGHT;
+        CHECK(refusal_of(scene->config).empty());
+        set_raw(scene->objects_config.coding, 2);
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+        scene->objects_config.coding = AC3FORGE_AC4_OBJECT_CODING_AJOC;
+        set_raw(scene->objects_config.downmix, 3);
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+        scene->objects_config.downmix = AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED;
+        set_raw(scene->config.experimental.seven_x, 4);
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+        scene->config.experimental.seven_x = AC3FORGE_AC4_PAIR_NONE;
+        scene->config.iframes = nullptr;
+        scene->config.iframe_count = 1;
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+        scene->config.iframe_count = 0;
+        scene->config.fragment_start_count = 2;
+        CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+        scene->config.fragment_start_count = 0;
+        CHECK(create_status(scene->config) == AC3FORGE_OK);
+    }
+}
+
+TEST_CASE("ac3forge_ac4_encoder_encode_objects refuses input the encoder refuses", "[capi][ac4]") {
+    const ObjectScene scene = ajoc_scene();
+    auto c_scene = c_scene_of(scene);
+    const std::vector<std::vector<float>> input = object_input(scene.objects(), 2 * kObjectFrame);
+    std::vector<const float*> views;
+    for (const auto& channel : input) {
+        views.push_back(channel.data());
+    }
+    ac3forge_ac4_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_ac4_encoder_create(&c_scene->config, &encoder) == AC3FORGE_OK);
+
+    ac3forge_ac4_encoded_frame_t** frames = nullptr;
+    size_t count = 0;
+    const auto encode = [&](const std::vector<ac3forge_ac4_object_metadata_update_t>& updates,
+                            size_t objects) {
+        return ac3forge_ac4_encoder_encode_objects(encoder, views.data(), objects, input[0].size(),
+                                                   updates.data(), updates.size(), &frames, &count);
+    };
+    ac3forge_ac4_object_metadata_update_t update;
+    ac3forge_ac4_object_metadata_update_init(&update);
+
+    update.object = views.size();  // one past the last object
+    CHECK(encode({update}, views.size()) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT);
+    update.object = std::numeric_limits<std::size_t>::max();
+    CHECK(encode({update}, views.size()) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT);
+    update.object = 0;
+    update.sample = -1;  // before this input's first sample
+    CHECK(encode({update}, views.size()) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT);
+    update.sample = 0;
+    update.properties.priority = 2.0;  // off its range
+    CHECK(encode({update}, views.size()) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT);
+    ac3forge_ac4_object_properties_init(&update.properties);
+    CHECK(encode({}, views.size() - 1) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT);
+    CHECK(frames == nullptr);
+    CHECK(count == 0);
+
+    // A NULL array with entries is not an update list at all.
+    CHECK(ac3forge_ac4_encoder_encode_objects(encoder, views.data(), views.size(), input[0].size(),
+                                              nullptr, 1, &frames,
+                                              &count) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    const float* null_channel[1] = {nullptr};
+    CHECK(ac3forge_ac4_encoder_encode_objects(encoder, null_channel, 1, 16, nullptr, 0, &frames,
+                                              &count) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+
+    // What the refusals left the encoder as it was: the same input encodes,
+    // with or without updates (and by encode(), which takes none).
+    CHECK(encode({update}, views.size()) == AC3FORGE_OK);
+    ac3forge_ac4_encoded_frame_array_destroy(frames, count);
+    frames = nullptr;
+    CHECK(ac3forge_ac4_encoder_encode(encoder, views.data(), views.size(), input[0].size(), &frames,
+                                      &count) == AC3FORGE_OK);
+    ac3forge_ac4_encoded_frame_array_destroy(frames, count);
+    ac3forge_ac4_encoder_destroy(encoder);
+
+    // An encoder of channels has no object for an update to name.
+    ac3forge_ac4_encoder_config_t stereo;
+    ac3forge_ac4_encoder_config_init(&stereo);
+    REQUIRE(ac3forge_ac4_encoder_create(&stereo, &encoder) == AC3FORGE_OK);
+    frames = nullptr;
+    count = 0;
+    CHECK(ac3forge_ac4_encoder_encode_objects(encoder, views.data(), 2, input[0].size(), &update, 1,
+                                              &frames,
+                                              &count) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT);
+    CHECK(ac3forge_ac4_encoder_encode_objects(encoder, views.data(), 2, input[0].size(), nullptr, 0,
+                                              &frames, &count) == AC3FORGE_OK);
+    ac3forge_ac4_encoded_frame_array_destroy(frames, count);
+    ac3forge_ac4_encoder_destroy(encoder);
+}
+
+namespace {
+
+struct ChannelStream {
+    std::vector<std::vector<std::uint8_t>> frames;
+    std::vector<bool> iframe;
+};
+
+// `input` (planar, all one length) encoded whole and flushed, by the C API
+// with `config` and by ac4::Encoder with `reference`: what each wrote.
+ChannelStream encode_channels_with_c_api(const ac3forge_ac4_encoder_config_t& config,
+                                         const std::vector<std::vector<float>>& input) {
+    ChannelStream out;
+    ac3forge_ac4_encoder_t* encoder = nullptr;
+    INFO(ac3forge_ac4_encoder_refusal_reason(&config));
+    REQUIRE(ac3forge_ac4_encoder_create(&config, &encoder) == AC3FORGE_OK);
+    std::vector<const float*> views;
+    for (const auto& channel : input) {
+        views.push_back(channel.data());
+    }
+    const auto take = [&out](ac3forge_ac4_encoded_frame_t** frames, size_t count) {
+        for (size_t i = 0; i < count; ++i) {
+            const std::uint8_t* bytes = ac3forge_ac4_encoded_frame_data(frames[i]);
+            out.frames.emplace_back(bytes, bytes + ac3forge_ac4_encoded_frame_size(frames[i]));
+            out.iframe.push_back(ac3forge_ac4_encoded_frame_iframe(frames[i]) != 0);
+        }
+        ac3forge_ac4_encoded_frame_array_destroy(frames, count);
+    };
+    ac3forge_ac4_encoded_frame_t** frames = nullptr;
+    size_t count = 0;
+    REQUIRE(ac3forge_ac4_encoder_encode(encoder, views.data(), views.size(), input.front().size(),
+                                        &frames, &count) == AC3FORGE_OK);
+    take(frames, count);
+    frames = nullptr;
+    count = 0;
+    REQUIRE(ac3forge_ac4_encoder_flush(encoder, &frames, &count) == AC3FORGE_OK);
+    take(frames, count);
+    ac3forge_ac4_encoder_destroy(encoder);
+    return out;
+}
+
+ChannelStream encode_channels_with_cpp(const ac4::EncoderConfig& reference,
+                                       const std::vector<std::vector<float>>& input) {
+    ChannelStream out;
+    auto encoder = ac4::Encoder::create(reference);
+    REQUIRE(encoder.has_value());
+    const std::vector<std::span<const float>> views(input.begin(), input.end());
+    auto frames = encoder->encode(views);
+    REQUIRE(frames.has_value());
+    auto rest = encoder->flush();
+    REQUIRE(rest.has_value());
+    for (const auto* list : {&*frames, &*rest}) {
+        for (const ac4::EncodedFrame& frame : *list) {
+            const auto* bytes = reinterpret_cast<const std::uint8_t*>(frame.raw_ac4_frame.data());
+            out.frames.emplace_back(bytes, bytes + frame.raw_ac4_frame.size());
+            out.iframe.push_back(frame.iframe);
+        }
+    }
+    return out;
+}
+
+// One tone per channel, a distinct pitch each, `frames` frames long.
+std::vector<std::vector<float>> channel_tones(std::size_t channels, std::size_t frames) {
+    std::vector<std::vector<float>> input(channels, std::vector<float>(frames * kObjectFrame));
+    for (std::size_t c = 0; c < channels; ++c) {
+        for (std::size_t n = 0; n < input[c].size(); ++n) {
+            input[c][n] = static_cast<float>(
+                0.2 * std::sin(2.0 * std::numbers::pi * (500.0 + 170.0 * static_cast<double>(c)) *
+                               static_cast<double>(n) / kObjectRate));
+        }
+    }
+    return input;
+}
+
+}  // namespace
+
+TEST_CASE("the encoder configuration's I-frame lists reach the encoder", "[capi][ac4]") {
+    const std::vector<std::vector<float>> input = channel_tones(2, 8);
+    ac3forge_ac4_encoder_config_t config;
+    ac3forge_ac4_encoder_config_init(&config);
+    config.bitrate_kbps = 96;
+    config.iframe_interval = 1000;  // the first frame alone, without the lists
+    ac4::EncoderConfig reference;
+    reference.bitrate_kbps = 96;
+    reference.iframe_interval = 1000;
+
+    const auto flagged = [](const ChannelStream& stream) {
+        std::vector<std::size_t> frames;
+        for (std::size_t f = 0; f < stream.iframe.size(); ++f) {
+            if (stream.iframe[f]) {
+                frames.push_back(f);
+            }
+        }
+        return frames;
+    };
+
+    const ChannelStream plain = encode_channels_with_c_api(config, input);
+    REQUIRE(plain.frames.size() > 6);
+    CHECK(flagged(plain) == std::vector<std::size_t>{0});
+
+    SECTION("iframes: the frames, counted from 0, that must be I-frames") {
+        const std::array<std::int64_t, 2> iframes = {5, 2};  // in any order
+        config.iframes = iframes.data();
+        config.iframe_count = iframes.size();
+        reference.iframes = {5, 2};
+        const ChannelStream stream = encode_channels_with_c_api(config, input);
+        CHECK(flagged(stream) == std::vector<std::size_t>{0, 2, 5});
+        const ChannelStream expected = encode_channels_with_cpp(reference, input);
+        CHECK(stream.frames == expected.frames);
+        CHECK(stream.iframe == expected.iframe);
+        CHECK(stream.frames != plain.frames);
+    }
+    SECTION("fragment_starts: the first frame to start at or after each is an I-frame") {
+        // Frame 2's output starts at sample 4096 exactly; frame 5's is the
+        // first to start after 9000 (frame 4's is 8192, frame 5's 10240).
+        const std::array<std::int64_t, 2> starts = {4096, 9000};
+        config.fragment_starts = starts.data();
+        config.fragment_start_count = starts.size();
+        reference.fragment_starts = {4096, 9000};
+        const ChannelStream stream = encode_channels_with_c_api(config, input);
+        CHECK(flagged(stream) == std::vector<std::size_t>{0, 2, 5});
+        const ChannelStream expected = encode_channels_with_cpp(reference, input);
+        CHECK(stream.frames == expected.frames);
+        CHECK(stream.iframe == expected.iframe);
+    }
+}
+
+TEST_CASE("the encoder configuration's experimental flags reach the encoder", "[capi][ac4]") {
+    ac3forge_ac4_encoder_config_t config;
+    ac3forge_ac4_encoder_config_init(&config);
+
+    SECTION("acpl: ASPX_ACPL_1 in stereo") {
+        config.bitrate_kbps = 64;
+        config.codec_mode = AC3FORGE_AC4_CODEC_ASPX_ACPL1;
+        CHECK_FALSE(refusal_of(config).empty());
+        CHECK(create_status(config) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG);
+        config.experimental.acpl = 1;
+        CHECK(refusal_of(config).empty());
+        CHECK(create_status(config) == AC3FORGE_OK);
+    }
+    SECTION("seven_x: 7.1's additional pair") {
+        config.channels = 8;
+        config.bitrate_kbps = 448;
+        CHECK(refusal_of(config) ==
+              "seven or eight channels without experimental.seven_x's additional pair");
+        for (const auto pair :
+             {AC3FORGE_AC4_PAIR_BACK, AC3FORGE_AC4_PAIR_WIDE, AC3FORGE_AC4_PAIR_TOP_FRONT}) {
+            config.experimental.seven_x = pair;
+            CHECK(refusal_of(config).empty());
+            CHECK(create_status(config) == AC3FORGE_OK);
+        }
+        config.channels = 6;  // a pair with 5.1
+        CHECK(refusal_of(config) ==
+              "experimental.seven_x's additional pair without seven or eight channels");
+    }
+    SECTION("back_pair: 7.1.4's back pair") {
+        config.channels = 12;
+        config.bitrate_kbps = 768;
+        CHECK_FALSE(refusal_of(config).empty());
+        CHECK(refusal_of(config).find("experimental.back_pair") != std::string::npos);
+        config.experimental.back_pair = 1;
+        CHECK(refusal_of(config).empty());
+        CHECK(create_status(config) == AC3FORGE_OK);
+    }
+    SECTION("ajcc: the immersive element's ASPX_AJCC") {
+        config.channels = 10;
+        config.bitrate_kbps = 448;
+        config.codec_mode = AC3FORGE_AC4_CODEC_ASPX_AJCC;
+        CHECK(refusal_of(config) == "ASPX_AJCC without experimental.ajcc");
+        config.experimental.ajcc = 1;
+        CHECK(refusal_of(config).empty());
+        CHECK(create_status(config) == AC3FORGE_OK);
+    }
+    SECTION("coding_configs: refused beside an A-CPL codec mode") {
+        config.channels = 6;
+        config.bitrate_kbps = 128;
+        config.codec_mode = AC3FORGE_AC4_CODEC_ASPX_ACPL2;
+        CHECK(refusal_of(config).empty());
+        config.experimental.coding_configs = 1;
+        CHECK(refusal_of(config) == "an A-CPL codec mode with experimental.coding_configs");
+    }
+    SECTION("the ASPX mode's options are written as ac4::Encoder writes them") {
+        // Stereo in the ASPX mode over a steady tone above the crossover, with
+        // an attack in both channels every 1 100 samples: each option on its
+        // own changes the stream, and the stream is the C++ API's, byte for
+        // byte.
+        std::vector<std::vector<float>> input = channel_tones(2, 10);
+        std::uint32_t state = 12345;
+        const auto noise = [&state]() {
+            state = state * 1664525U + 1013904223U;
+            return static_cast<float>((state >> 8) & 0xFFFFU) / 32768.0F - 1.0F;
+        };
+        for (std::size_t c = 0; c < 2; ++c) {
+            for (std::size_t n = 0; n < input[c].size(); ++n) {
+                input[c][n] +=
+                    0.05F * static_cast<float>(std::sin(2.0 * std::numbers::pi * 12000.0 *
+                                                        static_cast<double>(n) / kObjectRate));
+            }
+        }
+        for (std::size_t at = 3000; at + 200 < input[0].size(); at += 1100) {
+            for (std::size_t n = at; n < at + 150; ++n) {
+                input[0][n] += 0.5F * noise();
+                input[1][n] += (at % 2 == 0 ? 0.5F : 0.05F) * noise();
+            }
+        }
+        config.bitrate_kbps = 48;
+        config.codec_mode = AC3FORGE_AC4_CODEC_ASPX;
+        ac4::EncoderConfig reference;
+        reference.bitrate_kbps = 48;
+        reference.codec_mode = ac4::CodecMode::kAspx;
+        const ChannelStream plain = encode_channels_with_c_api(config, input);
+        CHECK(plain.frames == encode_channels_with_cpp(reference, input).frames);
+
+        const auto with_option = [&](int ac3forge_ac4_experimental_t::* option,
+                                     bool ac4::EncoderConfig::Experimental::* cpp_option) {
+            ac3forge_ac4_encoder_config_t options = config;
+            options.experimental.*option = 1;
+            ac4::EncoderConfig cpp = reference;
+            cpp.experimental.*cpp_option = true;
+            const ChannelStream stream = encode_channels_with_c_api(options, input);
+            CHECK(stream.frames == encode_channels_with_cpp(cpp, input).frames);
+            CHECK(stream.frames != plain.frames);
+        };
+        with_option(&ac3forge_ac4_experimental_t::aspx_balance,
+                    &ac4::EncoderConfig::Experimental::aspx_balance);
+        with_option(&ac3forge_ac4_experimental_t::aspx_varvar,
+                    &ac4::EncoderConfig::Experimental::aspx_varvar);
+        with_option(&ac3forge_ac4_experimental_t::aspx_interleave,
+                    &ac4::EncoderConfig::Experimental::aspx_interleave);
+    }
+}
+
 TEST_CASE("AC-4 accessors are null-safe", "[capi][ac4]") {
     CHECK(ac3forge_ac4_decoder_latency_samples(nullptr) == 0);
     CHECK(std::string_view(ac3forge_ac4_decoder_refusal_reason(nullptr)).empty());
@@ -3247,6 +4284,11 @@ TEST_CASE("AC-4 accessors are null-safe", "[capi][ac4]") {
     CHECK(ac3forge_ac4_decoded_frame_object_speaker(nullptr, 0) == AC3FORGE_AC4_SPEAKER_LEFT);
     CHECK(ac3forge_ac4_decoded_frame_object_samples(nullptr, 0) == nullptr);
     CHECK(ac3forge_ac4_decoded_frame_object_properties(nullptr, 0).gain_db == 0.0);
+    CHECK(ac3forge_ac4_decoded_frame_object_properties(nullptr, 0).depth_exponent == 1.0);
+    CHECK(ac3forge_ac4_decoded_frame_object_update_count(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_object_update(nullptr, 0, 0).sample == 0);
+    CHECK(ac3forge_ac4_decoded_frame_object_update(nullptr, 0, 0).ramp_samples == 0);
+    CHECK(ac3forge_ac4_decoded_frame_object_update(nullptr, 0, 0).properties.depth_exponent == 1.0);
     ac3forge_ac4_decoded_frame_destroy(nullptr);
 
     CHECK(ac3forge_ac4_encoder_codec_mode(nullptr) == AC3FORGE_AC4_CODEC_AUTO);
@@ -3259,6 +4301,9 @@ TEST_CASE("AC-4 accessors are null-safe", "[capi][ac4]") {
     ac3forge_ac4_encoded_frame_destroy(nullptr);
     ac3forge_ac4_encoded_frame_array_destroy(nullptr, 0);
 
+    CHECK(std::string_view(ac3forge_ac4_encoder_refusal_reason(nullptr)) == "a NULL configuration");
+    CHECK(ac3forge_ac4_encoder_encode_objects(nullptr, nullptr, 0, 0, nullptr, 0, nullptr,
+                                              nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
     CHECK(ac3forge_ac4_encoder_toc(nullptr, nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
     ac3forge_ac4_toc_destroy(nullptr);
     CHECK(ac3forge_ac4_build_dac4(nullptr, nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);

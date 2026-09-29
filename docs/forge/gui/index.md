@@ -45,10 +45,10 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
   [Loading a source](loading-a-source.md).
 - **Right panel — "the stream"**: a plan strip showing the derived output headline
   (`<codec> · <shape> · <bitrate> kbps · .<suffix>`, or `quality <n>` in VBR mode, or
-  `5.1 bed + <n> objects` in object mode), a sub-line counting speakers, coded channels and
-  dependent substreams, and the Annex E tools token on a chip. Beneath it, a tab bar (hidden in
-  Guided, which fills the panel with its own steps) — tabs carry a badge counting their
-  non-default settings, so a collapsed panel still declares itself.
+  `5.1 bed + <n> objects` in E-AC-3's object mode, `<n> objects` in AC-4's), a sub-line counting
+  speakers, coded channels and dependent substreams, and the Annex E tools token on a chip.
+  Beneath it, a tab bar (hidden in Guided, which fills the panel with its own steps) — tabs carry
+  a badge counting their non-default settings, so a collapsed panel still declares itself.
 - **Run strip** (bottom): past and in-flight runs — file encodes, recordings, and live sessions
   alike — each a compact **`ac3cli` command-line chip**, beside the primary Encode button.
     - Encode runs in-process, so the command line is reference material: click a chip to open a

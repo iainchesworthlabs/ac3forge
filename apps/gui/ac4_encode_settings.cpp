@@ -1,5 +1,6 @@
 #include "ac4_encode_settings.hpp"
 
+#include <cmath>
 #include <fmt/format.h>
 #include <limits>
 
@@ -143,6 +144,58 @@ std::optional<std::string> ac4_settings_refusal(const Ac4EncodeSettings& setting
             ac3::apps::ac4_layout_name(channels, ac4::AdditionalPair::kNone));
     }
     return std::nullopt;
+}
+
+std::optional<int> ac4_object_dialnorm(const Ac4EncodeSettings& s) {
+    if (s.measure_dialnorm || s.dialnorm_db < 1.0 || s.dialnorm_db > 31.0 ||
+        s.dialnorm_db != std::floor(s.dialnorm_db)) {
+        return std::nullopt;
+    }
+    return static_cast<int>(s.dialnorm_db);
+}
+
+std::vector<std::string> ac4_object_cli_tokens(const Ac4EncodeSettings& s, bool mp4) {
+    std::vector<std::string> out;
+    if (within(s.object_coding, kAc4ObjectCodings.size()) != 0) {
+        out.push_back(fmt::format(
+            "coding={}",
+            kAc4ObjectCodings[within(s.object_coding, kAc4ObjectCodings.size())].token));
+    }
+    // atmos-encode's own default is 31, as ac4-encode's.
+    if (const auto dialnorm = ac4_object_dialnorm(s); dialnorm && *dialnorm != 31) {
+        out.push_back(fmt::format("dialnorm={}", *dialnorm));
+    }
+    if (!s.crc && !mp4) {
+        out.push_back("crc=off");
+    }
+    return out;
+}
+
+std::optional<std::string> ac4_object_settings_refusal(const Ac4EncodeSettings& s) {
+    if (s.measure_dialnorm) {
+        return std::string{
+            "an AC-4 object stream has no bed to measure a loudness on; set the dialnorm by hand, "
+            "1 to 31"};
+    }
+    if (!ac4_object_dialnorm(s)) {
+        return fmt::format(
+            "an AC-4 object stream takes its dialnorm in whole dB, 1 to 31, as atmos-encode reads "
+            "it; the setting is {:g}",
+            s.dialnorm_db);
+    }
+    return std::nullopt;
+}
+
+ac3::apps::Ac4ObjectsParams ac4_objects_params(const Ac4EncodeSettings& s,
+                                               std::uint32_t sample_rate_hz, int bitrate_kbps) {
+    ac3::apps::Ac4ObjectsParams params;
+    params.sample_rate_hz = sample_rate_hz;
+    params.bitrate_kbps = bitrate_kbps;
+    params.dialnorm_db = ac4_object_dialnorm(s).value_or(31);
+    params.coding = within(s.object_coding, kAc4ObjectCodings.size()) == 0
+                        ? ac4::ObjectCoding::kAjoc
+                        : ac4::ObjectCoding::kDirect;
+    return params;
 }
 
 ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& s, int channels, int sample_rate_hz,

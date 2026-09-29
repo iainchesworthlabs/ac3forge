@@ -2871,13 +2871,27 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
-        if (key == "coding" && (command == "atmos-adm" || command == "atmos-iab")) {
+        if (key == "coding" &&
+            (command == "atmos-adm" || command == "atmos-iab" || command == "atmos-encode")) {
             if (value == "ajoc") {
                 out.ac4_atmos_coding = ac4::ObjectCoding::kAjoc;
             } else if (value == "direct") {
                 out.ac4_atmos_coding = ac4::ObjectCoding::kDirect;
             } else {
                 fmt::println(stderr, "error: coding must be ajoc or direct (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
+        // atmos-encode with codec=ac4 writes a raw stream's sync frames with or without Part 2
+        // Annex G's CRC, as ac4-encode does; the key is that command's alone.
+        if (key == "crc" && command == "atmos-encode") {
+            out.ac4enc.crc = parse_on_off(value);
+            if (!out.ac4enc.crc) {
+                fmt::println(stderr,
+                             "error: crc is on, a raw AC-4 stream's sync frames with Part 2 Annex "
+                             "G's CRC (the default), or off (got '{}')",
+                             token);
                 return false;
             }
             continue;
@@ -3868,48 +3882,6 @@ bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Pl
     plan_out.custom_locations = custom;
     label = ac3::plan::format_channels(*custom);
     return true;
-}
-
-std::vector<ObjectSlot> object_slots_from_assignment(
-    const ac3::plan::Assignment& assignment,
-    std::span<const ac3::plan::SourceShape> shapes) {
-    // Where source `s`'s channel `c` lands in the flattened space.
-    const auto flat = [&](std::size_t source, std::size_t channel) {
-        std::size_t base = 0;
-        for (std::size_t i = 0; i < source && i < shapes.size(); ++i) {
-            base += shapes[i].channels;
-        }
-        return base + channel;
-    };
-    std::vector<ObjectSlot> slots;
-    for (const auto& [source, channel] :
-         assignment.rows_of(ac3::plan::DestinationKind::kObject)) {
-        const auto dest = assignment.at(source, channel);
-        slots.push_back(
-            {.taps = {{flat(source, channel), std::pow(10.0, dest.trim_db / 20.0)}}});
-    }
-    // rows_of() hands them back in (source, then channel) order, which is what
-    // makes "the maximal contiguous run within one source" a well-defined
-    // grouping - see DestinationKind::kObjectMono's own comment on why the
-    // grouping is by adjacency rather than a stored group id.
-    const auto mono_rows = assignment.rows_of(ac3::plan::DestinationKind::kObjectMono);
-    for (std::size_t i = 0; i < mono_rows.size();) {
-        std::size_t j = i + 1;
-        while (j < mono_rows.size() && mono_rows[j].first == mono_rows[i].first &&
-               mono_rows[j].second == mono_rows[j - 1].second + 1) {
-            ++j;
-        }
-        const auto n = static_cast<double>(j - i);
-        ObjectSlot slot;
-        for (std::size_t k = i; k < j; ++k) {
-            const auto dest = assignment.at(mono_rows[k].first, mono_rows[k].second);
-            slot.taps.emplace_back(flat(mono_rows[k].first, mono_rows[k].second),
-                                   std::pow(10.0, dest.trim_db / 20.0) / n);
-        }
-        slots.push_back(std::move(slot));
-        i = j;
-    }
-    return slots;
 }
 
 std::string_view container_note(RecordingSink::Container container) {

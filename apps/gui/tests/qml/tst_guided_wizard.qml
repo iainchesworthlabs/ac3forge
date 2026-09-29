@@ -327,6 +327,36 @@ TestCase {
         EncoderController.bitrateKbps = 192;
     }
 
+    // Guided's objects are Dolby Digital Plus's, as its Movement card says: where AC-4 was the
+    // codec (the Advanced and Expert tiers write AC-4 objects), turning movement on moves it.
+    function test_movementCardKeepsGuidedsObjectsEac3WhenAc4WasTheCodec() {
+        const win = createTemporaryObject(mainWindowComponent, testCase);
+        verify(win !== null);
+        EncoderController.atmosEnabled = false;
+        EncoderController.codecIndex = 2;
+        EncoderController.bitrateKbps = 192;
+        if (!EncoderController.sourceReady) {
+            EncoderController.loadSourceFile(stereoUrl);
+            tryCompare(EncoderController, "sourceReady", true);
+        }
+        const wizard = waitForWizardLayout(win);
+        verify(wizard !== null);
+        wizard.currentStepKey = "motion";
+        wait(50);
+
+        const moveCard = findChild(win.contentItem, "wizardMotion-on");
+        verify(moveCard !== null);
+        mouseClick(moveCard);
+        compare(EncoderController.atmosEnabled, true);
+        compare(EncoderController.codecIndex, 1);
+        compare(EncoderController.ac4Objects, false);
+        verify(EncoderController.bitrateKbps >= 384);
+
+        EncoderController.atmosEnabled = false;
+        EncoderController.codecIndex = 0;
+        EncoderController.bitrateKbps = 192;
+    }
+
     function test_wizardBitrateFloorAdvisoryShowsForAWideRoomOnGood() {
         const win = createTemporaryObject(mainWindowComponent, testCase);
         verify(win !== null);

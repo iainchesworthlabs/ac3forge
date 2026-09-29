@@ -331,21 +331,18 @@ application layer, which composes the same three the way a caller of this API wo
 (ETSI TS 103 190-1 V1.4.1, TS 103 190-2 V1.3.1) behind the same opaque-handle, `_config_init()`
 and out-parameter conventions as the rest of this header — see
 [`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/ac3forge_c/ac3forge.h)'s
-own AC-4 section for the full surface. Present only when this library was configured with
-`AC3FORGE_BUILD_AC4` on (the default) — `ac3forge_c/version.h`'s `AC3FORGE_HAS_AC4`,
-`#cmakedefine`'d from that option, guards the whole section, so a caller can `#ifdef` around a
-library built either way instead of failing to link. Two new status code ranges:
-`AC3FORGE_ERROR_AC4_DECODE_*` at 60–64 (`TRUNCATED`, `INVALID_TOC`, `INVALID_STREAM`,
+own AC-4 section for the full surface. The section is declared whether or not this library was
+configured with `AC3FORGE_BUILD_AC4` (on by default): built without it, every fallible function
+returns `AC3FORGE_ERROR_UNSUPPORTED` and `ac3forge_c/version.h`'s `AC3FORGE_HAS_AC4`, which
+`#cmakedefine`s that option, says which library a program was built against. Two new status code
+ranges: `AC3FORGE_ERROR_AC4_DECODE_*` at 60–64 (`TRUNCATED`, `INVALID_TOC`, `INVALID_STREAM`,
 `UNSUPPORTED`, `MISSING_IFRAME`) and `AC3FORGE_ERROR_AC4_ENCODE_*` at 80–81 (`INVALID_CONFIG`,
 `INVALID_INPUT`).
 
-The encoder covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
-5.1, 5.0.4, 5.1.4) — its own scope as of this section; A-JOC and direct-coded objects are a
-separate, in-flight phase
-([`ac3forge#1082`](https://github.com/iainchesworthlabs/ac3forge/pull/1082)). The decoder's
-object accessors read whatever object audio a stream actually carries regardless, so a stream
-encoded elsewhere with objects decodes here; this project's own encoder cannot yet produce one to
-round-trip end to end.
+The encoder writes channel-based and channel-based-immersive content (mono, stereo, 5.0, 5.1,
+5.0.4, 5.1.4) and, given an objects configuration, one object substream of A-JOC or direct-coded
+objects ([Encoding objects](#encoding-objects) below). The decoder's object accessors read
+whatever object audio a stream carries.
 
 ```c
 ac3forge_ac4_encoder_config_t config;
@@ -379,6 +376,77 @@ whole), and `ac3forge_ac4_media_timing`/`ac3forge_ac4_samples_per_frame` give an
 timing. `ac3forge_ac4_sync_frame` wraps a raw frame with Annex G.3.1's sync word and an optional
 CRC for a raw `.ac4` file or MPEG-2 TS.
 
+`ac3forge_ac4_encoder_config_t` also carries `iframes` and `fragment_starts` (a pointer and a count
+each: frames, counted from 0, that must be I-frames, and where an MP4's fragments start in samples
+of the decoded output) and `experimental`, the flags of `ac4::EncoderConfig::Experimental` that
+need no nested group: `aspx_balance`, `aspx_varvar`, `aspx_interleave`, `coding_configs`,
+`seven_x`, `acpl`, `back_pair`, `ajcc` and `objects`. The arrays are read while
+`ac3forge_ac4_encoder_create()` runs and not after. `ac3forge_ac4_encoder_refusal_reason()` takes
+a configuration and returns the first rule `ac3forge_ac4_encoder_create()` refuses it for, as
+`ac4::Encoder::refusal_reason()` does, or an empty string.
+
+### Encoding objects
+
+An objects configuration makes the stream one object substream. Each object is one input channel
+of PCM and one `ac3forge_ac4_object_config_t`: a bed object from a loudspeaker
+(`ac3forge_ac4_bed_channel_t`), a dynamic object, or the LFE, with the metadata in force from the
+first sample as an `ac3forge_ac4_object_properties_t`, the struct the decoder already returns:
+position, gain, priority, size (a width in each axis), zone mask, screen factor, depth exponent,
+distance, divergence and headphone render mode, with the range and step of each in the header.
+`ac3forge_ac4_object_properties_init()` fills it with the defaults; a zero-initialised struct has
+a depth exponent no code holds and the encoder refuses it. The objects are coded as A-JOC (the
+default: a computed downmix of `downmix_signals` signals, or a static 5.0 or 5.1 bed) or as
+direct-coded object substreams (`coding`), and the object substream is experimental, so
+`experimental.objects` has to be set beside the configuration:
+
+```c
+ac3forge_ac4_object_config_t objects[3];
+for (int i = 0; i < 3; ++i) ac3forge_ac4_object_config_init(&objects[i]);  // dynamic, room centre
+objects[0].properties.x = 0.1;
+objects[0].properties.y = 0.2;
+objects[0].properties.gain_db = -3.0;
+objects[1].lfe = 1;
+objects[2].has_bed = 1;
+objects[2].bed = AC3FORGE_AC4_BED_LEFT;
+
+ac3forge_ac4_objects_config_t scene;
+ac3forge_ac4_objects_config_init(&scene);  // A-JOC over a computed downmix
+scene.objects = objects;
+scene.object_count = 3;
+
+ac3forge_ac4_encoder_config_t config;
+ac3forge_ac4_encoder_config_init(&config);
+config.bitrate_kbps = 256;
+config.experimental.objects = 1;
+config.objects = &scene;
+```
+
+`ac3forge_ac4_encoder_encode_objects` takes one PCM array per object and the changes to their
+metadata, in the order they are wanted or any other: an `ac3forge_ac4_object_metadata_update_t`
+moves an object to new properties from an input sample of that call (0 to any later one) over
+`ramp_samples` (0 to 2 047, or 2 048). The decoder reports the update at the output sample its
+input sample comes out at, to within 32 samples.
+
+```c
+ac3forge_ac4_object_metadata_update_t move;
+ac3forge_ac4_object_metadata_update_init(&move);
+move.object = 0;
+move.sample = 5000;
+move.ramp_samples = 1024;
+move.properties.x = 0.75;
+move.properties.gain_db = -12.0;
+status = ac3forge_ac4_encoder_encode_objects(encoder, pcm, 3, samples, &move, 1, &frames, &count);
+```
+
+The limits are the encoder's. There are 1 to `AC3FORGE_AC4_MAX_OBJECTS` (64) objects, at most one
+the LFE and at least one that is not. The object substream is at `frame_rate_index` 13 (the
+2 048-sample frame) and no other; an A-JOC downmix is 1 to `AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS` (11)
+signals, no more than there are full-band objects, or a static bed; direct-coded objects are
+dynamic objects and the LFE, with no bed objects; the codec mode is `AUTO`, `SIMPLE` or `ASPX`.
+An update for an object the configuration lacks, before the input's first sample, or with a
+property off its range fails with `AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT`, and
+`ac3forge_ac4_encoder_refusal_reason()` names the rule a configuration breaks.
+
 Decoding keeps the same shape: `ac3forge_ac4_decoder_decode` takes one `raw_ac4_frame` and writes
 an owned `ac3forge_ac4_decoded_frame_t*`, left `NULL` (with `AC3FORGE_OK`) when the frame has no
 output yet rather than as an error — the same `std::optional`-via-out-parameter convention as the
@@ -390,13 +458,20 @@ and the chosen presentation from the next frame, needing no I-frame.
 `ac3forge_ac4_decoder_presentation_*` reads the last frame's table of contents, and
 `ac3forge_ac4_decoder_metadata_loudness` reads the selected presentation's loudness fields. A
 presentation with object audio hands its objects over through `ac3forge_ac4_decoded_frame_object_*`
-— kind, LFE, speaker, samples, and the `ac3forge_ac4_object_properties_t` in force at the frame's
-first sample (the within-frame update ramps are not exposed; a caller that needs them links the
-C++ API directly).
+— kind, LFE, speaker, samples, the `ac3forge_ac4_object_properties_t` in force at the frame's
+first sample, and the updates within the frame (`ac3forge_ac4_decoded_frame_object_update_count`
+and `_update`: the output sample each takes effect at, the ramp a renderer takes to reach it and
+the properties). The objects come in the decoder's order, not the encoder's: the LFE first, then
+the bed objects, then the dynamic objects, each group in the order the configuration lists it.
 
-`tests/capi/test_capi.cpp` covers the rest — encoder refusal, the null-safety convention on every
-accessor, and `ac3forge_ac4_sync_frame`'s CRC byte — from Catch2. See [AC-4](ac4.md) for the C++
-library these functions mirror.
+`tests/capi/test_capi.cpp` covers the rest. An A-JOC scene and a direct-coded one are encoded
+through the C API and through `ac4::Encoder` itself, and the two streams are the same bytes; the
+C API's decoder reads each object back within what each field's code can hold, with its own tone
+and a metadata update at the sample its input sample comes out. Its other cases hold the limits
+and refusals, the I-frame lists and each experimental flag to the encoder, and the null-safety
+convention on every accessor, `ac3forge_ac4_encoder_encode_objects`'s argument checks and
+`ac3forge_ac4_sync_frame`'s CRC byte. See [AC-4](ac4.md) for the C++ library these functions
+mirror.
 
 ## What is deliberately out of scope
 

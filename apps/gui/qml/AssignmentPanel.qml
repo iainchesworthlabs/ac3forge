@@ -27,7 +27,9 @@ ColumnLayout {
 
     // Sending a source to an object is the entry point to object mode: it
     // fixes E-AC-3 over a 5.1 bed and raises the bit rate to at least
-    // 384 kbps, atomically with the assignment — the handoff's own rule.
+    // 384 kbps, atomically with the assignment — the handoff's own rule. Where
+    // AC-4 is the codec it stays, and writes AC-4 objects, whose rate is the
+    // page's to choose.
     // "objm-pair" is this panel's own synthetic spelling (never a real
     // destToken - EncoderController never sees it) for "fold this
     // two-channel source's pair into one mono object": it writes objm to
@@ -44,7 +46,7 @@ ColumnLayout {
             }
             EncoderController.applyChannelPreset("5.1");
             EncoderController.atmosEnabled = true;
-            if (EncoderController.bitrateKbps < 384) {
+            if (!EncoderController.ac4Objects && EncoderController.bitrateKbps < 384) {
                 EncoderController.bitrateKbps = 384;
             }
         }

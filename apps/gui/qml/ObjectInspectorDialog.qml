@@ -251,7 +251,7 @@ Dialog {
                     Text {
                         objectName: "oiAc4ExportNote"
                         Layout.fillWidth: true
-                        text: qsTr("Exporting AC-4 objects arrives in a later release; this page shows what the decoder reports and exports nothing.")
+                        text: qsTr("This page shows what the decoder reports and exports nothing; export an AC-4 stream's objects from Open stream.")
                         font.pixelSize: Theme.fontSmall
                         color: Theme.neutral700
                         wrapMode: Text.WordWrap

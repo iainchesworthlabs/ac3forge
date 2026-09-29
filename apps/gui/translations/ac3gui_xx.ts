@@ -43,6 +43,10 @@
     <context>
         <name>Ac4Panel</name>
         <message>
+            <source>AC-4 objects take the coding, the dialnorm in whole dB and a raw stream's CRC, as “ac3cli atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.</source>
+            <translation>[ÀC-4 õbjécts tàké thé cõdîng, thé dîàlnõrm în whõlé dB ànd à ràw stréàm's CRC, às “àc3clî àtmõs-éncõdé … cõdéc=àc4” dõés. Théy àré wrîttén àt thé nàtîvé fràmé ràté, 2 048 sàmplés, àt à cõnstànt ràté. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “ac3cli ac4-encode” does.</source>
             <translation>[ÀC-4 éncõdés thé sõûrcé în îts õwn làyõût (mõnõ, stéréõ, 5.0 õr 5.1) tõ à ràw stréàm õr àn MP4 fîlé, às “àc3clî àc4-éncõdé” dõés. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
@@ -89,6 +93,14 @@
         <message>
             <source>DRC profile</source>
             <translation>[DRC prõfîlé ~~~~]</translation>
+        </message>
+        <message>
+            <source>Objects</source>
+            <translation>[Õbjécts ~~~]</translation>
+        </message>
+        <message>
+            <source>Coding</source>
+            <translation>[Cõdîng ~~]</translation>
         </message>
         <message>
             <source>Stereo downmix</source>
@@ -1052,6 +1064,10 @@
             <translation>[%1 õbjécts ~~~~]</translation>
         </message>
         <message>
+            <source>objects</source>
+            <translation>[õbjécts ~~~]</translation>
+        </message>
+        <message>
             <source>programme feed</source>
             <translation>[prõgràmmé fééd ~~~~~~]</translation>
         </message>
@@ -1472,10 +1488,6 @@
             <translation>[stàrtîng põînts, nõt thé mõdél ~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>Codec — fixed by object mode</source>
-            <translation>[Cõdéc — fîxéd by õbjéct mõdé ~~~~~~~~~~~]</translation>
-        </message>
-        <message>
             <source>Codec — follows the channels</source>
             <translation>[Cõdéc — fõllõws thé chànnéls ~~~~~~~~~~~]</translation>
         </message>
@@ -1574,6 +1586,10 @@
         <message>
             <source>Dual mono is not a layout — it is two programmes. Extras, the LFE and objects do not apply, and the assignments below choose which sound is which programme.</source>
             <translation>[Dûàl mõnõ îs nõt à làyõût — ît îs twõ prõgràmmés. Éxtràs, thé LFÉ ànd õbjécts dõ nõt àpply, ànd thé àssîgnménts bélõw chõõsé whîch sõûnd îs whîch prõgràmmé. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>AC-4 objects have no bed: the objects are written as objects, and the positions above are not used.</source>
+            <translation>[ÀC-4 õbjécts hàvé nõ béd: thé õbjécts àré wrîttén às õbjécts, ànd thé põsîtîõns àbõvé àré nõt ûséd. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Object mode fixes the bed at 5.1. The positions above describe the bed, not the objects.</source>
@@ -1856,12 +1872,12 @@
             <translation>[Éncõdé às Dõlby Àtmõs õbjécts ~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>%1 objects from the assignments · E-AC-3 over a 5.1 bed · positions ride as OAMD</source>
-            <translation>[%1 õbjécts frõm thé àssîgnménts · É-ÀC-3 õvér à 5.1 béd · põsîtîõns rîdé às ÕÀMD ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <source>%1 objects from the assignments · AC-4 objects · positions ride as object audio metadata</source>
+            <translation>[%1 õbjécts frõm thé àssîgnménts · ÀC-4 õbjécts · põsîtîõns rîdé às õbjéct àûdîõ métàdàtà ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>Off — the stream is a plain channel bed. Turning this on fixes the codec to E-AC-3 over 5.1.</source>
-            <translation>[Õff — thé stréàm îs à plàîn chànnél béd. Tûrnîng thîs õn fîxés thé cõdéc tõ É-ÀC-3 õvér 5.1. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <source>%1 objects from the assignments · E-AC-3 over a 5.1 bed · positions ride as OAMD</source>
+            <translation>[%1 õbjécts frõm thé àssîgnménts · É-ÀC-3 õvér à 5.1 béd · põsîtîõns rîdé às ÕÀMD ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Objects over a 5.1 bed want 384 kbps or better</source>
@@ -1870,6 +1886,10 @@
         <message>
             <source>Set it</source>
             <translation>[Sét ît ~~]</translation>
+        </message>
+        <message>
+            <source>AC-4 objects are written at 2 048 samples a frame with one position update per object a frame, %1 objects at most, the LFE one of them, to a raw stream or an MP4 file. Encoding also writes %2 beside the stream, the scene the command below reads. The coding and the dialnorm are on the AC-4 tab, the codec on the Format tab.</source>
+            <translation>[ÀC-4 õbjécts àré wrîttén àt 2 048 sàmplés à fràmé wîth õné põsîtîõn ûpdàté pér õbjéct à fràmé, %1 õbjécts àt mõst, thé LFÉ õné õf thém, tõ à ràw stréàm õr àn MP4 fîlé. Éncõdîng àlsõ wrîtés %2 bésîdé thé stréàm, thé scéné thé cõmmànd bélõw réàds. Thé cõdîng ànd thé dîàlnõrm àré õn thé ÀC-4 tàb, thé cõdéc õn thé Fõrmàt tàb. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>SOUNDS AVAILABLE</source>
@@ -2040,6 +2060,10 @@
             <translation>[Chàngé whàt fééds thém → ~~~~~~~~~~]</translation>
         </message>
         <message>
+            <source>%1 of %2 objects · %3 assigned to speakers</source>
+            <translation>[%1 õf %2 õbjécts · %3 àssîgnéd tõ spéàkérs ~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>%1 of %2 objects · %3 pinned to the bed</source>
             <translation>[%1 õf %2 õbjécts · %3 pînnéd tõ thé béd ~~~~~~~~~~~~~~~~]</translation>
         </message>
@@ -2050,6 +2074,10 @@
         <message>
             <source>LFE send — object %1</source>
             <translation>[LFÉ sénd — õbjéct %1 ~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>An AC-4 object stream has no LFE send, and no bed: send a channel to an LFE for the stream's one LFE object.</source>
+            <translation>[Àn ÀC-4 õbjéct stréàm hàs nõ LFÉ sénd, ànd nõ béd: sénd à chànnél tõ àn LFÉ fõr thé stréàm's õné LFÉ õbjéct. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Height changes the metadata, not the bed — a 5.1 ring has no speakers above it. The LFE send is the only route to that channel: no direction points at it, so panning never reaches it.</source>
@@ -2266,6 +2294,14 @@
         <message>
             <source>obj %1 · %2</source>
             <translation>[õbj %1 · %2 ~~~~]</translation>
+        </message>
+        <message>
+            <source>Codec — object mode: E-AC-3 or AC-4</source>
+            <translation>[Cõdéc — õbjéct mõdé: É-ÀC-3 õr ÀC-4 ~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Off — the stream is a plain channel bed. Turning this on writes E-AC-3 over 5.1, or AC-4 objects where AC-4 is the codec.</source>
+            <translation>[Õff — thé stréàm îs à plàîn chànnél béd. Tûrnîng thîs õn wrîtés É-ÀC-3 õvér 5.1, õr ÀC-4 õbjécts whéré ÀC-4 îs thé cõdéc. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Live object channel</source>
@@ -2539,8 +2575,8 @@
             <translation>[Préséntàtîõn %1 décõdéd: %2 béd õbjéct(s), %3 dynàmîc õbjéct(s) ~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>Exporting AC-4 objects arrives in a later release; this page shows what the decoder reports and exports nothing.</source>
-            <translation>[Éxpõrtîng ÀC-4 õbjécts àrrîvés în à làtér réléàsé; thîs pàgé shõws whàt thé décõdér répõrts ànd éxpõrts nõthîng. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <source>This page shows what the decoder reports and exports nothing; export an AC-4 stream's objects from Open stream.</source>
+            <translation>[Thîs pàgé shõws whàt thé décõdér répõrts ànd éxpõrts nõthîng; éxpõrt àn ÀC-4 stréàm's õbjécts frõm Õpén stréàm. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Pause</source>

@@ -8,5 +8,5 @@
 | Encode demo | **Live**<br>required CI<br>AC-3, E-AC-3 and Atmos authoring |
 | JavaScript decoder package | **Source**<br>required CI<br>build from js/; unpublished on npm |
 | C++ WebAssembly modules | **Source**<br>required CI<br>decode and encode |
-| AC-4 WebAssembly module | **Source**<br>required CI<br>decode and encode; no demo page yet |
+| AC-4 WebAssembly module | **Source**<br>required CI<br>decode and encode, objects included; no demo page yet |
 | Forge, Crucible and Hearth apps | **Unavailable**<br>not browser applications |
