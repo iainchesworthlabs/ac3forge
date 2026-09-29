@@ -913,8 +913,9 @@ properties. `ac3cli probe json=1` writes the same fields.
 
 D14, after D10: the P4 first, in `float`, since it has the most CPU and memory of the family's
 parts; then the S3 in `float` and the C6 in fixed point, as the decoder's optimisation lets them
-([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component and the minimal profile build
-without AC-4 today. The parts decode only; the encoder is built for none of them
+([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component builds without AC-4 today; the
+minimal profile carries the decoder for the Cortex-M3 probe (D14a). The parts decode only; the
+encoder is built for none of them
 ([decision 34](#decisions-of-2026-09-25)).
 
 - **What they face.** Every AC-4 codec mode, SIMPLE included, runs QMF analysis and synthesis on
@@ -1717,7 +1718,7 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   - Vector kernels on the host (`f32x4`, `f64x2`) on the split planes, each identical bit for bit
     to the loop it replaces.
 
-  **Built in D14a, in part.** Decision 31's header-only target (`src/arithmetic`) moved `Fixed32`
+  **Built in D14a.** Decision 31's header-only target (`src/arithmetic`) moved `Fixed32`
   and the float scalar functions out of `ac3::forge`'s own tree with no copy; both `ac3::forge` and
   `src/ac4core` link it. `src/ac4core`'s own QMF-domain kernels - the analysis/synthesis pair, the
   FFT and MDCT, A-SPX's high-frequency generator, A-CPL's decorrelators and ducker, A-JOC's
@@ -1753,21 +1754,102 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   the per-scalar `real.hpp`), adding nothing to a `double`-configured build - the encoder's own tests, part of the unmoved whole suite above,
   hold on that path unchanged.
 
-  The QMF bank rewrite (real and imaginary planes, an index-moving delay line), the memory audit
-  beyond the three findings the first part of this phase fixed, the cached bit reader and Huffman
-  table, and the host's vector kernels were not reached, and neither was the probe's AC-4 rows. **Of
-  the exit criteria below: the float build's agreement with the double build holds, and the scorers
-  hold their pins with a float CLI. The double output does not move - decision 25's anticipated cost
-  does not fall due here - so its re-score confirms the same pins rather than requalifying moved
-  ones. The probe's AC-4 rows do not hold**, the probe not reached this phase. D14b (the P4) does
-  not start until the rewrite, the memory work, the bit reader and the vector kernels land too. The
-  options, a recommendation and their cost are in the pull request's report.
+  **The rest of D14a** (the third pull request) does what the first two left: the QMF banks, the
+  memory of the decoder, the bit reader and the Huffman decoder, the host's vector kernels, and the
+  probe's AC-4 rows.
+
+  The QMF banks are each one 64-point complex transform between a rotation that packs pairs of
+  samples into complex values and a butterfly that pairs subband k with 63 - k, which is
+  Pseudocode 65 and 66 reduced algebraically (the derivation is in `src/ac4core/src/dsp/qmf.hpp`),
+  on separate real and imaginary planes, with ten-block delay lines that move an index. Every
+  twiddle factor is a `constexpr` array built by integer angle arithmetic from one generated
+  quarter-wave cosine table, the `Real` nearest its exact value, and the banks share them. They are
+  held to Pseudocodes 65 and 66 as printed, to the 78 dB reconstruction and to a direct 128-point
+  sum, at both scalars. A slot takes 0.77 us in analysis and 0.83 us in synthesis at `double`, from
+  3.15 and 3.3. The vector kernels (`qmf_vector.hpp`) put the seven steps of a slot on `f32x4` and
+  `f64x2`, each tested equal bit for bit to the scalar loop it replaces, at both scalars, and the
+  banks to those loops composed. The SIMD seam moved from `src/forge` to `src/arithmetic` for them
+  (`ac3::arithmetic` now carries the architecture directory): on the x86-64 seam a slot is 2.2 to
+  3.9 times faster at `float` and 0.9 to 1.6 times at `double`. On the Cortex-M3 leg the seam is the
+  generic directory, and the same kernels run 0.2 to 0.3% fewer instructions and add 4.2 KB to the image
+  against the scalar loops, so they are used on every part; a part whose measurement says otherwise
+  can take the scalar kernels, which stay as the reference.
+
+  What the decoder holds: `SubstreamPcm` is 10.9 KB at `double` (9.3 KB at `float`), from 299 KB
+  (177 KB), because A-CPL, A-JCC and A-JOC make their decorrelators when the first frame that
+  applies them arrives (A-JOC's reconstruction alone was 150 KB) and one transform scratch per
+  substream serves every channel's transforms. The |q|^(4/3) table is `constexpr` and in flash,
+  exact to the `double` nearest each power in place of 8 192 calls filling 64 KB of RAM before
+  `main` (`std::pow(m, 4.0 / 3.0)` is up to 6.7e-16 relative off it, since 4.0 / 3.0 is short of
+  4/3 by 7.4e-17). No guarded function-local static remains in `src/ac4core`, `src/ac4dec` or
+  `src/ac4`, and every object the decode path built on the stack to reset or return is built in
+  place, a member, or handed a scratch: `SubstreamPcm::decode`'s frame fell from 15.1 KB to
+  3.4 KB and `decode_aspx`'s from 11.7 KB to 3.4 KB. Seven frames are still over 4 KiB in the
+  `float` build, each a sum of smaller locals: the A-CPL coupling parameters' (12.4 KB),
+  `Decoder::Impl::read`'s (11.6 KB), `decode_into`'s (7.1 KB), `conceal_or`'s (4.6 KB),
+  `acpl_values`' (4.4 KB), `stereo_parameters`' (4.2 KB) and `parse_sf_data`'s (4.2 KB); a decode's
+  stack read by painting is 18.3 to 19.5 KB on the Cortex-M3 and 24.7 to 26.0 KB on x86-64. Two
+  costs are left open: the syntax layer builds its element vectors afresh each frame, so a frame
+  allocates 50 to 191 times in the steady state and 69 to 673 KB in bytes, and the transforms'
+  and windows' tables are built by the first frame from `libm` (their values are the same on the
+  host and on the Cortex-M3 to the bit, as the hashes below show, but nothing but that
+  measurement says they must be).
+
+  The bit reader reads through a 64-bit cache, so a peek of up to 32 bits is a shift, and every
+  Huffman codebook carries a 256-entry table of its codewords of 8 bits or fewer, built at compile
+  time (2 bytes an entry, 43 KB of flash over the 84 codebooks); a longer codeword takes the search
+  by length as before. Every syntax digest is unchanged, and the two transcriptions agree over
+  600 streams.
+
+  The probe (`apps/baremetal/ac4_probe.cpp`) is a third probe beside the AC-3 and E-AC-3 decoder's
+  and the encoders': the AC-4 libraries build in the decode profile (static, without exceptions,
+  the encoder not built), and `run_baremetal_probe.sh --ac4` decodes five committed streams (2.0
+  and 5.1, with and without A-CPL, and DEE's 5.1.4 tones) through `Decoder::decode_by_block`,
+  checking each channel's level against `apps/baremetal/ac4_fixture.hpp`. On the Cortex-M3 leg,
+  in `float`, with GCC 14.2.1 at `-Os`:
+
+  | Fixture | Frames | Instructions a frame | Peak heap | Allocations a frame, steady | Stack |
+  |---|---:|---:|---:|---:|---:|
+  | `ac4_20_music`, 2.0 | 3 | 54,530,000 | 431,805 | 52 | 18,288 |
+  | `ac4_20_acpl`, 2.0 A-CPL | 4 | 57,883,000 | 626,008 | 50 | 19,456 |
+  | `ac4_51_music`, 5.1 | 3 | 117,580,000 | 996,954 | 153 | 19,456 |
+  | `ac4_51_acpl`, 5.1 A-CPL | 4 | 124,489,000 | 1,205,460 | 90 | 19,456 |
+  | `ac4_514_tones`, 5.1.4 | 2 | 205,781,000 | 1,931,680 | 191 | 19,456 |
+
+  The image is 486,192 bytes and nothing is retained after the decoders are destroyed. The PCM of
+  each fixture is bit-identical between the x86-64 host (GCC 16, SSE seam) and the Cortex-M3
+  (soft float, generic seam), so decision 26's claim holds for these five, and the hashes are pinned
+  (`tests/golden/ac4-probe-pcm-hashes.json`). The peak is what D14c meets: 2.0 needs 432 KB where the
+  S3's probe allows 245,000, so 2.0 in internal RAM on the S3 needs the decoder's allocations halved
+  again, or PSRAM.
+
+  **Exit, as measured.** (a) The `float` decode against the `double` one on every committed
+  stream (67 of them, `tools/checks/check_ac4_decode_scalar_snr.py`), the worst channel's SNR in
+  half-overlapped Hann frames of 2 048 samples: below the lowest crossover 109.4 to 136.0 dB (132.1
+  to 136.0 on DEE's), and above the highest 37.5 to 102.1 dB where a stream has A-SPX (47.2 to
+  102.1 on DEE's; the constructed streams, whose payloads are random, and the A-SPX object streams
+  are the low end, 37.5 to 46.8). The high
+  band is where `float` and `double` part, and the cause is open. Accumulating Pseudocode 86's
+  covariances and solving Pseudocode 87 in `double` in a `float` build moved no figure by 0.1 dB on
+  eight of the streams, so the prediction is not it; the worst frames of a channel are far below
+  its aggregate (39 dB in a frame of a channel whose figure is 75), which points at a few decisions
+  or gains that flip or move and not at a general loss of precision. In absolute terms, against
+  the energy of a full-scale sine, the loudest channel's difference is no louder than -149.1 dBFS
+  on DEE's streams, -143.9 on the object streams and -96.8 on the loudest constructed one.
+  MSVC, GCC 16 and Clang 22 agree to 0.1 dB;
+  the floors are pinned in `tests/golden/ac4dec/scalar-agreement.json`, 3 dB under the figures.
+  (b) `score_ac4_decode.py` and `score_ac4_encode.py` hold their pins with a `float` CLI and with a
+  `double` one, on the committed legs and, with `--gold`, on the local gold set. (c) The probe's rows above are pinned in
+  `run_baremetal_probe.sh`, each about a tenth over its figure. (d) The `double` output moves:
+  61 of the 66 streams under `tests/golden` decode with a few samples different in the float32
+  output, by at most 2.3e-10 (about -193 dBFS); the encoder's output is byte-identical on the five
+  encodes checked, so nothing of the encoder's is re-pinned, and both scorers hold at `double`.
 
   **Exit:** on every committed stream, the `float` build's agreement with the `double` build
   stated below and above the crossover and pinned; the scorers at their pins with a `float` CLI;
   the probe's AC-4 rows with peak heap, allocations per frame, stack and the Cortex-M3 leg's
   instruction counts pinned. The `double` output moves in its last bits, and the encoder's with it:
-  both are scored again.
+  both are scored again. Met; the figures are above.
 
   **Verified by:** `ac3tests`; the `float` gate and the scorers in CI; `run_baremetal_probe.sh`.
 - **D14b, the P4.** The component builds the inspector, the core and the decoder in `float`,
