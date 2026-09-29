@@ -38,7 +38,7 @@ layout (`sink_slots`, and `stream.layout`, `render`, `coded` and `silent`), in
 | `finished-20.json` | The two-slot shape's boot play: the WASM page's demo folded to 2.0. |
 
 The first set's payloads come from three runs of the same image. Each run ended when the part panicked in
-the HTTP server's task shortly after a `PUT /layout`, the same fault the base branch shows; see the
-pull request that added them. What the page cannot get from the emulator - objects placed onto a
-height layout, which needs PSRAM for the reconstruction - `rendering.spec.js` derives from these
-by changing the fields such a play changes, and says so.
+the HTTP server's task shortly after a `PUT /layout`: that request overflowed the task's 4,096-byte stack,
+which `Control::kDefaultStackBytes` (6,144) has since fixed. What the page cannot get from the emulator -
+objects placed onto a height layout, which needs PSRAM for the reconstruction - `rendering.spec.js` derives
+from these by changing the fields such a play changes, and says so.
