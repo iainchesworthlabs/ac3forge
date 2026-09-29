@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -54,9 +55,13 @@
 // presentations, each that carries audio with a presentation_id of its own,
 // and one configuration throughout. A configuration 6 presentation has no
 // field for one, so a CMAF track cannot carry a stream that has it
-// (ac4::cmaf_refusal()), where an MP4 can. Objects, which the plan's phase E9
-// adds, are refused, as is every configuration outside the rules this header
-// states;
+// (ac4::cmaf_refusal()), where an MP4 can. With experimental.objects, a
+// substream of objects and their metadata (ObjectsConfig): an A-JOC substream,
+// a downmix in the ASF and A-SPX tools and the parameters that rebuild the
+// objects from it (Part 2 clause 5.7), or direct-coded object substreams in
+// Part 1's elements, with object audio metadata either way (Part 2 clause
+// 6.2.8). Every configuration outside the rules this header states is
+// refused;
 // Encoder::refusal_reason() names the rule a configuration breaks. Each frame
 // comes out as a raw_ac4_frame, which an MP4 sample holds as it is
 // (ac4::build_dac4() describes the track from toc()), and which sync_frame()
@@ -407,6 +412,122 @@ struct EmdfPayload {
     int processing_allowed = 0;
 };
 
+// --- Objects -----------------------------------------------------------------
+//
+// Object audio (Part 2 clause 4.8.3.4): each object's PCM, one input channel
+// each, and what its metadata says of it over time in the terms Part 2 Annex F
+// gives a renderer, which the encoder writes as object audio metadata (clause
+// 6.2.8). The applications convert the scene descriptions they read into
+// these. Behind experimental.objects (planning/ac4.md, "What the encoder
+// writes by default"). src/ac4enc/ERRATA.md records the readings the writer
+// takes: the downmix, the metadata's timing and the md_compat objects need.
+
+// The loudspeaker a bed object plays from: Part 2 Table 66's
+// nonstd_bed_channel_assignment, whose code each value is.
+enum class BedChannel : std::uint8_t {
+    kLeft = 0,
+    kRight = 1,
+    kCentre = 2,
+    kLeftSurround = 4,
+    kRightSurround = 5,
+    kLeftBack = 6,
+    kRightBack = 7,
+    kTopFrontLeft = 8,
+    kTopFrontRight = 9,
+    kTopSideLeft = 10,
+    kTopSideRight = 11,
+    kTopBackLeft = 12,
+    kTopBackRight = 13,
+    kLeftWide = 14,
+    kRightWide = 15,
+};
+
+// An object's metadata is ac4/ac4.hpp's ObjectProperties, the terms
+// ac4::Decoder reports it in. Each value is written to the nearest its code
+// has, and refused outside its range: the gain +15 to -49 dB in steps of 1,
+// or -infinity; the priority 0 to 1 in steps of 1/31; X and Y 0 to 1 in steps
+// of 1/62 and Z -1 to 1 in steps of 1/15; zone_mask 0 to 7; each width 0 to 1
+// in steps of 1/31, one object_width where the three are equal; the screen
+// factor 0, or 1/8 to 1 in steps of 1/8; the depth exponent 0.25, 0.5, 1 or
+// 2; a distance of 1 or more (Table 108's nearest) or infinity; the
+// divergence 0 to 1 (Table 111's nearest); hp_render_mode_obj 0 to 3. A
+// dynamic object sends them all, a bed object and the LFE the activity, gain,
+// priority and add_per_object_md()'s data alone.
+
+struct ObjectConfig {
+    // A bed object, from this loudspeaker; unset for a dynamic object.
+    std::optional<BedChannel> bed{};
+    // The LFE, at most one object's: its bed channel and position are
+    // ignored.
+    bool lfe = false;
+    // What is in force from the first sample.
+    ObjectProperties properties{};
+};
+
+// How the objects are coded.
+enum class ObjectCoding : std::uint8_t {
+    // An A-JOC substream (Part 2 clause 5.7): a downmix coded in a
+    // var_channel_element() or a static 5.X bed, and the matrices that
+    // rebuild the objects from it, estimated against the decoder's own
+    // reconstruction.
+    kAjoc,
+    // Direct-coded object substreams (ac4_substream_info_obj(), clause
+    // 6.2.1.11): the objects coded as channels of Part 1's elements, five,
+    // three, two or one a substream, with the group's OAMD substream.
+    // Dynamic objects and the LFE.
+    kDirect,
+};
+
+// A-JOC's downmix, which Part 2 leaves to the encoder (p. 161).
+enum class AjocDownmix : std::uint8_t {
+    // Downmix signals the encoder computes: the objects in groups by where
+    // they start, in the order of their azimuth, each signal the sum of its
+    // group's objects, sent as a dynamic object at the energy-weighted centre
+    // of its group for core decoding (clause 4.8.3.4.2). Chromium's stream,
+    // the one A-JOC stream DEE wrote that this project has, takes this form.
+    kComputed,
+    // A static bed (b_static_dmx): the objects panned onto L, R, C, Ls and
+    // Rs by X and Y, and with kStatic51 the LFE object onto the LFE.
+    kStatic50,
+    kStatic51,
+};
+
+struct ObjectsConfig {
+    std::vector<ObjectConfig> objects{};
+    ObjectCoding coding = ObjectCoding::kAjoc;
+    AjocDownmix downmix = AjocDownmix::kComputed;
+    // kComputed's downmix signals, 1 to 11 and at most the full-band
+    // objects; unset takes one a 32 kbps of the substream's rate, up to 10.
+    std::optional<int> downmix_signals{};
+    // A-JOC's decorrelators (Part 2 clause 5.7.3.5): each object's share of
+    // what the downmix does not rebuild, sent as a decorrelated signal of its
+    // energy. Chromium's stream uses none.
+    bool decorrelation = false;
+    // The parameter bands A-JOC's matrices take (Table 78: 23, 15, 12, 9, 7,
+    // 5, 3 or 1) and whether they are quantised coarsely; unset, 23 fine from
+    // 64 kbps a downmix signal, 15 fine from 32 and 12 coarse below.
+    std::optional<int> parameter_bands{};
+    std::optional<bool> coarse{};
+    // oamd_common_data(): master_screen_size_ratio_code (0 to 31; unset for
+    // b_default_screen_size_ratio) and b_bed_object_chan_distribute. Sent
+    // where either is set.
+    std::optional<int> screen_size_ratio_code{};
+    bool bed_object_chan_distribute = false;
+};
+
+// A change to an object's metadata, given to encode() with the input it
+// belongs to: from input sample `sample` of that call's channels (0 its
+// first, and any later one) the object moves to `properties` over
+// `ramp_samples` (0 to 2 047, or 2 048). The decoder reports it at the
+// output sample the input sample comes out at, to within 32 samples.
+struct ObjectMetadataUpdate {
+    int substream = 0;  // the object substream's index in EncoderConfig::substreams
+    int object = 0;     // its index in ObjectsConfig::objects
+    std::int64_t sample = 0;
+    int ramp_samples = 0;
+    ObjectProperties properties{};
+};
+
 // --- Substreams and presentations --------------------------------------------
 //
 // A stream of several substreams (Part 2 clause 4.5.1): each substream codes
@@ -443,6 +564,12 @@ struct SubstreamConfig {
     // Payloads its metadata() carries in every frame
     // (b_emdf_payloads_substream).
     std::vector<EmdfPayload> emdf{};
+    // With experimental.objects: objects in place of channels, one input
+    // channel each in ObjectsConfig::objects' order; `channels` is then
+    // ignored. The stream's one substream, at frame_rate_index 13, in
+    // presentations of it alone; codec_mode kAuto, kSimple or kAspx for the
+    // downmix or the objects' elements, and no dialogue enhancement.
+    std::optional<ObjectsConfig> objects{};
 };
 
 // The associated audio's mixing values (Part 2 clause 6.2.2.3, Part 1 clauses
@@ -597,6 +724,9 @@ struct EncoderConfig {
         // enhancement's waveform of L, R and C), in the 3.0 element's form
         // coding_config 0: L and R as a pair and C alone.
         bool three_zero = false;
+        // Object audio (SubstreamConfig::objects), which no reader outside
+        // the project has read from this encoder.
+        bool objects = false;
     };
     Experimental experimental{};
 };
@@ -644,6 +774,13 @@ class AC4ENC_EXPORT Encoder {
     [[nodiscard]] std::expected<std::vector<EncodedFrame>, EncodeError> encode(
         std::span<const std::span<const float>> channels,
         std::span<const std::span<const float>> dialogue);
+    // With an object substream: the objects' PCM and the changes to their
+    // metadata within it or after it, in any order. An update for an object
+    // the substream lacks, before this input's first sample, or with a
+    // property off its range is EncodeError::kInvalidInput.
+    [[nodiscard]] std::expected<std::vector<EncodedFrame>, EncodeError> encode(
+        std::span<const std::span<const float>> channels,
+        std::span<const ObjectMetadataUpdate> updates);
 
     // Ends the stream: pads the input with silence to the end of its last
     // frame and returns the frames the delay still held, so that a decoder's

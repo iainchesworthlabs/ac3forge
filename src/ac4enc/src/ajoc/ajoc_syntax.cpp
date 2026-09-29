@@ -105,6 +105,61 @@ bool ajoc_codable(bool wet, int quant_select, int diff_type, bool first, int val
     return index >= 0 && static_cast<std::size_t>(index) < cb.codes.size();
 }
 
+std::size_t ajoc_set_bits(bool wet, int quant_select, bool dfonly, const AjocSetFields& set) {
+    const int diff_type = dfonly ? 0 : set.diff_type;
+    std::size_t bits = dfonly ? 0 : 1;
+    for (std::size_t i = 0; i < set.values.size(); ++i) {
+        const bool first = i == 0;
+        const CodebookRef cb = codebook(wet, quant_select, type_of(diff_type, first));
+        const int index = diff_type == 0 && first ? set.values[i] : set.values[i] + cb.cb_off;
+        bits += cb.codes[static_cast<std::size_t>(index)].bits;
+    }
+    return bits;
+}
+
+AjocSetFields ajoc_freq_set(bool wet, int quant_select, std::span<const int> q) {
+    const int n = wet ? (quant_select == 1 ? 21 : 41) : (quant_select == 1 ? 51 : 101);
+    const CodebookRef df = codebook(wet, quant_select, HcbType::kDf);
+    AjocSetFields set;
+    set.diff_type = 0;
+    for (std::size_t i = 0; i < q.size(); ++i) {
+        if (i == 0) {
+            set.values.push_back(q[0]);
+            continue;
+        }
+        const int d = q[i] - q[i - 1];
+        int best = 0;
+        std::size_t best_bits = SIZE_MAX;
+        for (const int v : {d, d - n, d + n}) {
+            const int index = v + df.cb_off;
+            if (index < 0 || static_cast<std::size_t>(index) >= df.codes.size()) {
+                continue;
+            }
+            const std::size_t bits = df.codes[static_cast<std::size_t>(index)].bits;
+            if (bits < best_bits) {
+                best = v;
+                best_bits = bits;
+            }
+        }
+        set.values.push_back(best);
+    }
+    return set;
+}
+
+std::optional<AjocSetFields> ajoc_time_set(bool wet, int quant_select, std::span<const int> q,
+                                           std::span<const int> previous) {
+    AjocSetFields set;
+    set.diff_type = 1;
+    for (std::size_t i = 0; i < q.size(); ++i) {
+        const int v = q[i] - previous[i];
+        if (!ajoc_codable(wet, quant_select, 1, i == 0, v)) {
+            return std::nullopt;
+        }
+        set.values.push_back(v);
+    }
+    return set;
+}
+
 void write_ajoc(BitWriter& w, int num_dmx_signals, const AjocFields& fields) {
     const auto num_decorr = static_cast<int>(fields.decorr_enable.size());
     w.write(3, static_cast<std::uint64_t>(num_decorr), "ajoc_num_decorr");
