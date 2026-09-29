@@ -149,3 +149,45 @@ add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
         "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
     COMMENT "Assembling the wasm_encode_demo/atmos/ authoring page")
+
+# ---------------------------------------------------------------------------
+# AC-4 (src/ac4, src/ac4dec, src/ac4enc): one combined decode+encode embind
+# module, unlike the AC-3 decode/encode split above - see ac4_bindings.cpp's
+# own header comment for why one module suits AC-4 here. Guarded on
+# AC3FORGE_BUILD_AC4 (root CMakeLists.txt option(), default ON; the
+# wasm-emscripten preset no longer forces it OFF - CMakePresets.json) so a
+# future minimal-footprint WASM variant that turns AC-4 back off still
+# configures cleanly.
+#
+# No servable demo page is assembled here (unlike wasm_decode_demo/ and
+# wasm_encode_demo/ above): apps/wasm/ac4/ does not exist yet, and a minimal
+# AC-4 demo page is optional polish this task's brief left to a later pass -
+# the compiled ac3forge_ac4.js/.wasm still land in their own output
+# directory below, ready for one for whoever adds it.
+# ---------------------------------------------------------------------------
+
+if(AC3FORGE_BUILD_AC4)
+    add_executable(ac3forge_wasm_ac4 ac4_bindings.cpp)
+    target_link_libraries(ac3forge_wasm_ac4 PRIVATE ac4::ac4 ac4::decoder ac4::encoder ac3::warnings)
+
+    # Same reasoning as ac3forge_wasm_decode's own comment on every flag
+    # below - -fexceptions, MODULARIZE+EXPORT_NAME (a third distinct name so
+    # this module and the two AC-3 ones can all load on the same page
+    # without colliding), a memory ceiling turning exhaustion into an
+    # ordinary error path instead of a dead tab.
+    target_compile_options(ac3forge_wasm_ac4 PRIVATE "-fexceptions")
+    target_link_options(ac3forge_wasm_ac4 PRIVATE
+        "-fexceptions"
+        "--bind"
+        "-sMODULARIZE=1"
+        "-sEXPORT_NAME=createAc3ForgeAc4Module"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sINITIAL_MEMORY=67108864"
+        "-sMAXIMUM_MEMORY=1073741824"
+        "-sENVIRONMENT=web"
+        "-sNO_EXIT_RUNTIME=1")
+
+    set_target_properties(ac3forge_wasm_ac4 PROPERTIES
+        OUTPUT_NAME "ac3forge_ac4"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_ac4_demo")
+endif()

@@ -117,3 +117,152 @@ export function makeFakeModule({ script = [], flushEntries = [], flushed = [], s
 }
 
 export const pcm = (...values) => Float32Array.from(values);
+
+// --- AC-4 (js/src/ac4.ts) ---------------------------------------------------
+//
+// A scripted stand-in for the Embind module apps/wasm/ac4_bindings.cpp
+// builds, so ac4.ts can be tested in Node without an Emscripten build - the
+// same "no codec, just scripted outputs, same method names as the real
+// Embind classes 1:1" approach as makeFakeModule() above, for
+// Ac4Decoder/Ac4Encoder/syncFrame instead of PushDecoder/scanStream.
+
+/** One scripted decodeFrame() outcome - see ac4.ts's RawAc4DecodedFrame. */
+export function ac4Frame({
+  sampleRate = 48000,
+  sequenceCounter = 0,
+  presentation = 0,
+  presentationId = null,
+  samples = 4,
+  channels = [],
+  speakers = channels.map((_, i) => `C${i}`),
+  concealed = null,
+  objects = [],
+} = {}) {
+  return { sampleRate, sequenceCounter, presentation, presentationId, samples, channels, speakers, concealed, objects };
+}
+
+/** One scripted encode()/flush() entry - see ac4.ts's RawAc4EncodedFrame. */
+export function ac4EncodedFrame({ data = new Uint8Array(0), samples = 0, iframe = false } = {}) {
+  return { data, samples, iframe };
+}
+
+/**
+ * Builds a fake AC-4 module. `decodeScript` is decodeFrame()'s sequence of
+ * outcomes (undefined/missing entries return null, the same "nothing to
+ * output" contract ac4_bindings.cpp's real decodeFrame() has); `encodeScript`
+ * is encode()'s sequence of per-call frame arrays (missing entries return
+ * `[]`); `flushScript` is what every flush() call returns; `presentations`,
+ * `refusalReason` and `latencySamples` are read on every call (a real
+ * decoder's own presentations()/refusalReason()/latencySamples() likewise
+ * read current state rather than a per-call script).
+ */
+export function makeFakeAc4Module({
+  decodeScript = [],
+  presentations = [],
+  refusalReason = "",
+  latencySamples = 0,
+  encodeScript = [],
+  flushScript = [],
+  encoderError = "",
+  codecMode = 0,
+  delaySamples = 0,
+  decoderDelaySamples = 0,
+  dac4Bytes = new Uint8Array(0),
+  dac4Refusal = "",
+  syncFrameResult = new Uint8Array(0),
+} = {}) {
+  const log = {
+    decoderConstructed: [],
+    decoded: [],
+    outputsSet: [],
+    presentationsSet: [],
+    decoderReset: 0,
+    decoderDeleted: 0,
+    encoderConstructed: [],
+    encoded: [],
+    encoderDeleted: 0,
+    syncFramed: [],
+  };
+
+  class FakeNativeAc4Decoder {
+    #step = 0;
+    constructor(outputLevelDbfs, drc, downmix, decodingMode, concealment, presentationId, presentationIndex, language, level) {
+      log.decoderConstructed.push({
+        outputLevelDbfs, drc, downmix, decodingMode, concealment, presentationId, presentationIndex, language, level,
+      });
+    }
+    decodeFrame(bytes) {
+      log.decoded.push(Array.from(bytes));
+      const next = decodeScript[this.#step++];
+      return next === undefined ? null : next;
+    }
+    setOutput(...args) {
+      log.outputsSet.push(args);
+    }
+    setPresentation(...args) {
+      log.presentationsSet.push(args);
+    }
+    reset() {
+      log.decoderReset++;
+    }
+    refusalReason() {
+      return refusalReason;
+    }
+    latencySamples() {
+      return latencySamples;
+    }
+    presentations() {
+      return presentations;
+    }
+    delete() {
+      log.decoderDeleted++;
+    }
+  }
+
+  class FakeNativeAc4Encoder {
+    #encodeStep = 0;
+    constructor(channels, sampleRateHz, frameRateIndex, bitrateKbps, rateMode, codecModeArg, iframeInterval, dialnormDb) {
+      log.encoderConstructed.push({
+        channels, sampleRateHz, frameRateIndex, bitrateKbps, rateMode, codecMode: codecModeArg, iframeInterval, dialnormDb,
+      });
+    }
+    encode(channels) {
+      log.encoded.push(channels.map((channel) => Array.from(channel)));
+      return encodeScript[this.#encodeStep++] ?? [];
+    }
+    flush() {
+      return flushScript;
+    }
+    error() {
+      return encoderError;
+    }
+    codecMode() {
+      return codecMode;
+    }
+    delaySamples() {
+      return delaySamples;
+    }
+    decoderDelaySamples() {
+      return decoderDelaySamples;
+    }
+    buildDac4() {
+      return dac4Bytes;
+    }
+    dac4Refusal() {
+      return dac4Refusal;
+    }
+    delete() {
+      log.encoderDeleted++;
+    }
+  }
+
+  const module = {
+    Ac4Decoder: FakeNativeAc4Decoder,
+    Ac4Encoder: FakeNativeAc4Encoder,
+    syncFrame(rawFrame, crc) {
+      log.syncFramed.push({ length: rawFrame.length, crc });
+      return syncFrameResult;
+    },
+  };
+  return { module, log };
+}

@@ -265,8 +265,8 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 |---|---|---|---|---|---|
 | **API** | C++23 `ac3::forge` | 🟢 | High | Essential | Encode / decode / inspect / measure |
 | | Minimum-footprint decoder (`ac3::forge_minimal`) | 🟢 | Medium | Important | Bare-metal / ESP32 profile |
-| | C API (`ac3::forge_c`) | 🟢 | Medium | Important | Stable minimal surface |
-| | Python / Rust / WASM bindings | 🟢 | Medium | Important | WASM decode package not yet on npm |
+| | C API (`ac3::forge_c`) | 🟢 | Medium | Important | Stable minimal surface; AC-4 added (phase I4) |
+| | Python / Rust / WASM bindings | 🟢 | Medium | Important | AC-4 added to the C API, Python, Rust and WASM (phase I4); WASM decode package not yet on npm |
 | **Verify** | Encoder/decoder mirror traces | 🟢 | High | Essential | AC-3 and E-AC-3 |
 | | Research trace export (CSV / JSONL) | 🟢 | Low | Optional | `ac3::verify` |
 | | Conformance / fuzz / quality gates | 🟢 | High | Essential | See [Validation](../verification.md) |

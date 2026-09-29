@@ -2230,10 +2230,68 @@ writes the same bytes as the page.
   a wrapper for it.
 - The configurations D8 stopped compiling the AC-4 libraries now link them.
 
+- Built: the header's new section adds `ac3forge_ac4_decoder_t`/`ac3forge_ac4_encoder_t` behind
+  the existing opaque-handle and `_config_init()` conventions, two new status ranges
+  (`AC3FORGE_ERROR_AC4_DECODE_*` at 60–64, `AC3FORGE_ERROR_AC4_ENCODE_*` at 80–81) behind a new
+  `AC3FORGE_HAS_AC4` compile-time guard (`ac3forge_c/version.h`, `#cmakedefine`'d from
+  `AC3FORGE_BUILD_AC4`); `src/capi/CMakeLists.txt`'s
+  `forge_c_objects`/`forge_c_static`/`forge_c_shared` targets now embed `ac4::decoder_static`/
+  `ac4::encoder_static` the same way they already embedded `ac3::forge_static`, gated on the same
+  option, so a package built with both the `capi` and `ac4` features/options carries the AC-4 C API
+  surface with no further wiring.
+- The Rust safe crate's `ac3forge::ac4` module covers `Decoder`/`Encoder`, every config and
+  decoded-frame type, `Toc` and `sync_frame` — the same "core config" cut the C API itself took.
+  It carries no Cargo feature of its own, unconditionally available once `-sys`'s bindgen output
+  has the symbols, the same footing `atmos` already stood on; every `AC3FORGE_ERROR_AC4_*` status
+  gets its own `Error` variant rather than folding into `Other`.
+- Python's `ac4` submodule binds `ac4::Decoder`/`ac4::Encoder` pybind11-direct, the same subset the
+  C API and Rust took; every AC-4 failure raises a plain `ValueError` (`ac4::describe()` of the
+  underlying error), not the `Ac3EncodeError`/`Ac3DecodeError` hierarchy the rest of the package
+  uses — a deliberate difference from the AC-3/E-AC-3 bindings, recorded rather than silently
+  inconsistent.
+- WebAssembly's `ac3forge_wasm_ac4` (`apps/wasm/ac4_bindings.cpp`) is one combined decode-and-encode
+  Embind module, unlike the AC-3 side's decode/encode split — AC-4's decoder and encoder share one
+  table-of-contents/framing library regardless, so a second executable had less to gain here.
+  `js/src/ac4.ts` is a plain ES module wrapping `Ac4Decoder`/`Ac4Encoder` directly, not a Worker
+  wrapper like `decoder-worker.ts`'s realtime pipeline: nothing about that protocol's shape (built
+  for one decode-only class with a channels-vs-fold output choice) fits a module that covers both
+  decode and encode with a wider decoder surface. `apps/wasm/ac4/` has no demo page — optional
+  polish this phase left to a later pass — so the compiled module lands in its own output directory
+  with nothing to serve it yet; `js/src/ac4.ts` compiles into `js/dist/ac4.js` but is not yet added
+  to `package.json`'s `exports` map.
+- Android's CMake wrapper (`apps/android/app/src/main/cpp/CMakeLists.txt`) no longer forces
+  `AC3FORGE_BUILD_AC4` off: the libraries depend on nothing outside this tree and cross-compile
+  cleanly under the NDK, unlike the third-party dependencies (MbedTLS, httplib, FLAC, Opus, mdns)
+  that keep Hearth off this build, so D8's "not linked, don't compile" reasoning had nothing left
+  to justify leaving AC-4 off here too. Nothing in the app's own `target_link_libraries` links
+  `ac4::` yet — giving the Shield app an AC-4 feature is later
+  application work, not this phase's. `tools/checks/test_ac4_build_configurations.py` was rewritten
+  for this shape: Android, WebAssembly and the Python wheel all build AC-4 now; WebAssembly and the
+  wheel also link `ac4::` targets, Android does not yet; the ESP32 minimal-decoder/minimal-encoder
+  presets are untouched, still off (D14's territory).
+- Every binding covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
+  5.1, 5.0.4, 5.1.4) — the encoder's own scope as of this phase, matching the C++ encoder itself;
+  each decoder's object accessors read whatever object audio a stream actually carries regardless,
+  so a stream encoded elsewhere with objects decodes through every one of these bindings even
+  though this project's own encoder cannot yet produce one to round-trip end to end (A-JOC and
+  direct-coded objects are E9, still open).
+
 **Exit:** each binding's tests decode a committed stream and encode one that the decoder reads back;
-the package checks pass.
+the package checks pass. Met: the C API's `tests/capi/test_capi.cpp` adds 8 Catch2 test cases (600
+assertions, MSVC-built and passing); Rust's `tests/ac4_roundtrip.rs` adds 6 integration tests,
+passing alongside the crate's full existing suite with no regressions, `clippy -D warnings` clean;
+Python's `test_ac4_roundtrip.py` adds 6 round-trip tests, passing alongside the full 115-test
+`python/tests/` suite in an isolated venv, `ruff`-clean and `stubtest`-clean against the hand-written
+`ac4` stubs; WebAssembly's `js/tests/ac4.test.js` passes under Node against a fake Embind module —
+the C++ Embind side itself is unverified locally, since Emscripten is not installed in this
+environment, and stays CI-only until `build-wasm` confirms it.
 
 **Verified by:** the binding tests on their CI legs.
+
+For a later phase: E9's objects will need matching encoder-side C API/binding work once that phase
+lands, since every binding here follows the C++ encoder's own scope; and the WebAssembly module
+needs a real Emscripten build, in CI or otherwise, to confirm the C++ Embind side beyond what
+`js/tests/ac4.test.js`'s fake-module harness can reach.
 
 #### I5: immersive and object content in the applications
 

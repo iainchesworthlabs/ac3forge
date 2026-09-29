@@ -17,7 +17,9 @@ This release adds:
 - Crucible on Windows and Linux, with macOS code built and tested in CI;
 - per-channel quality gates and continued performance, quality, and memory histories;
 - AC-4 container support, wider WebAssembly encoding, microphone capture, and expanded Rust
-  bindings.
+  bindings;
+- AC-4 decode and encode bindings for the C API, Python, Rust and WebAssembly, and Android
+  building the AC-4 libraries.
 
 The sections below contain the complete change list and fixes.
 
@@ -1683,6 +1685,39 @@ The sections below contain the complete change list and fixes.
   committed programme fixtures, with MediaInfo's trace, DEE's MP4 and what `ac3cli` and FFmpeg
   make of it. `ac3cli`'s decoder refuses the 23 streams that use transient pre-noise processing,
   whose correction reaches further back than it buffers.
+
+**AC-4 bindings: the C API, Python, Rust and WebAssembly**
+
+- **The C API gains `ac3forge_ac4_*` decoder and encoder functions** (phase I4 of
+  `planning/ac4.md`), mirroring `ac4::Decoder`/`ac4::Encoder` behind the header's existing
+  opaque-handle and `_config_init()` conventions, and embedding the AC-4 libraries into
+  `ac3::forge_c` the way it already embeds `ac3::forge`. Two new status ranges,
+  `AC3FORGE_ERROR_AC4_DECODE_*` (60–64) and `AC3FORGE_ERROR_AC4_ENCODE_*` (80–81), behind the
+  existing `AC3FORGE_HAS_AC4` compile-time guard. 8 new Catch2 test cases, 600 assertions.
+- **The Rust crate wraps all of it as `ac3forge::ac4`** — `Decoder`/`Encoder`, every config and
+  decoded-frame type, `Toc` and `sync_frame` — on the same unconditional footing `ac3forge::atmos`
+  already had: no Cargo feature, since the C library has no matching build option to mirror. Every
+  `AC3FORGE_ERROR_AC4_*` status gets its own `Error` variant rather than folding into `Other`. 6
+  new integration tests in `tests/ac4_roundtrip.rs`; `cargo clippy -D warnings` clean.
+- **Python gains an `ac4` submodule**, present-or-absent like `containers`/`meta`/`signing`:
+  pybind11-direct on the same two C++ headers, covering the decoder and encoder's core surface. 6
+  new round-trip tests (`test_ac4_roundtrip.py`); `stubtest` holds the hand-written `ac4` stubs in
+  `__init__.pyi` to the compiled module; `ruff`-clean.
+- **WebAssembly gains a third Embind module**, `ac3forge_wasm_ac4` (`apps/wasm/ac4_bindings.cpp`),
+  combining decode and encode in one executable unlike the AC-3 side's split, plus a typed
+  `js/src/ac4.ts` wrapper — not a Worker wrapper like the realtime decode pipeline, since AC-4 has
+  no existing realtime precedent to extend and covers a wider decoder surface (presentations,
+  concealment, object audio) than that pipeline's shape fits. No demo page is assembled for it yet.
+  `js/tests/ac4.test.js` passes under Node against a fake Embind module; the module itself builds
+  in `build-wasm`'s existing CI job alongside the decode and encode modules.
+- **Android's CMake wrapper no longer forces `AC3FORGE_BUILD_AC4` off.** The AC-4 libraries depend
+  on nothing outside this tree and cross-compile cleanly under the NDK; nothing in the Shield app's
+  own `target_link_libraries` links them yet — giving the app an AC-4 feature is later application
+  work, not this phase's.
+- Every binding covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
+  5.1, 5.0.4, 5.1.4) — the encoder's own scope as of this phase; A-JOC and direct-coded objects are
+  a separate, in-flight phase. Each decoder's object accessors read whatever object audio a stream
+  actually carries regardless of what this project's own encoder can produce.
 
 ### Changed
 

@@ -52,6 +52,13 @@ typedef enum ac3forge_status {
     AC3FORGE_ERROR_INVALID_ARGUMENT = 1,
     AC3FORGE_ERROR_OUT_OF_MEMORY = 2,
     AC3FORGE_ERROR_INTERNAL = 3, /* an exception crossed the C boundary; see docs/library/c-api.md */
+    /* A call this library was not built to answer - a codec this build left
+     * out (AC3FORGE_BUILD_AC4 off), not a bad argument or a bad stream. Every
+     * fallible entry point of that codec's section returns it, including
+     * *_create() (the created-object out-parameter is left NULL); a function
+     * that returns something else directly returns a NULL pointer, 0, or a
+     * zero-initialized struct as its type allows. */
+    AC3FORGE_ERROR_UNSUPPORTED = 4,
 
     /* ac3::FrameError — FrameEncoder::encode_frame(), AtmosEncoder::encode_frame() */
     AC3FORGE_ERROR_ENCODE_INVALID_BITRATE = 10,
@@ -79,7 +86,18 @@ typedef enum ac3forge_status {
     AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID = 52,
     AC3FORGE_ERROR_SCAN_RESERVED_VALUE = 53,
     AC3FORGE_ERROR_SCAN_TRUNCATED = 54,
-    AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE = 55
+    AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE = 55,
+
+    /* ac4::DecodeError - ac4::Decoder::parse()/decode() */
+    AC3FORGE_ERROR_AC4_DECODE_TRUNCATED = 60,
+    AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC = 61,
+    AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM = 62,
+    AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED = 63,
+    AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME = 64,
+
+    /* ac4::EncodeError - ac4::Encoder::create()/encode()/flush() */
+    AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG = 80,
+    AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT = 81
 } ac3forge_status_t;
 
 /* A short, static, human-readable description of `status` — e.g. for a log
@@ -1399,6 +1417,529 @@ AC3FORGEC_EXPORT int ac3forge_qc_verdict_pass(const ac3forge_qc_verdict_t* verdi
 AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
     const ac3forge_qc_preset_t* preset, int has_integrated_lkfs, double integrated_lkfs,
     int has_true_peak_dbtp, double true_peak_dbtp);
+
+/* --------------------------------------------------------------------- *
+ * AC-4 (ac4::Decoder / ac4::Encoder) - ETSI TS 103 190-1 V1.4.1 and
+ * TS 103 190-2 V1.3.1
+ * --------------------------------------------------------------------- *
+ *
+ * Always declared, whether or not this library was configured with
+ * AC3FORGE_BUILD_AC4 (the default is on): the codebase selects a variant by
+ * CMake, never by preprocessor conditional, so a caller does not need an
+ * #ifdef of its own either. Built without it, every function below still
+ * links; *_create() returns NULL, and everything else fallible returns
+ * AC3FORGE_ERROR_UNSUPPORTED (or NULL/0, for a pointer or count).
+ * ac3forge_c/version.h's AC3FORGE_HAS_AC4 (a plain #define, #cmakedefine'd
+ * from that option) still tells a caller which behaviour to expect. Mirrors
+ * ac4::Decoder (src/ac4dec/include/ac4dec/decoder.hpp) and ac4::Encoder
+ * (src/ac4enc/include/ac4enc/encoder.hpp), plus the table-of-contents helpers
+ * of src/ac4/include/ac4/ac4.hpp a container muxer needs beside the encoder.
+ * AC-4's frame length varies by frame rate (Part 1 Tables 83/84), so unlike
+ * the AC-3/E-AC-3 sections above there is no AC3FORGE_SAMPLES_PER_FRAME
+ * equivalent - every accessor that needs a length reports it.
+ *
+ * The encoder writes channel-based and channel-based-immersive content
+ * (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4): the same scope ac4::Encoder itself
+ * has as of this header (planning/ac4.md phase E9, A-JOC and direct-coded
+ * objects, was still open when this was written). The decoder's object
+ * accessors below read whatever object audio a stream carries regardless. */
+
+/* --- shared enums -------------------------------------------------------- */
+
+/* Mirrors ac4::Speaker (Part 1 clause D.1, Part 2 clause A.3). */
+typedef enum ac3forge_ac4_speaker {
+    AC3FORGE_AC4_SPEAKER_LEFT = 0,
+    AC3FORGE_AC4_SPEAKER_RIGHT = 1,
+    AC3FORGE_AC4_SPEAKER_CENTRE = 2,
+    AC3FORGE_AC4_SPEAKER_LFE = 3,
+    AC3FORGE_AC4_SPEAKER_LEFT_SURROUND = 4,
+    AC3FORGE_AC4_SPEAKER_RIGHT_SURROUND = 5,
+    AC3FORGE_AC4_SPEAKER_LEFT_BACK = 6,
+    AC3FORGE_AC4_SPEAKER_RIGHT_BACK = 7,
+    AC3FORGE_AC4_SPEAKER_LEFT_WIDE = 8,
+    AC3FORGE_AC4_SPEAKER_RIGHT_WIDE = 9,
+    AC3FORGE_AC4_SPEAKER_TOP_FRONT_LEFT = 10,
+    AC3FORGE_AC4_SPEAKER_TOP_FRONT_RIGHT = 11,
+    AC3FORGE_AC4_SPEAKER_TOP_BACK_LEFT = 12,
+    AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT = 13,
+    AC3FORGE_AC4_SPEAKER_TOP_SIDE_LEFT = 14,
+    AC3FORGE_AC4_SPEAKER_TOP_SIDE_RIGHT = 15,
+    AC3FORGE_AC4_SPEAKER_LFE2 = 16
+} ac3forge_ac4_speaker_t;
+
+/* Mirrors ac4::ObjectKind (ac4/ac4.hpp): a bed object, a dynamic object, or an
+ * intermediate spatial format object (the decoder renders an ISF's own
+ * objects into channels rather than listing them - see
+ * ac3forge_ac4_decoded_frame_object_kind()'s own comment). */
+typedef enum ac3forge_ac4_object_kind {
+    AC3FORGE_AC4_OBJECT_BED = 0,
+    AC3FORGE_AC4_OBJECT_DYN = 1,
+    AC3FORGE_AC4_OBJECT_ISF = 2
+} ac3forge_ac4_object_kind_t;
+
+/* --------------------------------------------------------------------- *
+ * AC-4 decoder (ac4::Decoder)
+ * --------------------------------------------------------------------- */
+
+/* Mirrors ac4::DownmixTarget (Part 1 clause 6.2.17, Part 2 clause 5.10.2): the
+ * layout ac3forge_ac4_decoder_decode() renders to. */
+typedef enum ac3forge_ac4_downmix_target {
+    AC3FORGE_AC4_DOWNMIX_AS_CODED = 0,
+    AC3FORGE_AC4_DOWNMIX_5X = 1,
+    AC3FORGE_AC4_DOWNMIX_STEREO = 2,
+    AC3FORGE_AC4_DOWNMIX_LORO = 3,
+    AC3FORGE_AC4_DOWNMIX_LTRT = 4,
+    AC3FORGE_AC4_DOWNMIX_MONO = 5,
+    AC3FORGE_AC4_DOWNMIX_7X4 = 6,
+    AC3FORGE_AC4_DOWNMIX_7X2 = 7,
+    AC3FORGE_AC4_DOWNMIX_7X0 = 8,
+    AC3FORGE_AC4_DOWNMIX_5X4 = 9,
+    AC3FORGE_AC4_DOWNMIX_5X2 = 10
+} ac3forge_ac4_downmix_target_t;
+
+/* Mirrors ac4::DrcMode (Part 1 Table 161). */
+typedef enum ac3forge_ac4_drc_mode {
+    AC3FORGE_AC4_DRC_OFF = 0,
+    AC3FORGE_AC4_DRC_DEFAULT = 1,
+    AC3FORGE_AC4_DRC_HOME_THEATRE = 2,
+    AC3FORGE_AC4_DRC_FLAT_PANEL_TV = 3,
+    AC3FORGE_AC4_DRC_PORTABLE_SPEAKERS = 4,
+    AC3FORGE_AC4_DRC_PORTABLE_HEADPHONES = 5
+} ac3forge_ac4_drc_mode_t;
+
+/* Mirrors ac4::DecodingMode (Part 2 clause 4.7): full reconstruction, or the
+ * immersive element's core (5.X.2/5.X.0) for a low-complexity platform. */
+typedef enum ac3forge_ac4_decoding_mode {
+    AC3FORGE_AC4_DECODING_FULL = 0,
+    AC3FORGE_AC4_DECODING_CORE = 1
+} ac3forge_ac4_decoding_mode_t;
+
+/* Mirrors ac4::ConcealmentPolicy: what ac3forge_ac4_decoder_decode() does with
+ * a frame that will not decode, once at least one frame has. */
+typedef enum ac3forge_ac4_concealment_policy {
+    AC3FORGE_AC4_CONCEALMENT_NONE = 0,
+    AC3FORGE_AC4_CONCEALMENT_REPEAT_FADE = 1,
+    AC3FORGE_AC4_CONCEALMENT_MUTE = 2
+} ac3forge_ac4_concealment_policy_t;
+
+/* Mirrors ac4::ConcealmentAction: what a concealed frame actually got. */
+typedef enum ac3forge_ac4_concealment_action {
+    AC3FORGE_AC4_CONCEALMENT_ACTION_REPEAT_FADE = 0,
+    AC3FORGE_AC4_CONCEALMENT_ACTION_MUTE = 1
+} ac3forge_ac4_concealment_action_t;
+
+/* Mirrors ac4::AssociatedType (Part 1 Table 92), a refinement of
+ * ac3forge_ac4_presentation_choice_t::associated. */
+typedef enum ac3forge_ac4_associated_type {
+    AC3FORGE_AC4_ASSOCIATED_ANY = 0,
+    AC3FORGE_AC4_ASSOCIATED_AUDIO_DESCRIPTION = 1,
+    AC3FORGE_AC4_ASSOCIATED_AUDIO_DESCRIPTION_SUBTITLES = 2,
+    AC3FORGE_AC4_ASSOCIATED_SPOKEN_SUBTITLES = 3,
+    AC3FORGE_AC4_ASSOCIATED_EMERGENCY_INFORMATION = 4
+} ac3forge_ac4_associated_type_t;
+
+/* Mirrors ac4::OutputConfig. `has_output_level_dbfs` stands in for
+ * std::optional<double>, same convention as elsewhere in this header. Call
+ * ac3forge_ac4_output_config_init() first so every field this struct doesn't
+ * set explicitly carries the same default OutputConfig{} does. */
+typedef struct ac3forge_ac4_output_config {
+    int has_output_level_dbfs;
+    double output_level_dbfs;
+    ac3forge_ac4_drc_mode_t drc;
+    int headphones;
+    double dialogue_enhancement_db;
+    ac3forge_ac4_downmix_target_t downmix;
+    int mix_lfe;
+    double dialogue_gain_db;
+    double associated_gain_db;
+} ac3forge_ac4_output_config_t;
+
+AC3FORGEC_EXPORT void ac3forge_ac4_output_config_init(ac3forge_ac4_output_config_t* config);
+
+/* Mirrors ac4::PresentationChoice. `language`, when non-NULL and non-empty, is
+ * an IETF BCP 47 tag read during the call this struct is passed to and not
+ * retained - it need not outlive that call. has_associated/has_index/
+ * has_presentation_id stand in for std::optional<T>. Call
+ * ac3forge_ac4_presentation_choice_init() first for the same reason as every
+ * other _init() function in this header. */
+typedef struct ac3forge_ac4_presentation_choice {
+    int has_presentation_id;
+    int presentation_id;
+    int has_index;
+    size_t index;
+    const char* language; /* NULL or empty: no language preference */
+    int has_associated;
+    int associated; /* Part 1 Table 91 content_classifier */
+    ac3forge_ac4_associated_type_t associated_type;
+    int headphones;
+} ac3forge_ac4_presentation_choice_t;
+
+AC3FORGEC_EXPORT void ac3forge_ac4_presentation_choice_init(
+    ac3forge_ac4_presentation_choice_t* choice);
+
+/* Mirrors ac4::DecoderConfig, less its syntax trace (an internal diagnostic
+ * hook with no C surface). */
+typedef struct ac3forge_ac4_decoder_config {
+    ac3forge_ac4_output_config_t output;
+    ac3forge_ac4_concealment_policy_t concealment;
+    ac3forge_ac4_presentation_choice_t presentation;
+    int level; /* md_compat ceiling, Part 2 Table 55; default 3 */
+    ac3forge_ac4_decoding_mode_t decoding;
+} ac3forge_ac4_decoder_config_t;
+
+AC3FORGEC_EXPORT void ac3forge_ac4_decoder_config_init(ac3forge_ac4_decoder_config_t* config);
+
+typedef struct ac3forge_ac4_decoder ac3forge_ac4_decoder_t;
+
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_decoder_create(
+    const ac3forge_ac4_decoder_config_t* config, ac3forge_ac4_decoder_t** out_decoder);
+AC3FORGEC_EXPORT void ac3forge_ac4_decoder_destroy(ac3forge_ac4_decoder_t* decoder);
+
+/* The output processing, from the next frame; and the presentation choice,
+ * also from the next frame (a newly chosen presentation needs no I-frame -
+ * see ac4::Decoder::set_presentation()'s own comment). */
+AC3FORGEC_EXPORT void ac3forge_ac4_decoder_set_output(ac3forge_ac4_decoder_t* decoder,
+                                                     const ac3forge_ac4_output_config_t* output);
+AC3FORGEC_EXPORT void ac3forge_ac4_decoder_set_presentation(
+    ac3forge_ac4_decoder_t* decoder, const ac3forge_ac4_presentation_choice_t* choice);
+
+/* Forgets everything carried between frames - ac4::Decoder::reset(). */
+AC3FORGEC_EXPORT void ac3forge_ac4_decoder_reset(ac3forge_ac4_decoder_t* decoder);
+
+/* The decoder's own added delay at the output rate, for the stream as last
+ * decoded; 0 before a frame has decoded - ac4::Decoder::latency_samples(). */
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_latency_samples(const ac3forge_ac4_decoder_t* decoder);
+
+/* Why the last decode() call failed, returned nothing, or returned a
+ * concealed frame - library-owned storage valid for the process lifetime;
+ * empty ("") after a decode() that decoded its frame normally. */
+AC3FORGEC_EXPORT const char* ac3forge_ac4_decoder_refusal_reason(
+    const ac3forge_ac4_decoder_t* decoder);
+
+typedef struct ac3forge_ac4_decoded_frame ac3forge_ac4_decoded_frame_t;
+
+/* `frame` must be exactly one raw_ac4_frame (an ac4::SyncFrame's
+ * raw_ac4_frame, or an MP4 sample). On success, *out_frame receives the
+ * decode result, which the caller must destroy; std::nullopt-via-out-
+ * parameter convention as elsewhere in this header: AC3FORGE_OK with
+ * *out_frame left NULL means this frame has no output yet (its substreams
+ * need configuration no I-frame has sent), not an error - see
+ * ac4::Decoder::decode()'s own comment. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_decoder_decode(
+    ac3forge_ac4_decoder_t* decoder, const uint8_t* frame, size_t frame_size,
+    ac3forge_ac4_decoded_frame_t** out_frame);
+
+AC3FORGEC_EXPORT int ac3forge_ac4_decoded_frame_sample_rate_hz(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoded_frame_sequence_counter(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT size_t ac3forge_ac4_decoded_frame_presentation_index(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoded_frame_has_presentation_id(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoded_frame_presentation_id(
+    const ac3forge_ac4_decoded_frame_t* frame);
+
+/* Planar PCM at full scale 1.0, samples_per_channel() long - AC-4's frame
+ * length varies by frame rate, so unlike the AC-3/E-AC-3 sections above this
+ * is not a fixed constant. Speakers are parallel to the channels, in the
+ * decoder's own order (not a fixed table): channel_index in
+ * [0, channel_count()). Empty (channel_count() 0) for a presentation of
+ * objects alone with no intermediate spatial format. */
+AC3FORGEC_EXPORT size_t ac3forge_ac4_decoded_frame_channel_count(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT size_t ac3forge_ac4_decoded_frame_samples_per_channel(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT const float* ac3forge_ac4_decoded_frame_channel_samples(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t channel_index);
+AC3FORGEC_EXPORT ac3forge_ac4_speaker_t ac3forge_ac4_decoded_frame_speaker(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t channel_index);
+
+/* Set only on a frame the decoder's ConcealmentPolicy made in place of one
+ * that did not decode; has_concealed() 0 means the frame decoded normally. */
+AC3FORGEC_EXPORT int ac3forge_ac4_decoded_frame_has_concealed(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT ac3forge_ac4_concealment_action_t ac3forge_ac4_decoded_frame_concealment_action(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_decoded_frame_concealment_error(
+    const ac3forge_ac4_decoded_frame_t* frame);
+
+/* --- objects (Part 2 clause 4.8.3.4; ac4::DecodedFrame::objects) --------- *
+ *
+ * Exposed at the "current properties plus audio" cost ac3forge_eac3's own
+ * OAMD/JOC accessors already pay (ac3forge_decoded_substream_dynamic_object(),
+ * above): each object's kind, its bed loudspeaker where it has one, its
+ * audio, and the ObjectProperties in force at the frame's first sample.
+ * ObjectProperties::updates - the ramps within the frame a renderer would
+ * interpolate through - are NOT exposed: a renderer that needs sub-frame
+ * ramps is expected to call the C++ API directly. An intermediate spatial
+ * format's own objects are rendered into the channels above, not listed
+ * here (ac4::Decoder's header, "Objects"). */
+
+AC3FORGEC_EXPORT size_t ac3forge_ac4_decoded_frame_object_count(
+    const ac3forge_ac4_decoded_frame_t* frame);
+AC3FORGEC_EXPORT ac3forge_ac4_object_kind_t ac3forge_ac4_decoded_frame_object_kind(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoded_frame_object_lfe(const ac3forge_ac4_decoded_frame_t* frame,
+                                                          size_t object_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoded_frame_object_has_speaker(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
+AC3FORGEC_EXPORT ac3forge_ac4_speaker_t ac3forge_ac4_decoded_frame_object_speaker(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
+/* `samples_per_channel()` long, at full scale 1.0; the returned pointer is
+ * valid until `frame` is destroyed. */
+AC3FORGEC_EXPORT const float* ac3forge_ac4_decoded_frame_object_samples(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
+
+/* Mirrors ac4::ObjectProperties' scalar fields (Part 2 Annex F.2 to F.10),
+ * what is in force at the frame's first sample - see this section's own
+ * comment on why the within-frame updates are not exposed. */
+typedef struct ac3forge_ac4_object_properties {
+    int active;
+    double gain_db;
+    double priority;
+    double x, y, z;
+    int zone_mask;
+    int enable_elevation;
+    int snap;
+    double width_x, width_y, width_z;
+    double screen_factor;
+    double depth_exponent;
+    int has_distance;
+    double distance;
+    double divergence;
+    int trim_disabled;
+    int has_headphone_render_mode;
+    int headphone_render_mode;
+    int head_track_disabled;
+} ac3forge_ac4_object_properties_t;
+
+AC3FORGEC_EXPORT ac3forge_ac4_object_properties_t ac3forge_ac4_decoded_frame_object_properties(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
+
+AC3FORGEC_EXPORT void ac3forge_ac4_decoded_frame_destroy(ac3forge_ac4_decoded_frame_t* frame);
+
+/* --- presentations (ac4::PresentationInfo, ac4::Decoder::presentations()) - *
+ * the last frame read's table of contents, in its own order; empty before
+ * one. `name`/`language` accessors return library-owned storage valid until
+ * the next ac3forge_ac4_decoder_decode() call or the decoder's destruction -
+ * the same lifetime as every other "valid until X" pointer in this header,
+ * specialised to what actually invalidates it here. */
+
+AC3FORGEC_EXPORT size_t ac3forge_ac4_decoder_presentation_count(
+    const ac3forge_ac4_decoder_t* decoder);
+AC3FORGEC_EXPORT size_t ac3forge_ac4_decoder_presentation_toc_index(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_has_id(const ac3forge_ac4_decoder_t* decoder,
+                                                             size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_id(const ac3forge_ac4_decoder_t* decoder,
+                                                          size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_has_md_compat(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_md_compat(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_enabled(const ac3forge_ac4_decoder_t* decoder,
+                                                              size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_alternative(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_pre_virtualized(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+/* Empty ("") until an alternative presentation's name has arrived whole
+ * (Part 2 clause 6.3.3.1.4) or for a presentation that is not one. */
+AC3FORGEC_EXPORT const char* ac3forge_ac4_decoder_presentation_name(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+/* Its dialogue substream's language, else its main or music-and-effects
+ * substream's; empty ("") for none. */
+AC3FORGEC_EXPORT const char* ac3forge_ac4_decoder_presentation_language(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_decodable(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+AC3FORGEC_EXPORT int ac3forge_ac4_decoder_presentation_selectable(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+/* The channels decode() puts out as coded for this presentation - its main or
+ * music-and-effects substream's; parallel to a decoded frame's own
+ * channel/speaker accessors above, but this list does not change frame to
+ * frame the way a concealed or object-only frame's does. */
+AC3FORGEC_EXPORT size_t ac3forge_ac4_decoder_presentation_speaker_count(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index);
+AC3FORGEC_EXPORT ac3forge_ac4_speaker_t ac3forge_ac4_decoder_presentation_speaker(
+    const ac3forge_ac4_decoder_t* decoder, size_t presentation_index, size_t speaker_index);
+
+/* --- loudness metadata (ac4::LoudnessInfo, of the presentation decode()
+ * selected) - the fields ac3forge_evaluate_qc_gate() above already takes, so
+ * an AC-4 stream's own sent loudness can feed the same QC gate a
+ * ac3forge_loudness_meter_t measurement does. has_* 0 leaves the paired field
+ * at 0.0, same std::optional convention as elsewhere in this header. */
+typedef struct ac3forge_ac4_loudness_info {
+    int has_dialnorm_dbfs;
+    double dialnorm_dbfs;
+    int has_integrated_lkfs;
+    double integrated_lkfs;
+    int has_true_peak_dbtp;
+    double true_peak_dbtp;
+    int has_loudness_range_lu;
+    double loudness_range_lu;
+} ac3forge_ac4_loudness_info_t;
+
+/* Of the presentation the last decode() call selected; every has_* is 0
+ * before any frame has sent loudness metadata. */
+AC3FORGEC_EXPORT ac3forge_ac4_loudness_info_t ac3forge_ac4_decoder_metadata_loudness(
+    const ac3forge_ac4_decoder_t* decoder);
+
+/* --------------------------------------------------------------------- *
+ * AC-4 encoder (ac4::Encoder)
+ * --------------------------------------------------------------------- */
+
+/* Mirrors ac4::CodecMode (Part 1 clause 4.3.6.1, Part 2 clause 6.3.5.1). */
+typedef enum ac3forge_ac4_codec_mode {
+    AC3FORGE_AC4_CODEC_AUTO = 0,
+    AC3FORGE_AC4_CODEC_SIMPLE = 1,
+    AC3FORGE_AC4_CODEC_ASPX = 2,
+    AC3FORGE_AC4_CODEC_ASPX_ACPL1 = 3,
+    AC3FORGE_AC4_CODEC_ASPX_ACPL2 = 4,
+    AC3FORGE_AC4_CODEC_ASPX_ACPL3 = 5,
+    AC3FORGE_AC4_CODEC_SCPL = 6,
+    AC3FORGE_AC4_CODEC_ASPX_SCPL = 7,
+    AC3FORGE_AC4_CODEC_ASPX_AJCC = 8
+} ac3forge_ac4_codec_mode_t;
+
+/* Mirrors ac4::RateMode (Part 1 Table 81's wait_frames). */
+typedef enum ac3forge_ac4_rate_mode {
+    AC3FORGE_AC4_RATE_CONSTANT = 0,
+    AC3FORGE_AC4_RATE_AVERAGE = 1,
+    AC3FORGE_AC4_RATE_VARIABLE = 2
+} ac3forge_ac4_rate_mode_t;
+
+/* Mirrors ac4::EncoderConfig's core surface: one substream, one presentation,
+ * channel-based or channel-based-immersive input (see this section's own
+ * header comment). Not mirrored here, as ac3forge_eac3_frame_config_t's own
+ * comment leaves its broader metadata surface for the same reason: the
+ * loudness/DRC/downmix/dialogue-enhancement metadata groups,
+ * multi-substream/multi-presentation configurations (EncoderConfig::
+ * substreams/presentations), EMDF payloads and the Experimental flags. A
+ * config left at these defaults writes DEE's own shape for the channel count
+ * given (planning/ac4.md, "What the encoder writes by default"). Call
+ * ac3forge_ac4_encoder_config_init() first so every field this struct
+ * doesn't set explicitly carries the same default EncoderConfig{} does. */
+typedef struct ac3forge_ac4_encoder_config {
+    int channels; /* 1, 2, 5, 6, 9 or 10 - see EncoderConfig::channels */
+    int sample_rate_hz; /* 48000, or 44100 (frame_rate_index 13 only) */
+    int frame_rate_index; /* Part 1 Table 83/84; default 13, the 2048-sample frame */
+    int bitrate_kbps;
+    ac3forge_ac4_rate_mode_t rate_mode;
+    ac3forge_ac4_codec_mode_t codec_mode;
+    int iframe_interval;
+    double dialnorm_db;
+} ac3forge_ac4_encoder_config_t;
+
+AC3FORGEC_EXPORT void ac3forge_ac4_encoder_config_init(ac3forge_ac4_encoder_config_t* config);
+
+typedef struct ac3forge_ac4_encoder ac3forge_ac4_encoder_t;
+
+/* Fails with AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG for a configuration
+ * outside what the encoder writes, or whose rate cannot hold its least
+ * frame - ac4::Encoder::create(). */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_create(
+    const ac3forge_ac4_encoder_config_t* config, ac3forge_ac4_encoder_t** out_encoder);
+AC3FORGEC_EXPORT void ac3forge_ac4_encoder_destroy(ac3forge_ac4_encoder_t* encoder);
+
+/* The codec mode the stream is actually coded in - what AC3FORGE_AC4_CODEC_AUTO
+ * resolved to; never AUTO. */
+AC3FORGEC_EXPORT ac3forge_ac4_codec_mode_t ac3forge_ac4_encoder_codec_mode(
+    const ac3forge_ac4_encoder_t* encoder);
+/* Samples of silence the encoder puts before the input, at the input's rate -
+ * ac4::Encoder::delay_samples(). */
+AC3FORGEC_EXPORT int ac3forge_ac4_encoder_delay_samples(const ac3forge_ac4_encoder_t* encoder);
+/* The delay ac3forge_ac4_decoder_t adds on top, at the input's rate -
+ * ac4::Encoder::decoder_delay_samples(). */
+AC3FORGEC_EXPORT int ac3forge_ac4_encoder_decoder_delay_samples(
+    const ac3forge_ac4_encoder_t* encoder);
+
+/* One coded frame (ac4::EncodedFrame): what an MP4 sample holds as it is, and
+ * what ac3forge_ac4_sync_frame() wraps for a raw .ac4 file or MPEG-2 TS. */
+typedef struct ac3forge_ac4_encoded_frame ac3forge_ac4_encoded_frame_t;
+
+AC3FORGEC_EXPORT const uint8_t* ac3forge_ac4_encoded_frame_data(
+    const ac3forge_ac4_encoded_frame_t* frame);
+AC3FORGEC_EXPORT size_t ac3forge_ac4_encoded_frame_size(const ac3forge_ac4_encoded_frame_t* frame);
+/* PCM samples per channel this frame decodes to, at the input's rate. */
+AC3FORGEC_EXPORT int ac3forge_ac4_encoded_frame_samples(const ac3forge_ac4_encoded_frame_t* frame);
+AC3FORGEC_EXPORT int ac3forge_ac4_encoded_frame_iframe(const ac3forge_ac4_encoded_frame_t* frame);
+AC3FORGEC_EXPORT void ac3forge_ac4_encoded_frame_destroy(ac3forge_ac4_encoded_frame_t* frame);
+/* Same array-plus-count convention as ac3forge_decoded_substream_array_destroy()
+ * above: destroys every non-NULL element in [0, count) and always frees the
+ * array itself. */
+AC3FORGEC_EXPORT void ac3forge_ac4_encoded_frame_array_destroy(
+    ac3forge_ac4_encoded_frame_t** frames, size_t count);
+
+/* channels: `channel_count` pointers (must equal config.channels), each to
+ * exactly `samples_per_channel` planar samples nominally in [-1, 1), in
+ * ac4::Decoder's own channel order for that count. Any samples_per_channel
+ * works, unlike encode_frame() elsewhere in this header, since the encoder
+ * buffers input to its own frame length internally - see ac4::Encoder::
+ * encode()'s own comment. On success, *out_frames and *out_count receive the
+ * frames this input completed (zero when the encoder's delay is still
+ * filling); the caller must destroy the array with
+ * ac3forge_ac4_encoded_frame_array_destroy(). */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_encode(
+    ac3forge_ac4_encoder_t* encoder, const float* const* channels, size_t channel_count,
+    size_t samples_per_channel, ac3forge_ac4_encoded_frame_t*** out_frames, size_t* out_count);
+
+/* Ends the stream: pads to the end of the last frame and returns the frames
+ * the delay still held, so a decoder's output covers every input sample. The
+ * encoder takes no input after this - ac4::Encoder::flush(). */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_flush(
+    ac3forge_ac4_encoder_t* encoder, ac3forge_ac4_encoded_frame_t*** out_frames, size_t* out_count);
+
+/* --- the table of contents, for the dac4 box (ac4::Toc) ------------------ *
+ *
+ * An owned copy of the stream's table of contents as it stands after the
+ * frames encoded so far - ac4::Encoder::toc(). Everything below reads it
+ * rather than raw bytes, matching ac4::build_dac4() and neighbours' own
+ * "read the already-parsed Toc" design (ac4/ac4.hpp's carriage comment). */
+typedef struct ac3forge_ac4_toc ac3forge_ac4_toc_t;
+
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_toc(const ac3forge_ac4_encoder_t* encoder,
+                                                           ac3forge_ac4_toc_t** out_toc);
+AC3FORGEC_EXPORT void ac3forge_ac4_toc_destroy(ac3forge_ac4_toc_t* toc);
+
+/* The 'dac4' box payload (ac4_dsi_v1, Annex E.6, box header excluded) an ISO-
+ * BMFF 'ac-4' sample entry carries - ac4::build_dac4(). Empty
+ * (ac3forge_bytes_size() 0) where ac3forge_ac4_dac4_refusal() names what the
+ * table of contents holds that this cannot describe whole. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_build_dac4(const ac3forge_ac4_toc_t* toc,
+                                                           ac3forge_bytes_t** out_box);
+/* Why ac3forge_ac4_build_dac4() wrote nothing - library-owned storage valid
+ * for the process lifetime; empty ("") where it describes every presentation
+ * whole - ac4::dac4_refusal(). */
+AC3FORGEC_EXPORT const char* ac3forge_ac4_dac4_refusal(const ac3forge_ac4_toc_t* toc);
+
+/* TS 103 190-2 Table E.1: the media time scale an ISOBMFF track of the stream
+ * counts in, and each sample's duration in it - ac4::media_timing(). Returns 0
+ * (out-parameters untouched) for a frame rate Table 83/84 does not define, 1
+ * otherwise, same has-value convention as
+ * ac3forge_scanned_stream_uniform_access_unit_samples() above. */
+AC3FORGEC_EXPORT int ac3forge_ac4_media_timing(const ac3forge_ac4_toc_t* toc,
+                                              uint32_t* out_timescale, uint32_t* out_sample_delta);
+/* Samples per AC-4 frame at the stream's own sample rate - Table 84;
+ * nullopt/0 for the 1000/1001-family frame rates, whose length alternates
+ * from frame to frame (ac3forge_ac4_media_timing() above gives the track a
+ * time scale in which they have one) - ac4::samples_per_frame(). Same
+ * has-value convention as ac3forge_ac4_media_timing(). */
+AC3FORGEC_EXPORT int ac3forge_ac4_samples_per_frame(const ac3forge_ac4_toc_t* toc,
+                                                    uint32_t* out_samples);
+
+/* --- sync-frame wrapping (ac4::sync_frame) -------------------------------- *
+ *
+ * Part 2 Annex G.3.1's ac4_syncframe(): the sync word 0xAC40, or 0xAC41 and a
+ * trailing crc_word (Annex G.4.2) when `crc` is set, then frame_size and
+ * `raw_frame` - what a raw .ac4 file or MPEG-2 TS carries, as opposed to an
+ * MP4 sample (ac3forge_ac4_encoded_frame_data(), which is the raw frame
+ * alone). */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_sync_frame(const uint8_t* raw_frame,
+                                                           size_t raw_frame_size, int crc,
+                                                           ac3forge_bytes_t** out_bytes);
+
 
 #ifdef __cplusplus
 } /* extern "C" */

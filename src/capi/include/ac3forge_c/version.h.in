@@ -16,3 +16,9 @@
  * `#if AC3FORGE_C_VERSION >= 1002003` instead of a three-part comparison. */
 #define AC3FORGE_C_VERSION \
     (AC3FORGE_C_VERSION_MAJOR * 1000000 + AC3FORGE_C_VERSION_MINOR * 1000 + AC3FORGE_C_VERSION_PATCH)
+
+/* Set when this build's C API carries the ac3forge_ac4_* surface (AC3FORGE_BUILD_AC4
+ * was ON when this library configured, the default) - #ifdef this around any of your
+ * own code that calls an ac3forge_ac4_* function, so it compiles against a library
+ * built either way. ac3forge.h itself wraps that whole section in it. */
+#cmakedefine AC3FORGE_HAS_AC4

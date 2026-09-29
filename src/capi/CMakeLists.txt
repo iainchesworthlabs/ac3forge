@@ -60,6 +60,25 @@ target_sources(forge_c_objects
         src/qc.cpp
         src/scan.cpp)
 
+# AC-4 (decision 21, planning/ac4.md phase I4): embedded the same way
+# ac3::forge_static is - see the target_link_libraries() calls below - so a
+# caller loading this one library gets AC-4 too. ac3forge.h's AC-4 section is
+# declared either way (that header's own comment: this codebase selects a
+# variant by CMake, never by preprocessor conditional - see
+# tools/checks/check_platform_macros.ps1), so the choice below is which
+# translation unit answers those 68 functions, not whether they exist:
+# ac4.cpp/ac4_encoder.cpp with AC3FORGE_BUILD_AC4 on, ac4_absent.cpp (which
+# names no ac4:: C++ type, so it needs neither the AC-4 headers nor the
+# static libraries linked below) with it off.
+if(AC3FORGE_BUILD_AC4)
+    target_sources(forge_c_objects
+        PRIVATE
+            src/ac4.cpp
+            src/ac4_encoder.cpp)
+else()
+    target_sources(forge_c_objects PRIVATE src/ac4_absent.cpp)
+endif()
+
 target_include_directories(forge_c_objects
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -95,6 +114,25 @@ target_link_libraries(forge_c_objects
 target_link_libraries(forge_c_static PRIVATE ac3::forge_static)
 target_link_libraries(forge_c_shared PRIVATE ac3::forge_static)
 
+# Same treatment for AC-4's static libraries (decision 21): forge_c_objects
+# takes only their usage requirements (compile-only), and each real library
+# links the static AC-4 archives itself, PRIVATE, for the same "an OBJECT
+# library has no link step to hide a PRIVATE dependency behind" reason as
+# ac3::forge_static above. ac4::decoder_static PUBLIC-links ac4::ac4_static
+# and PRIVATE-links ac4::core itself (src/ac4dec/CMakeLists.txt), and CMake
+# carries a static library's dependencies to its own consumers as
+# link-only, so naming the decoder and encoder archives here is enough to
+# pull in the inspector and the DSP core transitively - apps/cli/CMakeLists.txt
+# relies on the same transitive closure for ac4::decoder/ac4::encoder.
+if(AC3FORGE_BUILD_AC4)
+    target_link_libraries(forge_c_objects
+        PRIVATE
+            "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac4::decoder_static>>"
+            "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac4::encoder_static>>")
+    target_link_libraries(forge_c_static PRIVATE ac4::decoder_static ac4::encoder_static)
+    target_link_libraries(forge_c_shared PRIVATE ac4::decoder_static ac4::encoder_static)
+endif()
+
 set_target_properties(forge_c_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden
@@ -126,6 +164,8 @@ string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" AC3FORGEC_VERSION_MATCH "${
 set(AC3FORGEC_VERSION_MAJOR "${CMAKE_MATCH_1}")
 set(AC3FORGEC_VERSION_MINOR "${CMAKE_MATCH_2}")
 set(AC3FORGEC_VERSION_PATCH "${CMAKE_MATCH_3}")
+# Feeds version.h.in's #cmakedefine AC3FORGE_HAS_AC4 - see that file's comment.
+set(AC3FORGE_HAS_AC4 ${AC3FORGE_BUILD_AC4})
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/include/ac3forge_c/version.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3forge_c/version.h"

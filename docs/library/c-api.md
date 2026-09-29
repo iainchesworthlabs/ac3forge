@@ -325,6 +325,79 @@ application layer, which composes the same three the way a caller of this API wo
   itself unavailable leaves that half of the verdict at its not-passing default rather than a
   false pass, matching `ac3::meta::QcVerdict`'s own convention.
 
+## AC-4
+
+`ac3forge_ac4_decoder_t` and `ac3forge_ac4_encoder_t` mirror `ac4::Decoder`/`ac4::Encoder`
+(ETSI TS 103 190-1 V1.4.1, TS 103 190-2 V1.3.1) behind the same opaque-handle, `_config_init()`
+and out-parameter conventions as the rest of this header — see
+[`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/ac3forge_c/ac3forge.h)'s
+own AC-4 section for the full surface. Present only when this library was configured with
+`AC3FORGE_BUILD_AC4` on (the default) — `ac3forge_c/version.h`'s `AC3FORGE_HAS_AC4`,
+`#cmakedefine`'d from that option, guards the whole section, so a caller can `#ifdef` around a
+library built either way instead of failing to link. Two new status code ranges:
+`AC3FORGE_ERROR_AC4_DECODE_*` at 60–64 (`TRUNCATED`, `INVALID_TOC`, `INVALID_STREAM`,
+`UNSUPPORTED`, `MISSING_IFRAME`) and `AC3FORGE_ERROR_AC4_ENCODE_*` at 80–81 (`INVALID_CONFIG`,
+`INVALID_INPUT`).
+
+The encoder covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
+5.1, 5.0.4, 5.1.4) — its own scope as of this section; A-JOC and direct-coded objects are a
+separate, in-flight phase
+([`ac3forge#1082`](https://github.com/iainchesworthlabs/ac3forge/pull/1082)). The decoder's
+object accessors read whatever object audio a stream actually carries regardless, so a stream
+encoded elsewhere with objects decodes here; this project's own encoder cannot yet produce one to
+round-trip end to end.
+
+```c
+ac3forge_ac4_encoder_config_t config;
+ac3forge_ac4_encoder_config_init(&config);  // channels 2, 48000 Hz, frame_rate_index 13, 192 kbps
+config.channels = 6;                         // 5.1: L R C LFE Ls Rs
+config.bitrate_kbps = 256;
+
+ac3forge_ac4_encoder_t* encoder = NULL;
+ac3forge_status_t status = ac3forge_ac4_encoder_create(&config, &encoder);
+```
+
+`ac3forge_ac4_encoder_encode` takes `config.channels` planar spans of any equal length — the
+encoder buffers input to its own frame length internally, unlike
+`ac3forge_encoder_encode_frame`'s fixed `AC3FORGE_SAMPLES_PER_FRAME` — and writes the frames that
+input completed into an owned array:
+
+```c
+const float* channels[6] = {l, r, c, lfe, ls, rs};
+ac3forge_ac4_encoded_frame_t** frames = NULL;
+size_t count = 0;
+status = ac3forge_ac4_encoder_encode(encoder, channels, 6, samples_per_channel, &frames, &count);
+/* ac3forge_ac4_encoded_frame_data(frames[i]) / ..._size(frames[i]): one raw AC-4 frame each */
+ac3forge_ac4_encoded_frame_array_destroy(frames, count);
+```
+
+`ac3forge_ac4_encoder_flush` pads to the end of the last frame and returns whatever the delay
+still held. `ac3forge_ac4_encoder_toc` reads back an owned `ac3forge_ac4_toc_t` snapshot for a
+container muxer: `ac3forge_ac4_build_dac4` writes the `dac4` box payload (empty, with a reason
+from `ac3forge_ac4_dac4_refusal`, where the table of contents holds something it cannot describe
+whole), and `ac3forge_ac4_media_timing`/`ac3forge_ac4_samples_per_frame` give an ISOBMFF track's
+timing. `ac3forge_ac4_sync_frame` wraps a raw frame with Annex G.3.1's sync word and an optional
+CRC for a raw `.ac4` file or MPEG-2 TS.
+
+Decoding keeps the same shape: `ac3forge_ac4_decoder_decode` takes one `raw_ac4_frame` and writes
+an owned `ac3forge_ac4_decoded_frame_t*`, left `NULL` (with `AC3FORGE_OK`) when the frame has no
+output yet rather than as an error — the same `std::optional`-via-out-parameter convention as the
+AC-3/E-AC-3 decoders above. Planar PCM comes back through
+`ac3forge_ac4_decoded_frame_channel_samples`/`_speaker`; AC-4's frame length varies by frame rate,
+so `ac3forge_ac4_decoded_frame_samples_per_channel()` is a real per-frame accessor rather than a
+fixed constant. `ac3forge_ac4_decoder_set_output`/`_set_presentation` change the output processing
+and the chosen presentation from the next frame, needing no I-frame.
+`ac3forge_ac4_decoder_presentation_*` reads the last frame's table of contents, and
+`ac3forge_ac4_decoder_metadata_loudness` reads the selected presentation's loudness fields. A
+presentation with object audio hands its objects over through `ac3forge_ac4_decoded_frame_object_*`
+— kind, LFE, speaker, samples, and the `ac3forge_ac4_object_properties_t` in force at the frame's
+first sample (the within-frame update ramps are not exposed; a caller that needs them links the
+C++ API directly).
+
+`tests/capi/test_capi.cpp` covers the rest — encoder refusal, the null-safety convention on every
+accessor, and `ac3forge_ac4_sync_frame`'s CRC byte — from Catch2. See [AC-4](ac4.md) for the C++
+library these functions mirror.
+
 ## What is deliberately out of scope
 
 The self-check/mirror tracing (`ac3::verify::FrameTrace`) is a C++-oriented encoder-implementer
