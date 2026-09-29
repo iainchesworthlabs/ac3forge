@@ -17,7 +17,7 @@ separate from the application in `apps/crucible/`.
 | Capture and monitor playback | Confirmed on real hardware — a Realtek endpoint, live microphone capture through encode to playback |
 | Windows Spatial Sound (`ac3cli spatial`) | Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions. E-AC-3 objects only |
 | IEC 61937 passthrough output | Confirmed on real hardware — an Onkyo TX-RZ740 over HDMI locks AC-3 (Dolby Digital 5.1), E-AC-3 (Dolby Digital Plus 5.1) and signed Atmos (JOC objects, decoded to 5.0.4) through `PassthroughSink` itself |
-| AC-4 | Decoded and encoded by `ac3cli`, `ac3gui` and Hearth. WASAPI has no IEC 61937 subformat for AC-4, so `PassthroughSink` refuses it and `ac3cli play` decodes it to PCM. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
+| AC-4 | Decoded and encoded by `ac3cli` and `ac3gui`, decoded by Hearth; `ac3gui`'s live capture takes AC-3 and E-AC-3 only. WASAPI has no IEC 61937 subformat for AC-4, so `PassthroughSink` refuses it and `ac3cli play` decodes it to PCM. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
 | Passthrough capture | **Never confirmed** — no HDMI or S/PDIF capture card has been available |
 | Crucible's null sink | A kernel driver, **test-signed only**; a default-settings machine refuses to load it — see [the driver page](windows-driver-acx.md) |
 | ARM64 | One CI leg, still marked experimental and run in the nightly run; it builds the CLI only, and its packages have shipped since v0.10.0-beta.1 |

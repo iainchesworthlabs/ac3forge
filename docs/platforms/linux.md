@@ -17,7 +17,7 @@ is separate from the application in `apps/crucible/`.
 | Audio backends | ALSA or PipeWire, selected at configure time. Crucible requires PipeWire |
 | Bitstream to a real receiver | Confirmed on one machine, a Raspberry Pi 4B: over ALSA on 2026-08-20, and over PipeWire on 2026-09-05, the receiver's own front panel read both times |
 | Other Linux hardware | Untried. Treat the Pi as two confirmed configurations on one box, not as Linux generally |
-| AC-4 | Decoded and encoded by `ac3cli`, `ac3gui` and Hearth. ALSA carries AC-4 bursts (IEC 61937-14), tested against ALSA's null device; PipeWire has no AC-4 codec, and no receiver is known to accept AC-4 — see [AC-4](#ac-4) |
+| AC-4 | Decoded and encoded by `ac3cli` and `ac3gui`, decoded by Hearth. ALSA carries AC-4 bursts (IEC 61937-14), tested against ALSA's null device; PipeWire has no AC-4 codec, and no receiver is known to accept AC-4 — see [AC-4](#ac-4) |
 | Packaging | TGZ, DEB and RPM, plus an x86_64 AppImage — see [Packaging](#packaging). v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
 
 The table below separates x86_64 from aarch64 and records where the evidence comes from. The

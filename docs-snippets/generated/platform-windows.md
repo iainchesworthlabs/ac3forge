@@ -11,7 +11,7 @@
 | Hearth desktop player | **Next release**<br>confirmed on hardware<br>Qt/QML window with six pages, built and run; ZIP and installer | **Unavailable** |
 | Live capture and PCM monitor | **Source**<br>confirmed on hardware<br>WASAPI | **Source**<br>experimental CI<br>compiled with the CLI |
 | IEC 61937 output | **Source**<br>confirmed on hardware<br>AC-3, E-AC-3 and signed Atmos | **Source**<br>experimental CI<br>no receiver run |
-| AC-4 decode and encode | **Next release**<br>required CI<br>ac3cli, ac3gui and Hearth; decoded AC-4 plays through the PCM monitor | **Next release**<br>experimental CI<br>ac3cli only |
+| AC-4 decode and encode | **Next release**<br>required CI<br>ac3cli and ac3gui decode and encode, Hearth decodes; decoded AC-4 plays through the PCM monitor | **Next release**<br>experimental CI<br>ac3cli only |
 | AC-4 IEC 61937 output | **Unavailable**<br>WASAPI has no AC-4 subformat | **Unavailable**<br>WASAPI has no AC-4 subformat |
 | Per-application capture | **Source**<br>confirmed on hardware<br>Windows process loopback | **Source**<br>experimental CI<br>compiled; runtime untested |
 | Atmos spatial rendering | **Source**<br>confirmed on hardware<br>Windows Sonic accepted the stream | **Source**<br>experimental CI<br>compiled; runtime untested |
