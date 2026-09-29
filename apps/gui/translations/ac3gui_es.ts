@@ -3953,7 +3953,7 @@
         <translation>sonoridad declarada %1 LKFS (información adicional de sonoridad)</translation>
     </message>
     <message>
-        <location filename="../qml/QcDialog.qml" line="277"/>
+        <location filename="../qml/QcDialog.qml" line="307"/>
         <source></source>
         <translation></translation>
     </message>

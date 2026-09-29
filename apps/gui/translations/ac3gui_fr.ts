@@ -3953,7 +3953,7 @@
         <translation>sonie déclarée %1 LKFS (informations de sonie complémentaires)</translation>
     </message>
     <message>
-        <location filename="../qml/QcDialog.qml" line="277"/>
+        <location filename="../qml/QcDialog.qml" line="307"/>
         <source></source>
         <translation></translation>
     </message>

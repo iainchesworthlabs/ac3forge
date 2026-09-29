@@ -3953,7 +3953,7 @@
         <translation>עוצמה נשמעת מוצהרת %1 LKFS (מידע נוסף על עוצמה נשמעת)</translation>
     </message>
     <message>
-        <location filename="../qml/QcDialog.qml" line="277"/>
+        <location filename="../qml/QcDialog.qml" line="307"/>
         <source></source>
         <translation></translation>
     </message>

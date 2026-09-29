@@ -3953,7 +3953,7 @@
         <translation>דערקלערטע הילכיקייט %1 LKFS (ווײַטערדיקע הילכיקייט־אינפֿאָרמאַציע)</translation>
     </message>
     <message>
-        <location filename="../qml/QcDialog.qml" line="277"/>
+        <location filename="../qml/QcDialog.qml" line="307"/>
         <source></source>
         <translation></translation>
     </message>

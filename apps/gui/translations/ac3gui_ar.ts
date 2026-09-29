@@ -3953,7 +3953,7 @@
         <translation>الجهارة المعلنة %1 LKFS (معلومات جهارة إضافية)</translation>
     </message>
     <message>
-        <location filename="../qml/QcDialog.qml" line="277"/>
+        <location filename="../qml/QcDialog.qml" line="307"/>
         <source></source>
         <translation></translation>
     </message>
