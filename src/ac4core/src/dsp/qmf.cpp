@@ -122,5 +122,12 @@ void QmfSynthesis<Real>::process(std::span<const Complex> in, std::span<Real> pc
 
 template class QmfAnalysis<Real>;
 template class QmfSynthesis<Real>;
+#if AC4CORE_ALSO_DOUBLE
+// The encoder's own QMF-domain code (src/ac4enc/src/acpl, src/ac4enc/src/aspx)
+// calls these at double regardless of the decoder's scalar (see this target's
+// CMakeLists.txt, AC4CORE_ALSO_DOUBLE).
+template class QmfAnalysis<double>;
+template class QmfSynthesis<double>;
+#endif
 
 }  // namespace ac4::detail::dsp

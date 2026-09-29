@@ -146,5 +146,11 @@ void Fft<Real>::run(std::span<Complex> data, bool inverse) {
 }
 
 template class Fft<Real>;
+#if AC4CORE_ALSO_DOUBLE
+// ac4core's own tests (tests/ac4core/test_ac4core_dsp.cpp) exercise Fft at
+// double directly, alongside Real (see this target's CMakeLists.txt,
+// AC4CORE_ALSO_DOUBLE); Mdct<double>'s own Fft member needs it too.
+template class Fft<double>;
+#endif
 
 }  // namespace ac4::detail::dsp

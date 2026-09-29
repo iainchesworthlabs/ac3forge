@@ -75,6 +75,29 @@ if(AC3FORGE_DECODE_SCALAR STREQUAL "float")
 else()
     set(_ac4core_scalar_dir "double")
 endif()
+
+# AC4CORE_ALSO_DOUBLE: the encoder (src/ac4enc) calls straight into a handful
+# of these same kernels (Mdct, QmfAnalysis, QmfSynthesis, Resampler,
+# ajoc::Reconstruction, aspx::generate_high_band) always at double - decision
+# 34 (planning/ac4.md), the encoder never runs on an ESP32 and has no float
+# or fixed-point tier of its own, so it does not follow AC3FORGE_DECODE_SCALAR.
+# ac3::forge avoids this by compiling its encoder's and decoder's DSP
+# separately (AC3FORGE_ENCODE_SCALAR beside AC3FORGE_DECODE_SCALAR,
+# src/forge/CMakeLists.txt); ac4core is one static library both ac4dec and
+# ac4enc link (this file's own header comment), so when Real is not already
+# double, each of those kernels' .cpp files also explicitly instantiates
+# <double> - guarded by this macro, not a second CMake scalar option, since
+# AC-4's encoder scalar is always double, never a choice - so ac4dec's chosen
+# Real and ac4enc's fixed double both link from the one archive. When Real is
+# double this adds nothing: a build configured that way (still the default)
+# is unchanged, one instantiation as it always was.
+if(_ac4core_scalar_dir STREQUAL "double")
+    set(_ac4core_also_double 0)
+else()
+    set(_ac4core_also_double 1)
+endif()
+target_compile_definitions(ac4core PRIVATE "AC4CORE_ALSO_DOUBLE=${_ac4core_also_double}")
+
 # PUBLIC, not PRIVATE: ac4core's own PUBLIC headers (aspx/hf_generator.hpp,
 # acpl/acpl.hpp, ajcc/ajcc.hpp, ajoc/ajoc.hpp, dsp/qmf.hpp, dsp/mdct.hpp,
 # dsp/fft.hpp, dsp/resampler.hpp, dsp/synthesis.hpp) #include
