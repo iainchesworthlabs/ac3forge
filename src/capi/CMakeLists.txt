@@ -66,7 +66,7 @@ target_sources(forge_c_objects
 # declared either way (that header's own comment: this codebase selects a
 # variant by CMake, never by preprocessor conditional - see
 # tools/checks/check_platform_macros.ps1), so the choice below is which
-# translation unit answers those 68 functions, not whether they exist:
+# translation unit answers those 76 functions, not whether they exist:
 # ac4.cpp/ac4_encoder.cpp with AC3FORGE_BUILD_AC4 on, ac4_absent.cpp (which
 # names no ac4:: C++ type, so it needs neither the AC-4 headers nor the
 # static libraries linked below) with it off.

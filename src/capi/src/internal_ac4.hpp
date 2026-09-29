@@ -106,6 +106,35 @@ static_assert(static_cast<int>(ac4::RateMode::kConstant) == AC3FORGE_AC4_RATE_CO
 static_assert(static_cast<int>(ac4::RateMode::kAverage) == AC3FORGE_AC4_RATE_AVERAGE);
 static_assert(static_cast<int>(ac4::RateMode::kVariable) == AC3FORGE_AC4_RATE_VARIABLE);
 
+static_assert(static_cast<int>(ac4::BedChannel::kLeft) == AC3FORGE_AC4_BED_LEFT);
+static_assert(static_cast<int>(ac4::BedChannel::kRight) == AC3FORGE_AC4_BED_RIGHT);
+static_assert(static_cast<int>(ac4::BedChannel::kCentre) == AC3FORGE_AC4_BED_CENTRE);
+static_assert(static_cast<int>(ac4::BedChannel::kLeftSurround) == AC3FORGE_AC4_BED_LEFT_SURROUND);
+static_assert(static_cast<int>(ac4::BedChannel::kRightSurround) == AC3FORGE_AC4_BED_RIGHT_SURROUND);
+static_assert(static_cast<int>(ac4::BedChannel::kLeftBack) == AC3FORGE_AC4_BED_LEFT_BACK);
+static_assert(static_cast<int>(ac4::BedChannel::kRightBack) == AC3FORGE_AC4_BED_RIGHT_BACK);
+static_assert(static_cast<int>(ac4::BedChannel::kTopFrontLeft) == AC3FORGE_AC4_BED_TOP_FRONT_LEFT);
+static_assert(static_cast<int>(ac4::BedChannel::kTopFrontRight) ==
+              AC3FORGE_AC4_BED_TOP_FRONT_RIGHT);
+static_assert(static_cast<int>(ac4::BedChannel::kTopSideLeft) == AC3FORGE_AC4_BED_TOP_SIDE_LEFT);
+static_assert(static_cast<int>(ac4::BedChannel::kTopSideRight) == AC3FORGE_AC4_BED_TOP_SIDE_RIGHT);
+static_assert(static_cast<int>(ac4::BedChannel::kTopBackLeft) == AC3FORGE_AC4_BED_TOP_BACK_LEFT);
+static_assert(static_cast<int>(ac4::BedChannel::kTopBackRight) == AC3FORGE_AC4_BED_TOP_BACK_RIGHT);
+static_assert(static_cast<int>(ac4::BedChannel::kLeftWide) == AC3FORGE_AC4_BED_LEFT_WIDE);
+static_assert(static_cast<int>(ac4::BedChannel::kRightWide) == AC3FORGE_AC4_BED_RIGHT_WIDE);
+
+static_assert(static_cast<int>(ac4::ObjectCoding::kAjoc) == AC3FORGE_AC4_OBJECT_CODING_AJOC);
+static_assert(static_cast<int>(ac4::ObjectCoding::kDirect) == AC3FORGE_AC4_OBJECT_CODING_DIRECT);
+
+static_assert(static_cast<int>(ac4::AjocDownmix::kComputed) == AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED);
+static_assert(static_cast<int>(ac4::AjocDownmix::kStatic50) == AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_50);
+static_assert(static_cast<int>(ac4::AjocDownmix::kStatic51) == AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51);
+
+static_assert(static_cast<int>(ac4::AdditionalPair::kNone) == AC3FORGE_AC4_PAIR_NONE);
+static_assert(static_cast<int>(ac4::AdditionalPair::kBack) == AC3FORGE_AC4_PAIR_BACK);
+static_assert(static_cast<int>(ac4::AdditionalPair::kWide) == AC3FORGE_AC4_PAIR_WIDE);
+static_assert(static_cast<int>(ac4::AdditionalPair::kTopFront) == AC3FORGE_AC4_PAIR_TOP_FRONT);
+
 // --- opaque handle definitions (global scope, matching internal.hpp's own
 // non-AC-4 ones - ac3forge_ac4_decoder_t and its neighbours are forward-
 // declared at global scope in ac3forge.h, so what completes them lives there
@@ -185,6 +214,97 @@ namespace ac3forge_c {
 }
 [[nodiscard]] inline ac3forge_ac4_rate_mode_t from_cpp(ac4::RateMode mode) {
     return static_cast<ac3forge_ac4_rate_mode_t>(mode);
+}
+
+[[nodiscard]] inline ac3forge_ac4_bed_channel_t from_cpp(ac4::BedChannel channel) {
+    return static_cast<ac3forge_ac4_bed_channel_t>(channel);
+}
+[[nodiscard]] inline ac4::ObjectCoding to_cpp(ac3forge_ac4_object_coding_t coding) {
+    return static_cast<ac4::ObjectCoding>(coding);
+}
+[[nodiscard]] inline ac4::AjocDownmix to_cpp(ac3forge_ac4_ajoc_downmix_t downmix) {
+    return static_cast<ac4::AjocDownmix>(downmix);
+}
+[[nodiscard]] inline ac4::AdditionalPair to_cpp(ac3forge_ac4_additional_pair_t pair) {
+    return static_cast<ac4::AdditionalPair>(pair);
+}
+[[nodiscard]] inline ac3forge_ac4_additional_pair_t from_cpp(ac4::AdditionalPair pair) {
+    return static_cast<ac3forge_ac4_additional_pair_t>(pair);
+}
+
+// The new enumerations' values as ac3forge.h defines them, for the boundary
+// checks ac4_encoder.cpp makes on what a caller hands in: a C enumeration can
+// hold any int, and the encoder's own refusal_reason() speaks only of
+// configurations it can be asked about.
+// (Compared as int: the underlying type of these enumerations is unsigned on
+// some compilers, where `>= 0` is a -Wtype-limits finding.)
+[[nodiscard]] inline bool valid(ac3forge_ac4_bed_channel_t channel) {
+    // Table 66's codes: 3 is not a loudspeaker a bed object can name.
+    const int code = static_cast<int>(channel);
+    return code >= 0 && code <= static_cast<int>(AC3FORGE_AC4_BED_RIGHT_WIDE) && code != 3;
+}
+[[nodiscard]] inline bool valid(ac3forge_ac4_object_coding_t coding) {
+    const int code = static_cast<int>(coding);
+    return code == static_cast<int>(AC3FORGE_AC4_OBJECT_CODING_AJOC) ||
+           code == static_cast<int>(AC3FORGE_AC4_OBJECT_CODING_DIRECT);
+}
+[[nodiscard]] inline bool valid(ac3forge_ac4_ajoc_downmix_t downmix) {
+    const int code = static_cast<int>(downmix);
+    return code >= 0 && code <= static_cast<int>(AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51);
+}
+[[nodiscard]] inline bool valid(ac3forge_ac4_additional_pair_t pair) {
+    const int code = static_cast<int>(pair);
+    return code >= 0 && code <= static_cast<int>(AC3FORGE_AC4_PAIR_TOP_FRONT);
+}
+
+// ac4::ObjectProperties and its C mirror, both ways: the decoder's accessors
+// report them and the encoder's configuration and updates take them.
+[[nodiscard]] inline ac3forge_ac4_object_properties_t from_cpp(const ac4::ObjectProperties& p) {
+    ac3forge_ac4_object_properties_t out{};
+    out.active = p.active ? 1 : 0;
+    out.gain_db = p.gain_db;
+    out.priority = p.priority;
+    out.x = p.position[0];
+    out.y = p.position[1];
+    out.z = p.position[2];
+    out.zone_mask = p.zone_mask;
+    out.enable_elevation = p.enable_elevation ? 1 : 0;
+    out.snap = p.snap ? 1 : 0;
+    out.width_x = p.width[0];
+    out.width_y = p.width[1];
+    out.width_z = p.width[2];
+    out.screen_factor = p.screen_factor;
+    out.depth_exponent = p.depth_exponent;
+    out.has_distance = p.distance.has_value() ? 1 : 0;
+    out.distance = p.distance.value_or(0.0);
+    out.divergence = p.divergence;
+    out.trim_disabled = p.trim_disabled ? 1 : 0;
+    out.has_headphone_render_mode = p.headphone_render_mode.has_value() ? 1 : 0;
+    out.headphone_render_mode = p.headphone_render_mode.value_or(0);
+    out.head_track_disabled = p.head_track_disabled ? 1 : 0;
+    return out;
+}
+
+[[nodiscard]] inline ac4::ObjectProperties to_cpp(const ac3forge_ac4_object_properties_t& p) {
+    ac4::ObjectProperties out;
+    out.active = p.active != 0;
+    out.gain_db = p.gain_db;
+    out.priority = p.priority;
+    out.position = {p.x, p.y, p.z};
+    out.zone_mask = p.zone_mask;
+    out.enable_elevation = p.enable_elevation != 0;
+    out.snap = p.snap != 0;
+    out.width = {p.width_x, p.width_y, p.width_z};
+    out.screen_factor = p.screen_factor;
+    out.depth_exponent = p.depth_exponent;
+    out.distance = p.has_distance != 0 ? std::optional<double>(p.distance) : std::nullopt;
+    out.divergence = p.divergence;
+    out.trim_disabled = p.trim_disabled != 0;
+    out.headphone_render_mode = p.has_headphone_render_mode != 0
+                                    ? std::optional<int>(p.headphone_render_mode)
+                                    : std::nullopt;
+    out.head_track_disabled = p.head_track_disabled != 0;
+    return out;
 }
 
 [[nodiscard]] inline ac3forge_status_t from_cpp(ac4::DecodeError error) {

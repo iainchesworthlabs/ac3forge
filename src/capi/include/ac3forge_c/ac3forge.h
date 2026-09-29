@@ -1439,10 +1439,11 @@ AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
  * equivalent - every accessor that needs a length reports it.
  *
  * The encoder writes channel-based and channel-based-immersive content
- * (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4): the same scope ac4::Encoder itself
- * has as of this header (planning/ac4.md phase E9, A-JOC and direct-coded
- * objects, was still open when this was written). The decoder's object
- * accessors below read whatever object audio a stream carries regardless. */
+ * (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4) and, given an objects configuration
+ * (ac3forge_ac4_objects_config_t, in the encoder section below), the one
+ * object substream ac4::Encoder writes with experimental.objects: A-JOC, or
+ * direct-coded objects (planning/ac4.md phases E9 and I4b). The decoder's
+ * object accessors below read whatever object audio a stream carries. */
 
 /* --- shared enums -------------------------------------------------------- */
 
@@ -1666,15 +1667,19 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_decoded_frame_concealment_error(
 
 /* --- objects (Part 2 clause 4.8.3.4; ac4::DecodedFrame::objects) --------- *
  *
- * Exposed at the "current properties plus audio" cost ac3forge_eac3's own
- * OAMD/JOC accessors already pay (ac3forge_decoded_substream_dynamic_object(),
- * above): each object's kind, its bed loudspeaker where it has one, its
- * audio, and the ObjectProperties in force at the frame's first sample.
- * ObjectProperties::updates - the ramps within the frame a renderer would
- * interpolate through - are NOT exposed: a renderer that needs sub-frame
- * ramps is expected to call the C++ API directly. An intermediate spatial
- * format's own objects are rendered into the channels above, not listed
- * here (ac4::Decoder's header, "Objects"). */
+ * Each object's kind, its bed loudspeaker where it has one, its audio, the
+ * ObjectProperties in force at the frame's first sample, and the updates
+ * within the frame (ac4::DecodedObject::updates): the block updates of the
+ * object's metadata a renderer moves through, each at a sample of the frame
+ * and with the number of samples it takes to reach its properties. An
+ * intermediate spatial format's own objects are rendered into the channels
+ * above, not listed here (ac4::Decoder's header, "Objects").
+ *
+ * The objects come in the decoder's order, not that of the encoder's input:
+ * the LFE object first, then the bed objects, then the dynamic objects, each
+ * group in the order the encoder's configuration lists it (A-JOC and
+ * direct-coded alike). Core decoding of an A-JOC substream lists the
+ * downmix signals instead, as dynamic objects at their groups' centres. */
 
 AC3FORGEC_EXPORT size_t ac3forge_ac4_decoded_frame_object_count(
     const ac3forge_ac4_decoded_frame_t* frame);
@@ -1691,9 +1696,33 @@ AC3FORGEC_EXPORT ac3forge_ac4_speaker_t ac3forge_ac4_decoded_frame_object_speake
 AC3FORGEC_EXPORT const float* ac3forge_ac4_decoded_frame_object_samples(
     const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
 
-/* Mirrors ac4::ObjectProperties' scalar fields (Part 2 Annex F.2 to F.10),
- * what is in force at the frame's first sample - see this section's own
- * comment on why the within-frame updates are not exposed. */
+/* Mirrors ac4::ObjectProperties (Part 2 Annex F.2 to F.10 and
+ * add_per_object_md()'s data): what one block update of an object's metadata
+ * sets. The decoder reports it, and the encoder takes it, in these terms:
+ *   - gain_db: F.5, +15 to -49 dB in steps of 1, or -infinity for silence;
+ *   - priority: F.7, 0 to 1 in steps of 1/31;
+ *   - x, y, z: F.2, X from the left wall (0) to the right (1) and Y from the
+ *     front wall (0) to the back (1) in steps of 1/62, Z from the floor (-1)
+ *     through the height of the screen (0) to the ceiling (1) in steps of
+ *     1/15; a dynamic object's, and ignored for a bed object and the LFE;
+ *   - zone_mask (F.8, Table 104: 0 to 7), enable_elevation, snap (F.10);
+ *   - width_x, width_y, width_z: F.6, each 0 to 1 in steps of 1/31, the three
+ *     sent as one object_width where they are equal;
+ *   - screen_factor: F.4, 0 or 1/8 to 1 in steps of 1/8;
+ *   - depth_exponent: the exponent object_depth_factor gives Y (Table 107),
+ *     exactly 0.25, 0.5, 1 or 2;
+ *   - distance, where has_distance: F.4's object_distance_factor (Table 108),
+ *     1 or more, or +infinity for b_obj_at_infinity;
+ *   - divergence: F.9, 0 to 1;
+ *   - trim_disabled, headphone_render_mode (0 to 3, where
+ *     has_headphone_render_mode) and head_track_disabled (Table 121).
+ * Each value the encoder is given is written to the nearest its code has and
+ * refused outside its range (ac3forge_ac4_encoder_refusal_reason() says
+ * which); a dynamic object sends all of them, a bed object and the LFE the
+ * activity, gain, priority and add_per_object_md()'s data alone. Call
+ * ac3forge_ac4_object_properties_init() before setting fields for the
+ * encoder: a zero-initialised struct is priority 0, depth exponent 0 (which
+ * no code holds) and position (0, 0, 0), not the defaults. */
 typedef struct ac3forge_ac4_object_properties {
     int active;
     double gain_db;
@@ -1714,8 +1743,37 @@ typedef struct ac3forge_ac4_object_properties {
     int head_track_disabled;
 } ac3forge_ac4_object_properties_t;
 
+/* Fills `properties` with ac4::ObjectProperties{}'s defaults: active, 0 dB,
+ * priority 1, room centre (0.5, 0.5, 0), no zone constraint, elevation
+ * enabled, no snap, zero width, screen factor 0, depth exponent 1, no
+ * distance, no divergence, trim and head tracking enabled, no headphone
+ * render mode. */
+AC3FORGEC_EXPORT void ac3forge_ac4_object_properties_init(
+    ac3forge_ac4_object_properties_t* properties);
+
+/* What is in force at the frame's first sample. */
 AC3FORGEC_EXPORT ac3forge_ac4_object_properties_t ac3forge_ac4_decoded_frame_object_properties(
     const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
+
+/* Mirrors ac4::ObjectUpdate (Part 2 Annex F.11): one block update within the
+ * frame - the output sample of the frame it takes effect at (counted with the
+ * decoder's delay, as the frame's channels are), the samples a renderer takes
+ * to move to `properties` from what was in force, and those properties. */
+typedef struct ac3forge_ac4_object_update {
+    size_t sample;
+    int ramp_samples;
+    ac3forge_ac4_object_properties_t properties;
+} ac3forge_ac4_object_update_t;
+
+/* The number of updates within the frame for object `object_index`, in the
+ * order they take effect; 0 for an index out of range. */
+AC3FORGEC_EXPORT size_t ac3forge_ac4_decoded_frame_object_update_count(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t object_index);
+/* Update `update_index` of object `object_index`; sample 0, ramp 0 and the
+ * properties ac3forge_ac4_object_properties_init() gives for an index out of
+ * range. */
+AC3FORGEC_EXPORT ac3forge_ac4_object_update_t ac3forge_ac4_decoded_frame_object_update(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t object_index, size_t update_index);
 
 AC3FORGEC_EXPORT void ac3forge_ac4_decoded_frame_destroy(ac3forge_ac4_decoded_frame_t* frame);
 
@@ -1810,35 +1868,214 @@ typedef enum ac3forge_ac4_rate_mode {
     AC3FORGE_AC4_RATE_VARIABLE = 2
 } ac3forge_ac4_rate_mode_t;
 
-/* Mirrors ac4::EncoderConfig's core surface: one substream, one presentation,
- * channel-based or channel-based-immersive input (see this section's own
- * header comment). Not mirrored here, as ac3forge_eac3_frame_config_t's own
- * comment leaves its broader metadata surface for the same reason: the
- * loudness/DRC/downmix/dialogue-enhancement metadata groups,
- * multi-substream/multi-presentation configurations (EncoderConfig::
- * substreams/presentations), EMDF payloads and the Experimental flags. A
- * config left at these defaults writes DEE's own shape for the channel count
- * given (planning/ac4.md, "What the encoder writes by default"). Call
- * ac3forge_ac4_encoder_config_init() first so every field this struct
- * doesn't set explicitly carries the same default EncoderConfig{} does. */
+/* --- objects: the encoder's object substream (ac4::ObjectsConfig) --------- *
+ *
+ * Object audio (Part 2 clause 4.8.3.4): each object is one input channel of
+ * PCM, and its metadata (ac3forge_ac4_object_properties_t) is what the
+ * decoder reports back. It is written behind experimental.objects, which no
+ * reader outside this project has read from this encoder. The stream is one
+ * object substream in one presentation of it, at frame_rate_index 13 (the
+ * 2 048-sample frame) and no other, with no dialogue enhancement; the limits
+ * below are the encoder's, and ac3forge_ac4_encoder_refusal_reason() names
+ * the rule a configuration breaks:
+ *   - 1 to AC3FORGE_AC4_MAX_OBJECTS objects, at most one of them the LFE, and
+ *     at least one that is not;
+ *   - as A-JOC (the default), a computed downmix of downmix_signals signals,
+ *     1 to AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS and no more than the full-band
+ *     objects, or a static 5.0 bed (no LFE object) or 5.1 bed (with one), and
+ *     parameter_bands one of 23, 15, 12, 9, 7, 5, 3 or 1;
+ *   - direct-coded, dynamic objects and the LFE only: no bed objects;
+ *   - a codec mode of AUTO, SIMPLE or ASPX. */
+
+/* The most objects one object substream takes. */
+#define AC3FORGE_AC4_MAX_OBJECTS 64
+/* The most downmix signals a computed A-JOC downmix takes. */
+#define AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS 11
+
+/* Mirrors ac4::BedChannel: the loudspeaker a bed object plays from, Part 2
+ * Table 66's nonstd_bed_channel_assignment, whose code each value is. */
+typedef enum ac3forge_ac4_bed_channel {
+    AC3FORGE_AC4_BED_LEFT = 0,
+    AC3FORGE_AC4_BED_RIGHT = 1,
+    AC3FORGE_AC4_BED_CENTRE = 2,
+    AC3FORGE_AC4_BED_LEFT_SURROUND = 4,
+    AC3FORGE_AC4_BED_RIGHT_SURROUND = 5,
+    AC3FORGE_AC4_BED_LEFT_BACK = 6,
+    AC3FORGE_AC4_BED_RIGHT_BACK = 7,
+    AC3FORGE_AC4_BED_TOP_FRONT_LEFT = 8,
+    AC3FORGE_AC4_BED_TOP_FRONT_RIGHT = 9,
+    AC3FORGE_AC4_BED_TOP_SIDE_LEFT = 10,
+    AC3FORGE_AC4_BED_TOP_SIDE_RIGHT = 11,
+    AC3FORGE_AC4_BED_TOP_BACK_LEFT = 12,
+    AC3FORGE_AC4_BED_TOP_BACK_RIGHT = 13,
+    AC3FORGE_AC4_BED_LEFT_WIDE = 14,
+    AC3FORGE_AC4_BED_RIGHT_WIDE = 15
+} ac3forge_ac4_bed_channel_t;
+
+/* Mirrors ac4::ObjectCoding: how the objects are coded. */
+typedef enum ac3forge_ac4_object_coding {
+    /* An A-JOC substream (Part 2 clause 5.7): a downmix coded in a
+     * var_channel_element() or a static 5.X bed, and the matrices that
+     * rebuild the objects from it. */
+    AC3FORGE_AC4_OBJECT_CODING_AJOC = 0,
+    /* Direct-coded object substreams (clause 6.2.1.11): the objects coded as
+     * channels of Part 1's elements, with the group's OAMD substream. */
+    AC3FORGE_AC4_OBJECT_CODING_DIRECT = 1
+} ac3forge_ac4_object_coding_t;
+
+/* Mirrors ac4::AjocDownmix: A-JOC's downmix, which Part 2 leaves to the
+ * encoder. */
+typedef enum ac3forge_ac4_ajoc_downmix {
+    /* Downmix signals the encoder computes: the objects in groups by where
+     * they start, in the order of their azimuth, each signal the sum of its
+     * group's objects, sent as a dynamic object at the group's centre for core
+     * decoding. */
+    AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED = 0,
+    /* A static bed (b_static_dmx): the objects panned onto L, R, C, Ls and Rs
+     * by X and Y, and with STATIC_51 the LFE object onto the LFE. */
+    AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_50 = 1,
+    AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51 = 2
+} ac3forge_ac4_ajoc_downmix_t;
+
+/* Mirrors ac4::AdditionalPair (Part 1 Table 88): the 7.X element's pair
+ * beyond L, R, C, Ls and Rs. */
+typedef enum ac3forge_ac4_additional_pair {
+    AC3FORGE_AC4_PAIR_NONE = 0,
+    AC3FORGE_AC4_PAIR_BACK = 1,     /* 3/4/0: Lb and Rb */
+    AC3FORGE_AC4_PAIR_WIDE = 2,     /* 5/2/0: Lw and Rw */
+    AC3FORGE_AC4_PAIR_TOP_FRONT = 3 /* 3/2/2: Tfl and Tfr */
+} ac3forge_ac4_additional_pair_t;
+
+/* Mirrors ac4::ObjectConfig: one object, the input channel at its index. */
+typedef struct ac3forge_ac4_object_config {
+    /* A bed object from the loudspeaker `bed` where has_bed is non-zero; a
+     * dynamic object where it is 0. */
+    int has_bed;
+    ac3forge_ac4_bed_channel_t bed;
+    /* The LFE, at most one object's: its bed channel and position are
+     * ignored. */
+    int lfe;
+    /* What is in force from the first sample. */
+    ac3forge_ac4_object_properties_t properties;
+} ac3forge_ac4_object_config_t;
+
+/* A dynamic object at ac4::ObjectConfig{}'s defaults: the room's centre,
+ * unity gain, properties as ac3forge_ac4_object_properties_init() gives
+ * them. */
+AC3FORGEC_EXPORT void ac3forge_ac4_object_config_init(ac3forge_ac4_object_config_t* config);
+
+/* Mirrors ac4::ObjectsConfig: the objects and how they are coded. Call
+ * ac3forge_ac4_objects_config_init() first. The struct and the array it points
+ * to are read only while ac3forge_ac4_encoder_create() and
+ * ac3forge_ac4_encoder_refusal_reason() run. */
+typedef struct ac3forge_ac4_objects_config {
+    /* `object_count` entries, one per input channel of encode. */
+    const ac3forge_ac4_object_config_t* objects;
+    size_t object_count;
+    ac3forge_ac4_object_coding_t coding;
+    ac3forge_ac4_ajoc_downmix_t downmix;
+    /* A computed downmix's signals, where has_downmix_signals is non-zero;
+     * otherwise one a 32 kbps of the substream's rate, up to 10. */
+    int has_downmix_signals;
+    int downmix_signals;
+    /* A-JOC's decorrelators (Part 2 clause 5.7.3.5): each object's share of
+     * what the downmix does not rebuild, sent as a decorrelated signal. */
+    int decorrelation;
+    /* The parameter bands A-JOC's matrices take (Table 78: 23, 15, 12, 9, 7,
+     * 5, 3 or 1) and whether they are quantised coarsely, where the has_ flag
+     * is non-zero; otherwise 23 fine from 64 kbps a downmix signal, 15 fine
+     * from 32 and 12 coarse below. */
+    int has_parameter_bands;
+    int parameter_bands;
+    int has_coarse;
+    int coarse;
+    /* oamd_common_data(): master_screen_size_ratio_code (0 to 31, where the
+     * has_ flag is non-zero; otherwise b_default_screen_size_ratio) and
+     * b_bed_object_chan_distribute. Sent where either is set. */
+    int has_screen_size_ratio_code;
+    int screen_size_ratio_code;
+    int bed_object_chan_distribute;
+} ac3forge_ac4_objects_config_t;
+
+AC3FORGEC_EXPORT void ac3forge_ac4_objects_config_init(ac3forge_ac4_objects_config_t* config);
+
+/* Mirrors ac4::EncoderConfig::Experimental: syntax only this project's readers
+ * have read from this encoder, off unless asked for (planning/ac4.md, "What
+ * the encoder writes by default"). Not mirrored: drc_gains and three_zero,
+ * which need the DRC modes and the substream list this struct does not
+ * carry. */
+typedef struct ac3forge_ac4_experimental {
+    int aspx_balance;    /* the ASPX mode's pairs as sum and balance where that is fewer bits */
+    int aspx_varvar;     /* the ASPX mode's VARVAR framing */
+    int aspx_interleave; /* frequency interleaved waveform coding above the crossover */
+    int coding_configs;  /* the 5.X and 7.X elements' coding_config 1 to 3 and 2ch_mode 1 */
+    ac3forge_ac4_additional_pair_t
+        seven_x;   /* 7 or 8 input channels, with this pair beyond L R C Ls Rs */
+    int acpl;      /* the A-CPL modes DEE's streams do not use (ASPX_ACPL_1, stereo ACPL) */
+    int back_pair; /* 7.0.4 and 7.1.4 with the back pair: 11 or 12 input channels */
+    int ajcc;      /* the immersive element's ASPX_AJCC */
+    int objects;   /* object audio: required by a non-NULL objects configuration */
+} ac3forge_ac4_experimental_t;
+
+/* Mirrors ac4::EncoderConfig: one substream in one presentation, channel-based
+ * or channel-based-immersive input, or - with `objects` - one object
+ * substream. Not mirrored here, as ac3forge_eac3_frame_config_t's own comment
+ * leaves its broader metadata surface for the same reason: the loudness, DRC,
+ * downmix and dialogue-enhancement metadata groups (EncoderConfig::loudness,
+ * drc, downmix, dialogue), several substreams and presentations
+ * (EncoderConfig::substreams, presentations), EMDF payloads and the syntax
+ * trace. A config left at these defaults writes DEE's own shape for the
+ * channel count given (planning/ac4.md, "What the encoder writes by
+ * default"). Call ac3forge_ac4_encoder_config_init() first so every field this
+ * struct doesn't set explicitly carries the same default EncoderConfig{}
+ * does. The struct and the arrays it points to are read only while
+ * ac3forge_ac4_encoder_create() and ac3forge_ac4_encoder_refusal_reason()
+ * run. */
 typedef struct ac3forge_ac4_encoder_config {
-    int channels; /* 1, 2, 5, 6, 9 or 10 - see EncoderConfig::channels */
+    int channels; /* 1, 2, 5, 6, 9 or 10 - see EncoderConfig::channels; ignored with `objects` */
     int sample_rate_hz; /* 48000, or 44100 (frame_rate_index 13 only) */
     int frame_rate_index; /* Part 1 Table 83/84; default 13, the 2048-sample frame */
     int bitrate_kbps;
     ac3forge_ac4_rate_mode_t rate_mode;
-    ac3forge_ac4_codec_mode_t codec_mode;
+    ac3forge_ac4_codec_mode_t codec_mode; /* with `objects`, the object substream's */
     int iframe_interval;
     double dialnorm_db;
+    /* `iframe_count` frames, counted from 0, that must be I-frames besides
+     * those iframe_interval makes: EncoderConfig::iframes. NULL for none. */
+    const int64_t* iframes;
+    size_t iframe_count;
+    /* Where the caller's fragments start, in samples of the decoded output
+     * from its first (the media time an MP4 track counts): the frame whose
+     * output starts there, or the first to start after it, is an I-frame -
+     * EncoderConfig::fragment_starts. NULL for none. */
+    const int64_t* fragment_starts;
+    size_t fragment_start_count;
+    ac3forge_ac4_experimental_t experimental;
+    /* NULL for channel-based content; otherwise the stream is one object
+     * substream of these objects, and requires experimental.objects. */
+    const ac3forge_ac4_objects_config_t* objects;
 } ac3forge_ac4_encoder_config_t;
 
 AC3FORGEC_EXPORT void ac3forge_ac4_encoder_config_init(ac3forge_ac4_encoder_config_t* config);
+
+/* Why ac3forge_ac4_encoder_create() refuses `config`: a string literal naming
+ * the first rule it breaks, such as "objects at a frame_rate_index other than
+ * 13"; empty ("") where it makes an encoder of it. For a NULL config, or one
+ * that is not a valid argument (create() then returns
+ * AC3FORGE_ERROR_INVALID_ARGUMENT), it says so instead. It does create()'s
+ * work to find out - ac4::Encoder::refusal_reason(). A library built without
+ * AC-4 says that. The pointer is to library-owned storage valid for the
+ * process lifetime. */
+AC3FORGEC_EXPORT const char* ac3forge_ac4_encoder_refusal_reason(
+    const ac3forge_ac4_encoder_config_t* config);
 
 typedef struct ac3forge_ac4_encoder ac3forge_ac4_encoder_t;
 
 /* Fails with AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG for a configuration
  * outside what the encoder writes, or whose rate cannot hold its least
- * frame - ac4::Encoder::create(). */
+ * frame - ac4::Encoder::create() - and with AC3FORGE_ERROR_INVALID_ARGUMENT for
+ * a NULL pointer where an array has entries, or an enumerator outside its
+ * enumeration. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_create(
     const ac3forge_ac4_encoder_config_t* config, ac3forge_ac4_encoder_t** out_encoder);
 AC3FORGEC_EXPORT void ac3forge_ac4_encoder_destroy(ac3forge_ac4_encoder_t* encoder);
@@ -1872,8 +2109,9 @@ AC3FORGEC_EXPORT void ac3forge_ac4_encoded_frame_destroy(ac3forge_ac4_encoded_fr
 AC3FORGEC_EXPORT void ac3forge_ac4_encoded_frame_array_destroy(
     ac3forge_ac4_encoded_frame_t** frames, size_t count);
 
-/* channels: `channel_count` pointers (must equal config.channels), each to
- * exactly `samples_per_channel` planar samples nominally in [-1, 1), in
+/* channels: `channel_count` pointers (must equal config.channels, or the
+ * object count of an objects configuration), each to exactly
+ * `samples_per_channel` planar samples nominally in [-1, 1), in
  * ac4::Decoder's own channel order for that count. Any samples_per_channel
  * works, unlike encode_frame() elsewhere in this header, since the encoder
  * buffers input to its own frame length internally - see ac4::Encoder::
@@ -1884,6 +2122,42 @@ AC3FORGEC_EXPORT void ac3forge_ac4_encoded_frame_array_destroy(
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_encode(
     ac3forge_ac4_encoder_t* encoder, const float* const* channels, size_t channel_count,
     size_t samples_per_channel, ac3forge_ac4_encoded_frame_t*** out_frames, size_t* out_count);
+
+/* Mirrors ac4::ObjectMetadataUpdate: a change to an object's metadata, given
+ * with the input it belongs to. From input sample `sample` of that call's
+ * channels (0 its first, and any later one, past the call's own length too)
+ * object `object` - an index into ac3forge_ac4_objects_config_t::objects -
+ * moves to `properties` over `ramp_samples` (0 to 2047, or 2048). The decoder
+ * reports the update at the output sample its input sample comes out at
+ * (ac3forge_ac4_encoder_delay_samples() plus
+ * ac3forge_ac4_encoder_decoder_delay_samples() later), to within 32 samples.
+ * The C++ struct's substream index is left out: the stream has one, index 0. */
+typedef struct ac3forge_ac4_object_metadata_update {
+    size_t object;
+    int64_t sample;
+    int ramp_samples;
+    ac3forge_ac4_object_properties_t properties;
+} ac3forge_ac4_object_metadata_update_t;
+
+/* Sample 0, ramp 0, object 0 and the properties
+ * ac3forge_ac4_object_properties_init() gives. */
+AC3FORGEC_EXPORT void ac3forge_ac4_object_metadata_update_init(
+    ac3forge_ac4_object_metadata_update_t* update);
+
+/* ac3forge_ac4_encoder_encode() for an encoder with an objects configuration,
+ * and the changes to the objects' metadata within this input or after it, in
+ * any order: `objects` is `object_count` pointers (the configuration's object
+ * count), each to `samples_per_object` samples of one object's PCM;
+ * `updates` is `update_count` entries, and may be NULL when that is 0. An
+ * update for an object the configuration lacks, before this input's first
+ * sample or with a property off its range fails with
+ * AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT, and so does an encoder without an
+ * object substream when given any update - ac4::Encoder::encode()'s overload
+ * with updates. */
+AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_encoder_encode_objects(
+    ac3forge_ac4_encoder_t* encoder, const float* const* objects, size_t object_count,
+    size_t samples_per_object, const ac3forge_ac4_object_metadata_update_t* updates,
+    size_t update_count, ac3forge_ac4_encoded_frame_t*** out_frames, size_t* out_count);
 
 /* Ends the stream: pads to the end of the last frame and returns the frames
  * the delay still held, so a decoder's output covers every input sample. The
