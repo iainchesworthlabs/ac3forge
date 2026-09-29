@@ -40,7 +40,7 @@
 # include path.
 # ---------------------------------------------------------------------------
 
-# minimum-footprint decoder profile's minimum-footprint decoder profile builds something different
+# The minimum-footprint decoder profile builds something different
 # enough - static only, decode only, no exceptions, no direct-form transform
 # tables - that it gets its own file rather than a dozen conditionals through
 # this one. Off by default; the root CMakeLists.txt refuses the combination of
@@ -258,7 +258,7 @@ else()
 endif()
 
 # The same mechanism again, for the build-profile facts every source asks
-# through ac3/internal/profile.hpp (minimum-footprint decoder profile): full/ says the direct-form
+# through ac3/internal/profile.hpp: full/ says the direct-form
 # transform tables are present, minimal/ says they are not, and CMake picks
 # the directory rather than any source picking with an #ifdef.
 #
@@ -445,8 +445,8 @@ endif()
 # which is exactly the "compiled with -march= for a feature the deployment
 # machine might not have" mistake ac3::internal::cpu::has_avx2() exists to
 # let this project avoid - see cpu_features.hpp. avx2_probe.cpp proved the
-# whole build/link/dispatch/test pipeline (SIMD kernels's dynamic-dispatch
-# follow-on, phase one) before any real kernel joined it; mdct_avx2.cpp is
+# whole build/link/dispatch/test pipeline (the runtime-dispatch work, phase
+# one) before any real kernel joined it; mdct_avx2.cpp is
 # the first real one - apply_analysis_window and the DCT-IV/IMDCT twiddle
 # stages, the two PF5 kernels phase one's own measurement (docs/building.md)
 # showed a real, reproducible cycle-count win for. dft512's normalisation

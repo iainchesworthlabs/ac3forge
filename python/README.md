@@ -30,5 +30,5 @@ release has carried a wheel, install from a checkout.
 See [docs/library/python-api.md](https://iainchesworthlabs.github.io/ac3forge/library/python-api/)
 for the full surface (E-AC-3, Atmos object and AC-4 encode/decode included) and
 [the main project README](https://github.com/iainchesworthlabs/ac3forge) for what the codec
-itself covers. Licensed GPL-3.0-only, same as the rest of the project — see
+itself covers. Licensed GPL-3.0-or-later, same as the rest of the project — see
 [LICENSE](https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE).
