@@ -362,7 +362,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${MATRIX_PRESET} -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
+          cmake --preset "config-${MATRIX_PRESET}" -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
           cmake --build build/decode-scalar-float --target ac3cli
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
@@ -389,11 +389,11 @@ jobs:
         run: |
           set -euo pipefail
           workdir="$(mktemp -d)"
-          build/config-${MATRIX_PRESET}/bin/ac3cli encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
-          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
-          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
-          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
-          python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${MATRIX_PRESET}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py               --double-cli "build/config-${MATRIX_PRESET}/bin/ac3cli"               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
 
@@ -409,7 +409,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${MATRIX_PRESET} -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
+          cmake --preset "config-${MATRIX_PRESET}" -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
           cmake --build build/decode-scalar-fixed --target ac3cli
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
@@ -428,11 +428,11 @@ jobs:
         run: |
           set -euo pipefail
           workdir="$(mktemp -d)"
-          build/config-${MATRIX_PRESET}/bin/ac3cli encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
-          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
-          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
-          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
-          python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${MATRIX_PRESET}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          "build/config-${MATRIX_PRESET}/bin/ac3cli" eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py --double-cli "build/config-${MATRIX_PRESET}/bin/ac3cli" --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
 
@@ -465,7 +465,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${MATRIX_PRESET} -B build/encode-scalar-float \
+          cmake --preset "config-${MATRIX_PRESET}" -B build/encode-scalar-float \
                 -DAC3FORGE_ENCODE_SCALAR=float
           cmake --build build/encode-scalar-float --target ac3cli
         env:
@@ -485,7 +485,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/checks/check_encode_scalar_quality.py \
-              --double-cli build/config-${MATRIX_PRESET}/bin/ac3cli \
+              --double-cli "build/config-${MATRIX_PRESET}/bin/ac3cli" \
               --float-cli build/encode-scalar-float/bin/ac3cli \
               --workdir "$(mktemp -d)"
         env:
@@ -574,7 +574,7 @@ jobs:
         if: matrix.gui && matrix.name == 'Linux GCC'
         shell: bash
         run: |
-          cmake --build --preset build-${MATRIX_PRESET} --target ac3gui_lupdate -- -k 0
+          cmake --build --preset "build-${MATRIX_PRESET}" --target ac3gui_lupdate -- -k 0
           echo "::group::translations git diff debug"
           pwd
           echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
@@ -691,7 +691,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${MATRIX_PRESET} -B build/no-alsa \
+          cmake --preset "config-${MATRIX_PRESET}" -B build/no-alsa \
             -DCMAKE_DISABLE_FIND_PACKAGE_ALSA=TRUE 2>&1 | tee /tmp/no-alsa-configure.log
           grep -q 'Audio backend  : posix' /tmp/no-alsa-configure.log || {
             echo "::error::ALSA was disabled but the build did not fall back to the posix backend"
@@ -796,7 +796,7 @@ jobs:
           # tests `NOT "${DERIVED_VERSION_OVERRIDE}" STREQUAL ""` and falls
           # through to `git describe` when it is, which is what every ordinary
           # CI run wants.
-          cmake --preset config-${MATRIX_PRESET} -B build/crucible \
+          cmake --preset "config-${MATRIX_PRESET}" -B build/crucible \
             -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_BUILD_TESTS=ON \
             -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
             -DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT" \
@@ -1109,7 +1109,7 @@ jobs:
            (inputs.do_package && matrix.release_package) ||
            ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
-        run: cpack --preset pack-${MATRIX_PRESET}
+        run: cpack --preset "pack-${MATRIX_PRESET}"
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
 

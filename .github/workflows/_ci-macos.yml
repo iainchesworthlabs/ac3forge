@@ -387,7 +387,7 @@ jobs:
            (inputs.do_package && matrix.release_package) ||
            ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
-        run: cpack --preset pack-${MATRIX_PRESET}
+        run: cpack --preset "pack-${MATRIX_PRESET}"
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
 
