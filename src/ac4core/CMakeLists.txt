@@ -153,6 +153,26 @@ target_link_libraries(ac4core
         "$<BUILD_INTERFACE:ac3::coverage>"
         "$<BUILD_INTERFACE:ac3::arithmetic>")
 
+# The kernels of a frame's transform and filter work at -O2 under the profile's
+# AC3FORGE_MINIMAL_HOT_O2, as src/forge/minimal.cmake does for the AC-3 and
+# E-AC-3 decoders' (docs/platforms/bare-metal/esp32-p4.md has what it bought on
+# a board). A size-optimised build is what the profile is; these are the files a
+# stage timer showed the optimiser paying for, and it costs flash and not SRAM.
+# The decoder's own files (src/ac4dec) gained nothing measurable from it and
+# stay at -Os. The option is that file's own, declared before this directory is
+# added.
+if(AC3FORGE_MINIMAL_DECODER AND AC3FORGE_MINIMAL_HOT_O2)
+    set_source_files_properties(
+        src/dsp/fft.cpp
+        src/dsp/mdct.cpp
+        src/dsp/qmf.cpp
+        src/dsp/resampler.cpp
+        src/dsp/synthesis.cpp
+        src/aspx/hf_generator.cpp
+        src/acpl/acpl.cpp
+        PROPERTIES COMPILE_OPTIONS "-O2")
+endif()
+
 # In the minimum-footprint profile (AC3FORGE_MINIMAL_AC4, planning/ac4.md, D14b):
 # the profile's own compile options - no exceptions, no RTTI, a section for each
 # function and datum - PUBLIC, as ac3::forge_minimal links them, since a
