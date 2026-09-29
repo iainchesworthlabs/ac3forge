@@ -1,8 +1,9 @@
 # Threat model
 
 What this project assumes about the bytes it is handed, what it guarantees when those bytes are
-hostile, and what it does not. Written for someone deciding whether to link the decoder into a
-media server, a set-top box or a browser and point it at input from the internet.
+hostile, and what it does not. Written for someone deciding whether to link a decoder (AC-3,
+E-AC-3 or AC-4) into a media server, a set-top box or a browser and point it at input from the
+internet.
 
 Nothing here is a promise of invulnerability. It is a statement of posture — where the trust
 boundary sits, what is checked, what is only structurally bounded, and where the gaps are — so
@@ -20,11 +21,14 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 |---|---|---|
 | AC-3 elementary streams | `ac3::split_frames`, `ac3::FrameDecoder::decode_frame` | yes |
 | E-AC-3 elementary streams, including dependent substreams | `ac3::split_access_units`, `ac3::Eac3Decoder::decode_access_unit` | yes |
+| AC-4 elementary streams: sync frames and the table of contents | `ac4::scan`, `ac4::SyncFrameSplitter`, `ac4::parse_raw_frame` | yes — `fuzz_ac4_parse` |
+| AC-4 substreams: the syntax layer and the reconstruction to PCM | `ac4::Decoder::parse`, `ac4::Decoder::decode`, `decode_by_block` | yes — `fuzz_ac4_decode` |
 | Format sniffing before any decoder commits | `ac3::io::scan` | yes |
 | EMDF containers in a skip field (§H.2.2) | `ac3::emdf::parse_container` | yes — `fuzz_emdf_parse`, plus indirectly through the E-AC-3 harnesses |
 | OAMD object metadata (TS 103 420 §5.5) | `ac3::oba::parse_payload` | yes — `fuzz_oamd_parse`, plus indirectly through the E-AC-3 harnesses |
 | JOC payloads (TS 103 420 §6) | `ac3::oba::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
 | WAV / RIFF headers and PCM | `ac3::io::read_wav`, `ac3::io::WavStreamReader` | yes |
+| IAB (SMPTE ST 2098-2) elementary streams and MXF track files | `ac3iab::parse_iabitstream`, `ac3iab::parse_mxf_iab`, `ac3iab::parse_iaframe` | yes — `fuzz_iab_parse` |
 | IEC 61937 bursts off an S/PDIF or HDMI capture, AC-4's included, and the AC-4 sync frames the AC-4 packer reads | `ac3::iec61937::BurstReader`, `ac3::iec61937::read_ac4_sync_frame` | yes — `fuzz_iec61937_unwrap` |
 | ADM XML + BW64/RF64 (opt-in build) | `ac3adm::parse_bw64`, via vendored libadm/libbw64 | **opt-in only** — `fuzz_adm_parse` exists but is built only under `AC3FORGE_BUILD_ADM`; see [ADM](#adm-xml-and-bw64) |
 | Object authenticity tags | `ac3::signing::verify_atmos_frame` | yes — `fuzz_signing_verify` (the key is part of the fuzzed input) |
@@ -41,9 +45,10 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 **Trusted.** These are the caller's own inputs, and a caller that gets them wrong is a bug in the
 caller, not an attack:
 
-- Encoder configuration (`EncoderConfig`, `eac3::FrameConfig`, `AtmosEncoder` settings, the
-  `ac3cli` command line). Illegal combinations are rejected with a `FrameError`, but the values
-  are not assumed hostile.
+- Encoder configuration (`EncoderConfig`, `eac3::FrameConfig`, `AtmosEncoder` settings,
+  `ac4::EncoderConfig`, the `ac3cli` command line). Illegal combinations are rejected with a
+  `FrameError` (AC-4: `EncodeError::kInvalidConfig`, with the rule named by
+  `Encoder::refusal_reason()`), but the values are not assumed hostile.
 - PCM handed to the encoder. Any float is legal audio; nothing about it can reach a decision the
   bitstream syntax does not already bound.
 - The signing key, if an operator supplies one. It is never generated, logged or written to disk
@@ -65,55 +70,66 @@ of the entry points in the table above is defined in a file that includes it. C+
 memory-safe language, so the posture is a set of specific properties rather than a language
 guarantee:
 
-- **Bit reading cannot run off the end.** `ac3::BitReader` is the single reader for every
-  bitstream in the project. Reading past the end sets a sticky `overflowed()` flag and yields
-  zeros rather than touching memory; parsers check the flag at a frame or payload boundary
-  instead of guarding each read. A truncated or hostile frame therefore decays into a
-  `DecodeError::kTruncated` rather than an over-read.
+- **Bit reading cannot run off the end.** The AC-3, E-AC-3 and object-layer parsers share
+  `ac3::BitReader`, and the AC-4 inspector and decoder each have a reader of their own with the
+  same design. Reading past the end sets a sticky flag (`overflowed()`) and yields zeros rather
+  than touching memory; parsers check the flag at a frame or payload boundary instead of guarding
+  each read. A truncated or hostile frame therefore decays into a `kTruncated`
+  (`DecodeError::kTruncated`; `ac4::Error::kTruncated` from the AC-4 inspector) rather than an
+  over-read. The IAB reader (`ac3iab`) is the exception to the design: its reader returns a
+  `std::expected` from every read.
 - **Every fallible path returns a value, not an exception.** `std::expected<T, DecodeError>`
-  throughout. The codec core does not throw; the only exceptions that can escape it are
-  `std::bad_alloc` from an allocation it makes.
+  throughout (`ac4::DecodeError` for the AC-4 decoder). The codec core does not throw; the only
+  exceptions that can escape it are `std::bad_alloc` from an allocation it makes.
 - **No owning raw pointers, no manual `new`/`delete`, no C string handling** in the codec core.
   Buffers are `std::vector`; borrowed views are `std::span` and `std::string_view`.
 - **Indexed access is `std::span` and `std::vector`, which are bounds-checked only where the
   standard library's own assertions are on** — MSVC's `_STL_VERIFY` in a debug build, and
   libstdc++/libc++ only under `_GLIBCXX_ASSERTIONS`/`_LIBCPP_HARDENING_MODE`, neither of which
-  this project sets. Of the CI legs only the two sanitizer ones are debug builds, and the
-  ASan + UBSan one is also the leg that runs the codec matrix, so an out-of-range index there
-  fails the job (the TSan leg is debug too, but runs only the `concurrency` label — see below).
-  Every other leg, and every shipped package, is a release build with no such net — which is why
-  the fuzzers run under ASan rather than relying on the library's own checks. (The WAV over-read
-  fixed alongside this document is exactly that story: caught by `_STL_VERIFY` in a debug build,
-  invisible in a release one.)
+  this project sets. The CI builds that are debug builds are the two sanitizer legs, the
+  coverage job and the shared-library pass, and all four run in the nightly run, not in the
+  pull-request gate or after a merge. The ASan + UBSan leg is also the one that runs the codec
+  matrix, so an out-of-range index there fails the job (the TSan leg is debug too, but runs only
+  the `concurrency` label — see below). Every other leg, and every shipped package, is a release
+  build with no such net — which is why the fuzzers run under ASan rather than relying on the
+  library's own checks. (The WAV over-read fixed alongside this document is exactly that story:
+  caught by `_STL_VERIFY` in a debug build, invisible in a release one.)
 
-What runs against it, continuously:
+What runs against it:
 
-- **Fourteen libFuzzer harnesses** under [`fuzz/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md),
-  built with ASan + UBSan and `-fno-sanitize-recover=all`. Twelve drive the entry points in the
-  table above for crashes and undefined behaviour — format sniffing (`fuzz_scan`), the three
-  container demuxers (`fuzz_matroska_demux`, `fuzz_mp4_demux`, `fuzz_mpegts_demux`), both
-  elementary-stream decoders (`fuzz_ac3_decode`, `fuzz_eac3_decode`), WAV (`fuzz_wav_read`),
-  IEC 61937 burst de-framing (`fuzz_iec61937_unwrap`), the three object/metadata parsers behind
-  the skip field (`fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse`) and the signature
-  verifier (`fuzz_signing_verify`); two more (`fuzz_differential_ac3_decode`,
-  `fuzz_differential_eac3_decode`) decode the same mutated bytes with FFmpeg as well and diff the
-  PCM, so a *wrong* decode that does not crash is caught too. A fifteenth, `fuzz_adm_parse`, is
-  built only when `AC3FORGE_BUILD_ADM` is on — see [ADM](#adm-xml-and-bw64). `Fuzz Regress`
-  replays the checked-in seed and regression corpora on every push to `main` and every
-  pull request into it; `Fuzz Short` and `Fuzz Differential` add a bounded mutation budget on
-  pushes, and a nightly job goes deeper.
+- **Twenty-four libFuzzer harnesses** under [`fuzz/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md),
+  built with ASan + UBSan and `-fno-sanitize-recover=all`. Twenty-one are in `fuzz/run.sh`'s
+  default list and drive the entry points in the table above for crashes and undefined
+  behaviour — format sniffing (`fuzz_scan`), the three container demuxers (`fuzz_matroska_demux`,
+  `fuzz_mp4_demux`, `fuzz_mpegts_demux`), the AC-3 and E-AC-3 decoders (`fuzz_ac3_decode`,
+  `fuzz_eac3_decode`), AC-4's inspector and decoder (`fuzz_ac4_parse`, `fuzz_ac4_decode`), WAV
+  (`fuzz_wav_read`), IEC 61937 burst de-framing (`fuzz_iec61937_unwrap`), the IAB reader
+  (`fuzz_iab_parse`), the three object/metadata parsers behind the skip field
+  (`fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse`), the signature verifier
+  (`fuzz_signing_verify`), the OSC parser (`fuzz_osc_parse`) and Sendspin's four
+  (`fuzz_sendspin_json`, `fuzz_sendspin_handshake`, `fuzz_sendspin_messages`,
+  `fuzz_sendspin_frames`) — and `fuzz_ac4_encode`, which runs the AC-4 encoder over the
+  configurations and input it takes and holds it to the decoder. Two more
+  (`fuzz_differential_ac3_decode`, `fuzz_differential_eac3_decode`) decode the same mutated
+  bytes with FFmpeg as well and diff the PCM, so a *wrong* decode that does not crash is caught
+  too. The last, `fuzz_adm_parse`, is built only when `AC3FORGE_BUILD_ADM` is on — see
+  [ADM](#adm-xml-and-bw64). `Fuzz Regress` replays the checked-in seed and regression corpora on
+  every push to `main` and every pull request into it; `Fuzz Short` and `Fuzz Differential` add a
+  bounded mutation budget on pushes, and a nightly job goes deeper.
 - **An ASan + UBSan CI leg** that runs the full test suite and `tools/ci/run_codec_matrix.sh` —
   every layout, every Annex E tool token, both Atmos container modes, the metadata options —
-  so the sanitizers see the real command paths rather than only unit tests.
+  so the sanitizers see the real command paths rather than only unit tests. It is a nightly leg.
 - **A ThreadSanitizer leg**. The codec core is single-threaded and holds no shared
   state, but the audio layer's lock-free SPSC ring, silence watchdog and drift servo are shared
   between a real-time callback thread and an encoder thread, and neither ASan nor UBSan can see a
-  race there — the two runtimes are also mutually exclusive, so it is a separate required leg
-  (`Linux LLVM TSan`, `_build.yml`; preset `linux-llvm-tsan`) rather than more entries on the one
-  above. It runs the `concurrency` ctest label only — `tests/audio/` plus
-  `tests/cli/test_cli_live.cpp`, 36 cases — because TSan's shadow memory makes everything several
-  times slower and the rest of the suite is single-threaded codec maths. `tsan.supp` at the
-  repository root holds the suppressions and is near-empty.
+  race there — the two runtimes are also mutually exclusive, so it is a separate leg
+  (`Linux LLVM TSan`, a `deep`-tier leg in `.github/ci/legs.jsonc`, so it runs in the nightly run;
+  preset `linux-llvm-tsan`) rather than more entries on the one above. It runs the `concurrency`
+  ctest label only — the audio layer's tests (`tests/audio/`), `ac3cli live`'s
+  (`tests/cli/test_cli_live.cpp`) and the Hearth tests that carry the tag —
+  because TSan's shadow memory makes everything several times slower and the rest of the suite is
+  single-threaded codec maths. `tsan.supp` at the repository root holds the suppressions and is
+  near-empty.
 - **CodeQL** on the `security-and-quality` suite, **MSVC PREfast** and **clang-tidy**, all run
   nightly against `main` rather than per pull request; a run that finds something new opens a
   `nightly-analysis` issue, and the alerts themselves are triaged in Security > Code scanning.
@@ -129,7 +145,7 @@ What runs against it, continuously:
 What is *not* covered by that leg: anything threaded that is not tagged `concurrency`. The label
 comes from the Catch2 tags themselves (`catch_discover_tests(... ADD_TAGS_AS_LABELS)`), so a race
 in code whose tests carry a different tag — or in a path with no test at all — is outside what
-TSan sees on every push, and adding a case to the leg means tagging it.
+TSan sees on any run, and adding a case to the leg means tagging it.
 
 Known history in this class: one real bug of exactly this shape has been found and fixed (commit
 `8386c8f` — a decoder that shifted by an unvalidated exponent and reached undefined behaviour on
@@ -154,9 +170,10 @@ What the caller still owns:
 
 - **Lifetime.** Every `_create` needs its `_destroy`. Passing `NULL` to a `_destroy` is a no-op,
   matching `free()`.
-- **The `const uint8_t* frame` / `size_t frame_size` pair** passed to
-  `ac3forge_decoder_decode_frame`. A size larger than the buffer is a caller bug this layer
-  cannot detect; the buffer must be valid for the whole call.
+- **The `const uint8_t* frame` / `size_t frame_size` pair** every decode entry point takes
+  (`ac3forge_decoder_decode_frame`, `ac3forge_ac4_decoder_decode` and the rest). A size larger
+  than the buffer is a caller bug this layer cannot detect; the buffer must be valid for the
+  whole call.
 - **Accessor indices.** `ac3forge_decoded_frame_channel_samples(frame, channel_index)` and
   friends take an index the caller is expected to have read from
   `ac3forge_decoded_frame_channel_count` first.
@@ -182,6 +199,11 @@ holding one past that point reads freed WASM heap. The module is built with
 `ALLOW_MEMORY_GROWTH` under a 1 GiB `MAXIMUM_MEMORY` ceiling, which turns heap exhaustion into a
 catchable `std::bad_alloc` and a readable refusal instead of a dead tab.
 
+The AC-4 bindings (`apps/wasm/ac4_bindings.cpp`) have the same shape. The decoder copies the
+JavaScript byte array before parsing and returns each frame's channels and object samples as
+`typed_memory_view`s, valid until that instance's next call. The encoder copies every frame it
+returns into a `Uint8Array` of its own, because one call can return several.
+
 The Android JNI bridge (`apps/android/app/src/main/cpp/`) is demo-app scope: it returns strings
 through `NewStringUTF` and does not take byte arrays across the boundary, so it has no
 `GetByteArrayElements`-style pinned-buffer contract to get wrong. It is not part of the library's
@@ -189,13 +211,15 @@ supported surface.
 
 ## Resource limits
 
-The important structural property is that **every per-access-unit allocation is bounded by a
-bitstream field of fixed width**, so no single frame can be made to consume an unbounded amount
-of memory or time. Decode cost is linear in the number of access units, with a bounded cost per
-unit; there is no super-linear amplification and no recursive descent anywhere in the parsers.
-The OSC bundle walker (below) extends that same guarantee to network input rather than carving
-out an exception to it: arbitrarily nested bundles are walked with an explicit stack and a hard
-depth cap instead of function recursion, by construction rather than by convention.
+For AC-3 and E-AC-3 the important structural property is that **every per-access-unit allocation
+is bounded by a bitstream field of fixed width**, so no single frame can be made to consume an
+unbounded amount of memory or time. Decode cost is linear in the number of access units, with a
+bounded cost per unit; there is no super-linear amplification and no recursive descent anywhere
+in the parsers. The OSC bundle walker (below) extends that same guarantee to network input rather
+than carving out an exception to it: arbitrarily nested bundles are walked with an explicit
+stack and a hard depth cap instead of function recursion, by construction rather than by
+convention. AC-4's syntax leaves more open, and [its own subsection](#limits-for-ac-4) says
+what holds there.
 
 Enforced limits, and where they come from:
 
@@ -237,14 +261,35 @@ The AC-3 equivalent is `frmsizecod`, which indexes a fixed table rather than car
 values 38–63 are reserved and rejected, and `fscod == 3` is rejected, so the frame size is always
 one of 38 tabulated values.
 
+### Limits for AC-4
+
+AC-4 frames are sized by a 16-bit field with a 24-bit escape, and the syntax inside them leaves
+counts open that AC-3 and E-AC-3 fix, so the guarantee above is narrower here. What the AC-4
+libraries enforce:
+
+| Quantity | Limit | Enforced by |
+|---|---|---|
+| AC-4 sync frame | 16,777,215 bytes, plus a 7-byte header and a 2-byte CRC | `frame_size` is 16 bits, or 24 when the 16-bit field reads `0xFFFF` (`ac4::scan`) |
+| Frames handed back | spans into the input, or into storage the caller supplies | `ac4::scan` copies no frame; `ac4::SyncFrameSplitter` reports `kBufferTooSmall` rather than growing its storage |
+| Objects in an OAMD portion | 64 | `kMaxOamdObjects`; a larger count is refused as unsupported however large the stream says it is |
+| Leading ones in an `ext_code` escape | 8 | Table 40 gives the escape 21 bits at most; a ninth leading one refuses the frame |
+
+`variable_bits()` has no limit on the number of groups in the standard, and the decoder sets none:
+the loop ends at a clear continuation flag or at the end of the substream, the value is kept
+modulo 2^64, and a size built from it is compared with what is left of the substream rather than
+looped over. What holds the rest of the property is the harness, not a table: `fuzz_ac4_decode`
+is written to fail on any read outside a substream, any loop on a count with no data behind it and
+any sanitizer report, and it found the `ext_code` loop above, which the decoder had left
+unbounded. There is no measured worst-case expansion ratio for AC-4.
+
 ### Open gaps
 
-**No cap on stream length, and no streaming split.** `ac3::io::scan`, `ac3::split_frames` and
-`ac3::split_access_units` take the whole elementary stream as one `std::span` and return one span
-per access unit. Peak memory is therefore *O(input size)* — the bytes themselves plus roughly 16
-bytes of index per access unit — and there is no limit at which the library refuses. `ac3cli`
-inherits this: it reads the encoded input fully into memory (it streams the *decoded* PCM out, so
-output is O(1)).
+**No cap on stream length, and no streaming split in the CLI.** `ac3::io::scan`,
+`ac3::split_frames`, `ac3::split_access_units` and `ac4::scan` take the whole elementary stream as
+one `std::span` and return one span per access unit. Peak memory is therefore *O(input size)* —
+the bytes themselves plus an index entry per access unit — and there is no limit at which the
+library refuses. `ac3cli` inherits this: it reads the encoded input fully into memory (it streams
+the *decoded* PCM out, so output is O(1)).
 
 This is deliberate rather than overlooked: what counts as "too large" is the embedder's policy,
 not the library's, and a hard cap in the library would break legitimate long-file use. The
@@ -255,7 +300,9 @@ mitigation is on the caller:
 - Or drive the per-frame API directly. `FrameDecoder::decode_frame` and
   `Eac3Decoder::decode_substream`/`decode_access_unit` each take one unit at a time, and the
   `_into` forms write into caller-owned storage, so a caller that delimits units itself never
-  needs the whole stream resident.
+  needs the whole stream resident. `ac3::io::AccessUnitAccumulator` (AC-3, E-AC-3) and
+  `ac4::SyncFrameSplitter` (AC-4) do the delimiting incrementally in storage the caller owns;
+  the ESP32 player uses the first, and neither is used by `ac3cli`.
 
 **No decode time bound.** Nothing in the library measures or limits wall-clock time. Because
 per-unit cost is bounded and the parsers do not recurse or backtrack, total decode time is linear
@@ -286,8 +333,9 @@ libadm and libbw64, plus Boost headers. That means:
   `AC3FORGE_BUILD_ADM` is on (`fuzz/run.sh` turns that on via `AC3FORGE_FUZZ_ADM=1`), and the one
   CI job that runs it — `Fuzz ADM Nightly` — is schedule/dispatch-only and `continue-on-error`,
   because a vcpkg restore plus the libbw64/libadm `FetchContent` pulls cost more than the mutation
-  budget and most of what the harness reaches is third-party code. It is not one of the fourteen
-  harnesses that run on every push. The resource limits above do not apply here either way: there
+  budget and most of what the harness reaches is third-party code. It is not one of the
+  twenty-one harnesses in `fuzz/run.sh`'s default list, which run on every push. The resource
+  limits above do not apply here either way: there
   is no document-size cap, no entity-expansion limit and no element-count limit; an enormous or
   deeply nested ADM document is bounded by nothing this project controls.
 - **libbw64 is fetched from a maintained fork, not the EBU's own repository.** The EBU's
@@ -358,10 +406,11 @@ move to wherever the packet says," never a compromised process.
 ### Sendspin: Hearth's server and its sinks
 
 `src/sendspin`, built only with `AC3FORGE_BUILD_HEARTH`, listens on the local network. A sink
-(`ac3hearth-testsink` on a computer, or `hearth_sink` on an ESP32-S3 board) accepts WebSocket
-connections on port 8928 and advertises `_sendspin._tcp`; Hearth's server listens on 8927,
-advertises `_sendspin-server._tcp`, and dials the players it finds. Anyone on the network can open a connection to either, and anyone can send
-them mDNS packets. The protocol, and where Hearth departs from it, is in
+(`ac3hearth-testsink` on a computer, or `hearth_sink` on an ESP32-S3, ESP32-C6 or ESP32-P4 board)
+accepts WebSocket connections on port 8928 and advertises `_sendspin._tcp`; Hearth's server
+listens on 8927, advertises `_sendspin-server._tcp`, and dials the players it finds. Anyone on the
+network can open a connection to either, and anyone can send them mDNS packets. The protocol, and
+where Hearth departs from it, is in
 [`planning/hearth-sendspin-extension.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md).
 
 **A peer without a key reaches the handshake and little more.** After the handshake's text
@@ -445,12 +494,22 @@ starts again at the next burst. The decoder meets the posture above.
 
 ## What a decode failure looks like
 
-Every decode entry point returns `std::expected<..., DecodeError>` and every error is one of seven
-values: `kTruncated`, `kBadSyncWord`, `kBadCrc`, `kReservedValue`, `kUnsupported` (a bsid this
-decoder does not read), `kInvalidStream` or `kNoReferenceTransform` (a build without the
-direct-form transform, asked for it). `ac3::describe()` turns each into a sentence.
-There is no concealment mode: a frame that fails produces no audio, and a caller that wants
-concealment implements it above this layer.
+Every decode entry point returns `std::expected<..., DecodeError>`. The AC-3 and E-AC-3
+decoders' error is one of seven values: `kTruncated`, `kBadSyncWord`, `kBadCrc`, `kReservedValue`,
+`kUnsupported` (a bsid this decoder does not read), `kInvalidStream` or `kNoReferenceTransform` (a
+build without the direct-form transform, asked for it). `ac3::describe()` turns each into a
+sentence. The AC-4 decoder's `ac4::DecodeError` has five: `kTruncated`, `kInvalidToc` (the table
+of contents did not parse), `kInvalidStream`, `kUnsupported` (legal AC-4 this decoder does not
+read; `Decoder::refusal_reason()` names it) and `kMissingIFrame` (a frame that needs configuration
+no I-frame has sent yet), and the inspector's `ac4::Error` has three (`kTruncated`, `kLostSync`,
+`kUnsupportedBitstreamVersion`).
+
+By default a frame that fails produces no audio and the caller decides what to do. All three
+decoders take a concealment policy (`DecoderConfig::concealment`; `conceal=repeat|mute|off` on
+`ac3cli decode` and `monitor`, off by default) that returns a frame's worth of audio instead of
+the error, repeating the last good block with a fade or playing silence, so a stream with a
+damaged frame stays continuous. A frame that fails before any frame has decoded has nothing to
+conceal from and still returns its error.
 
 A refusal is not a rollback, though. The decoder's own state — overlap-add delay, the §7.3.4
 dither generator, JOC reconstruction — advances block by block as the frame is parsed, and a
@@ -463,6 +522,13 @@ refused.
 CRC is checked, on both generations: AC-3 checks `crc1` over the first 5/8 of the frame and
 `crc2` over the whole of it, E-AC-3 checks its single CRC over everything past the sync word.
 `kBadCrc` is a real refusal, not a warning.
+
+AC-4 differs. A sync frame with the sync word `0xAC41` carries a CRC-16 (Annex G), and
+`ac4::scan` and `ac4::SyncFrameSplitter` compute it and report the result per frame
+(`SyncFrame::crc_ok`; `ac3cli probe` counts the failures), but neither they nor `ac4::Decoder`
+refuse a frame for a bad CRC. A frame with one still reaches the decoder's syntax layer, which is
+why `fuzz_ac4_decode` needs no CRC-repairing mutator. A caller that wants AC-3's behaviour checks
+`crc_ok` itself.
 
 ## Reporting an issue
 
