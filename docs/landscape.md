@@ -318,8 +318,9 @@ The five added at version 2 close two different gaps.
 **Rates where the Annex E tools run.** ac3forge's `auto` decides per frame,
 from the rate and the frame's own content
 (`src/forge/src/encoder/eac3_frame.cpp`): coupling starts below about
-12 + 14n kbit/s per channel for n channels, and spectral extension below 55
-to 110 kbit/s per channel, the higher the emptier the frame's top end. The
+12 + 14n kbit/s per channel for n channels, and spectral extension below a
+ceiling of 55 to 110 kbit/s per channel, higher the emptier the frame's top
+end. The
 first baseline had one stereo leg, at 192 kbit/s (96 per channel), where
 `auto` on the synthetic fixture uses spectral extension in most blocks and
 coupling in a few. The two stereo legs added at version 2 sit at 96 kbit/s
