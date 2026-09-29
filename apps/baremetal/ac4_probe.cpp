@@ -434,6 +434,8 @@ constexpr std::array kFixtures = {
             ac3probe::kAc451AcplRms, 0},
     Fixture{"ac4_514_tones", ac3probe::kAc4514TonesStream, ac3probe::kAc4514TonesFrames,
             ac3probe::kAc4514TonesRms, 0},
+    Fixture{"ac4_20_companding", ac3probe::kAc420CompandingStream, ac3probe::kAc420CompandingFrames,
+            ac3probe::kAc420CompandingRms, 0},
 };
 
 bool over_budget(const Fixture& fixture) {

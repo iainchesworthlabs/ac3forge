@@ -150,6 +150,7 @@ declare -A ICOUNT_CEILING_AC4=(
     [ac4_51_music]=130000000
     [ac4_51_acpl]=137000000
     [ac4_514_tones]=227000000
+    [ac4_20_companding]=64500000
 )
 # Steady-state allocations per frame. The decoder's syntax layer still builds its element
 # vectors afresh each frame (planning/ac4.md, D14a's memory audit); these hold the distance
@@ -160,6 +161,7 @@ declare -A CHURN_CEILING_AC4=(
     [ac4_51_music]=168
     [ac4_51_acpl]=99
     [ac4_514_tones]=210
+    [ac4_20_companding]=82
 )
 # Each fixture's peak heap in bytes, on either leg: the host's 64-bit pointers put it a few
 # per cent above the Cortex-M3's, and one figure covers both.
@@ -169,6 +171,7 @@ declare -A PEAK_CEILING_AC4=(
     [ac4_51_music]=1100000
     [ac4_51_acpl]=1330000
     [ac4_514_tones]=2130000
+    [ac4_20_companding]=522000
 )
 
 # --- ceilings --------------------------------------------------------------

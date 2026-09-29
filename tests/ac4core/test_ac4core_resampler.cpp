@@ -342,6 +342,37 @@ TEST_CASE("the converter's table is the double design rounded once to the scalar
     }
 }
 
+TEST_CASE("the converter's table, rounded to float, is the same on every platform",
+          "[ac4core][dsp][src]") {
+    // FNV-1a over the bit pattern of every coefficient of every phase as a float, the double
+    // design's entries rounded once. The design calls sin and sqrt at double, whose last bit the C
+    // libraries do not all agree on, and a float table that differs by a bit anywhere would give
+    // the host, the Cortex-M3 leg and the ESP32s each a converter of its own (planning/ac4.md,
+    // D14a4): what the pins hold is that the libraries in CI round it the same way.
+    struct Pin {
+        const Rate& rate;
+        std::uint64_t hash;
+    };
+    const std::array<Pin, 3> pins{{{kRates[1], 0x6b1acefe1feaea93ULL},
+                                   {kRates[2], 0x59f33c109eaa0ec5ULL},
+                                   {kRates[0], 0xf55c1b394d2a0147ULL}}};
+    for (const Pin& pin : pins) {
+        CAPTURE(pin.rate.index, pin.rate.up, pin.rate.down);
+        const dsp::ResamplerFilter design(pin.rate.up, pin.rate.down);
+        std::uint64_t hash = 14695981039346656037ULL;
+        for (int p = 0; p < design.up(); ++p) {
+            for (const double coefficient : design.phase(p)) {
+                const auto bits = std::bit_cast<std::uint32_t>(static_cast<float>(coefficient));
+                for (unsigned shift = 0; shift < 32; shift += 8) {
+                    hash ^= (bits >> shift) & 0xFFU;
+                    hash *= 1099511628211ULL;
+                }
+            }
+        }
+        CHECK(hash == pin.hash);
+    }
+}
+
 TEST_CASE("the converter's float dot product is four lanes' sums, added in the order it states",
           "[ac4core][dsp][src]") {
     std::uint32_t state = 7U;

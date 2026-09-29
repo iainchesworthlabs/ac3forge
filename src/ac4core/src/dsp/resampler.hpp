@@ -43,10 +43,11 @@
 // is built. A converter that runs at float (the decoder in the float tier, on
 // the ESP32-P4, whose FPU is single precision and where a double multiply and
 // add is a call to a software routine) then sums float products of float
-// history, in the order of the taps, so its output is the same float on every
-// platform; a converter at double, the encoder's and the decoder's in the
-// default build, sums double products of the double table as it always did
-// (planning/ac4.md, D14a4).
+// history over four lanes in an order fixed in dsp/resampler_vector.hpp, so
+// its output is the same float on every platform; a converter at double, the
+// encoder's and the decoder's in the default build, sums double products of the
+// double table in the order of the taps, as it always did (planning/ac4.md,
+// D14a4).
 
 namespace ac4::detail::dsp {
 

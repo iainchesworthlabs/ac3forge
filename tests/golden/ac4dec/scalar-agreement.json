@@ -1,5 +1,5 @@
 {
-  "_comment": "The AC-4 float decode's agreement with the double decode, per committed stream (tools/checks/check_ac4_decode_scalar_snr.py): the floors, in dB, of the worst channel's SNR below the lowest A-SPX crossover and above the highest, over half-overlapped Hann frames of 2048 samples, a channel with less than 1e-6 in a region (per frame) left out of it. Each is the figure measured on 2026-09-30 less 3.0 dB; MSVC, GCC 16 and Clang 22 gave figures within 0.1 dB of one another. Re-pin when a stream's decode changes on purpose.",
+  "_comment": "The AC-4 float decode's agreement with the double decode, per committed stream (tools/checks/check_ac4_decode_scalar_snr.py): the floors, in dB, of the worst channel's SNR below the lowest A-SPX crossover and above the highest, over half-overlapped Hann frames of 2048 samples, a channel with less than 1e-6 in a region (per frame) left out of it. Each is the figure measured on 2026-09-30 less 3.0 dB (the three IMS streams', whose frame-rate converter runs at float, measured again after D14a4 moved it there); MSVC, GCC 16 and Clang 22 gave figures within 0.1 dB of one another. Re-pin when a stream's decode changes on purpose.",
   "margin_db": 3.0,
   "streams": {
     "apps/gui/tests/fixtures/ac4-objects.ac4": {
@@ -255,16 +255,16 @@
       "above": null
     },
     "tests/golden/external-baseline/ac4-ims-film-96-24/dee.ac4": {
-      "below": 133.0,
-      "above": 91.7
+      "below": 131.6,
+      "above": 88.4
     },
     "tests/golden/external-baseline/ac4-ims-music-128-25/dee.ac4": {
-      "below": 130.3,
-      "above": 59.3
+      "below": 131.4,
+      "above": 57.9
     },
     "tests/golden/external-baseline/ac4-ims-music-64-2997/dee.ac4": {
-      "below": 132.9,
-      "above": 95.2
+      "below": 133.3,
+      "above": 91.9
     },
     "tests/golden/external-baseline/ac4-stereo-64/dee.ac4": {
       "below": 130.3,
