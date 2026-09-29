@@ -1,13 +1,14 @@
 //! AC-4 encode and decode - `ac4::Decoder`/`ac4::Encoder` via
 //! `ac3forge_ac4_decoder_t`/`ac3forge_ac4_encoder_t` (ETSI TS 103 190-1/-2).
 //!
-//! Mirrors the same "core surface" the C API itself mirrors (see
+//! Mirrors the surface the C API itself mirrors (see
 //! `ac3forge_ac4_encoder_config_t`'s own comment in `ac3forge.h`): channel-based
-//! and channel-based-immersive content, one substream, one presentation. The
+//! and channel-based-immersive content, or one object substream (A-JOC or
+//! direct-coded, [`ObjectsConfig`]), in one substream and one presentation. The
 //! loudness/DRC/downmix/dialogue-enhancement metadata groups, multi-substream/
-//! multi-presentation configurations and A-JOC/direct-coded objects on the
-//! encoder side are not exposed here either - a caller who needs them links
-//! `ac4enc`/`ac4dec` directly instead of through this crate.
+//! multi-presentation configurations, EMDF payloads and the `drc_gains` and
+//! `three_zero` experimental flags are not exposed here either - a caller who
+//! needs them links `ac4enc`/`ac4dec` directly instead of through this crate.
 //!
 //! Present only when the linked `ac3forge_c` was built with `AC3FORGE_BUILD_AC4`
 //! on (the default) - `ac3forge-sys`'s bindgen output simply has no
@@ -321,6 +322,142 @@ impl RateMode {
             RateMode::Constant => sys::ac3forge_ac4_rate_mode_AC3FORGE_AC4_RATE_CONSTANT,
             RateMode::Average => sys::ac3forge_ac4_rate_mode_AC3FORGE_AC4_RATE_AVERAGE,
             RateMode::Variable => sys::ac3forge_ac4_rate_mode_AC3FORGE_AC4_RATE_VARIABLE,
+        }
+    }
+}
+
+/// Mirrors `ac3forge_ac4_bed_channel_t` (`ac4::BedChannel`): the loudspeaker a bed object plays
+/// from (Part 2 Table 66's `nonstd_bed_channel_assignment`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BedChannel {
+    Left,
+    Right,
+    Centre,
+    LeftSurround,
+    RightSurround,
+    LeftBack,
+    RightBack,
+    TopFrontLeft,
+    TopFrontRight,
+    TopSideLeft,
+    TopSideRight,
+    TopBackLeft,
+    TopBackRight,
+    LeftWide,
+    RightWide,
+}
+
+impl BedChannel {
+    fn to_raw(self) -> sys::ac3forge_ac4_bed_channel_t {
+        match self {
+            BedChannel::Left => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT,
+            BedChannel::Right => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_RIGHT,
+            BedChannel::Centre => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_CENTRE,
+            BedChannel::LeftSurround => {
+                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT_SURROUND
+            }
+            BedChannel::RightSurround => {
+                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_RIGHT_SURROUND
+            }
+            BedChannel::LeftBack => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT_BACK,
+            BedChannel::RightBack => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_RIGHT_BACK,
+            BedChannel::TopFrontLeft => {
+                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_FRONT_LEFT
+            }
+            BedChannel::TopFrontRight => {
+                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_FRONT_RIGHT
+            }
+            BedChannel::TopSideLeft => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_SIDE_LEFT,
+            BedChannel::TopSideRight => {
+                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_SIDE_RIGHT
+            }
+            BedChannel::TopBackLeft => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_BACK_LEFT,
+            BedChannel::TopBackRight => {
+                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_BACK_RIGHT
+            }
+            BedChannel::LeftWide => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT_WIDE,
+            BedChannel::RightWide => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_RIGHT_WIDE,
+        }
+    }
+}
+
+/// Mirrors `ac3forge_ac4_object_coding_t` (`ac4::ObjectCoding`): how an object substream's
+/// objects are coded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ObjectCoding {
+    /// An A-JOC substream (Part 2 clause 5.7): a downmix coded in a `var_channel_element()` or a
+    /// static 5.X bed, and the matrices that rebuild the objects from it.
+    #[default]
+    Ajoc,
+    /// Direct-coded object substreams (clause 6.2.1.11): the objects coded as channels of Part
+    /// 1's elements, with the group's OAMD substream. Dynamic objects and the LFE only.
+    Direct,
+}
+
+impl ObjectCoding {
+    fn to_raw(self) -> sys::ac3forge_ac4_object_coding_t {
+        match self {
+            ObjectCoding::Ajoc => sys::ac3forge_ac4_object_coding_AC3FORGE_AC4_OBJECT_CODING_AJOC,
+            ObjectCoding::Direct => {
+                sys::ac3forge_ac4_object_coding_AC3FORGE_AC4_OBJECT_CODING_DIRECT
+            }
+        }
+    }
+}
+
+/// Mirrors `ac3forge_ac4_ajoc_downmix_t` (`ac4::AjocDownmix`): A-JOC's downmix, which Part 2
+/// leaves to the encoder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum AjocDownmix {
+    /// Downmix signals the encoder computes: the objects in groups by where they start, each
+    /// signal the sum of its group's objects.
+    #[default]
+    Computed,
+    /// A static bed (`b_static_dmx`): the objects panned onto L, R, C, Ls and Rs by X and Y.
+    Static50,
+    /// As `Static50`, and the LFE object onto the LFE.
+    Static51,
+}
+
+impl AjocDownmix {
+    fn to_raw(self) -> sys::ac3forge_ac4_ajoc_downmix_t {
+        match self {
+            AjocDownmix::Computed => {
+                sys::ac3forge_ac4_ajoc_downmix_AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED
+            }
+            AjocDownmix::Static50 => {
+                sys::ac3forge_ac4_ajoc_downmix_AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_50
+            }
+            AjocDownmix::Static51 => {
+                sys::ac3forge_ac4_ajoc_downmix_AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51
+            }
+        }
+    }
+}
+
+/// Mirrors `ac3forge_ac4_additional_pair_t` (`ac4::AdditionalPair`, Part 1 Table 88): the 7.X
+/// element's pair beyond L, R, C, Ls and Rs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum AdditionalPair {
+    #[default]
+    None,
+    /// 3/4/0: Lb and Rb.
+    Back,
+    /// 5/2/0: Lw and Rw.
+    Wide,
+    /// 3/2/2: Tfl and Tfr.
+    TopFront,
+}
+
+impl AdditionalPair {
+    fn to_raw(self) -> sys::ac3forge_ac4_additional_pair_t {
+        match self {
+            AdditionalPair::None => sys::ac3forge_ac4_additional_pair_AC3FORGE_AC4_PAIR_NONE,
+            AdditionalPair::Back => sys::ac3forge_ac4_additional_pair_AC3FORGE_AC4_PAIR_BACK,
+            AdditionalPair::Wide => sys::ac3forge_ac4_additional_pair_AC3FORGE_AC4_PAIR_WIDE,
+            AdditionalPair::TopFront => {
+                sys::ac3forge_ac4_additional_pair_AC3FORGE_AC4_PAIR_TOP_FRONT
+            }
         }
     }
 }
@@ -712,29 +849,81 @@ pub struct LoudnessInfo {
     pub loudness_range_lu: Option<f64>,
 }
 
-/// Mirrors `ac3forge_ac4_object_properties_t` (`ac4::ObjectProperties`' scalar fields, Part 2
-/// Annex F.2 to F.10) - what is in force at the frame's first sample. The within-frame
-/// `ObjectUpdate` ramps are not exposed (same "reasonable cost" cut as the C API).
+/// Mirrors `ac3forge_ac4_object_properties_t` (`ac4::ObjectProperties`, Part 2 Annex F.2 to
+/// F.10 and `add_per_object_md()`'s data): what one block update of an object's metadata sets.
+/// The decoder reports it and the encoder takes it in these terms; `ac3forge.h` gives each
+/// field's range and the steps its code has (an encoder rounds to the nearest and refuses a
+/// value off its range). Construct with [`ObjectProperties::default`], which calls the raw
+/// `ac3forge_ac4_object_properties_init()`: a zeroed struct is a depth exponent no code holds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjectProperties {
     pub active: bool,
+    /// +15 to -49 dB in steps of 1, or `f64::NEG_INFINITY` for silence.
     pub gain_db: f64,
+    /// 0 to 1 in steps of 1/31.
     pub priority: f64,
+    /// X from the left wall (0) to the right (1) and Y from the front wall (0) to the back (1)
+    /// in steps of 1/62, Z from the floor (-1) to the ceiling (1) in steps of 1/15; a dynamic
+    /// object's, ignored for a bed object and the LFE.
     pub position: [f64; 3],
+    /// Part 2 Table 104, 0 to 7.
     pub zone_mask: i32,
     pub enable_elevation: bool,
     pub snap: bool,
+    /// The object's width in X, Y and Z, each 0 to 1 in steps of 1/31.
     pub width: [f64; 3],
+    /// 0, or 1/8 to 1 in steps of 1/8.
     pub screen_factor: f64,
+    /// Exactly 0.25, 0.5, 1 or 2.
     pub depth_exponent: f64,
+    /// 1 or more, or `f64::INFINITY` for an object at infinity.
     pub distance: Option<f64>,
     pub divergence: f64,
     pub trim_disabled: bool,
+    /// 0 to 3.
     pub headphone_render_mode: Option<i32>,
     pub head_track_disabled: bool,
 }
 
+impl Default for ObjectProperties {
+    fn default() -> Self {
+        let mut raw = unsafe { std::mem::zeroed() };
+        // SAFETY: ac3forge_ac4_object_properties_init() unconditionally overwrites every field
+        // of `raw` with ac4::ObjectProperties{}'s defaults (room centre, unity gain, priority 1,
+        // depth exponent 1) - a struct-level derive would give priority 0 and depth exponent 0,
+        // which the encoder refuses.
+        unsafe { sys::ac3forge_ac4_object_properties_init(&mut raw) };
+        ObjectProperties::from_raw(raw)
+    }
+}
+
 impl ObjectProperties {
+    fn to_raw(self) -> sys::ac3forge_ac4_object_properties_t {
+        sys::ac3forge_ac4_object_properties_t {
+            active: self.active as i32,
+            gain_db: self.gain_db,
+            priority: self.priority,
+            x: self.position[0],
+            y: self.position[1],
+            z: self.position[2],
+            zone_mask: self.zone_mask,
+            enable_elevation: self.enable_elevation as i32,
+            snap: self.snap as i32,
+            width_x: self.width[0],
+            width_y: self.width[1],
+            width_z: self.width[2],
+            screen_factor: self.screen_factor,
+            depth_exponent: self.depth_exponent,
+            has_distance: self.distance.is_some() as i32,
+            distance: self.distance.unwrap_or_default(),
+            divergence: self.divergence,
+            trim_disabled: self.trim_disabled as i32,
+            has_headphone_render_mode: self.headphone_render_mode.is_some() as i32,
+            headphone_render_mode: self.headphone_render_mode.unwrap_or_default(),
+            head_track_disabled: self.head_track_disabled as i32,
+        }
+    }
+
     fn from_raw(raw: sys::ac3forge_ac4_object_properties_t) -> Self {
         ObjectProperties {
             active: raw.active != 0,
@@ -757,6 +946,18 @@ impl ObjectProperties {
     }
 }
 
+/// One block update of an object's metadata within a frame - `ac4::ObjectUpdate` (Part 2 Annex
+/// F.11) via `ac3forge_ac4_object_update_t`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ObjectUpdate {
+    /// The output sample of the frame the update takes effect at, counted with the decoder's
+    /// delay as the frame's channels are.
+    pub sample: usize,
+    /// The samples a renderer takes to move to `properties` from what was in force.
+    pub ramp_samples: i32,
+    pub properties: ObjectProperties,
+}
+
 /// One decoded object of a [`DecodedFrame`] - `ac4::DecodedObject` (Part 2 clause 4.8.3.4).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecodedObject {
@@ -767,6 +968,8 @@ pub struct DecodedObject {
     pub samples: Vec<f32>,
     /// What is in force at the frame's first sample.
     pub properties: ObjectProperties,
+    /// The updates within the frame, in the order they take effect.
+    pub updates: Vec<ObjectUpdate>,
 }
 
 /// What a concealed frame's decode did - `ac4::Concealment`.
@@ -860,9 +1063,10 @@ impl DecodedFrame {
         }
     }
 
-    /// A presentation with object audio: its objects, each substream's in turn. Empty for
-    /// channel-based/channel-based-immersive content, which this crate's [`Encoder`] writes
-    /// exclusively as of this version (A-JOC and direct-coded objects are a later phase).
+    /// A presentation with object audio: its objects, in the decoder's order - the LFE object
+    /// first, then the bed objects, then the dynamic objects, each group in the order the
+    /// encoder's [`ObjectsConfig`] lists it. Empty for channel-based and channel-based-immersive
+    /// content.
     pub fn objects(&self) -> Vec<DecodedObject> {
         // SAFETY: `self.raw` is valid.
         let count = unsafe { sys::ac3forge_ac4_decoded_frame_object_count(self.raw.as_ptr()) };
@@ -895,6 +1099,23 @@ impl DecodedFrame {
                     properties: ObjectProperties::from_raw(
                         sys::ac3forge_ac4_decoded_frame_object_properties(self.raw.as_ptr(), index),
                     ),
+                    updates: (0..sys::ac3forge_ac4_decoded_frame_object_update_count(
+                        self.raw.as_ptr(),
+                        index,
+                    ))
+                        .map(|update_index| {
+                            let update = sys::ac3forge_ac4_decoded_frame_object_update(
+                                self.raw.as_ptr(),
+                                index,
+                                update_index,
+                            );
+                            ObjectUpdate {
+                                sample: update.sample,
+                                ramp_samples: update.ramp_samples,
+                                properties: ObjectProperties::from_raw(update.properties),
+                            }
+                        })
+                        .collect(),
                 }
             })
             .collect()
@@ -909,11 +1130,107 @@ impl Drop for DecodedFrame {
 
 // --- encoder -------------------------------------------------------------
 
-/// Mirrors `ac3forge_ac4_encoder_config_t` (`ac4::EncoderConfig`'s core surface - see this
-/// module's own doc comment on what is deliberately left out).
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Mirrors `ac3forge_ac4_object_config_t` (`ac4::ObjectConfig`): one object of an
+/// [`ObjectsConfig`], the input channel at its index. Construct with
+/// [`ObjectConfig::default`], a dynamic object at the room's centre.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ObjectConfig {
+    /// A bed object, from this loudspeaker; `None` for a dynamic object.
+    pub bed: Option<BedChannel>,
+    /// The LFE, at most one object's: its bed channel and position are ignored.
+    pub lfe: bool,
+    /// What is in force from the first sample.
+    pub properties: ObjectProperties,
+}
+
+impl ObjectConfig {
+    fn to_raw(&self) -> sys::ac3forge_ac4_object_config_t {
+        sys::ac3forge_ac4_object_config_t {
+            has_bed: self.bed.is_some() as i32,
+            bed: self.bed.map_or(
+                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT,
+                BedChannel::to_raw,
+            ),
+            lfe: self.lfe as i32,
+            properties: self.properties.to_raw(),
+        }
+    }
+}
+
+/// Mirrors `ac3forge_ac4_objects_config_t` (`ac4::ObjectsConfig`): the objects of the one
+/// object substream a stream can have, and how they are coded. The limits (1 to
+/// `AC3FORGE_AC4_MAX_OBJECTS` objects, at most one the LFE, a computed downmix of at most
+/// `AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS` signals, `frame_rate_index` 13 only, and the rest) are the
+/// encoder's: [`Encoder::refusal_reason`] names the rule a configuration breaks.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ObjectsConfig {
+    pub objects: Vec<ObjectConfig>,
+    pub coding: ObjectCoding,
+    pub downmix: AjocDownmix,
+    /// A computed downmix's signals; `None` takes one a 32 kbps of the substream's rate, up to
+    /// 10.
+    pub downmix_signals: Option<i32>,
+    /// A-JOC's decorrelators (Part 2 clause 5.7.3.5).
+    pub decorrelation: bool,
+    /// The parameter bands A-JOC's matrices take (Table 78: 23, 15, 12, 9, 7, 5, 3 or 1) and
+    /// whether they are quantised coarsely; `None` takes 23 fine from 64 kbps a downmix signal,
+    /// 15 fine from 32 and 12 coarse below.
+    pub parameter_bands: Option<i32>,
+    pub coarse: Option<bool>,
+    /// `oamd_common_data()`'s `master_screen_size_ratio_code` (0 to 31; `None` for
+    /// `b_default_screen_size_ratio`) and `b_bed_object_chan_distribute`.
+    pub screen_size_ratio_code: Option<i32>,
+    pub bed_object_chan_distribute: bool,
+}
+
+/// Mirrors `ac3forge_ac4_experimental_t` (`ac4::EncoderConfig::Experimental`): syntax only this
+/// project's readers have read from this encoder, off unless asked for. Not mirrored:
+/// `drc_gains` and `three_zero`, which need the DRC modes and the substream list this crate does
+/// not carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Experimental {
+    /// The ASPX mode's pairs as sum and balance where that is fewer bits.
+    pub aspx_balance: bool,
+    /// The ASPX mode's VARVAR framing.
+    pub aspx_varvar: bool,
+    /// Frequency interleaved waveform coding above the crossover.
+    pub aspx_interleave: bool,
+    /// The 5.X and 7.X elements' `coding_config` 1 to 3 and `2ch_mode` 1.
+    pub coding_configs: bool,
+    /// Seven or eight input channels, with this pair beyond L R C Ls Rs.
+    pub seven_x: AdditionalPair,
+    /// The A-CPL modes DEE's streams do not use (ASPX_ACPL_1, stereo A-CPL).
+    pub acpl: bool,
+    /// 7.0.4 and 7.1.4 with the back pair: eleven or twelve input channels.
+    pub back_pair: bool,
+    /// The immersive element's ASPX_AJCC.
+    pub ajcc: bool,
+    /// Object audio; required by an [`EncoderConfig::objects`].
+    pub objects: bool,
+}
+
+impl Experimental {
+    fn to_raw(self) -> sys::ac3forge_ac4_experimental_t {
+        sys::ac3forge_ac4_experimental_t {
+            aspx_balance: self.aspx_balance as i32,
+            aspx_varvar: self.aspx_varvar as i32,
+            aspx_interleave: self.aspx_interleave as i32,
+            coding_configs: self.coding_configs as i32,
+            seven_x: self.seven_x.to_raw(),
+            acpl: self.acpl as i32,
+            back_pair: self.back_pair as i32,
+            ajcc: self.ajcc as i32,
+            objects: self.objects as i32,
+        }
+    }
+}
+
+/// Mirrors `ac3forge_ac4_encoder_config_t` (`ac4::EncoderConfig`, less what this module's own doc
+/// comment leaves out). Construct with [`EncoderConfig::default`].
+#[derive(Debug, Clone, PartialEq)]
 pub struct EncoderConfig {
-    /// 1, 2, 5, 6, 9 or 10 - see `ac4::EncoderConfig::channels`'s own comment.
+    /// 1, 2, 5, 6, 9 or 10 - see `ac4::EncoderConfig::channels`'s own comment; ignored with
+    /// `objects`.
     pub channels: i32,
     /// 48000, or 44100 (`frame_rate_index` 13 only).
     pub sample_rate_hz: i32,
@@ -921,14 +1238,54 @@ pub struct EncoderConfig {
     pub frame_rate_index: i32,
     pub bitrate_kbps: i32,
     pub rate_mode: RateMode,
+    /// With `objects`, the object substream's.
     pub codec_mode: CodecMode,
     pub iframe_interval: i32,
     pub dialnorm_db: f64,
+    /// Frames, counted from 0, that must be I-frames besides those `iframe_interval` makes.
+    pub iframes: Vec<i64>,
+    /// Where the caller's fragments start, in samples of the decoded output from its first:
+    /// the frame whose output starts there, or the first to start after it, is an I-frame.
+    pub fragment_starts: Vec<i64>,
+    pub experimental: Experimental,
+    /// `None` for channel-based content; otherwise the stream is one object substream of these
+    /// objects, and needs `experimental.objects`.
+    pub objects: Option<ObjectsConfig>,
 }
 
 impl EncoderConfig {
-    fn to_raw(self) -> sys::ac3forge_ac4_encoder_config_t {
-        sys::ac3forge_ac4_encoder_config_t {
+    /// Builds the raw struct - and the arrays it points to, which this function keeps alive on
+    /// its own stack frame - and hands it to `f` for the duration of the call.
+    fn with_raw<R>(&self, f: impl FnOnce(&sys::ac3forge_ac4_encoder_config_t) -> R) -> R {
+        let object_configs: Vec<sys::ac3forge_ac4_object_config_t> = self
+            .objects
+            .as_ref()
+            .map(|objects| objects.objects.iter().map(ObjectConfig::to_raw).collect())
+            .unwrap_or_default();
+        let objects_raw = self
+            .objects
+            .as_ref()
+            .map(|objects| sys::ac3forge_ac4_objects_config_t {
+                objects: if object_configs.is_empty() {
+                    ptr::null()
+                } else {
+                    object_configs.as_ptr()
+                },
+                object_count: object_configs.len(),
+                coding: objects.coding.to_raw(),
+                downmix: objects.downmix.to_raw(),
+                has_downmix_signals: objects.downmix_signals.is_some() as i32,
+                downmix_signals: objects.downmix_signals.unwrap_or_default(),
+                decorrelation: objects.decorrelation as i32,
+                has_parameter_bands: objects.parameter_bands.is_some() as i32,
+                parameter_bands: objects.parameter_bands.unwrap_or_default(),
+                has_coarse: objects.coarse.is_some() as i32,
+                coarse: objects.coarse.unwrap_or_default() as i32,
+                has_screen_size_ratio_code: objects.screen_size_ratio_code.is_some() as i32,
+                screen_size_ratio_code: objects.screen_size_ratio_code.unwrap_or_default(),
+                bed_object_chan_distribute: objects.bed_object_chan_distribute as i32,
+            });
+        let raw = sys::ac3forge_ac4_encoder_config_t {
             channels: self.channels,
             sample_rate_hz: self.sample_rate_hz,
             frame_rate_index: self.frame_rate_index,
@@ -937,7 +1294,24 @@ impl EncoderConfig {
             codec_mode: self.codec_mode.to_raw(),
             iframe_interval: self.iframe_interval,
             dialnorm_db: self.dialnorm_db,
-        }
+            iframes: if self.iframes.is_empty() {
+                ptr::null()
+            } else {
+                self.iframes.as_ptr()
+            },
+            iframe_count: self.iframes.len(),
+            fragment_starts: if self.fragment_starts.is_empty() {
+                ptr::null()
+            } else {
+                self.fragment_starts.as_ptr()
+            },
+            fragment_start_count: self.fragment_starts.len(),
+            experimental: self.experimental.to_raw(),
+            objects: objects_raw
+                .as_ref()
+                .map_or(ptr::null(), |objects| objects as *const _),
+        };
+        f(&raw)
     }
 }
 
@@ -963,6 +1337,39 @@ impl Default for EncoderConfig {
             codec_mode: CodecMode::from_raw(raw.codec_mode),
             iframe_interval: raw.iframe_interval,
             dialnorm_db: raw.dialnorm_db,
+            // Every flag of ac4::EncoderConfig::Experimental is off by default, as is the
+            // additional pair (ac3forge_ac4_encoder_config_init()), which Experimental::default()
+            // spells - no value in `raw` a derive would get wrong.
+            iframes: Vec::new(),
+            fragment_starts: Vec::new(),
+            experimental: Experimental::default(),
+            objects: None,
+        }
+    }
+}
+
+/// Mirrors `ac3forge_ac4_object_metadata_update_t` (`ac4::ObjectMetadataUpdate`): a change to an
+/// object's metadata, given with the input it belongs to (see [`Encoder::encode_objects`]).
+/// Construct with [`ObjectMetadataUpdate::default`].
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ObjectMetadataUpdate {
+    /// An index into [`ObjectsConfig::objects`].
+    pub object: usize,
+    /// From input sample `sample` of the call's channels (0 its first, and any later one) the
+    /// object moves to `properties`.
+    pub sample: i64,
+    /// Over `ramp_samples` (0 to 2047, or 2048).
+    pub ramp_samples: i32,
+    pub properties: ObjectProperties,
+}
+
+impl ObjectMetadataUpdate {
+    fn to_raw(self) -> sys::ac3forge_ac4_object_metadata_update_t {
+        sys::ac3forge_ac4_object_metadata_update_t {
+            object: self.object,
+            sample: self.sample,
+            ramp_samples: self.ramp_samples,
+            properties: self.properties.to_raw(),
         }
     }
 }
@@ -1082,15 +1489,34 @@ unsafe impl Send for Encoder {}
 
 impl Encoder {
     /// Fails with [`Error::Ac4EncodeInvalidConfig`] for a configuration outside what the
-    /// encoder writes, or whose rate cannot hold its least frame.
+    /// encoder writes, or whose rate cannot hold its least frame; [`Encoder::refusal_reason`]
+    /// says which rule it breaks.
     pub fn new(config: &EncoderConfig) -> Result<Self, Error> {
-        let raw_config = config.to_raw();
-        let mut out: *mut sys::ac3forge_ac4_encoder_t = ptr::null_mut();
-        let status = unsafe { sys::ac3forge_ac4_encoder_create(&raw_config, &mut out) };
-        Error::check(status)?;
-        let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_ac4_encoder_create returned OK with a null encoder");
-        Ok(Encoder { raw })
+        config.with_raw(|raw_config| {
+            let mut out: *mut sys::ac3forge_ac4_encoder_t = ptr::null_mut();
+            // SAFETY: `raw_config` and the arrays it points to are valid for the duration of
+            // this call; `out` is a valid out-parameter.
+            let status = unsafe { sys::ac3forge_ac4_encoder_create(raw_config, &mut out) };
+            Error::check(status)?;
+            let raw = ptr::NonNull::new(out)
+                .expect("ac3forge_ac4_encoder_create returned OK with a null encoder");
+            Ok(Encoder { raw })
+        })
+    }
+
+    /// Why [`Encoder::new`] refuses `config`: the first rule it breaks, such as "objects at a
+    /// frame_rate_index other than 13"; empty where it makes an encoder of it
+    /// (`ac4::Encoder::refusal_reason`). It does `new()`'s work to find out.
+    pub fn refusal_reason(config: &EncoderConfig) -> String {
+        config.with_raw(|raw_config| {
+            // SAFETY: `raw_config` is valid for the duration of this call; the result is
+            // library-owned storage, always a valid NUL-terminated C string (never NULL).
+            unsafe {
+                CStr::from_ptr(sys::ac3forge_ac4_encoder_refusal_reason(raw_config))
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        })
     }
 
     /// The codec mode the stream is actually coded in - never [`CodecMode::Auto`].
@@ -1122,6 +1548,52 @@ impl Encoder {
         }
         let pointers: Vec<*const f32> = channels.iter().map(|c| c.as_ptr()).collect();
         self.encode_raw(&pointers, samples_per_channel)
+    }
+
+    /// [`Encoder::encode`] for an encoder with an [`ObjectsConfig`], and the changes to the
+    /// objects' metadata within this input or after it, in any order: `objects` is one slice of
+    /// PCM per object, all the same length. An update for an object the configuration lacks,
+    /// before this input's first sample, or with a property off its range is
+    /// [`Error::Ac4EncodeInvalidInput`], and so is any update to an encoder without an object
+    /// substream (`ac4::Encoder::encode`'s overload with updates).
+    pub fn encode_objects(
+        &mut self,
+        objects: &[&[f32]],
+        updates: &[ObjectMetadataUpdate],
+    ) -> Result<Vec<EncodedFrame>, Error> {
+        if objects.is_empty() {
+            return Err(Error::InvalidArgument);
+        }
+        let samples_per_object = objects[0].len();
+        if objects.iter().any(|c| c.len() != samples_per_object) {
+            return Err(Error::InvalidArgument);
+        }
+        let pointers: Vec<*const f32> = objects.iter().map(|c| c.as_ptr()).collect();
+        let raw_updates: Vec<sys::ac3forge_ac4_object_metadata_update_t> =
+            updates.iter().map(|update| update.to_raw()).collect();
+        let mut out: *mut *mut sys::ac3forge_ac4_encoded_frame_t = ptr::null_mut();
+        let mut count: usize = 0;
+        // SAFETY: `pointers` holds one valid pointer per object, each to `samples_per_object`
+        // live f32s, and `raw_updates` holds `raw_updates.len()` initialized updates, for the
+        // duration of this call; `out`/`count` are valid out-parameters.
+        let status = unsafe {
+            sys::ac3forge_ac4_encoder_encode_objects(
+                self.raw.as_ptr(),
+                pointers.as_ptr(),
+                pointers.len(),
+                samples_per_object,
+                if raw_updates.is_empty() {
+                    ptr::null()
+                } else {
+                    raw_updates.as_ptr()
+                },
+                raw_updates.len(),
+                &mut out,
+                &mut count,
+            )
+        };
+        Error::check(status)?;
+        Ok(Self::collect_frames(out, count))
     }
 
     /// Ends the stream: pads the input with silence to the end of its last frame and returns
