@@ -127,12 +127,13 @@ evidence). The trend check works the same way: a channel is compared against
 its own trailing average, so a front channel slipping is caught even while the
 surrounds — which sit far lower by design — have not moved at all.
 
-That is a recent change, and it closed a real hole. One floor per fixture had
+Per-channel floors closed a hole. One floor per fixture had
 to be low enough for the lowest channel to pass, which on the 5.1 fixtures
 meant a floor set by the dither-dominated surrounds: 22 dB, against a centre
 channel measuring 58 dB. The centre could have collapsed by 36 dB and the gate
-would still have gone green. Per channel, the same fixture now fails on a 6 dB
-move in **any** channel.
+would still have gone green. Each floor is now its channel's lowest measurement
+minus 1 dB, rounded down, so the same fixture fails on a drop of about 1 dB in
+**any** channel.
 
 Timings come from shared CI runners, so a single slow run is not evidence of
 anything. Every published number is the fastest of several repetitions, and the
