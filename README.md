@@ -48,52 +48,71 @@ your use is your problem to assess, not something this project resolves.
 **Status.** The API is not stable — releases so far are 0.x betas; the Latest release badge
 above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each contains.
 
-**CI.** Required checks cover the library and Forge's CLI and GUI on Windows, Linux (x64 and
-arm64) and macOS; Crucible's CI is narrower — see [Where it runs](#where-it-runs). Sanitizers,
-coverage, a gold-reference quality gate and a required Android build leg run beside the matrix.
-Toolchain versions and exactly what each leg covers:
-[Verified configuration](docs/building.md#verified-configuration).
+**CI.** A pull request runs a gate: the static checks, then a Linux GCC build with every test and
+the gold-reference gate. The merge queue runs the gate again on the merged tree, with the Qt GUI
+built, and adds Windows MSVC. After a merge, one run at a time builds and tests the other
+compilers and platforms (Linux Clang and arm64, Windows clang-cl, macOS), and a nightly run adds
+the sanitizers, coverage, the ABI gate and the FFmpeg validation. `Branch Name`, `CI Status` and
+the dependency review are the required checks. The stages are in
+[CI for many agents](docs/ci-agentic.md); toolchain versions and what each leg covers are in
+[Verified configuration](docs/building.md#verified-configuration); what has run on real hardware
+is in [Where it runs](#where-it-runs).
 
 **Also in the tree:** **Shield Atmos Demo** (`apps/android/`) streams live, controller-driven
 Atmos object motion out an NVIDIA Shield's HDMI passthrough to a real AV receiver, sideload-only
 — see [docs/platforms/android.md](docs/platforms/android.md) — and the **browser demos**
-(`apps/wasm/`) decode and encode in a page over the library compiled to WebAssembly. Both
-demonstrate the library rather than being products of their own.
+(`apps/wasm/`) decode and encode AC-3 and E-AC-3 in a page over the library compiled to
+WebAssembly; the AC-4 module beside them has no demo page. Both demonstrate the library rather
+than being products of their own.
 
 ## Limits
 
 **Object playback in Dolby decoders.** Dolby's decoder requires a keyed authenticity tag before
-it reconstructs objects. This project does not ship a key. An operator with a key can
-[sign](docs/library/signing.md) a stream; otherwise Dolby's decoder plays its 5.1 bed.
+it reconstructs the objects of an E-AC-3 Atmos stream. This project does not ship a key. An
+operator with a key can [sign](docs/library/signing.md) a stream; otherwise Dolby's decoder plays
+its 5.1 bed.
 
 **Bit-rate modes.** AC-3 is constant bit rate because its frame size is selected from a fixed
-table. E-AC-3 supports constant and variable bit rate.
+table. E-AC-3 supports constant and variable bit rate, and AC-4 constant, average and variable.
 
 **Limits of independent checking.** Enhanced coupling, transient pre-noise processing, and JOC
 object decoding have no external reference decoder. These paths are scored with the in-repo
-decoder. See [where the oracles do not reach](docs/verification.md#where-the-oracles-dont-reach).
-No listening panel has been run; published quality values are waveform or model-based measures.
+decoder. AC-4 has no public conformance streams: its decoder is scored against Dolby Encoding
+Engine's encodes of known sources and, where it can read them, librempeg's decoder, which does not
+decode AC-4's immersive element or objects. See
+[where the oracles do not reach](docs/verification.md#where-the-oracles-dont-reach) and
+[Validation: AC-4](docs/verification.md#ac-4). No listening panel has been run; published quality
+values are waveform or model-based measures.
 
-[Validation](docs/verification.md) covers both in full: what object reconstruction means in
-practice, and which streams FFmpeg can check independently versus only the in-repo decoder.
-Real-hardware confirmation by platform is in [Where it runs](#where-it-runs), below.
+**AC-4 containers and receivers.** Matroska registers no codec ID for AC-4, so `ac3cli mkv` refuses
+it; MP4, CMAF and MPEG-TS carry it. No receiver found accepts AC-4 over IEC 61937, so no AC-4 burst
+has reached hardware, and WASAPI, PipeWire and Core Audio have no AC-4 passthrough format:
+`ac3cli play` and Hearth decode AC-4 to PCM.
+
+[Validation](docs/verification.md) covers object playback and independent checking in full: what
+object reconstruction means in practice, and which streams FFmpeg can check independently versus
+only the in-repo decoder. Real-hardware confirmation by platform is in
+[Where it runs](#where-it-runs), below.
 
 ## Where it runs
 
-Every target builds and tests green in CI. Beyond that:
+CI builds every target below. Windows, Linux, macOS, WebAssembly and the emulated targets run
+their tests there too; the ESP32-C6 and ESP32-P4 are built only, since no emulator runs them.
+Beyond that:
 
 | Target | What runs there | Under emulation | Real hardware |
 |---|---|:---:|:---:|
-| Windows x64 | Library, `ac3cli`, `ac3gui`, Crucible | — | ✅¹ |
-| Linux x64 / arm64 | Library, `ac3cli`, `ac3gui`, Crucible | — | ✅² |
+| Windows x64 | Library, `ac3cli`, `ac3gui`, Hearth, Crucible | — | ✅¹ |
+| Linux x64 / arm64 | Library, `ac3cli`, `ac3gui`, Hearth, Crucible | — | ✅² |
 | Raspberry Pi 4B | Everything Linux arm64 runs | — | ✅³ |
-| macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | — | ✗⁴ |
+| macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`, Hearth; Crucible compiles | — | ✗⁴ |
 | Android (NVIDIA Shield) | Shield Atmos Demo only, sideload-only | — | ✅⁵ |
-| WebAssembly | Decode and encode in a browser page | — | ✅⁶ |
+| WebAssembly | Decode and encode AC-3 and E-AC-3 in a browser page; the AC-4 module builds and has no page | — | ✅⁶ |
 | ESP32-S3 | Hearth (`hearth_sink` Sendspin player, `i2s_player`); decode (every layout/tool, Atmos objects) or encode (2/0, 5.1); reusable ESP-IDF component | ✅ correct | ✅⁷ |
 | ESP32-C3 | Decode only, fixed-point tier (no FPU), same component | ✅ correct | —⁸ |
-| ESP32-C6 | Decode, fixed-point tier, same component; timed on a board with and without Wi-Fi | ✅ correct | ✅⁹ |
-| Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | ✅ correct | —¹⁰ |
+| ESP32-C6 | Decode, fixed-point tier, same component; timed on a board with and without Wi-Fi | — | ✅⁹ |
+| ESP32-P4 | Decode in the float tier, same component, with AC-4 decode behind `CONFIG_AC3FORGE_AC4`; `hearth_sink` on revision 1.x boards | — | ✅¹⁰ |
+| Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal`; AC-4 decode in a probe of its own | ✅ correct | —¹¹ |
 
 1. Capture, monitor playback, `spatial` rendering and exclusive-mode IEC 61937 passthrough
    (AC-3, E-AC-3 and signed Atmos) are all confirmed, an Onkyo TX-RZ740 over HDMI.
@@ -102,15 +121,22 @@ Every target builds and tests green in CI. Beyond that:
 4. Nothing has captured or played a sound; the Core Audio process tap has never been created.
 5. Live objects out HDMI to a receiver, on real 2017 Shield hardware.
 6. Demo pages built and published live.
-7. Real time on the board for every decode fixture; AC-3 5.1 encode sits at the real-time line,
-   the other encode rows run 1.3x to 1.7x over — see
-   [the capability table](docs/platforms/bare-metal/esp32-s3.md#what-the-part-can-and-cannot-do).
+7. Real time on the board for every decode fixture. AC-3 2/0 and E-AC-3 2/0 encode in real time,
+   AC-3 5.1 encode sits at the real-time line, and the other encode rows run 1.3x to 1.7x over —
+   see [the capability table](docs/platforms/bare-metal/esp32-s3.md#what-the-part-can-and-cannot-do).
 8. Correct under `qemu-riscv32`: twelve of fourteen fixtures, byte-identical to the x86 host and
    Cortex-M3 leg; no board has run it, and the two 7.1.4 rows don't fit in its SRAM.
 9. All fourteen fixtures on a board, PCM identical to the other fixed-tier legs. With the
    network up, AC-3 and E-AC-3 5.1 decode in real time; E-AC-3 7.1 does not. QEMU does not
    emulate the part. [ESP32-C6](docs/platforms/bare-metal/esp32-c6.md).
-10. Correct under QEMU's `mps2-an385`; no real silicon.
+10. Every fixture decodes in real time on a board at 360 MHz, the ceiling of the revision 1.3
+    silicon it carries, with no network. AC-4 with Wi-Fi up: 2.0 in SIMPLE mode decodes at 0.53 of
+    a frame's time and in A-SPX mode at 0.74, 5.1 takes 1.4 to 4.1 and 5.1.4 2.8 to 3.7. QEMU does
+    not emulate the part. [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md).
+11. Correct under QEMU's `mps2-an385`; no real silicon.
+
+AC-4 has been run on the ESP32-P4 and on the Cortex-M3 leg. The S3 and the C6 have no AC-4 build
+or measurement.
 
 The complete codec surface is in
 [docs/library/capabilities.md](docs/library/capabilities.md). Minimum-footprint targets narrow it
@@ -120,8 +146,9 @@ evidence behind each claim, are in
 
 ## Building
 
-Requires CMake ≥ 3.28, Ninja, and — for the GUI — a prebuilt Qt 6.5+ kit, never from vcpkg.
-Windows needs Visual Studio 2026 (MSVC) or clang-cl 22; Linux needs GCC 16 or Clang 22. A
+Requires CMake ≥ 3.28, Ninja, and — for the GUI, Hearth and Crucible — a prebuilt Qt kit, never
+from vcpkg: 6.5+ for the GUI, 6.8+ for Hearth and Crucible. Windows needs Visual Studio 2026
+(MSVC) or clang-cl 22; Linux needs GCC 16 or Clang 22. A
 [vcpkg](https://github.com/microsoft/vcpkg) checkout with `VCPKG_ROOT` set supplies fmt and
 Catch2, plus Boost and Tracy for the opt-in `adm` and `profiling` features; without one, fmt and
 Catch2 fall back to a `FetchContent` build from source.
@@ -143,13 +170,16 @@ Qt, packaging, and per-platform notes. Cutting a release is covered in
 
 ```bash
 ac3cli encode in.wav out.ac3 448 couple
-ac3cli decode out.ec3 out.wav
+ac3cli ac4-encode in.wav out.ac4 192
+ac3cli decode out.ac4 out.wav
 ```
 
-`ac3cli`'s commands cover encoding, decoding, muxing, inspection, QC and live capture; run it
-with no arguments for the full listing.
+`ac3cli`'s commands cover encoding, decoding, muxing, inspection, QC and live capture, for AC-3,
+E-AC-3 and AC-4; run it with no arguments for the full listing.
 `ac3gui` is a Qt Quick front end over the same library: file and live-capture encoding, a plan
-view for placing objects, and channel-level metering. The pair is [Forge](docs/forge/index.md).
+view for placing objects, channel-level metering, QC, a stream player and an object inspector.
+AC-4 works in file encoding (objects included), QC, the player and the inspector, and is refused
+in a live session. The pair is [Forge](docs/forge/index.md).
 For the C++ API — two headers and about a dozen lines to encode a frame — see
 [Quick start](docs/quickstart.md) or [Library conventions](docs/library/index.md).
 
@@ -159,16 +189,20 @@ Quality is measured, not asserted, and checked six independent ways — a normat
 decoder, FFmpeg as an external oracle, independent Python transcriptions of the spec, Dolby's own
 tooling, fuzzing in both directions, and an encoder/decoder mirror self-check — all
 platform-independent, since every coding decision Forge or Crucible makes is a call into
-`ac3::forge`. What each check reaches and where it runs out: [Validation](docs/verification.md).
+`ac3::forge`, or into the AC-4 libraries for AC-4. What each check reaches and where it runs out:
+[Validation](docs/verification.md). AC-4 is checked against Dolby Encoding Engine's streams,
+MediaInfo's readings, librempeg's decoder and a second transcription of its syntax:
+[Validation: AC-4](docs/verification.md#ac-4).
 The quality numbers themselves — gated SNR and ViSQOL MOS-LQO trends, and a release-by-release
 comparison against FFmpeg and Dolby DEE — live on [Quality trend](docs/quality-trend.md) and
 [Landscape](docs/landscape.md) instead of as a snapshot here that could drift stale.
 
 Validation runs both ways. Every release also publishes a
-[conformance vector set](docs/conformance-vectors.md): 60 streams covering each coding tool,
-layout and sample rate this encoder produces, with the source PCM, expected decode hashes and a
-manifest saying which of them FFmpeg can and cannot read — so another implementation has
-something concrete to test against. No free ATSC or ETSI conformance bitstreams exist publicly.
+[conformance vector set](docs/conformance-vectors.md): 60 AC-3, E-AC-3 and Atmos streams covering
+each coding tool, layout and sample rate this encoder produces, with the source PCM, expected
+decode hashes and a manifest saying which of them FFmpeg can and cannot read — so another
+implementation has something concrete to test against. The set has no AC-4 streams. No free ATSC
+or ETSI conformance bitstreams exist publicly.
 
 Before linking the decoder against bytes from the internet, read the
 [threat model](docs/threat-model.md): what is trusted and what is not, the memory-safety posture
@@ -178,9 +212,9 @@ and where the raw-pointer boundaries are, the per-access-unit resource limits, a
 
 ```
 # the library — src/ is installable, apps/ consumes it and never the reverse
-src/forge/      ac3::forge — the whole codec, GUI-free
-src/capi/       ac3forge_c — a plain-C11 surface over the encode/decode core, for bindings and
-                callers that do not link C++23
+src/forge/      ac3::forge — the AC-3, E-AC-3 and Atmos codec, GUI-free
+src/capi/       ac3forge_c — a plain-C11 surface over the AC-3, E-AC-3 and AC-4 encode/decode
+                cores, for bindings and callers that do not link C++23
 src/admbridge/  ac3::admbridge — maps the ADM object graph src/ac3adm parses onto the Atmos
                 encoder's input
 src/signing/    ac3::signing — EMDF object signing, key supplied at runtime
@@ -195,23 +229,30 @@ src/ac4dec/     ac4::decoder — an AC-4 decoder, from ETSI TS 103 190-1 and -2;
 src/ac4enc/     ac4::encoder — an AC-4 encoder, from the same standards; no ac3::forge dependency
 src/ac4core/    ac4::core — the tables and transforms the AC-4 decoder and encoder share, a static
                 library with no headers of its own
+src/arithmetic/ ac3::arithmetic — header-only: Fixed32, the project's own float functions and the
+                SIMD seam that ac3::forge and ac4::core share; built in-tree, not installed
 src/iamf/       iamf::iamf — a standalone IAMF v1.1 OBU/ISOBMFF writer, fed from an E-AC-3 decode
 src/sendspin/   ac3::sendspin — Sendspin player and server for Hearth (desktop tools and the
                 ESP32 sink); built with the hearth feature, not as part of the codec library
-python/         the ac3forge PyPI package — pybind11 bindings straight onto ac3::forge
-js/             ac3forge-wasm-decoder — the npm streaming decoder package (AudioWorklet + Worker)
+python/         the ac3forge PyPI package — pybind11 bindings straight onto ac3::forge and the
+                AC-4 libraries
+js/             ac3forge-wasm-decoder — the npm streaming decoder package (AudioWorklet + Worker),
+                with a typed wrapper for the AC-4 WebAssembly module
 rust/           ac3forge-sys and ac3forge — Rust crates over the C API in src/capi
 examples/       the programs docs/library/ is written from
 fuzz/           libFuzzer harnesses over untrusted-input entry points (Clang only, off by
                 default) — see fuzz/README.md
-apps/baremetal/ ac3probe — the minimum-footprint decoder probe, cross-compiled for
-                arm-none-eabi and run under QEMU, or built natively on the host
+apps/baremetal/ ac3probe — the minimum-footprint probes (AC-3 and E-AC-3 decode, the encoders,
+                the AC-4 decoder), cross-compiled for arm-none-eabi and run under QEMU, or built
+                natively on the host
 
 # Forge — the CLI and the GUI, built and packaged as one thing
 apps/cli/       ac3cli — command-line front end
 apps/gui/       ac3gui — Qt Quick front end (QML module "Ac3Forge")
-apps/common/    the recording sink, fMP4 folder writer and container input the CLI, GUI and
-                Crucible compile in directly; no library target of its own
+apps/common/    the recording sink, fMP4 folder writer, container input and AC-4 encode and object
+                steps the CLI and GUI compile in directly, and Hearth's engine in part; no
+                library target of its own
+apps/notices/   the NOTICES.txt and LICENSE.txt that Forge's packages install
 
 # Crucible — the desktop application and its Windows driver
 apps/crucible/  AC3Forge Crucible: the engine, the ac3crucible-run runner, the ac3crucible
@@ -221,6 +262,8 @@ apps/crucible/  AC3Forge Crucible: the engine, the ac3crucible-run runner, the a
                 CI suites; the application itself has never been launched on a Mac
 apps/windows/   the Windows-only pieces of Crucible: the Ac3ForgeNullSink driver (MS-PL,
                 separately licensed) and the VMware guest it is verified in
+apps/linux/     the Linux-only tooling of Crucible: a scripted VM guest built to find the tray
+                crash; not built or packaged
 
 # Hearth — desktop player and ESP32 Sendspin sinks
 apps/hearth/    ac3hearth engine and window, ac3hearth-testsink, ac3hearth-testserver, ac3hearth-render
@@ -229,7 +272,8 @@ esphome/        ESPHome external component wrapping the ESP32-S3 decoder; not a 
 
 # beside those — demonstrations of the library, not products of their own
 apps/android/   Shield Atmos Demo — Android TV app, live Atmos object motion over HDMI
-apps/wasm/      the browser demos, decode and encode, over ac3::forge compiled to WASM
+apps/wasm/      the browser demos, decode and encode, over ac3::forge compiled to WASM, and the
+                AC-4 module
 
 # shared, owned by none of them
 cmake/          toolchains, Qt/CPack/sanitizer/coverage modules, vcpkg triplet overlays
@@ -241,13 +285,18 @@ tests/          Catch2 unit tests; golden/ vectors generated by tools/
 tools/          Python: table/fixture generators and the published conformance vector
                 set (generators/), correctness checks and the gold-reference gate
                 (checks/), independent reference implementations (references/),
-                CI-only orchestration - trend appenders, the codec matrix, the
-                FFmpeg quality race (ci/)
+                CI-only orchestration - the PR gate's planner, trend appenders, the codec
+                matrix, the FFmpeg quality race, main-health (ci/); the listening-test
+                apparatus (listening/), release scripts (release/), the sink firmware tools
+                (hearth/), the ESP-IDF component packer (packaging/) and the aiosendspin
+                interoperability scripts (sendspin/)
 requirements/   pip-compile --generate-hashes locks for the CI Python jobs: lint, coverage,
                 docs, ffmpeg-validate and the wheel tests
 packaging/      vcpkg port, winget manifest, Conan recipe (staged, pending upstream submission);
                 Homebrew formula/cask (published to the live homebrew-ac3forge tap)
-docs/           the site source — see Documentation below
+docs/           the site source — see Documentation below; docs-snippets/ holds the generated
+                tables it includes, and overrides/ its home page template
+planning/       design proposals and phase plans, not published on the site
 ```
 
 The standards documents are not redistributed; `spec/` is gitignored. See
@@ -264,6 +313,7 @@ The published site is
 - [Concepts](docs/concepts/index.md) — AC-3, E-AC-3, Atmos, and JOC without assumed domain knowledge.
 - [Platforms](docs/platforms/index.md) — operating systems, boards, browser support, and evidence.
 - [Capabilities](docs/library/capabilities.md) — the authority for supported codec features and limits.
+- [AC-4 in the library](docs/library/ac4.md) — the AC-4 decoder and encoder API.
 - [Validation](docs/verification.md) — checks, independent references, and coverage gaps.
 - [Performance and quality](docs/performance-quality.md) — current measures and append-only trend histories.
 - [Contributing](CONTRIBUTING.md) — repository structure, documentation ownership, and validation requirements.
@@ -282,6 +332,5 @@ useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA
 FITNESS FOR A PARTICULAR PURPOSE. See the full text in [LICENSE](LICENSE).
 
 GPL-3.0 is copyleft: anything that links this library must be distributed under the GPL too.
-That is a deliberate choice, not an oversight. The licence covers this source only — it grants
-no rights in the standards it implements, and says nothing about any patents reading on AC-3
-or E-AC-3.
+The choice is deliberate. The licence covers this source only — it grants no rights in the
+standards it implements, and says nothing about any patents reading on AC-3, E-AC-3 or AC-4.
