@@ -40,6 +40,7 @@ TestCase {
 
     Component { id: networkComponent; Network { width: 1400; height: 1400 } }
     Component { id: settingsComponent; Settings { width: 1200; height: 1400 } }
+    Component { id: mainComponent; Main { } }
 
     function makePage() {
         const page = createTemporaryObject(networkComponent, testCase.parent);
@@ -133,6 +134,17 @@ TestCase {
         tryCompare(NetworkController, "selectedSinkSettable", true, 15000);
         tryVerify(function() { return findChild(page, "networkSinkSettingsTab") !== null; }, 10000,
                   "a paired Hearth sink did not show its settings view");
+        // Its own Speakers/Decoder/Firmware tabs are the sink's settings,
+        // not what makes Hearth play to it - a group still does. This page
+        // used to say nothing about that at all (unlike Network.qml's own
+        // "paired" card for a sink that does NOT offer this settings view),
+        // which is the gap behind the report that a paired sink's first
+        // Play fell back to the local output with nothing said
+        // (hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
+        // True regardless of the sink's actual group membership, matching
+        // the plain "paired" card's own unconditional hint.
+        const groupHint = findChild(page, "networkSinkSettingsGroupHint");
+        verify(groupHint !== null && groupHint.visible, "the settings view does not hint to add the sink to a group");
     }
 
     function typeInto(field, text) {
@@ -295,6 +307,133 @@ TestCase {
         verify(NetworkController.groups.every(function(g) { return g.id !== groupId; }));
     }
 
+    // The post-pairing prompt (Network.qml's networkGroupPromptBanner): a
+    // paired sink not yet in any group gets an offer to fix that right
+    // there, in both its sub-states (no groups exist yet; at least one
+    // already does), and the offer goes away once the sink actually is a
+    // member - the gap behind the report that a paired sink's first Play
+    // silently fell back to the local output
+    // (hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
+    //
+    // Both prompt actions finish by selecting the new/joined group (so the
+    // group editor - "Play to this group" - is what shows next), which
+    // NetworkSinks::create_group()/select_group() implement by CLEARING the
+    // sink selection, same as clicking "+ New group..." already does
+    // (test_groupsCreateRenameAddMemberAndDelete's own passing case). So
+    // NetworkController.selectedSink is an EMPTY map right after either
+    // action - checking it for inGroup without reselecting the sink first
+    // would just hang until the tryVerify timeout, which is what the first
+    // version of this test did, and which then cascaded into every test
+    // after it: the failure aborts the function before its own
+    // deleteGroup(groupId) at the end ever runs, leaving the sink selected
+    // at nothing (selected_id_ stays cleared) for every later ensurePaired()
+    // to fail reselecting. NetworkController.selectSink(sink.id) below is
+    // what a person would do by clicking the row again; called directly
+    // since re-selecting is not itself under test here.
+    function test_networkPageOffersToGroupAJustPairedSink() {
+        const page = makePage();
+        ensurePaired(page);
+        const sink = sinkRow();
+        compare(NetworkController.selectedId, sink.id);
+        tryVerify(function() { return NetworkController.selectedSink.inGroup === false; }, 10000,
+                  "a freshly (re)paired sink reports itself already grouped");
+
+        let banner = null;
+        tryVerify(function() {
+            banner = findChild(page, "networkGroupPromptBanner");
+            return banner !== null && banner.visible;
+        }, 10000, "no post-pairing group prompt for a paired, ungrouped sink");
+        verify(H.textContaining(page, "isn't playing anything yet") !== null,
+               "the prompt does not say the sink isn't playing anything");
+
+        // Whichever sub-state is showing - this environment's own groups,
+        // not necessarily none - get the sink into a NEW group of its own
+        // through the prompt, named after the sink itself.
+        const createButton = NetworkController.groupCount === 0
+                              ? findChild(page, "networkGroupPromptCreate")
+                              : findChild(page, "networkGroupPromptCreateAnother");
+        verify(createButton !== null && createButton.visible,
+               "the prompt's create-a-group action is not offered");
+        mouseClick(createButton);
+        tryVerify(function() { return NetworkController.selectedGroup.id !== undefined; }, 10000,
+                  "creating a group from the prompt did not select it afterwards");
+        const groupId = NetworkController.selectedGroup.id;
+        verify(groupId.length > 0);
+        tryVerify(function() {
+            return NetworkController.selectedGroup.name === sink.name
+                   && (NetworkController.selectedGroup.members ?? []).some((m) => m.sinkId === sink.id);
+        }, 10000, "the new group is not named after the sink, or does not have it as a member");
+
+        NetworkController.selectSink(sink.id);
+        tryVerify(function() { return NetworkController.selectedSink.inGroup === true; }, 10000,
+                  "the sink does not report itself grouped after the prompt made one for it");
+        tryVerify(function() {
+            const stillThere = findChild(page, "networkGroupPromptBanner");
+            return stillThere === null || !stillThere.visible;
+        }, 10000, "the prompt is still shown once the sink is in a group");
+
+        // Out of that group again, sink reselected: the "a group already
+        // exists" sub-state's combo lists it, and its own Add to the group
+        // rejoins it - then, the same reselect, since that action also ends
+        // by selecting the group.
+        NetworkController.removeGroupMember(groupId, sink.id);
+        tryVerify(function() {
+            banner = findChild(page, "networkGroupPromptBanner");
+            return banner !== null && banner.visible;
+        }, 10000, "the prompt did not return once the sink left its group");
+        verify(NetworkController.groupCount > 0);
+        const choice = findChild(page, "networkGroupPromptChoice");
+        verify(choice !== null && choice.visible, "the existing-groups sub-state offers no group choice");
+        // This RowLayout was not laid out at all while groupCount was 0
+        // (Qt Quick Layouts skips an invisible item), so the instant it
+        // turns visible, networkGroupPromptAdd's own on-screen position can
+        // still be a stale (0,0)-ish leftover until the next layout pass -
+        // mouseClick() below would then land somewhere that is not the
+        // button. The reference case this mirrors (NetworkGroupEdit.qml's
+        // own addMemberBox, in test_groupsCreateRenameAddMemberAndDelete)
+        // never hits this because it types a name into a DIFFERENT field
+        // first, several event-loop turns before ever touching its combo;
+        // this prompt has no such field, so the render pass is asked for
+        // explicitly instead.
+        waitForRendering(page);
+        // NetworkController::selectGroup()/addGroupMember() - unlike
+        // createGroup() - do not call poll() themselves (network_controller.cpp),
+        // so selectedGroupId (and every other QML-facing property) can read
+        // one poll tick stale right after the click that called them -
+        // confirmed by logging both sides of a failing attempt here: the
+        // combo's own currentValue was already the right id, but
+        // selectedGroupId had not caught up yet. clickUntil() (this file's
+        // own fix for a control whose click can land mid-rebuild, its own
+        // comment above has the general case) absorbs exactly this: it only
+        // clicks again if done() is still false next time it is checked, and
+        // addGroupMember()/selectGroup() are both idempotent on a repeat
+        // with the same id, so a second press changes nothing beyond
+        // confirming what the first one already did.
+        clickUntil(function() { return findChild(page, "networkGroupPromptAdd"); },
+                   function() { return NetworkController.selectedGroupId === groupId; },
+                   "Add to the group never joined the group it offered");
+        NetworkController.selectSink(sink.id);
+        tryVerify(function() { return NetworkController.selectedSink.inGroup === true; }, 10000,
+                  "Add to the group did not rejoin the sink");
+
+        // "Not now" hides the prompt for the current selection - deliberately
+        // not persisted further than that (Network.qml's own comment on
+        // dismissedSinkId says why).
+        NetworkController.removeGroupMember(groupId, sink.id);
+        tryVerify(function() {
+            banner = findChild(page, "networkGroupPromptBanner");
+            return banner !== null && banner.visible;
+        }, 10000);
+        mouseClick(findChild(page, "networkGroupPromptNotNowB"));
+        tryVerify(function() {
+            const dismissed = findChild(page, "networkGroupPromptBanner");
+            return dismissed === null || !dismissed.visible;
+        }, 5000, "Not now did not dismiss the prompt");
+
+        NetworkController.deleteGroup(groupId);
+        NetworkController.selectSink(sink.id);
+    }
+
     // The Firmware tab (planning/esp32-ota.md, O5) asks the sink's own web
     // server, at the address mDNS gave for it - 127.0.0.1 for this test sink,
     // which serves no GET /firmware - and only while the tab is open. It says
@@ -436,5 +575,53 @@ TestCase {
         mouseClick(forget);
         tryVerify(function() { return HearthController.pairingRecords.length === count - 1; }, 5000,
                   "Forget did not remove the record");
+    }
+
+    // A paired sink is not, by itself, something Hearth plays to - it also
+    // needs to be in a group that is chosen as the output. The Play page's
+    // signal-path card says so whenever a sink is paired and no group is
+    // chosen, whether or not a group exists yet to choose: the gap behind
+    // the report that a paired sink's first Play silently fell back to the
+    // local output with nothing said
+    // (hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
+    function test_playPageHintsAboutAPairedSinkNotInThePlayingGroup() {
+        const network = makePage();
+        ensurePaired(network);
+        HearthController.firstRunSeen = true;
+        HearthController.selectOutputGroup("");
+
+        const win = createTemporaryObject(mainComponent, testCase);
+        verify(win !== null);
+        tryCompare(win, "visible", true);
+        waitForRendering(win.contentItem);
+        compare(win.page, "play");
+
+        // PlayPage.qml holds TWO PlaySignalPathCard instances - a narrow-
+        // layout copy and a wide one, only ever one of them visible
+        // (that file's own comment) - so the plain findChild() the rest of
+        // this suite uses is not enough here; it can return either copy in
+        // tree order regardless of which is showing. H.find() with its own
+        // visibility check, the same fix tst_output_picker.qml's
+        // test_signalPathChooseOpensThePicker already needed for
+        // playChooseOutput, is what actually finds the live one.
+        let hint = null;
+        tryVerify(function() {
+            hint = H.find(win.contentItem, function(item) {
+                return item.objectName === "playUnusedPairedSinkHint" && item.visible;
+            });
+            return hint !== null;
+        }, 10000, "the Play page does not hint about the paired-but-unused sink with no group yet");
+
+        const groupId = NetworkController.createGroup("Play page hint group");
+        verify(groupId.length > 0, "the network did not start, so no group could be made");
+        tryVerify(function() { return hint.visible; }, 10000,
+                  "the hint disappeared once a group existed, before one was chosen as the output");
+
+        HearthController.selectOutputGroup(groupId);
+        tryVerify(function() { return !hint.visible; }, 10000,
+                  "the hint is still shown once a group is chosen as the output");
+
+        HearthController.selectOutputGroup("");
+        NetworkController.deleteGroup(groupId);
     }
 }

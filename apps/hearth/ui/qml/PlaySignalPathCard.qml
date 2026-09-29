@@ -14,6 +14,17 @@ Card {
     title: qsTr("Signal path")
     flat: true
 
+    // A sink paired on the Network page but never chosen as (part of) the
+    // output: Play still works, it just falls back to this computer's own
+    // device with nothing else said - the exact gap behind the report that
+    // Hearth "wouldn't play a song" after connecting to a network sink
+    // (hearth-followups-group-ux-and-live-diagnostics-2026-09-26). True
+    // whether no group exists yet or one does but was never picked -
+    // outputGroupName is empty in both, and the hint's own wording covers
+    // both remedies rather than branching on which applies.
+    readonly property bool hasUnusedPairedSink: NetworkController.sinks.some((s) => s.badge === "paired")
+                                                 && HearthController.outputGroupName.length === 0
+
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: decodeCol.implicitHeight + Theme.pad * 2
@@ -181,6 +192,18 @@ Card {
                     // (Main.qml's openOutputPicker()).
                     onClicked: root.Window.window.openOutputPicker()
                 }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                objectName: "playUnusedPairedSinkHint"
+                visible: root.hasUnusedPairedSink
+                text: qsTr("A paired network sink isn't playing: no group is chosen as the output. "
+                          + "Choose one above, or make one on the Network page.")
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                wrapMode: Text.WordWrap
             }
         }
     }

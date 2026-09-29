@@ -126,12 +126,14 @@ Status:
 | 100 | Decoder | AC-4 downmix, LFE in the fold, and the stream's preferred downmix | none | UI | DecoderAc4::test_downmixIsHeardWithTheStreamsGains (Lo/Ro, Lt/Rt and the LFE at the stream's gains, each tone against its coded level) |
 | 101 | Decoder | AC-4 page readouts (dB values beside the sliders, "Nothing AC-4 is playing.") | none | UI | DecoderAc4::test_aTheBannerIsGoneAndEveryCardIsLive, DecoderAc4::test_eachControlWritesItsSetting |
 | 102 | Media | AC-4 item: Stream, Presentations and Metadata cards, and it plays | none | UI | MediaPage::test_ac4ItemIsDescribedAndPlays |
+| 103 | Play | Signal-path hint when a sink is paired but no group is chosen as the output (with or without a group existing yet) | none | UI | NetworkPairing::test_playPageHintsAboutAPairedSinkNotInThePlayingGroup |
+| 104 | Network | Post-pairing group prompt: create a group (named after the sink) or add to an existing one, gone once the sink is actually a member, "Not now" dismisses it | none | UI | NetworkPairing::test_networkPageOffersToGroupAJustPairedSink |
 
 ### Totals
 
 | | Before (4 suites, 18 cases) | After (15 suites, 82 cases) |
 |---|---|---|
-| UI | 5 | 100 |
+| UI | 5 | 102 |
 | logic only | 15 | 2 (row 15: no UI control exists; row 93: nothing to select) |
 | none | 71 | 0 |
 
