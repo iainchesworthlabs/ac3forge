@@ -4,13 +4,14 @@
 
 | Capability | x64 | ARM64 |
 |---|---|---|
-| C++ library | **Published**<br>required CI<br>release archive | **Next release**<br>experimental CI<br>release archive |
-| Forge CLI | **Published**<br>confirmed on hardware<br>ZIP and NSIS installer | **Next release**<br>experimental CI<br>ZIP and NSIS installer |
+| C++ library | **Published**<br>required CI<br>release archive | **Published**<br>experimental CI<br>release archive |
+| Forge CLI | **Published**<br>confirmed on hardware<br>ZIP and NSIS installer | **Published**<br>experimental CI<br>ZIP and NSIS installer |
 | Forge GUI | **Published**<br>confirmed on hardware<br>ships with Forge | **Unavailable**<br>Qt kit is not wired |
-| Crucible | **Published**<br>confirmed on hardware<br>UI/driver run; receiver output untested | **Unavailable** |
-| Hearth desktop player | **In development**<br>confirmed on hardware<br>Qt/QML shell built and run; Play page confirmed, other tabs are placeholders | **Unavailable** |
+| Crucible | **Next release**<br>confirmed on hardware<br>UI/driver run; receiver output untested | **Unavailable** |
+| Hearth desktop player | **Next release**<br>confirmed on hardware<br>Qt/QML window with six pages, built and run; ZIP and installer from the next release | **Unavailable** |
 | Live capture and PCM monitor | **Source**<br>confirmed on hardware<br>WASAPI | **Source**<br>experimental CI<br>compiled with the CLI |
 | IEC 61937 output | **Source**<br>confirmed on hardware<br>AC-3, E-AC-3 and signed Atmos | **Source**<br>experimental CI<br>no receiver run |
+| AC-4 decode and encode | **Next release**<br>required CI<br>ac3cli, ac3gui and Hearth; decoded AC-4 plays through the PCM monitor | **Next release**<br>experimental CI<br>ac3cli only |
 | AC-4 IEC 61937 output | **Unavailable**<br>WASAPI has no AC-4 subformat | **Unavailable**<br>WASAPI has no AC-4 subformat |
 | Per-application capture | **Source**<br>confirmed on hardware<br>Windows process loopback | **Source**<br>experimental CI<br>compiled; runtime untested |
 | Atmos spatial rendering | **Source**<br>confirmed on hardware<br>Windows Sonic accepted the stream | **Source**<br>experimental CI<br>compiled; runtime untested |

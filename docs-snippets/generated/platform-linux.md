@@ -8,8 +8,9 @@
 | Forge CLI | **Published**<br>required CI<br>TGZ, DEB and RPM | **Published**<br>confirmed on hardware<br>TGZ, DEB and RPM |
 | Forge GUI | **Published**<br>required CI<br>packages plus AppImage | **Published**<br>confirmed on hardware<br>packages; no AppImage |
 | Crucible | **Next release**<br>required CI<br>TGZ and DEB; check the release assets | **Next release**<br>confirmed on hardware<br>TGZ and DEB; check the release assets |
-| Hearth desktop player | **In development**<br>required CI<br>Qt/QML shell builds; Play page implemented, other tabs are placeholders | **In development**<br>required CI<br>Qt/QML shell builds; Play page implemented, other tabs are placeholders |
+| Hearth desktop player | **Next release**<br>required CI<br>Qt/QML window with six pages, built in CI; TGZ, DEB and RPM from the next release | **Next release**<br>required CI<br>Qt/QML window with six pages, built in CI; TGZ, DEB and RPM from the next release |
 | Live capture and PCM monitor | **Source**<br>required CI<br>ALSA or PipeWire | **Source**<br>confirmed on hardware<br>ALSA or PipeWire |
 | IEC 61937 output | **Source**<br>required CI<br>hardware untried | **Source**<br>confirmed on hardware<br>ALSA and PipeWire on one Pi 4B |
+| AC-4 decode and encode | **Next release**<br>required CI<br>ac3cli, ac3gui and Hearth; decoded AC-4 plays through the PCM monitor | **Next release**<br>required CI<br>ac3cli, ac3gui and Hearth |
 | AC-4 IEC 61937 output | **Source**<br>required CI<br>ALSA's null device; PipeWire has no AC-4 codec | **Source**<br>build only<br>ALSA; no receiver accepts AC-4 |
 | Per-application capture | **Source**<br>required CI<br>PipeWire | **Source**<br>confirmed on hardware<br>PipeWire on one Pi 4B |
