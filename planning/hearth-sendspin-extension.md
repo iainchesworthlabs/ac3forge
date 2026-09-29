@@ -1,13 +1,18 @@
 # Hearth over Sendspin: conformance and the `_ac3forge_player@v1` role
 
-!!! note "Status as of 2026-09-15: draft for review"
+!!! note "Status as of 2026-09-30: built as written; Music Assistant not run"
     The first deliverable of [A4](hearth-reference-player.md#a4-sendspin): the conformance reading
     of the Sendspin specification that `src/sendspin` implements, how Hearth works with Music
     Assistant where Music Assistant's implementation differs from that text, and the normative
-    definition of the application-specific role that carries AC-3 and E-AC-3 to Hearth sinks.
-    Nothing here is built yet. Once the user has reviewed this page it is normative for
-    `src/sendspin`, the test sink and `hearth_sink`, and [chip B](hearth-reference-player.md#chip-b-the-esp32-s3-sink)
-    can start after A4 lands.
+    definition of the application-specific role that carries AC-3, E-AC-3 and AC-4 to Hearth
+    sinks. It was written as a draft on 2026-09-15 and is normative for `src/sendspin`, the test
+    sink and `hearth_sink`, which were built to it. The role's objects are in
+    `src/sendspin/include/ac3/sendspin/ac3forge_player.hpp` and its burst chunk, ID 192, is in
+    `chunks.hpp`; both halves and `ac3hearth`'s server use them. The scripts in `tools/sendspin`
+    run aiosendspin 9.1.1's client and server against Hearth in CI (`hearth-validate`), and stand
+    in for Music Assistant: no run has been made against a real Music Assistant. The
+    [open questions](#open-questions) have not been raised with the Sendspin project
+    ([decision 3](#decisions)).
 
     Read from the Sendspin specification on `main` at commit
     `8fc2f8f8d8aa324cf385bd3332a284fd3a75520c` (2026-09-12). Where this page says "the
@@ -16,7 +21,14 @@
 
     On 2026-09-26, phase D11 of [the AC-4 plan](ac4.md#d11-ac-4-over-iec-61937) added the AC-4
     data type to the role, as [Versions](#versions) provides: `"ac4"` in `data_types` and
-    `stream/start`, and IEC 61937-14's bursts in the burst chunk.
+    `stream/start`, and IEC 61937-14's bursts in the burst chunk. No ESP32 sink lists `"ac4"`
+    (phase I6 is not built); the test sink does.
+
+    The role's name, `_ac3forge_player@v1`, and the programs named below (`ac3hearth`,
+    `ac3hearth-testsink`, `hearth_sink`) are the current names. Phase N1 of the AC-4 plan renames
+    the programs, and its layout study proposes renaming this role with the family
+    (`_iclforge_player@v1`), with both ends of Sendspin and the OTA check changing in one stage. It
+    has not run, and a role name is a wire string: the two ends must change together.
 
 ## What this page fixes
 
