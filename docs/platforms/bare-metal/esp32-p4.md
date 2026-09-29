@@ -580,9 +580,9 @@ the same reason (see that step's own comment).
 ## Where to go next
 
 - [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) —
-  the plan this page is Phase P1 of; Phase P2 is an Ethernet shape, which this board has no PHY
-  for, and Phase P3 the Wi-Fi shape over the onboard C6 and `esp_hosted`, both onto TDM and a pair
-  of ES9080 DACs.
+  the plan this page is Phase P1 of, with the Ethernet shape (P2, for a board that has a PHY,
+  which this one does not) and the Wi-Fi shape over the onboard C6 and `esp_hosted` (P3), both
+  onto TDM and a pair of ES9080 DACs, and where each stands.
 - [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md) —
   phase D14b, of which the [AC-4](#ac-4) section is the measurement, and D14a's third part, which
   reworks what it found to cost most.
