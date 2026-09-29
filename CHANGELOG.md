@@ -2374,6 +2374,17 @@ The sections below contain the complete change list and fixes.
   items that were playing without trouble - including once another output had been chosen and
   had worked. The error now goes when the next play, next or previous command starts. An item
   a command skipped keeps its reason until the following command, as before.
+- **The GUI could crash on the way out while it was still decoding, measuring, inspecting or
+  encoding a file.** The stream player, the QC page, the object inspector and the encoder each
+  hand a file to a worker, and the worker ends by queueing a call back to its controller. A
+  controller destroyed while its worker was still running left that call addressed to freed
+  memory, and the process failed in `~QCoreApplication` or in the worker as it finished. The
+  `ac3gui_qml_tests_ac4_decode` suite hit this after all its test cases had passed, in 10 of 12
+  runs on one Windows build. Each controller now runs its workers on a pool of its own
+  (`apps/gui/background_jobs.hpp`), and its destructor stops the workers that poll a flag and
+  waits for all of them. Quitting during an AC-4 encode still waits for the encode to finish,
+  since that is one call into the encoder with nothing to stop it. Streaming a file to a
+  receiver had no way to stop either; it now checks a flag the destructor sets.
 
 **Codec correctness**
 

@@ -17,14 +17,18 @@
 #include <fstream>
 #include <iterator>
 #include <numbers>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "platform/process.hpp"
+#include "sanitized.hpp"
 
 #include "ac3/io/wav.hpp"
+#include "ac4/ac4.hpp"
 
 namespace fs = std::filesystem;
+using ac3::test::kSanitized;
 
 namespace {
 
@@ -60,6 +64,31 @@ fs::path multiplexed() {
     return fs::path{AC4DEC_GOLDEN_DIR} / "presentations" / "presentations-5_1.ac4";
 }
 
+// The frames of a stream that a decode takes under the sanitizers, in place of
+// the 120 of one of DEE's legs.
+constexpr std::size_t kSanitizedFrames = 24;
+
+// A committed AC-4 stream as a decode test takes it (the shape of
+// tests/cli/test_cli_containers.cpp's): whole, or under the sanitizers
+// (tests/sanitized.hpp) its first `frames` sync frames, written to `prefix`.
+fs::path decoded_stream(const fs::path& stream, std::size_t frames, const fs::path& prefix) {
+    if (!kSanitized) {
+        return stream;
+    }
+    std::ifstream in{stream, std::ios::binary};
+    REQUIRE(in.good());
+    const std::vector<char> chars{std::istreambuf_iterator<char>{in},
+                                  std::istreambuf_iterator<char>{}};
+    std::vector<std::byte> bytes(chars.size());
+    std::ranges::transform(chars, bytes.begin(), [](char c) { return static_cast<std::byte>(c); });
+    const ac4::ScanResult scan = ac4::scan(bytes);
+    REQUIRE(scan.frames.size() > frames);
+    std::ofstream out{prefix, std::ios::binary};
+    REQUIRE(out.is_open());
+    out.write(chars.data(), static_cast<std::streamsize>(scan.frames[frames].offset));
+    return prefix;
+}
+
 double energy(const std::vector<float>& x) {
     double sum = 0.0;
     for (const float v : x) {
@@ -83,12 +112,21 @@ ac3::io::WavData decode(const fs::path& in, const std::string& options, const fs
 
 TEST_CASE("decode takes AC-4 at an output level in each DRC decoder mode", "[cli][ac4]") {
     const auto log = scratch_dir() / "ac4_drc_modes.log";
-    // DEE's 5.1 film leg configures all four modes of Table 161.
-    const fs::path stream = leg("ac4-51-film-96");
+    // DEE's 5.1 film leg configures all four modes of Table 161, each on the
+    // stream's default profile, so the modes decode alike and each differs from
+    // off. Under the sanitizers the leg's first frames show that, for `off`, the
+    // automatic choice and one explicit mode, the first and the last of the five.
+    const fs::path stream = decoded_stream(leg("ac4-51-film-96"), kSanitizedFrames,
+                                           scratch_dir() / "ac4_drc_prefix.ac4");
     const auto off = decode(stream, "output-level=-10 drcmode=off", log);
     CHECK(read_log(log).find("DRC off") != std::string::npos);
-    for (const std::string mode :
-         {"default", "home-theatre", "flat-panel-tv", "portable-speakers", "portable-headphones"}) {
+    constexpr std::array<const char*, 5> kModes = {"default", "home-theatre", "flat-panel-tv",
+                                                   "portable-speakers", "portable-headphones"};
+    for (std::size_t i = 0; i < kModes.size(); ++i) {
+        if (kSanitized && i != 0 && i + 1 != kModes.size()) {
+            continue;
+        }
+        const std::string mode = kModes[i];
         CAPTURE(mode);
         const auto compressed = decode(stream, "output-level=-10 drcmode=" + mode, log);
         CHECK(read_log(log).find("dialnorm to -10 dBFS, DRC") != std::string::npos);

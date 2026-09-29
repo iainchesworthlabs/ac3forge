@@ -12,6 +12,8 @@
 #include <optional>
 #include <vector>
 
+#include "background_jobs.hpp"
+
 namespace ac3::audio {
 class MonitorSink;
 }
@@ -196,4 +198,9 @@ class ObjectDecodeController : public QObject {
     std::unique_ptr<ac3::audio::MonitorSink> audition_sink_;
     std::atomic<bool> stop_audition_{false};
     int auditioning_index_ = -1;
+
+    // Where the decode and the audition loop run. ~ObjectDecodeController()
+    // stops the loop and waits for both before any member above is destroyed;
+    // declared last, so ~BackgroundJobs() would wait ahead of them too.
+    ac3gui::BackgroundJobs jobs_;
 };

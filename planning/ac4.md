@@ -2185,8 +2185,13 @@ through `tools/checks/generate_support_matrices.py`).
   other; a 7.X presentation keeps its pair in E-AC-3 at Table E2.5's locations and folds for AC-3
   by Table 219. `record` and `live` share one `TakeEncoder` with `transcode`; `RecordingSink`
   carries AC-4 in every container but Matroska, which has no AC-4 codec ID (FFmpeg 8.0.1 cannot
-  mux one either), and `record` no longer writes the frames of its bitstream check after the rest
-  of the take. `play` decodes AC-4 to PCM, since no receiver found takes it over IEC 61937, and
+  mux one either). Checked on 2026-09-29: the Matroska registry still lists no AC-4 ID. The
+  request ([issue 176](https://github.com/ietf-wg-cellar/matroska-specification/issues/176) of
+  the specification's repository, opened in 2017) and a proposal for `A_AC4`
+  ([pull request 874](https://github.com/ietf-wg-cellar/matroska-specification/pull/874), aimed
+  at the v5 document, last changed in March 2025) are open. The refusal stays until the registry
+  has an ID and a mapping. `record` no longer writes the frames of its bitstream check after the
+  rest of the take. `play` decodes AC-4 to PCM, since no receiver found takes it over IEC 61937, and
   `live` sends a receiver the 5.1 AC-3 leg. `fmp4`'s CMAF track takes the readings
   `src/ac4enc/ERRATA.md` records under "Manifests and CMAF tracks".
 
@@ -2228,6 +2233,13 @@ through `tools/checks/generate_support_matrices.py`).
   preferred downmix". And a group item whose burst type differed from what the group carried, AC-3
   after E-AC-3 as well as AC-4 after either, was sent on the first item's stream start; the group
   now starts again.
+
+Decided on 2026-09-29 about what I2's pull request recorded. A sink on the extension role that
+does not list `"ac4"` is sent nothing for an AC-4 item until D14 puts the decoder on its part; I6
+settles what such a sink is sent. The decoder's latency, 1 313 samples at index 13, is not
+trimmed at an item's start, so two AC-4 items in a queue have a gap of about 27 ms between them;
+I6 trims it. The page's downmix control stays as it is, following the stream's preferred
+downmix; Pro Logic II is a follow-up after I6.
 
 **Exit:** the engine plays every committed AC-4 stream through the decoder's public API; each
 control, driven from the page, changes the decoded output as its formula says, measured with tones;
@@ -2520,6 +2532,9 @@ On each part after its D14 figures: the P4 first, then the S3 and the C6.
   data types. On the P4 here, whose I2S has no clock for TDM, it plays to two channels.
 - AC-4's frames last from 16 to 43 ms across its frame rates, where the sink's queue and its hold
   of the first unit were sized for E-AC-3's 32 ms.
+- Two things I2 left ([I2](#i2-hearth-desktop)): what a sink that does not list `"ac4"` is sent
+  for an AC-4 item, and the decoder's latency of 1 313 samples at index 13, which the engine does
+  not trim at an item's start. Both are settled here.
 
 **Exit:** D14's board figures, and a sink playing an AC-4 stream Hearth sends it.
 

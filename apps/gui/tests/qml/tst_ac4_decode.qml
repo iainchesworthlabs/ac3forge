@@ -23,10 +23,39 @@ TestCase {
     readonly property url streamUrl:
         Qt.resolvedUrl("../../../../tests/golden/ac4dec/presentations/encoder-hybrid.ac4")
 
+    // Every test ends with the pickers back at the decoder's own choice, and
+    // setting the index reads the open file again on a worker. That has to be
+    // finished before the next test starts: measureFile() and openFile() are
+    // refused while their controller is busy, so a pick landing on a reload
+    // still running would be dropped without a word. The wait before the
+    // reset is for a test that failed part-way, whose own job may still be
+    // running; a reset that arrives while busy is ignored as well.
     function cleanup() {
         StreamPlayerController.pause();
+        settleControllers();
         QcController.presentationIndex = -1;
         StreamPlayerController.presentationIndex = -1;
+        settleControllers();
+    }
+
+    function settleControllers() {
+        tryCompare(QcController, "busy", false, 15000);
+        tryCompare(StreamPlayerController, "busy", false, 15000);
+        tryCompare(ObjectDecodeController, "busy", false, 15000);
+    }
+
+    // The last thing this suite does is leave a measurement, a decode and an
+    // inspection running, so the three controllers are destroyed with work in
+    // flight, as they are when the window is closed during one. Each worker
+    // posts its result back to its controller when it finishes. A controller
+    // that did not wait for its worker left that post addressed to freed
+    // memory, and ~QGuiApplication crashed on it in most runs, after every test
+    // had passed. Nothing is asserted: the process exiting with code 0 is the
+    // check.
+    function cleanupTestCase() {
+        QcController.measureFile(streamUrl);
+        StreamPlayerController.openFile(streamUrl);
+        ObjectDecodeController.inspectFile(streamUrl);
     }
 
     function findByName(root, name) {
