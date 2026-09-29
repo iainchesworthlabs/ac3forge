@@ -322,7 +322,7 @@ void ChannelAssembly::estimate(std::span<const QmfValue> q_high) {
                         est += norm(q_high[at(ts) * kSubbands + at(j)]);
                     }
                 }
-                est /= hi - lo;
+                est /= static_cast<Real>(hi - lo);
             } else {
                 for (int ts = tsa; ts < tsz; ++ts) {
                     est += norm(q_high[at(ts) * kSubbands + at(sb + sbx)]);
