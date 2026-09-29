@@ -71,9 +71,10 @@ In rough order of strength:
    (the syntax layer and the reconstruction to PCM) and `fuzz_ac4_encode`. Two differential
    harnesses decode each mutated stream with both this project's decoder and FFmpeg's and diff
    the PCM; they cover AC-3 and E-AC-3, since FFmpeg does not decode AC-4. CI runs them:
-   `Fuzz Regress` replays the checked-in seed and regression corpora on every push and pull
-   request, `Fuzz Short` and `Fuzz Differential` add a bounded mutation budget on pushes, and
-   `Fuzz Nightly` goes deeper.
+   `Fuzz Regress` replays the checked-in seed and regression corpora on every push and on pull
+   requests (a repository variable can pause the pull-request run; see
+   [Where each check runs](#where-each-check-runs)), `Fuzz Short` and `Fuzz Differential` add a
+   bounded mutation budget on pushes, and `Fuzz Nightly` goes deeper.
 
    The object and metadata layer is driven directly rather than through the decoder: separate
    harnesses over `emdf::parse_container`, `oba::parse_payload`, `oba::joc::parse_payload`,
@@ -154,13 +155,17 @@ coverage and FFmpeg Validate. Fuzzing and the other scheduled workflows are sepa
 | FFmpeg Validate: the codec matrix, the metadata and coupling checks, `quality_race.py ci`, the encoder-space searches, and the AC-4 scorers (`score_ac4_decode.py`, `score_ac4_encode.py`, `gain_ac4_decode.py`, `mix_ac4_decode.py`, `check_ac4_decode_scalar_snr.py`) | all | Nightly, and on request (the `ci:deep` label, `gh workflow run ci.yml`) |
 | Hearth's engine against the AC-4 gain formulas (`gain_ac4_decode.py --engine`) | AC-4 | After a merge, nightly |
 | The ASan + UBSan leg with the codec matrix, and the TSan leg | all | Nightly |
-| `Fuzz Regress` | all | Every push to `main` and every pull request |
+| `Fuzz Regress` | all | Every push to `main`, and every pull request unless the repository variable `PAUSE_NONESSENTIAL_CI` is `true` |
 | `Fuzz Short` and `Fuzz Differential` (the latter AC-3 and E-AC-3 only) | all | Every push to `main` |
 | `Fuzz Nightly`, `Fuzz ADM Nightly` and `Encoder Space Nightly` | all | Daily |
 | `Interop`: eight FATE excerpts | AC-3, E-AC-3 | Daily, and on pull requests that change the decode path |
 | `tools/checks/ac4_syntax_differential.py`, 3,000 mutated DEE frames and 800 synthetic tables of contents at a fixed seed | AC-4 | Daily, in the SonarCloud workflow, where it feeds the coverage scan and does not gate |
 | `tools/checks/check_install_consumer.sh`, and the ABI gate (advisory until the API freeze) | all | Nightly |
 | Dolby Encoding Engine, MediaInfo, librempeg and the Reference Player; the `--gold` races and the census; `check_ac4_encode_readers.py`; `race_ac4_presentations.py`; listening | AC-4 mostly | Locally, by hand |
+
+`PAUSE_NONESSENTIAL_CI` is a pause the workflows describe as temporary: while it is `true`, pull
+requests skip `Fuzz Regress`, OSV Scanner and Zizmor, which leaves the hosted runners to the
+merge queue, and runs on `main` and on a schedule are unaffected. It was `true` on 2026-09-30.
 
 A failure in the run after a merge or in the nightly run reaches [Main health](ci-agentic.md#after-the-merge),
 which reruns a known flake or opens the `main-red` issue. The trend series are published by

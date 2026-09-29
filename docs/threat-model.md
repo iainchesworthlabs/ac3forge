@@ -114,8 +114,10 @@ What runs against it:
   bytes with FFmpeg as well and diff the PCM, so a *wrong* decode that does not crash is caught
   too. The last, `fuzz_adm_parse`, is built only when `AC3FORGE_BUILD_ADM` is on — see
   [ADM](#adm-xml-and-bw64). `Fuzz Regress` replays the checked-in seed and regression corpora on
-  every push to `main` and every pull request into it; `Fuzz Short` and `Fuzz Differential` add a
-  bounded mutation budget on pushes, and a nightly job goes deeper.
+  every push to `main` and on pull requests into it (a repository variable can pause the
+  pull-request run, as [Where each check runs](verification.md#where-each-check-runs) says);
+  `Fuzz Short` and `Fuzz Differential` add a bounded mutation budget on pushes, and a nightly job
+  goes deeper.
 - **An ASan + UBSan CI leg** that runs the full test suite and `tools/ci/run_codec_matrix.sh` —
   every layout, every Annex E tool token, both Atmos container modes, the metadata options —
   so the sanitizers see the real command paths rather than only unit tests. It is a nightly leg.
@@ -139,8 +141,9 @@ What runs against it:
   SonarCloud has no server-side option to publish there itself), but maintainability findings,
   duplication, coverage and the quality gate status stay in its own dashboard only.
   **OSV scanning**
-  (on pull requests, pushes to `main` and a weekly schedule) and **OpenSSF Scorecard** (pushes
-  to `main` and a weekly schedule) upload to the same tab.
+  (on pull requests, pushes to `main` and a weekly schedule; the pull-request run pauses with the
+  same variable) and **OpenSSF Scorecard** (pushes to `main` and a weekly schedule) upload to the
+  same tab.
 
 What is *not* covered by that leg: anything threaded that is not tagged `concurrency`. The label
 comes from the Catch2 tags themselves (`catch_discover_tests(... ADD_TAGS_AS_LABELS)`), so a race
