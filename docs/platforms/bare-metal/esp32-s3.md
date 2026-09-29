@@ -289,9 +289,9 @@ leg's run of 2026-09-29. All three are true and answer different questions.
 | | Bytes | |
 |---|---|---|
 | Physical SRAM | 524,288 | the datasheet's 512 KB |
-| − data cache | 32,768 | `CONFIG_ESP32S3_DATA_CACHE_SIZE`, carved out of SRAM2 |
-| − instruction cache | 16,384 | already the minimum |
+| − IRAM/Icache block | 32,768 | 0x40370000 to 0x40378000, on the instruction bus only: the instruction cache, 16,384 at `CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE`'s minimum, and 16,384 of IRAM |
 | = DRAM-addressable window | 491,520 | `SOC_DRAM_LOW`…`SOC_DRAM_HIGH` |
+| of which data cache | 32,768 | `CONFIG_ESP32S3_DATA_CACHE_SIZE`, taken from the top of the window |
 | DIRAM pool `idf.py size` reports | 341,760 | after ROM reservations |
 | **free at runtime** | **304,680** | what `heap_caps_get_free_size` returns before the probe decodes, under QEMU on 2026-09-29; a board read 316,196 on 2026-09-11 |
 
