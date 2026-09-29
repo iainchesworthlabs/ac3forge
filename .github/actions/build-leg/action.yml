@@ -38,6 +38,65 @@ inputs:
   vcpkg-commit:
     description: "needs.toolchain-versions.outputs.vcpkg_commit, forwarded to ./.github/actions/setup-vcpkg."
     required: true
+  ccache:
+    description: >-
+      'true' routes every C and C++ compile through ccache and restores its
+      cache from GitHub's cache service, where a main-branch run saved it (see
+      ccache-save). Off by default, so a leg that has not asked for it builds
+      exactly as it always did. Nothing in this repository turned ccache on
+      before this input existed, and every Linux leg builds in a fresh
+      container, so each job compiled the whole tree from scratch.
+    default: "false"
+  ccache-save:
+    description: >-
+      'true' saves the ccache directory after the leg when this run added
+      objects to it. Only main-branch runs should set it. Pull-request and
+      queue runs restore and never save: cache entries are immutable and
+      evicted least-recently-used against a 10 GB repository budget, so a burst
+      of pushes that each saved a copy would push out the one entry every other
+      run restores from.
+    default: "false"
+  ccache-size:
+    description: "ccache's own size cap for the leg (CCACHE_MAXSIZE). The saved entry is the compressed directory."
+    default: "2G"
+  ccache-save-min-misses:
+    description: >-
+      A saving run uploads the cache only when it compiled at least this many
+      objects the restored cache did not have. A push that changed two files is
+      not worth a gigabyte upload, and the next run restoring the older entry
+      just compiles those two again. The drift accumulates: once enough changes
+      have piled up, the run that compiles them all saves.
+    default: "25"
+  ctest-jobs:
+    description: >-
+      Empty (the default) runs ctest serially, exactly as before. A number, or
+      'auto' for the runner's CPU count, runs the Catch2 cases in parallel. The
+      Qt Quick suites (`_qml_tests_`) then run in a phase of their own (see
+      ctest-qml-jobs), and the throughput guards (label Performance) run alone
+      after that, because a real-time assertion measured beside eight other
+      tests measures the neighbours. A failing test is retried once
+      (`--repeat until-pass:2`) and the run says so, so a collision between
+      tests cannot block a merge unseen. Failures are summarised on the run's
+      summary page with the command that reproduces each.
+    default: ""
+  ctest-qml-jobs:
+    description: >-
+      How many Qt Quick suites run at once in their own phase, when ctest-jobs is
+      set. The default, 1, runs them one at a time as a precaution: they drive a
+      software-rendered window with mouse clicks and timed waits. A number, or
+      'auto' for the runner's CPU count, lets them overlap. The phase is the
+      longest part of a warm run, so whether they can is worth measuring.
+    default: "1"
+
+outputs:
+  built:
+    description: >-
+      'true' once the Build step has succeeded, even if a later step (the
+      tests) failed. A caller uses it to run the checks that only need the built
+      binaries (the gold-reference gate, the GUI smoke test, the translation
+      check) when the tests are red, so one run reports every failure and a red
+      test does not hide a second problem behind it.
+    value: ${{ steps.built.outputs.done }}
 
 runs:
   using: composite
@@ -106,6 +165,72 @@ runs:
           macos-llvm|macos-llvm-x64) c++ --version | head -1 ;;
         esac
 
+    # ccache, when the caller asks for it. The settings that make a hit possible
+    # across jobs are the non-default ones:
+    #   - compiler_check=content: the default (mtime and size) keys on the
+    #     compiler binary's file time, and every Linux job installs a fresh copy
+    #     of the compiler into a fresh container, so the default would miss on
+    #     every single compile of every job.
+    #   - base_dir + no hash_dir: the checkout path is part of a compile's
+    #     command line and debug info, and the workspace root differs between a
+    #     hosted runner, a fleet runner and a container.
+    #   - compression on: what gets saved is the compressed directory, and the
+    #     10 GB repository cache budget is shared with vcpkg and every other leg.
+    # The install is a no-op on the fleet images, which ship ccache.
+    - name: Install and configure ccache
+      if: inputs.ccache == 'true'
+      shell: bash
+      env:
+        CCACHE_SIZE: ${{ inputs.ccache-size }}
+      run: | # zizmor: ignore[github-env] CCACHE_DIR/CCACHE_BASEDIR are $HOME- and workspace-derived, not attacker-influenced
+        set -euo pipefail
+        if ! command -v ccache >/dev/null 2>&1; then
+          case "$RUNNER_OS" in
+            Linux)
+              export DEBIAN_FRONTEND=noninteractive
+              if command -v sudo >/dev/null 2>&1; then
+                sudo apt-get install -y -qq --no-install-recommends ccache
+              else
+                apt-get install -y -qq --no-install-recommends ccache
+              fi ;;
+            macOS)   brew install ccache ;;
+            Windows) choco install ccache -y --no-progress --requirechecksums ;;
+          esac
+        fi
+        ccache --version | head -1
+        cache_dir="$HOME/.cache/ccache"
+        mkdir -p "$cache_dir"
+        if command -v cygpath >/dev/null 2>&1; then
+          cache_dir="$(cygpath -w "$cache_dir")"
+        fi
+        {
+          echo "CCACHE_DIR=$cache_dir"
+          echo "CCACHE_MAXSIZE=$CCACHE_SIZE"
+          echo "CCACHE_COMPRESS=1"
+          echo "CCACHE_COMPILERCHECK=content"
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+          echo "CCACHE_NOHASHDIR=1"
+        } >> "$GITHUB_ENV"
+
+    # Keyed by leg, OS and architecture only. What is inside is content-addressed
+    # by ccache itself, so a different compiler or flag set simply misses; it
+    # never returns a wrong object. The commit is in the key because entries are
+    # immutable: a later save needs a new name, and `restore-keys` then finds the
+    # newest one.
+    - name: Restore the ccache cache
+      if: inputs.ccache == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Zero the ccache counters
+      if: inputs.ccache == 'true'
+      shell: bash
+      run: ccache --zero-stats
+
     # Every build-leg caller installs the same set now: vcpkg's "hearth" feature is selected by
     # default via CMakePresets.json's "core" fragment, so there is no smaller/larger split among
     # these legs left to key apart. See setup-vcpkg's own cache-key-suffix description for why a
@@ -145,9 +270,16 @@ runs:
         LEG_PRESET: ${{ inputs.preset }}
         LEG_GUI: ${{ inputs.gui }}
         LEG_CRUCIBLE: ${{ inputs.crucible }}
+        LEG_CCACHE: ${{ inputs.ccache }}
       run: |
         set -euo pipefail
         extra_args=()
+        # Through the launcher variables rather than a compiler wrapper on PATH,
+        # so the preset's own compiler choice (gcc, clang, cl, clang-cl) is left
+        # exactly as it is and ccache only ever sits in front of it.
+        if [ "$LEG_CCACHE" = "true" ]; then
+          extra_args+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+        fi
         # QT_ROOT_DIR is only set when the caller's "Install Qt (prebuilt)" step
         # ran - every Windows leg except windows-msvc-arm64 (no Qt kit to point
         # at), and both macOS legs (gui: true). Guarded on the variable itself
@@ -206,7 +338,54 @@ runs:
       shell: bash
       env:
         LEG_PRESET: ${{ inputs.preset }}
-      run: cmake --build --preset "build-$LEG_PRESET" -- -k 0
+        CTEST_JOBS: ${{ inputs.ctest-jobs }}
+      run: |
+        set -euo pipefail
+        if [ -z "$CTEST_JOBS" ]; then
+          cmake --build --preset "build-$LEG_PRESET" -- -k 0
+          exit 0
+        fi
+        # The gate keeps the output as well as printing it, so a failed build can
+        # be summarised (see "Summarise the failure" below) instead of leaving an
+        # agent to find the one compiler error in a thousand lines of ninja.
+        cmake --build --preset "build-$LEG_PRESET" -- -k 0 2>&1 | tee "${RUNNER_TEMP}/build.log"
+
+    # Runs only if Build succeeded; see the `built` output above.
+    - name: Record that the build succeeded
+      id: built
+      shell: bash
+      run: echo "done=true" >> "$GITHUB_OUTPUT"
+
+    # What the cache bought this run, on the run's summary page, and the miss
+    # count the save step below keys off: a run that compiled nothing new has
+    # nothing worth uploading.
+    - name: ccache statistics
+      id: ccache_stats
+      if: ${{ !cancelled() && inputs.ccache == 'true' }}
+      shell: bash
+      env:
+        SAVE_MIN_MISSES: ${{ inputs.ccache-save-min-misses }}
+      run: |
+        set -euo pipefail
+        ccache --show-stats
+        stats="$(ccache --print-stats)"
+        ccstat() { printf '%s\n' "$stats" | awk -F'\t' -v k="$1" '$1 == k { print $2; found = 1 } END { if (!found) print 0 }'; }
+        hits=$(( $(ccstat direct_cache_hit) + $(ccstat preprocessed_cache_hit) ))
+        misses="$(ccstat cache_miss)"
+        total=$(( hits + misses ))
+        rate=0
+        if [ "$total" -gt 0 ]; then rate=$(( 100 * hits / total )); fi
+        save=false
+        if [ "$misses" -ge "$SAVE_MIN_MISSES" ]; then save=true; fi
+        {
+          echo "misses=$misses"
+          echo "worth_saving=$save"
+        } >> "$GITHUB_OUTPUT"
+        {
+          echo "### ccache"
+          echo
+          echo "${hits} hits, ${misses} misses of ${total} cacheable compiles (${rate}% hit rate)."
+        } >> "$GITHUB_STEP_SUMMARY"
 
     # AC3FORGE_REQUIRE_AVX2 turns tests/core/test_simd_kernels.cpp's [avx2]
     # probe case from a loud skip into a hard failure - only safe to set on
@@ -221,7 +400,101 @@ runs:
       shell: bash
       env:
         LEG_PRESET: ${{ inputs.preset }}
+        CTEST_JOBS: ${{ inputs.ctest-jobs }}
+        CTEST_QML_JOBS: ${{ inputs.ctest-qml-jobs }}
         AC3FORGE_REQUIRE_AVX2: ${{ inputs.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
       run: |
         set -euo pipefail
-        ctest --preset "test-$LEG_PRESET"
+        if [ -z "$CTEST_JOBS" ]; then
+          ctest --preset "test-$LEG_PRESET"
+          exit 0
+        fi
+        # Three phases. The suite is 3,000+ cases, 96% of them under a second, and
+        # ran serially for ten minutes.
+        #
+        # 1. Parallel, for the Catch2 cases. Every writing test folds its process
+        #    id into its scratch directory (f85aff2cb), which is what makes
+        #    running them side by side safe. A failing case is retried once and
+        #    the retry is reported, so a collision that slipped through shows up
+        #    as a warning instead of an unexplained red.
+        # 2. The Qt Quick suites (ac3gui_, ac3hearth_ and ac3crucible_qml_tests_*),
+        #    in a phase of their own, at ctest-qml-jobs at a time (default one).
+        #    They drive a software-rendered window with mouse clicks and 5 to 10
+        #    second tryVerify windows, and a suite's own comments say a click
+        #    can be lost while a delegate is rebuilt, so one at a time is the
+        #    precaution. Nothing has shown that running them beside other tests
+        #    breaks them: the two Hearth suites that failed in this gate's first
+        #    runs (settings_page and network_pairing) fail the same way on the
+        #    fleet with serial ctest, on main itself. The phase is the longest
+        #    part of a warm run, which is why the setting exists.
+        # 3. Alone, for the throughput guards: a real-time assertion measured
+        #    beside seven other tests measures them.
+        cpus="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-2}")"
+        jobs="$CTEST_JOBS"
+        if [ "$jobs" = "auto" ]; then jobs="$cpus"; fi
+        qml_jobs="${CTEST_QML_JOBS:-1}"
+        if [ "$qml_jobs" = "auto" ]; then qml_jobs="$cpus"; fi
+        log="${RUNNER_TEMP}/ctest.log"
+        : > "$log"
+        rc=0
+        ctest --preset "test-$LEG_PRESET" -j "$jobs" --repeat until-pass:2 -LE Performance -E '_qml_tests_' 2>&1 \
+          | tee -a "$log" || rc=$?
+        # --no-tests=ignore on the other two, since a preset may build no Qt
+        # (the sanitizer legs) or no ac3perf target.
+        ctest --preset "test-$LEG_PRESET" -j "$qml_jobs" --repeat until-pass:2 -R '_qml_tests_' --no-tests=ignore 2>&1 \
+          | tee -a "$log" || rc=$?
+        ctest --preset "test-$LEG_PRESET" -L Performance --no-tests=ignore 2>&1 \
+          | tee -a "$log" || rc=$?
+        retried="$(grep -c '\*\*\*Failed' "$log" || true)"
+        if [ "$rc" -eq 0 ] && [ "$retried" -gt 0 ]; then
+          echo "::warning title=ctest::${retried} test attempt(s) failed and then passed on retry. Under -j$jobs that can be two tests sharing a resource; the ctest output above shows which."
+        fi
+        exit "$rc"
+
+    # For an agent reading a red run: what failed and the command that reproduces
+    # it, at the top of the run's summary page instead of somewhere in a
+    # thousand-line log. A failed build (the compiler diagnostics and ninja's
+    # FAILED: lines) or the failing test names, whichever this run has.
+    - name: Summarise the failure
+      if: ${{ failure() && inputs.ctest-jobs != '' }}
+      shell: bash
+      env:
+        LEG_PRESET: ${{ inputs.preset }}
+      run: |
+        set -euo pipefail
+        build_log="${RUNNER_TEMP}/build.log"
+        test_log="${RUNNER_TEMP}/ctest.log"
+        if [ -f "$build_log" ] && grep -q -E 'FAILED:|: error[ :]|error C[0-9]+|error LNK[0-9]+|undefined reference|ld returned' "$build_log"; then
+          {
+            echo "### Build errors"
+            echo
+            echo '```'
+            grep -E 'FAILED:|: error[ :]|error C[0-9]+|error LNK[0-9]+|undefined reference|ld returned' "$build_log" | head -40
+            echo '```'
+            echo
+            echo "Reproduce: \`cmake --preset config-${LEG_PRESET} && cmake --build --preset build-${LEG_PRESET}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+        if [ -f "$test_log" ] && grep -q 'The following tests FAILED:' "$test_log"; then
+          {
+            echo "### Failed tests"
+            echo
+            echo '```'
+            sed -n '/The following tests FAILED:/,/^Errors while running CTest/p' "$test_log" | head -60
+            echo '```'
+            echo
+            echo "Reproduce one: \`ctest --preset test-${LEG_PRESET} -R '<name>' --output-on-failure\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    # Only when this run compiled enough the cache did not have (see
+    # ccache-save-min-misses), and only when the caller says this is a
+    # main-branch run (see ccache-save above). `!cancelled()` rather than
+    # success(): a red Test step still leaves a valid cache, and the objects are
+    # the expensive part.
+    - name: Save the ccache cache
+      if: ${{ !cancelled() && inputs.ccache == 'true' && inputs.ccache-save == 'true' && steps.ccache_stats.outputs.worth_saving == 'true' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}

@@ -1,4 +1,11 @@
-# ac3forge CI.
+# ac3forge post-merge verification: the full matrix, run on main after a merge.
+#
+# Pull requests and merge-queue entries are gated by pr-gate.yml, which is small
+# and fast. This workflow is what proves main. It runs on every push to main but
+# never more than one at a time (see `concurrency` below), so a burst of merges
+# is verified as one batch, and main-health.yml names the merges in it when it
+# fails. docs/ci-agentic.md has the design; docs/ci-lanes.md still describes the
+# lane partitions this file uses.
 #
 # ---------------------------------------------------------------------------
 # Matrix status
@@ -140,111 +147,45 @@
 name: CI
 
 on:
-  # Only the long-lived branches build on push; the work happens on topic
-  # branches whose pull_request run covers them, so a WIP push does not also run
-  # the matrix.
+  # Main, after a merge. Pull requests and merge-queue entries are gated by
+  # pr-gate.yml instead: this matrix is ten-odd runner-hours, and running it
+  # for every push to every pull request, then again in the queue, then again
+  # on main, was three validations of the same change - 51% of the compute in
+  # the four days before this changed went into runs that were cancelled.
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  # main's merge queue (see .github/branch-protection.md) tests each queue
-  # entry on a temporary gh-readonly-queue/... ref before it merges - GitHub
-  # only runs workflows that explicitly opt into this event on that ref, so
-  # without it "Branch Name"/"CI Status" (both required checks) would simply
-  # never report and every queue entry would sit until it times out. `changes`
-  # below already treats a non-pull_request event generically (falls back to
-  # the before/sha compare), and `branch-name` already treats any non-PR
-  # event as a pass-by-skip (see its own `if`) - both behaviours already
-  # exist for the plain `push` case above, merge_group needs no special-casing
-  # beyond receiving the trigger.
-  merge_group:
-    branches: [ main ]
+  # A branch that wants the full matrix before it merges (a change to ESP-IDF,
+  # Android, WASM, the sanitizers) asks for it: `gh workflow run ci.yml --ref
+  # <branch>`. A dispatch forces every lane on (see the `changes` job).
   workflow_dispatch:
 
 concurrency:
-  # PR runs cancel their own superseded pushes (head_ref-keyed, cancel true) -
-  # that's the WIP-churn case this exists for. Push runs on main are
-  # SHA-keyed instead: every merge gets its own group, so a fast run of merges
-  # can never cancel an earlier merge's still-running gold-reference gate and
-  # quality-history append (see docs/quality-trend.md) before it finishes.
-  # Branch-name-keyed cancellation silently dropped exactly that data in
-  # practice - confirmed via `gh run list`, e.g. PR #35's push run was
-  # cancelled outright by PR #36 landing a second later.
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Main is verified single-flight. One run executes and at most one waits, and
+  # the waiting place goes to the newest push (cancel-in-progress: false leaves
+  # the running one alone; GitHub replaces the pending one). A burst of merges
+  # therefore costs one run per finished run, not one per merge, and the batch
+  # grows with the load: idle, every merge is verified alone; busy, the newest
+  # commit's run covers everything merged before it. main-health.yml reads the
+  # `verified` ref this run advances to name the merges a failure could be
+  # blamed on. Every other event (a dispatch on a branch) is one run per ref and
+  # cancels its own superseded run.
+  group: ${{ github.event_name == 'push' && 'ci-main' || format('ci-{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
 
 jobs:
-  # Enforce trunk-based (GitHub Flow) branch naming on every PR. A topic branch
-  # is <type>/<name> where type is feature, bugfix, hotfix, docs, or chore —
-  # every topic branch merges straight to main. The name is lowercase
-  # alphanumeric segments separated by single hyphens (no underscores, dots,
-  # spaces, other special characters, or trailing hyphens). main itself is
-  # accepted as a PR head for the rare revert-by-PR case, and dependabot/** is
-  # accepted because Dependabot's branch names are not configurable. Required
-  # on main, so a misnamed branch cannot merge.
-  branch-name:
-    name: Branch Name
-    needs: check-runner
-    if: github.event_name == 'pull_request'
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - name: Validate head branch name
-        shell: bash
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$HEAD_REF" == "main" ]]; then
-            echo "Core branch '$HEAD_REF' - allowed."
-            exit 0
-          fi
-          if [[ "$HEAD_REF" == dependabot/* ]]; then
-            echo "Dependabot branch '$HEAD_REF' - allowed (names are not configurable)."
-            exit 0
-          fi
-          pattern='^(feature|bugfix|hotfix|docs|chore)/[a-z0-9]+(-[a-z0-9]+)*$'
-          if [[ "$HEAD_REF" =~ $pattern ]]; then
-            echo "Branch '$HEAD_REF' conforms to <type>/<name>."
-            exit 0
-          fi
-          echo "::error title=Invalid branch name::'$HEAD_REF' must be <type>/<kebab-name> where <type> is feature, bugfix, hotfix, docs, or chore; the name is lowercase letters and digits separated by single hyphens (no underscores, dots, spaces, or trailing hyphens). Example: feature/eac3-decoder. See CONTRIBUTING.md."
-          exit 1
-
-  # The RE-derived EMDF signer is quarantined to a local branch and must never
-  # reach a public remote (it embeds a key extracted from Dolby's binary). The
-  # .gitignore keeps it from being staged; this makes doubly sure by failing if
-  # the directory ever appears in a tracked tree on main.
-  no-quarantine:
-    name: No Quarantine On Main
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Assert src/quarantine is absent
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git ls-files --error-unmatch src/quarantine >/dev/null 2>&1; then
-            echo "::error::src/quarantine is tracked here; it must never leave its local branch."
-            exit 1
-          fi
-          echo "No quarantined signer in the tree."
-
   # Same self-hosted/GitHub-hosted fan-out the nightly analysis workflows'
   # check-runner jobs get (see docs/ci-self-hosted-runners.md), via the shared
   # decide-runner composite action - covers this workflow's own cheap,
-  # container-free jobs below (everything except platform-macros, which
-  # needs pwsh and the self-hosted Linux image's shell is unverified, and
-  # the heavier container-based jobs, which already ride _build.yml's own
-  # check-runners fan-out via build-and-test). Fork-PR safety is handled
-  # entirely inside decide-runner itself, so the jobs below don't each need
-  # their own belt-and-braces `if` the way msvc-analysis.yml's single
-  # self-hosted-eligible job does.
+  # container-free jobs below (`changes` and the core lane's jobs), while the
+  # heavier container-based jobs ride _build.yml's own check-runners fan-out
+  # via build-and-test. The cheap static checks that used to sit here (lint,
+  # packaging, fixture corpus, quarantine) moved to _static.yml, called from
+  # pr-gate.yml. Fork-PR safety is handled entirely inside decide-runner
+  # itself, so the jobs below don't each need their own belt-and-braces `if`
+  # the way msvc-analysis.yml's single self-hosted-eligible job does.
   check-runner:
     name: Check self-hosted runner availability
     # Control-plane job: routed by vars.CONTROL_RUNNER_JSON (delete the
@@ -398,280 +339,6 @@ jobs:
             classify_args+=(--force-all)
           fi
           echo "$files" | python3 tools/ci/classify_changes.py "${classify_args[@]}" >> "$GITHUB_OUTPUT"
-
-  # The no-#ifdef rule. Cheap, fast, and deliberately ungated by `changes` so a
-  # violation is reported even while the porting legs are still red.
-  platform-macros:
-    name: Platform Macros
-    # Stays GitHub-hosted, deliberately: check_platform_macros.ps1 needs
-    # pwsh, which the hosted Ubuntu image ships and the fleet's Linux image
-    # does not - confirmed live ("pwsh: command not found" on
-    # tf-gh-linux-runner-08 when this was briefly routed, 2026-08-28). Route
-    # it only if/when ci-runners bakes PowerShell into the Linux template -
-    # same follow-the-toolchain rule as build-wasm/android/rust in
-    # _build.yml.
-    runs-on: ubuntu-latest
-    # GitHub-hosted, so on a push to main only the newest main commit's run
-    # waits for a runner - docs/ci-lanes.md, "Only the newest main commit runs
-    # the hosted jobs". CI Status accepts the resulting "cancelled" only on a
-    # commit main has moved past. Every other event gets a group of its own run.
-    concurrency:
-      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'platform-macros-main' || format('platform-macros-run-{0}', github.run_id) }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check for preprocessor conditionals in the first-party trees
-        shell: pwsh
-        run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
-
-  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
-  # latest-tag advisory (manifest bump automation) - see the script's own header for the split
-  # between the two and why only the first one fails the job. fetch-depth: 0, unlike
-  # platform-macros above: the advisory half needs `git describe --tags` to see the
-  # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
-  # it in CI while it kept working from a normal local checkout.
-  packaging-consistency:
-    name: Packaging Consistency
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check packaging manifests are internally consistent
-        shell: bash
-        run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
-
-  # Every published quality series is measured against tests/golden/audio/,
-  # and its points are only comparable to each other because the material
-  # under them never moved. A regenerated fixture is close to invisible - it
-  # still decodes, still has the right duration and channel count, still
-  # produces a plausible SNR - and simply puts a step in every series that
-  # reads as an encoder change. This hashes each fixture against
-  # tests/golden/audio/corpus.json so that becomes a failing check instead of
-  # a mystery on a trend page months later.
-  #
-  # Its own job rather than a step on ffmpeg-validate: stdlib-only, no build,
-  # no container, seconds to run, and it should still report on a
-  # docs-or-fixtures-only change where `changes.outputs.code` is false and
-  # ffmpeg-validate never starts. Same shape and same reasoning as
-  # packaging-consistency above.
-  fixture-corpus:
-    name: Fixture Corpus
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check committed fixtures match the corpus manifest
-        run: python3 tools/checks/check_corpus.py
-
-  # ruff, shellcheck and actionlint over the non-C++ half of the tree (non-C++ lint and scan). Same shape as platform-macros and packaging-consistency above:
-  # cheap, fast, and deliberately ungated by `changes` so a script edit is
-  # reported even while a heavier leg is red.
-  #
-  # This is not ordinary lint hygiene here. The ~30 Python files under tools/
-  # ARE this project's oracles and gates - quality_race.py's SNR floors,
-  # fuzz_encoder_space.py, compare_wav.py, the four trend appenders,
-  # check_matrix_coverage.py - so a swallowed subprocess failure or a closure
-  # capturing a loop variable in one of them turns a CI check green without
-  # checking anything, and nothing downstream would ever notice. Every rule in
-  # ruff.toml's curated set was picked with that in mind; see its header.
-  #
-  # A checkout and a pip install, kept apart from anything that needs a
-  # container bootstrap, a toolchain install, vcpkg and a complete build before
-  # it parses its first TU - the nightly clang-tidy job in static-analysis.yml
-  # used to be that neighbour here. Keeping them apart means a broken oracle
-  # script is reported in about a minute instead of behind the slowest job on
-  # the critical path.
-  #
-  # zizmor.yml already covers workflow *security* (injectable expressions,
-  # over-broad permissions, unpinned actions); actionlint covers workflow
-  # *correctness* (undefined matrix properties, bad `needs`/`if` expressions,
-  # invalid runner labels) plus, via -shellcheck below, the shell inside every
-  # `run:` block - which no other check in this repo looks at at all.
-  script-lint:
-    name: Script Lint
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      # fetch-depth: 0, same requirement and reasoning as packaging-consistency
-      # above: the Patch attribution step below needs `git log` to see the
-      # PR's base commit on main, which a shallow (depth-1) clone never
-      # fetches, silently breaking that step's range instead of just this
-      # job's own `git describe --tags` use.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      # A venv rather than a bare `pip install`: the hosted image's system
-      # Python is PEP 668 externally-managed, and --break-system-packages (what
-      # the container jobs below use, safely, because their container is thrown
-      # away) is the wrong tool on a runner whose Python other steps may still
-      # need. requirements/requirements-lint.txt is a pip-compile
-      # --generate-hashes lock like requirements-coverage.txt and
-      # requirements-ffmpeg-validate.txt, so all three linter versions are
-      # pinned by hash and move only when the lock is regenerated.
-      # requirements-pip-bootstrap.txt pins the venv's own pip upgrade the
-      # same way - see that file's header for why it can't just live in the
-      # pip-compile lock above.
-      - name: Install linters
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m venv .lintvenv
-          .lintvenv/bin/python -m pip install --quiet --require-hashes \
-            -r requirements/requirements-pip-bootstrap.txt
-          .lintvenv/bin/python -m pip install --quiet --require-hashes \
-            -r requirements/requirements-lint.txt
-          .lintvenv/bin/ruff --version
-          .lintvenv/bin/shellcheck --version | tr '\n' ' '; echo
-          .lintvenv/bin/actionlint -version
-
-      # Configuration (rule set, line length, exclusions, and the reasoning for
-      # each) lives in ruff.toml at the repository root, shared verbatim with a
-      # local `ruff check .`, the same way tools/checks/coverage_report.sh is
-      # shared with the coverage job - CI and a developer machine cannot drift
-      # onto different rules.
-      - name: ruff
-        shell: bash
-        run: .lintvenv/bin/ruff check --no-cache --output-format=github .
-
-      # The oracles' own unit tests. This job's header explains why the ~30
-      # Python files under tools/ get more scrutiny than ordinary scripts -
-      # they ARE the gates - and lint alone cannot tell whether a gate still
-      # gates. compare_wav.py's suite pins the case that motivated per-channel
-      # SNR floors: a single floor low enough for a 5.1 fixture's
-      # dither-dominated surrounds leaves the front channels 30-70 dB of room
-      # to collapse in without failing anything.
-      #
-      # stdlib unittest, run with the system python3 rather than .lintvenv:
-      # these tests deliberately import nothing that is not in the standard
-      # library (same rule the scripts under test follow), so needing the
-      # linter venv at all would be a sign one of them had grown a dependency.
-      #
-      # tools/ci is discovered separately rather than by starting at tools/:
-      # unittest only recurses into directories it can import, and neither of
-      # these is a package. Reporting what the gates measure is part of the
-      # same contract as running them - a badge that disagreed with the page it
-      # links to is what put a suite in tools/ci in the first place.
-      # tools/hearth holds ota.py, which updates boards over the network
-      # (planning/esp32-ota.md): its suite runs it against a stand-in board.
-      - name: Oracle unit tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          for suite in tools/checks tools/ci tools/hearth; do
-            printf '\n=== %s ===\n' "$suite"
-            python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
-          done
-
-      # The paths the docs and the CI plumbing name: every relative Markdown
-      # link under docs/ and in the root pages, the #anchor each one lands on,
-      # and every docs/, apps/, src/ or tools/ literal in the workflows, the
-      # CMake modules and the scripts under tools/. A file that moves takes its
-      # README row, its workflow step and the comments that cite it along only
-      # when someone remembers; this makes forgetting a red job. Shapes it
-      # cannot judge (globs, placeholders) are printed as info, never failed -
-      # the script's own header has the rules. Its own suite runs in the step
-      # above.
-      #
-      # This job is deliberately not gated on an event, so the merge_group
-      # trigger at the top of this file reaches it and main's queue runs it over
-      # each entry's merged tree. That is what catches the anchor break neither
-      # branch can see on its own: one renames a heading, the other links the
-      # name it used to have, and only the merge of the two is wrong.
-      - name: Doc and script paths
-        shell: bash
-        run: python3 tools/checks/check_doc_paths.py
-
-      # The platform selection matrix, docs/platforms/index.md, routes a reader
-      # from what they have to the page for it. The step above proves its links
-      # resolve; this one proves the reverse direction, that no platform page
-      # has been added without a route to it - the drift that is invisible
-      # precisely because every link on the page still works. Its own suite
-      # runs in the Oracle unit tests step above.
-      - name: Platform matrix coverage
-        shell: bash
-        run: python3 tools/checks/check_platform_matrix.py
-
-      # A board flashed from this tree has to stay recoverable over USB, and
-      # its bootloader has to keep checking an image before it boots it
-      # (planning/esp32-ota.md). Either can be lost to one line in an sdkconfig
-      # fragment - an option that burns eFuses, or one that skips the check -
-      # and no build or emulator run would notice. Its own suite runs in the
-      # Oracle unit tests step above.
-      - name: ESP-IDF settings that would stop USB recovery
-        shell: bash
-        run: python3 tools/checks/check_esp_efuse_free.py
-
-      # This script's own header describes the same review for a `git
-      # format-patch` series a parallel session hands back before it is
-      # applied; here it runs automatically over the commits a PR actually
-      # adds. PR-only, unlike the checks above: by the time a push or
-      # merge_group run reaches this job, every commit in it already passed
-      # this same check while its PR was open, and for a push to main in
-      # particular the range against its own new tip is empty by then, which
-      # the script treats as "no commits found" - an error, not a vacuous
-      # pass. Dependabot's PRs are excluded the same way branch-name excludes
-      # their branch pattern above: their commits carry Dependabot's own bot
-      # identity by design, never this project's, and were never a
-      # session's patch to review. --expect-name/--expect-email are passed
-      # explicitly rather than left to the script's own git-config default:
-      # a hosted runner's checkout has no user.name/user.email of its own,
-      # so the default would fail this step on every PR with "unset", not
-      # check anything. Merge commits already in the range need no special
-      # handling here - --range mode passes --no-merges to `git log` on its
-      # own (see the script's header), proved by
-      # RangeModeChecks.test_merge_commits_are_excluded in
-      # test_check_patch_attribution.py.
-      - name: Patch attribution
-        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'dependabot/')
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          python3 tools/checks/check_patch_attribution.py --range "$BASE_SHA..HEAD" \
-            --expect-name "Iain Chesworth" --expect-email "iain.chesworth@gmail.com"
-
-      # The comparison tables are committed Markdown so they remain searchable
-      # and usable without JavaScript. The home-page selector reads the JSON
-      # source directly; this check keeps those two presentations on the same
-      # catalogue.
-      - name: Generated support matrices
-        shell: bash
-        run: python3 tools/checks/generate_support_matrices.py --check
-
-      # `git ls-files` rather than a hard-coded list of directories: a shell
-      # script added anywhere in the tree is then linted the day it lands,
-      # instead of silently sitting outside the gate until someone remembers to
-      # widen a glob here.
-      - name: shellcheck
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t scripts < <(git ls-files '*.sh')
-          printf 'shellcheck: %d script(s)\n' "${#scripts[@]}"
-          printf '  %s\n' "${scripts[@]}"
-          .lintvenv/bin/shellcheck --format=gcc "${scripts[@]}"
-
-      # -shellcheck hands actionlint the same pinned binary the step above uses,
-      # so the shell inside every `run:` block is checked too - that integration
-      # is where this job's first real finding came from (an `ls | head -1`
-      # parse in release.yml's provenance-export step). -pyflakes= disables the
-      # other integration outright: it would only see the `python -c` one-liners
-      # inside `run:` blocks, and ruff above already covers every real .py file.
-      - name: actionlint
-        shell: bash
-        run: |
-          set -euo pipefail
-          .lintvenv/bin/actionlint -no-color -oneline \
-            -shellcheck .lintvenv/bin/shellcheck -pyflakes=
 
   # CI lane partitions plan (docs/ci-lanes.md): coverage, the ADM module
   # build, the PR-time performance/memory comparisons and gates, the ABI
@@ -1255,14 +922,17 @@ jobs:
           path: results/performance-linux-gcc-arm64
           retention-days: 7
 
-  # Branch protection points at this one check rather than at each matrix leg,
-  # so adding or renaming a leg does not need the protection rule updated.
-  # Experimental legs cannot reach it: continue-on-error means the reusable
-  # workflow reports success even when one of them fails.
+  # The one verdict for this run. It is not a required check: branch protection
+  # points at pr-gate.yml's `CI Status`, and this one is named differently so the
+  # two can never be confused on a commit that both ran on (a dispatch on a
+  # branch, or main itself). main-health.yml reads this run's conclusion after
+  # it completes. Adding or renaming a matrix leg still needs no change
+  # elsewhere. Experimental legs cannot reach it: continue-on-error means the
+  # reusable workflow reports success even when one of them fails.
   ci-status:
-    name: CI Status
+    name: Verify Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, core, wheels, npm, esp-component, build-and-test, persist-performance-trend ]
+    needs: [ changes, core, wheels, npm, esp-component, build-and-test, persist-performance-trend ]
     # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
     # switch as check-runner above. This is the required check every PR
     # waits on LAST - when the hosted pool is saturated, a run whose every
@@ -1275,14 +945,7 @@ jobs:
       - name: Gate on required job results
         shell: bash
         env:
-          # 'skipped' on a push (no PR head to name), which is a pass.
-          R_BRANCH: ${{ needs.branch-name.result }}
-          R_QUARANTINE: ${{ needs.no-quarantine.result }}
           R_CHANGES: ${{ needs.changes.result }}
-          R_MACROS: ${{ needs.platform-macros.result }}
-          R_PACKAGING: ${{ needs.packaging-consistency.result }}
-          R_CORPUS: ${{ needs.fixture-corpus.result }}
-          R_SCRIPTLINT: ${{ needs.script-lint.result }}
           # CI lane partitions (docs/ci-lanes.md): coverage/adm-validate/
           # ffmpeg-validate/performance-gate/memory-gate/both persist-*-trend
           # jobs now live inside _ci-core.yml, called as the `core` job
@@ -1342,11 +1005,7 @@ jobs:
               echo "main has moved on to ${tip:0:8}; a 'cancelled' below from a job with GitHub-hosted legs is one that gave way to the newer run."
             fi
           fi
-          for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
-                      "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
-                      "packaging-consistency:$R_PACKAGING" \
-                      "fixture-corpus:$R_CORPUS" \
-                      "script-lint:$R_SCRIPTLINT" \
+          for pair in "changes:$R_CHANGES" \
                       "coverage:$R_COVERAGE" \
                       "adm-validate:$R_ADM" \
                       "hearth-validate:$R_HEARTH" \
@@ -1365,7 +1024,7 @@ jobs:
               # group. coverage and the core validate jobs report through step
               # outputs instead, which come back empty when a job never starts.
               case "$job" in
-                platform-macros|build-and-test|wheels|npm|esp-component) newest_only=true ;;
+                build-and-test|wheels|npm|esp-component) newest_only=true ;;
                 *) newest_only=false ;;
               esac
               if [ "$result" = "cancelled" ] && [ "$superseded" = true ] && [ "$newest_only" = true ]; then

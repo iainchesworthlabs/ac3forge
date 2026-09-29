@@ -14,6 +14,14 @@ the other six - see "What's gated today" below. This page describes the
 finer-grained classification, what it currently gates, and what it does not
 gate yet.
 
+> Pull requests and merge-queue entries no longer run `ci.yml`. They run
+> [`pr-gate.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml),
+> described in [CI for many agents](ci-agentic.md). The lanes on this page now decide what the run
+> on main covers, and what a dispatch on a branch covers (`gh workflow run ci.yml --ref <branch>`
+> forces every lane on). Sections below that describe `pull_request` behaviour, such as the hosted
+> legs that were skipped on pull requests, record how `ci.yml` behaved before that change and no
+> longer take effect, since `ci.yml` has no `pull_request` trigger.
+
 ## Current status
 
 `tools/ci/classify_changes.py` exists, and the `changes` job in `ci.yml` calls
