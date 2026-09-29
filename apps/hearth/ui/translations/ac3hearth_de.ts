@@ -885,22 +885,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/FirstRunDialog.qml" line="130"/>
-        <source>Network sinks play once they&apos;re paired</source>
+        <location filename="../qml/FirstRunDialog.qml" line="135"/>
+        <source>Network sinks need a group to play</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/FirstRunDialog.qml" line="131"/>
-        <source>Hearth lists the Sendspin players it finds on the network. To play to one, pair it with the code the sink shows.</source>
+        <location filename="../qml/FirstRunDialog.qml" line="136"/>
+        <source>Hearth lists the Sendspin players it finds on the network. Pair one, then add it to a group on the Network page - a group of one plays to a single sink.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/FirstRunDialog.qml" line="142"/>
+        <location filename="../qml/FirstRunDialog.qml" line="148"/>
         <source>Not now</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/FirstRunDialog.qml" line="162"/>
+        <location filename="../qml/FirstRunDialog.qml" line="168"/>
         <source>Open Speakers</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1748,42 +1748,83 @@
 <context>
     <name>Network</name>
     <message>
-        <location filename="../qml/Network.qml" line="77"/>
+        <location filename="../qml/Network.qml" line="112"/>
         <source>%1 Taking it back stops whatever that server plays to it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="79"/>
+        <location filename="../qml/Network.qml" line="114"/>
         <source>Not connected: %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="86"/>
+        <location filename="../qml/Network.qml" line="121"/>
         <source>Take it back</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="87"/>
+        <location filename="../qml/Network.qml" line="122"/>
         <source>Connect now</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="140"/>
+        <location filename="../qml/Network.qml" line="158"/>
+        <source>JUST PAIRED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="167"/>
+        <source>%1 isn&apos;t playing anything yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="177"/>
+        <source>It needs to be in a group Hearth plays to - a group of one plays to a single sink.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="179"/>
+        <source>It needs to be in a group Hearth plays to - choose one, or make another.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="194"/>
+        <source>Create a group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="200"/>
+        <location filename="../qml/Network.qml" line="258"/>
+        <source>Not now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="225"/>
+        <source>Add to the group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="252"/>
+        <source>Or create a new group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="312"/>
         <source>Select a sink on the left to pair it, or to see what it is.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="198"/>
+        <location filename="../qml/Network.qml" line="370"/>
         <source>A standard Sendspin player: it takes stereo only, with no speaker or decoder settings of its own to show here. Add it to a group from the list on the left, or make a new one.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="207"/>
+        <location filename="../qml/Network.qml" line="379"/>
         <source>Forget this pairing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="189"/>
+        <location filename="../qml/Network.qml" line="361"/>
         <source>Paired with this computer on %1. It takes streams from Hearth without a code until the pairing is forgotten.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2555,6 +2596,11 @@
         <source>What the sink runs, as it reports it over its own web server, and an update sent the way its page sends one.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <location filename="../qml/NetworkSinkSettings.qml" line="93"/>
+        <source>Add this sink to a group from the list on the left, or make a new one, to play to it.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>NetworkSinkSpeakers</name>
@@ -3258,209 +3304,214 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="31"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="42"/>
         <source>1 · DECODE</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="37"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="48"/>
         <source>Nothing playing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="40"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="51"/>
         <source>RF mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="41"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="52"/>
         <source>custom mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="41"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="52"/>
         <source>line mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="42"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="53"/>
         <source>stream</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="52"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="63"/>
         <source>dialnorm −%1: %2 dB down%3</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="56"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="67"/>
         <source> · %1 objects</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="84"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="95"/>
         <source>2 · RENDER</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="90"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="101"/>
         <source>%1 onto %2 outputs</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="92"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="103"/>
         <source>Not rendering</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="108"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="119"/>
         <source>%1 small at %2 Hz</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="108"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="119"/>
         <source> and </source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="110"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="121"/>
         <source>no small speakers</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="111"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="122"/>
         <source> · trims and delays</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="140"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="151"/>
         <source>3 · YOU HEAR IT ON</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="146"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="157"/>
         <source>No output chosen</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="155"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="166"/>
         <source>%1 ch %2 at %3 kHz</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="158"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="169"/>
         <source>PCM</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="158"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="169"/>
         <source>bitstream</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="169"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="180"/>
         <source>output: your choice</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/PlaySignalPathCard.qml" line="175"/>
+        <location filename="../qml/PlaySignalPathCard.qml" line="186"/>
         <source>Choose…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/PlaySignalPathCard.qml" line="202"/>
+        <source>A paired network sink isn&apos;t playing: no group is chosen as the output. Choose one above, or make one on the Network page.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../network_controller.cpp" line="336"/>
+        <location filename="../network_controller.cpp" line="337"/>
         <source>not sent: the sink refused the settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="337"/>
+        <location filename="../network_controller.cpp" line="338"/>
         <source>not sent: the sink does not take settings from Hearth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="339"/>
+        <location filename="../network_controller.cpp" line="340"/>
         <source>The sink does not take settings from Hearth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="343"/>
+        <location filename="../network_controller.cpp" line="344"/>
         <source>revision %1 sent, not reported yet</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="345"/>
+        <location filename="../network_controller.cpp" line="346"/>
         <source>revision %1 refused: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="349"/>
+        <location filename="../network_controller.cpp" line="350"/>
         <source>revision %1 · applied</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="351"/>
+        <location filename="../network_controller.cpp" line="352"/>
         <source>revision %1 sent · sink on %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="356"/>
+        <location filename="../network_controller.cpp" line="357"/>
         <source>Nothing playing.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="357"/>
-        <location filename="../network_controller.cpp" line="370"/>
+        <location filename="../network_controller.cpp" line="358"/>
+        <location filename="../network_controller.cpp" line="371"/>
         <source>none</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="358"/>
-        <location filename="../network_controller.cpp" line="399"/>
-        <location filename="../network_controller.cpp" line="405"/>
-        <location filename="../network_controller.cpp" line="407"/>
+        <location filename="../network_controller.cpp" line="359"/>
+        <location filename="../network_controller.cpp" line="400"/>
+        <location filename="../network_controller.cpp" line="406"/>
+        <location filename="../network_controller.cpp" line="408"/>
         <source>not reported</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="363"/>
+        <location filename="../network_controller.cpp" line="364"/>
         <source>%1 · %2%3 · %4 substream%5</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="371"/>
+        <location filename="../network_controller.cpp" line="372"/>
         <source>%1 carried · %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="372"/>
+        <location filename="../network_controller.cpp" line="373"/>
         <source>placed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="373"/>
+        <location filename="../network_controller.cpp" line="374"/>
         <source>not placed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="374"/>
+        <location filename="../network_controller.cpp" line="375"/>
         <source>dialnorm %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="381"/>
+        <location filename="../network_controller.cpp" line="382"/>
         <source>%1 bursts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="382"/>
+        <location filename="../network_controller.cpp" line="383"/>
         <source>%1 underruns · %2 late · %3 dropped · %4 invalid</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="398"/>
+        <location filename="../network_controller.cpp" line="399"/>
         <source>%1-bit · %2 slots</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3483,219 +3534,244 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="61"/>
+        <location filename="../qml/Settings.qml" line="67"/>
+        <source>Live diagnostics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Settings.qml" line="69"/>
+        <source>LIVE DIAGNOSTICS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Settings.qml" line="97"/>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Settings.qml" line="135"/>
         <source>Playback</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="67"/>
+        <location filename="../qml/Settings.qml" line="141"/>
         <source>Gapless between items</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="68"/>
+        <location filename="../qml/Settings.qml" line="142"/>
         <source>Keeps the output open from one item to the next when both have the same sample rate and speaker layout. When either changes, the output reopens and the queue says so.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="78"/>
+        <location filename="../qml/Settings.qml" line="152"/>
         <source>Pick up the queue where it was left</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="79"/>
+        <location filename="../qml/Settings.qml" line="153"/>
         <source>On the next start, at the item and position playing when Hearth closed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="88"/>
+        <location filename="../qml/Settings.qml" line="162"/>
         <source>An item fails</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="95"/>
+        <location filename="../qml/Settings.qml" line="169"/>
         <source>When an item fails</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="98"/>
+        <location filename="../qml/Settings.qml" line="172"/>
         <source>Skip to the next</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="99"/>
+        <location filename="../qml/Settings.qml" line="173"/>
         <source>Stop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="108"/>
+        <location filename="../qml/Settings.qml" line="182"/>
         <source>Network</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="115"/>
-        <location filename="../qml/Settings.qml" line="126"/>
+        <location filename="../qml/Settings.qml" line="189"/>
+        <location filename="../qml/Settings.qml" line="200"/>
         <source>Name</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="148"/>
+        <location filename="../qml/Settings.qml" line="222"/>
         <source>How sinks and players show this computer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="158"/>
+        <location filename="../qml/Settings.qml" line="232"/>
         <source>Look for Sendspin players on this network</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="159"/>
+        <location filename="../qml/Settings.qml" line="233"/>
         <source>Over mDNS. Off, the Network page lists only players already paired.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="170"/>
+        <location filename="../qml/Settings.qml" line="244"/>
         <source>PAIRING RECORDS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="180"/>
+        <location filename="../qml/Settings.qml" line="254"/>
         <source>No sink or player has paired with this computer yet.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="210"/>
+        <location filename="../qml/Settings.qml" line="284"/>
         <source>SINK OR PLAYER</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="218"/>
+        <location filename="../qml/Settings.qml" line="292"/>
         <source>PAIRED</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="259"/>
+        <location filename="../qml/Settings.qml" line="333"/>
         <source>paired %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="269"/>
+        <location filename="../qml/Settings.qml" line="343"/>
         <source>Forget</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="270"/>
+        <location filename="../qml/Settings.qml" line="344"/>
         <source>Forgets this pairing; it has to pair again with a new code.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="287"/>
+        <location filename="../qml/Settings.qml" line="361"/>
         <source>Kept in this computer&apos;s settings folder, readable by your account only. Forgetting one means pairing again with a new code.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="306"/>
+        <location filename="../qml/Settings.qml" line="380"/>
         <source>Appearance</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="313"/>
-        <location filename="../qml/Settings.qml" line="320"/>
+        <location filename="../qml/Settings.qml" line="387"/>
+        <location filename="../qml/Settings.qml" line="394"/>
         <source>Theme</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="323"/>
-        <location filename="../qml/Settings.qml" line="350"/>
-        <location filename="../qml/Settings.qml" line="374"/>
-        <location filename="../qml/Settings.qml" line="415"/>
+        <location filename="../qml/Settings.qml" line="397"/>
+        <location filename="../qml/Settings.qml" line="424"/>
+        <location filename="../qml/Settings.qml" line="448"/>
+        <location filename="../qml/Settings.qml" line="489"/>
         <source>System</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="324"/>
+        <location filename="../qml/Settings.qml" line="398"/>
         <source>Light</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="325"/>
+        <location filename="../qml/Settings.qml" line="399"/>
         <source>Dark</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="334"/>
-        <location filename="../qml/Settings.qml" line="341"/>
+        <location filename="../qml/Settings.qml" line="408"/>
+        <location filename="../qml/Settings.qml" line="415"/>
         <source>Palette</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="345"/>
+        <location filename="../qml/Settings.qml" line="419"/>
         <source>Signal</source>
         <extracomment>Palette name. A product name: leave it as it is unless the language has an established rendering of its own.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="347"/>
+        <location filename="../qml/Settings.qml" line="421"/>
         <source>Ink</source>
         <extracomment>Palette name, as &quot;Signal&quot; above.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="349"/>
+        <location filename="../qml/Settings.qml" line="423"/>
         <source>Console</source>
         <extracomment>Palette name, as &quot;Signal&quot; above.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="359"/>
-        <location filename="../qml/Settings.qml" line="367"/>
+        <location filename="../qml/Settings.qml" line="433"/>
+        <location filename="../qml/Settings.qml" line="441"/>
         <source>Text size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="385"/>
+        <location filename="../qml/Settings.qml" line="459"/>
         <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="396"/>
-        <location filename="../qml/Settings.qml" line="403"/>
-        <location filename="../qml/Settings.qml" line="419"/>
+        <location filename="../qml/Settings.qml" line="470"/>
+        <location filename="../qml/Settings.qml" line="477"/>
+        <location filename="../qml/Settings.qml" line="493"/>
         <source>Language</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="447"/>
+        <location filename="../qml/Settings.qml" line="521"/>
         <source>System follows the language the desktop is set to. Applies at once. Hearth&apos;s catalogues carry every string but none are translated yet, so the words stay in English while the layout direction and the typeface follow the language chosen.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="460"/>
+        <location filename="../qml/Settings.qml" line="534"/>
         <source>Diagnostics</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="465"/>
+        <location filename="../qml/Settings.qml" line="539"/>
         <source>A text file of what Hearth has done: outputs opened, streams played, sinks found and paired, and every error. Pairing keys, codes and file paths are left out.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="477"/>
+        <location filename="../qml/Settings.qml" line="551"/>
         <source>Save diagnostics…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="478"/>
+        <location filename="../qml/Settings.qml" line="552"/>
         <source>Writes a plain-text support file where you choose. Nothing is sent anywhere.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="486"/>
+        <location filename="../qml/Settings.qml" line="560"/>
+        <source>View live…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Settings.qml" line="561"/>
+        <source>Opens the same report in a window that keeps itself up to date. Nothing is sent anywhere.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Settings.qml" line="566"/>
         <source>Copy diagnostics</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Settings.qml" line="487"/>
+        <location filename="../qml/Settings.qml" line="567"/>
         <source>Copies the same report to the clipboard. Nothing is sent anywhere.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4219,12 +4295,12 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
 <context>
     <name>ac3::hearth::ui::NetworkController</name>
     <message>
-        <location filename="../network_controller.cpp" line="872"/>
+        <location filename="../network_controller.cpp" line="892"/>
         <source>it could not be read: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="875"/>
+        <location filename="../network_controller.cpp" line="895"/>
         <source>it is %1 bytes, more than any sink&apos;s app slot holds</source>
         <translation type="unfinished"></translation>
     </message>
