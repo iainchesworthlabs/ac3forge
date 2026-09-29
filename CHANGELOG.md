@@ -2353,6 +2353,22 @@ The sections below contain the complete change list and fixes.
 
 **Codec correctness**
 
+- **The AC-4 encoder left the band above A-SPX's crossover empty where the low band held nothing to
+  copy.** A tone sweeping through the band (or a steady high tone in a quiet programme) has nothing
+  in the low band for A-SPX's patch to copy, and the decoder's noise, a share of the envelope
+  whatever the patch holds, is the only thing that can fill the group (Part 1 Pseudocodes 94 and
+  95); the encoder sent the least noise floor there, and the band decoded 30 to 68 dB under the
+  source's energy in 5.1 and 5.1.4, where DEE's floors bring it to 15 to 17 dB under. The encoder
+  now measures the share of each noise group's energy that the decoder's patch delivers and sends
+  the floor that brings it to three quarters. Against DEE's streams of the same sweeps ViSQOL, up
+  to 0.18 under DEE's at 5.1.4 from 256 to 512 kbps and 0.04 under at 2.0 and 48 kbps, is over
+  DEE's on every leg at 2.0, 5.1 and 5.1.4 (0.05 to 0.66); log-spectral distance, 0.2 to 0.9 dB
+  higher on sweeps, stays under DEE's but at 2.0 from 48 to 96 kbps (0.55 to 1.14 dB over).
+  Music, film, speech, noise, transients and tones encode to the same bytes as before at every
+  rate that carries A-SPX. A test encodes a sweep in one channel of a stereo and a 5.1.4 stream
+  and holds each band above 16.5 kHz to 6 dB of the source's energy, which it missed by 8 to 13 dB
+  before. `tools/checks/score_ac4_encode.py --gold` takes G1's sweeps at 2.0 and 5.1 into the race,
+  and `src/ac4enc/ERRATA.md` records the reading.
 - **E-AC-3 streams from the Dolby Encoding Engine that use transient pre-noise processing would
   not decode.** DEE turns §3.7's tool on at its lower rates - all 23 such streams in the DEE
   golden-master set, stereo at 96-144 kbit/s, 5.1 at 192-368 and a 5.1 programme at 256 - and
