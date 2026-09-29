@@ -2,9 +2,9 @@
 
 Every tagged release publishes `hearth_sink` built for four boards, so a board can be set up and
 kept up to date without ESP-IDF. CI packages the images whenever its `esp` lane runs, which is
-after a merge to main that changes `esp-idf/`, `esphome/`, `apps/baremetal/` or
-`tools/packaging/`, and nightly; the release workflow attaches them to the GitHub release. This
-guide is for someone with a board and a release. It covers:
+after a merge to main that changes the ESP32 trees or a tree its component ships, and nightly
+([the lane table](../ci-lanes.md#lane-table)); the release workflow attaches them to the GitHub
+release. This guide is for someone with a board and a release. It covers:
 
 - which image a board takes, and checking a download;
 - installing a new board, and moving a board that runs an older build;

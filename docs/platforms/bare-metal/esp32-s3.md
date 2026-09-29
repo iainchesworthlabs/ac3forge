@@ -26,7 +26,7 @@ the float32 path worth having and real-time decode worth measuring.
 | Sendspin sink | `hearth_sink` requires an ESP32-S3 board with 8 MB of PSRAM and plays as a Sendspin player on Wi-Fi. Two boards played one E-AC-3 JOC programme as a group for ten minutes with no underrun and their play times within 549 µs — see [As a Sendspin sink](#as-a-sendspin-sink) and [the sink guide](../../hearth/sink-esp32-s3.md) |
 | Real time | **Decode, yes, on a board**, at 240 MHz, every one of the fourteen fixtures: from 0.07x for AC-3 mono to 0.92x for E-AC-3 7.1.4 folded to stereo, with objects placed onto 7.1.4 at 0.78x — see [Timing](#timing). The probe's board timings on this page are those of 2026-09-09 to 2026-09-11. **Encode: AC-3 2/0 and E-AC-3 2/0, yes**, 0.35x and 0.73x with the encoders in `float` end to end and the search made cheaper; AC-3 5.1 at 1.01x sits at the line, 2/0 with tools 1.3x to 1.6x and E-AC-3 5.1 1.7x over, what remains being the exponent-run planner and the allocation candidates — see [Encoding](#encoding) |
 | ESPHome | An external component, `esphome/components/ac3forge/` — an AC-3 decoder and framer, not a `speaker` source. See [ESPHome](esphome.md) |
-| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU, and `hearth-esp32s3` after it, which plays to the Sendspin sink from the host; `esphome config` and the component pack in `esp-component.yml`. All are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes `esp-idf/`, `esphome/`, `apps/baremetal/` or `tools/packaging/`, and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)); a pull request's gate builds none of them |
+| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU, and `hearth-esp32s3` after it, which plays to the Sendspin sink from the host; `esphome config` and the component pack in `esp-component.yml`. All are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)); a pull request's gate builds none of them |
 
 Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
 are asked for, because neither fits beside the other in this memory.
@@ -90,12 +90,13 @@ set `AC3FORGE_DECODE_SCALAR` to `float` or `fixed` above `project()`, or pass
 `idf_component.yml` carries registry metadata and the list of targets, each of which
 `tools/packaging/pack_esp_component.py --verify` builds against the packed archive. **It is not
 published to the ESP Component Registry.** `.github/workflows/esp-component.yml` lints the
-manifest and packs the archive, called from the `esp` lane of `ci.yml` (after a merge to main that
-changes `esp-idf/`, `esphome/`, `apps/baremetal/` or `tools/packaging/`, and nightly), but its
-`compote component upload` job is gated to a manual `workflow_dispatch` on a `v` tag — a
-published version cannot be replaced, so the upload is a decision rather than a consequence of
-merging. Add `--with-ac4` to the packer and the archive also carries the AC-4
-decoder's sources, for `CONFIG_AC3FORGE_AC4` ([ESP32-P4](esp32-p4.md#building-with-ac-4)).
+manifest and packs the archive, called from the `esp` lane of `ci.yml`, which runs after a merge to
+main that changes the ESP32 trees or a tree its component ships, and nightly
+([the lane table](../../ci-lanes.md#lane-table)). Its `compote component upload` job is gated to a
+manual `workflow_dispatch` on a `v` tag — a published version cannot be replaced, so the upload is
+a decision rather than a consequence of merging. Add `--with-ac4` to the packer and the archive
+also carries the AC-4 decoder's sources, for `CONFIG_AC3FORGE_AC4`
+([ESP32-P4](esp32-p4.md#building-with-ac-4)).
 
 ### The probes
 

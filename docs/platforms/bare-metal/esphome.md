@@ -48,9 +48,9 @@ at the working tree, which exercises the schema and `to_code` including the `add
 call, and asserts that a `buffer_size` no access unit fits in is rejected. It does **not** compile
 the firmware: that would clone ac3forge at the configured ref and build the whole IDF project,
 which says nothing about the code under review, since the ref it fetched is not that code. The
-job is the `esp-component` call in the `esp` lane of `ci.yml`: after a merge to main that changes
-`esp-idf/`, `esphome/`, `apps/baremetal/` or `tools/packaging/`, and nightly
-([CI for many agents](../../ci-agentic.md#the-tiers)).
+job is the `esp-component` call in the `esp` lane of `ci.yml`, which runs after a merge to main that
+changes the ESP32 trees or a tree its component ships, and nightly ([the lane table](../../ci-lanes.md#lane-table),
+[CI for many agents](../../ci-agentic.md#the-tiers)).
 
 [`esphome/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esphome/README.md)
 has the rest, including why PSRAM is worth having on a board that also runs WiFi.

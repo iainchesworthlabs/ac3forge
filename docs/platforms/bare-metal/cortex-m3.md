@@ -26,7 +26,7 @@ target and the first with hardware floating point.
 | Allocations per frame | 1 to 27, by fixture — see [the footprint table](../../performance-trend.md#minimum-footprint-decoder) |
 | Audio output | None. The probe decodes built-in fixtures and prints levels |
 | Real silicon | None. Correctness is established under emulation |
-| CI | `build-footprint` in `.github/workflows/_build.yml`, in the `esp` lane of `ci.yml`: after a merge to main that changes `esp-idf/`, `esphome/`, `apps/baremetal/` or `tools/packaging/`, and in the nightly run ([CI for many agents](../../ci-agentic.md#the-tiers)). A pull request's gate builds none of it |
+| CI | `build-footprint` in `.github/workflows/_build.yml`, in the `esp` lane of `ci.yml`: after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and in the nightly run ([CI for many agents](../../ci-agentic.md#the-tiers)). A pull request's gate builds none of it |
 
 Decode and encode are separate builds, and mutually exclusive: configure fails if both are asked
 for, because neither fits beside the other in the memory this profile targets.

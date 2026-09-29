@@ -18,7 +18,7 @@ target and the arithmetic tier differ.
 | Encode | Not validated here at all: both encoders are floating-point, which on a part with no FPU means software floating point |
 | AC-4 | Not built for this part. `CONFIG_AC3FORGE_AC4` is offered only where ESP-IDF sets `SOC_CPU_HAS_FPU`, which the C3 does not, and the AC-4 decoder has no fixed-point tier yet: that is phase D14d of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s), aimed at the [ESP32-C6](esp32-c6.md), with this part's QEMU leg as one of the three its hashes are to be held on. The C3 decodes AC-3 and E-AC-3 only, and no ESP32 sink takes AC-4 in a Sendspin group |
 | Real silicon | None. Correctness is established under `qemu-riscv32` emulation |
-| CI | The `esp32c3` fixed-point leg (`build-esp32c3`, under QEMU) beside `build-esp32s3` in `.github/workflows/_build.yml`, in the `esp` lane of `ci.yml`: after a merge to main that changes `esp-idf/`, `esphome/`, `apps/baremetal/` or `tools/packaging/`, and in the nightly run ([CI for many agents](../../ci-agentic.md#the-tiers)) |
+| CI | The `esp32c3` fixed-point leg (`build-esp32c3`, under QEMU) beside `build-esp32s3` in `.github/workflows/_build.yml`, in the `esp` lane of `ci.yml`: after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and in the nightly run ([CI for many agents](../../ci-agentic.md#the-tiers)) |
 
 ## Why this part, and not another ESP32 variant
 

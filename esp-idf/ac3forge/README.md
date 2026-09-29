@@ -102,11 +102,11 @@ sources only when it was packed with `pack_esp_component.py --with-ac4`.
 | [`examples/i2s_player`](examples/i2s_player/README.md) | Decodes a fixture linked into the image and plays it out of an I2S DAC, printing per-lap timing from the DAC's own clock. The measurement anyone with a board can repeat. |
 | [`examples/hearth_sink`](examples/hearth_sink/README.md) | Bytes from a flash partition, an SD card, a FAT volume in flash or an HTTP body over WiFi, through the incremental framer, rendered onto a configured layout - stereo, 5.1, 7.1.4 with the objects placed - to an I2S or TDM DAC; a `capture` sink for CI. With `sdkconfig.sendspin` it is a Sendspin player that takes updates over its network. How a real player gets its audio. |
 
-Both are built by CI under `espressif/idf:v6.1` (in the `esp` lane of `ci.yml`, which runs after a
-merge to main that changes `esp-idf/`, `esphome/`, `apps/baremetal/` or `tools/packaging/`, and
-nightly), and `hearth_sink` runs under QEMU there in seven shapes, one of which renders a
-height-object stream onto 7.1.4 and checks every slot's level against the footprint probe's.
-Timing figures come only from a board: QEMU is not cycle-accurate.
+Both are built by CI under `espressif/idf:v6.1`, in the `esp` lane of `ci.yml`, which runs after a
+merge to main that changes the ESP32 trees or a tree its component ships, and nightly
+([the lane table](../../docs/ci-lanes.md#lane-table)). `hearth_sink` runs under QEMU there in seven
+shapes, one of which renders a height-object stream onto 7.1.4 and checks every slot's level
+against the footprint probe's. Timing figures come only from a board: QEMU is not cycle-accurate.
 
 ## On a board
 

@@ -26,7 +26,7 @@ Every figure on this page outside its [AC-4](#ac-4) section was measured on a bo
 | AC-4 memory | A peak heap of 0.60 MB at 2.0 to 2.2 MB at 5.1.4, with internal RAM used up under ESP-IDF's default allocation policy (2 to 14 KB free at its least). The decode task uses 20 to 24 KB of a 64 KB stack, from 49 to 50 KB before D14a's third part |
 | Encode | Not measured. Both encoders are floating-point; nothing here rules it out |
 | QEMU | Not emulated, see [QEMU](#qemu) |
-| CI | The component pack builds for `esp32p4` from its archive, with the AC-4 decoder too (`pack_esp_component.py --with-ac4 --verify --verify-targets esp32p4`); `.github/workflows/_build.yml` builds this probe target (decoder direction) and `hearth_sink` for the part, with and without AC-4, and runs nothing, the same gap the ESP32-C6 leg has. These are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes `esp-idf/`, `esphome/`, `apps/baremetal/` or `tools/packaging/`, and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)) |
+| CI | The component pack builds for `esp32p4` from its archive, with the AC-4 decoder too (`pack_esp_component.py --with-ac4 --verify --verify-targets esp32p4`); `.github/workflows/_build.yml` builds this probe target (decoder direction) and `hearth_sink` for the part, with and without AC-4, and runs nothing, the same gap the ESP32-C6 leg has. These are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)) |
 
 ## The board
 

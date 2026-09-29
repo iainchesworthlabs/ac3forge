@@ -28,7 +28,7 @@ again, so the memory and fit figures below are those of 2026-09-15.
 | Encode | Not measured. Both encoders are floating-point, which on this part is software floating point |
 | AC-4 | Not built for this part. `CONFIG_AC3FORGE_AC4` is offered only where ESP-IDF sets `SOC_CPU_HAS_FPU`, which the C6 does not, and the AC-4 decoder has no fixed-point tier yet: that is phase D14d of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#d14-ac-4-on-the-esp32s), core decoding first. The sink decodes AC-3 and E-AC-3 only, and no ESP32 sink takes AC-4 in a Sendspin group |
 | QEMU | Not emulated, see [QEMU](#qemu) |
-| CI | The component pack builds for `esp32c6` from its archive, and the `build-esp32c3` job builds this probe with both network loads and `hearth_sink` for the part with 4 MB and with 16 MB of flash. Nothing runs. Both are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes `esp-idf/`, `esphome/`, `apps/baremetal/` or `tools/packaging/`, and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)) |
+| CI | The component pack builds for `esp32c6` from its archive, and the `build-esp32c3` job builds this probe with both network loads and `hearth_sink` for the part with 4 MB and with 16 MB of flash. Nothing runs. Both are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)) |
 
 ## What the part carries
 
