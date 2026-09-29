@@ -42,10 +42,11 @@ it directly. Four tiers, assigned per header below:
 | `ac3/decoder/decoder.hpp`, `output.hpp` | Public. |
 | `ac3/decoder/syntax_trace.hpp` | Diagnostic. |
 | `ac3/decoder/transient_prenoise.hpp` | Internal — applied automatically by `Eac3Decoder`; a caller observes its buffering effect, never calls it. |
+| `ac3/decoder/serving.hpp` | **Experimental** — the policy that fits the renderer's layout to the decoder's configuration, shared by the ESP32 player and Hearth; it has the tier of the render headers it serves. |
 | `ac3/io/elementary.hpp`, `metadata_edit.hpp`, `probe.hpp`, `object_strip.hpp`, `dec3.hpp`, `wav.hpp` | Public. |
 | `ac3/meta/bsi.hpp`, `drc.hpp`, `loudness.hpp`, `mixing.hpp`, `qc.hpp` | Public. |
 | `ac3/spatial/spatial.hpp` | Public. |
-| `ac3/render/layout.hpp`, `render.hpp`, `serving.hpp`, `routing.hpp`, `trim_delay.hpp`, `identify.hpp`, `float_biquad.hpp` | **Experimental** — the output layout, renderer and speaker management the ESP32 player and Hearth share ([Hearth reference-player plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md)), outside the `v1.0.0` freeze while Hearth's phases settle their shape; see [Experimental modules](#experimental-modules). |
+| `ac3/render/layout.hpp`, `render.hpp`, `routing.hpp`, `trim_delay.hpp`, `identify.hpp`, `float_biquad.hpp` | **Experimental** — the output layout, renderer and speaker management the ESP32 player and Hearth share ([Hearth reference-player plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md)), outside the `v1.0.0` freeze while Hearth's phases settle their shape; see [Experimental modules](#experimental-modules). |
 | `ac3/oba/atmos.hpp`, `joc.hpp`, `oamd.hpp`, `motion.hpp`, `scene.hpp` | Public — `ac3::oba::joc` included, now that AP2 folded it into `ac3::oba` proper. |
 | `ac3/emdf/emdf.hpp` | Public. |
 | `ac3/iec61937/iec61937.hpp` | Public. |
