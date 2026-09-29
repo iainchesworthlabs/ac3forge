@@ -43,10 +43,9 @@ endif()
 # into one installer - so the AC3Forge Crucible would otherwise land inside
 # the ac3cli/ac3gui installer the moment AC3FORGE_BUILD_CRUCIBLE is on for a
 # packaging build. It ships as its own archive instead while its driver is
-# test-signed and the demo is a demonstration rather than a product; the
-# intended end state is the opposite (the installer installs the demo and
-# its signed driver, and removes them on uninstall), and this is the one
-# line to delete when that lands.
+# test-signed; the intended end state is the opposite (the installer
+# installs the Crucible and its signed driver, and removes them on
+# uninstall), and this is the one line to delete when that lands.
 if(CPACK_GENERATOR STREQUAL "NSIS")
     list(REMOVE_ITEM CPACK_COMPONENTS_ALL crucible)
 endif()

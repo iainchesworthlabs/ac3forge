@@ -1082,10 +1082,11 @@ floor was calibrated against, and why `src/audio` and `apps/common` sit on a har
 needs a real card) all live in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
 comment in `ci.yml`.
 
-On `pull_request` only, a `performance-compare` job builds `ac3bench`/`ac3kernelbench` at the
-merge base and at the PR head on one runner and posts a table of per-workload deltas to the job
-summary, using the same soft/hard tiers `tools/ci/append_performance_history.py` applies on
-merge. The comparison job is informational and has `continue-on-error`; its
+In the merge queue, for an entry that changes `src/`, a `performance-compare` job
+(`_compare.yml`, called from `pr-gate.yml`) builds `ac3bench`/`ac3kernelbench` at the commit the
+entry is queued on and at the entry's head on one runner and posts a table of per-workload deltas
+to the job summary, using the same soft/hard tiers `tools/ci/append_performance_history.py`
+applies on merge. The comparison job is informational and has `continue-on-error`; its
 `hard_regression` verdict feeds the separate blocking `performance-gate` job.
 `ac3perf` also enforces its absolute real-time budget on every eligible leg,
 and the main-branch trend job enforces the same hard relative tier after push.

@@ -12,15 +12,17 @@
 <component type="desktop-application">
   <id>ac3hearth.desktop</id>
   <name>ac3hearth</name>
-  <summary>Hearth — the AC3Forge desktop reference player, with passthrough and Sendspin network outputs</summary>
+  <summary>Play AC-3, E-AC-3 and AC-4 streams on speakers, a receiver or a Sendspin network</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <description>
     <p>
-      ac3hearth is the AC3Forge project's reference player. It decodes AC-3, E-AC-3 and Dolby
-      Atmos object-layer streams under every decoder setting the library has, renders to a
-      chosen speaker layout, and plays to a local device, a passthrough receiver over HDMI or
-      S/PDIF, or a group of Sendspin network sinks.
+      ac3hearth is the ac3forge desktop player. It plays AC-3, E-AC-3 (with Dolby Atmos
+      objects) and AC-4 (channel-based, immersive and object content), decodes to a chosen
+      speaker layout with each format's decoder settings, and plays to a local device or to a
+      group of Sendspin network sinks. AC-3 and E-AC-3 streams can also be sent to a receiver
+      over HDMI or S/PDIF as a bitstream. In a group, the ESP32 sinks take AC-3 and E-AC-3
+      only.
     </p>
   </description>
   <launchable type="desktop-id">ac3hearth.desktop</launchable>
