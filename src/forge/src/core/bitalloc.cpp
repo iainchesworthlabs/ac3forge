@@ -17,7 +17,7 @@
 #include "ac3/internal/arch/simd.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "bitalloc_internal.hpp"
-#include "scalar_math.hpp"
+#include "ac3/internal/scalar_math.hpp"
 
 namespace ac3 {
 

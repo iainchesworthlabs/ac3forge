@@ -5,7 +5,7 @@
 #include <span>
 
 #include "ac3/core/eac3_tools.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 
 // The Annex E tools in the fixed-point tier's scalar
 // (planning/arithmetic-tiers.md, Phase C), beside `eac3_tools.cpp`'s double

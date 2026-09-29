@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "block_norm.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 
 using ac3::internal::Fixed32;
 namespace bn = ac3::internal;

@@ -33,7 +33,7 @@
 #include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
 #include "eac3_tools_fixed.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 #include "scalar_inverse.hpp"
 #include "block_norm.hpp"
 #include "ac3/internal/profiling.hpp"

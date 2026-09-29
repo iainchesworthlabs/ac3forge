@@ -412,6 +412,12 @@ endif()
 # ---------------------------------------------------------------------------
 # Targets
 # ---------------------------------------------------------------------------
+# The scalar building blocks ac3::forge and src/ac4core (below) both use -
+# Fixed32 and the cross-platform-identical float transcendentals
+# (planning/ac4.md, decision 31). Header-only and dependency-free, so it goes
+# first; both consumers link it PRIVATE.
+add_subdirectory(src/arithmetic)
+
 # The library holds the entire codec and spatial engine and is GUI-free.
 add_subdirectory(src/forge)
 

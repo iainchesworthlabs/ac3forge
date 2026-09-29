@@ -22,7 +22,7 @@
 #include "ac3/internal/profiling.hpp"
 #include "eac3_tools_fixed.hpp"
 #include "fft_kernel.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 #include "mdct_fixed.hpp"
 
 namespace ac3::eac3 {

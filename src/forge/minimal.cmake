@@ -265,7 +265,7 @@ endif()
 
 target_link_libraries(forge_minimal
     PUBLIC ac3::minimal_profile
-    PRIVATE "$<BUILD_INTERFACE:ac3::warnings>")
+    PRIVATE "$<BUILD_INTERFACE:ac3::warnings>" "$<BUILD_INTERFACE:ac3::arithmetic>")
 
 # ac3/export.hpp is generated, and every annotated header includes it. This
 # profile is static-only, so the generated header is asked for the no-op
