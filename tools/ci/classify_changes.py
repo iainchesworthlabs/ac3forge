@@ -12,6 +12,8 @@ need to run, so a Windows-only change stops paying for ESP-IDF and Android.
 
     python3 tools/ci/classify_changes.py --force-all >> "$GITHUB_OUTPUT"
 
+    ... | python3 tools/ci/classify_changes.py --satellites-direct >> "$GITHUB_OUTPUT"
+
 Reads one path per line from stdin (repo-relative, the same shape `gh api
 ... --jq '.[].filename'` already produces) and prints `<lane>=true` or
 `<lane>=false` for every lane, one per line - ready to append straight to
@@ -86,10 +88,18 @@ DOCS_SUFFIX = ".md"
 # comment in LANE_PREFIXES above.
 CORE_FANOUT = ("windows", "linux", "macos", "android", "wasm", "esp", "rust", "python")
 
+# The lanes for a toolchain other than the desktop platforms' own: each has its own
+# build, its own runners and, mostly, its own slow tests. The run after a merge runs
+# one of these only when a path in its own tree changed (`satellites_direct` below);
+# a change to the core library reaches them in the nightly run, which lights every lane.
+SATELLITES = ("android", "wasm", "esp", "rust", "python", "npm")
+
 LANES = tuple(LANE_PREFIXES)
 
 
-def classify(paths: Iterable[str], *, force_all: bool = False) -> dict[str, bool]:
+def classify(
+    paths: Iterable[str], *, force_all: bool = False, satellites_direct: bool = False
+) -> dict[str, bool]:
     """Return `{lane: bool}` for every lane in LANES.
 
     Two things make every lane true regardless of what actually matched: an
@@ -97,6 +107,11 @@ def classify(paths: Iterable[str], *, force_all: bool = False) -> dict[str, bool
     means build" rule `ci.yml`'s `code` output already applies) and any path
     this function does not recognise. A false skip is silent and wrong; a
     false build just costs a few extra minutes - see docs/ci-lanes.md.
+
+    `satellites_direct` keeps the core fan-out away from SATELLITES: a lane
+    among them is true only if a path in its own tree changed. The two cases
+    above still light everything, so a workflow edit or an unknown path is
+    proven everywhere.
     """
     if force_all:
         return dict.fromkeys(LANES, True)
@@ -128,7 +143,8 @@ def classify(paths: Iterable[str], *, force_all: bool = False) -> dict[str, bool
 
     if hits["core"]:
         for lane in CORE_FANOUT:
-            hits[lane] = True
+            if not (satellites_direct and lane in SATELLITES):
+                hits[lane] = True
 
     return hits
 
@@ -139,10 +155,15 @@ def main(argv: list[str]) -> int:
         "--force-all", action="store_true",
         help="Mark every lane true without reading stdin (push to main, merge_group).",
     )
+    parser.add_argument(
+        "--satellites-direct", action="store_true",
+        help="A satellite lane (android, wasm, esp, rust, python, npm) is true only when a "
+        "path in its own tree changed, not through the core fan-out (the run after a merge).",
+    )
     args = parser.parse_args(argv[1:])
 
     paths = [] if args.force_all else sys.stdin.read().splitlines()
-    hits = classify(paths, force_all=args.force_all)
+    hits = classify(paths, force_all=args.force_all, satellites_direct=args.satellites_direct)
 
     for lane in sorted(hits):
         value = "true" if hits[lane] else "false"

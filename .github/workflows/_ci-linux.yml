@@ -352,8 +352,12 @@ jobs:
       # changes arithmetic inside the decoder, not anything platform-specific.
       # ac3cli only - the rest of the tree is untouched by the option and
       # building it again would buy nothing.
+      #
+      # This and the nine steps after it test `matrix.scalar_variants`, a flag
+      # legs.jsonc marks nightly-only for linux-gcc, so the run after a merge
+      # skips all ten and the nightly run keeps them.
       - name: Build a float32 decoder
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         run: |
           set -euo pipefail
@@ -361,7 +365,7 @@ jobs:
           cmake --build build/decode-scalar-float --target ac3cli
 
       - name: Gold reference gate (float32 decode)
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         env:
           # Suffixed so this run's per-check JSON lands beside the other two in
@@ -377,7 +381,7 @@ jobs:
       # binaries already exist at this point, and the streams the comparison
       # needs are the ones the gate just encoded.
       - name: Float32 vs double decode
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         run: |
           set -euo pipefail
@@ -396,7 +400,7 @@ jobs:
       # block exponent the store carries, not of the absolute format, and a
       # drop to 100 would be a lost bit somewhere in that machinery.
       - name: Build a fixed-point decoder
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         run: |
           set -euo pipefail
@@ -404,7 +408,7 @@ jobs:
           cmake --build build/decode-scalar-fixed --target ac3cli
 
       - name: Gold reference gate (fixed-point decode)
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         env:
           EXTRA_LABEL_SUFFIX: _fixed
@@ -412,7 +416,7 @@ jobs:
         run: bash tools/checks/verify_gold_reference.sh build/decode-scalar-fixed/bin/ac3cli
 
       - name: Fixed-point vs double decode
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         run: |
           set -euo pipefail
@@ -429,7 +433,7 @@ jobs:
       # architectures, two compilers, one set of hashes - integer arithmetic
       # has nothing to differ by, and this is what says so every run.
       - name: Fixed-point probe natively, hashes against the pinned ones
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         run: |
           set -euo pipefail
@@ -448,7 +452,7 @@ jobs:
       # encoder's by tools/checks/check_encode_scalar_quality.py. Again ac3cli
       # only, again one leg, for the reasons given above.
       - name: Build a float32 encoder
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         run: |
           set -euo pipefail
@@ -457,7 +461,7 @@ jobs:
           cmake --build build/encode-scalar-float --target ac3cli
 
       - name: Gold reference gate (float32 encode)
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         env:
           EXTRA_LABEL_SUFFIX: _encfloat
@@ -465,7 +469,7 @@ jobs:
         run: bash tools/checks/verify_gold_reference.sh build/encode-scalar-float/bin/ac3cli
 
       - name: Float32 vs double encode
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        if: matrix.scalar_variants
         shell: bash
         run: |
           set -euo pipefail
@@ -662,6 +666,9 @@ jobs:
       # the package actually does. The assertion afterwards is the point of the
       # step - without it a mistake that quietly built the ALSA backend anyway
       # would still go green.
+      #
+      # `alsa_fallback` is nightly-only in legs.jsonc (a second complete build and
+      # test run), so the run after a merge skips this step.
       - name: Configure, build and test without ALSA
         if: matrix.alsa_fallback
         shell: bash
@@ -993,8 +1000,12 @@ jobs:
       # of everything that linked it, all of which beat the .so. Every test
       # passed on code that was never in it. check_shared_forge_binding.sh
       # reads the dynamic bindings themselves.
+      #
+      # This step and the installed-SDK consumer builds after it test
+      # `matrix.shared_libs`, which legs.jsonc marks nightly-only for linux-llvm, so
+      # the run after a merge skips both.
       - name: Configure, build and test with BUILD_SHARED_LIBS=ON
-        if: matrix.preset == 'linux-llvm'
+        if: matrix.shared_libs
         shell: bash
         run: |
           set -euo pipefail
@@ -1024,7 +1035,7 @@ jobs:
       # libraries are in the install since phases D8 and E7 of planning/ac4.md, and so in this
       # tree.
       - name: Build C and C++ consumers against the installed SDK
-        if: matrix.preset == 'linux-llvm'
+        if: matrix.shared_libs
         shell: bash
         run: |
           set -euo pipefail

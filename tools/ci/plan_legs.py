@@ -22,10 +22,12 @@ Reads .github/ci/legs.jsonc (its header describes the fields) and prints, for
 Environment:
 
     TIER      `all` (the default) is every leg; `t2` the legs of the run on main after
-              a merge; `deep` the legs that run only in the scheduled run.
+              a merge, each without the flags it lists in `deep_only` (its slow extra
+              passes); `deep` the legs that run only in the scheduled run.
     LEGS      optional, comma-separated presets (`linux-gcc,windows-msvc`). Only
               those legs run, whatever their tier. It is how a dispatch asks for
-              exactly the legs it wants.
+              exactly the legs it wants. TIER still decides their extra passes: with
+              `t2` they run as the run after a merge would run them.
     LINUX_RUNNER_1 ..., WINDOWS_RUNNER_1 ...
               check-runners' outputs: the labels a `runner_slot` leg runs on, as JSON
               text. A leg that needs one and finds it unset is an error, because a
@@ -59,7 +61,8 @@ SELECTIONS = ("all", *TIERS)
 SLOT = re.compile(r"^(linux|windows|macos)_runner_[1-9][0-9]*$")
 
 # Fields the planner consumes; everything else is passed through to the matrix.
-PLANNER_FIELDS = ("tier", "runner_slot")
+PLANNER_FIELDS = ("tier", "runner_slot", "deep_only")
+IDENTITY_FIELDS = ("name", "preset", "runner")
 
 
 class CatalogueError(Exception):
@@ -115,6 +118,17 @@ def problems(catalogue: Any) -> list[str]:
                 found.append(
                     f"{where}: `tier` must be one of {list(TIERS)}, got {leg.get('tier')!r}"
                 )
+            deep = leg.get("deep_only", [])
+            if not isinstance(deep, list) or not all(isinstance(f, str) for f in deep):
+                found.append(f"{where}: `deep_only` must be a list of field names")
+            else:
+                for flag in deep:
+                    if flag in PLANNER_FIELDS + IDENTITY_FIELDS or flag not in leg:
+                        found.append(
+                            f"{where}: `deep_only` names {flag!r}, which is not a flag of this leg"
+                        )
+                if deep and leg.get("tier") == "deep":
+                    found.append(f"{where}: a deep leg is all deep, so `deep_only` does nothing")
             has_runner, has_slot = "runner" in leg, "runner_slot" in leg
             if has_runner == has_slot:
                 found.append(f"{where}: give exactly one of `runner` and `runner_slot`")
@@ -170,9 +184,20 @@ def select(
     return {p: [leg for leg in legs if leg["tier"] == tier] for p, legs in catalogue.items()}
 
 
-def resolve(leg: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, Any]:
-    """A leg as the workflow's matrix wants it: `runner` filled in, planner fields gone."""
-    out = {k: v for k, v in leg.items() if k not in PLANNER_FIELDS and k != "runner"}
+def resolve(
+    leg: Mapping[str, Any], env: Mapping[str, str], *, drop_deep: bool = False
+) -> dict[str, Any]:
+    """A leg as the workflow's matrix wants it: `runner` filled in, planner fields gone.
+
+    `drop_deep` also removes the flags the leg lists in `deep_only`, which is how the run
+    after a merge runs a leg without its slow extra passes.
+    """
+    dropped = set(leg.get("deep_only", ())) if drop_deep else set()
+    out = {
+        k: v
+        for k, v in leg.items()
+        if k not in PLANNER_FIELDS and k != "runner" and k not in dropped
+    }
     if "runner_slot" in leg:
         var = leg["runner_slot"].upper()
         labels = env.get(var, "").strip()
@@ -199,15 +224,27 @@ def request(env: Mapping[str, str]) -> tuple[str, list[str]]:
     return tier, only
 
 
+def drops_deep_flags(tier: str) -> bool:
+    """Only tier t2, the run after a merge, leaves a leg's slow extra passes out.
+
+    It holds for named legs too: `LEGS=linux-gcc TIER=t2` is the leg as the run after a
+    merge would run it, which is how to preview that run cheaply. `LEGS` alone is all of
+    the leg.
+    """
+    return tier == "t2"
+
+
 def plan(
     catalogue: Mapping[str, Sequence[Mapping[str, Any]]],
     env: Mapping[str, str],
 ) -> dict[str, str]:
     """`$GITHUB_OUTPUT` values for the request in `env` (TIER, LEGS and the runner slots)."""
-    chosen = select(catalogue, *request(env))
+    tier, only = request(env)
+    chosen = select(catalogue, tier, only)
+    drop_deep = drops_deep_flags(tier)
     out: dict[str, str] = {}
     for platform in PLATFORMS:
-        legs = [resolve(leg, env) for leg in chosen[platform]]
+        legs = [resolve(leg, env, drop_deep=drop_deep) for leg in chosen[platform]]
         out[f"{platform}_matrix"] = json.dumps({"include": legs}, separators=(",", ":"))
         out[f"{platform}_any"] = "true" if legs else "false"
     return out
@@ -219,8 +256,12 @@ def describe(catalogue: Mapping[str, Sequence[Mapping[str, Any]]], env: Mapping[
     chosen = select(catalogue, tier, only)
     what = f"LEGS={','.join(only)}" if only else f"TIER={tier}"
     lines = [f"plan-legs ({what}):"]
+    drop_deep = drops_deep_flags(tier)
     for platform in PLATFORMS:
-        run = [leg["name"] for leg in chosen[platform]]
+        run = []
+        for leg in chosen[platform]:
+            cut = leg.get("deep_only", []) if drop_deep else []
+            run.append(f"{leg['name']} (without {', '.join(cut)})" if cut else leg["name"])
         skipped = [leg["name"] for leg in catalogue[platform] if leg not in chosen[platform]]
         lines.append(f"  {platform}: {', '.join(run) or 'none'}")
         if skipped:
