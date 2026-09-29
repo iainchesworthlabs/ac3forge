@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -79,6 +80,10 @@ struct Ac4Summary {
     // metadata of the presentation it selects without preferences.
     std::vector<ac4::PresentationInfo> presentations{};
     std::optional<ac4::PresentationMetadata> metadata = std::nullopt;
+    // The oamd_common_data() of each OAMD substream (Part 2 clause 6.2.2.4) that
+    // sent one, by the substream's index, from the first frame that did: what
+    // ac4::SubstreamReport reports of it.
+    std::map<int, ac4::OamdCommonData> oamd_common_data{};
 };
 
 [[nodiscard]] Ac4Summary summarize_ac4(std::span<const std::byte> data);

@@ -2408,9 +2408,12 @@ extended `tests/hearth/test_diagnostics.cpp`, `apps/gui/tests/qml/tst_e2e_inspec
 `tools/ci/run_codec_matrix.sh`'s new AC-4 legs (5.1.4, objects both codings, both Atmos-ingest
 commands' `codec=ac4`), and the whole of `ac3tests` once, at the end (a full run's own numbers are in
 the phase's report rather than repeated here, since a later merge would make them stale immediately).
-Not done: a direct-coded group's own separate `oamd_substream` in `probe`'s JSON; the GUI's
-encoder-page AC-4 object path; `zone_mask`'s mapping onto `ac3::oba::ZoneConstraint` is a reading, not
-independently checked against the spec text (neither library's syntax, so not an ERRATA entry).
+Not done: the GUI's encoder-page AC-4 object path; `zone_mask`'s mapping onto
+`ac3::oba::ZoneConstraint` is a reading, not independently checked against the spec text (neither
+library's syntax, so not an ERRATA entry). A direct-coded group's own separate `oamd_substream`,
+which this phase left out of `probe`'s JSON, landed afterwards: `ac4::SubstreamReport` holds the
+substream's `oamd_common_data()`, and `probe` writes the first one as `oamd_common_data` on the
+group's `oamd` member, in the shape of the A-JOC substream's.
 
 #### I6: the ESP32 sinks
 
