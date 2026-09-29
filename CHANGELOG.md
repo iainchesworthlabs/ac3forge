@@ -1850,7 +1850,7 @@ The sections below contain the complete change list and fixes.
   bed channels and the one jumping object of I5's round trip) authored on the page decodes in the
   GUI's object decoding with each object within I5's tolerances, 0.06 in each axis and 2 dB; the
   fixture is `apps/gui/tests/fixtures/adm-two-beds-one-object.wav`. The controls have a test each
-  (`tst_ac4_objects.qml`, 9 tests; `tst_guided_wizard.qml`, 1; `tests/gui/test_ac4_encode_settings.cpp`,
+  (`tst_ac4_objects.qml`, 10 tests; `tst_guided_wizard.qml`, 1; `tests/gui/test_ac4_encode_settings.cpp`,
   4 new cases). A live session and Guided's Movement step stay with E-AC-3, Preview plays an AC-4
   object encode through E-AC-3's bed, and the page reads audio with no ADM BWF or IAB reader; the
   object inspector's note on exporting now points to Open stream, where I5 put the export. The

@@ -41,8 +41,6 @@ TestCase {
     readonly property url cliFolderUrl: Qt.resolvedUrl("_test_output/tst_e2e_ac4_objects_cli")
     readonly property url stereoPathsUrl:
         Qt.resolvedUrl("_test_output/roundtrip-stereo-paths.json")
-    readonly property url admPathsUrl:
-        Qt.resolvedUrl("_test_output/adm-two-beds-one-object-paths.json")
 
     function cleanup() {
         StreamPlayerController.pause();
@@ -358,6 +356,10 @@ TestCase {
         const right = objectAt(before, admRight, used);
         const positionTolerance = 0.06;
         const gainToleranceDb = 2.0;
+        // The largest error over the six readings, logged so a run says how far inside the
+        // tolerances the stream is.
+        let worstPosition = 0.0;
+        let worstGainDb = 0.0;
         const check = (decoded, want, what) => {
             verify(Math.abs(decoded.x - want.x) <= positionTolerance, what + " x "
                    + decoded.x + " vs " + want.x);
@@ -367,6 +369,9 @@ TestCase {
                    + decoded.z + " vs " + want.z);
             verify(Math.abs(decoded.gainDb - gainDbOf(1.0)) <= gainToleranceDb, what + " gain "
                    + decoded.gainDb);
+            worstPosition = Math.max(worstPosition, Math.abs(decoded.x - want.x),
+                                     Math.abs(decoded.y - want.y), Math.abs(decoded.z - want.z));
+            worstGainDb = Math.max(worstGainDb, Math.abs(decoded.gainDb - gainDbOf(1.0)));
         };
         check(before[moving], admRearRight, "the object before the jump");
         check(before[left], admLeft, "the left bed channel");
@@ -374,6 +379,9 @@ TestCase {
         check(after[moving], admAhead, "the object after the jump");
         check(after[left], admLeft, "the left bed channel later");
         check(after[right], admRight, "the right bed channel later");
+        console.info("ADM master authored on the page: worst position error "
+                     + worstPosition.toFixed(4) + " of " + positionTolerance + ", worst gain error "
+                     + worstGainDb.toFixed(3) + " dB of " + gainToleranceDb + " dB");
         // The jump is in the stream, not a flat reading loose enough to pass.
         const jump = Math.abs(before[moving].x - after[moving].x)
                      + Math.abs(before[moving].y - after[moving].y)

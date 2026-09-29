@@ -2484,7 +2484,7 @@ Checks: `tests/cli/test_cli_atmos_encode_ac4.cpp` (new, 6 Catch2 test cases: the
 direct-coded bytes equal the shared core's, `crc=off` and an MP4 file, `src=`, `map=` and
 `offset=` with a speaker and an LFE, the default placements, the refusals with their exit codes,
 and E-AC-3 unchanged); `tests/gui/test_ac4_objects_core.cpp` (new, 8); `tests/gui/
-test_ac4_encode_settings.cpp` (4 new); `apps/gui/tests/qml/tst_ac4_objects.qml` (new, 9 tests, one
+test_ac4_encode_settings.cpp` (4 new); `apps/gui/tests/qml/tst_ac4_objects.qml` (new, 10 tests, one
 for each control and refusal); `tst_e2e_ac4_objects.qml` (new, 3: a raw stream and an MP4 file
 equal to the echoed line run through `ac3cli`, and the ADM master); `tst_guided_wizard.qml` (1
 new); and, unchanged and passing, the accessibility and channel-count suites, `tst_e2e_objects.qml`,

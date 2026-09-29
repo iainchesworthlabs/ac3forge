@@ -162,15 +162,20 @@ TEST_CASE("an AC-4 object encode is refused by count, LFE and rate before it rea
     REQUIRE(many.has_value());
     CHECK(many->find("64 at most") != std::string::npos);
 
+    const auto lfe_slot = [] {
+        Ac4ObjectSlot slot;
+        slot.kind = Ac4ObjectSlot::Kind::kLfe;
+        return slot;
+    };
     auto with_lfes = dynamic(1);
-    with_lfes.push_back({.kind = Ac4ObjectSlot::Kind::kLfe});
+    with_lfes.push_back(lfe_slot());
     CHECK_FALSE(ac3::apps::ac4_objects_refusal(with_lfes, params).has_value());
-    with_lfes.push_back({.kind = Ac4ObjectSlot::Kind::kLfe});
+    with_lfes.push_back(lfe_slot());
     const auto lfes = ac3::apps::ac4_objects_refusal(with_lfes, params);
     REQUIRE(lfes.has_value());
     CHECK(lfes->find("one LFE object") != std::string::npos);
 
-    const std::vector<Ac4ObjectSlot> lfe_alone{{.kind = Ac4ObjectSlot::Kind::kLfe}};
+    const std::vector<Ac4ObjectSlot> lfe_alone{lfe_slot()};
     CHECK(ac3::apps::ac4_objects_refusal(lfe_alone, params).has_value());
     CHECK(ac3::apps::ac4_objects_refusal({}, params).has_value());
 
