@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 
+#include "ac4/detail/profiling.hpp"
 #include "tables/qmf_tables.hpp"
 
 namespace ac4::detail {
@@ -272,6 +273,7 @@ class ChannelAssembly {
 };
 
 void ChannelAssembly::run(std::vector<QmfValue>& q_high, std::vector<QmfValue>& y) {
+    AC4_ZONE_SCOPED_N("ac4_aspx");
     const int q_low_slots = frame_.num_qmf_timeslots + frame_.ts_offset_hfgen;
     q_high.assign(at(q_low_slots) * kSubbands, QmfValue{});
     y.assign(at(q_low_slots) * kSubbands, QmfValue{});
@@ -322,7 +324,7 @@ void ChannelAssembly::estimate(std::span<const QmfValue> q_high) {
                         est += norm(q_high[at(ts) * kSubbands + at(j)]);
                     }
                 }
-                est /= hi - lo;
+                est /= static_cast<Real>(hi - lo);
             } else {
                 for (int ts = tsa; ts < tsz; ++ts) {
                     est += norm(q_high[at(ts) * kSubbands + at(sb + sbx)]);

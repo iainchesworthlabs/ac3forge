@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "ac4/detail/profiling.hpp"
 #include "dsp/kbd.hpp"
 
 namespace ac4::detail::dsp {
@@ -94,6 +95,7 @@ bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<con
     if (imdct == nullptr || kbd.size() != nw) {
         return false;
     }
+    AC4_ZONE_SCOPED_N("ac4_imdct");
     const auto full = static_cast<std::size_t>(full_length_);
 
     // Steps 1 to 4 and Pseudocode 63's unfolding.

@@ -127,7 +127,7 @@ void apply_companding(const CompandingControl& control, int sb0, Real full_scale
     int held = 0;
     for (int ts = first; ts < last; ++ts) {
         if (count[at(ts)] > 0) {
-            sync[at(ts)] /= count[at(ts)];
+            sync[at(ts)] /= static_cast<Real>(count[at(ts)]);
             sum += sync[at(ts)];
             ++held;
         }

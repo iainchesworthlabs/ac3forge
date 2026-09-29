@@ -18,8 +18,21 @@
 # the same.
 # ---------------------------------------------------------------------------
 add_library(ac4dec_objects OBJECT)
-add_library(ac4dec_static STATIC)
-add_library(ac4dec_shared SHARED)
+# The profile's archive takes the objects as sources and passes on only the
+# OBJECT library's compile-time requirements, as src/ac4/CMakeLists.txt's does
+# and for its reason.
+if(AC3FORGE_MINIMAL_DECODER)
+    add_library(ac4dec_static STATIC $<TARGET_OBJECTS:ac4dec_objects>)
+else()
+    add_library(ac4dec_static STATIC)
+endif()
+# No shared library in the minimum-footprint profile (AC3FORGE_MINIMAL_AC4,
+# planning/ac4.md, D14b): a bare-metal build has no dynamic loader, and CMake
+# refuses add_library(SHARED) for a target that has none. The same test guards
+# each line below that names ac4dec_shared, as src/ac4/CMakeLists.txt's does.
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    add_library(ac4dec_shared SHARED)
+endif()
 
 # Each library links the inspector of its own kind, PUBLIC, since the
 # decoder's header names the inspector's Toc and presentation types, and the
@@ -32,12 +45,18 @@ add_library(ac4dec_shared SHARED)
 # either. Linked there, the core's archive was on the link line of everything
 # that linked libac4dec.so, and in a static build the inspector's archive was
 # too (src/capi/CMakeLists.txt found the same with ac3::forge_c).
-target_link_libraries(ac4dec_static PUBLIC ac4dec_objects ac4::ac4_static PRIVATE ac4::core)
-target_link_libraries(ac4dec_shared PUBLIC ac4dec_objects ac4::ac4_shared PRIVATE ac4::core)
+if(AC3FORGE_MINIMAL_DECODER)
+    target_link_libraries(ac4dec_static PUBLIC $<COMPILE_ONLY:ac4dec_objects> ac4::ac4_static PRIVATE ac4::core)
+else()
+    target_link_libraries(ac4dec_static PUBLIC ac4dec_objects ac4::ac4_static PRIVATE ac4::core)
+endif()
 
 add_library(ac4::decoder_static ALIAS ac4dec_static)
-add_library(ac4::decoder_shared ALIAS ac4dec_shared)
-if(BUILD_SHARED_LIBS)
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    target_link_libraries(ac4dec_shared PUBLIC ac4dec_objects ac4::ac4_shared PRIVATE ac4::core)
+    add_library(ac4::decoder_shared ALIAS ac4dec_shared)
+endif()
+if(BUILD_SHARED_LIBS AND NOT AC3FORGE_MINIMAL_DECODER)
     add_library(ac4::decoder ALIAS ac4dec_shared)
 else()
     add_library(ac4::decoder ALIAS ac4dec_static)
@@ -101,8 +120,18 @@ target_link_libraries(ac4dec_objects
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")
 
+# In the minimum-footprint profile: its compile options (no exceptions, no RTTI,
+# a section for each function and datum), PUBLIC for a consumer to share, and
+# code that is not position-independent - see src/ac4core/CMakeLists.txt.
+if(AC3FORGE_MINIMAL_DECODER)
+    target_link_libraries(ac4dec_objects PUBLIC ac3::minimal_profile)
+    set(_ac4dec_pic OFF)
+else()
+    set(_ac4dec_pic ON)
+endif()
+
 set_target_properties(ac4dec_objects PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
+    POSITION_INDEPENDENT_CODE ${_ac4dec_pic}
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
@@ -111,8 +140,14 @@ set_target_properties(ac4dec_objects PROPERTIES
 target_compile_options(ac4dec_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-set_target_properties(ac4dec_shared PROPERTIES DEFINE_SYMBOL "AC4DEC_BUILDING_SHARED")
-generate_export_header(ac4dec_shared
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    set_target_properties(ac4dec_shared PROPERTIES DEFINE_SYMBOL "AC4DEC_BUILDING_SHARED")
+    set(_ac4dec_export_target ac4dec_shared)
+else()
+    # The header is the same either way, as src/ac4/CMakeLists.txt's is.
+    set(_ac4dec_export_target ac4dec_static)
+endif()
+generate_export_header(${_ac4dec_export_target}
     BASE_NAME AC4DEC
     EXPORT_MACRO_NAME AC4DEC_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac4dec/export.hpp"
@@ -121,11 +156,13 @@ generate_export_header(ac4dec_shared
 target_compile_definitions(ac4dec_objects PRIVATE AC4DEC_BUILDING_SHARED)
 target_compile_definitions(ac4dec_static PUBLIC AC4DEC_STATIC_DEFINE)
 
-set_target_properties(ac4dec_shared PROPERTIES
-    VERSION "${PROJECT_VERSION}"
-    SOVERSION "${PROJECT_VERSION}")
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    set_target_properties(ac4dec_shared PROPERTIES
+        VERSION "${PROJECT_VERSION}"
+        SOVERSION "${PROJECT_VERSION}")
 
-set_target_properties(ac4dec_shared PROPERTIES OUTPUT_NAME "ac4dec")
+    set_target_properties(ac4dec_shared PROPERTIES OUTPUT_NAME "ac4dec")
+endif()
 set_target_properties(ac4dec_static PROPERTIES OUTPUT_NAME "ac4dec_static")
 
 # install(EXPORT ... NAMESPACE ac4::) prefixes the name a target is exported
@@ -133,4 +170,6 @@ set_target_properties(ac4dec_static PROPERTIES OUTPUT_NAME "ac4dec_static")
 # where the tree says ac4::decoder_static.
 set_target_properties(ac4dec_objects PROPERTIES EXPORT_NAME "decoder_objects")
 set_target_properties(ac4dec_static PROPERTIES EXPORT_NAME "decoder_static")
-set_target_properties(ac4dec_shared PROPERTIES EXPORT_NAME "decoder_shared")
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    set_target_properties(ac4dec_shared PROPERTIES EXPORT_NAME "decoder_shared")
+endif()

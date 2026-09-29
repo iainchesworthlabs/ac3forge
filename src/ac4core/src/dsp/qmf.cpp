@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <numbers>
 
+#include "ac4/detail/profiling.hpp"
 #include "tables/qmf_tables.hpp"
 
 namespace ac4::detail::dsp {
@@ -46,6 +47,7 @@ void QmfAnalysis<Real>::process(std::span<const Real> pcm, std::span<Complex> ou
     if (pcm.size() % kSubbands != 0 || out.size() < pcm.size()) {
         return;
     }
+    AC4_ZONE_SCOPED_N("ac4_qmf_analysis");
     const auto& qwin = tables::kQwin;
     const std::size_t slots = pcm.size() / kSubbands;
     for (std::size_t ts = 0; ts < slots; ++ts) {
@@ -92,6 +94,7 @@ void QmfSynthesis<Real>::process(std::span<const Complex> in, std::span<Real> pc
     if (in.size() % kSubbands != 0 || pcm.size() < in.size()) {
         return;
     }
+    AC4_ZONE_SCOPED_N("ac4_qmf_synthesis");
     const auto& qwin = tables::kQwin;
     const std::size_t slots = in.size() / kSubbands;
     for (std::size_t ts = 0; ts < slots; ++ts) {

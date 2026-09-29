@@ -106,6 +106,23 @@ endif()
 target_include_directories(ac4core PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac4core_scalar_dir}>")
 
+# Which "ac4/detail/profiling.hpp" the kernels' AC4_ZONE_SCOPED_N() markers see
+# (planning/ac4.md, D14b): none/, where they expand to nothing, or stage_timers/,
+# where they call the two functions the application supplies, as ac3::forge's
+# own zone markers do under AC3FORGE_STAGE_TIMERS - which the root allows only in
+# the minimum-footprint profile, so no other build ever takes the second. A
+# directory choice, the way the scalar just above is, for the platform-tree rule
+# (tools/checks/check_platform_macros.ps1). PUBLIC for the same reason as the
+# scalar's: the decoder's own translation units carry markers too, and compile
+# against this target without linking it.
+if(AC3FORGE_STAGE_TIMERS)
+    set(_ac4core_profiling_dir "stage_timers")
+else()
+    set(_ac4core_profiling_dir "none")
+endif()
+target_include_directories(ac4core PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/${_ac4core_profiling_dir}>")
+
 # -Wdouble-promotion as an error on the float build (planning/ac4.md, D14a):
 # an implicit float-to-double promotion anywhere in these kernels is exactly
 # the unmeasured cost a single-precision-FPU target (the ESP32-P4/S3) cannot
@@ -136,8 +153,22 @@ target_link_libraries(ac4core
         "$<BUILD_INTERFACE:ac3::coverage>"
         "$<BUILD_INTERFACE:ac3::arithmetic>")
 
+# In the minimum-footprint profile (AC3FORGE_MINIMAL_AC4, planning/ac4.md, D14b):
+# the profile's own compile options - no exceptions, no RTTI, a section for each
+# function and datum - PUBLIC, as ac3::forge_minimal links them, since a
+# consumer has to share whether a call can throw; and code that is not
+# position-independent, which a static archive linked into one firmware image
+# has no use for and which costs a RISC-V part an indirection to each global.
+# The archive is nothing an install or an export sees in that profile.
+if(AC3FORGE_MINIMAL_DECODER)
+    target_link_libraries(ac4core PUBLIC ac3::minimal_profile)
+    set(_ac4core_pic OFF)
+else()
+    set(_ac4core_pic ON)
+endif()
+
 set_target_properties(ac4core PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
+    POSITION_INDEPENDENT_CODE ${_ac4core_pic}
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
     OUTPUT_NAME "ac4core_static"
