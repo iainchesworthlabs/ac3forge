@@ -1,17 +1,21 @@
 # The layout of `src/` (N1B): a study
 
-!!! note "Status as of 2026-09-30: a proposal; the pull request that adds it moves no source file"
+!!! note "Status as of 2026-09-30: a proposal, merged as #1122, which moved no source file; the decisions await the user"
     Asked for by the user on 2026-09-29 ("it's kind of weird ... the old stuff is over here in forge and
     the new AC4 stuff's over here which is two folders higher, not as a sibling"). This page and its
-    appendix, [layout-inventory.md](layout-inventory.md), read the tree as it stands on `main` at
+    appendix, [layout-inventory.md](layout-inventory.md), read the tree as it stood on `main` at
     `4ca84d66d` and propose a layout that puts the codecs side by side over a base that knows none of
-    them. The user reads it, picks a layout and answers [the decisions](#i-decisions); a later phase
-    runs the moves with the scripts written for this study.
+    them. The user reads it, picks a layout and answers [the decisions](#i-decisions), which they have
+    not yet done; a later phase runs the moves with the scripts written for this study. `main` has
+    moved since: every count here is of `4ca84d66d`, and [what changed
+    since](#what-changed-on-main-since-the-study) lists what the later commits touch.
 
     N1 is two tasks now. **N1A** names the programs and what they register with the system; **N1B**,
     this page, names and lays out the libraries. Decisions already taken: the family is "ICL Forge"
-    (identifiers `iclforge`, `ICLFORGE_`), nothing is published so nothing needs a shim, N1B is layout
-    and naming only (every output byte stays the same), and the duplicated DSP is a later phase.
+    (identifiers `iclforge`, `ICLFORGE_`), the old names are dropped outright with no shim
+    ([decision 38](ac4.md#decisions-of-2026-09-29), taken on the belief that nothing is published,
+    which holds in part: [the naming map](#e-the-naming-map) lists what is), N1B is layout and naming
+    only (every output byte stays the same), and the duplicated DSP is a later phase.
 
 ## In brief
 
@@ -302,8 +306,9 @@ a consumer's tree share one flat space. Codecs nest beneath as peers: `iclforge:
 |---|---|---|---|
 | repository | `iainchesworthlabs/ac3forge` (130 files, 458 hits; 50 files outside docs) | `iainchesworthlabs/iclforge` | old URLs redirect, including clones, until the name is reused |
 | docs site | `iainchesworthlabs.github.io/ac3forge` (14 files) | `…/iclforge` | Pages URLs are not redirected: the old address ends |
-| release tags, assets | `v0.2.0-beta.1` to `v0.10.0-beta.1`; 127 assets on the latest, all `ac3forge-*` | tags stay; new assets `iclforge-*` | old assets stay as published; `SHA512SUMS` and the signing key file name change from the next release |
-| in-repo packaging | Homebrew formula, cask, winget (4 versions), vcpkg port, Conan | `iclforge` identifiers; the four historic winget versions stay | nothing is on a registry |
+| release tags, assets | ten pre-releases, `v0.2.0-beta.1` to `v0.10.0-beta.1`; 127 assets on the latest: 121 `ac3forge-*`, four `ac3gui-*`, `SHA512SUMS` and its signature | tags stay; new assets `iclforge-*` | old assets stay as published; `SHA512SUMS` and the signing key file name change from the next release |
+| in-repo packaging | Homebrew formula, cask, winget (4 versions), vcpkg port, Conan | `iclforge` identifiers; the four historic winget versions stay | the formula and cask are live in the tap (next row); the vcpkg pull request is open under `ac3forge` (microsoft/vcpkg #53470), the winget one was closed unmerged and ConanCenter has none |
+| Homebrew tap | `iainchesworthlabs/homebrew-ac3forge` (public): formula `ac3forge`, cask `ac3gui` | formula and cask `iclforge`, the old names mapped by a `tap_migrations.json`; tap repository `homebrew-iclforge` (decided 2026-09-30, [decision 41](ac4.md#decisions-of-2026-09-30)) | the `brew tap` path and the install names change; GitHub redirects a renamed repository |
 | C++ namespace | `ac3::` (14,205 uses, 933 files); `namespace ac3` in 534 files; `ac4::` 4,318; `mp4::` and kin 1,125 | `iclforge::`, codecs nested | see [stage S3](#f-the-migration-plan) |
 | header root | `ac3/` (2,501 includes, 673 files) and ten more roots | `iclforge/<lib>/`; C API `iclforge_c/iclforge.h` | every consumer and example |
 | C API | 472 `ac3forge_*` names, 248 `AC3FORGE_*` macros in C and C++, `libac3forge_c` | `iclforge_*`, `ICLFORGE_*`, `libiclforge_c` | Rust bindgen allowlist, Python, WASM exports |
@@ -312,9 +317,14 @@ a consumer's tree share one flat space. Codecs nest beneath as peers: `iclforge:
 | options | 31 `option()`, 67 cache variables, 166 distinct `AC3FORGE_*` names in build files | `ICLFORGE_BUILD_<LIB>`, `ICLFORGE_<X>` | CI, presets, docs, every packaging file |
 | Kconfig | 69 distinct `CONFIG_AC3FORGE_*` (47 files) | `CONFIG_ICLFORGE_*` | ESP-IDF sdkconfig defaults |
 | library files | `ac3forge`, `ac3signing`, `mp4`, `matroska`, `ac4` … | `iclforge_<lib>`, `iclforge_<lib>_static` | pkg-config names `iclforge-<lib>` |
-| Python, Rust, npm | `ac3forge` (23 files); crates `ac3forge`, `ac3forge-sys`; `ac3forge-wasm-decoder` | `iclforge`, `iclforge-sys`, `iclforge-wasm-decoder` | none: unpublished |
+| Python, Rust, npm | `ac3forge` (23 files); crates `ac3forge`, `ac3forge-sys`; `ac3forge-wasm-decoder` | `iclforge`, `iclforge-sys`, `iclforge-wasm-decoder` | PyPI has `ac3forge` 0.9.0b1 and 0.10.0b1: it stays untouched, and `iclforge` is published as a new project after the repository rename, its description saying "formerly ac3forge" (decided 2026-09-30, [decision 40](ac4.md#decisions-of-2026-09-30)); the crates and the npm package were never published |
 | environment | 14 variables (`AC3FORGE_SIMD_TIER`, `_SIGNING_KEY`, …) | `ICLFORGE_*` | scripts and docs |
 | wire and format strings | `_ac3forge_player@v1` (65 files), `ac3forge_hearth_sink` (25), `ac3forge.probe/1`, `ac3forge.hearth.media/1`, `ac3forge_scene` | `_iclforge_player@v1` and so on | both ends of Sendspin and the OTA check change in one stage; Hearth's stored settings are N1A |
+
+The rows about what is published were checked on 2026-09-30. The decision to write no shim
+([decision 38](ac4.md#decisions-of-2026-09-29)) stands. [The AC-4 plan's N1 section](ac4.md#n1-the-names)
+says what follows from the pre-releases, the PyPI project, the tap and the open vcpkg pull request,
+and decisions [40 and 41](ac4.md#decisions-of-2026-09-30) settle the PyPI project and the tap.
 
 Two hazards the scripts must respect. A nested `iclforge` namespace inside `iclforge::sendspin` would
 shadow the root, so `sendspin::ac3forge` becomes `sendspin::player`. And a partially qualified name
@@ -365,8 +375,8 @@ are larger. Keep merge commits, and list each rewrite commit in `.git-blame-igno
 it (GitHub's blame view reads that file).
 
 **Freeze.** About 26 merges a day reach `main` on average (`docs/ci-agentic.md`); the nine days to
-2026-09-29 ran from 2 to 150 a day, so the freeze starts after the current wave of AC-4 phase branches
-has merged. The freeze holds S2, S3, S4, N1A and S5, an estimate of two to three days: each stage's full
+2026-09-29 ran from 1 to 86 pull requests merged a day (UTC dates), so the freeze starts after the
+wave of AC-4 phase branches has merged, which it has. The freeze holds S2, S3, S4, N1A and S5, an estimate of two to three days: each stage's full
 matrix takes hours on the runner fleet, and the stages are sequential. Seven days out: announce, and
 label every open pull request `n1b-wait` (it merges after the freeze and adapts) or `n1b-first` (it
 merges before). Three days out: those that can merge do. At T-0 the queue is empty and only these pull
@@ -539,9 +549,9 @@ What a reader might not expect:
 
 To find what the scripts and the plan get wrong before anyone runs them on `main`, L2 was applied to a
 scratch worktree (`proto/n1b-layout`, branched from `b07dec6f3`, never pushed) and built with MSVC
-14.51, `/W4 /WX`, Ninja, `-j 6`. Since then `main` has changed nothing under `src/`, `tests/`, `cmake/`
-or `esp-idf/`. The same worktree served for the branch measurements below. The commits, each made by a
-script unless marked:
+14.51, `/W4 /WX`, Ninja, `-j 6`. Up to `4ca84d66d`, the commit the study reads, `main` had changed
+nothing under `src/`, `tests/`, `cmake/` or `esp-idf/` since. The same worktree served for the branch
+measurements below. The commits, each made by a script unless marked:
 
 | commit | what | files | lines |
 |---|---|---:|---:|
@@ -623,3 +633,26 @@ trees were not built.
   WASM bindings, and clang-cl, GCC 16 and Clang 22 were not built; the pinned-hash gate
   (`check_cross_platform_hash.py`, which needs the gold-reference script's outputs) was not run, and the
   CLI corpus stands in for it; the CI matrix was not dispatched.
+
+## What changed on `main` since the study
+
+The study reads `main` at `4ca84d66d`. By `d490ab1aa` (2026-09-30) 119 commits had merged after it: the
+rest of D14a (#1123), D14b (#1118), E10 (#1113), I4b (#1119), I5b (#1117) and others, #1109 and #1112
+among them. They changed 102 files under `src/`, `tests/`, `cmake/` and `esp-idf/`, and `main`
+has 2,955 tracked files against 2,916 (`src` 598 against 590, `tests` 488 against 483). Every count on
+this page and in [the inventory](layout-inventory.md) is of `4ca84d66d`, and a later `main` regenerates
+them. Three statements are affected:
+
+- **The SIMD variants moved.** #1123 moved `arch/{aarch64,generic,x86_64}/ac3/internal/arch/simd.hpp`
+  from `src/forge/src/internal/arch` to `src/arithmetic/arch`, so `arithmetic` carries them and the
+  study's `base` need not. The `internal` row of
+  [appendix A.1](layout-inventory.md#a1-what-srcforge-holds) and
+  [appendix B.5](layout-inventory.md#b5-private-headers-reached-across-a-boundary) name the old place.
+- **The ESP-IDF pack has an AC-4 switch.** `tools/packaging/pack_esp_component.py --with-ac4` stages
+  `src/ac4`, `src/ac4core` and `src/ac4dec` beside the trees of `STAGED_TREES`, and the root
+  `CMakeLists.txt`'s `AC3FORGE_MINIMAL_AC4` builds the same three as static archives with the
+  minimum-footprint profile's options (D14b). Stage S2's ESP-IDF pack and its `--verify` cover them.
+- **The open branches have merged.** Seven of the branches in the table under
+  [the migration plan](#f-the-migration-plan) merged (#1123, #1118, #1119, #1117, #1113, #1112 and
+  #1109). Of the branches the study measured, `feature/truehd-atmos-support` is the one still
+  unmerged: 23 commits ahead of `main` and 1,280 behind it on 2026-09-30.

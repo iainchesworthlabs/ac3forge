@@ -4,7 +4,9 @@
     Every table below is computed from the tracked files of that commit by the scripts the study
     kept (`tools/n1b/` when the execution phase lands them), so a later `main` regenerates it.
     Counts are directives, files or lines as the column says. The proposal that reads these tables is
-    [the layout study](layout.md).
+    [the layout study](layout.md), whose last section lists what `main` has changed since: the tables
+    are not edited by hand, and the SIMD variants that A.1 and B.5 place under `src/forge` moved to
+    `src/arithmetic` in #1123.
 
 ## A. The libraries in `src/`
 
