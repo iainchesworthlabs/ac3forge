@@ -1,10 +1,11 @@
 # Hearth sink
 
-Decodes AC-3 or E-AC-3 on an ESP32-S3 from wherever the bytes are — a flash
-partition by default, a FAT volume in flash, an SD card, or an HTTP body over
-WiFi — and plays it. It reads the stream a piece at a time, through a ring
-between the player's fetch and decode tasks (32 KB by default) and a 16 KB
-framing buffer.
+Decodes AC-3 or E-AC-3 on an ESP32-S3, ESP32-C6 or ESP32-P4 from wherever the
+bytes are — a flash partition by default, a FAT volume in flash, an SD card, or
+an HTTP body over WiFi — and plays it. On an ESP32-P4 built with `sdkconfig.ac4`
+it decodes AC-4 as well ([AC-4](#ac-4)). It reads the stream a piece at a time,
+through a ring between the player's fetch and decode tasks (32 KB by default) and
+a 16 KB framing buffer.
 
 The sibling of [`i2s_player`](../i2s_player), differing in one thing: where the
 audio comes from. That one decodes a bitstream linked into its own image, which
@@ -14,7 +15,7 @@ proves the codec works and is not how anything real gets its audio.
 
 **An input path.** `ac3::split_frames` and `ac3::split_access_units` take a span
 over the whole stream. Nothing streaming can produce one — an SD card, an HTTP
-body and this partition all arrive in pieces, and on a part with 280 KB of RAM
+body and this partition all arrive in pieces, and on a part with about 300 KB of RAM
 the whole file is not going to be resident anyway.
 `ac3::io::AccessUnitAccumulator` applies the same boundary rule incrementally,
 over a buffer the caller owns, so framing allocates nothing.
@@ -37,7 +38,8 @@ tool and accepts a plain AC-3 syncframe as one access unit of one substream, so
 the player does not need to know which it was given. `FrameDecoder` reads AC-3
 alone — bsid above 8 comes back as `kUnsupported` — and this example used it
 until 2026-09-10, which meant an E-AC-3 stream failed before any audio and CI,
-whose sample is AC-3, could not tell.
+whose sample is AC-3, could not tell. With `CONFIG_AC3FORGE_AC4` on, the player tells an AC-4
+stream by its sync word and gives it to `ac4::SyncFrameSplitter` and `ac4::Decoder` instead.
 
 **Two seams.** Where bytes come from and where audio goes are both directories
 CMake picks, not flags the player branches on — the same rule the library uses
@@ -233,21 +235,25 @@ console would show are kept where the network reaches them:
 Under QEMU, through the capture sink:
 
 ```
-sink: capture 48000 Hz 24-in-32 x2 in 2 slots (no peripheral, no pacing)
+ac3forge hearth_sink: AC-3 or E-AC-3 onto 2.0
 source: partition 'audio' at 0x830000, 10752 bytes of audio in 262144
-heap: internal free 336512 (largest block 270336), psram free 0
+heap: internal free 315656 (largest block 258048), psram free 0
+sink: capture 48000 Hz 24-in-32 x2 in 2 slots (no peripheral, no pacing)
 player: ring 32768 bytes in internal SRAM, fetch on core 0 at priority 5, decode on core 1 at priority 6
 player: layout 2.0, 2 slots, the decoder's Lo/Ro fold
+player: a play's first unit is held until its second has decoded
 stream: AC-3 acmod=7 channels=6 substreams=1 dialnorm=-31 objects=no, onto 2.0 (2 slots)
-lap=1 frames=12 us_per_frame=12084 worst_frame_us=75312 realtime_permille=377 render_us_per_frame=208 sink_us_per_frame=593 resync=0 ring_low=6144 heap_free=194704
-lap=2 frames=12 us_per_frame=12084 worst_frame_us=75312 realtime_permille=377 render_us_per_frame=208 sink_us_per_frame=593 resync=0 ring_low=6144 heap_free=194704
+lap=1 frames=6 us_per_frame=13612 worst_frame_us=48642 realtime_permille=425 render_us_per_frame=224 sink_us_per_frame=586 resync=0 ring_low=- heap_free=149544
+lap=2 frames=12 us_per_frame=9104 worst_frame_us=48642 realtime_permille=284 render_us_per_frame=161 sink_us_per_frame=461 resync=0 ring_low=0 heap_free=190756
 stream: partition ended (passes)
 stream.rms[0]=107811
 stream.rms[1]=106647
 capture.slots=2 capture.channels=2 capture.low_byte_set=0 capture.padding_nonzero=0 capture.carried_nonzero=36861 capture.rms=107231
-stream.units=12 stream.held=0 stream.resync_bytes=0 stream.sink=capture-i2s stream.sink_frames=72 stream.source=partition stream.fetched=21504 stream.layout=2.0 stream.layout_mismatches=0 stream.ring_low=6144 stream.decode_stack_free=19644 stream.audio_ms=384 stream.wall_ms=78
+stream.units=12 stream.held=0 stream.resync_bytes=0 stream.sink=capture-i2s stream.sink_frames=72 stream.source=partition stream.fetched=21504 stream.layout=2.0 stream.layout_mismatches=0 stream.ring_low=0 stream.decode_stack_free=19144 stream.audio_ms=384 stream.wall_ms=30
 result=pass
 ```
+
+(That is the console of CI's run of 2026-09-29. Its first line names the build's codecs: `AC-3, E-AC-3 or AC-4` with `CONFIG_AC3FORGE_AC4` on. The `first unit is held` line is `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT`, which `sdkconfig.ci` sets. The timings under QEMU are shape only.)
 
 `player: layout` says what the layout is and how the stream reaches it: the
 decoder's own fold for `2.0` and `1.0`, the renderer for anything else, with the
@@ -473,9 +479,10 @@ configurations set 80; the default is 0, none), the component's
 
 | | |
 | --- | --- |
-| `GET /` | a web page that shows what the player is doing and drives it through the routes below and nothing else (below) |
+| `GET /` | a web page that shows what the player is doing and drives it through the routes below and nothing else (below); its script is `GET /ui.js` |
 | `GET /api` | these routes, as text - what `GET /` answered before the page |
 | `GET /status` | what is playing and how it is going, as JSON, and the network the board is on (`network`: its kind, the access point's SSID and signal, and the board's address) |
+| `GET /hardware` | what the board is, as JSON: `target`, `chip` and `revision`, `cores`, `fpu`, `cpu_freq_mhz`, `psram_bytes`, the sink's `sink_max_slots` and the firmware's `project`, `version` and `idf_version`. Read once at start-up, since none of it changes while the board runs |
 | `POST /play` | body: a URL for the `http` source, a path for `fatfs` or `sd`. `202 Accepted` — the location is handed to the task that owns the player, and `/status` says how the open went. `409` from `partition`, which has one thing in it. |
 | `POST /stop` | |
 | `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
@@ -486,7 +493,8 @@ configurations set 80; the default is 0, none), the component's
 | `GET /wiring` | `1` if a second I2S line is wired, `0` if not; `404` where there can be no second line - the ESP32-C6, the P4's `i2s_wide`, `capture` and `null` - and `/status` then has no `second_line` |
 | `PUT /wiring` | body: `1` or `0`. Moves the sink's ceiling with it - two lines carry twice one line's slots - and takes effect at the next play. `409` while a play is running, and where there can be no second line. |
 | `PUT /network` | body: an SSID, a newline, then the passphrase. Stored for the next boot; the station stays on the network it is already associated with. Improv over the serial port is the other way in, and the one a board with no network at all needs. |
-| `POST /pairing` | body: `reset`, `cancel` or `forget`, for a Sendspin player's pairing ([Pairing](#pairing)). `400` for any other body, `409` on a board with no Sendspin player. |
+| `GET /pairing` | the servers a Sendspin player is paired with, as JSON: each one's `server_id` and name, whether it is connected, and which played last. `404` on a board with no Sendspin player |
+| `POST /pairing` | body: `reset`, `cancel` or `forget`, for a Sendspin player's pairing ([Pairing](#pairing)), or `forget` and a space and a `server_id` from `GET /pairing`, for that server alone. `400` for any other body, `404` for a `server_id` the board has no pairing with, `409` on a board with no Sendspin player. |
 | `GET /slot-width` | the slot width in bits, 16 or 32 |
 | `PUT /slot-width` | body: `16` or `32`. Takes effect at the next play, and moves the sink's ceiling with it: an I2S line carries 128 bits a frame, so two lines reach sixteen slots at 16 bits and eight at 32. `400` for a body that is not a number, `409` while a play is running, for a width the sink does not have, or on the `capture` and `null` sinks, which keep the width they were built for. A layout already set may be too wide after a change to 32; the next play says so. |
 
@@ -556,7 +564,7 @@ reported a refused `ftp://` location on the console.
 
 The QEMU shape without PSRAM is the tightest this example runs: WiFi's
 stand-in, lwIP, the HTTP client, the HTTP server, the E-AC-3 decoder and the
-player's two stacks in one 280 KB, so `sdkconfig.ci-http` gives it an 8 KB
+player's two stacks in about 300 KB, so `sdkconfig.ci-http` gives it an 8 KB
 ring and a 24 KB decode stack, with the measurements that justify both in its
 comments. A board has a squeeze of its own: the radio needs more internal RAM than
 QEMU's Ethernet stand-in, and with WiFi up the decoder does not fit beside it.
@@ -932,7 +940,9 @@ AC-3 and E-AC-3 5.1 do not fit this player's memory budget once the ring,
 the WebSocket server and WiFi's own buffers are all resident, though both
 decode in real time on the part with none of that overhead (see
 [Real time, with WiFi and a stream](../../../../docs/platforms/bare-metal/esp32-c6.md#status)
-on the platform page). Before this was a Kconfig setting, playing either
+on the platform page). That was measured on 2026-09-22. The fixed tier's E-AC-3 5.1 peak has
+fallen since, from 164,066 to 109,806 bytes, and this player has not been run on a board again,
+so E-AC-3 may fit now. Before this was a Kconfig setting, playing either
 onto 5.1 aborted the board 10 to 12 seconds in: the decoder's own scratch
 allocation failed, and by then the heap was short enough that even the C++
 exception the failed allocation threw could not itself be allocated
@@ -1069,7 +1079,10 @@ and the second restarts in a loop.
 offered only on a part with a floating-point unit, and in practice one with PSRAM). A stream
 that opens with an AC-4 sync word then plays as an AC-3 or E-AC-3 one does, from any source.
 [The ESP32-P4 page](../../../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of
-each kind takes.
+each kind takes. Only the ESP32-P4 has run it: the S3 and C6 builds are phases D14c and D14d of
+`planning/ac4.md` and do not exist yet, and the Sendspin player advertises `ac3` and `eac3` as its
+data types and not `ac4` (`main/sendspin/player/sendspin.cpp`), so no AC-4 stream reaches a board
+from a Sendspin group (phase I6). The measurements were made with `POST /play` and a URL.
 
 ```bash
 idf.py -DIDF_TARGET=esp32p4   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4"   -DAC3FORGE_STAGE_TIMERS=ON build
