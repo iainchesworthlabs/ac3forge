@@ -37,6 +37,7 @@ pages in this section.
 | Decode demo | Built and [published live](../wasm-demo.md) |
 | Encode demo, and the Atmos authoring page | Built and [published live](../wasm-encode-demo.md) |
 | `ac3forge-wasm-decoder` npm package | **Never released to npm.** Building it from `js/` is the only way to get it |
+| AC-4 module | Built in the same CI job as the two modules above; no demo page yet |
 | Why the package exists | Chrome still cannot decode EC-3 |
 | Correctness | Checked in CI against the native decoder's own output, not by hand |
 | Real hardware | Not applicable — the browser is the target |
@@ -79,6 +80,35 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 `apps/wasm/encoder_bindings.cpp` binds the full surface above (including Atmos/JOC) even though
 `apps/wasm/encode/`'s page only exposes AC-3/E-AC-3 bed encoding today — an object-authoring UI on
 top of the bound `AtmosBedEncoder` is page-only work for a later PR, not a module change.
+
+## AC-4 module
+
+`apps/wasm/ac4_bindings.cpp` is a third Embind module, `ac3forge_wasm_ac4`
+(`ac3forge_ac4.js`/`.wasm`, `-sEXPORT_NAME=createAc3ForgeAc4Module`), wrapping `ac4::Decoder` and
+`ac4::Encoder` (ETSI TS 103 190) beside the decode and encode modules above. Unlike those two, it
+is one combined decode-and-encode module: AC-4's decoder and encoder share one table-of-contents/
+framing library regardless of which side needs it, so a second executable had less to gain here
+than splitting AC-3's decode-only and encode-only builds did. It covers channel-based and
+channel-based-immersive content only (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4) — the encoder's own
+scope as of this module; the decoder's object accessors read whatever object audio a stream
+actually carries regardless of what this project's own encoder can produce.
+
+`js/src/ac4.ts` is the typed JS wrapper, exporting `Ac4Decoder`/`Ac4Encoder` classes directly
+rather than through a Worker protocol: unlike `decoder-worker.ts`'s realtime AudioWorklet
+pipeline, there is no existing realtime precedent to extend on the AC-4 side, and this module
+covers both decode and encode with a wider decoder surface (presentations, concealment, object
+audio) that does not fit that pipeline's shape. It compiles into `js/dist/ac4.js` alongside the
+rest of the package's sources, but is not yet wired into `package.json`'s `exports` map, so it is
+reached only by a path into `dist/`, not through the package's published entry points.
+
+Guarded on `AC3FORGE_BUILD_AC4` (default on; the `wasm-emscripten` preset no longer forces it
+off). Unlike the decode and encode modules above, no demo directory or page exists for it yet, so
+the build produces the compiled module in its own `bin/wasm_ac4_demo/` output directory with
+nothing to serve it. It builds in the same CI job
+(`build-wasm`, one `cmake --build` over the whole preset) as the decode and encode modules, but
+has no Playwright coverage of its own since there is no page to drive it.
+`js/tests/ac4.test.js` tests the JS wrapper under Node against a fake Embind module — the same
+harness `decoder-worker.test.js` uses for the decode side.
 
 ## Build and run
 

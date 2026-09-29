@@ -383,6 +383,7 @@
         ["Encode demo", ["live", "ci", "AC-3, E-AC-3 and Atmos authoring"]],
         ["JavaScript decoder package", ["source", "ci", "build from js/; unpublished on npm"]],
         ["C++ WebAssembly modules", ["source", "ci", "decode and encode"]],
+        ["AC-4 WebAssembly module", ["source", "ci", "decode and encode; no demo page yet"]],
         ["Forge, Crucible and Hearth apps", ["unavailable", "not-applicable", "not browser applications"]]
       ]
     },

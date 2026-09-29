@@ -328,6 +328,62 @@ classes every other binding here wraps:
 The hand-written stubs in `__init__.pyi` cover all of it, and wheels.yml's `stubtest` step
 holds them to the compiled module on every push.
 
+## AC-4
+
+`ac3forge.ac4` is a submodule in the present-or-absent pattern `containers`/`meta`/`signing`
+above already use — pybind11-direct on `ac4::Decoder`/`ac4::Encoder` (ETSI TS 103 190-1 V1.4.1,
+TS 103 190-2 V1.3.1), not layered on the C API. It binds a deliberate subset of both C++ headers:
+decoder output config, presentation selection, concealment, decoded PCM/speakers/objects and
+loudness metadata; encoder core config, `encode`/`flush`, and a minimal `Toc` wrapper for
+container muxing. Left out on both sides: the syntax trace, DRC/dialogue-enhancement/downmix
+detail beyond `LoudnessInfo`, substream/presentation configuration lists, `ObjectUpdate` ramps,
+and every `experimental` field.
+
+The encoder covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
+5.1, 5.0.4, 5.1.4) — its own scope as of this section; A-JOC and direct-coded objects are a
+separate, in-flight phase
+([`ac3forge#1082`](https://github.com/iainchesworthlabs/ac3forge/pull/1082)). `DecodedFrame.objects`
+reads whatever object audio a stream actually carries regardless, so a stream encoded elsewhere
+with objects decodes here; this project's own encoder cannot yet produce one to round-trip end to
+end.
+
+```python
+ac4 = ac3.ac4
+
+config = ac4.EncoderConfig(channels=6, bitrate_kbps=256)  # 5.1: L R C LFE Ls Rs
+encoder = ac4.Encoder.create(config)
+decoder = ac4.Decoder()
+
+for frame in encoder.encode(channels):  # 6 arrays of any equal length
+    decoded = decoder.decode(frame.data)  # None: no output yet, not an error
+    if decoded is not None:
+        print(decoded.speakers, decoded.channels[0].shape)
+```
+
+`Encoder.create` raises `ValueError` with the first rule a configuration breaks
+(`ac4::Encoder::refusal_reason`) — every enumerator here keeps its C++ name verbatim
+(`ac4.DrcMode.kDefault`, not `.Default`), same as the rest of this binding's enums. `encoder.encode`
+takes a 2-D array or a sequence of 1-D arrays, one per `EncoderConfig.channels`, any equal length
+— the encoder buffers input to its own frame length internally, unlike `FrameEncoder.encode_frame`'s
+fixed `SAMPLES_PER_FRAME`. `encoder.flush()` pads to the end of the last frame and returns whatever
+the delay still held; `encoder.toc` reads back a `Toc` snapshot whose `build_dac4()`/
+`dac4_refusal()`/`media_timing()`/`samples_per_frame()` feed a container muxer the same way the
+C API's `ac3forge_ac4_toc_t` accessors do.
+
+`decoder.decode(frame_bytes)` returns `None` when the frame has no output yet — not an error —
+and otherwise a `DecodedFrame` whose `.channels`/`.objects[].samples` are read-only `numpy` views
+with the same zero-copy convention as [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above;
+both `encoder.encode()` and `decoder.decode()` release the GIL for the underlying call.
+`decoder.presentations` reads the last frame's table of contents, and `decoder.metadata_loudness`
+reads the selected presentation's loudness fields. **Every AC-4 failure raises a plain
+`ValueError`**, not `ac3.Ac3EncodeError`/`Ac3DecodeError` — `Decoder.decode()`'s message is
+`ac4::describe()` of the C++ `DecodeError`, unless `DecoderConfig.concealment` supplies a frame in
+its place.
+
+Full test coverage: `python/tests/test_ac4_roundtrip.py` (stereo and 5.1 round trips checked by
+correlation, presentation/delay agreement with the encoder, the channel-count refusal above, and
+`ac4.sync_frame`'s sync word).
+
 ## What isn't exposed
 
 `FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`ac3::verify::FrameTrace`) and

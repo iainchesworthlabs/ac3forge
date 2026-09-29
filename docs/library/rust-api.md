@@ -9,9 +9,8 @@ Two crates over [the C API](c-api.md), both in-tree under
 - `ac3forge`: a safe wrapper with `Result` and `Option` in place of status codes and
   out-parameters, owned handles that free themselves on drop, and slices in place of raw pointers.
 
-The crates cover the C API's scope: AC-3, E-AC-3 and Atmos (OAMD + JOC). They do not expose AC-4.
-Neither the C header nor either crate names an AC-4 type or function, and the C API does not carry
-the AC-4 libraries; [AC-4 decoding](ac4.md) describes the C++ library that decodes it.
+The crates cover the C API's scope: AC-3, E-AC-3, Atmos (OAMD + JOC) and, as of `ac3forge::ac4`,
+AC-4 (below) — see [AC-4 decoding](ac4.md) for the wider C++ library both mirror a subset of.
 
 Cargo is not part of the root CMake build, the same arrangement as `apps/android` and Gradle. CI
 builds and tests the workspace on Linux, Windows and macOS (`build-rust` in
@@ -69,6 +68,62 @@ let decoded = decoder
 
 That excerpt is from `encode_decode_eac3.rs`.
 
+## AC-4
+
+`ac3forge::ac4` wraps `ac3forge_ac4_decoder_t`/`ac3forge_ac4_encoder_t` (ETSI TS 103 190-1 V1.4.1,
+TS 103 190-2 V1.3.1) the same way `ac3forge::ac3` wraps the AC-3 C API — `Decoder`/`Encoder` with
+`Result`/`Option` in place of status codes and out-parameters, `DecoderConfig`/`EncoderConfig`
+built through `Default::default()` (which calls the raw `ac3forge_ac4_*_config_init()` first, same
+"never restate a C++ default" rule as every other config type in this crate). Unlike the rest of
+this crate, there is no Cargo feature gating it: the C library has no matching build option of its
+own to mirror, so this module is unconditionally available once `ac3forge-sys`'s bindgen output
+carries the `ac3forge_ac4_*` symbols — the same footing `ac3forge::atmos` already stood on.
+
+```rust
+use ac3forge::ac4::{Decoder, DecoderConfig, Encoder, EncoderConfig};
+
+let config = EncoderConfig { channels: 6, bitrate_kbps: 256, ..Default::default() }; // 5.1
+let mut encoder = Encoder::new(&config).expect("failed to create AC-4 encoder");
+let mut decoder = Decoder::new(&DecoderConfig::default()).expect("failed to create AC-4 decoder");
+
+for frame in encoder.encode(&channels).unwrap() {  // any equal-length spans, one per channel
+    if let Some(decoded) = decoder.decode(frame.data()).unwrap() {  // None: no output yet, not an error
+        println!("{:?} {}", decoded.speaker(0), decoded.channel_samples(0).len());
+    }
+}
+```
+
+That shape is [`rust/ac3forge/tests/ac4_roundtrip.rs`](https://github.com/iainchesworthlabs/ac3forge/blob/main/rust/ac3forge/tests/ac4_roundtrip.rs)'s,
+not yet a `rust/ac3forge/examples/` program. `Encoder::encode` takes any equal-length slices (the
+encoder buffers input to its own frame length internally, unlike `ac3::Encoder::encode`'s fixed
+frame), and `Encoder::flush` pads to the end of the last frame and returns whatever the delay still
+held. `Encoder::toc()` returns a `Toc` — `build_dac4()`, `dac4_refusal()`, `media_timing()` and
+`samples_per_frame()` for a container muxer, mirroring `ac3forge_ac4_toc_t` — and the free function
+`ac3forge::ac4::sync_frame()` wraps a raw frame with Annex G.3.1's sync word and an optional CRC.
+
+`Decoder::decode` returns `Result<Option<DecodedFrame>, Error>`: `None` means the frame has no
+output yet, not an error, the same convention `Eac3Decoder::decode_substream` uses above.
+`DecodedFrame::channel_samples`/`speaker` borrow from `&self`, so a slice cannot outlive the frame
+it came from — `samples_per_channel()` is a real per-frame method rather than a crate-wide
+constant, since AC-4's frame length varies by frame rate. `Decoder::presentations()` reads the last
+frame's table of contents; `Decoder::metadata_loudness()` reads the selected presentation's
+loudness fields. `DecodedFrame::objects()` reads whatever object audio a presentation carries —
+empty for the channel-based and channel-based-immersive content (mono, stereo, 5.0, 5.1, 5.0.4,
+5.1.4) this crate's own `Encoder` writes exclusively, since A-JOC and direct-coded objects on the
+encoder side are a separate, in-flight phase
+([`ac3forge#1082`](https://github.com/iainchesworthlabs/ac3forge/pull/1082)); a stream encoded
+elsewhere with objects still decodes here.
+
+Every `AC3FORGE_ERROR_AC4_*` status gets its own `Error` variant (`Ac4DecodeTruncated`,
+`Ac4DecodeInvalidToc`, `Ac4DecodeInvalidStream`, `Ac4DecodeUnsupported`,
+`Ac4DecodeMissingIFrame`, `Ac4EncodeInvalidConfig`, `Ac4EncodeInvalidInput`) rather than folding
+into `Error::Other` — unlike the scan errors below, which do not.
+
+Tests are in [`rust/ac3forge/tests/ac4_roundtrip.rs`](https://github.com/iainchesworthlabs/ac3forge/blob/main/rust/ac3forge/tests/ac4_roundtrip.rs):
+stereo and 5.1 round trips against real synthesized tones (checked for signal level, not silence),
+the 5.1 speaker order, a corrupted frame's decode failure, `Toc`/`build_dac4`/`media_timing`,
+`sync_frame`'s sync word and CRC byte, and the channel-count refusal above.
+
 ## What is covered
 
 | Module | Wraps |
@@ -76,6 +131,7 @@ That excerpt is from `encode_decode_eac3.rs`.
 | `ac3forge::ac3` | `Encoder`, `EncoderConfig` (including dual mono, DRC, heavy compression and the mix levels), `Decoder`, `DecodedFrame` |
 | `ac3forge::eac3` | `Eac3Encoder`, `Eac3FrameConfig` (the Annex E tools through `auto_tools` or the individual flags; substream identity and `chanmap`), `Eac3FrameMetadata`, `AccessUnitEncoder` and `AccessUnit` for wide layouts built from several substreams, `Eac3Decoder` with `decode_substream`, `decode_access_unit` and `flush`, `DecodedSubstream`, `DecodedAccessUnit` |
 | `ac3forge::atmos` | `AtmosEncoder`, `AtmosConfig`, `ObjectPlacement`; the OAMD and JOC accessors (`has_object_metadata`, `dynamic_object`, `object_audio` and their counts) on `DecodedSubstream` and `DecodedAccessUnit` |
+| `ac3forge::ac4` | `Encoder`, `EncoderConfig`, `Decoder`, `DecoderConfig`, `OutputConfig`, `PresentationChoice`, `DecodedFrame` (channels, speakers, concealment, objects), `PresentationInfo`, `LoudnessInfo`, `Toc` and `sync_frame` — see [AC-4](#ac-4) above |
 | `ac3forge::stream` | `split_frames`, `split_access_units`, `stream_bsid`, `scan` and `ScannedStream` (kind, sample rate, layout, rendered channel count, each access unit's slice and sample count, `bsid`, the Atmos complexity index). The slices borrow the input buffer |
 | `ac3forge::meter` | `LoudnessMeter` (the `acmod`/`lfe` constructor and the BS.1770-5 `chanmap` constructor) and `dialnorm_from_lkfs` |
 | `ac3forge` | `Bytes` (an owned encoded buffer that derefs to `[u8]`), `Error`, `Latency` and the latency accessors on the encoders and decoders, `version()`, `SAMPLES_PER_FRAME` |
