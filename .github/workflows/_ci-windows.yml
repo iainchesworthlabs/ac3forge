@@ -974,7 +974,7 @@ jobs:
         # otherwise) - same reasoning as setup-msvc-env's "re-run unsuppressed
         # so the banner/error reaches the log" for vcvars64.bat.
         run: |
-          cpack --preset pack-${MATRIX_PRESET} || {
+          cpack --preset "pack-${MATRIX_PRESET}" || {
             status=$?
             log="packages/_CPack_Packages/win64/NSIS/NSISOutput.log"
             if [ -f "$log" ]; then
