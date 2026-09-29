@@ -263,6 +263,7 @@
     </message>
     <message>
         <location filename="../qml/DecoderAc4.qml" line="364"/>
+        <location filename="../qml/DecoderAc4.qml" line="560"/>
         <source>AC-4 only</source>
         <translation type="unfinished"></translation>
     </message>
@@ -376,6 +377,71 @@
         <location filename="../qml/DecoderAc4.qml" line="544"/>
         <source>What plays in place of a frame that will not decode. AC-4 is back to what the stream carries at its next I-frame.</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="558"/>
+        <source>Immersive and objects</source>
+        <translation>Inmersivo y objetos</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="565"/>
+        <source>Layout</source>
+        <translation>Disposición</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="568"/>
+        <source>Immersive layout</source>
+        <translation>Disposición inmersiva</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="571"/>
+        <source>As coded</source>
+        <translation>Como se codificó</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="572"/>
+        <source>5.1</source>
+        <translation>5.1</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="573"/>
+        <source>5.1.2</source>
+        <translation>5.1.2</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="574"/>
+        <source>5.1.4</source>
+        <translation>5.1.4</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="575"/>
+        <source>7.1</source>
+        <translation>7.1</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="576"/>
+        <source>7.1.2</source>
+        <translation>7.1.2</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="577"/>
+        <source>7.1.4</source>
+        <translation>7.1.4</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="584"/>
+        <source>What the immersive element&apos;s own renderer folds down to, when the speaker layout does not itself ask for a stereo or mono fold (the &quot;Stereo and mono&quot; card above, which takes priority when it applies).</source>
+        <translation>A qué se reduce el renderizador propio del elemento inmersivo, cuando la disposición de altavoces no pide por sí misma una mezcla a estéreo o mono (la tarjeta «Estéreo y mono» de arriba tiene prioridad cuando se aplica).</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="597"/>
+        <source>Core decoding</source>
+        <translation>Decodificación del núcleo</translation>
+    </message>
+    <message>
+        <location filename="../qml/DecoderAc4.qml" line="598"/>
+        <source>A lighter reconstruction of the immersive element and its objects, for low-complexity playback. Off decodes in full.</source>
+        <translation>Una reconstrucción más ligera del elemento inmersivo y sus objetos, para una reproducción de baja complejidad. Desactivado decodifica por completo.</translation>
     </message>
     <message>
         <location filename="../qml/DecoderAc4.qml" line="319"/>
@@ -2642,7 +2708,7 @@
     <message>
         <location filename="../qml/NetworkSinkSpeakers.qml" line="100"/>
         <source>Layout</source>
-        <translation type="unfinished"></translation>
+        <translation>Disposición</translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkSpeakers.qml" line="107"/>
@@ -2657,17 +2723,17 @@
     <message>
         <location filename="../qml/NetworkSinkSpeakers.qml" line="112"/>
         <source>5.1</source>
-        <translation type="unfinished"></translation>
+        <translation>5.1</translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkSpeakers.qml" line="113"/>
         <source>7.1</source>
-        <translation type="unfinished"></translation>
+        <translation>7.1</translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkSpeakers.qml" line="114"/>
         <source>5.1.2</source>
-        <translation type="unfinished"></translation>
+        <translation>5.1.2</translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkSpeakers.qml" line="115"/>
@@ -3926,7 +3992,7 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
     <message>
         <location filename="../qml/Speakers.qml" line="208"/>
         <source>Layout</source>
-        <translation type="unfinished"></translation>
+        <translation>Disposición</translation>
     </message>
     <message>
         <location filename="../qml/Speakers.qml" line="216"/>
@@ -3936,27 +4002,27 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
     <message>
         <location filename="../qml/Speakers.qml" line="217"/>
         <source>5.1</source>
-        <translation type="unfinished"></translation>
+        <translation>5.1</translation>
     </message>
     <message>
         <location filename="../qml/Speakers.qml" line="218"/>
         <source>7.1</source>
-        <translation type="unfinished"></translation>
+        <translation>7.1</translation>
     </message>
     <message>
         <location filename="../qml/Speakers.qml" line="219"/>
         <source>5.1.2</source>
-        <translation type="unfinished"></translation>
+        <translation>5.1.2</translation>
     </message>
     <message>
         <location filename="../qml/Speakers.qml" line="220"/>
         <source>5.1.4</source>
-        <translation type="unfinished"></translation>
+        <translation>5.1.4</translation>
     </message>
     <message>
         <location filename="../qml/Speakers.qml" line="221"/>
         <source>7.1.4</source>
-        <translation type="unfinished"></translation>
+        <translation>7.1.4</translation>
     </message>
     <message>
         <location filename="../qml/Speakers.qml" line="222"/>
@@ -4277,17 +4343,17 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
 <context>
     <name>ac3::hearth::ui::HearthController</name>
     <message>
-        <location filename="../hearth_controller.cpp" line="1102"/>
+        <location filename="../hearth_controller.cpp" line="1164"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../hearth_controller.cpp" line="2114"/>
+        <location filename="../hearth_controller.cpp" line="2197"/>
         <source>saved to %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../hearth_controller.cpp" line="2117"/>
+        <location filename="../hearth_controller.cpp" line="2200"/>
         <source>could not write %1: %2</source>
         <translation type="unfinished"></translation>
     </message>

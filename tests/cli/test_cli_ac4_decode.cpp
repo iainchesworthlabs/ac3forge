@@ -264,10 +264,17 @@ TEST_CASE("decode renders AC-4's objects to the speakers the layout options name
     const auto isf = decode(objects / "direct-isf-sr3100.ac4", "", log);
     CHECK(isf.channels.size() == 11);
     CHECK(read_log(log).find("objects, rendered") == std::string::npos);
-    // decode's third argument, the directory E-AC-3's objects are written to.
+    // decode's third argument, the directory D10's own decoded objects are written to
+    // (planning/ac4.md, I5: objects_dir is no longer E-AC-3-Atmos-only).
+    const auto object_dir = dir / "objects";
     REQUIRE(run_cli("decode " + quoted(objects / "direct-bed-5_1.ac4") + " " +
-                        quoted(dir / "bed.wav") + " " + quoted(dir / "objects"),
+                        quoted(dir / "bed.wav") + " " + quoted(object_dir),
                     log) == 0);
-    CHECK(read_log(log).find("the object options write E-AC-3's objects, and are ignored") !=
-          std::string::npos);
+    CHECK(read_log(log).find("also written to") != std::string::npos);
+    REQUIRE(fs::exists(object_dir));
+    std::size_t object_files = 0;
+    for (const auto& entry : fs::directory_iterator(object_dir)) {
+        object_files += entry.path().extension() == ".wav" ? 1U : 0U;
+    }
+    CHECK(object_files > 0);
 }

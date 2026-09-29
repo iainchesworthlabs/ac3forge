@@ -3,8 +3,8 @@
 Hearth plays AC-3, E-AC-3, and E-AC-3 with Atmos objects through local speakers, an HDMI or S-PDIF
 receiver, or synchronised network sinks. It can decode a stream for local speakers, pass the encoded
 stream to a compatible receiver, or send it to ESP32 sinks over Sendspin, a protocol for
-synchronised network audio. The desktop player also plays channel-based AC-4, which it decodes for
-every output.
+synchronised network audio. The desktop player also plays channel-based, immersive and object
+AC-4, which it decodes for every output.
 
 !!! note "Status as of 2026-09-26: the desktop player plays to network sinks and plays AC-4"
     **The desktop player `ac3hearth` plays to local outputs and to network sinks.** It runs on
@@ -15,10 +15,11 @@ every output.
     shows as in use by another server, with a **Take it back** button. From a paired ESP32 sink's
     settings page the app updates that sink's firmware. The engine and the Sendspin protocol are
     tested in CI, including against `ac3hearth-testsink` and the aiosendspin 9.1.1 server library
-    that Music Assistant uses; Music Assistant itself has not been tested. It plays channel-based
-    AC-4 through the library's AC-4 decoder, with the presentation, language, dialogue, and
-    output-level controls on the Decoder page's AC-4 tab. A network group gets the AC-4 stream as
-    IEC 61937-14 bursts, for the members that list AC-4.
+    that Music Assistant uses; Music Assistant itself has not been tested. It plays channel-based,
+    immersive and object AC-4 (A-JOC and direct-coded) through the library's AC-4 decoder, with the
+    presentation, language, dialogue, immersive layout, full/core decoding and output-level
+    controls on the Decoder page's AC-4 tab. A network group gets the AC-4 stream as IEC 61937-14
+    bursts, for the members that list AC-4.
 
     **ESP32 sinks play in groups.** `hearth_sink` uses Improv Wi-Fi for initial network setup and
     Sendspin to pair with a server and play in a group. It decodes AC-3, E-AC-3, and Atmos objects
@@ -44,10 +45,10 @@ Pi 4B without an underrun. See [Raspberry Pi passthrough](../platforms/raspberry
 
 ## What it does not do
 
-- **Play AC-4 objects.** The app plays channel-based AC-4 up to 7.1.4. The
-  [library decodes](../library/ac4.md) A-JOC and direct-coded objects too; the app does not use
-  that yet. No local output takes AC-4 as a bitstream, and no ESP32 sink decodes AC-4: only the
-  development test sink takes the AC-4 bursts a group is sent.
+- **Decode AC-4 on an ESP32 sink.** The desktop player renders AC-4's channel-based, immersive and
+  object content (A-JOC and direct-coded); no local output takes AC-4 as a bitstream, and no ESP32
+  sink decodes AC-4 yet: only the development test sink takes the AC-4 bursts a group is sent
+  (planning/ac4.md, I6).
 - **Come with a user guide.** This page and the sink guides are the Hearth documentation. The
   [design record](design/player-appliance.md) explains the decisions behind the app.
 

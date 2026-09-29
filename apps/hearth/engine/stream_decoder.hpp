@@ -19,6 +19,7 @@
 #include "ac3/render/layout.hpp"
 #include "ac3/render/render.hpp"
 #include "ac3/render/serving.hpp"
+#include "ac4_object_render.hpp"
 #include "ac4dec/decoder.hpp"
 #include "decoder_settings.hpp"
 
@@ -65,21 +66,26 @@
 // protection gain - restart for that one frame; everything else, dialnorm
 // included, is exactly what the decoder would have applied.
 //
-// AC-4 (planning/ac4.md, I2): a unit that starts with an AC-4 sync word is one
-// sync frame, which goes to ac4::Decoder through its public API alone
-// (ac4dec/decoder.hpp): decode_by_block() hands its channels over in blocks of
-// 256 samples as the frame completes them, holding the rest for the next, and
-// each block is placed on the layout by the channels' speakers (ac4_bed()). A
-// one- or two-speaker layout takes the decoder's own downmix in place of
-// §7.8's fold, as decoder_setup() configures it. Settings change in place
-// (apply()): set_output() and set_presentation() take them from the next
-// frame, and the decoder keeps what it has read. A frame waiting for an
-// I-frame puts out nothing and is delivered as silence of the unit's length,
-// the samples the caller says it codes; a frame that fails, under no
-// concealment policy, first releases what the decoder holds, so the caller's
-// count of what came out stays true. The unit report says what the frame
-// was: its presentation, its speakers as an acmod, its dialnorm and DRC mode
-// and the decoder's latency.
+// AC-4 (planning/ac4.md, I2; objects and the immersive layout control, I5): a
+// unit that starts with an AC-4 sync word is one sync frame, which goes to
+// ac4::Decoder through its public API alone (ac4dec/decoder.hpp): decode()
+// reads the whole frame at once - channels, and, where a presentation carries
+// them, objects with their Annex F properties - and place_ac4_frame() places
+// it on the layout a kBlockSamples chunk at a time, by the channels' (or, with
+// objects, Ac4ObjectRenderer's rendered) speakers (ac4_bed()). A one- or
+// two-speaker layout takes the decoder's own downmix in place of §7.8's fold,
+// as decoder_setup() configures it; a wider one takes the immersive layout
+// DecoderSettings::Ac4Settings::immersive_layout asks for, or the source's own
+// where it asks for none. Settings change in place (apply()): set_output()
+// and set_presentation() take them from the next frame, and the decoder keeps
+// what it has read. A frame waiting for an I-frame puts out nothing and is
+// delivered as silence of the unit's length, the samples the caller says it
+// codes; a frame that fails, under no concealment policy, first releases what
+// the decoder holds (always nothing now - decode()'s own frame is delivered
+// whole before decode_ac4() returns - kept as a call for the reason
+// flush_ac4()'s own comment gives), so the caller's count of what came out
+// stays true. The unit report says what the frame was: its presentation, its
+// speakers as an acmod, its dialnorm and DRC mode and the decoder's latency.
 
 namespace ac3::hearth {
 
@@ -254,12 +260,20 @@ private:
     [[nodiscard]] std::expected<std::size_t, std::string> decode_ac4(
         std::span<const std::byte> unit, const BlockFn& deliver, const UnitFn& reported,
         std::uint32_t unit_samples);
-    void place_ac4(const ac4::PcmBlock& block, const BlockFn& deliver);
+    // Places a whole decoded AC-4 frame - its channels, or, where it carries objects
+    // (planning/ac4.md, I5), Ac4ObjectRenderer's render of both together - a kBlockSamples chunk at
+    // a time, the same bed-tracking and fold-or-render choice the old per-block sink made. AC-4's
+    // object substream is frame_rate_index 13 only (2 048 samples, an exact multiple of 256), so
+    // every frame this delivers ends on a whole block; a frame at another rate (no encoder here
+    // writes one with objects) ends in a short final block instead of carrying the remainder into
+    // the next frame, unlike decode_by_block()'s own internal buffering - see the engine's PR notes.
+    void place_ac4_frame(const ac4::DecodedFrame& pcm, const BlockFn& deliver);
     // Hands `frames` of silence on every slot to `deliver`, a block at a time.
     void deliver_silence(std::size_t frames, const BlockFn& deliver);
-    // What the AC-4 decoder holds back, delivered now.
+    // What decode_by_block() would still hold back - always nothing now that decode_ac4() reads
+    // whole frames through decode() instead, kept so finish()'s call site needs no special case.
     void flush_ac4(const BlockFn& deliver);
-    void report_ac4(const ac4::FrameInfo& info, std::size_t unit_bytes, const UnitFn& reported);
+    void report_ac4(const ac4::DecodedFrame& pcm, std::size_t unit_bytes, const UnitFn& reported);
     // The two fields report_frame()/report_unit() cannot fill in themselves:
     // `out.blocks` must already be set (both of those, or render_flushed()'s
     // own manual block, do this first). `unit_bytes` is the raw bytes this
@@ -295,6 +309,17 @@ private:
     ac4::DecoderConfig ac4_config_{};
     std::optional<ac4::Decoder> ac4_decoder_;
     std::vector<ac4::Speaker> ac4_speakers_;
+    // Objects (planning/ac4.md, I5): built the first time a presentation carries any, and rebuilt
+    // whenever the configured layout or the stream's own rate changes under it - both tracked
+    // alongside it since Ac4ObjectRenderer takes them at construction and reports neither back.
+    std::optional<ac3::apps::Ac4ObjectRenderer> ac4_objects_;
+    ac4::DownmixTarget ac4_objects_target_ = ac4::DownmixTarget::kAsCoded;
+    std::uint32_t ac4_objects_rate_ = 0;
+    // Ac4ObjectRenderer::render()'s own out-parameter, kept here so its storage is reused frame to
+    // frame instead of reallocated; and a per-block view of whichever of it or DecodedFrame::channels
+    // place_ac4_frame() is delivering, likewise reused.
+    std::vector<std::vector<float>> ac4_object_pcm_;
+    std::vector<std::span<const float>> ac4_channel_spans_;
     // A block of silence, for deliver_silence().
     std::array<float, kSamplesPerBlock> zeros_{};
 };

@@ -761,6 +761,47 @@ constexpr int kPollMs = 60;
     return ac4::DrcMode::kDefault;
 }
 
+// Ac4Settings::immersive_layout (planning/ac4.md, I5): unset (the source's own
+// coded layout) as "asCoded", and the five layouts Part 2's renderer folds an
+// immersive element to otherwise - the same names ac3cli decode's own
+// speakers= takes. The stereo/mono targets DownmixTarget also has are not
+// reachable here: those are DecoderSettings::stereo_fold's own job.
+[[nodiscard]] QString ac4_immersive_layout_name(const std::optional<ac4::DownmixTarget>& layout) {
+    if (!layout) {
+        return QStringLiteral("asCoded");
+    }
+    // clang-format off
+    switch (*layout) {
+        case ac4::DownmixTarget::k7X4: return QStringLiteral("7.1.4");
+        case ac4::DownmixTarget::k7X2: return QStringLiteral("7.1.2");
+        case ac4::DownmixTarget::k7X0: return QStringLiteral("7.1");
+        case ac4::DownmixTarget::k5X4: return QStringLiteral("5.1.4");
+        case ac4::DownmixTarget::k5X2: return QStringLiteral("5.1.2");
+        default: break;
+    }
+    // clang-format on
+    return QStringLiteral("asCoded");
+}
+
+[[nodiscard]] std::optional<ac4::DownmixTarget> ac4_immersive_layout_from_name(const QString& name) {
+    if (name == QLatin1String("7.1.4")) {
+        return ac4::DownmixTarget::k7X4;
+    }
+    if (name == QLatin1String("7.1.2")) {
+        return ac4::DownmixTarget::k7X2;
+    }
+    if (name == QLatin1String("7.1")) {
+        return ac4::DownmixTarget::k7X0;
+    }
+    if (name == QLatin1String("5.1.4")) {
+        return ac4::DownmixTarget::k5X4;
+    }
+    if (name == QLatin1String("5.1.2")) {
+        return ac4::DownmixTarget::k5X2;
+    }
+    return std::nullopt;
+}
+
 // A presentation's id or place as QML carries it: -1, or no value, for none.
 [[nodiscard]] std::optional<int> presentation_from_variant(const QVariant& value) {
     if (!value.isValid() || value.isNull()) {
@@ -803,6 +844,8 @@ constexpr int kPollMs = 60;
     map[QStringLiteral("ac4OutputLevelDbfs")] = ac4.output_level_dbfs;
     map[QStringLiteral("ac4Drc")] = ac4_drc_name(ac4.drc);
     map[QStringLiteral("ac4PreferredDownmix")] = ac4.preferred_downmix;
+    map[QStringLiteral("ac4ImmersiveLayout")] = ac4_immersive_layout_name(ac4.immersive_layout);
+    map[QStringLiteral("ac4CoreDecoding")] = ac4.core_decoding;
     return map;
 }
 
@@ -889,6 +932,13 @@ constexpr int kPollMs = 60;
     }
     if (map.contains(QStringLiteral("ac4PreferredDownmix"))) {
         ac4.preferred_downmix = map[QStringLiteral("ac4PreferredDownmix")].toBool();
+    }
+    if (map.contains(QStringLiteral("ac4ImmersiveLayout"))) {
+        ac4.immersive_layout =
+            ac4_immersive_layout_from_name(map[QStringLiteral("ac4ImmersiveLayout")].toString());
+    }
+    if (map.contains(QStringLiteral("ac4CoreDecoding"))) {
+        ac4.core_decoding = map[QStringLiteral("ac4CoreDecoding")].toBool();
     }
     return out;
 }
