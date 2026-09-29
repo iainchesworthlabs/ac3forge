@@ -172,7 +172,7 @@
     {
       "name": "wasm-emscripten",
       "hidden": true,
-      "description": "Emscripten/WASM toolchain selection for the roadmap-F3 browser decode demo. Unlike every other platform preset here, this does NOT inherit \"core\": there is no host-OS condition (Emscripten cross-compiles from any host with $EMSDK set) and, more importantly, no vcpkg toolchainFile - see cmake/toolchains/wasm.emscripten.toolchain.cmake's own header for why going through vcpkg's community wasm32-emscripten triplet would be pure cost for zero benefit here. Everything \"core\" would otherwise supply (Ninja generator, binaryDir, the default ON options) is set directly below instead, deliberately turning off everything this preset does not need (CLI/GUI/tests/live-audio-linking containers, and the AC-4 libraries until plan phase I4 binds them) rather than inheriting defaults meant for a full desktop build.",
+      "description": "Emscripten/WASM toolchain selection for the roadmap-F3 browser decode demo. Unlike every other platform preset here, this does NOT inherit \"core\": there is no host-OS condition (Emscripten cross-compiles from any host with $EMSDK set) and, more importantly, no vcpkg toolchainFile - see cmake/toolchains/wasm.emscripten.toolchain.cmake's own header for why going through vcpkg's community wasm32-emscripten triplet would be pure cost for zero benefit here. Everything \"core\" would otherwise supply (Ninja generator, binaryDir, the default ON options) is set directly below instead, deliberately turning off everything this preset does not need (CLI/GUI/tests/live-audio-linking containers) rather than inheriting defaults meant for a full desktop build. The AC-4 libraries (src/ac4, src/ac4dec, src/ac4enc) build here from the root default (AC3FORGE_BUILD_AC4 ON, unlisted below) for the apps/wasm/ ac3forge_wasm_ac4 embind target (plan phase I4).",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/toolchains/wasm.emscripten.toolchain.cmake",
@@ -185,8 +185,7 @@
         "AC3FORGE_BUILD_MATROSKA": "OFF",
         "AC3FORGE_BUILD_MP4": "OFF",
         "AC3FORGE_BUILD_MPEGTS": "OFF",
-        "AC3FORGE_BUILD_CAPI": "OFF",
-        "AC3FORGE_BUILD_AC4": "OFF"
+        "AC3FORGE_BUILD_CAPI": "OFF"
       }
     },
 
