@@ -116,6 +116,14 @@ reads each finished run:
   `git bisect` recipe. Each suspect pull request gets one comment.
 - **A green run** closes the issue.
 
+A scheduled run (the nightly run, planned below) keeps its own books, because it runs legs the
+run after a merge leaves out. A green one moves `verified-nightly` as well as `verified` and closes
+both issues, since it proves everything the other run does. A red one is blamed on the merges since
+the last green nightly, not since `verified` (a sanitizer failure can come from a merge the run
+after it passed without running the sanitizers), goes to its own `main-red-nightly` issue, and
+comments on no pull request, because a day of merges is too wide a range to name anyone. A green
+run after a merge closes only `main-red`.
+
 Nothing is reverted automatically. Opening a revert pull request that CI will then run needs a
 token that can start workflows, which the built-in one cannot.
 
