@@ -128,6 +128,27 @@ equal on every ASPX stream they write:
   width low.
 - **Evidence:** Text.
 
+### A noise floor for a group whose patch holds nothing
+
+- **Where:** Part 1 Pseudocodes 94 and 95, pp. 223 and 224: a subband's noise level is `sqrt(scf_sig / (1 +
+  scf_noise) * scf_noise)` whatever its patch holds, and its patch gain `sqrt(scf_sig / ((EPSILON + est_sig) *
+  (1 + scf_noise)))`, with `EPSILON` 1.0, a QMF sample at full scale being 2^15.
+- **Reading:** a patch of energy `est` per QMF subsample delivers `est / (1 + est)` of the share `1 / (1 + Q)`
+  the envelope gives it (`Q` being `scf_noise`), so a group whose patch holds nothing is silent unless its noise
+  `Q / (1 + Q)` or a sinusoid takes the energy. That is a sweep's group while the tone is above the crossover, the
+  low band having nothing to copy. The encoder measures, per noise group and interval, the share of the input's
+  energy that its patch delivers (the decoder's generator run on the input's low band at the modes chosen, a
+  subband with a sinusoid or coded by the spectral frontend counting as delivered whole), and where it is under
+  three quarters sends the noise floor at which `(share + Q) / (1 + Q)` reaches three quarters, if that is louder
+  than the floor its tonality rule chose: `qscf_noise` 4, `Q` 4, for an empty patch. A group whose input is below
+  the smallest signal envelope, 64 per QMF subsample, is silence and keeps its floor.
+- **Evidence:** Streams and Observation. DEE's streams send a floor in every group: `qscf_noise` 7 to 17 on
+  a 5.1.4 sweep, 7 in nine values of ten on music, where this encoder sent 29, the least, in 95 to 99 % of
+  the sweep's values and 80 to 96 % of the music's. DEE's decoded tone lands 15 to 17 dB under the source's
+  energy above 16.5 kHz; this encoder's landed 32 to 61 dB under it in 5.1 and 48 to 61 in 5.1.4, and lands 3
+  to 4 dB under it with the floors (`tools/checks/score_ac4_encode.py --gold`, G1's sweeps). The sweep test in
+  `tests/ac4enc/test_ac4enc_encoder.cpp` holds it.
+
 ### Balance values are sent halved
 
 - **Where:** Part 1 Pseudocodes 80 and 81 add each value of a balance channel twice (`delta` 2), and
