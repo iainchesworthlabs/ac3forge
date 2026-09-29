@@ -21,6 +21,7 @@
 //! ```
 
 pub mod ac3;
+pub mod ac4;
 pub mod atmos;
 mod bytes;
 pub mod eac3;

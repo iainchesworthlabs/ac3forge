@@ -53,6 +53,12 @@ if(TARGET ac3::signing)
 else()
     target_sources(_ac3forge PRIVATE src/ac3forge_ext/signing/absent/signing_module.cpp)
 endif()
+if(TARGET ac4::ac4 AND TARGET ac4::decoder AND TARGET ac4::encoder)
+    target_link_libraries(_ac3forge PRIVATE ac4::ac4 ac4::decoder ac4::encoder)
+    target_sources(_ac3forge PRIVATE src/ac3forge_ext/ac4/present/ac4_module.cpp)
+else()
+    target_sources(_ac3forge PRIVATE src/ac3forge_ext/ac4/absent/ac4_module.cpp)
+endif()
 
 # scikit-build-core's wheel.install-dir (see python/pyproject.toml) is the
 # package root, so a relative DESTINATION here lands the compiled extension

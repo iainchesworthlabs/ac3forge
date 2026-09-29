@@ -61,10 +61,12 @@ AC3FORGE_BUILD_ADM = "OFF"
 # unset here tries to find_package() cpp-httplib/mbedTLS/libFLAC/Opus/mdns that cibuildwheel's
 # manylinux/musllinux/macOS/Windows images never install - see that option's own comment.
 AC3FORGE_BUILD_HEARTH = "OFF"
-# The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) default ON and the extension
-# links none of them: off until plan phase I4 binds them (planning/ac4.md), which
-# tools/checks/test_ac4_build_configurations.py holds this to.
-AC3FORGE_BUILD_AC4 = "OFF"
+# The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) default ON - ON here too since
+# plan phase I4 binds them (planning/ac4.md): the wheel carries ac3forge.ac4 (ac4::Decoder/
+# ac4::Encoder bound directly, python/src/ac3forge_ext/ac4/present/ac4_module.cpp), the same
+# "wheel always carries the full surface" reasoning as the matroska/mp4/mpegts/signing targets
+# below.
+AC3FORGE_BUILD_AC4 = "ON"
 # ON since Python bindings completeness: the wheel carries the container muxers/demuxers
 # (ac3forge.containers) and object signing (ac3forge.signing) - the
 # "no containers, no signing" gap its record used to name.

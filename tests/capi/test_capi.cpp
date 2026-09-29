@@ -119,6 +119,14 @@ TEST_CASE("ac3forge_status_message never returns null", "[capi]") {
     CHECK(std::string_view(ac3forge_status_message(AC3FORGE_OK)) == "ok");
     CHECK(ac3forge_status_message(AC3FORGE_ERROR_DECODE_BAD_SYNC_WORD) != nullptr);
     CHECK(ac3forge_status_message(AC3FORGE_ERROR_DECODE_INVALID_STREAM) != nullptr);
+    // AC3FORGE_ERROR_UNSUPPORTED is what a build without a codec (an
+    // AC3FORGE_BUILD_AC4=OFF one, today) returns from that codec's every
+    // fallible entry point - see ac3forge.h's own comment on it - so this
+    // build, with AC4 on, never produces it through a real call; message()
+    // is a pure enum-to-string map, so checking it directly needs no such
+    // build to exist.
+    CHECK(std::string_view(ac3forge_status_message(AC3FORGE_ERROR_UNSUPPORTED)) ==
+          "not built into this library");
 }
 
 TEST_CASE("ac3forge_encoder_config_init matches EncoderConfig{}'s own defaults", "[capi]") {
@@ -2896,4 +2904,357 @@ TEST_CASE("scan/metering C accessors take their documented defaults on null hand
     CHECK(ac3forge_level_meter_level(nullptr, 0).peak_db == AC3FORGE_LEVEL_METER_FLOOR_DB);
 
     ac3forge_level_meter_ballistics_init(nullptr);  // documented no-op
+}
+
+// --- AC-4 (ac3forge_ac4_*) -------------------------------------------------
+//
+// This file only builds under AC3FORGE_BUILD_CAPI, which (root CMakeLists.txt)
+// requires AC3FORGE_BUILD_AC4 on whenever AC3FORGE_BUILD_TESTS is - so
+// ac3forge.h's AC-4 section, always declared either way (that header's own
+// comment), is always backed by the real ac4.cpp/ac4_encoder.cpp here, never
+// ac4_absent.cpp. Every round trip below is a stereo, 5.1 or 5.1.4
+// configuration (channel-based / channel-based-immersive - the encoder's own
+// scope as of this phase; A-JOC and direct-coded objects are phase E9,
+// tracked separately), so ac3forge_ac4_decoded_frame_object_count() is
+// exercised only at 0: there is no encoder here yet that can produce object
+// content to decode back.
+
+TEST_CASE("ac3forge_ac4_*_config_init match their C++ struct defaults", "[capi][ac4]") {
+    ac3forge_ac4_output_config_t output;
+    ac3forge_ac4_output_config_init(&output);
+    CHECK(output.has_output_level_dbfs == 0);
+    CHECK(output.drc == AC3FORGE_AC4_DRC_DEFAULT);
+    CHECK(output.headphones == 0);
+    CHECK(output.downmix == AC3FORGE_AC4_DOWNMIX_AS_CODED);
+    CHECK(output.mix_lfe == 1);
+
+    ac3forge_ac4_presentation_choice_t choice;
+    ac3forge_ac4_presentation_choice_init(&choice);
+    CHECK(choice.has_presentation_id == 0);
+    CHECK(choice.has_index == 0);
+    CHECK(choice.language == nullptr);
+    CHECK(choice.has_associated == 0);
+    CHECK(choice.associated_type == AC3FORGE_AC4_ASSOCIATED_ANY);
+
+    ac3forge_ac4_decoder_config_t decoder_config;
+    ac3forge_ac4_decoder_config_init(&decoder_config);
+    CHECK(decoder_config.concealment == AC3FORGE_AC4_CONCEALMENT_NONE);
+    CHECK(decoder_config.level == 3);
+    CHECK(decoder_config.decoding == AC3FORGE_AC4_DECODING_FULL);
+
+    ac3forge_ac4_encoder_config_t encoder_config;
+    ac3forge_ac4_encoder_config_init(&encoder_config);
+    CHECK(encoder_config.channels == 2);
+    CHECK(encoder_config.sample_rate_hz == 48000);
+    CHECK(encoder_config.frame_rate_index == 13);
+    CHECK(encoder_config.bitrate_kbps == 192);
+    CHECK(encoder_config.rate_mode == AC3FORGE_AC4_RATE_CONSTANT);
+    CHECK(encoder_config.codec_mode == AC3FORGE_AC4_CODEC_AUTO);
+    CHECK(encoder_config.iframe_interval == 24);
+    CHECK(encoder_config.dialnorm_db == -31.0);
+}
+
+namespace {
+
+// Encodes `frames` frames of a phase-continuous tone per channel through the
+// AC-4 C API, decodes every produced frame straight back with a fresh
+// decoder, and returns the concatenated decoded PCM per channel - the same
+// "real signal, not silence" convention as encode_eac3_stream() above
+// (CONTRIBUTING.md).
+struct Ac4RoundTrip {
+    std::vector<std::vector<float>> decoded;  // per decoded channel
+    std::vector<ac3forge_ac4_speaker_t> speakers;
+    int sample_rate_hz = 0;
+};
+
+Ac4RoundTrip round_trip_ac4(const ac3forge_ac4_encoder_config_t& encoder_config,
+                            const std::vector<double>& tones, int frames) {
+    ac3forge_ac4_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_ac4_encoder_create(&encoder_config, &encoder) == AC3FORGE_OK);
+    REQUIRE(encoder != nullptr);
+
+    ac3forge_ac4_decoder_config_t decoder_config;
+    ac3forge_ac4_decoder_config_init(&decoder_config);
+    ac3forge_ac4_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_ac4_decoder_create(&decoder_config, &decoder) == AC3FORGE_OK);
+    REQUIRE(decoder != nullptr);
+
+    const auto nchans = tones.size();
+    std::vector<std::vector<float>> block(nchans,
+                                          std::vector<float>(AC3FORGE_SAMPLES_PER_FRAME));
+    std::vector<const float*> views(nchans);
+
+    Ac4RoundTrip out;
+
+    const auto handle_encoded = [&](ac3forge_ac4_encoded_frame_t* const* encoded, size_t count) {
+        for (size_t i = 0; i < count; ++i) {
+            REQUIRE(ac3forge_ac4_encoded_frame_data(encoded[i]) != nullptr);
+            REQUIRE(ac3forge_ac4_encoded_frame_size(encoded[i]) > 0);
+
+            ac3forge_ac4_decoded_frame_t* decoded = nullptr;
+            const auto status =
+                ac3forge_ac4_decoder_decode(decoder, ac3forge_ac4_encoded_frame_data(encoded[i]),
+                                            ac3forge_ac4_encoded_frame_size(encoded[i]), &decoded);
+            REQUIRE(status == AC3FORGE_OK);
+            if (decoded == nullptr) {
+                continue;  // held back pending configuration - not an error
+            }
+            out.sample_rate_hz = ac3forge_ac4_decoded_frame_sample_rate_hz(decoded);
+            const auto channel_count = ac3forge_ac4_decoded_frame_channel_count(decoded);
+            if (out.decoded.empty()) {
+                out.decoded.resize(channel_count);
+                out.speakers.resize(channel_count);
+                for (size_t ch = 0; ch < channel_count; ++ch) {
+                    out.speakers[ch] = ac3forge_ac4_decoded_frame_speaker(decoded, ch);
+                }
+            }
+            REQUIRE(channel_count == out.decoded.size());
+            const auto samples = ac3forge_ac4_decoded_frame_samples_per_channel(decoded);
+            for (size_t ch = 0; ch < channel_count; ++ch) {
+                const float* samples_ptr = ac3forge_ac4_decoded_frame_channel_samples(decoded, ch);
+                REQUIRE(samples_ptr != nullptr);
+                out.decoded[ch].insert(out.decoded[ch].end(), samples_ptr, samples_ptr + samples);
+            }
+            CHECK(ac3forge_ac4_decoded_frame_object_count(decoded) == 0);
+            CHECK(ac3forge_ac4_decoded_frame_has_concealed(decoded) == 0);
+        }
+        ac3forge_ac4_encoded_frame_array_destroy(const_cast<ac3forge_ac4_encoded_frame_t**>(encoded),
+                                                  count);
+    };
+
+    for (int frame = 0; frame < frames; ++frame) {
+        for (size_t ch = 0; ch < nchans; ++ch) {
+            fill_tone(block[ch].data(), tones[ch], frame,
+                      static_cast<double>(encoder_config.sample_rate_hz));
+            views[ch] = block[ch].data();
+        }
+        ac3forge_ac4_encoded_frame_t** encoded = nullptr;
+        size_t count = 0;
+        REQUIRE(ac3forge_ac4_encoder_encode(encoder, views.data(), nchans,
+                                            AC3FORGE_SAMPLES_PER_FRAME, &encoded,
+                                            &count) == AC3FORGE_OK);
+        handle_encoded(encoded, count);
+    }
+
+    ac3forge_ac4_encoded_frame_t** flushed = nullptr;
+    size_t flushed_count = 0;
+    REQUIRE(ac3forge_ac4_encoder_flush(encoder, &flushed, &flushed_count) == AC3FORGE_OK);
+    handle_encoded(flushed, flushed_count);
+
+    ac3forge_ac4_decoder_destroy(decoder);
+    ac3forge_ac4_encoder_destroy(encoder);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("AC-4 stereo encode/decode round-trips through the C API", "[capi][ac4]") {
+    ac3forge_ac4_encoder_config_t config;
+    ac3forge_ac4_encoder_config_init(&config);
+    config.channels = 2;
+    config.bitrate_kbps = 96;
+
+    const auto result = round_trip_ac4(config, {1000.0, 800.0}, 12);
+
+    REQUIRE(result.decoded.size() == 2);
+    CHECK(result.sample_rate_hz == 48000);
+    CHECK(result.speakers[0] == AC3FORGE_AC4_SPEAKER_LEFT);
+    CHECK(result.speakers[1] == AC3FORGE_AC4_SPEAKER_RIGHT);
+    // Every frame flowed through: at least as many samples as the frames fed
+    // in (frame_rate_index 13's 2048-sample frame, minus what decode's own
+    // delay is still holding).
+    CHECK(result.decoded[0].size() > AC3FORGE_SAMPLES_PER_FRAME);
+    // A real decoded signal, not silence (CONTRIBUTING.md) - mean square over
+    // the tail, past the encoder/decoder's warm-up.
+    double energy = 0.0;
+    for (std::size_t i = 4096; i < result.decoded[0].size(); ++i) {
+        const double sample = static_cast<double>(result.decoded[0][i]);
+        energy += sample * sample;
+    }
+    CHECK(energy / static_cast<double>(result.decoded[0].size() - 4096) > 1e-6);
+}
+
+TEST_CASE("AC-4 5.1 encode/decode round-trips through the C API", "[capi][ac4]") {
+    ac3forge_ac4_encoder_config_t config;
+    ac3forge_ac4_encoder_config_init(&config);
+    config.channels = 6;
+    config.bitrate_kbps = 256;
+
+    const auto result = round_trip_ac4(config, {1000.0, 900.0, 700.0, 60.0, 500.0, 600.0}, 12);
+
+    REQUIRE(result.decoded.size() == 6);
+    CHECK(result.speakers[0] == AC3FORGE_AC4_SPEAKER_LEFT);
+    CHECK(result.speakers[1] == AC3FORGE_AC4_SPEAKER_RIGHT);
+    CHECK(result.speakers[2] == AC3FORGE_AC4_SPEAKER_CENTRE);
+    CHECK(result.speakers[3] == AC3FORGE_AC4_SPEAKER_LFE);
+    CHECK(result.speakers[4] == AC3FORGE_AC4_SPEAKER_LEFT_SURROUND);
+    CHECK(result.speakers[5] == AC3FORGE_AC4_SPEAKER_RIGHT_SURROUND);
+}
+
+TEST_CASE("AC-4 5.1.4 (channel-based-immersive) encode/decode round-trips", "[capi][ac4]") {
+    ac3forge_ac4_encoder_config_t config;
+    ac3forge_ac4_encoder_config_init(&config);
+    config.channels = 10;
+    config.bitrate_kbps = 448;
+
+    const auto result =
+        round_trip_ac4(config, {1000.0, 900.0, 700.0, 60.0, 500.0, 600.0, 300.0, 320.0, 340.0, 360.0},
+                       12);
+
+    REQUIRE(result.decoded.size() == 10);
+    CHECK(result.speakers[3] == AC3FORGE_AC4_SPEAKER_LFE);
+    CHECK(result.speakers[6] == AC3FORGE_AC4_SPEAKER_TOP_FRONT_LEFT);
+    CHECK(result.speakers[7] == AC3FORGE_AC4_SPEAKER_TOP_FRONT_RIGHT);
+    CHECK(result.speakers[8] == AC3FORGE_AC4_SPEAKER_TOP_BACK_LEFT);
+    CHECK(result.speakers[9] == AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT);
+}
+
+TEST_CASE("ac3forge_ac4_encoder_create refuses a configuration ac4::Encoder::create() refuses",
+          "[capi][ac4]") {
+    ac3forge_ac4_encoder_config_t config;
+    ac3forge_ac4_encoder_config_init(&config);
+    config.channels = 3;  // not one of EncoderConfig::channels' accepted counts
+
+    ac3forge_ac4_encoder_t* encoder = nullptr;
+    CHECK(ac3forge_ac4_encoder_create(&config, &encoder) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG);
+    CHECK(encoder == nullptr);
+
+    CHECK(ac3forge_ac4_encoder_create(nullptr, &encoder) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    ac3forge_ac4_encoder_config_init(&config);
+    CHECK(ac3forge_ac4_encoder_create(&config, nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+}
+
+TEST_CASE("ac3forge_ac4_encoder_toc feeds build_dac4/media_timing/samples_per_frame", "[capi][ac4]") {
+    ac3forge_ac4_encoder_config_t config;
+    ac3forge_ac4_encoder_config_init(&config);
+    config.channels = 2;
+
+    ac3forge_ac4_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_ac4_encoder_create(&config, &encoder) == AC3FORGE_OK);
+
+    // A whole frame_rate_index-13 frame (2048 samples), not
+    // AC3FORGE_SAMPLES_PER_FRAME (1536, an AC-3ism) - the encoder buffers a
+    // partial input frame internally rather than failing (see
+    // ac3forge_ac4_encoder_encode()'s own comment), but toc() is only
+    // meaningful once at least one frame has actually completed.
+    constexpr int kAc4FrameSamples = 2048;
+    std::vector<float> left(kAc4FrameSamples, 0.0f);
+    std::vector<float> right(kAc4FrameSamples, 0.0f);
+    fill_tone(left.data(), 1000.0, 0, 48000.0);
+    fill_tone(right.data(), 800.0, 0, 48000.0);
+    const float* channels[2] = {left.data(), right.data()};
+    ac3forge_ac4_encoded_frame_t** encoded = nullptr;
+    size_t count = 0;
+    REQUIRE(ac3forge_ac4_encoder_encode(encoder, channels, 2, kAc4FrameSamples, &encoded, &count) ==
+            AC3FORGE_OK);
+    REQUIRE(count > 0);
+    ac3forge_ac4_encoded_frame_array_destroy(encoded, count);
+
+    ac3forge_ac4_toc_t* toc = nullptr;
+    REQUIRE(ac3forge_ac4_encoder_toc(encoder, &toc) == AC3FORGE_OK);
+    REQUIRE(toc != nullptr);
+
+    ac3forge_bytes_t* box = nullptr;
+    REQUIRE(ac3forge_ac4_build_dac4(toc, &box) == AC3FORGE_OK);
+    REQUIRE(box != nullptr);
+    CHECK(ac3forge_bytes_size(box) > 0);
+    CHECK(std::string_view(ac3forge_ac4_dac4_refusal(toc)).empty());
+
+    uint32_t timescale = 0;
+    uint32_t sample_delta = 0;
+    CHECK(ac3forge_ac4_media_timing(toc, &timescale, &sample_delta) == 1);
+    CHECK(timescale > 0);
+    CHECK(sample_delta > 0);
+
+    uint32_t samples_per_frame = 0;
+    CHECK(ac3forge_ac4_samples_per_frame(toc, &samples_per_frame) == 1);
+    CHECK(samples_per_frame == 2048);  // frame_rate_index 13
+
+    ac3forge_bytes_destroy(box);
+    ac3forge_ac4_toc_destroy(toc);
+    ac3forge_ac4_encoder_destroy(encoder);
+}
+
+TEST_CASE("ac3forge_ac4_sync_frame wraps a raw frame", "[capi][ac4]") {
+    const std::array<uint8_t, 4> raw{0x01, 0x02, 0x03, 0x04};
+    ac3forge_bytes_t* wrapped = nullptr;
+    REQUIRE(ac3forge_ac4_sync_frame(raw.data(), raw.size(), /*crc=*/0, &wrapped) == AC3FORGE_OK);
+    REQUIRE(wrapped != nullptr);
+    // sync word + frame_size + the raw bytes, no crc_word (crc=0 -> 0xAC40).
+    CHECK(ac3forge_bytes_size(wrapped) > raw.size());
+    REQUIRE(ac3forge_bytes_data(wrapped) != nullptr);
+    CHECK(ac3forge_bytes_data(wrapped)[0] == 0xAC);
+    CHECK(ac3forge_bytes_data(wrapped)[1] == 0x40);
+    const size_t wrapped_size = ac3forge_bytes_size(wrapped);  // read before destroying it below
+    ac3forge_bytes_destroy(wrapped);
+
+    ac3forge_bytes_t* wrapped_crc = nullptr;
+    REQUIRE(ac3forge_ac4_sync_frame(raw.data(), raw.size(), /*crc=*/1, &wrapped_crc) == AC3FORGE_OK);
+    REQUIRE(wrapped_crc != nullptr);
+    CHECK(ac3forge_bytes_data(wrapped_crc)[1] == 0x41);
+    CHECK(ac3forge_bytes_size(wrapped_crc) == wrapped_size + 2);  // trailing crc_word
+    ac3forge_bytes_destroy(wrapped_crc);
+}
+
+TEST_CASE("AC-4 accessors are null-safe", "[capi][ac4]") {
+    CHECK(ac3forge_ac4_decoder_latency_samples(nullptr) == 0);
+    CHECK(std::string_view(ac3forge_ac4_decoder_refusal_reason(nullptr)).empty());
+    CHECK(ac3forge_ac4_decoder_presentation_count(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_toc_index(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_has_id(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_id(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_has_md_compat(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_md_compat(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_enabled(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_alternative(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_pre_virtualized(nullptr, 0) == 0);
+    CHECK(std::string_view(ac3forge_ac4_decoder_presentation_name(nullptr, 0)).empty());
+    CHECK(std::string_view(ac3forge_ac4_decoder_presentation_language(nullptr, 0)).empty());
+    CHECK(ac3forge_ac4_decoder_presentation_decodable(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_selectable(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_speaker_count(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoder_presentation_speaker(nullptr, 0, 0) == AC3FORGE_AC4_SPEAKER_LEFT);
+    CHECK(ac3forge_ac4_decoder_metadata_loudness(nullptr).has_dialnorm_dbfs == 0);
+
+    CHECK(ac3forge_ac4_decoded_frame_sample_rate_hz(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_sequence_counter(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_presentation_index(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_has_presentation_id(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_presentation_id(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_channel_count(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_samples_per_channel(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_channel_samples(nullptr, 0) == nullptr);
+    CHECK(ac3forge_ac4_decoded_frame_speaker(nullptr, 0) == AC3FORGE_AC4_SPEAKER_LEFT);
+    CHECK(ac3forge_ac4_decoded_frame_has_concealed(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_concealment_action(nullptr) ==
+          AC3FORGE_AC4_CONCEALMENT_ACTION_MUTE);
+    CHECK(ac3forge_ac4_decoded_frame_concealment_error(nullptr) == AC3FORGE_OK);
+    CHECK(ac3forge_ac4_decoded_frame_object_count(nullptr) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_object_kind(nullptr, 0) == AC3FORGE_AC4_OBJECT_DYN);
+    CHECK(ac3forge_ac4_decoded_frame_object_lfe(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_object_has_speaker(nullptr, 0) == 0);
+    CHECK(ac3forge_ac4_decoded_frame_object_speaker(nullptr, 0) == AC3FORGE_AC4_SPEAKER_LEFT);
+    CHECK(ac3forge_ac4_decoded_frame_object_samples(nullptr, 0) == nullptr);
+    CHECK(ac3forge_ac4_decoded_frame_object_properties(nullptr, 0).gain_db == 0.0);
+    ac3forge_ac4_decoded_frame_destroy(nullptr);
+
+    CHECK(ac3forge_ac4_encoder_codec_mode(nullptr) == AC3FORGE_AC4_CODEC_AUTO);
+    CHECK(ac3forge_ac4_encoder_delay_samples(nullptr) == 0);
+    CHECK(ac3forge_ac4_encoder_decoder_delay_samples(nullptr) == 0);
+    CHECK(ac3forge_ac4_encoded_frame_data(nullptr) == nullptr);
+    CHECK(ac3forge_ac4_encoded_frame_size(nullptr) == 0);
+    CHECK(ac3forge_ac4_encoded_frame_samples(nullptr) == 0);
+    CHECK(ac3forge_ac4_encoded_frame_iframe(nullptr) == 0);
+    ac3forge_ac4_encoded_frame_destroy(nullptr);
+    ac3forge_ac4_encoded_frame_array_destroy(nullptr, 0);
+
+    CHECK(ac3forge_ac4_encoder_toc(nullptr, nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    ac3forge_ac4_toc_destroy(nullptr);
+    CHECK(ac3forge_ac4_build_dac4(nullptr, nullptr) == AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(std::string_view(ac3forge_ac4_dac4_refusal(nullptr)).empty());
+    CHECK(ac3forge_ac4_media_timing(nullptr, nullptr, nullptr) == 0);
+    CHECK(ac3forge_ac4_samples_per_frame(nullptr, nullptr) == 0);
+
+    ac3forge_ac4_decoder_destroy(nullptr);
+    ac3forge_ac4_encoder_destroy(nullptr);
 }

@@ -22,6 +22,7 @@
 #include "ac3/oba/atmos.hpp"
 #include "ac3forge_c/ac3forge.h"
 
+
 // --- enum-ordinal contract ---------------------------------------------
 // ac3forge_c's enums are declared with the same ordinals as their C++
 // counterparts on purpose, so translation is a bare static_cast rather than
@@ -89,6 +90,7 @@ static_assert(static_cast<int>(ac3::meta::QcPresetId::kNetflix) == AC3FORGE_QC_P
 static_assert(static_cast<int>(ac3::meta::QcPresetId::kAppleMusicAtmos) ==
               AC3FORGE_QC_PRESET_APPLE_MUSIC_ATMOS);
 static_assert(ac3::meta::kQcPresetIds.size() == 5);
+
 
 namespace ac3forge_c {
 
@@ -181,6 +183,7 @@ namespace ac3forge_c {
     }
     return AC3FORGE_ERROR_INTERNAL;
 }
+
 
 // Every entry point in ac3forge.h that can fail funnels through this: `body`
 // returns ac3forge_status_t on its own successful path (AC3FORGE_OK or an
@@ -299,3 +302,4 @@ struct ac3forge_level_meter {
     // default-constructible either.
     std::unique_ptr<ac3::analysis::LevelMeter> impl;
 };
+

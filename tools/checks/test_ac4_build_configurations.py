@@ -1,12 +1,21 @@
-"""The builds that link no AC-4 library compile none (planning/ac4.md, phase D8).
+"""AC-4 opt-in by build configuration (planning/ac4.md, phases D8 and I4).
 
 AC3FORGE_BUILD_AC4 is on by default, and the AC-4 libraries (src/ac4, src/ac4core,
-src/ac4dec, src/ac4enc) are part of the default target, so a configuration that
-builds everything and links none of them compiled all four for nothing: the Android
-app's CMake wrapper, the WebAssembly preset and the Python wheel. D8 turns the
-option off in each. Plan phase I4, which binds AC-4 into the C API, Python, Rust and
-WebAssembly, turns it back on where it links the libraries, and changes this check
-with it.
+src/ac4dec, src/ac4enc) are part of the default target. D8 found three builds that
+linked none of them and turned the option off there instead of compiling all four
+for nothing: the Android app's CMake wrapper, the WebAssembly preset and the Python
+wheel. Phase I4 binds AC-4 into the C API, Python, Rust and WebAssembly:
+
+- Python and WebAssembly turn the option back on AND link ac4:: targets (the pybind11
+  extension's `ac4` submodule; the apps/wasm/ ac3forge_wasm_ac4 embind module).
+- Android turns the option back on too - the libraries depend on nothing outside this
+  tree (packaging/vcpkg-port/ac3forge/vcpkg.json's own "ac4" feature description says
+  the same) and cross-compile under the NDK with no extra package friction - but the
+  app's own CMake wrapper links none of them: giving the Shield app an AC-4 feature is
+  later application work, not this phase's.
+
+D14 (the ESP32 minimal/bare-metal presets) is untouched: it still turns the option off
+and links nothing, same as D8 left it.
 """
 
 import json
@@ -17,41 +26,54 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 ANDROID = ROOT / "apps" / "android" / "app" / "src" / "main" / "cpp" / "CMakeLists.txt"
+WASM_CMAKE = ROOT / "apps" / "wasm" / "CMakeLists.txt"
+PYTHON_CMAKE = ROOT / "python" / "CMakeLists.txt"
 PRESETS = ROOT / "CMakePresets.json"
 PYPROJECT = ROOT / "python" / "pyproject.toml"
 
-# What each of those builds compiles its own code from; none may name an AC-4 target
-# while the option is off there.
-LINKERS = [
-    ANDROID,
-    ROOT / "apps" / "wasm" / "CMakeLists.txt",
-    ROOT / "python" / "CMakeLists.txt",
-]
+
+def _ac4_referenced(path: Path) -> bool:
+    return re.search(r"\bac4::", path.read_text(encoding="utf-8")) is not None
 
 
 class Ac4BuildConfigurations(unittest.TestCase):
-    def test_android_wrapper_turns_ac4_off(self):
+    def test_android_wrapper_no_longer_forces_ac4_off(self):
         text = ANDROID.read_text(encoding="utf-8")
-        self.assertRegex(text, r'set\(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE\)')
+        self.assertNotRegex(text, r'set\(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE\)')
 
-    def test_wasm_preset_turns_ac4_off(self):
+    def test_android_wrapper_still_links_no_ac4_target(self):
+        # The libraries build (the root default, now unforced above); nothing in this
+        # app's own CMake wrapper links them yet - a later phase's application work.
+        self.assertFalse(_ac4_referenced(ANDROID))
+
+    def test_wasm_preset_no_longer_turns_ac4_off(self):
         presets = json.loads(PRESETS.read_text(encoding="utf-8"))
         wasm = next(p for p in presets["configurePresets"] if p["name"] == "wasm-emscripten")
-        self.assertEqual(wasm["cacheVariables"].get("AC3FORGE_BUILD_AC4"), "OFF")
+        self.assertNotEqual(wasm.get("cacheVariables", {}).get("AC3FORGE_BUILD_AC4"), "OFF")
 
-    def test_wheel_turns_ac4_off(self):
+    def test_wasm_links_ac4(self):
+        self.assertTrue(_ac4_referenced(WASM_CMAKE))
+
+    def test_wheel_turns_ac4_on(self):
         # The [tool.scikit-build.cmake.define] table, up to the next table: read as text, since
         # tomllib is newer than the Python 3.10 these scripts support.
         text = PYPROJECT.read_text(encoding="utf-8")
         header = r"^\[tool\.scikit-build\.cmake\.define\]\n"
         table = re.search(header + r"(.*?)(?=^\[)", text, re.M | re.S)
         self.assertIsNotNone(table)
-        self.assertRegex(table.group(1), r'(?m)^AC3FORGE_BUILD_AC4 = "OFF"$')
+        self.assertRegex(table.group(1), r'(?m)^AC3FORGE_BUILD_AC4 = "ON"$')
 
-    def test_none_of_them_links_ac4(self):
-        for path in LINKERS:
-            with self.subTest(path=path.relative_to(ROOT).as_posix()):
-                self.assertIsNone(re.search(r"\bac4::", path.read_text(encoding="utf-8")))
+    def test_python_links_ac4(self):
+        self.assertTrue(_ac4_referenced(PYTHON_CMAKE))
+
+    def test_minimal_esp32_presets_still_turn_ac4_off(self):
+        # D14's territory, untouched by this phase - minimal-decoder/minimal-encoder,
+        # not wasm-emscripten.
+        presets = json.loads(PRESETS.read_text(encoding="utf-8"))
+        for name in ("minimal-decoder", "minimal-encoder"):
+            with self.subTest(preset=name):
+                preset = next(p for p in presets["configurePresets"] if p["name"] == name)
+                self.assertEqual(preset["cacheVariables"].get("AC3FORGE_BUILD_AC4"), "OFF")
 
 
 if __name__ == "__main__":

@@ -395,6 +395,8 @@ c++ -std=c++23 packager.cpp $(pkg-config --cflags --libs ac4enc)
 
 `AC3FORGE_BUILD_AC4`, on by default, builds the AC-4 libraries. The vcpkg port and the Conan
 recipe install them where asked for, off by default: `vcpkg install ac3forge[ac4]`, or
-`-o "ac3forge/*:ac4=True"` (see [Using ac3::forge](index.md)). Android,
-WebAssembly, the Python wheel and the ESP-IDF component build without them until their bindings
-arrive (planning/ac4.md, phases I4 and D12).
+`-o "ac3forge/*:ac4=True"` (see [Using ac3::forge](index.md)). WebAssembly and the Python wheel
+now build the libraries and bind them (the C API, Python, Rust and WebAssembly bindings, phase
+I4 - see [C API](c-api.md#ac-4), [Python API](python-api.md#ac-4), [Rust API](rust-api.md#ac-4)
+and [WASM](../platforms/wasm.md#ac-4-module)); Android's own CMake wrapper builds them too but
+does not yet link them into the app. The ESP-IDF component builds without them until phase D14.

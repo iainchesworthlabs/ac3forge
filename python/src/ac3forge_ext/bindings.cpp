@@ -1712,10 +1712,12 @@ PYBIND11_MODULE(_ac3forge, m) {
         "containers.Mp4Track.codec_config wants. Empty for the legacy-core arrangement no "
         "box can describe.");
 
-    // The two optional submodules - see optional_modules.hpp. Each is its own
+    // The three optional submodules - see optional_modules.hpp. Each is its own
     // translation unit, picked by python/CMakeLists.txt from a {present,absent}
     // pair on exactly the condition that used to set a compile definition here.
     ac3::python::register_signing(m);
 
     ac3::python::register_containers(m);
+
+    ac3::python::register_ac4(m);
 }

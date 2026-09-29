@@ -32,6 +32,20 @@ pub enum Error {
     DecodeReservedValue,
     DecodeUnsupported,
     DecodeInvalidStream,
+    /// `ac4::DecodeError` (a syntax element ran past the end of its substream).
+    Ac4DecodeTruncated,
+    /// `ac4::DecodeError` (`ac4::parse_raw_frame` refused the table of contents).
+    Ac4DecodeInvalidToc,
+    /// `ac4::DecodeError` (a value the syntax cannot follow).
+    Ac4DecodeInvalidStream,
+    /// `ac4::DecodeError` (legal AC-4 this decoder does not read yet).
+    Ac4DecodeUnsupported,
+    /// `ac4::DecodeError` (a non-I-frame needs configuration no I-frame has sent).
+    Ac4DecodeMissingIFrame,
+    /// `ac4::EncodeError` (a configuration outside what the encoder writes).
+    Ac4EncodeInvalidConfig,
+    /// `ac4::EncodeError` (a channel count/length mismatch, or a non-finite sample).
+    Ac4EncodeInvalidInput,
     /// A raw `ac3forge_status_t` value this crate doesn't recognize. `ac3forge_status_message`
     /// still gives a human-readable string for it (`"unknown status"` for a value the C library
     /// itself doesn't recognize either — see `src/capi/src/common.cpp`'s own fallback), so
@@ -84,6 +98,27 @@ impl Error {
             s if s == ac3forge_status_AC3FORGE_ERROR_DECODE_INVALID_STREAM => {
                 Error::DecodeInvalidStream
             }
+            s if s == ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_TRUNCATED => {
+                Error::Ac4DecodeTruncated
+            }
+            s if s == ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC => {
+                Error::Ac4DecodeInvalidToc
+            }
+            s if s == ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM => {
+                Error::Ac4DecodeInvalidStream
+            }
+            s if s == ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED => {
+                Error::Ac4DecodeUnsupported
+            }
+            s if s == ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME => {
+                Error::Ac4DecodeMissingIFrame
+            }
+            s if s == ac3forge_status_AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG => {
+                Error::Ac4EncodeInvalidConfig
+            }
+            s if s == ac3forge_status_AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT => {
+                Error::Ac4EncodeInvalidInput
+            }
             // `as u32`, not a plain move: bindgen types C enums i32 on MSVC and u32 on the
             // Unix targets, so the raw discriminant's own type is platform-dependent - found
             // by this crate's first Windows build. The stored value is the same bit pattern
@@ -129,6 +164,19 @@ impl Error {
             Error::DecodeReservedValue => ac3forge_status_AC3FORGE_ERROR_DECODE_RESERVED_VALUE,
             Error::DecodeUnsupported => ac3forge_status_AC3FORGE_ERROR_DECODE_UNSUPPORTED,
             Error::DecodeInvalidStream => ac3forge_status_AC3FORGE_ERROR_DECODE_INVALID_STREAM,
+            Error::Ac4DecodeTruncated => ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_TRUNCATED,
+            Error::Ac4DecodeInvalidToc => ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC,
+            Error::Ac4DecodeInvalidStream => {
+                ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM
+            }
+            Error::Ac4DecodeUnsupported => ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED,
+            Error::Ac4DecodeMissingIFrame => {
+                ac3forge_status_AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME
+            }
+            Error::Ac4EncodeInvalidConfig => {
+                ac3forge_status_AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG
+            }
+            Error::Ac4EncodeInvalidInput => ac3forge_status_AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT,
             // The mirror of from_status's cast, same platform reasoning.
             #[allow(clippy::unnecessary_cast)]
             Error::Other(raw) => raw as _,
