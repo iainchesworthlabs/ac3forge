@@ -223,10 +223,18 @@ void print_unavailable_reasons(std::span<const CommandInfo> commands) {
 
 void print_stdio_topic() {
     fmt::println("");
-    fmt::println("'-' in place of <in.wav>, <in.raw>, <in.mkv|in.mp4|in.ts>, <in.ac3|in.ec3>,");
-    fmt::println("       <out.ac3>, <out.ec3> or <out.wav> means stdin (an input path) or");
-    fmt::println("       stdout (an output path) - encode, eac3-encode, atmos-encode,");
-    fmt::println("       strip-objects, decode, probe, unspdif and demux only. e.g.:");
+    fmt::println("'-' in place of an input or output path means stdin or stdout, and a '-'");
+    fmt::println("       output sends the run's report to stderr. As an input it reads a WAV for");
+    fmt::println("       encode, eac3-encode, ac4-encode, atmos-encode and atmos-cbi; IEC 61937");
+    fmt::println("       bursts for unspdif; an encoded stream or container for decode, probe,");
+    fmt::println("       qc, levels, loudness, transcode, metadata, normalize, cut, cat (one");
+    fmt::println("       input), strip-objects, spdif, mkv, mp4, ts, fmp4, demux and remux");
+    fmt::println("       (levels and loudness take no WAV on '-'). As an output it writes stdout");
+    fmt::println("       for encode, eac3-encode, ac4-encode, atmos-encode, atmos-cbi, atmos,");
+    fmt::println("       atmos-path, silence, sine, orbit, eac3-silence, eac3-sine, decode,");
+    fmt::println("       transcode (with codec=), metadata, normalize, cut, cat, strip-objects,");
+    fmt::println("       unspdif and demux. mkv, mp4, ts and spdif take '-' as the name of a");
+    fmt::println("       file to write, and remux refuses it. e.g.:");
     fmt::println("       ac3cli encode - - 448 couple < in.wav > out.ac3");
 }
 
@@ -739,8 +747,9 @@ void print_option_blocks(std::uint32_t mask) {
                      "<name>.partial.<ext>) instead of discarding them - off by default, matching the "
                      "GUI's own keep-partial-output preference");
         fmt::println("  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the "
-                     "default §7.9.4 fast path (identical streams to within ~1e-12 coefficient "
-                     "error; the direct form is the validation oracle) - applies wherever this "
+                     "default §7.9.4 fast path (coefficients within ~3e-12 max relative error of "
+                     "the direct form, so a stream differs only where that tips a quantisation "
+                     "decision; the direct form is the validation oracle) - applies wherever this "
                      "command encodes, incl. atmos/record/live/eac3-sine, AND wherever "
                      "decode/monitor/live reconstruct JOC objects under joc-domain=mdct (a "
                      "decode's only forward transform - PF8); eac3-encode alone has a [tools] "
@@ -1048,15 +1057,16 @@ void print_man_page(std::span<const CommandInfo> commands) {
     fmt::println(".TH AC3CLI 1 \"ac3forge {}\" \"ac3forge\" \"User Commands\"",
                  roff_escape(ac3::version_full));
     fmt::println(".SH NAME");
-    fmt::println("ac3cli \\- clean\\-room AC\\-3 / E\\-AC\\-3 (ATSC A/52) encoder, decoder and "
-                 "Atmos object tool");
+    fmt::println("ac3cli \\- clean\\-room AC\\-3 / E\\-AC\\-3 (ATSC A/52) and AC\\-4 (ETSI TS 103 190) "
+                 "encoder, decoder and Atmos object tool");
     fmt::println(".SH SYNOPSIS");
     fmt::println(".B ac3cli");
     fmt::println(".I command");
     fmt::println("[\\fIarguments\\fR]... [\\fIoption\\fR=\\fIvalue\\fR]...");
     fmt::println(".SH DESCRIPTION");
-    fmt::println("ac3cli encodes, decodes, wraps, measures and plays AC\\-3 and E\\-AC\\-3");
-    fmt::println("(Dolby Digital and Dolby Digital Plus, including the Atmos object layer).");
+    fmt::println("ac3cli encodes, decodes, wraps, measures and plays AC\\-3, E\\-AC\\-3 and AC\\-4");
+    fmt::println("(Dolby Digital, Dolby Digital Plus and AC\\-4, including E\\-AC\\-3's Atmos object");
+    fmt::println("layer and AC\\-4's object audio).");
     fmt::println("Positional arguments come first and options follow in any order; an option");
     fmt::println("is either a bare word or a");
     fmt::println(".IR key = value");
@@ -1065,13 +1075,22 @@ void print_man_page(std::span<const CommandInfo> commands) {
     fmt::println(".PP");
     fmt::println("A lone");
     fmt::println(".B \\-");
-    fmt::println("in place of an input or output path means standard input or standard output");
-    fmt::println("respectively, for");
-    fmt::println(".BR encode ,");
-    fmt::println(".BR eac3\\-encode ,");
-    fmt::println(".B atmos\\-encode");
-    fmt::println("and");
-    fmt::println(".BR decode .");
+    fmt::println("in place of an input or output path means standard input or standard output,");
+    fmt::println("and a");
+    fmt::println(".B \\-");
+    fmt::println("output sends the run's report to standard error. As an input it reads a WAV file");
+    fmt::println("for encode, eac3\\-encode, ac4\\-encode, atmos\\-encode and atmos\\-cbi, IEC 61937");
+    fmt::println("bursts for unspdif, and an encoded stream or container for decode, probe, qc,");
+    fmt::println("levels, loudness, transcode, metadata, normalize, cut, cat (one input),");
+    fmt::println("strip\\-objects, spdif, mkv, mp4, ts, fmp4, demux and remux; levels and loudness");
+    fmt::println("take no WAV file on");
+    fmt::println(".BR \\- .");
+    fmt::println("As an output it writes standard output for encode, eac3\\-encode, ac4\\-encode,");
+    fmt::println("atmos\\-encode, atmos\\-cbi, atmos, atmos\\-path, silence, sine, orbit,");
+    fmt::println("eac3\\-silence, eac3\\-sine, decode, transcode (with codec=), metadata, normalize,");
+    fmt::println("cut, cat, strip\\-objects, unspdif and demux. mkv, mp4, ts and spdif take");
+    fmt::println(".B \\-");
+    fmt::println("as the name of a file to write, and remux refuses it.");
     fmt::println(".SH COMMANDS");
     for (const auto& c : commands) {
         fmt::println(".TP");
