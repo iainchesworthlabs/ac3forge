@@ -28,11 +28,12 @@ concurrency:
   # cancels the pending one when a newer arrives, whatever cancel-in-progress
   # says (that only protects the running one). On 2026-09-29 four events arrived
   # within a minute and one main-health run was cancelled before it started; it
-  # could as easily have been the one reporting a failure. Two runs at once are
-  # harmless: the `verified` push only moves forward (a plain push, refused if
-  # it would not), and the script looks for an open main-red issue before it
-  # opens one. The attempt is in the key because a rerun of a CI run finishes
-  # again and is a new event for the same run.
+  # could as easily have been the one reporting a failure. CI runs on main one at
+  # a time (ci.yml's ci-main group), so two of these events are minutes apart in
+  # practice. If two did overlap, the `verified` push cannot go backwards (a plain
+  # push, refused unless it moves forward) and the worst case is two main-red
+  # issues. The attempt is in the key because a rerun of a CI run finishes again
+  # and is a new event for the same run.
   group: main-health-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
   cancel-in-progress: false
 
