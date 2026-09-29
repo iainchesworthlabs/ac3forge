@@ -149,9 +149,9 @@ TEST_CASE(
             if (tic) {
                 CHECK(out == QmfValue(1000.0, -500.0));
             } else if (sb == 40 || sb == 41) {
-                CHECK(std::abs(out - QmfValue(1000.0, -500.0)) < 1.0);
+                CHECK(abs(out - QmfValue(1000.0, -500.0)) < 1.0);
             } else {
-                CHECK(std::abs(out) < 1.0);
+                CHECK(abs(out) < 1.0);
             }
         }
     }
@@ -169,18 +169,18 @@ TEST_CASE("a sinusoid sits in its group's middle subband, a quarter turn further
     // subbands.
     const std::array<QmfValue, 4> unit = {QmfValue(1.0, 0.0), QmfValue(0.0, -1.0),
                                           QmfValue(-1.0, 0.0), QmfValue(0.0, 1.0)};
-    const double level = std::abs(channel.at(0, 43));
+    const double level = abs(channel.at(0, 43));
     REQUIRE(level > 1.0);
     for (int ts = 0; ts < kSlots; ++ts) {
         CAPTURE(ts);
-        CHECK(std::abs(channel.at(ts, 43) / level - unit[static_cast<std::size_t>((1 + ts) % 4)]) <
+        CHECK(abs(channel.at(ts, 43) / level - unit[static_cast<std::size_t>((1 + ts) % 4)]) <
               1e-3);
-        CHECK(std::abs(channel.at(ts, 42)) < 1e-3 * level);
-        CHECK(std::abs(channel.at(ts, 44)) < 1e-3 * level);
+        CHECK(abs(channel.at(ts, 42)) < 1e-3 * level);
+        CHECK(abs(channel.at(ts, 44)) < 1e-3 * level);
     }
     // The next interval goes on where this one stopped: index (31 + 1 + 1) % 4.
     decode_one(frame_for(config, false), data, channel);
-    CHECK(std::abs(channel.at(0, 43) / level - unit[1]) < 1e-3);
+    CHECK(abs(channel.at(0, 43) / level - unit[1]) < 1e-3);
 }
 
 TEST_CASE("the noise generator's index runs on from one interval into the next", "[ac4dec][aspx]") {
@@ -192,11 +192,11 @@ TEST_CASE("the noise generator's index runs on from one interval into the next",
     Channel channel;
     const auto check_frame = [&](int base) {
         const QmfValue level = channel.at(0, 36) / noise_entry(base + 1);
-        REQUIRE(std::abs(level) > 1.0);
+        REQUIRE(abs(level) > 1.0);
         for (int ts = 0; ts < kSlots; ++ts) {
             for (int sb = 0; sb < 20; ++sb) {
                 const QmfValue expected = level * noise_entry(base + 20 * ts + sb + 1);
-                CHECK(std::abs(channel.at(ts, 36 + sb) - expected) < 1e-9 * std::abs(level));
+                CHECK(abs(channel.at(ts, 36 + sb) - expected) < 1e-9 * abs(level));
             }
         }
     };
@@ -223,13 +223,13 @@ TEST_CASE("an interval past its frame's end reaches the output in the next frame
     // Slots 0 to 3 are the first interval's slots 32 to 35.
     for (int ts = 0; ts < 4; ++ts) {
         for (int sb = 0; sb < 20; ++sb) {
-            CHECK(std::abs(channel.at(ts, 36 + sb) - level * noise_entry(20 * (ts + 32) + sb + 1)) <
-                  1e-9 * std::abs(level));
+            CHECK(abs(channel.at(ts, 36 + sb) - level * noise_entry(20 * (ts + 32) + sb + 1)) <
+                  1e-9 * abs(level));
         }
     }
     // The second interval starts at QMF slot 4, one index past the first's last.
-    CHECK(std::abs(channel.at(4, 36) - level * noise_entry(20 * 35 + 19 + 1 + 1)) <
-          1e-9 * std::abs(level));
+    CHECK(abs(channel.at(4, 36) - level * noise_entry(20 * 35 + 19 + 1 + 1)) <
+          1e-9 * abs(level));
 }
 
 TEST_CASE("a balanced pair shares the sum's scale factors as the balance says", "[ac4dec][aspx]") {
@@ -260,7 +260,7 @@ TEST_CASE("a balanced pair shares the sum's scale factors as the balance says", 
         double e = 0.0;
         for (int ts = 0; ts < kSlots; ++ts) {
             for (int sb = 36; sb < 56; ++sb) {
-                e += std::norm(channel.at(ts, sb));
+                e += norm(channel.at(ts, sb));
             }
         }
         return e;

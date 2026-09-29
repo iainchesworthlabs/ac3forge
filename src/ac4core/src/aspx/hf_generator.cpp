@@ -76,7 +76,7 @@ void fit_cubic(std::span<const Real> y, std::span<Real> fitted) {
 }  // namespace
 
 template <typename Real>
-void preflattening_gains(std::span<const std::complex<Real>> q_low, int sbx, int ts_begin,
+void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int ts_begin,
                          int ts_end, std::span<Real> gain_vec) {
     const auto n = at(sbx);
     if (ts_end <= ts_begin || n == 0) {
@@ -90,7 +90,7 @@ void preflattening_gains(std::span<const std::complex<Real>> q_low, int sbx, int
     for (std::size_t sb = 0; sb < n; ++sb) {
         Real energy{};
         for (int ts = ts_begin; ts < ts_end; ++ts) {
-            energy += std::norm(q_low[at(ts) * kSubbands + sb]);
+            energy += norm(q_low[at(ts) * kSubbands + sb]);
         }
         energy /= static_cast<Real>(ts_end - ts_begin);
         pow_env[sb] = Real{10} * std::log10(energy + Real{1});
@@ -105,10 +105,10 @@ void preflattening_gains(std::span<const std::complex<Real>> q_low, int sbx, int
 }
 
 template <typename Real>
-void prediction_coefficients(std::span<const std::complex<Real>> q_low_ext, int num_ts_ext, int sba,
-                             std::span<std::complex<Real>> alpha0,
-                             std::span<std::complex<Real>> alpha1) {
-    using Complex = std::complex<Real>;
+void prediction_coefficients(std::span<const dsp::Complex<Real>> q_low_ext, int num_ts_ext, int sba,
+                             std::span<dsp::Complex<Real>> alpha0,
+                             std::span<dsp::Complex<Real>> alpha1) {
+    using Complex = dsp::Complex<Real>;
     // EPSILON_INV of Pseudocode 87.
     const Real regularise = Real{1} / (Real{1} + std::ldexp(Real{1}, -20));
     for (int sb = 0; sb < sba; ++sb) {
@@ -120,7 +120,7 @@ void prediction_coefficients(std::span<const std::complex<Real>> q_low_ext, int 
                 Complex sum{};
                 for (int ts = kTsOffsetHfadj; ts < num_ts_ext; ts += 2) {
                     sum += q_low_ext[at(ts - 2 * i) * kSubbands + at(sb)] *
-                           std::conj(q_low_ext[at(ts - 2 * j) * kSubbands + at(sb)]);
+                           conj(q_low_ext[at(ts - 2 * j) * kSubbands + at(sb)]);
                 }
                 cov[at(i)][at(j)] = sum;
             }
@@ -128,16 +128,16 @@ void prediction_coefficients(std::span<const std::complex<Real>> q_low_ext, int 
         // Pseudocode 87. alpha0 is -(cov01 + alpha1 conj(cov12)) / cov11, the
         // solution of the normal equations that give alpha1 as printed
         // (src/ac4dec/ERRATA.md, "alpha0's parentheses").
-        const Complex denom = cov[2][2] * cov[1][1] - std::norm(cov[1][2]) * regularise;
+        const Complex denom = cov[2][2] * cov[1][1] - norm(cov[1][2]) * regularise;
         Complex a1{};
         if (denom != Complex{}) {
             a1 = (cov[0][1] * cov[1][2] - cov[0][2] * cov[1][1]) / denom;
         }
         Complex a0{};
         if (cov[1][1] != Complex{}) {
-            a0 = -(cov[0][1] + a1 * std::conj(cov[1][2])) / cov[1][1];
+            a0 = -(cov[0][1] + a1 * conj(cov[1][2])) / cov[1][1];
         }
-        if (std::abs(a0) >= Real{4} || std::abs(a1) >= Real{4}) {
+        if (abs(a0) >= Real{4} || abs(a1) >= Real{4}) {
             a0 = Complex{};
             a1 = Complex{};
         }
@@ -149,8 +149,8 @@ void prediction_coefficients(std::span<const std::complex<Real>> q_low_ext, int 
 template <typename Real>
 void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
                         const HfGeneratorInput<Real>& in, HfGeneratorState<Real>& state,
-                        std::span<std::complex<Real>> q_high) {
-    using Complex = std::complex<Real>;
+                        std::span<dsp::Complex<Real>> q_high) {
+    using Complex = dsp::Complex<Real>;
     const int sbx = groups.sbx;
     const int sbz = groups.sbx + groups.num_sb_aspx;
     const int num_ts_ext = in.num_qmf_timeslots + in.ts_offset_hfgen + kTsOffsetHfadj;
@@ -220,13 +220,13 @@ void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
     }
 }
 
-template void generate_high_band<double>(const SubbandGroups&, const PatchTables&,
-                                         const HfGeneratorInput<double>&, HfGeneratorState<double>&,
-                                         std::span<std::complex<double>>);
-template void preflattening_gains<double>(std::span<const std::complex<double>>, int, int, int,
-                                          std::span<double>);
-template void prediction_coefficients<double>(std::span<const std::complex<double>>, int, int,
-                                              std::span<std::complex<double>>,
-                                              std::span<std::complex<double>>);
+template void generate_high_band<Real>(const SubbandGroups&, const PatchTables&,
+                                       const HfGeneratorInput<Real>&, HfGeneratorState<Real>&,
+                                       std::span<dsp::Complex<Real>>);
+template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int, int,
+                                        std::span<Real>);
+template void prediction_coefficients<Real>(std::span<const dsp::Complex<Real>>, int, int,
+                                            std::span<dsp::Complex<Real>>,
+                                            std::span<dsp::Complex<Real>>);
 
 }  // namespace ac4::detail::aspx

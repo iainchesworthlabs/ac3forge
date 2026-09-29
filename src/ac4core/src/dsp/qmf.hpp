@@ -1,9 +1,10 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <span>
 
+#include "ac4/detail/real.hpp"
+#include "dsp/complex.hpp"
 #include "dsp/fft.hpp"
 
 // The complex QMF analysis and synthesis banks of ETSI TS 103 190-1 V1.4.1
@@ -36,7 +37,7 @@ inline constexpr int kQmfWindowLength = 640;
 template <typename Real>
 class QmfAnalysis {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = Complex<Real>;
 
     QmfAnalysis();
 
@@ -59,7 +60,7 @@ class QmfAnalysis {
 template <typename Real>
 class QmfSynthesis {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = Complex<Real>;
 
     QmfSynthesis();
 
@@ -79,7 +80,7 @@ class QmfSynthesis {
     std::array<Complex, 128> work_{};
 };
 
-extern template class QmfAnalysis<double>;
-extern template class QmfSynthesis<double>;
+extern template class QmfAnalysis<Real>;
+extern template class QmfSynthesis<Real>;
 
 }  // namespace ac4::detail::dsp

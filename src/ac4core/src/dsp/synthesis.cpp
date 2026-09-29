@@ -32,8 +32,16 @@ TransformSet<Real>::TransformSet(int full_length, int rate_multiplier) : full_le
             break;
         }
         imdct_.push_back(std::move(imdct));
+        // kbd_left() computes the window in double (the Kaiser-Bessel Bessel
+        // function series wants the precision); narrowed to Real explicitly,
+        // once, here - the vector<double>-to-vector<Real> range constructor
+        // narrows implicitly per element, which -Wdouble-promotion's sibling
+        // warning (MSVC's C4244) rightly flags as an error on the float build.
         const std::vector<double> window = dsp::kbd_left(length, alpha);
-        windows_.emplace_back(window.begin(), window.end());
+        std::vector<Real> narrowed(window.size());
+        std::ranges::transform(window, narrowed.begin(),
+                               [](double w) { return static_cast<Real>(w); });
+        windows_.push_back(std::move(narrowed));
     }
     valid_ = !imdct_.empty();
 }
@@ -122,7 +130,7 @@ bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<con
     return true;
 }
 
-template class TransformSet<double>;
-template class ChannelSynthesis<double>;
+template class TransformSet<Real>;
+template class ChannelSynthesis<Real>;
 
 }  // namespace ac4::detail::dsp

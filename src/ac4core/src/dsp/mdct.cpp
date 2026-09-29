@@ -88,17 +88,17 @@ void Mdct<Real>::forward(std::span<const Real> in, std::span<Real> spectrum) {
     // conjugate), Pseudocode 61's inverse transform (the forward one) and
     // Pseudocode 60's twiddle and packing.
     for (std::size_t k = 0; k < half; ++k) {
-        z_[k] *= std::conj(twiddle_[k]);
+        z_[k] *= conj(twiddle_[k]);
     }
     fft_.forward(z_);
     for (std::size_t k = 0; k < half; ++k) {
-        const Complex u = z_[k] * std::conj(twiddle_[k]);
+        const Complex u = z_[k] * conj(twiddle_[k]);
         spectrum[n - 2 * k - 1] = u.real();
         spectrum[2 * k] = u.imag();
     }
 }
 
-template class Imdct<double>;
-template class Mdct<double>;
+template class Imdct<Real>;
+template class Mdct<Real>;
 
 }  // namespace ac4::detail::dsp

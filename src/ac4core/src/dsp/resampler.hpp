@@ -6,6 +6,8 @@
 #include <span>
 #include <vector>
 
+#include "ac4/detail/real.hpp"
+
 // The sample rate converter of ETSI TS 103 190-1 V1.4.1 clause 6.2.15, and the
 // same converter the other way round, which the encoder uses. At every
 // frame_rate_index but 13 a frame is coded at an internal rate (46 080 Hz for
@@ -101,6 +103,6 @@ class Resampler {
     std::vector<double> history_;
 };
 
-extern template class Resampler<double>;
+extern template class Resampler<Real>;
 
 }  // namespace ac4::detail::dsp

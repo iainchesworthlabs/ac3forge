@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <numbers>
 #include <utility>
 
@@ -70,7 +71,7 @@ void butterfly(int radix, const std::array<Complex, 5>& a, std::array<Complex, 5
                 Complex sum = a[0];
                 for (int i = 1; i < radix; ++i) {
                     const Complex w = roots[static_cast<std::size_t>((i * k) % radix)];
-                    sum += a[static_cast<std::size_t>(i)] * (inverse ? std::conj(w) : w);
+                    sum += a[static_cast<std::size_t>(i)] * (inverse ? conj(w) : w);
                 }
                 b[static_cast<std::size_t>(k)] = sum;
             }
@@ -133,7 +134,7 @@ void Fft<Real>::run(std::span<Complex> data, bool inverse) {
                 butterfly(stage.radix, a, b, inverse, roots3_, roots5_);
                 for (std::size_t k = 0; k < r; ++k) {
                     const Complex w = tw[p * r + k];
-                    y[q + s * (r * p + k)] = b[k] * (inverse ? std::conj(w) : w);
+                    y[q + s * (r * p + k)] = b[k] * (inverse ? conj(w) : w);
                 }
             }
         }
@@ -144,6 +145,6 @@ void Fft<Real>::run(std::span<Complex> data, bool inverse) {
     }
 }
 
-template class Fft<double>;
+template class Fft<Real>;
 
 }  // namespace ac4::detail::dsp

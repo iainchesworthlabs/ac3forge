@@ -1,12 +1,13 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <cstdint>
 #include <span>
 #include <vector>
 
+#include "ac4/detail/real.hpp"
 #include "acpl/acpl.hpp"
+#include "dsp/complex.hpp"
 
 // Advanced joint object coding's signal processing, ETSI TS 103 190-2 V1.3.1
 // clause 5.7: the parameter band mapping (5.7.3.1, Table 28), differential
@@ -90,7 +91,7 @@ struct FrameParameters {
 template <typename Real>
 class Reconstruction {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = dsp::Complex<Real>;
 
     Reconstruction();
 
@@ -156,6 +157,6 @@ class Reconstruction {
     std::vector<Real> h_m_;
 };
 
-extern template class Reconstruction<double>;
+extern template class Reconstruction<Real>;
 
 }  // namespace ac4::detail::ajoc

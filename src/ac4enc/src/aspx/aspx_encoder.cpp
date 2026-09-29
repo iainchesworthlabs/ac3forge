@@ -124,26 +124,26 @@ struct Residual {
         const QmfSample y = value(ts);
         const QmfSample u = value(ts - 2);
         const QmfSample v = value(ts - 4);
-        ruu += std::norm(u);
-        rvv += std::norm(v);
-        ruv += std::conj(u) * v;
-        ruy += std::conj(u) * y;
-        rvy += std::conj(v) * y;
-        energy += std::norm(y);
+        ruu += norm(u);
+        rvv += norm(v);
+        ruv += conj(u) * v;
+        ruy += conj(u) * y;
+        rvy += conj(v) * y;
+        energy += norm(y);
     }
     const double ridge = 1e-9 * (ruu + rvv) + 1e-30;
     const double a11 = ruu + ridge;
     const double a22 = rvv + ridge;
-    const double det = a11 * a22 - std::norm(ruv);
+    const double det = a11 * a22 - norm(ruv);
     QmfSample a{};
     QmfSample b{};
     if (det > 0.0) {
         a = -(a22 * ruy - ruv * rvy) / det;
-        b = -(a11 * rvy - std::conj(ruv) * ruy) / det;
+        b = -(a11 * rvy - conj(ruv) * ruy) / det;
     }
     double residual = 0.0;
     for (int ts = first; ts < last; ts += 2) {
-        residual += std::norm(value(ts) + a * value(ts - 2) + b * value(ts - 4));
+        residual += norm(value(ts) + a * value(ts - 2) + b * value(ts - 4));
     }
     return {.residual = std::min(residual, energy), .energy = energy};
 }
@@ -647,7 +647,7 @@ double AspxChannelEncoder::band_energy(std::span<const QmfSample> ext, int t) co
     for (int ts = per * t; ts < per * (t + 1); ++ts) {
         const std::size_t row = at(ts + aspx::kTsOffsetHfadj) * kSubbands;
         for (int sb = g.sbx; sb < g.sbx + g.num_sb_aspx; ++sb) {
-            energy += std::norm(ext[row + at(sb)]);
+            energy += norm(ext[row + at(sb)]);
         }
     }
     return energy;
@@ -904,7 +904,7 @@ std::vector<int> AspxChannelEncoder::signal_envelope(std::span<const QmfSample> 
         for (int ts = per * first; ts < per * last; ++ts) {
             const std::size_t row = at(ts + aspx::kTsOffsetHfadj) * kSubbands;
             for (int sb = lo; sb < hi; ++sb) {
-                per_subband[at(sb)] += std::norm(ext[row + at(sb)]);
+                per_subband[at(sb)] += norm(ext[row + at(sb)]);
             }
         }
         double energy = 0.0;

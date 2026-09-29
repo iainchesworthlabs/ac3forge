@@ -11,6 +11,7 @@
 #include "acpl/acpl.hpp"
 #include "acpl/acpl_syntax.hpp"
 #include "ajcc/ajcc_syntax.hpp"
+#include "dsp/complex.hpp"
 #include "dsp/qmf.hpp"
 #include "frame/timing.hpp"
 
@@ -147,7 +148,11 @@ class AcplEncoder {
     void drop_before_frame(long long frame);
 
    private:
-    using Slot = std::array<std::complex<double>, dsp::kQmfSubbands>;
+    // ac4core's own complex type: Slot crosses into dsp::QmfAnalysis<Real>
+    // (push_slot()), which takes it since D14a (planning/ac4.md). Spectrum
+    // is the encoder's own DFT bins, built from Slot's history but never
+    // itself passed to ac4core, so it keeps std::complex<double>.
+    using Slot = std::array<dsp::Complex<double>, dsp::kQmfSubbands>;
     // A channel's subbands over a frame's estimation window, each as its
     // DFT's bins (acpl_encoder.cpp, kBandCentreBin).
     using Spectrum = std::array<std::array<std::complex<double>, kAcplWindowSlots>, dsp::kQmfSubbands>;

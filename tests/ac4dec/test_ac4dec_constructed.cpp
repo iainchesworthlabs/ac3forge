@@ -146,12 +146,12 @@ double band_energy(std::span<const float> samples, std::size_t first, std::size_
     for (std::size_t n = 0; n < pcm.size(); ++n) {
         pcm[n] = static_cast<double>(samples[n]);
     }
-    std::vector<std::complex<double>> q(pcm.size());
+    std::vector<ac4::detail::dsp::Complex<double>> q(pcm.size());
     analysis.process(pcm, q);
     double sum = 0.0;
     for (std::size_t ts = 0; ts < slots; ++ts) {
         for (std::size_t sb = first; sb < last; ++sb) {
-            sum += std::norm(q[ts * 64 + sb]);
+            sum += norm(q[ts * 64 + sb]);
         }
     }
     return sum / static_cast<double>(slots * (last - first)) + 1e-30;

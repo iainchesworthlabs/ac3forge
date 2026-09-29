@@ -19,12 +19,20 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "acpl/acpl.hpp"
+#include "dsp/complex.hpp"
 
 namespace {
 
 namespace acpl = ac4::detail::acpl;
-using Complex = std::complex<double>;
+// ac4core's own complex type (dsp/complex.hpp), not std::complex: every
+// function under test takes this type since D14a (planning/ac4.md).
+using Complex = ac4::detail::dsp::Complex<double>;
 using Catch::Approx;
+
+// std::polar returns std::complex<double>, not this file's own Complex.
+[[nodiscard]] Complex polar(double magnitude, double angle) {
+    return {magnitude * std::cos(angle), magnitude * std::sin(angle)};
+}
 
 constexpr int kSubbands = acpl::kSubbands;
 
@@ -271,7 +279,7 @@ TEST_CASE("Each decorrelator's impulse response is its difference equation", "[a
                 const std::vector<Complex> got = run_decorrelator(decorrelator, subband, impulse, frame);
                 double error = 0.0;
                 for (std::size_t n = 0; n < kLength; ++n) {
-                    error = std::max(error, std::abs(got[n] - expected[n]));
+                    error = std::max(error, abs(got[n] - expected[n]));
                 }
                 INFO("D" << decorrelator << " subband " << subband << " frame " << frame);
                 CHECK(error < 1e-12);
@@ -281,7 +289,7 @@ TEST_CASE("Each decorrelator's impulse response is its difference equation", "[a
             for (int n = 0; n < delay; ++n) {
                 CHECK(expected[at(n)] == Complex{});
             }
-            CHECK(std::abs(expected[at(delay)]) > 0.0);
+            CHECK(abs(expected[at(delay)]) > 0.0);
         }
     }
     // A frame longer than any AC-4 frame (32 slots) is refused whole.
@@ -305,9 +313,9 @@ TEST_CASE("Each decorrelator is all-pass: its magnitude response is flat to 1e-9
                 const double w = std::numbers::pi * k / 96.0;
                 Complex response{};
                 for (std::size_t n = 0; n < kLength; ++n) {
-                    response += h[n] * std::polar(1.0, -w * static_cast<double>(n));
+                    response += h[n] * polar(1.0, -w * static_cast<double>(n));
                 }
-                worst = std::max(worst, std::abs(std::abs(response) - 1.0));
+                worst = std::max(worst, std::abs(abs(response) - 1.0));
             }
             INFO("D" << decorrelator << " region k" << region);
             CHECK(worst < 1e-9);
@@ -320,13 +328,13 @@ TEST_CASE("The transient ducker leaves steady signals and ducks a decaying one",
     std::vector<Complex> signal(at(kSlots) * kSubbands);
     SECTION("steady energy: every gain 1") {
         for (std::size_t i = 0; i < signal.size(); ++i) {
-            signal[i] = std::polar(0.3, 0.1 * static_cast<double>(i % kSubbands));
+            signal[i] = polar(0.3, 0.1 * static_cast<double>(i % kSubbands));
         }
         const std::vector<Complex> input = signal;
         acpl::TransientDucker<double> ducker;
         ducker.process(signal, kSlots);
         for (std::size_t i = 0; i < signal.size(); ++i) {
-            CHECK(std::abs(signal[i] - input[i]) < 1e-12);
+            CHECK(abs(signal[i] - input[i]) < 1e-12);
         }
     }
     SECTION("energy E at slot 0 and e after: Pseudocode 112 worked by hand") {
@@ -344,7 +352,7 @@ TEST_CASE("The transient ducker leaves steady signals and ducks a decaying one",
         acpl::TransientDucker<double> ducker;
         ducker.process(signal, kSlots);
         const auto gain = [&](std::size_t ts, std::size_t sb, double amplitude) {
-            return std::abs(signal[ts * kSubbands + sb]) / amplitude;
+            return abs(signal[ts * kSubbands + sb]) / amplitude;
         };
         const double alpha = 0.76592833836465;
         // Slot 0: the peak is the energy, so no difference and no ducking.

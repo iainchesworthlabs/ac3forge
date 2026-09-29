@@ -31,6 +31,7 @@ namespace {
 namespace detail = ac4::detail;
 using S = ac4::Speaker;
 using Row = std::vector<double>;
+using QmfValue = detail::QmfValue;
 
 double db(double decibels) {
     return std::pow(10.0, decibels / 20.0);
@@ -59,13 +60,12 @@ std::vector<Row> matrix_for(std::span<const S> speakers, bool add_ch_base,
                             bool mix_lfe = true) {
     detail::DownmixStage stage;
     stage.configure(speakers, add_ch_base, target, mix_lfe);
-    std::vector<std::vector<std::complex<double>>> channels(speakers.size(),
-                                                            std::vector<std::complex<double>>(64));
-    std::vector<std::vector<std::complex<double>>*> in;
+    std::vector<std::vector<QmfValue>> channels(speakers.size(), std::vector<QmfValue>(64));
+    std::vector<std::vector<QmfValue>*> in;
     for (auto& channel : channels) {
         in.push_back(&channel);
     }
-    std::vector<std::vector<std::complex<double>>> out;
+    std::vector<std::vector<QmfValue>> out;
     stage.process(values, in, out);
     return stage.matrix();
 }
@@ -272,13 +272,12 @@ TEST_CASE("the downmix's gains hold from the frame that sends them until another
           "[ac4dec][downmix]") {
     detail::DownmixStage stage;
     stage.configure(kFiveOne, false, ac4::DownmixTarget::kLoRo, true);
-    std::vector<std::vector<std::complex<double>>> channels(
-        6, std::vector<std::complex<double>>(64, {1.0, 0.0}));
-    std::vector<std::vector<std::complex<double>>*> in;
+    std::vector<std::vector<QmfValue>> channels(6, std::vector<QmfValue>(64, QmfValue{1.0, 0.0}));
+    std::vector<std::vector<QmfValue>*> in;
     for (auto& channel : channels) {
         in.push_back(&channel);
     }
-    std::vector<std::vector<std::complex<double>>> out;
+    std::vector<std::vector<QmfValue>> out;
     detail::DownmixValues sent;
     sent.coeff = coefficients(6, 7, 6, 7, std::nullopt, 1);  // C at -6 dB, no surrounds
     stage.process(sent, in, out);

@@ -1,11 +1,12 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <cstdint>
 #include <span>
 
+#include "ac4/detail/real.hpp"
 #include "aspx/frequency_tables.hpp"
+#include "dsp/complex.hpp"
 
 // A-SPX's high frequency generator: ETSI TS 103 190-1 V1.4.1 clause
 // 5.7.6.4.1, Pseudocodes 85 to 89. It patches subbands of the low band Q_low
@@ -41,11 +42,15 @@ struct HfGeneratorState {
     std::array<Real, kMaxSbgNoise> chirp_prev{};
 };
 
+// dsp::Complex<Real> here (not std::complex<Real>): a fixed-point type cannot
+// instantiate std::complex, and the QMF matrices these functions read and
+// write are ac4core's own complex type throughout (dsp/complex.hpp).
+
 template <typename Real>
 struct HfGeneratorInput {
     // Q_low_ext: num_qmf_timeslots + ts_offset_hfgen + kTsOffsetHfadj slots
     // of 64 subbands, [slot * 64 + subband]. Only subbands below sbx are read.
-    std::span<const std::complex<Real>> q_low_ext;
+    std::span<const dsp::Complex<Real>> q_low_ext;
     int num_qmf_timeslots = 0;
     int ts_offset_hfgen = 0;
     // The interval, in Q_low's slots: atsg_sig[0] * num_ts_in_ats up to
@@ -63,30 +68,30 @@ struct HfGeneratorInput {
 template <typename Real>
 void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
                         const HfGeneratorInput<Real>& in, HfGeneratorState<Real>& state,
-                        std::span<std::complex<Real>> q_high);
+                        std::span<dsp::Complex<Real>> q_high);
 
 // Pseudocode 85's gain vector, gain_vec[sb] for sb < sbx: 10^((mean - fit[sb]) / 20),
 // with fit the least squares cubic through the low band's energies in dB.
 // Exposed for its test.
 template <typename Real>
-void preflattening_gains(std::span<const std::complex<Real>> q_low, int sbx, int ts_begin,
+void preflattening_gains(std::span<const dsp::Complex<Real>> q_low, int sbx, int ts_begin,
                          int ts_end, std::span<Real> gain_vec);
 
 // Pseudocodes 86 and 87: alpha0[sb] and alpha1[sb] for sb < sba. Exposed for
 // its test.
 template <typename Real>
-void prediction_coefficients(std::span<const std::complex<Real>> q_low_ext, int num_ts_ext, int sba,
-                             std::span<std::complex<Real>> alpha0,
-                             std::span<std::complex<Real>> alpha1);
+void prediction_coefficients(std::span<const dsp::Complex<Real>> q_low_ext, int num_ts_ext, int sba,
+                             std::span<dsp::Complex<Real>> alpha0,
+                             std::span<dsp::Complex<Real>> alpha1);
 
-extern template void generate_high_band<double>(const SubbandGroups&, const PatchTables&,
-                                                const HfGeneratorInput<double>&,
-                                                HfGeneratorState<double>&,
-                                                std::span<std::complex<double>>);
-extern template void preflattening_gains<double>(std::span<const std::complex<double>>, int, int,
-                                                 int, std::span<double>);
-extern template void prediction_coefficients<double>(std::span<const std::complex<double>>, int,
-                                                     int, std::span<std::complex<double>>,
-                                                     std::span<std::complex<double>>);
+extern template void generate_high_band<Real>(const SubbandGroups&, const PatchTables&,
+                                              const HfGeneratorInput<Real>&,
+                                              HfGeneratorState<Real>&,
+                                              std::span<dsp::Complex<Real>>);
+extern template void preflattening_gains<Real>(std::span<const dsp::Complex<Real>>, int, int,
+                                               int, std::span<Real>);
+extern template void prediction_coefficients<Real>(std::span<const dsp::Complex<Real>>, int,
+                                                   int, std::span<dsp::Complex<Real>>,
+                                                   std::span<dsp::Complex<Real>>);
 
 }  // namespace ac4::detail::aspx

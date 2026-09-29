@@ -158,6 +158,6 @@ std::size_t Resampler<Real>::outputs_for(std::size_t count) const noexcept {
     return static_cast<std::size_t>(std::max<std::int64_t>(0, after - outputs_));
 }
 
-template class Resampler<double>;
+template class Resampler<Real>;
 
 }  // namespace ac4::detail::dsp

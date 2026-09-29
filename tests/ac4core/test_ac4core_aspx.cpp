@@ -19,11 +19,19 @@
 
 #include "aspx/frequency_tables.hpp"
 #include "aspx/hf_generator.hpp"
+#include "dsp/complex.hpp"
 
 namespace {
 
 namespace aspx = ac4::detail::aspx;
-using Complex = std::complex<double>;
+// ac4core's own complex type (dsp/complex.hpp), not std::complex: every
+// function under test takes this type since D14a (planning/ac4.md).
+using Complex = ac4::detail::dsp::Complex<double>;
+
+// std::polar returns std::complex<double>, not this file's own Complex.
+[[nodiscard]] Complex polar(double magnitude, double angle) {
+    return {magnitude * std::cos(angle), magnitude * std::sin(angle)};
+}
 
 template <std::size_t N>
 std::vector<int> first(const std::array<std::uint8_t, N>& table, int count) {
@@ -211,8 +219,8 @@ TEST_CASE("the linear prediction of Pseudocodes 86 and 87 finds a two-slot recur
     std::array<Complex, 64> alpha0{};
     std::array<Complex, 64> alpha1{};
     aspx::prediction_coefficients<double>(ext, kSlots, 8, alpha0, alpha1);
-    CHECK(std::abs(alpha0[5] - a0) < 1e-4);
-    CHECK(std::abs(alpha1[5] - a1) < 1e-4);
+    CHECK(abs(alpha0[5] - a0) < 1e-4);
+    CHECK(abs(alpha1[5] - a1) < 1e-4);
     // An empty subband predicts nothing.
     CHECK(alpha0[3] == Complex{});
     CHECK(alpha1[3] == Complex{});
@@ -229,7 +237,7 @@ TEST_CASE("pre-flattening flattens an envelope that is a cubic in dB exactly", "
     for (int ts = 0; ts < 38; ++ts) {
         for (int sb = 0; sb < kSbx; ++sb) {
             q_low[static_cast<std::size_t>(ts) * 64 + static_cast<std::size_t>(sb)] =
-                std::polar(std::sqrt(std::pow(10.0, p(sb) / 10.0) - 1.0), 0.1 * ts * sb);
+                polar(std::sqrt(std::pow(10.0, p(sb) / 10.0) - 1.0), 0.1 * ts * sb);
         }
     }
     double mean = 0.0;
@@ -305,7 +313,7 @@ TEST_CASE("pre-flattening patches a low band whose envelope is a cubic in dB fla
         mean += level(sb) / g.sbx;
         for (int ts = 0; ts < 42; ++ts) {
             ext[static_cast<std::size_t>(ts) * 64 + static_cast<std::size_t>(sb)] =
-                std::polar(std::sqrt(std::pow(10.0, level(sb) / 10.0) - 1.0), 0.1 * ts * sb);
+                polar(std::sqrt(std::pow(10.0, level(sb) / 10.0) - 1.0), 0.1 * ts * sb);
         }
     }
     std::vector<Complex> q_high(38 * 64);
@@ -324,7 +332,7 @@ TEST_CASE("pre-flattening patches a low band whose envelope is a cubic in dB fla
         CAPTURE(sb);
         double energy = 0.0;
         for (int ts = 0; ts < 32; ++ts) {
-            energy += std::norm(q_high[static_cast<std::size_t>(ts) * 64 + static_cast<std::size_t>(sb)]) / 32.0;
+            energy += norm(q_high[static_cast<std::size_t>(ts) * 64 + static_cast<std::size_t>(sb)]) / 32.0;
         }
         CHECK(std::abs(10.0 * std::log10(energy) - mean) < 1e-3);
     }

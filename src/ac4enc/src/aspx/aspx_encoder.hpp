@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <cstdint>
 #include <deque>
 #include <optional>
@@ -12,6 +11,7 @@
 #include "aspx/aspx_syntax.hpp"
 #include "aspx/frequency_tables.hpp"
 #include "aspx/hf_generator.hpp"
+#include "dsp/complex.hpp"
 #include "dsp/qmf.hpp"
 #include "frame/timing.hpp"
 
@@ -40,7 +40,9 @@
 
 namespace ac4::detail {
 
-using QmfSample = std::complex<double>;
+// ac4core's own complex type: see pcm/aspx.hpp's QmfValue, the decoder's
+// identical seam.
+using QmfSample = dsp::Complex<double>;
 
 // At frame_rate_index 13: num_qmf_timeslots and num_aspx_timeslots, the
 // analysis bank's lead on the signal (d_pcm), and the lag of the compressed

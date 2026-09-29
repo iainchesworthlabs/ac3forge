@@ -22,6 +22,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "dsp/complex.hpp"
 #include "dsp/fft.hpp"
 #include "dsp/kbd.hpp"
 #include "dsp/mdct.hpp"
@@ -32,7 +33,9 @@
 namespace {
 
 namespace dsp = ac4::detail::dsp;
-using Complex = std::complex<double>;
+// ac4core's own complex type (dsp/complex.hpp), not std::complex: every
+// function under test takes this type since D14a (planning/ac4.md).
+using Complex = dsp::Complex<double>;
 
 // Every transform length of clause 5.5.3: the fifteen at 44.1 and 48 kHz, and
 // the ones only 96 and 192 kHz add.
@@ -218,8 +221,8 @@ TEST_CASE("the FFT equals the DFT at every 2, 3 and 5 smooth length it is given"
             double error = 0.0;
             double scale = 0.0;
             for (std::size_t k = 0; k < n; ++k) {
-                error = std::max(error, std::abs(fast[k] - slow[k]));
-                scale = std::max(scale, std::abs(slow[k]));
+                error = std::max(error, abs(fast[k] - slow[k]));
+                scale = std::max(scale, abs(slow[k]));
             }
             CHECK(error <= 1e-12 * scale);
         }
@@ -567,9 +570,10 @@ std::vector<Complex> qmf_analysis_as_printed(std::span<const double> pcm) {
         }
         for (std::size_t sb = 0; sb < 64; ++sb) {
             const double f = (std::numbers::pi / 128.0) * (static_cast<double>(sb) + 0.5);
-            Complex value = u[0] * std::exp(Complex(0.0, f * -1.0));
+            Complex value = u[0] * Complex(std::cos(f * -1.0), std::sin(f * -1.0));
             for (std::size_t n = 1; n < 128; ++n) {
-                value += u[n] * std::exp(Complex(0.0, f * (2.0 * static_cast<double>(n) - 1.0)));
+                const double angle = f * (2.0 * static_cast<double>(n) - 1.0);
+                value += u[n] * Complex(std::cos(angle), std::sin(angle));
             }
             q.push_back(value);
         }
@@ -588,10 +592,10 @@ std::vector<double> qmf_synthesis_as_printed(std::span<const Complex> q) {
         for (std::size_t n = 0; n < 128; ++n) {
             const double m = 2.0 * static_cast<double>(n) - 255.0;
             const double f0 = (std::numbers::pi / 128.0) * 0.5;
-            qsyn_filt[n] = (q[ts * 64] / 64.0 * std::exp(Complex(0.0, f0 * m))).real();
+            qsyn_filt[n] = (q[ts * 64] / 64.0 * Complex(std::cos(f0 * m), std::sin(f0 * m))).real();
             for (std::size_t sb = 1; sb < 64; ++sb) {
                 const double f = (std::numbers::pi / 128.0) * (static_cast<double>(sb) + 0.5);
-                qsyn_filt[n] += (q[ts * 64 + sb] / 64.0 * std::exp(Complex(0.0, f * m))).real();
+                qsyn_filt[n] += (q[ts * 64 + sb] / 64.0 * Complex(std::cos(f * m), std::sin(f * m))).real();
             }
         }
         std::array<double, 640> g{};
@@ -619,7 +623,7 @@ std::vector<double> qmf_synthesis_as_printed(std::span<const Complex> q) {
 double max_abs(std::span<const Complex> values) {
     double peak = 0.0;
     for (const Complex& v : values) {
-        peak = std::max(peak, std::abs(v));
+        peak = std::max(peak, abs(v));
     }
     return peak;
 }
@@ -638,7 +642,7 @@ TEST_CASE("the QMF analysis equals Pseudocode 65 as printed", "[ac4core][dsp][qm
     REQUIRE(printed.size() == fast.size());
     double error = 0.0;
     for (std::size_t i = 0; i < fast.size(); ++i) {
-        error = std::max(error, std::abs(fast[i] - printed[i]));
+        error = std::max(error, abs(fast[i] - printed[i]));
     }
     CHECK(error <= 1e-12 * max_abs(printed));
 }
