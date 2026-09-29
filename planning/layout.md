@@ -367,8 +367,8 @@ are larger. Keep merge commits, and list each rewrite commit in `.git-blame-igno
 it (GitHub's blame view reads that file).
 
 **Freeze.** About 26 merges a day reach `main` on average (`docs/ci-agentic.md`); the nine days to
-2026-09-29 ran from 2 to 150 a day, so the freeze starts after the current wave of AC-4 phase branches
-has merged. The freeze holds S2, S3, S4, N1A and S5, an estimate of two to three days: each stage's full
+2026-09-29 ran from 1 to 86 pull requests merged a day (UTC dates), so the freeze starts after the
+wave of AC-4 phase branches has merged, which it has. The freeze holds S2, S3, S4, N1A and S5, an estimate of two to three days: each stage's full
 matrix takes hours on the runner fleet, and the stages are sequential. Seven days out: announce, and
 label every open pull request `n1b-wait` (it merges after the freeze and adapts) or `n1b-first` (it
 merges before). Three days out: those that can merge do. At T-0 the queue is empty and only these pull
