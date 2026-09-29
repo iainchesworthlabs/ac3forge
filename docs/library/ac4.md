@@ -16,7 +16,9 @@ streams of several presentations, the one a system chooses decoded with all of i
 mixed; the output level and dynamic range control, dialogue enhancement and the downmix; and it
 conceals a frame that does not decode when asked to. It refuses, per substream and per frame, with
 `DecodeError::kUnsupported` and a reason: the speech spectral frontend, the 9.X.4 and 22.2
-channel elements, and output at 96 or 192 kHz. [Development status](development-status.md)
+channel elements, the efficient high frame rate mode (a presentation whose `frame_rate_fraction`
+is 2 or 4 spreads one frame over several `raw_ac4_frame()`s, and the decoder keeps no partial
+frames), and output at 96 or 192 kHz. [Development status](development-status.md)
 has the detail, feature by feature, and [Validation](../verification.md#ac-4) says how each part
 is checked.
 
@@ -112,8 +114,8 @@ reference has to outlive the decoder. The records are described under
 [Validation](../verification.md#the-decoders-syntax).
 
 `ac3cli decode` spells each control as an option (`output-level=`, `drcmode=`, `headphones`,
-`dialogue-enhancement=`, `channels=`, `downmix=`, `mix-lfe=`, `dialogue-gain=`,
-`associated-gain=`, `md-compat=`, `conceal=`); see
+`dialogue-enhancement=`, `channels=`, `downmix=`, `speakers=`, `mix-lfe=`, `dialogue-gain=`,
+`associated-gain=`, `md-compat=`, `decoding=`, `conceal=`); see
 [Commands](../forge/cli/commands.md#the-output-stage-channels-downmix-drcmode).
 
 ## Choosing a presentation
@@ -137,7 +139,8 @@ Of the presentations this decoder can decode, the stream has not disabled and wh
 within the decoder's level, the one that meets the choice is decoded, the first in the table of
 contents among equals. `ac4::select_presentation(toc, choice, level)` makes the same choice from a
 table of contents alone. Where the text leaves the choice open, `src/ac4dec/ERRATA.md` records the
-reading taken.
+reading taken. `ac3cli decode` takes the choice as `presentation=` (the position),
+`presentation-id=`, `language=`, `associated=` and `headphones`.
 
 ## What the decoder reports
 
@@ -202,10 +205,12 @@ without them. Width, divergence, zones and the screen factor are not rendered.
 
 ## Encoding a stream
 
-`ac4::Encoder` writes mono, stereo, 5.0 and 5.1 (and, as experimental options, 7.0, 7.1 and 3.0)
-at 48 kHz at every frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples, in the
-SIMPLE, ASPX and A-CPL codec modes, at a constant, average or variable rate. It takes planar
-samples at full scale 1.0, in the order the decoder writes them, and returns raw AC-4 frames:
+`ac4::Encoder` writes mono, stereo, 5.0 and 5.1, and 5.0.4 and 5.1.4 in Part 2's immersive element
+(and, as experimental options, 7.0, 7.1, 7.0.4, 7.1.4 and a 3.0 dialogue substream), at 48 kHz at
+every frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples, in the SIMPLE, ASPX
+and A-CPL codec modes and, in the immersive layouts, S-CPL and A-SPX with S-CPL, at a constant,
+average or variable rate. It takes planar samples at full scale 1.0, in the order the decoder
+writes them, and returns raw AC-4 frames:
 
 ```cpp
 ac4::EncoderConfig config{
@@ -240,14 +245,14 @@ rate its frames cannot hold, a presentation of the wrong number of substreams, a
 
 | `EncoderConfig` field | What it sets | Default |
 |---|---|---|
-| `channels`, `sample_rate_hz` | 1, 2, 5 or 6 channels (7 or 8 with `experimental.seven_x`); 48 000 or 44 100 Hz | 2, 48 000 |
+| `channels`, `sample_rate_hz` | 1, 2, 5 or 6 channels; 9 or 10 (5.0.4 and 5.1.4); 7 or 8 with `experimental.seven_x`, and 11 or 12 with `experimental.back_pair`; 48 000 or 44 100 Hz | 2, 48 000 |
 | `frame_rate_index`, `bitrate_kbps`, `rate_mode` | Part 1 Table 83's frame rate; the rate over whole frames, 8 to 3 000 kbps; `kConstant`, `kAverage` (within the decoder's buffer, Part 1 clause 6.2.4) or `kVariable` | 13, 192, `kConstant` |
-| `codec_mode` | `kAuto` (the rate's choice, as DEE's streams make it), `kSimple`, `kAspx`, or an A-CPL mode | `kAuto` |
+| `codec_mode` | `kAuto` (the rate's choice, as DEE's streams make it), `kSimple`, `kAspx`, an A-CPL mode, and in the immersive layouts `kScpl`, `kAspxScpl` and, behind `experimental.ajcc`, `kAspxAjcc` | `kAuto` |
 | `iframe_interval`, `iframes`, `fragment_starts` | An I-frame every so many frames, at named frames, and where a container's fragments start, which an MP4 lists as its sync samples | 24 |
 | `dialnorm_db`, `loudness` | The dialogue level, 0 to -31.75 dBFS, and Part 1's further loudness values | -31, none |
 | `drc`, `downmix`, `dialogue` | The DRC decoder modes on their profiles, the stereo downmix's values, and dialogue enhancement from marked channels or a stem | none |
 | `substreams`, `presentations` | Several substreams and the presentations of Part 2 Table 53 made of them (below) | one of each |
-| `trace`, `experimental` | A record of every syntax element written; the tools and layouts no reader outside this project has checked yet | none |
+| `trace`, `experimental` | A record of every syntax element written; the tools and layouts that no reader outside this project has been checked against | none |
 
 A frame comes out when the input it needs has arrived: `encode()` returns the frames each call
 completes, and `flush()` pads the input with silence to the end of its last frame and returns the
@@ -285,8 +290,9 @@ encoder refuses there, and why, is in the header and `src/ac4enc/ERRATA.md`.
 
 With `experimental.objects`, a substream codes objects in place of channels: each object's PCM, one
 input channel each, and its metadata over time in the `ObjectProperties` the decoder reports
-(`ac4/ac4.hpp`). The applications convert ADM BWF, IAB and object scenes into these; the library reads
-no scene format.
+(`ac4/ac4.hpp`). The applications convert object scenes, ADM BWF and IAB masters into these
+(`ac3cli atmos-encode`, `atmos-adm` and `atmos-iab` with `codec=ac4`, and the Forge GUI's encoder
+page, through `apps/common/ac4_objects_core.hpp`); the library reads no scene format.
 
 ```cpp
 ac4::EncoderConfig config{.bitrate_kbps = 256};
@@ -337,8 +343,11 @@ keeps TS 103 190-2 Annex H.1.2's rules, which `ac4::cmaf_refusal()` checks: a pr
 configuration 6, EMDF payloads alone, has no field for the `presentation_id` each presentation of
 a CMAF track carries.
 
-`ac3cli ac4-encode` spells each setting as an option, raw or MP4 by the output's name: see
-[Commands](../forge/cli/commands.md#ac4-encode).
+MPEG-TS carries AC-4 under the DVB profile only, and Matroska registers no codec ID for it, so
+`ac3cli mkv` refuses an AC-4 stream. `ac3cli ac4-encode` spells each setting as an option, raw or
+MP4 by the output's name: see [Commands](../forge/cli/commands.md#ac4-encode); `ac3cli mp4`, `ts`
+and `fmp4` package a stream that already exists, and [Muxing & sinks](muxing-and-sinks.md#muxing-mp4mux)
+has the library's side.
 
 ## The inspector
 
@@ -369,6 +378,16 @@ probe:
   b)` names the Annex H.1.2.4 parameter in which two tables of contents differ, empty where every
   sample of a CMAF track may carry both. `src/ac4enc/ERRATA.md` ("Manifests and CMAF tracks") has
   the readings these take.
+
+## Errors
+
+Nothing throws for a stream or a configuration. `ac4::Error` (`kTruncated`, `kLostSync`,
+`kUnsupportedBitstreamVersion`) is the inspector's, `ac4::DecodeError` (`kTruncated`, `kInvalidToc`,
+`kInvalidStream`, `kUnsupported`, `kMissingIFrame`) the decoder's and `ac4::EncodeError`
+(`kInvalidConfig`, `kInvalidInput`) the encoder's, each an `std::expected` error with a
+`describe()` overload. `ac4::DecodeError` is a different type from `ac3::DecodeError`, and the
+namespace tells them apart. A decoder or an encoder that refuses says why in words through
+`Decoder::refusal_reason()` and `Encoder::refusal_reason()`.
 
 ## Linking
 
@@ -402,9 +421,10 @@ c++ -std=c++23 packager.cpp $(pkg-config --cflags --libs ac4enc)
 
 `AC3FORGE_BUILD_AC4`, on by default, builds the AC-4 libraries. The vcpkg port and the Conan
 recipe install them where asked for, off by default: `vcpkg install ac3forge[ac4]`, or
-`-o "ac3forge/*:ac4=True"` (see [Using ac3::forge](index.md)). WebAssembly and the Python wheel
-now build the libraries and bind them (the C API, Python, Rust and WebAssembly bindings, phase
-I4, with the object encoder in each from phase I4b - see [C API](c-api.md#ac-4), [Python
-API](python-api.md#ac-4), [Rust API](rust-api.md#ac-4) and [WASM](../platforms/wasm.md#ac-4-module));
-Android's own CMake wrapper builds them too but does not yet link them into the app. The ESP-IDF
-component builds without them until phase D14.
+`-o "ac3forge/*:ac4=True"` (see [Using ac3::forge](index.md)). The C API, Python, Rust and
+WebAssembly bindings wrap the decoder and the encoder, the object encoder included ([C
+API](c-api.md#ac-4), [Python API](python-api.md#ac-4), [Rust API](rust-api.md#ac-4) and
+[WebAssembly](../platforms/wasm.md#ac-4-module)). Android's CMake build compiles the libraries and
+links them into nothing in the app. The ESP-IDF component builds the inspector, core and decoder
+behind `CONFIG_AC3FORGE_AC4`, off by default and offered on parts with a floating-point unit, in
+single precision, and never the encoder ([ESP32-P4](../platforms/bare-metal/esp32-p4.md#ac-4)).

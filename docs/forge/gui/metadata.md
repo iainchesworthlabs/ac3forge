@@ -5,7 +5,9 @@ Expert tier only — Advanced folds the Loudness half of this onto the
 at their defaults. Guided has no separate Loudness step of its own; instead it applies its own
 [loudness contract](index.md#the-loudness-contract) automatically, unless the fields here have
 already been edited by hand. Downmix, Heavy compression, Mixing metadata and Service and
-production are Expert-only in every tier.
+production are Expert-only in every tier. With AC-4 chosen as the codec this tab is not shown: the
+[AC-4 tab](format-and-channels.md#ac-4) takes its place and carries AC-4's own dialnorm, DRC
+profile, stereo downmix and dialogue enhancement settings.
 
 ![Metadata tab: Loudness, Downmix, Heavy compression, Mixing metadata, Service and production](screenshots/metadata-tab.png)
 
