@@ -635,10 +635,10 @@ TEST_CASE("a sweep above the crossover keeps the source's energy in every band a
     // 256) the low band holds nothing for the patch to copy, and a patch without energy delivers
     // none of the envelope's (Part 1 Pseudocode 95's epsilon of 1 under its energy). Only the noise
     // floors, and the sinusoids a steady tone earns, bring the band back: before the encoder sent
-    // them for a group its patch could not fill, the bands above 16.5 kHz came back 20 to 60 dB
-    // under the source's, in every layout. Each band's energy over the whole sweep is held to 6 dB
-    // of the source's, which the noise the floors send is well within (the rest, the envelopes'
-    // 1.5 and 3 dB steps and the frames' smearing of a moving tone).
+    // them for a group its patch could not fill, the bands above 16.5 kHz came back 6 to 13 dB
+    // under the source's here. Each band's energy over the whole sweep is held to 6 dB of the
+    // source's; with the floors it comes back 2 to 4 dB under (the envelopes' 1.5 and 3 dB steps,
+    // the limiter and the frames' smearing of a moving tone cost that).
     struct Layout {
         int channels;
         int kbps;

@@ -2181,7 +2181,9 @@ band, three fifths of it below 16.5 kHz. What the decoder does with a group expl
 and 95): its noise is Q / (1 + Q) of the envelope whatever the patch holds, and its patch gain divides by
 1 plus the patch's own energy, so a patch with nothing in it delivers nothing of the envelope. A sweep
 above the crossover has nothing in the low band to copy. The two streams' A-SPX configurations are the
-same (start, stop and master scale, noise groups, interpolation, pre-flattening, limiter), and frame by
+same (start, stop and master scale, noise groups, interpolation, pre-flattening, limiter), so are the
+framing class (FIXFIX), the high frequency resolution of every envelope, the quantisation step (1.5 dB in
+a frame of one envelope, 3 dB in two) and the delta direction (along time but in I-frames), and frame by
 frame on the 5.1.4 sweep at 256 kbps (`tools/references/ac4_syntax.py`'s reader, on DEE's streams as
 output only) what differs is these: DEE's noise floors are `qscf_noise` 7 to 17, 2^-1 to 2^-11, and this
 encoder's 29, the least, in 95 to 99 % of its values (on music DEE's are 7 in nine of ten, this
