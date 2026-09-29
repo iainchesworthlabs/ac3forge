@@ -16,16 +16,8 @@
 # (docs/platforms/bare-metal/esp32-p4.md, AC-4).
 CONFIG_AC3FORGE_AC4=y
 
-# The decode task's stack: today's decoder uses about 50 KB of it (the parser holds a
-# stream's element tables as locals), and at the default 32 KB the first play of a
-# stream ends in a stack overflow. stream.decode_stack_free says what a play left.
-CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES=65536
-
-# Allocations over 512 bytes go to PSRAM first. ESP-IDF's default of 16 KB sends
-# everything up to that size to internal RAM while any is left, and the decoder's many
-# blocks of that size use it all. On an ESP32-P4 the AC-4 decoder took 1.0 to 1.9 times
-# less time a frame with this setting (2.0 in SIMPLE mode 36.8 ms to 31.6, 5.1 150.8 ms
-# to 82.2), and the AC-3 and E-AC-3 decoders 1.2 to 1.7 times more, which leaves them
-# well inside real time. A setting of none at all measured as 512 bytes does
-# (docs/platforms/bare-metal/esp32-p4.md, AC-4).
-CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512
+# The decode task's stack: the decoder used about 50 KB of it before D14a's third part
+# (the parser held a stream's element tables as locals) and uses 20 to 24 KB now, so
+# the example's default of 32 KB leaves under 10 KB in the widest mode and this takes
+# 40 KB. stream.decode_stack_free says what a play left.
+CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES=40960

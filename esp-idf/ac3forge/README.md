@@ -78,9 +78,8 @@ the component's own CMake finds the library either way.
 floating-point unit) builds the AC-4 inspector, core and decoder into the component, in single
 precision, and lets the player read a stream that opens with an AC-4 sync word: the same ring,
 renderer and sinks, and `ac4::SyncFrameSplitter` and `ac4::Decoder` in place of the AC-3 and
-E-AC-3 framer and decoders. With it off the component builds as it always did. It needs PSRAM, a
-decode task with a stack of about 50 KB and, to be fastest, `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
-small (the example's `sdkconfig.ac4` sets 512 bytes); the
+E-AC-3 framer and decoders. With it off the component builds as it always did. It needs PSRAM and
+a decode task with a stack of about 24 KB; the
 [ESP32-P4 page](../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of each kind
 held and how fast it decoded on a board. A component archive carries the AC-4 sources only when it
 was packed with `pack_esp_component.py --with-ac4`.

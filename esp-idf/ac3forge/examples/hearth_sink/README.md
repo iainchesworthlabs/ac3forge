@@ -1075,11 +1075,8 @@ each kind takes.
 idf.py -DIDF_TARGET=esp32p4   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4"   -DAC3FORGE_STAGE_TIMERS=ON build
 ```
 
-The decode task needs 64 KB of stack, which `sdkconfig.ac4` sets: today's decoder uses about 50 KB
-of it. `sdkconfig.ac4` also sends allocations over 512 bytes to PSRAM first
-(`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`): under ESP-IDF's default of 16 KB the decoder took up to 1.9 times
-longer, and the AC-3 and E-AC-3 decoders take 1.2 to 1.7 times longer under this setting, which leaves them
-well inside real time. A play ends with the lines the page's figures come from: `ac4.lap` (frames, samples, the
+The decode task needs 40 KB of stack, which `sdkconfig.ac4` sets: today's decoder uses 20 to 24 KB
+of it. A play ends with the lines the page's figures come from: `ac4.lap` (frames, samples, the
 decoder's time, the worst frame's and the PCM hash), `ac4.heap` (what the play took of internal
 RAM and PSRAM) and, with `AC3FORGE_STAGE_TIMERS=ON`, a `play.stage[...]` line for each part of the
 decode. `AC3FORGE_EXAMPLE_AC4_CORE` selects core decoding and `AC3FORGE_EXAMPLE_AC4_PCM_HASH` the
