@@ -19,7 +19,8 @@ STAGED_TREES below for what that means and where it stops.
 
     python tools/packaging/pack_esp_component.py --version 0.10.0-beta.1
     python tools/packaging/pack_esp_component.py --version 0.10.0-beta.1 --verify
-    python tools/packaging/pack_esp_component.py --version 0.10.0-beta.1 --with-ac4 --verify
+    python tools/packaging/pack_esp_component.py --version 0.10.0-beta.1 --with-ac4 --verify \
+        --verify-targets esp32p4
 
 --verify configures and builds a throwaway ESP-IDF project against the packed
 archive, which is the only check that actually establishes the thing this script
@@ -166,7 +167,7 @@ def describe(archive: pathlib.Path) -> tuple[int, int]:
     return len(names), len(sources)
 
 
-def verify(archive: pathlib.Path, with_ac4: bool = False) -> None:
+def verify(archive: pathlib.Path, with_ac4: bool = False, targets: list[str] | None = None) -> None:
     """Build a throwaway project against the archive.
 
     The only check that establishes self-containment. Everything else - entry
@@ -177,6 +178,9 @@ def verify(archive: pathlib.Path, with_ac4: bool = False) -> None:
     the throwaway application constructs one and calls it, for the reason the
     AC-3 decoder is called: an archive whose AC-4 headers or archives were left
     out would still link an application that never named them.
+
+    `targets` narrows the parts built to some of the manifest's, for a run that
+    only asks whether one option builds and does not need the rest.
     """
     if "IDF_PATH" not in os.environ:
         raise SystemExit("--verify needs an exported ESP-IDF environment (IDF_PATH is unset)")
@@ -216,7 +220,7 @@ def verify(archive: pathlib.Path, with_ac4: bool = False) -> None:
         # (planning/arithmetic-tiers.md), so a package that links for one can
         # still fail to configure for the other. The manifest's own list is
         # the source - adding a target there is what adds it here.
-        for target in manifest_targets():
+        for target in targets or manifest_targets():
             # AC-4 only where the component offers it: a part with a
             # floating-point unit, which is the S3 and the P4 among these.
             ac4_here = with_ac4 and target_has_fpu(target)
@@ -320,6 +324,12 @@ def main() -> int:
         help="build a throwaway IDF project against the packed archive",
     )
     parser.add_argument(
+        "--verify-targets",
+        default="",
+        help="with --verify: build only these of the manifest's targets, comma-separated "
+        "(default: every one)",
+    )
+    parser.add_argument(
         "--with-ac4",
         action="store_true",
         help="also stage the AC-4 inspector, core and decoder, for CONFIG_AC3FORGE_AC4 "
@@ -350,7 +360,11 @@ def main() -> int:
             "See this script's own docstring."
         )
     if args.verify:
-        verify(final, args.with_ac4)
+        wanted = [t for t in args.verify_targets.split(",") if t]
+        unknown = [t for t in wanted if t not in manifest_targets()]
+        if unknown:
+            raise SystemExit(f"--verify-targets names {unknown}, not in the manifest's {manifest_targets()}")
+        verify(final, args.with_ac4, wanted or None)
         print("  verified: a throwaway IDF project builds against it")
     return 0
 
