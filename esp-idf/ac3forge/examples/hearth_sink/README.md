@@ -1063,6 +1063,27 @@ least 43,884 bytes of internal heap were free. Firmware from before
 2026-09-16 fails both: the first board aborts in the join Improv asked for,
 and the second restarts in a loop.
 
+## AC-4
+
+`sdkconfig.ac4` builds the component's AC-4 decoder into the example (`CONFIG_AC3FORGE_AC4`,
+offered only on a part with a floating-point unit, and in practice one with PSRAM). A stream
+that opens with an AC-4 sync word then plays as an AC-3 or E-AC-3 one does, from any source.
+[The ESP32-P4 page](../../../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of
+each kind takes.
+
+```bash
+idf.py -DIDF_TARGET=esp32p4   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4"   -DAC3FORGE_STAGE_TIMERS=ON build
+```
+
+The decode task needs 64 KB of stack, which `sdkconfig.ac4` sets: today's decoder uses about 50 KB
+of it. A play ends with the lines the page's figures come from: `ac4.lap` (frames, samples, the
+decoder's time, the worst frame's and the PCM hash), `ac4.heap` (what the play took of internal
+RAM and PSRAM) and, with `AC3FORGE_STAGE_TIMERS=ON`, a `play.stage[...]` line for each part of the
+decode. `AC3FORGE_EXAMPLE_AC4_CORE` selects core decoding and `AC3FORGE_EXAMPLE_AC4_PCM_HASH` the
+hash of the samples, which costs 0.6 ms a frame at 2.0; a play's location overrides both, with
+`?decoding=core` and `?hash=off`. A measurement image adds `AC3FORGE_EXAMPLE_SINK_NULL=y` and plays
+with `POST /play` (a URL as the body) after `PUT /layout`.
+
 ## The sources
 
 `partition` runs without hardware, which is why it is the default and the one
