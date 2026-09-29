@@ -1,0 +1,272 @@
+# The static checks every change passes before anything is compiled.
+#
+# One job, not the six that used to sit at the top of ci.yml (Platform Macros,
+# Packaging Consistency, Fixture Corpus, No Quarantine On Main, Script Lint and
+# the branch-name check's neighbours). Each of those was seconds of work behind
+# its own runner allocation and container start, and on the fleet each queued
+# on its own - a p50 of 2-3 minutes apiece for 0.2-1 minute of compute. Folded
+# into one job they cost one checkout and one queue wait.
+#
+# Every check still runs when an earlier one failed (`!cancelled()`), so one run
+# reports every failure at once. A failing check the agent only learns about
+# after fixing the first would cost a whole extra round trip.
+#
+# Called from pr-gate.yml (pull requests and merge-queue entries) and nowhere
+# else: post-merge verification does not repeat them, because the queue already
+# ran them on the merged tree, which is the state that matters for the
+# cross-branch checks (a heading renamed on one branch and linked on another is
+# only wrong once both are merged).
+#
+# `runner` is a JSON runner-label array. pr-gate.yml passes GitHub-hosted for
+# fork pull requests unconditionally, and vars.GATE_RUNNER_JSON otherwise.
+name: Static checks
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner labels as a JSON array, e.g. ["ubuntu-latest"].'
+        type: string
+        default: '["ubuntu-latest"]'
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: 20
+    steps:
+      # fetch-depth: 0 for two of the checks below: the packaging advisory needs
+      # `git describe --tags`, and the patch-attribution step needs the PR's
+      # base commit on main. A shallow (depth-1) clone hides both and silently
+      # disables them while they keep working from a normal local checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The RE-derived EMDF signer is quarantined to a local branch and must never
+      # reach a public remote (it embeds a key extracted from Dolby's binary). The
+      # .gitignore keeps it from being staged; this makes doubly sure by failing if
+      # the directory ever appears in a tracked tree on main.
+      - name: Assert src/quarantine is absent
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files --error-unmatch src/quarantine >/dev/null 2>&1; then
+            echo "::error::src/quarantine is tracked here; it must never leave its local branch."
+            exit 1
+          fi
+          echo "No quarantined signer in the tree."
+
+      # The no-#ifdef rule. Cheap, fast, and deliberately ungated by `changes` so a
+      # violation is reported even while the porting legs are still red.
+      - name: Check for preprocessor conditionals in the first-party trees
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
+
+      # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
+      # latest-tag advisory (manifest bump automation) - see the script's own header for the split
+      # between the two and why only the first one fails the job. fetch-depth: 0, unlike
+      # platform-macros above: the advisory half needs `git describe --tags` to see the
+      # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
+      # it in CI while it kept working from a normal local checkout.
+      - name: Check packaging manifests are internally consistent
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
+
+      # Every published quality series is measured against tests/golden/audio/,
+      # and its points are only comparable to each other because the material
+      # under them never moved. A regenerated fixture is close to invisible - it
+      # still decodes, still has the right duration and channel count, still
+      # produces a plausible SNR - and simply puts a step in every series that
+      # reads as an encoder change. This hashes each fixture against
+      # tests/golden/audio/corpus.json so that becomes a failing check instead of
+      # a mystery on a trend page months later.
+      #
+      # Its own job rather than a step on ffmpeg-validate: stdlib-only, no build,
+      # no container, seconds to run, and it should still report on a
+      # docs-or-fixtures-only change where `changes.outputs.code` is false and
+      # ffmpeg-validate never starts. Same shape and same reasoning as
+      # packaging-consistency above.
+      - name: Check committed fixtures match the corpus manifest
+        if: ${{ !cancelled() }}
+        run: python3 tools/checks/check_corpus.py
+
+      # A venv rather than a bare `pip install`: the hosted image's system
+      # Python is PEP 668 externally-managed, and --break-system-packages (what
+      # the container jobs below use, safely, because their container is thrown
+      # away) is the wrong tool on a runner whose Python other steps may still
+      # need. requirements/requirements-lint.txt is a pip-compile
+      # --generate-hashes lock like requirements-coverage.txt and
+      # requirements-ffmpeg-validate.txt, so all three linter versions are
+      # pinned by hash and move only when the lock is regenerated.
+      # requirements-pip-bootstrap.txt pins the venv's own pip upgrade the
+      # same way - see that file's header for why it can't just live in the
+      # pip-compile lock above.
+      - name: Install linters
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv .lintvenv
+          .lintvenv/bin/python -m pip install --quiet --require-hashes \
+            -r requirements/requirements-pip-bootstrap.txt
+          .lintvenv/bin/python -m pip install --quiet --require-hashes \
+            -r requirements/requirements-lint.txt
+          .lintvenv/bin/ruff --version
+          .lintvenv/bin/shellcheck --version | tr '\n' ' '; echo
+          .lintvenv/bin/actionlint -version
+
+      # Configuration (rule set, line length, exclusions, and the reasoning for
+      # each) lives in ruff.toml at the repository root, shared verbatim with a
+      # local `ruff check .`, the same way tools/checks/coverage_report.sh is
+      # shared with the coverage job - CI and a developer machine cannot drift
+      # onto different rules.
+      - name: ruff
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: .lintvenv/bin/ruff check --no-cache --output-format=github .
+
+      # The oracles' own unit tests. This job's header explains why the ~30
+      # Python files under tools/ get more scrutiny than ordinary scripts -
+      # they ARE the gates - and lint alone cannot tell whether a gate still
+      # gates. compare_wav.py's suite pins the case that motivated per-channel
+      # SNR floors: a single floor low enough for a 5.1 fixture's
+      # dither-dominated surrounds leaves the front channels 30-70 dB of room
+      # to collapse in without failing anything.
+      #
+      # stdlib unittest, run with the system python3 rather than .lintvenv:
+      # these tests deliberately import nothing that is not in the standard
+      # library (same rule the scripts under test follow), so needing the
+      # linter venv at all would be a sign one of them had grown a dependency.
+      #
+      # tools/ci is discovered separately rather than by starting at tools/:
+      # unittest only recurses into directories it can import, and neither of
+      # these is a package. Reporting what the gates measure is part of the
+      # same contract as running them - a badge that disagreed with the page it
+      # links to is what put a suite in tools/ci in the first place.
+      # tools/hearth holds ota.py, which updates boards over the network
+      # (planning/esp32-ota.md): its suite runs it against a stand-in board.
+      - name: Oracle unit tests
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suite in tools/checks tools/ci tools/hearth; do
+            printf '\n=== %s ===\n' "$suite"
+            python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
+          done
+
+      # The paths the docs and the CI plumbing name: every relative Markdown
+      # link under docs/ and in the root pages, the #anchor each one lands on,
+      # and every docs/, apps/, src/ or tools/ literal in the workflows, the
+      # CMake modules and the scripts under tools/. A file that moves takes its
+      # README row, its workflow step and the comments that cite it along only
+      # when someone remembers; this makes forgetting a red job. Shapes it
+      # cannot judge (globs, placeholders) are printed as info, never failed -
+      # the script's own header has the rules. Its own suite runs in the step
+      # above.
+      #
+      # This job is deliberately not gated on an event, so the merge_group
+      # trigger at the top of this file reaches it and main's queue runs it over
+      # each entry's merged tree. That is what catches the anchor break neither
+      # branch can see on its own: one renames a heading, the other links the
+      # name it used to have, and only the merge of the two is wrong.
+      - name: Doc and script paths
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python3 tools/checks/check_doc_paths.py
+
+      # The platform selection matrix, docs/platforms/index.md, routes a reader
+      # from what they have to the page for it. The step above proves its links
+      # resolve; this one proves the reverse direction, that no platform page
+      # has been added without a route to it - the drift that is invisible
+      # precisely because every link on the page still works. Its own suite
+      # runs in the Oracle unit tests step above.
+      - name: Platform matrix coverage
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python3 tools/checks/check_platform_matrix.py
+
+      # A board flashed from this tree has to stay recoverable over USB, and
+      # its bootloader has to keep checking an image before it boots it
+      # (planning/esp32-ota.md). Either can be lost to one line in an sdkconfig
+      # fragment - an option that burns eFuses, or one that skips the check -
+      # and no build or emulator run would notice. Its own suite runs in the
+      # Oracle unit tests step above.
+      - name: ESP-IDF settings that would stop USB recovery
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python3 tools/checks/check_esp_efuse_free.py
+
+      # This script's own header describes the same review for a `git
+      # format-patch` series a parallel session hands back before it is
+      # applied; here it runs automatically over the commits a PR actually
+      # adds. PR-only, unlike the checks above: by the time a push or
+      # merge_group run reaches this job, every commit in it already passed
+      # this same check while its PR was open, and for a push to main in
+      # particular the range against its own new tip is empty by then, which
+      # the script treats as "no commits found" - an error, not a vacuous
+      # pass. Dependabot's PRs are excluded the same way branch-name excludes
+      # their branch pattern above: their commits carry Dependabot's own bot
+      # identity by design, never this project's, and were never a
+      # session's patch to review. --expect-name/--expect-email are passed
+      # explicitly rather than left to the script's own git-config default:
+      # a hosted runner's checkout has no user.name/user.email of its own,
+      # so the default would fail this step on every PR with "unset", not
+      # check anything. Merge commits already in the range need no special
+      # handling here - --range mode passes --no-merges to `git log` on its
+      # own (see the script's header), proved by
+      # RangeModeChecks.test_merge_commits_are_excluded in
+      # test_check_patch_attribution.py.
+      - name: Patch attribution
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'dependabot/') }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 tools/checks/check_patch_attribution.py --range "$BASE_SHA..HEAD" \
+            --expect-name "Iain Chesworth" --expect-email "iain.chesworth@gmail.com"
+
+      # The comparison tables are committed Markdown so they remain searchable
+      # and usable without JavaScript. The home-page selector reads the JSON
+      # source directly; this check keeps those two presentations on the same
+      # catalogue.
+      - name: Generated support matrices
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python3 tools/checks/generate_support_matrices.py --check
+
+      # `git ls-files` rather than a hard-coded list of directories: a shell
+      # script added anywhere in the tree is then linted the day it lands,
+      # instead of silently sitting outside the gate until someone remembers to
+      # widen a glob here.
+      - name: shellcheck
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          printf 'shellcheck: %d script(s)\n' "${#scripts[@]}"
+          printf '  %s\n' "${scripts[@]}"
+          .lintvenv/bin/shellcheck --format=gcc "${scripts[@]}"
+
+      # -shellcheck hands actionlint the same pinned binary the step above uses,
+      # so the shell inside every `run:` block is checked too - that integration
+      # is where this job's first real finding came from (an `ls | head -1`
+      # parse in release.yml's provenance-export step). -pyflakes= disables the
+      # other integration outright: it would only see the `python -c` one-liners
+      # inside `run:` blocks, and ruff above already covers every real .py file.
+      - name: actionlint
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          .lintvenv/bin/actionlint -no-color -oneline \
+            -shellcheck .lintvenv/bin/shellcheck -pyflakes=

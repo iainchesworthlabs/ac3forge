@@ -695,7 +695,17 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                         for (const ObjectEntry& entry : assigned) {
                             out_list.push_back(entry);
                         }
-                        for (int i = static_cast<int>(assigned.size()); i < count; ++i) {
+                        // No further than one past the most the decoder describes,
+                        // as ajoc_portion() counts them: a portion of more is
+                        // refused below and its list never read. `count` is the
+                        // upmix's n_fullband_upmix_signals, which escapes through
+                        // variable_bits(3) with nothing to bound it; a 391-byte
+                        // frame sent 1.2 billion, and this loop grew the list to
+                        // a 3 GiB allocation.
+                        for (int i = static_cast<int>(assigned.size());
+                             i < count &&
+                             static_cast<int>(out_list.size()) <= detail::kMaxOamdObjects;
+                             ++i) {
                             out_list.push_back({.kind = ObjectKind::kDyn,
                                                 .lfe = false,
                                                 .ajoc_coded = true,

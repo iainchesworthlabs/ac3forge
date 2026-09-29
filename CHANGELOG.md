@@ -2629,6 +2629,17 @@ The sections below contain the complete change list and fixes.
   resolution and XML serialization that follow now run inside a `try` as well, and report
   `kOther`: `adm::formatId()` throws for an ID field that overflows, such as a 256th
   `audioTrackFormat` on one `audioStreamFormat`.
+- **The AC-4 decoder could be made to allocate gigabytes for one A-JOC substream.**
+  `n_fullband_upmix_signals` escapes through `variable_bits(3)`, which the syntax bounds no
+  further, and the decoder listed that many objects for every A-JOC substream of a group before
+  it checked how many a substream may describe: a 391-byte frame asked for 1.2 billion entries
+  and `fuzz_ac4_decode` stopped on `malloc(3221225472)`. The list now stops one past the 64
+  objects an OAMD portion holds, and the substream is refused as unsupported at the same counts
+  as before. A count from 2^31 up wrapped to a negative `int` and was refused as invalid;
+  `AjocSubstreamInfo::n_fullband_upmix_signals` now holds `INT_MAX` for it, so it is refused as
+  too many like any other. The frame is committed as
+  `fuzz/regressions/fuzz_ac4_decode/ajoc-upmix-signals-runaway-count`, and a test in
+  `tests/ac4dec` covers the limit and the counts past it.
 
 **Crucible desktop application**
 

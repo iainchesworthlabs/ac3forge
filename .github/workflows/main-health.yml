@@ -1,0 +1,82 @@
+# After each post-merge run of ci.yml: advance the `verified` ref if it passed,
+# rerun a known flake once if that is all that failed, and otherwise name the
+# merges it could be blamed on. tools/ci/main_health.py holds the logic and its
+# header explains each case; docs/ci-agentic.md has the design.
+#
+# Post-merge verification is batched (see ci.yml's `concurrency`), so a red run
+# means "one of the merges since the last green run", and this is what turns that
+# into a `main-red` issue with the failed jobs, their evidence, the suspect pull
+# requests and the command that reproduces each. It reverts nothing.
+#
+# Trust: `workflow_run` runs with a write token in the context of the default
+# branch, which is why this job checks out main and nothing else, runs only
+# code from main, and takes every value from the triggering run through `env`
+# rather than into the script text. The pull-request-controlled part of the
+# run (its branch name) is excluded by the `branches` filter and never used.
+name: Main health
+
+on:
+  # zizmor: ignore[dangerous-triggers] see the trust note above: main's own code only, event fields via env
+  workflow_run:
+    workflows: [ CI ]
+    types: [ completed ]
+    branches: [ main ]
+
+concurrency:
+  # One group per finished run, so no event can wait behind another or replace
+  # it. A group shared by every run holds one running and one PENDING run and
+  # cancels the pending one when a newer arrives, whatever cancel-in-progress
+  # says (that only protects the running one). On 2026-09-29 four events arrived
+  # within a minute and one main-health run was cancelled before it started; it
+  # could as easily have been the one reporting a failure. CI runs on main one at
+  # a time (ci.yml's ci-main group), so two of these events are minutes apart in
+  # practice. If two did overlap, the `verified` push cannot go backwards (a plain
+  # push, refused unless it moves forward) and the worst case is two main-red
+  # issues. The attempt is in the key because a rerun of a CI run finishes again
+  # and is a new event for the same run.
+  group: main-health-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  health:
+    name: Verify, rerun or report
+    # A cancelled or skipped run is a superseded one and needs nothing: no runner
+    # is started for it.
+    if: ${{ contains(fromJSON('["success","failure","timed_out","startup_failure","action_required"]'), github.event.workflow_run.conclusion) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write        # advance the `verified` ref
+      actions: write         # rerun the failed jobs of a flaky run, once
+      issues: write          # the single main-red issue
+      pull-requests: write   # one comment on each suspect pull request
+    steps:
+      # Full history: the suspects are the merges in verified..head, and
+      # `origin/verified` is a branch. The credentials stay in the checkout because
+      # the one push this job does (the `verified` ref, fast-forward only) uses them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify, rerun or report
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/main_health.py \
+            --repo "$REPO" \
+            --run-id "$RUN_ID" \
+            --head-sha "$HEAD_SHA" \
+            --conclusion "$CONCLUSION" \
+            --attempt "$ATTEMPT" \
+            --run-url "$RUN_URL"

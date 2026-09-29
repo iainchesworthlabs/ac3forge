@@ -1015,6 +1015,10 @@ also runs clean headless (`QT_QPA_PLATFORM=offscreen`), encoding real audio and 
 real QML channel meters. See [Linux audio](#linux-audio) for what the ALSA verification did,
 and did not (real hardware), prove.
 
+A pull request and each merge-queue entry run the gate in `pr-gate.yml` (the static checks,
+Linux GCC, and in the queue Windows MSVC); see [CI for many agents](ci-agentic.md). The legs
+below run after the merge, on main.
+
 CI no longer has one cross-OS build matrix. `_build.yml` orchestrates three
 reusable workflows: `_ci-windows.yml`, `_ci-linux.yml`, and `_ci-macos.yml`.
 Their platform matrices contain 11 legs in total and can be gated independently
@@ -1026,11 +1030,12 @@ headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
 linux-appimage (builds `ac3gui`'s self-contained AppImage in an older `ubuntu:22.04` container and
 smoke-tests it in a second container that never had Qt installed at all — see
 [Linux](platforms/linux.md#appimage)),
-script-lint (ruff over every `.py`, shellcheck over every `.sh`, actionlint over the workflows,
-all three pinned in `requirements/requirements-lint.txt`),
+the static checks in `_static.yml` (ruff over every `.py`, shellcheck over every `.sh`, actionlint
+over the workflows, all three pinned in `requirements/requirements-lint.txt`; they run in the gate,
+not after the merge),
 coverage (`tools/checks/coverage_report.sh` over every `src/` library
 component *and* `apps/cli`, via `config-linux-gcc-coverage`),
-adm-validate (the opt-in ADM module) and ffmpeg-validate all run on every push, as does
+adm-validate (the opt-in ADM module) and ffmpeg-validate all run on every push to main, as does
 build-android (the Shield app's debug APK) — the four Linux build legs install the same
 Qt6/ALSA packages and build/smoke-test the GUI too. clang-tidy is no longer among them:
 since 2026-09 it runs nightly against `main` from `.github/workflows/static-analysis.yml`,
