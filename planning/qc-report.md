@@ -1,9 +1,20 @@
 # Delivery QC reports
 
-!!! warning "Status as of 2026-09-08: a plan for something that does not exist yet"
+!!! warning "Status as of 2026-09-30: still a plan, and nothing on this page is built"
     Written 2026-09-07, nothing decided and nothing built. `ac3cli qc` prints its findings and
-    exits; it writes no report file, and no option on this page is implemented. Read this as a
-    design proposal rather than as documentation of a feature.
+    exits; it writes no report file, it has no `report=`, `json=` or `expect-*` option, and the
+    library has no `QcReport`. Read this as a design proposal rather than as documentation of a
+    feature.
+
+    What has changed since is the measurement. `ac3cli qc` and the GUI's QC dialog read AC-4
+    (phases I1 and I3 of [the AC-4 plan](ac4.md)), which this page's "It does not read AC-4",
+    written when `src/ac4` had no decoder, no longer describes; both surfaces now carry AC-4
+    fields in their duplicated result structs, which is the duplication [What is
+    missing](#what-is-missing) item 3 objects to. The conformance checks and the schema below say
+    nothing about AC-4, and that gap would have to close before a report is built. The line
+    numbers and counts are from 2026-09-07: `ac3cli` has 44 commands, not forty-one, the
+    coverage floors are now `src/forge 90 82` and `apps/cli 80 71`, and the CI is the one
+    described in [CI for many agents](../docs/ci-agentic.md).
 
     This page plans a **delivery-shaped QC report** — the artefact someone attaches when handing
     a file to a broadcaster or a streaming platform. It keeps the shape of
@@ -28,12 +39,12 @@ diff, and neither emits anything a delivery system could parse.
 So this plan is mostly about a document format and a renderer, plus the four conformance checks
 the measurement side is missing. It is not a plan to build a meter.
 
-**It is an instrument rather than a node.** A parallel plan — `docs/family/topology.md`, on PR
-#539 — frames the family's other wrappers as **sources** that produce an encoded stream and
-**sinks** that turn one back into sound in a room, joined by a transport. A QC report is neither:
-it measures a stream without producing or rendering one. That page reaches the same placement
-this one recommends, by a different route, and its own table records the reporter as "an
-instrument, not a node".
+**It is an instrument rather than a node.** A companion plan, [the topology](topology.md)
+(written on PR #539, and in `planning/` since 2026-09-08), frames the family's other wrappers as
+**sources** that produce an encoded stream and **sinks** that turn one back into sound in a room,
+joined by a transport. A QC report is neither: it measures a stream without producing or
+rendering one. That page reaches the same placement this one recommends, by a different route,
+and its own table records the reporter as "an instrument, not a node".
 
 ## What already measures this
 
@@ -54,6 +65,7 @@ tested today.
 | The same gates through the C API | `ac3forge_qc_preset`, `ac3forge_evaluate_qc_gate` (`src/capi/src/qc.cpp`) | shipped |
 | The same gates in a window | `apps/gui/qc_controller.cpp`, `qml/QcDialog.qml`, `qml/QcGateMeter.qml` | shipped |
 | Declared stream facts — layout, substream map, OAMD counts, CRC integrity | `ac3cli probe`, and its `ac3forge.probe/1` JSON document | shipped |
+| AC-4 loudness, true peak, dialnorm and stated loudness | `measure_qc_ac4` in `apps/cli/commands/analysis.cpp`, and the GUI's QC dialog | shipped since the AC-4 plan's I1 and I3; not in the original table |
 
 The third of the brief's three candidate output forms — an exit code — therefore already exists,
 and is already documented as distinguishing a failed gate from a failed read
@@ -91,7 +103,7 @@ Five things, in the order they matter.
    re-deriving it.
 
 2. **No machine-readable form.** `probe` has `json=1` and a versioned `ac3forge.probe/1`
-   contract (`docs/cli/commands.md:478-492`); `qc` has neither.
+   contract (`docs/forge/cli/commands.md`, "Versioning"); `qc` has neither.
 
 3. **The measurement result has no library type, and is duplicated.** `QcResult` and
    `QcProgrammeResult` (`analysis.cpp:54-89`) and `qc_detail::RawResult` and
@@ -131,8 +143,8 @@ numbers into text already happens; `AC3FORGE_BUILD_CLI` already gates it. No new
 CPack component, no new registry identifier, no new `.desktop`, no new `.ts` catalogue, no new
 CI leg.
 
-Cost: `ac3cli` gains two options on one of its forty-one verbs, and Forge's coverage floor
-(`apps/cli 40 34`) has to survive a new renderer that ctest can exercise from a fixture. The
+Cost: `ac3cli` gains two options on one of its forty-one verbs (44 now), and Forge's coverage
+floor (`apps/cli 40 34`; now 80 71) has to survive a new renderer that ctest can exercise from a fixture. The
 report writers live in `apps/cli/` and are reachable from the library's own consumers only
 through the C API, which is where option A's limit lies — a Python caller gets the model but
 renders the document itself.
@@ -172,7 +184,7 @@ presets are gated against a decoded elementary stream, the layout vocabulary is
 around a scope that is still one codec family's, plus [DR6](#signing-and-install) signing for a
 third application before the two that exist are signed.
 
-**External support, arrived at independently.** `docs/family/topology.md` classifies every other
+**External support, arrived at independently.** [The topology plan](topology.md) classifies every other
 wrapper in the family as a source or a sink and the QC reporter as neither, and concludes it
 belongs under Forge for that reason. It was written from the family's transport gap rather than
 from this page's build-boundary argument, so the two are independent readings that agree.
@@ -301,7 +313,10 @@ delivery operator's position both are "this file is not what was ordered".
   invocations and a shell loop; a manifest format for a whole delivery is a later question and
   would change the schema's top level.
 - **It does not read AC-4.** `src/ac4` is a TOC/presentation inspector with no decoder, so there
-  is nothing to meter.
+  is nothing to meter. *Overtaken: the decoder exists and `ac3cli qc` measures AC-4 (loudness,
+  true peak, its own dialnorm and the loudness the stream states). The report as designed still
+  does not cover it: the four conformance checks and the schema have no AC-4 form, so an AC-4 file
+  would need `expect-codec=ac4` and a layout taken from its presentation defined first.*
 
 ## What it builds on, by path
 
@@ -317,9 +332,9 @@ delivery operator's position both are "this file is not what was ordered".
 | `apps/cli/commands/probe.cpp` | the shape of a `json=1` verb, and the OAMD/integrity reads the conformance checks need |
 | `apps/cli/exit_codes.hpp:63` | `kExitQcGate` — unchanged |
 | `apps/gui/qc_controller.{hpp,cpp}`, `qml/QcDialog.qml`, `qml/QcGateMeter.qml` | the dialog that gains **Save report…**; its duplicate model and helpers deleted in favour of the promoted ones |
-| `docs/cli/commands.md:478-492` | the JSON versioning contract `ac3forge.qc/1` copies verbatim |
-| `docs/gui/qc.md` | the dialog's documented behaviour, extended by one button |
-| `docs/verification.md` | where the report's claims are cross-checked; the ffmpeg `ebur128` cross-check IO10 established is the loudness figures' oracle |
+| `docs/forge/cli/commands.md` ("Versioning") | the JSON versioning contract `ac3forge.qc/1` copies verbatim |
+| `docs/forge/gui/qc.md` | the dialog's documented behaviour, extended by one button |
+| `docs/verification.md` | where the report's claims would be cross-checked; the ffmpeg `ebur128` cross-check IO10 established is the loudness figures' oracle, and today it is written down in `docs/forge/cli/metadata-options.md` and `docs/library/metadata.md`, not on this page |
 | `tools/checks/verify_gold_reference.sh` | the pattern for a CI check that runs a built `ac3cli` against a checked-in fixture and exits non-zero on the first failure |
 
 ### What the library is missing
@@ -353,7 +368,7 @@ Six additions, all in `ac3::meta`, all needed by any of the four placement optio
 
 Items 1–4 are the plan. Items 5 and 6 are what the HTML report wants and can be deferred to
 Phase 5 without changing the schema, because both add members and
-[the versioning rule](#ac3forgeqc1-the-machine-readable-form) permits that within a version.
+[the versioning rule](#ac3forgeqc1--the-machine-readable-form) permits that within a version.
 
 ## The two documents
 
@@ -522,14 +537,16 @@ release.
 
 Six pages change and one is added. Everything sits in the seven-tab nav
 [the recasting plan settled](recasting.md#the-docs); no page moves, which matters
-because `mkdocs.yml` declares no redirects plugin.
+because `mkdocs.yml` declares no redirects plugin. *As of 2026-09-30 the nav has ten top-level
+entries, the CLI and GUI pages sit under `docs/forge/` (the table names them there), and this
+page is in `planning/` and not on the site, since the plans were taken off it on 2026-09-08.*
 
 | Page | Change | Nav |
 |---|---|---|
 | **`docs/forge/qc-report.md`** | **this page** | new, under **Forge**, after "What it is" |
-| `docs/cli/commands.md` | the `qc` row gains `report=`/`json=`; a new **`ac3forge.qc/1`** section beside the `ac3forge.probe/1` one, with the full member table | unchanged |
-| `docs/cli/metadata-options.md` | `report=`, `json=`, and the five `expect-*` options in the `qc` option block | unchanged |
-| `docs/gui/qc.md` | the **Save report…** button, what it writes, and where | unchanged |
+| `docs/forge/cli/commands.md` | the `qc` row gains `report=`/`json=`; a new **`ac3forge.qc/1`** section beside the `ac3forge.probe/1` one, with the full member table | unchanged |
+| `docs/forge/cli/metadata-options.md` | `report=`, `json=`, and the five `expect-*` options in the `qc` option block | unchanged |
+| `docs/forge/gui/qc.md` | the **Save report…** button, what it writes, and where | unchanged |
 | `docs/verification.md` | one paragraph under **Quality**: what the report asserts, what it does not, and that its loudness figures are the ones IO10 cross-checked against ffmpeg's `ebur128` on 5.1 | unchanged |
 | `docs/library/quality.md` | one sentence saying the distortion and perceptual headers are encoder in-loop and are not what a delivery report measures — the confusion this plan had to resolve, written down once | unchanged |
 | `docs/index.md` | the **Forge** paragraph of "What is here" gains "and writes a delivery QC report" to its `ac3cli` sentence | unchanged |
@@ -566,7 +583,7 @@ states.
 Under option C, a new application needs its own six catalogues plus `xx`, its own RTL pass and its
 own accessibility audit. Note for whoever takes that on: `apps/crucible/translations/` has `ar`,
 `de`, `es`, `fr`, `he`, `yi` and **no `xx`**, so the pseudo-locale is a GUI-only practice today
-rather than a family one.
+rather than a family one (Hearth's six catalogues have none either).
 
 ## Identity assets
 
@@ -676,12 +693,20 @@ docs-only fast path; every later phase pays for all eleven legs.
 
 ### Phase 1 — this plan
 
+**Status: done, with one change.** The page was written on 2026-09-07 and taken off the site into
+`planning/` on 2026-09-08, so it is not in the nav.
+
 Write this page, add it to the `mkdocs.yml` nav under **Forge**, and open a PR.
 
 **Exit criterion:** `mkdocs build --strict` is green and the page is in the nav.
 **Verified by:** `python -m mkdocs build --strict` locally and the `docs` job in CI.
 
 ### Phase 2 — promote the model into the library
+
+**Status: not built.** `QcResult` and `QcProgrammeResult` are still in
+`apps/cli/commands/analysis.cpp` and `RawResult` and `RawProgramme` in
+`apps/gui/qc_controller.hpp`, each now with AC-4 fields, and `ac3/meta/qc_report.hpp` does not
+exist.
 
 `ac3::meta::QcReport`, `QcExpectations`, `evaluate_qc_conformance()` and `measure_qc()` in
 `ac3/meta/qc_report.hpp`. Delete the CLI's `QcResult`/`QcProgrammeResult` and the GUI's
@@ -697,6 +722,9 @@ the deleted symbols returning nothing.
 
 ### Phase 3 — conformance gates
 
+**Status: not built.** `ac3cli qc` has no `expect-*` option and gates loudness and true peak
+alone.
+
 `expect-layout=`, `expect-rate=`, `expect-codec=`, `expect-objects=`, `expect-bed=`, and integrity
 on by default. Wire the OAMD and CRC facts into `QcReport` so no second walk of the file is needed.
 
@@ -706,6 +734,9 @@ that satisfies it, and a mismatch returns `kExitQcGate` (6) rather than `kExitIn
 exit code for a conformance failure, distinct from the unreadable-file case.
 
 ### Phase 4 — the two documents
+
+**Status: not built.** `qc` has no `json=1` or `report=`, and the GUI dialog has no **Save
+report…** button.
 
 `json=1` emitting `ac3forge.qc/1`; `report=<path>` emitting the JSON or the single-file HTML by
 extension; **Save report…** in the GUI dialog writing both.
@@ -720,6 +751,9 @@ platform, which is the part CI cannot do — see
 [What cannot be verified](#what-cannot-be-verified-and-why).
 
 ### Phase 5 — the bindings and the chart
+
+**Status: not built.** The C API has the presets and the gate (`ac3forge_qc_preset`,
+`ac3forge_evaluate_qc_gate`) and no report functions, and `LoudnessMeter` retains no series.
 
 `ac3forge_qc_report_*` in the C API with an ABI allowlist refresh; the retained loudness series and
 per-channel true peak from [the missing library pieces](#what-the-library-is-missing); the
@@ -739,7 +773,8 @@ read yet; and the icon work identity assets would need under option C.
 
 ## Roadmap status
 
-Listed in [ROADMAP.md](../ROADMAP.md) Proposed as **QC delivery report file**. Summary:
+Listed in [ROADMAP.md](../ROADMAP.md) Proposed as **QC delivery report file**, where the note on
+2026-09-30 is "`ac3cli qc` writes stdout today". The summary this plan proposed for the row:
 
 > `ac3cli qc` writes a machine-readable `ac3forge.qc/1` document and a self-contained HTML report,
 > gating layout, sample rate, codec, object count and stream integrity against what was ordered.
@@ -773,7 +808,7 @@ nothing. Phase 2 edits `apps/gui`, so it should re-check the queue first.
 two: leaving either surface on its own copy for a release would make the duplication permanent in
 exactly the way it became permanent the first time.
 
-**`docs/family/topology.md`.** *Resolved 2026-09-07.* While neither page was on `main`, each
+**The topology plan (`planning/topology.md`).** *Resolved 2026-09-07.* While neither page was on `main`, each
 named the other by branch URL, because a relative link to a file not yet in `docs/` aborts
 `mkdocs build --strict`. #537, #538 and #540 merged first, so #539 — the last of them — converted
 every such link to a relative path in one change, on both sides. Nothing here is a branch URL any
@@ -788,7 +823,7 @@ and should not be batched with unrelated prose.
 ## Deliberately not in scope
 
 - **A fourth member**, unless decision 1 takes option C. This plan recommends against it now and
-  says [when it would become right](#c-its-own-named-member-with-its-own-binary).
+  says [when it would become right](#c--its-own-named-member-with-its-own-binary).
 - **Renaming anything.** No binary, package token, registry identifier, component or namespace
   changes.
 - **A PDF library.** The HTML report prints; see [the table](#third-party-notices).
@@ -801,7 +836,8 @@ and should not be batched with unrelated prose.
 - **Batch or manifest reporting.** One file per invocation; a delivery manifest would change the
   schema's top level and should be designed once, later.
 - **Signing the report.** Downstream of DR6 and of `src/signing`.
-- **AC-4.** `src/ac4` has no decoder, so there is nothing to meter.
+- **AC-4.** `src/ac4` has no decoder, so there is nothing to meter. *Overtaken, as above: there
+  is now something to meter, and the report's AC-4 form is unspecified.*
 - **Editing the roadmap from this plan.** Status summary is in [Roadmap status](#roadmap-status);
   [ROADMAP.md](../ROADMAP.md) carries the one-line entry.
 - **Moving any page** under `docs/`.
@@ -817,7 +853,7 @@ The open questions. Each carries a recommendation and the cost of taking it.
    install rules, packaging and docs already draw, and it needs no decision from any registry.
    Cost: the report renderers live in `apps/cli` and are reachable from other languages only
    through the C API added in Phase 5. Taking (c) later costs nothing already spent — Phase 2's
-   promotion is the first step under all four. `docs/family/topology.md` reaches the same
+   promotion is the first step under all four. [The topology plan](topology.md) reaches the same
    conclusion from the family's source/sink/transport frame, which is independent evidence rather
    than a second statement of this page's argument.
 

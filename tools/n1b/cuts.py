@@ -36,8 +36,10 @@ from n1b_lib import base_parser
 INC = "src/forge/include/ac3"
 SRC = "src/forge/src"
 
-# Text files C7 leaves alone: a record of the tree as it was, which the move does not change.
-C7_KEEP = ("planning/", "CHANGELOG.md", "docs/", "README.md", "ROADMAP.md", "CONTRIBUTING.md")
+# C7 follows the header's path in C and C++ sources only. Everything else that names the old path is
+# a page, a record or a script that says where the header was (docs, planning/, CHANGELOG.md, this
+# script and its baselines), and the move does not make that untrue.
+C7_SOURCES = (".hpp", ".cpp", ".h", ".cc", ".cxx", ".hh", ".hxx", ".inl", ".ipp", ".mm")
 
 
 def fail(message: str) -> None:
@@ -496,7 +498,7 @@ def cut_c7(root: Path) -> None:
         ),
     )
     for f in git(root, "grep", "-l", "ac3/render/serving.hpp", check=False).split("\n"):
-        if not f or f.startswith(C7_KEEP):
+        if not f.endswith(C7_SOURCES):
             continue
         src = Source(root, f)
         swap_include(src, "ac3/render/serving.hpp", "ac3/decoder/serving.hpp")

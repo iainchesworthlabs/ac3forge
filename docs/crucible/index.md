@@ -4,11 +4,13 @@ Crucible captures applications separately and places each one in a Dolby Atmos s
 position an application in the room, send it to the fixed 5.1 bed, or split its stereo channels
 into two objects. Output follows the selected audio device.
 
-!!! note "Status: Windows works; Linux is new; macOS builds and has never made a sound"
+!!! note "Status: Windows and Linux have run on hardware; macOS builds and has never made a sound"
     Windows and Linux have run on real hardware. macOS compiles and runs its test suites in CI;
     the application has not been launched on a Mac, captured macOS audio, or produced macOS
-    audio. There is no macOS package. See [Where each platform stands](#where-each-platform-stands)
-    and the [promotion record](design/promotion.md).
+    audio, and its process tap is off unless `AC3FORGE_MACOS_PROCESS_TAP` is set. CI builds a
+    macOS archive of it, and no release publishes that archive. See
+    [Where each platform stands](#where-each-platform-stands) and the
+    [promotion record](design/promotion.md).
 
 ## What it does
 
@@ -24,7 +26,8 @@ into two objects. Output follows the selected audio device.
 5. **What you hear follows your hardware.** An Atmos receiver over HDMI gets E-AC-3 JOC with the
    objects intact. A Dolby Digital receiver gets AC-3 5.1 with the positions panned onto the ring.
    A TV gets decoded multichannel PCM. Headphones get the decoded objects through the OS
-   renderer, where there is one. Plugging or unplugging switches modes without a restart.
+   renderer, where there is one and a signing key is loaded. Plugging or unplugging switches
+   modes without a restart.
 
 Anything you have not placed, and whichever application is full-screen in front, is mixed into
 the 5.1 bed.
@@ -44,7 +47,7 @@ differences.
 
 | | Windows | Linux | macOS |
 |---|---|---|---|
-| Enumerate and tap | yes | yes, confirmed on hardware | compiles; nothing has been captured |
+| Enumerate and tap | yes | yes, confirmed on hardware | compiles; the tap is refused unless `AC3FORGE_MACOS_PROCESS_TAP` is set, and nothing has been captured |
 | Silence | a source-built kernel driver, test-signed only, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes where it taps; no device needed — compiles; no tap has been created |
 | Bitstream to a receiver | the underlying `PassthroughSink` is, via `ac3cli` — [see Windows](../platforms/windows.md#audio-backend-wasapi); Crucible itself hasn't been run against a receiver yet | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | nothing has been played |
 | The window | yes | yes, run on the Pi | builds in CI and its suites run there; never launched on a Mac |
@@ -64,9 +67,12 @@ desktop has a StatusNotifier host, and says so where there is none
 ([Troubleshooting](troubleshooting.md#there-is-no-tray-icon)).
 
 **macOS** uses Core Audio process taps, which mute applications when captured. The code compiles
-and runs its test suites on both macOS CI legs. It has not been launched on a Mac or tested with
-audio hardware. That requires a Mac with a desktop session, an audio device, and a Developer ID
-certificate so the operating system can show the capture consent prompt.
+and runs its test suites on both macOS CI legs. On a hosted Apple Silicon runner the first tap
+never returned from `AudioDeviceCreateIOProcID`, so the backend refuses the tap unless
+`AC3FORGE_MACOS_PROCESS_TAP` is set in the environment: on macOS Crucible lists the applications
+using sound, draws them in the room, and taps none of them. It has not been launched on a Mac or
+tested with audio hardware. That requires a Mac with a desktop session and an audio device, and
+a Developer ID certificate for the operating system to show the capture consent prompt.
 
 ## The silent device
 
@@ -101,11 +107,23 @@ is on under X11, where Crucible reads the active window's `_NET_WM_STATE` and `_
 and off under Wayland, because no Wayland client can ask which window is full-screen; the Room
 page says which applies.
 
+## Codecs
+
+Crucible sends a receiver E-AC-3 or AC-3 and decodes that stream for everything else: PCM
+surround, stereo and headphones play a decode of it. Atmos is E-AC-3 with a JOC object layer;
+with no signing key, or on a receiver that takes AC-3 only, the stream is a 5.1 E-AC-3 or AC-3
+bed. Crucible has no AC-4 path. It captures what applications play as PCM and places it as
+Atmos objects for a receiver, and no receiver found accepts AC-4
+([planning/ac4.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md),
+decision 20).
+
 ## Objects need a signing key
 
-An unsigned-but-present object container is a hard refusal on a validating decoder, not a
-graceful fallback. So with no key, Crucible sets no object metadata and streams plain 5.1 — your
-placements still pan within the bed, but height does nothing.
+A decoder that validates the object container's tag can refuse an unsigned container outright
+instead of falling back to the bed. So with no key, Crucible sets no object metadata and streams
+plain 5.1 — your placements still pan within the bed, but height does nothing. The one Atmos
+receiver tried with an unsigned container did play the 5.1 bed
+([Raspberry Pi passthrough](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
 
 The key is resolved at runtime, from a path in Settings or the same environment variables
 `ac3cli` reads. It is never built in, never shipped in a package, and never written to a log;

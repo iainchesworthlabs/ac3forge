@@ -132,6 +132,7 @@ class GateMachinery(unittest.TestCase):
     def test_gate_files_build_everything(self):
         for path in (
             ".github/workflows/pr-gate.yml",
+            ".github/workflows/_compare.yml",
             ".github/workflows/_static.yml",
             ".github/workflows/_toolchain-versions.yml",
             ".github/actions/build-leg/action.yml",
@@ -148,7 +149,11 @@ class Machinery(unittest.TestCase):
     """A change to the gate is also proven on Windows, which a pull request skips."""
 
     def test_gate_files_set_it(self):
-        for path in (".github/workflows/pr-gate.yml", ".github/actions/build-leg/action.yml"):
+        for path in (
+            ".github/workflows/pr-gate.yml",
+            ".github/workflows/_compare.yml",
+            ".github/actions/build-leg/action.yml",
+        ):
             with self.subTest(path=path):
                 self.assertEqual(plan(path)["machinery"], "true")
 
@@ -200,6 +205,46 @@ class QueueMode(unittest.TestCase):
         self.assertEqual((got["build"], got["gui"]), ("false", "false"))
 
 
+class Compare(unittest.TestCase):
+    """Whether a queue entry also runs the performance and memory comparisons."""
+
+    def test_a_change_under_src_asks_for_them(self):
+        for path in ("src/forge/x.cpp", "src/ac4dec/decoder.cpp", "src/audio/y.hpp"):
+            with self.subTest(path=path):
+                self.assertEqual(plan(path)["compare"], "true")
+
+    def test_one_src_path_among_others_is_enough(self):
+        self.assertEqual(plan("docs/a.md", "apps/cli/x.cpp", "src/forge/x.cpp")["compare"], "true")
+
+    def test_changes_that_cannot_alter_the_library_do_not(self):
+        for path in (
+            "tests/forge/test_x.cpp",
+            "apps/cli/commands/decode.cpp",
+            "apps/gui/qml/Main.qml",
+            "cmake/Compiler.cmake",
+            "CMakeLists.txt",
+            "tools/checks/x.py",
+            "python/x.py",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(plan(path)["compare"], "false")
+
+    def test_documentation_under_src_is_still_documentation(self):
+        got = plan("src/ac4dec/ERRATA.md")
+        self.assertEqual((got["docs_only"], got["compare"]), ("true", "false"))
+
+    def test_the_gates_own_machinery_does_not(self):
+        self.assertEqual(plan(".github/workflows/pr-gate.yml")["compare"], "false")
+
+    def test_a_full_run_and_an_empty_list_do_not(self):
+        self.assertEqual(gate.plan(["src/forge/x.cpp"], force_all=True)["compare"], "false")
+        self.assertEqual(gate.plan([])["compare"], "false")
+
+    def test_the_queue_mode_asks_the_same_question(self):
+        self.assertEqual(gate.plan(["src/forge/x.cpp"], gui_on_build=True)["compare"], "true")
+        self.assertEqual(gate.plan(["apps/cli/x.cpp"], gui_on_build=True)["compare"], "false")
+
+
 class Reason(unittest.TestCase):
     def test_names_the_first_path_that_forced_the_build(self):
         got = plan("docs/a.md", "src/forge/x.cpp", "src/forge/y.cpp")
@@ -237,7 +282,9 @@ class Cli(unittest.TestCase):
         # $GITHUB_OUTPUT is line-oriented: a stray line would be a parse error.
         _, out, _ = self.run_main([], "src/forge/x.cpp\nbrand-new-dir/thing.bin\n")
         keys = [line.split("=", 1)[0] for line in out.splitlines()]
-        self.assertEqual(keys, ["build", "gui", "docs_only", "machinery", "reason", "gui_reason"])
+        self.assertEqual(
+            keys, ["build", "gui", "docs_only", "machinery", "compare", "reason", "gui_reason"]
+        )
 
     def test_force_all_ignores_stdin(self):
         rc, out, _ = self.run_main(["--force-all"], "docs/a.md\n")

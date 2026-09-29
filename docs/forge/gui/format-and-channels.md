@@ -34,7 +34,9 @@ height` — even mid-drag). See
 The **Bit rate** list carries the nominal rates from 96 kbps up (thirteen rungs, 96 through 640)
 plus a 768 kbps rung that exists for E-AC-3 only — E-AC-3 signals its frame size directly rather
 than indexing Table 5.18, and a wide object or 7.2.4 session wants it. Switching back to AC-3 clamps an over-table rate to
-640 rather than leaving a plan `validate()` would refuse at encode time.
+640 rather than leaving a plan `validate()` would refuse at encode time. With AC-4 the list is
+its own: 32, 48, 64, 96, 128, 144, 192, 256, 320, 384, 448, 512, 640 and 768 kbps, the rungs
+DEE's streams use, and the encoder refuses one a layout cannot be coded at.
 
 A muted line can appear under the field itself: *"N coded channels at M kbps will audibly
 starve — encoders refuse outright below the frame minimum."* This is a field-level hint, not a
@@ -214,14 +216,15 @@ AC-3. Object mode leaves the codec at AC-4 or E-AC-3 and greys out AC-3's entry.
 encodes AC-3 or E-AC-3 only.
 
 The **AC-4** tab takes the place of Coding tools and Metadata, which belong to the other two
-codecs, and its badge counts the options it adds to the command line:
+codecs, in Advanced as well as Expert (Guided has no such tab), and its badge counts the options it
+adds to the command line:
 
 | Control | `ac3cli ac4-encode` option | Default |
 |---|---|---|
 | Frame rate | `frame-rate=` (Part 1 Table 83; native alone at 44.1 kHz) | native, 2 048-sample frames |
 | Rate mode | `rate-mode=constant\|average\|variable` | constant |
 | Codec mode | `codec-mode=simple\|aspx\|aspx-acpl-1\|aspx-acpl-2\|aspx-acpl-3` | chosen by the bit rate |
-| I-frame interval | `iframe-interval=` | 24 frames |
+| I-frame interval, 1 to 1 000 | `iframe-interval=` | 24 frames |
 | CRC on each raw sync frame | `crc=off` (a raw stream only; an MP4 sample has none) | on |
 | dialnorm, in quarter-dB steps | `dialnorm=0..31.75` | 31 |
 | Measure dialnorm from the programme | `dialnorm=auto` | off |
@@ -236,10 +239,15 @@ writes the same bytes the page writes; the Qt Quick Tests hold a raw stream, an 
 5.1 downmix to that. The page and the command share their channel order, loudness measurement
 and packaging (`apps/common/ac4_encode_core.hpp`).
 
+`aspx-acpl-1` is on the Codec mode list, but `ac4-encode` takes it only with `experimental=acpl`,
+which the page never sets, so choosing it ends in the encoder's refusal.
+
 What the tab leaves to the command line: several substreams and presentations, dialogue stems
 and hybrid dialogue enhancement, a DRC profile per decoder mode, Lt/Rt's own mix levels, the LFE
 mix and the downmix corrections, I-frames at named frames or fragment starts, the syntax trace,
-and the 3.0, 7.X and immersive layouts. None of these fits one source in one layout, and each is
+the `experimental=` tools, the codec modes of the immersive layouts (`scpl`, `aspx-scpl`,
+`aspx-ajcc`), the height downmix, and the 3.0, 7.X and immersive layouts (5.0.4 and 5.1.4 among
+them). None of these fits one source in one layout, and each is
 an option of [`ac3cli ac4-encode`](../cli/commands.md#ac4-encode). Objects are the Objects tab's:
 with its switch on and AC-4 the codec, the page writes AC-4 objects, and the AC-4 tab carries what
 an object stream takes; see [Objects & motion](objects-and-motion.md#ac-4-objects).
@@ -247,7 +255,8 @@ an object stream takes; see [Objects & motion](objects-and-motion.md#ac-4-object
 ## Next
 
 - [Multi-source & assignment](source-assignment.md) — the table everything above derives from.
-- [Coding tools](coding-tools.md) — the Annex E tools, always in Expert's tab bar; the tools
-  apply to E-AC-3 only.
-- [Metadata](metadata.md) — the rest of the loudness/downmix picture, Expert only.
+- [Coding tools](coding-tools.md) — the Annex E tools, in Expert's tab bar for AC-3 and E-AC-3;
+  the tools apply to E-AC-3 only.
+- [Metadata](metadata.md) — the rest of the loudness/downmix picture, Expert only and not for
+  AC-4.
 - [Objects & motion](objects-and-motion.md) — turning this same bed into an Atmos carrier.
