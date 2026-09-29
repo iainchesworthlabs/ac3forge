@@ -30,6 +30,7 @@ qt_add_executable(ac3gui_qmltests
     object_decode_controller.hpp
     stream_player_controller.cpp
     stream_player_controller.hpp
+    background_jobs.hpp
     channel_geometry.cpp
     channel_geometry.hpp
     gui_diagnostics.cpp

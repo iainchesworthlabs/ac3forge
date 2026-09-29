@@ -891,6 +891,64 @@ TEST_CASE("probe reports a hand-built AC-4 stream's group-level OAMD flag", "[cl
     INFO(oamd);
     CHECK(json_field(oamd, "b_oamd_ndot") == "true");
     CHECK(json_field(oamd, "substream_index") == "2");
+    // No frame carries the substream, so there is no common data to report.
+    CHECK(json_field(oamd, "oamd_common_data") == "null");
+}
+
+TEST_CASE("probe reports the common data of a group's own OAMD substream", "[cli][probe][ac4]") {
+    // What each committed stream's OAMD substream sends in its first frame, as
+    // tools/references/ac4_syntax.py's trace reads it, the transcription written
+    // apart from the decoder's: b_oamd_common_data_present, and where it is set
+    // b_default_screen_size_ratio, master_screen_size_ratio_code,
+    // b_bed_object_chan_distribute and the optional trim(), bed_render_info() and
+    // headphone() of add_data.
+    const fs::path objects = fs::path{AC4DEC_GOLDEN_DIR} / "objects";
+    const auto oamd_of = [&objects](const std::string& stream) {
+        const auto log = scratch_dir() / (stream + ".json");
+        REQUIRE(run_cli("probe \"" + (objects / (stream + ".ac4")).string() + "\" json=1", log) ==
+                0);
+        return read_log(log);
+    };
+
+    // A direct-coded group whose OAMD substream (index 2) sends all three.
+    const auto direct = oamd_of("direct-dynamic");
+    INFO(direct);
+    const auto direct_oamd = json_section(direct, "oamd");
+    CHECK(json_field(direct_oamd, "substream_index") == "2");
+    const auto direct_common = json_section(direct_oamd, "oamd_common_data");
+    CHECK(json_field(direct_common, "b_default_screen_size_ratio") == "false");
+    CHECK(json_field(direct_common, "master_screen_size_ratio_code") == "20");
+    CHECK(json_field(direct_common, "b_bed_object_chan_distribute") == "true");
+    CHECK(json_field(direct_common, "trim_present") == "true");
+    CHECK(json_field(direct_common, "bed_render_info_present") == "true");
+    CHECK(json_field(direct_common, "headphone_present") == "true");
+
+    // An A-JOC group with an OAMD substream (index 1) that sends the first four
+    // and no add_data: the same member of the same object.
+    const auto ajoc = oamd_of("ajoc-4-oamd-substream");
+    INFO(ajoc);
+    const auto ajoc_oamd = json_section(ajoc, "oamd");
+    CHECK(json_field(ajoc_oamd, "substream_index") == "1");
+    const auto ajoc_common = json_section(ajoc_oamd, "oamd_common_data");
+    CHECK(json_field(ajoc_common, "b_default_screen_size_ratio") == "false");
+    CHECK(json_field(ajoc_common, "master_screen_size_ratio_code") == "20");
+    CHECK(json_field(ajoc_common, "b_bed_object_chan_distribute") == "true");
+    CHECK(json_field(ajoc_common, "trim_present") == "false");
+    CHECK(json_field(ajoc_common, "bed_render_info_present") == "false");
+    CHECK(json_field(ajoc_common, "headphone_present") == "false");
+
+    // OAMD substreams that send no common data, in a hand-built stream and in
+    // the encoder's: the member is null.
+    for (const std::string stream : {"direct-bed-5_1", "encoder-direct"}) {
+        CAPTURE(stream);
+        const auto document = oamd_of(stream);
+        INFO(document);
+        CHECK(json_field(json_section(document, "oamd"), "oamd_common_data") == "null");
+    }
+
+    // A group without an OAMD substream has none of it: its `oamd` stays null.
+    const auto none = oamd_of("ajoc-3-config0");
+    CHECK(none.find("\"oamd\": null") != std::string::npos);
 }
 
 TEST_CASE("probe reports a hand-built AC-4 stream's Obj substream and its bed/dynamic objects",

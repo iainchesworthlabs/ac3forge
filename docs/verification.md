@@ -1540,7 +1540,17 @@ behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exit
   every leg, and ViSQOL 0.01 to 0.06 above DEE's but for film at 128 kbps, 0.12 under, where the
   coded centre's band below 2 kHz trails DEE's by 9.5 dB of SNR; the tones route 1.2 to 2.9 dB more
   cleanly than DEE's. The coded downmixes' SNR trails DEE's by 3.4 to 9.5 dB, the same spread of
-  noise across the band as at 192 kbps. Its scores are pinned.
+  noise across the band as at 192 kbps. Its scores are pinned. Phase G1's sweeps, each channel's
+  tone from 20 Hz to 20 kHz in turn, race at 2.0 from 48 to 144 kbps, at 5.1 from 96 to 320 and at
+  5.1.4 from 192 to 512, the rates DEE codes with A-SPX. A tone above the crossover leaves A-SPX's
+  patch nothing to copy, and the decoder's noise is then all that fills the band, so the encoder
+  sends noise floors for a group its patch cannot fill (phase E10). Before, the band above the
+  crossover came back 30 to 68 dB under the source's energy where DEE's came back 15 to 17, and
+  ViSQOL was up to 0.18 under DEE's at 5.1.4; now it is over DEE's on every leg, by 0.15 to 0.28 at
+  2.0, 0.05 to 0.48 at 5.1 and 0.13 to 0.66 at 5.1.4 (0.05 to 0.65 in core decoding), the A-SPX tiles
+  3.5 to 7 dB nearer the source's energy than DEE's, and the log-spectral distance 0.55 to 1.14 dB
+  over DEE's at 2.0 from 48 to 96 kbps and under it on the others. The music, film, speech, noise,
+  transient and tone legs encode to the same bytes as they did before phase E10.
 
 The race changed the encoder before it was pinned. Its first version trailed DEE by 11.7 dB of SNR
 on music at 192 kbps, and removed the top octave of speech and music: its rate loop spent a frame's

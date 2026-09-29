@@ -39,6 +39,7 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 | [host-plugin.md](host-plugin.md) | DAW/NLE metering/QC plugin feasibility | [Proposed — DAW/NLE host plugin](../ROADMAP.md#proposed) |
 | [qc-report.md](qc-report.md) | Delivery-shaped QC report file | [Proposed — QC delivery report file](../ROADMAP.md#proposed) |
 | [eac3-programme-mixing-metadata.md](eac3-programme-mixing-metadata.md) | `mixmdate` reporting/API completeness and decode-time associated-service mixing | [Partial tails — Multi-programme E-AC-3 encode](../ROADMAP.md#partial-tails-on-shipped-work); scoped alongside two sibling efforts (CLI `programmeN=` authoring, MPEG-TS `mainid`/`asvc`) |
+| [layout.md](layout.md) | The layout and names of `src/` (N1B): codecs as peers over a codec-blind base, three layouts, the migration stages and a prototype; with an [inventory](layout-inventory.md) | [N1 in the AC-4 plan](ac4.md#n1-the-names) |
 | [esp32-sink-tiers.md](esp32-sink-tiers.md) | C6 / S3 / P4 good·better·best modules on one dual-ES9080 PCB | [Proposed — ESP32 sink tiers](../ROADMAP.md#proposed) |
 
 ---

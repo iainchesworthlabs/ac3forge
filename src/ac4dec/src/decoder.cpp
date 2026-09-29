@@ -2486,6 +2486,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
                         }
                         if (parsed.common) {
                             group.common = parsed.common;
+                            substream.oamd_common_data = parsed.common->data;
                         }
                         capture->oamd.push_back({.key = index, .content = std::move(parsed)});
                     }
