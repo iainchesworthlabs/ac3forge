@@ -3,7 +3,7 @@
 libFuzzer harnesses over every place ac3forge parses externally-supplied
 binary data. This is the codec's natural attack surface: its whole job is
 decoding bitstreams whose structure it cannot control, and the project has
-already had one real bug in this class - commit `8386c8f` fixed a decoder
+already had one bug in this class - commit `8386c8f` fixed a decoder
 that shifted by an unvalidated exponent, walked outside the range the
 reconstruction code assumed by a malformed differential chain, and hit
 undefined behaviour on hostile input. It was found by a one-off manual
@@ -20,12 +20,12 @@ has never exercised, so it is deliberately out of scope; see
 `fuzz/CMakeLists.txt`'s `CMAKE_CXX_COMPILER_FRONTEND_VARIANT` guard).
 
 `.github/toolchain/03-llvm-toolchain.sh` installs `libclang-rt-<ver>-dev` (the
-ASan/UBSan/libFuzzer runtime archives) unconditionally alongside the Clang
-compiler itself, even though none of `ci.yml`'s other Clang legs link a
-sanitizer - simplest to always have it rather than fork the install for the
-sanitizer/fuzzing presets alone. `fuzz.yml` needs no separate step for it; a
-local Debian/Ubuntu run needs `apt-get install libclang-rt-22-dev` (or your
-distro's equivalent) before `fuzz/run.sh` will link.
+ASan/UBSan/libFuzzer runtime archives) and `llvm-<ver>` (`llvm-symbolizer`, which
+turns a sanitizer report's addresses into file and line) with the Clang compiler
+itself, for every Linux LLVM leg: the sanitizer legs need them too, so the script
+does not fork the install. `fuzz.yml` needs no separate step for it; a local
+Debian/Ubuntu run needs `apt-get install libclang-rt-22-dev` (or your distro's
+equivalent) before `fuzz/run.sh` will link.
 
 ## `-Werror` is on for this build too
 
@@ -48,7 +48,7 @@ their own either. They need to name it explicitly: `ac3forge` links it
 `PRIVATE`, so the flags govern the library's own sources and do not propagate
 to anything downstream of it.
 
-That the set is genuinely live, and not merely listed on the command line, was
+That the set is live, and not merely listed on the command line, was
 checked twice - once by injecting a deliberate sign-conversion and double-
 promotion into a library source, once into a harness source - confirming the
 fuzz build fails on both in each case.
@@ -270,6 +270,43 @@ fixed in the same change: `parse_raw_frame()`'s substream bound could wrap into
 a read past the end of the frame, and six more `int` additions on counts that
 escape through `variable_bits()` could overflow.
 
+## Status: the AC-4 decoder and encoder harnesses
+
+`fuzz_ac4_decode` and `fuzz_ac4_encode` are in `fuzz/run.sh`'s default list, so
+`fuzz-regress`, `fuzz-short` and `fuzz-nightly` run them with the others.
+`fuzz/CMakeLists.txt` instruments `ac4core`, `ac4dec_objects` and
+`ac4enc_objects` for them, as it does `ac4_objects` for `fuzz_ac4_parse`.
+`fuzz_ac4_decode` starts from `fuzz_ac4_parse`'s seeds and keeps regressions of
+its own, four so far:
+
+- `asf-ext-code-past-21-bits`: the first run stopped 2,690 executions in. The
+  escape of `ext_code` counts leading ones that Part 1's Pseudocode 20 does not
+  bound, and a long run of them shifted a 32-bit value by 32. Table 40 limits the
+  escape to 21 bits, which the decoder now enforces (`src/ac4dec/ERRATA.md`,
+  "ext_code is at most 21 bits").
+- `ajoc-upmix-signals-runaway-count`: `n_fullband_upmix_signals` escapes through
+  `variable_bits(3)`, and a 391-byte frame sent 1,227,133,139. The decoder listed
+  that many objects before it checked how many a substream may describe, and the
+  harness stopped on `malloc(3221225472)`. The list now ends one past the 64
+  objects an OAMD portion holds.
+- `toc-repeated-group-refs` and `toc-index-overflow`, both found by a review and
+  committed with their fixes: a presentation that names one substream group
+  thousands of times, which the decoder walked once for each reference (a
+  25 KB frame reached about 1.2e9 iterations), and a `substream_index` whose
+  `variable_bits()` escape reached `INT_MAX`, so that the next instance of a
+  frame-rate-multiplied series overflowed an `int`.
+
+`fuzz_ac4_encode` has no regression inputs: a violation aborts, and libFuzzer
+keeps the input.
+
+The corpus `fuzz/run.sh` grows for `fuzz_ac4_decode` also feeds
+`tools/checks/ac4_syntax_differential.py` (`--inputs <directory>`), which reads
+every frame of each file through both syntax transcriptions, the decoder's and
+`tools/references/ac4_syntax.py`, and compares their traces. Without `--inputs`
+the script compares them on mutated DEE frames and on synthetic tables of
+contents; the nightly SonarCloud workflow runs it so, and it does not gate a
+merge.
+
 ## Status: the ADM harness, instrumented
 
 `fuzz_adm_parse` was the last harness whose library sat outside the instrumented
@@ -407,10 +444,18 @@ way the fixed findings used to.
 | Harness              | Calls                                                              |
 |-----------------------|--------------------------------------------------------------------|
 | `fuzz_scan`            | `ac3::io::scan` - format-sniffing before any decoder commits to a layout |
+| `fuzz_matroska_demux`  | `matroska::demux` + `matroska::Reader` - the EBML walk over a container from a disc rip, a broadcast capture or a download, every length in it self-declared. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
+| `fuzz_mp4_demux`       | `mp4::demux` + `mp4::Reader` - the box walk, and the sample table it resolves against the file: an index of self-declared offsets and sizes. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
+| `fuzz_mpegts_demux`    | `mpegts::demux` + `mpegts::Reader` - sync search, PSI section reassembly and PES reassembly, every loop driven by a self-declared length, over a format that is expected to arrive damaged. Both entry points run on the same bytes, the reader in chunks whose size the input's first byte sets |
 | `fuzz_ac3_decode`      | `ac3::split_frames` + `ac3::FrameDecoder::decode_frame`, one decoder across all frames, the way `ac3cli decode` drives it |
 | `fuzz_eac3_decode`     | `ac3::split_access_units` + `ac3::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `ac3cli decode` drives it for E-AC-3 |
+| `fuzz_differential_ac3_decode`, `fuzz_differential_eac3_decode` | The same paths as the two rows above; the same bytes are then decoded by FFmpeg and the PCM compared. Not in the default list; see "Differential mode" below |
 | `fuzz_wav_read`        | `ac3::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
 | `fuzz_iec61937_unwrap` | `ac3::iec61937::BurstReader` + `unwrap_stream` - IEC 61937 burst de-framing, driven the way `ac3cli unspdif` drives it. The input is by definition off a wire (an S/PDIF or HDMI capture), and `Pd` states a length the parser must not believe past its data type's repetition period. Pushed as two chunks split at a mutation-chosen point, so the state machine's carry-across-a-chunk-boundary paths are reachable. The input also goes to `Ac4BurstPacker` as an AC-4 sync frame (IEC 61937-14), whose burst must be its period long and read back as the frame |
+| `fuzz_iab_parse`       | `ac3iab::parse_iabitstream`, `parse_mxf_iab` and `parse_iaframe` on one input - the IAB bitstream's Preamble+IAFrame run (§7), the KLV wrapper of an IAB track file in MXF, and one extracted frame (§9.1). Built with `AC3FORGE_BUILD_IAB` |
+| `fuzz_ac4_parse`       | `ac4::scan`, `ac4::SyncFrameSplitter` and `ac4::parse_raw_frame` - sync search and the table of contents, on each sync frame `scan` finds and on the whole input as one raw frame, so a mutated table of contents is reached without a well-formed sync frame having to be guessed first; then `ac4::build_dac4` and its refusals, the CMAF rules, the codec string and the manifest functions (`signalled_presentation` and the rest, Part 2 Annex G, and Annex H.1.2.4's `configuration_difference`) on every table of contents that reads. Built with `AC3FORGE_BUILD_AC4` |
+| `fuzz_ac4_decode`      | `ac4::Decoder::parse` and `decode` - every substream below the table of contents (section lengths, Huffman codewords, A-SPX envelope counts, DRC gain sets, EMDF payloads) and the reconstruction to PCM, A-SPX, A-CPL, the immersive element, A-JOC, the object audio metadata and the intermediate spatial format among it. The input's last three bytes choose the output processing, the concealment policy, the presentation, core decoding and the renderer's layout, and half way through a stream the settings change as a player's do. Its seeds are `fuzz_ac4_parse`'s |
+| `fuzz_ac4_encode`      | `ac4::Encoder` over the configuration the input's first bytes choose (layouts from mono to 7.1 and the immersive ones, rates, codec modes, I-frames, frame rates, metadata, DRC, downmix, dialogue enhancement, substreams and presentations) and the samples after them as 32-bit floats, NaN and values far past full scale included. Every frame must read back through the decoder's syntax layer with the encoder's own trace, decode to finite PCM, and come out the same from a second encoder. It draws no objects; `tools/ci/fuzz_ac4_encoder_space.py` does |
 | `fuzz_emdf_parse`      | `ac3::emdf::parse_container` - ETSI TS 102 366 Annex H's container, located by a bit-by-bit sync scan and sized by its own 16-bit length field |
 | `fuzz_oamd_parse`      | `ac3::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
 | `fuzz_joc_parse`       | `ac3::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
@@ -424,11 +469,11 @@ way the fixed findings used to.
 
 ### The object and metadata layer (signing-verify fuzz walk)
 
-The last five rows are the parsers behind a skip field in every Atmos frame -
-this project's differentiating feature, and the deepest attacker-controlled
-bytes in the tree. Before them the layer was reached only indirectly, through
-`fuzz_eac3_decode`, which meant it was reached only by mutations that still
-had a valid CRC. That is the same blindspot the CRC mutator below exists for,
+`fuzz_emdf_parse`, `fuzz_oamd_parse` and `fuzz_joc_parse` are the parsers behind a
+skip field in every Atmos frame, where the object metadata lives, and they are
+the deepest attacker-controlled bytes in the tree. Before them the layer was
+reached only indirectly, through `fuzz_eac3_decode`, which meant it was reached
+only by mutations that still had a valid CRC. That is the same blindspot the CRC mutator below exists for,
 and the two changes landed together: direct harnesses so a mutation lands
 inside the payload, and a mutator so the indirect path stops throwing its
 inputs away at the checksum.
@@ -470,12 +515,10 @@ BW64 chunk-walking is libbw64's and ADM XML is libadm's. That is worth
 knowing either way - the bytes reach them through an `ac3adm::` API this
 project ships - but it changes what "fix it" means for a finding here.
 
-`matroska::` was checked and has no read/demux path - `matroska::mux()` only
-ever produces bytes from frames already in hand, so there is nothing to fuzz
-there. `ac3::io::read_wav` takes a path rather than a byte span, so
+`ac3::io::read_wav` takes a path rather than a byte span, so
 `fuzz_wav_read` round-trips libFuzzer's buffer through a scratch file
 (`/dev/shm` when available) before calling it - the one unavoidable step
-beyond calling the real function directly, since there is no in-memory
+beyond calling the function directly, since there is no in-memory
 overload to call instead.
 
 ## The CRC-repairing mutator (signing-verify fuzz walk)
@@ -569,11 +612,12 @@ short version:
   legitimate decoder disagreement needs the floor reconsidered, not
   assumed.
 
-Because every comparable input spawns a real FFmpeg process, these two
+Because every comparable input spawns an FFmpeg process, these two
 harnesses are much slower per-exec than every other harness here and are
-NOT in `fuzz/run.sh`'s default target list or in the `fuzz-regress`/
-`fuzz-short`/`fuzz-nightly` CI jobs - they get their own job,
-`fuzz-differential` (see the CI section below), and need `ffmpeg` on PATH to
+NOT in `fuzz/run.sh`'s default target list, so the `fuzz-regress` and
+`fuzz-short` CI jobs do not run them. `fuzz-differential` runs them on every
+push, and `fuzz-nightly` runs them again in steps of its own at its deeper
+budget (see the CI section below). They need `ffmpeg` on PATH to
 compare anything at all (silently a no-op otherwise, same as running without
 `ffmpeg` installed locally). They share their crash-only siblings' seed
 corpora rather than duplicating those files (`fuzz/run.sh`'s
@@ -627,7 +671,8 @@ failure, so a random run stays fully reproducible after the fact. Failing
 inputs are kept under `fuzz-encoder-artifacts/` (gitignored, and regenerable
 from the seed).
 
-Scope: AC-3 `encode` only.
+Scope of this script: AC-3 `encode` only. The E-AC-3 and AC-4 encoders have the two scripts
+described next.
 
 ### The E-AC-3 half
 
@@ -641,7 +686,7 @@ substreams, and Atmos object counts. It imports the AC-3 harness's PCM
 generator rather than copying it, so `cliff` and the rest of the adversarial
 material are one implementation serving both.
 
-Two things about it are genuinely different, and both come from E-AC-3 rather
+Two things about it are different, and both come from E-AC-3 rather
 than from a preference:
 
 **The oracle is not one oracle.** FFmpeg reads AC-3 whole; it does not read
@@ -721,15 +766,54 @@ python3 tools/ci/fuzz_eac3_encoder_space.py --regressions
 ```
 
 Failing inputs are kept under `fuzz-eac3-encoder-artifacts/` (gitignored, and
-regenerable from the seed). Both harnesses run bounded in `ci.yml`'s
-`ffmpeg-validate` job on every pull request, and deeper in `fuzz.yml`'s
-`encoder-space-nightly` job, which has a separate dispatch budget for each.
+regenerable from the seed).
+
+### The AC-4 half
+
+**`tools/ci/fuzz_ac4_encoder_space.py`** asks the same question of `ac4-encode`.
+It imports the AC-3 harness's PCM generator and draws the configuration from
+this encoder's space: layouts from mono to 7.1 and, in a case in eight, the
+immersive ones; the codec modes; 48 kHz at every frame rate of Part 1 Table 83,
+or 44.1 kHz at the native one; rates from 8 kbps; constant, average and variable
+rate modes; I-frames at an interval, at named frames and at fragment starts;
+the metadata options; raw or MP4 output; in a case in five, several substreams
+and the presentations that play them; and in a case in ten, objects
+(`experimental=objects`: A-JOC over a computed downmix or a static 5.X bed, or
+direct-coded). Each case is held to three checks:
+
+| check | what it holds |
+|---|---|
+| traces | the encoder's own trace, the decoder's and `tools/references/ac4_syntax.py`'s are the same record for record, and the Python parser reads every substream to its end |
+| framing | the sync frames, walked from the sync word and `frame_size` alone, tile the file, each with its CRC; FFmpeg's raw AC-4 demuxer finds as many packets as the encoder wrote frames, and its mov demuxer reads the MP4 output as one AC-4 track of that many samples |
+| decode | `ac3cli decode` reads every frame at the input's channel count and sample rate, the frames' lengths add up to what the frame rate gives, and the output covers the input delayed by the lag `ac4-encode` reports |
+
+FFmpeg has no AC-4 decoder, so the audio is read by the three traces and by
+`ac3cli decode`. A configuration outside the encoder's range (a rate below 8 or
+above 3000 kbps, or at 44.1 kHz a frame rate other than the native one) must be
+refused with the encoder's own message, and `--check-envelope` re-measures that
+range. There is no `--check-oracles`, and no failing input is kept on disk: a
+failure prints its case seed for `--replay`.
+
+```bash
+AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/fuzz_ac4_encoder_space.py --seconds 120
+python3 tools/ci/fuzz_ac4_encoder_space.py --check-envelope
+python3 tools/ci/fuzz_ac4_encoder_space.py --replay <case-seed>
+python3 tools/ci/fuzz_ac4_encoder_space.py --regressions
+```
+
+All three harnesses run bounded in the `ffmpeg-validate` job of `_ci-core.yml`
+(the envelope check, `--regressions` and 120 seconds of search for each). `ci.yml`
+runs that job in its nightly run and in a dispatched full run, which a `ci:deep`
+label on a pull request also starts; it does not run after every merge or on
+each pull request. They run deeper in `fuzz.yml`'s `encoder-space-nightly` job,
+which has a separate dispatch budget for each (`encoder_space_seconds`,
+`eac3_encoder_space_seconds` and `ac4_encoder_space_seconds`).
 
 ## Running locally
 
 ```bash
-# One-time: any Clang 18+ with libFuzzer works; CI pins LLVM 22 the same way
-# ci.yml's linux-llvm leg does (.github/toolchain/03-llvm-toolchain.sh).
+# One-time: Clang 22 with libFuzzer; CI installs it the way ci.yml's linux-llvm leg
+# does (.github/toolchain/03-llvm-toolchain.sh).
 fuzz/run.sh                    # build, then run every default-list harness for 60s each
 fuzz/run.sh fuzz_scan          # just one harness
 AC3FORGE_FUZZ_SECONDS=600 fuzz/run.sh   # a deeper local run
@@ -751,22 +835,28 @@ environment-variable list.
 
 ## Seed corpus
 
-`fuzz/seeds/<harness>/` is a curated, committed bootstrap corpus generated
-from ac3forge's own valid output - `fuzz/generate-seeds.sh` drives `ac3cli`
-across the layout/codec/Annex-E-tool matrix this project already supports
-(every layout token, every tool combination, both codecs, silence and real
+`fuzz/seeds/<harness>/` is a curated, committed bootstrap corpus, most of it
+generated from ac3forge's own valid output - `fuzz/generate-seeds.sh` drives
+`ac3cli` across the layout/codec/Annex-E-tool matrix this project already
+supports (every layout token, every tool combination, both codecs, silence and
 audio, coupled and uncoupled, Atmos objects and the bed51 fallback) and
-collects the resulting streams.
+collects the resulting streams. What it does not write is committed as it is:
+the AC-4 seeds (below), `fuzz_iab_parse`'s one file (`encode_iab
+--write-fixture`), and the seeds of `fuzz_osc_parse` and the four
+`fuzz_sendspin_*` harnesses. The three container demuxers
+(`fuzz_matroska_demux`, `fuzz_mp4_demux` and `fuzz_mpegts_demux`) have no seed
+directory and start from an empty corpus.
 
-Three of the corpora are not raw `ac3cli` output and are built by
-`fuzz/metadata-seeds.py`, which `generate-seeds.sh` calls:
+The corpora of `fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse` and
+`fuzz_adm_parse`, and one file of `fuzz_iec61937_unwrap`'s, are not raw `ac3cli`
+output and are built by `fuzz/metadata-seeds.py`, which `generate-seeds.sh` calls:
 
 - `fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse` - `metadata-seeds.py
   extract` reads the Atmos streams just encoded, locates each frame's EMDF
   container by the same bit-by-bit sync scan `emdf::parse_container` does,
   repacks it from that bit offset, and writes out both the container and the
   OAMD/JOC payloads inside it. Capped at six per stream per kind:
-  consecutive frames genuinely differ (an object moves, so its position
+  consecutive frames differ (an object moves, so its position
   fields and JOC coefficients change), but the fiftieth position update
   teaches the engine nothing the sixth did not.
 - `fuzz_adm_parse` - `metadata-seeds.py adm` synthesises BW64/RF64 fixtures,
@@ -775,6 +865,22 @@ Three of the corpora are not raw `ac3cli` output and are built by
   BS.2076-2 ADM XML, one Objects document and one DirectSpeakers document,
   plus an RF64 whose `<data>` size resolves through `<ds64>` and a file with
   no `<axml>` at all.
+- `fuzz_iec61937_unwrap` - `metadata-seeds.py ac4-carrier` packs the first four
+  frames of DEE's stereo stream (`tests/golden/external-baseline/ac4-stereo-64/dee.ac4`)
+  into IEC 61937-14 bursts, `spdif-ac4-20.wav`, beside the AC-3 and E-AC-3
+  files `ac3cli spdif` writes.
+
+The AC-4 corpora are committed streams and files. `fuzz_ac4_parse`, whose seeds
+`fuzz_ac4_decode` shares, holds 17: cuts of two or three frames of eight DEE
+streams (2.0, 5.1 and 5.1.4 legs), DEE's stereo baseline whole
+(`generate-seeds.sh` writes that one), a constructed 7.0 stream, four constructed
+object streams (A-JOC in A-SPX with the LFE and decorrelators, A-JOC over a
+static 5.1, direct-coded dynamic objects, and an intermediate spatial format)
+and three of the test multiplexer's presentation streams (5.1, hybrid dialogue
+enhancement, version 0). `fuzz_ac4_encode` holds 15 files that the harness reads
+as a configuration followed by samples, one for each corner of its space; their
+names say which (`mono-48-dc-44k`, `stereo-12-transient`, `stereo-nan`,
+`514-192-ajcc`, and so on).
 
 `fuzz_signing_verify`'s corpus is built inline in `generate-seeds.sh`, since
 its input is a key-prefixed stream rather than a file `ac3cli` writes: a
@@ -810,7 +916,7 @@ gitignored; `fuzz/run.sh` creates it on demand.
 2. The minimized input is added to `fuzz/regressions/<harness>/` and
    committed - `fuzz/run.sh regress` (and `fuzz-regress` in CI) replays every
    file there on every run, so a fixed bug can never silently regress.
-3. The underlying bug gets a real, spec-grounded fix in the library - never
+3. The underlying bug gets a spec-grounded fix in the library - never
    just enough to make the fuzzer stop finding it.
 4. Before considering it fixed: check out the pre-fix commit and confirm the
    *original* minimized input actually reproduces the crash there. A
@@ -818,56 +924,64 @@ gitignored; `fuzz/run.sh` creates it on demand.
 
 ## CI
 
-`.github/workflows/fuzz.yml`:
+`.github/workflows/fuzz.yml` runs on `ubuntu:26.04` with LLVM 22
+(`.github/toolchain/03-llvm-toolchain.sh`) and has six jobs:
 
 - `fuzz-regress` - replays `fuzz/seeds/` + `fuzz/regressions/` with no
-  mutation, on every push/PR to `main`. Seconds, not minutes, and
-  not marked experimental: a failure here means a previously-fixed bug came
-  back, which should always be loud.
+  mutation, on every push to `main`, in the nightly run and on pull requests (a
+  pull request skips it while the repository variable `PAUSE_NONESSENTIAL_CI`
+  is `true`). Seconds, not minutes, and not marked experimental: a failure here
+  means a previously-fixed bug came back, which should always be loud.
 - `fuzz-short` - a 60-second-per-harness mutation budget over the crash-only
-  harnesses, push only (not pull_request, to keep PR turnaround unaffected).
+  harnesses (every harness in `fuzz/run.sh`'s default list), push only (not
+  pull_request, to keep PR turnaround unaffected).
 - `fuzz-differential` - the same 60-second-per-harness mutation budget, push
   only, but over ONLY the two differential harnesses (see "Differential
   mode" above) - a separate job rather than folded into `fuzz-short` because
-  it needs `ffmpeg` installed and is much slower per-exec (a real FFmpeg
-  process per comparable input), so sharing a budget with the crash-only
-  harnesses would have starved them of iterations. Also replays
+  it needs `ffmpeg` installed and is much slower per-exec (an FFmpeg process
+  per comparable input), so sharing a budget with the crash-only harnesses
+  would have starved them of iterations. Also replays
   `fuzz/regressions/fuzz_differential_*` first, same shape as `fuzz-regress`.
-- `fuzz-nightly` - a 10-minute-per-harness mutation budget on a daily
-  schedule, plus `workflow_dispatch` with a configurable budget for an
-  on-demand deeper run. Crash-only harnesses only - see `fuzz-differential`.
+- `fuzz-nightly` - a 10-minute-per-harness mutation budget (the
+  `seconds_per_target` input, default 600) on a daily schedule (03:17 UTC), plus
+  `workflow_dispatch` with a configurable budget for an on-demand deeper run.
+  It runs the default list, then the two differential harnesses in steps of
+  their own, each with its regression replay first. It restores `fuzz/corpus/`
+  from the Actions cache and saves it again, so a night starts from the last
+  one's grown corpus.
 - `fuzz-adm-nightly` - `fuzz_adm_parse` on its own, same daily schedule and
   `workflow_dispatch`. Its own job because it is the only harness here not
   built by default: it needs vcpkg's `adm` feature plus the `FetchContent`
   pulls of libbw64 and libadm, which nothing else in this file touches. See
   "The ADM harness is opt-in" above.
-- `encoder-space-nightly` - the encoder input-space searches above, both of
-  them, on the same daily schedule and `workflow_dispatch`, with a 15-minute
-  default budget each (`encoder_space_seconds` and
-  `eac3_encoder_space_seconds`). Shares none of the machinery of the other
+- `encoder-space-nightly` - the encoder input-space searches above, all three
+  of them (AC-3, E-AC-3 and AC-4), on the same daily schedule and
+  `workflow_dispatch`, with a 15-minute default budget each
+  (`encoder_space_seconds`, `eac3_encoder_space_seconds` and
+  `ac4_encoder_space_seconds`). Shares none of the machinery of the other
   five (no libFuzzer, no sanitizer runtime, not in `fuzz/run.sh`): it builds
-  the plain `linux-llvm` CLI with vcpkg and a pinned `ffmpeg`, the way
-  `ci.yml`'s `ffmpeg-validate` job does. The E-AC-3 half runs its
-  `--check-oracles` and `--check-envelope` gates first, for the same reason
-  the AC-3 envelope check runs first: a search whose acceptance table or
-  oracle table has gone stale comes back green having checked less than it
-  claims.
+  the plain `linux-llvm` CLI with vcpkg and a pinned `ffmpeg`, the way the
+  `ffmpeg-validate` job of `_ci-core.yml` does. Each half runs its
+  `--check-envelope` gate first, and the E-AC-3 half its `--check-oracles`
+  too, for the same reason: a search whose acceptance table or oracle table
+  has gone stale comes back green having checked less than it claims.
 
-The bounded per-PR counterpart to `encoder-space-nightly` is a step in
-`ci.yml`'s `ffmpeg-validate` job (~2 minutes, plus the envelope check), not a
-job in this file - everything it needs is already built and pinned there, and
-unlike `fuzz-short` it runs on pull requests rather than push only, because it
-is cheap enough relative to the job it rides on.
+The bounded counterpart to `encoder-space-nightly` is a group of steps in the
+`ffmpeg-validate` job of `_ci-core.yml` (see "The AC-4 half" above), not a job
+in this file: everything it needs is already built and pinned there. `ci.yml`
+runs that job in its nightly run and in a dispatched full run, not after every
+merge and not on pull requests (`docs/ci-agentic.md`).
 
-`fuzz-short`, `fuzz-differential`, `fuzz-nightly` and `fuzz-adm-nightly` run
-with `continue-on-error: true`, the same convention `ci.yml` uses for its
-other unproven legs: none has multiple clean fuzzing runs behind it yet. That is a
-question of track record, and it is not settled by the build being
-warnings-clean - a bounded mutation run can still surface something on any
-given night. `fuzz-regress` is cheap enough to make a required
-branch-protection check once it has proven itself - that is a repository
-setting this file cannot declare on its own.
+`fuzz-nightly` and `fuzz-adm-nightly` run with `continue-on-error: true`, the
+convention `ci.yml` uses for its unproven legs: neither has multiple clean
+fuzzing runs behind it yet. That is a question of track record, and it is not
+settled by the build being warnings-clean - a bounded mutation run can still
+surface something on any given night. `fuzz-short` and `fuzz-differential` were
+promoted out of that state on 2026-08-25 (the header of `fuzz.yml` gives the
+reasons). `fuzz-regress` is cheap enough to make a required branch-protection
+check once it has proven itself - that is a repository setting this file cannot
+declare on its own; the required checks are `Branch Name`, `CI Status` and
+`Scan dependency diff` (`.github/branch-protection.md`).
 
 This is a bounded, time-boxed run, not continuous (OSS-Fuzz-style) fuzzing
-infrastructure. That is a deliberate scope decision, not a limitation
-somebody forgot to lift.
+infrastructure. The bound is a deliberate scope decision.

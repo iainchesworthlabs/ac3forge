@@ -41,12 +41,19 @@ staying library-only but pointed the other way: Homebrew formulae are for end-us
 `ac3forge-*-Darwin.dmg` (`cmake/Packaging.cmake`). A Cask, not a Formula, is the right shape
 for a bundled `.app` — Homebrew formulae build from source, and a Qt6 GUI app is idiomatically
 distributed prebuilt and signed (or, here, prebuilt and *not* Apple-signed — see the cask's own
-`caveats` block). `Casks/ac3gui.rb` points at a real release, `v0.10.0-beta.1` today:
-`v0.8.0-beta.2` is the first tag whose `macos-llvm` CI leg builds `AC3FORGE_BUILD_GUI=ON` (see
-[docs/platforms/macos.md](../../docs/platforms/macos.md#gui-on-macos)), so it's the first
-`ac3forge-*-Darwin.dmg` that actually contains `ac3gui.app`. Every release needs the same
-per-release bump the sibling Formula gets, which `manifest-bump.yml` makes; see the cask file's
-own header comment.
+`caveats` block). `Casks/ac3gui.rb` names one release: `version` is its tag and `sha256` is the
+digest of its `ac3forge-*-Darwin.dmg` (the digest GitHub reports for that asset). `v0.8.0-beta.2`
+was the first tag whose `macos-llvm` CI leg builds `AC3FORGE_BUILD_GUI=ON` (see
+[docs/platforms/macos.md](../../docs/platforms/macos.md#gui-on-macos)), so it was the first
+`ac3forge-*-Darwin.dmg` that contains `ac3gui.app`.
+
+Each release needs the same bump the sibling Formula gets (the Formula's `url` and `sha256`, the
+cask's `version` and `sha256`). [`manifest-bump.yml`](../../.github/workflows/manifest-bump.yml)
+makes it after a release publishes: it opens a PR here with the bump and, when
+`HOMEBREW_TAP_TOKEN` is set, a PR on the live tap,
+[`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge),
+for a person to merge after the local validation below. See
+[docs/releasing.md](../../docs/releasing.md#homebrew-formula-and-cask) for the flow.
 
 ## Validating locally
 
@@ -60,13 +67,13 @@ brew uninstall ac3forge
 ```
 
 `brew audit` catches most style/metadata issues before they'd surface in a tap or a
-`homebrew-core` PR review. There is no Windows or Linux port of Homebrew's formula-build
-tooling in this repo's CI, so this validation is manual, macOS-only, and not automated —
+`homebrew-core` PR review. No CI job runs `brew audit`, `brew install` or `brew test` on either
+file, so this validation is manual, macOS-only, and not automated —
 see [docs/releasing.md](../../docs/releasing.md#homebrew-formula-and-cask) for the per-release update
 flow.
 
-The cask points at a real, downloadable `.dmg` (v0.10.0-beta.1), so it can be validated the
-same way, from a macOS machine with Homebrew installed:
+The cask points at a downloadable `.dmg`, so it can be validated the same way, from a macOS
+machine with Homebrew installed:
 
 ```bash
 brew audit --cask ./packaging/homebrew/Casks/ac3gui.rb
@@ -74,5 +81,5 @@ brew install --cask ./packaging/homebrew/Casks/ac3gui.rb
 brew uninstall --cask ac3gui
 ```
 
-This repo's CI has no Homebrew, same as the Formula above, so this is manual and macOS-only too.
-Run it before merging the tap's pull request.
+No CI job runs it, same as the Formula above, so this is manual and macOS-only too. Run it
+before merging the bump PR on the tap.

@@ -62,7 +62,7 @@ library at its own runtime, same as any crate wrapping a dynamically-linked C li
 
 ## What's covered
 
-AC-3, E-AC-3 and AC-4 encode and decode — solid and tested (real synthesized audio, several
+AC-3, E-AC-3 and AC-4 encode and decode — solid and tested (synthesized audio, several
 frames, per CONTRIBUTING.md's validation discipline), not six surfaces half-covered. The first
 pass was AC-3 and single-substream E-AC-3:
 
@@ -95,16 +95,21 @@ closed everything that list deferred:
 - `meter::LoudnessMeter` (both constructors — acmod/lfe and the BS.1770-5 chanmap form) and
   `meter::dialnorm_from_lkfs`.
 - `ac4::Decoder`/`Encoder` (roadmap plan phases I4 and I4b) — a distinct codec (ETSI TS 103 190),
-  wrapping `ac3forge_ac4_*` unconditionally, with no Cargo feature of its own: the build script
-  leaves the C library's `AC3FORGE_BUILD_AC4` at its default, on, so the module is always there.
+  wrapping `ac3forge_ac4_*` unconditionally, with no Cargo feature of its own: the header declares
+  those functions whether or not the library was built with AC-4 (`AC3FORGE_BUILD_AC4`, default ON
+  and left at its default by `build.rs`; with it off the fallible ones return
+  `AC3FORGE_ERROR_UNSUPPORTED`), so this module sits on the same footing `atmos` already did.
   Channel-based and channel-based-immersive encode/decode (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4),
-  presentations, concealment, loudness metadata and the `Toc`/`sync_frame` container helpers,
-  round-tripped in `tests/ac4_roundtrip.rs`; and the encoder's object substream (A-JOC or
-  direct-coded objects with their metadata and its updates), the I-frame lists and the
-  experimental flags that need no nested group, with the decoder's update ramps, in
-  `tests/ac4_objects.rs`. The encoder's own subset — no loudness/DRC/downmix/dialogue-enhancement
-  metadata groups, no several substreams or presentations, no EMDF payloads, no `drc_gains` or
-  `three_zero` flags — mirrors the C API's identical cut for the same reason.
+  presentations, concealment, loudness metadata and the `Toc`/`sync_frame` container helpers are
+  wrapped. `tests/ac4_roundtrip.rs` round-trips stereo and 5.1 (checking the 5.1 speaker order),
+  refuses a corrupted frame and an invalid channel count, and checks the `Toc` and `sync_frame`
+  helpers; no test yet reads back the presentation list, the concealment report or the loudness
+  metadata. The encoder's object substream (A-JOC or direct-coded objects with their metadata and
+  its updates), the I-frame lists and the experimental flags that need no nested group, with the
+  decoder's update ramps, are in `tests/ac4_objects.rs`. The encoder's own subset — no
+  loudness/DRC/downmix/dialogue-enhancement metadata groups, no several substreams or
+  presentations, no EMDF payloads, no `drc_gains` or `three_zero` flags — mirrors the C API's
+  identical cut for the same reason.
 
 Still deliberately out: the caller-buffer `_into` decode forms (a realtime-embedder
 convenience whose Rust ergonomics want `&mut [f32]` scratch the value forms already avoid
@@ -123,13 +128,13 @@ compiling the same C++23 source this binding instead links as a black box). Four
    comment says "gain: linear, default 1.0" — but nothing prevented a caller from
    zero-initializing it and silently getting a muted object (`gain = 0.0`), with no
    `ac3forge_object_placement_init()` to catch the trap the way every other config struct's own
-   `_init()` does. **Fixed**: `ac3forge_object_placement_init()` was added (purely additive); the
-   default position is room-centre (0.5, 0.5, 0.0), not the origin.
+   `_init()` does. **Fixed with the binding**: `ac3forge_object_placement_init()` added (purely
+   additive); the default position it sets is room-centre (0.5, 0.5, 0.0), not the origin.
 2. **Four accessors were missing the pointer-lifetime documentation their sibling has.**
    `ac3forge_decoded_frame_channel_samples()` documents "valid until `frame` is destroyed";
    `ac3forge_decoded_substream_channel_samples()`, `ac3forge_decoded_access_unit_channel_samples()`,
    `ac3forge_decoded_substream_object_audio()` and `ac3forge_decoded_access_unit_object_audio()`
-   didn't say so. **Fixed** (doc-only). This crate's own wrappers tie every such
+   didn't say so. **Fixed with the binding** (doc-only). This crate's own wrappers tie every such
    slice's lifetime to `&self` regardless, so a wrong assumption here would have shown up as a
    Rust borrow-checker error in this crate, never as a use-after-free in a caller's.
 3. **bindgen types C enums `i32` on MSVC and `u32` on the Unix targets** — so any Rust code

@@ -20,8 +20,8 @@
 # without ac3adm (there is nothing to bridge), and ac3::forge is
 # unconditionally available regardless, so a separate option would only ever
 # take the same value AC3FORGE_BUILD_ADM already does - one flag, not two
-# that must be kept in sync by hand. a future DAMF reader (out of scope; was B2
-# reader) names this module as the "mapping layer" it plans to share, which
+# that must be kept in sync by hand. A future DAMF reader (out of scope for now)
+# names this module as the "mapping layer" it plans to share, which
 # is the other half of why this lives on its own rather than inside either
 # neighbour: a future second ADM-graph producer should be able to depend on
 # this module without dragging in BW64/RF64-specific parsing it does not

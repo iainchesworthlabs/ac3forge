@@ -33,8 +33,9 @@ tools/checks/layering_debt/ (one file per cut, so that two cuts landing together
 same lines): a line is `<path of the including file> <the spelling it includes>`, blank lines
 and # comments are ignored. A listed include is reported as known and does not fail. A listed
 include that is no longer in the tree fails, which is what makes the change that removes it
-delete its line: the directory empties as the cuts land, and an empty directory is the state
-the check is designed for.
+delete its line, and the one that removes a cut's last include delete the file. With the cuts
+landed no file is left, and the directory's README.md keeps it in the tree (git has no empty
+directory) and says how a debt is listed.
 
 `--edges` prints the include edges between libraries with their counts and stops, which is how a
 table row is written in the first place; `--debt-lines` prints every include the table forbids in

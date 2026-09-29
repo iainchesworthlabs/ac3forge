@@ -46,6 +46,8 @@ a failing check instead.
 | `reference_objects.paths` | placements | — | — | `gen_object_scene_wav.py` |
 | `programme_speech_stereo.flac` | speech | stereo, 16-bit | 30.00 s | `gen_programme_fixtures.py` |
 | `programme_music_stereo.flac` | music | stereo, 16-bit | 30.00 s | `gen_programme_fixtures.py` |
+| `reference_objects.wav` | synthetic | five mono objects, one per channel, 16-bit | 2.00 s | `gen_object_scene_wav.py` |
+| `reference_objects.paths` | object placements | text, in `atmos-path`'s keyframe format | - | `gen_object_scene_wav.py` |
 | `reference_51_eac3_448k_cplbndstrce0.ec3` | bitstream | — | — | FFmpeg (captured, see below) |
 
 `reference_objects.paths` is a plain-text file, `atmos-path`'s keyframe format, that
@@ -148,7 +150,7 @@ All of these are run from the repo root.
 | `gen_object_fixture.py` | `tests/golden/object-fixture/dee_joc_514.ec3`, a DD+ JOC stream that DEE makes from the synthetic 5.1.4 tone bed this script also writes | needs **Dolby DEE** and numpy |
 | `gen_ac4_baseline.py` | the committed AC-4 set: `tests/golden/external-baseline/ac4-*/dee.ac4`, `ac4-manifest.json` and the syntax digests under `tests/golden/ac4dec/`. With `--gold-set DIR`, a local set that is never committed | needs **Dolby DEE** (its licence ends 2026-11-06), numpy, `ffmpeg` and a built `ac3cli` (`--cli`) |
 | `gen_ac4_presentation_sources.py` | the six encoder-made substreams under `tests/golden/ac4dec/presentations/sources/` that the presentation tests multiplex | needs a built `ac3cli` (`--cli`) |
-| `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | encoder/decoder tables | read spec text, not committed |
+| `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | `aht_tables.hpp` and `bitalloc_tables.hpp` in `src/forge/include/ac3/core/`, `joc_tables.hpp` in `src/forge/include/ac3/oba/` | read spec text (and JOC's tables attachment), not committed; each script's `OUT` still names `src/lib/include/ac3/...`, which no longer exists (the first two fail on write, the third creates it), so point `OUT` at the path in the previous column before running |
 | `gen_ac4_tables.py` | the AC-4 tables under `src/ac4core/src/tables/`: Huffman codebooks, scale factor bands, noise and QMF tables, the ISF rendering matrices | reads the TS 103 190-1 and -2 text and companion archives from `--spec-dir` (default `spec/`) |
 | `gen_ac4_reference_tables.py` | `tools/references/ac4_tables.py`, the tables of the Python AC-4 syntax transcription | written separately from `gen_ac4_tables.py` so that a table misread in one shows as a trace difference against the other; takes the same `--spec-dir` |
 | `gen_mdct_goldens.py` | `tests/golden/mdct_goldens.hpp`, the analysis filterbank's golden vectors | needs numpy |
@@ -171,15 +173,16 @@ source's SHA-256 before touching anything. Bump `CORPUS_VERSION` in the same
 change if the output bytes move, then re-run `python
 tools/checks/check_corpus.py`.
 
-`gen_external_baseline.py` is the one that must **never** run in CI — it
-invokes licensed commercial software (Dolby DEE) and FFmpeg's encoder. It
-refuses to start if `GITHUB_ACTIONS` is set. See its own module docstring for
-the leg list, the DEE input-path constraint, and how the manifest it writes is
-consumed.
+The generators that run Dolby DEE - `gen_external_baseline.py`, `gen_dee_gold.py`,
+`gen_ac4_baseline.py` and `gen_object_fixture.py` - must **never** run in CI: DEE
+is licensed commercial software, and each refuses to start if `GITHUB_ACTIONS` is
+set. `gen_external_baseline.py` also invokes FFmpeg's encoder. See its module
+docstring for the leg list, the DEE input-path constraint, and how the manifest
+it writes is consumed.
 
-`gen_dee_gold.py` follows the same rule, and is the one generator here whose
-output is not committed: it makes DEE's golden masters for AC-3, E-AC-3,
-E-AC-3 JOC and TrueHD while DEE's licence runs (it ends on 2026-11-06), a set
-of about 1,100 streams kept on a local disk with a manifest, each rebuildable
-from the committed programme fixtures. `gen_ac4_baseline.py --gold-set` does
-the same for AC-4.
+`gen_dee_gold.py` writes a set that is not committed: it makes DEE's golden
+masters for AC-3, E-AC-3, E-AC-3 JOC and TrueHD while DEE's licence runs (it ends
+on 2026-11-06), a set of about 1,100 streams kept on a local disk with a
+manifest, each rebuildable from the committed programme fixtures.
+`gen_ac4_baseline.py --gold-set` does the same for AC-4; without `--gold-set` it
+writes the short streams under `tests/golden/external-baseline/` that CI reads.
