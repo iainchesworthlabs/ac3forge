@@ -279,6 +279,47 @@ sets them, and its own dialnorm, loudness, DRC and downmix where it sets them. T
 shares of the rate in proportion to their full-band channels unless they set their own. What the
 encoder refuses there, and why, is in the header and `src/ac4enc/ERRATA.md`.
 
+### Encoding objects
+
+With `experimental.objects`, a substream codes objects in place of channels: each object's PCM, one
+input channel each, and its metadata over time in the `ObjectProperties` the decoder reports
+(`ac4/ac4.hpp`). The applications convert ADM BWF, IAB and object scenes into these; the library reads
+no scene format.
+
+```cpp
+ac4::EncoderConfig config{.bitrate_kbps = 256};
+config.experimental.objects = true;
+ac4::ObjectsConfig objects;
+objects.objects = {
+    {.properties = {.position = {0.0, 0.0, 0.0}}},  // a dynamic object at the front left
+    {.bed = ac4::BedChannel::kCentre},              // a bed object on C
+    {.lfe = true},                                  // the LFE
+};
+config.substreams = {{.objects = objects}};
+auto encoder = ac4::Encoder::create(config);
+// Object 0 moves to the front right over 2 048 samples from input sample 48 000 on.
+const ac4::ObjectMetadataUpdate move{
+    .object = 0, .sample = 48000, .ramp_samples = 2048,
+    .properties = {.position = {1.0, 0.0, 0.0}}};
+auto frames = encoder->encode(channels, std::span(&move, 1));
+```
+
+`ObjectsConfig::coding` chooses between an A-JOC substream (Part 2 clause 5.7), the default, and
+direct-coded object substreams. A-JOC codes a downmix and the matrices that rebuild the objects from
+it: `downmix` is a computed downmix of `downmix_signals` signals (by default one a 32 kbps, up to
+ten), each the sum of a run of the objects in the order of their azimuth and carrying its group's
+position for core decoding, or a static 5.0 or 5.1 bed the objects are panned onto. The matrices are
+chosen frame by frame by running the decoder's own reconstruction on candidate fits and keeping the
+one that comes closest to the objects; `decorrelation`, `parameter_bands` and `coarse` set A-JOC's
+decorrelators, bands and quantisation. Direct-coded objects go five, three, two or one a substream in
+Part 1's elements, with the LFE in the first and an OAMD substream for the group.
+
+An update at input sample n comes out of the decoder at n + `delay_samples()` +
+`decoder_delay_samples()`, to within 32 samples. The object substream is the stream's one, at
+`frame_rate_index` 13, played by presentations of it alone; an A-JOC presentation takes md_compat 3,
+and 7 above 17 objects. `ac3cli ac4-encode objects=` takes a scene file of these terms: see
+[Commands](../forge/cli/commands.md#ac4-encode).
+
 ### Containers
 
 `ac4::sync_frame()` wraps a frame for a raw `.ac4` file or an MPEG-2 transport stream, with Part 2

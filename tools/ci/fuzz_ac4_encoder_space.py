@@ -160,6 +160,16 @@ IMMERSIVE_LOWEST_KBPS = {"auto": 27, "scpl": 12, "aspx-scpl": 33, "aspx-acpl-2":
                          "aspx-acpl-1": 28, "aspx-ajcc": 24}
 # The experimental tool each immersive codec mode needs, where it needs one.
 IMMERSIVE_TOOLS = {"aspx-acpl-1": "acpl", "aspx-ajcc": "ajcc"}
+# Objects (phase E9, experimental=objects), a case in ten, drawn from a generator of their own as
+# the immersive layouts are: one to twelve objects, each an input channel, of which some are bed
+# objects and one the LFE; A-JOC over a computed downmix of some signals or a static 5.0 or 5.1
+# bed, with decorrelation now and then, or direct-coded; and metadata updates within the input,
+# given to ac4-encode as objects= scene files. The objects render to stereo for the decode check.
+OBJECTS_SHARE = 0.1
+OBJECTS_SALT = 0xE9E9E9E9E9E9E9E9
+OBJECTS_RATES = [48, 64, 96, 128, 192, 256, 320, 384, 512, 768]
+BED_CHANNELS = ["L", "R", "C", "Ls", "Rs", "Lb", "Rb", "Tfl", "Tfr", "Tsl", "Tsr", "Tbl", "Tbr",
+                "Lw", "Rw"]
 HEIGHT_DOWNMIXES = ["front", "surround", "front-and-surround"]
 HEIGHT_GAINS = ["0", "-1.5", "-3", "-4.5", "-6", "-9", "-12", "off"]
 # The encoder's delay (a frame and a half) and the decoder's at frame_rate_index 13, which the
@@ -237,6 +247,8 @@ class Case:
     # enhancement substream, which takes no input. Their options and the presentations' are in
     # `options`; ac3cli is given each input as substreamN=.
     substreams: list = field(default_factory=list)
+    # An object case: the scene file's lines, the input's channels its objects.
+    scene: list = field(default_factory=list)
 
     @property
     def in_range(self):
@@ -259,7 +271,71 @@ class Result:
     detail: str = ""
 
 
+def draw_objects(seed):
+    """An object case (OBJECTS_SHARE of them): its scene, rate and options, or None."""
+    rng = random.Random(seed ^ OBJECTS_SALT)
+    if rng.random() >= OBJECTS_SHARE:
+        return None
+    count = rng.randint(1, 12)
+    direct = rng.random() < 0.3
+    downmix = "computed" if direct else rng.choice(["computed", "computed", "5.0", "5.1"])
+    lfe = None
+    if downmix == "5.1" or (downmix == "computed" and count > 1 and rng.random() < 0.3):
+        lfe = rng.randrange(count)
+    if downmix == "5.1" and count == 1:
+        downmix = "computed"
+        lfe = None
+    scene = [f"coding {'direct' if direct else 'ajoc'}", f"downmix {downmix}"]
+    fullband = 0
+    for channel in range(count):
+        if channel == lfe:
+            scene.append(f"object {channel} lfe")
+            continue
+        fullband += 1
+        if not direct and rng.random() < 0.3:
+            scene.append(f"object {channel} bed {rng.choice(BED_CHANNELS)}")
+        else:
+            x, y, z = rng.random(), rng.random(), rng.uniform(-1.0, 1.0)
+            scene.append(f"object {channel} dynamic {x:.4f} {y:.4f} {z:.4f} {rng.randint(-20, 6)}")
+    if downmix == "computed" and not direct and rng.random() < 0.5:
+        scene.append(f"downmix-signals {rng.randint(1, min(fullband, 11))}")
+    if not direct and rng.random() < 0.2:
+        scene.append("decorrelation on")
+    blocks = rng.randint(-(-2 * FRAME // BLOCK), -(-10 * FRAME // BLOCK))
+    for _ in range(rng.randint(0, 6)):
+        channel = rng.randrange(count)
+        x, y, z = rng.random(), rng.random(), rng.uniform(-1.0, 1.0)
+        ramp = rng.choice([0, 512, 1536, 700, 2048])
+        scene.append(
+            f"update {channel} {rng.randrange(blocks * BLOCK)} {ramp} {x:.4f} {y:.4f} {z:.4f}"
+        )
+    options = ["experimental=objects"]
+    if rng.random() < 0.2:
+        options.append(f"iframe-interval={rng.randint(1, 12)}")
+    roll = rng.random()
+    if roll < 0.15:
+        options.append("rate-mode=average")
+    elif roll < 0.3:
+        options.append("rate-mode=variable")
+    return Case(
+        seed=seed,
+        channels=count,
+        sample_rate=rng.choice(SAMPLE_RATES),
+        bitrate=rng.choice(OBJECTS_RATES),
+        blocks=blocks,
+        pcm16=rng.random() < 0.5,
+        audio_profile=rng.choice([*ac3space.AUDIO_PROFILES, "mixed"]),
+        correlation=rng.choice(["independent", "identical", "pairs", "inverted"]),
+        mp4=False,
+        options=options,
+        scene=scene,
+    )
+
+
 def draw_case(seed):
+    objects = draw_objects(seed)
+    if objects is not None:
+        return objects
     rng = random.Random(seed)
     channels = rng.choice(CHANNELS)
     immersive_rng = random.Random(seed ^ IMMERSIVE_SALT)
@@ -632,6 +708,7 @@ def describe(case):
         f"{' ' + ' '.join(case.options) if case.options else ''}"
         f"{', a dialogue stem' if case.stem else ''}"
         f"{', and substreams of ' + str(case.substreams) + ' channels' if case.substreams else ''}"
+        f"{', objects: ' + '; '.join(case.scene) if case.scene else ''}"
         f"{', MP4 too' if case.mp4 else ''}"
     )
 
@@ -768,6 +845,9 @@ def _run_case(cli, ffprobe, case, tmp):
             )
             ac3space.write_wav(tmp / f"sub{number}.wav", other, case.sample_rate, case.pcm16)
             options.append(f"substream{number}={tmp / f'sub{number}.wav'}")
+    if case.scene:
+        (tmp / "scene.txt").write_text("\n".join(case.scene) + "\n", encoding="utf-8")
+        options.append(f"objects={tmp / 'scene.txt'}")
     stream = tmp / "out.ac4"
     encoded = _run(
         [
@@ -871,6 +951,10 @@ def _run_case(cli, ffprobe, case, tmp):
     # The three traces. With several substreams the decoder reads every one, and decodes the first
     # presentation, whose channels are the input's, at level 7, which takes any number of tracks.
     chosen = ["presentation=0", "md-compat=7"] if case.substreams else []
+    if case.scene:
+        # The objects, rendered to stereo, at level 7: more than eleven direct-coded objects or
+        # seventeen A-JOC objects need it.
+        chosen = ["channels=2", "md-compat=7"]
     decoded = _run(
         [cli, "decode", stream, tmp / "out.wav", f"syntax-trace={tmp / 'dec.tsv'}", *chosen]
     )
@@ -883,8 +967,17 @@ def _run_case(cli, ffprobe, case, tmp):
     parsed, diagnostics = python_trace(data)
     if diagnostics:
         return Result(case, "fail", "traces", f"ac4_syntax.py: {diagnostics[0]}")
-    for label, other in (("the decoder's", read), ("ac4_syntax.py's", parsed)):
-        difference = first_difference(written, other)
+    # ac4_syntax.py reads a frame's substreams in index order, and the encoder and the decoder
+    # read a group's OAMD substream first: the same records, substream by substream, as the
+    # digests compare them.
+    def by_substream(records):
+        return sorted(records, key=lambda r: (r[0], r[1]))
+
+    for label, mine, other in (
+        ("the decoder's", written, read),
+        ("ac4_syntax.py's", by_substream(written), by_substream(parsed)),
+    ):
+        difference = first_difference(mine, other)
         if difference:
             return Result(
                 case, "fail", "traces", f"the encoder's trace and {label} differ at {difference}"
@@ -892,13 +985,14 @@ def _run_case(cli, ffprobe, case, tmp):
 
     # The decode.
     samples, rate = read_wav_shape(tmp / "out.wav")
-    if rate != case.sample_rate or samples[0] != case.channels or samples[1] != decoded_length:
+    wanted_channels = 2 if case.scene else case.channels
+    if rate != case.sample_rate or samples[0] != wanted_channels or samples[1] != decoded_length:
         return Result(
             case,
             "fail",
             "decode",
             f"decoded {samples[0]} channels of {samples[1]} samples at {rate} Hz, expected "
-            f"{case.channels} of {decoded_length} at {case.sample_rate}",
+            f"{wanted_channels} of {decoded_length} at {case.sample_rate}",
         )
 
     # FFmpeg's framing.

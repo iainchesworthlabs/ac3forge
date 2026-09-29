@@ -5,6 +5,7 @@ ac4::Encoder::create(ac4::EncoderConfig const&)
 ac4::Encoder::decoder_delay_samples() const
 ac4::Encoder::delay_samples() const
 ac4::Encoder::encode(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
+ac4::Encoder::encode(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>, std::span<ac4::ObjectMetadataUpdate const, 18446744073709551615ul>)
 ac4::Encoder::encode(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>, std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
 ac4::Encoder::flush()
 ac4::Encoder::operator=(ac4::Encoder&&)

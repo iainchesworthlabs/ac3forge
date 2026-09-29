@@ -106,12 +106,18 @@ class Traces(unittest.TestCase):
             self.assertEqual(fa4.read_trace(path), [(0, 0, 0, 1, 0), (3, 1, 15, 7, 124)])
 
 
+def channel_cases(count):
+    """The cases of the first `count` seeds that code channels: the object cases' input
+    channels are their objects."""
+    return [c for c in (fa4.draw_case(seed) for seed in range(count)) if not c.scene]
+
+
 class DrawCase(unittest.TestCase):
     def test_a_case_is_a_function_of_its_seed(self):
         self.assertEqual(fa4.draw_case(1234), fa4.draw_case(1234))
 
     def test_the_space_drawn(self):
-        cases = [fa4.draw_case(seed) for seed in range(2000)]
+        cases = channel_cases(2000)
         self.assertEqual({c.channels for c in cases},
                          set(fa4.CHANNELS) | set(fa4.IMMERSIVE_CHANNELS))
         # Seven and eight channels always name a 7.X pair, and nothing else does; 5.X and 7.X
@@ -162,7 +168,7 @@ class DrawCase(unittest.TestCase):
                 self.assertGreaterEqual(case.channels, 5)
 
     def test_several_substreams_and_their_presentations(self):
-        cases = [fa4.draw_case(seed) for seed in range(2000)]
+        cases = channel_cases(2000)
         several = [c for c in cases if c.substreams]
         # About one case in five, with every configuration of Table 53 and the singles.
         self.assertTrue(250 < len(several) < 550)
@@ -190,7 +196,7 @@ class DrawCase(unittest.TestCase):
             self.assertNotIn("presentation1-enabled=off", case.options)
 
     def test_the_immersive_layouts(self):
-        cases = [fa4.draw_case(seed) for seed in range(4000)]
+        cases = channel_cases(4000)
         immersive = [c for c in cases if c.channels > 8]
         # About one case in eight, in every layout and codec mode, with the height downmix.
         self.assertTrue(350 < len(immersive) < 650)
@@ -223,6 +229,38 @@ class DrawCase(unittest.TestCase):
             # The LFE's downmix gain where there is an LFE.
             if any(o.startswith("lfemix=") for o in case.options):
                 self.assertIn(case.channels, (10, 12))
+
+    def test_the_object_cases(self):
+        cases = [fa4.draw_case(seed) for seed in range(2000)]
+        objects = [c for c in cases if c.scene]
+        # About one case in ten, raw at the native frame rate, each channel an object at most
+        # once, with both codings, every downmix, bed objects, the LFE, decorrelators and updates.
+        self.assertTrue(120 < len(objects) < 290)
+        lines = [line for c in objects for line in c.scene]
+        for directive in ("coding ajoc", "coding direct", "downmix computed", "downmix 5.0",
+                          "downmix 5.1", "decorrelation on", "downmix-signals"):
+            self.assertTrue(any(line.startswith(directive) for line in lines), directive)
+        self.assertTrue(any(" bed " in line for line in lines))
+        self.assertTrue(any(line.endswith(" lfe") for line in lines))
+        self.assertTrue(any(line.startswith("update ") for line in lines))
+        for case in objects:
+            self.assertFalse(case.mp4)
+            self.assertEqual(case.frame_rate_index, 13)
+            self.assertIn("experimental=objects", case.options)
+            named = [int(line.split()[1]) for line in case.scene if line.startswith("object ")]
+            self.assertEqual(named, list(range(case.channels)))
+            lfe = [line for line in case.scene if line.endswith(" lfe")]
+            if "downmix 5.1" in case.scene:
+                self.assertEqual(len(lfe), 1)
+            if "downmix 5.0" in case.scene:
+                self.assertEqual(lfe, [])
+            if "coding direct" in case.scene:
+                self.assertFalse(any(" bed " in line for line in case.scene))
+
+    def test_other_cases_draw_as_before_the_objects(self):
+        # The object cases come from a generator of their own: no regression seed draws one.
+        for seed in fa4.REGRESSION_SEEDS:
+            self.assertEqual(fa4.draw_case(seed).scene, [])
 
     def test_other_cases_draw_as_before_the_immersive_layouts(self):
         # The immersive layouts come from a generator of their own: no seed kept before it draws
