@@ -201,7 +201,7 @@ def verify(archive: pathlib.Path, with_ac4: bool = False, targets: list[str] | N
             "\n".join(
                 [
                     "cmake_minimum_required(VERSION 3.28)",
-                    'include($ENV{IDF_PATH}/tools/cmake/project.cmake)',
+                    "include($ENV{IDF_PATH}/tools/cmake/project.cmake)",
                     "project(ac3forge_component_verify LANGUAGES C CXX)",
                 ]
             )
@@ -279,7 +279,15 @@ def target_has_fpu(target: str) -> bool:
     from where it is written so that a part added to the manifest needs nothing
     added here.
     """
-    caps = pathlib.Path(os.environ["IDF_PATH"]) / "components" / "soc" / target / "include" / "soc" / "soc_caps.h"
+    caps = (
+        pathlib.Path(os.environ["IDF_PATH"])
+        / "components"
+        / "soc"
+        / target
+        / "include"
+        / "soc"
+        / "soc_caps.h"
+    )
     for line in caps.read_text(encoding="utf-8").splitlines():
         fields = line.split()
         if len(fields) >= 3 and fields[0] == "#define" and fields[1] == "SOC_CPU_HAS_FPU":
@@ -363,7 +371,9 @@ def main() -> int:
         wanted = [t for t in args.verify_targets.split(",") if t]
         unknown = [t for t in wanted if t not in manifest_targets()]
         if unknown:
-            raise SystemExit(f"--verify-targets names {unknown}, not in the manifest's {manifest_targets()}")
+            raise SystemExit(
+                f"--verify-targets names {unknown}, not in the manifest's {manifest_targets()}"
+            )
         verify(final, args.with_ac4, wanted or None)
         print("  verified: a throwaway IDF project builds against it")
     return 0
