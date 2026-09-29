@@ -18,7 +18,7 @@ after a review of the options (recorded under
 | Under HVCI | Not exercised. The guest runs with memory integrity off, so the first test under HVCI is a signed build on a default install |
 | Distribution | Not a release asset. Crucible's Windows archive carries the install scripts and no driver |
 
-*The plan below is kept as it was written; what each step actually found, where it departed
+*The plan below is kept as it was written; what each step found, where it departed
 from the plan (the install API, the header version, the timing simulation lifted into a
 testable header) and the verification record are under [Progress](#progress) at the end. The
 plan's file names did not survive: `Source/Main/` holds `driver.cpp`, `device.cpp`,

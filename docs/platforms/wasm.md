@@ -131,7 +131,7 @@ native module, not the codec, which the C API's, Rust's and Python's tests hold 
 imports `./ac4` through the package's own name. `ac4_bindings.cpp` itself is built by `build-wasm`
 in CI: the run on `main` of 2026-09-29 linked `bin/wasm_ac4_demo/ac3forge_ac4.js`, and the
 package's suite passed 102 tests. No test runs the compiled module, so what the wrapper does with
-the real module is not verified by CI.
+the compiled module is not verified by CI.
 
 ## Build and run
 

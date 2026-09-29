@@ -14,7 +14,7 @@
     usage under `-Wc2y-extensions` — see `cmake/CompilerWarnings.cmake`), fixed in one commit,
     followed by two consecutive clean runs. `macos-llvm-x64` (DR8's new leg, on a brand-new
     `macos-15-intel` runner label never exercised before this project used it) went three
-    consecutive clean runs — two `release.yml` dry runs and a feature branch's own PR CI — at real
+    consecutive clean runs — two `release.yml` dry runs and a feature branch's own PR CI — with
     gold-reference SNR numbers (67.80/67.82/67.76 dB, matching the x86 baseline every other
     non-arm64 leg reports) before its own `continue-on-error` escape hatch came off the same way
     (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)).
@@ -116,15 +116,15 @@ disk. That part is platform-independent and shares the verification the framing 
 
 The backend is CI-verified only: the parts that need no live device — enumeration on a machine
 with none, format matching, sample conversion — run under `ac3tests` on the hosted runner, same
-as everywhere else without real hardware, but no real Mac has ever run this code against an
-actual digital output, and no receiver has been asked to lock onto its output.
+as everywhere else without hardware, but no Mac has ever run this code against a digital
+output, and no receiver has been asked to lock onto its output.
 
 **No EDID/ELD backend here either.** `ac3cli play` asks a chosen sink what it
 actually accepts before committing to a format (see
 [CLI → Following the sink](../forge/cli/commands.md#following-the-sink)), and that read
-(`ac3::audio::sink_capabilities`) is real today on ALSA and on PipeWire (see
+(`ac3::audio::sink_capabilities`) exists today for ALSA and for PipeWire (see
 [Linux](linux.md#reading-a-sinks-own-edideld)). CoreAudio's device properties and
-IOKit's `IODisplayEDID` are both real APIs, but neither is documented to expose the CEA-861
+IOKit's `IODisplayEDID` exist here, but neither is documented to expose the CEA-861
 Short Audio Descriptor block for an HDMI *audio* endpoint specifically, and a pure optical
 output has no display EDID to read in the first place. `play` falls back to the live
 `enumerate_render_devices()` probe here, the same as before.
@@ -252,7 +252,7 @@ an `install(TARGETS ac3crucible)` rule that named no `BUNDLE DESTINATION` for a 
 (`tests/backend/macos/test_macos_support.cpp`, the one place the `__builtin_available` lowering
 is executed rather than merely compiled), the agreement between the capability report and
 `process_loopback_available()` and their shared refusal sentence, and — since the Crucible Qt
-Quick suites run there — the engine driving the real seams and being told no by the tap.
+Quick suites run there — the engine driving the platform seams and being told no by the tap.
 
 ## Device notifications
 
@@ -374,42 +374,44 @@ declaration tying it to `audio/ac3`/`audio/eac3` — and claims them with `LSHan
 `apps/gui/Info.plist.in` no longer does either, because a UTI with two owners leaves Launch
 Services to pick one. The release `.dmg` carries `ac3gui.app` and not Hearth, so it registers no
 `.ac3` or `.ec3` handler today, and nothing on macOS declares `.ac4`. Configure/build-verified
-only, like the rest of this file's GUI coverage below — nobody has opened a real `.ac3` file from
-Finder on real hardware yet.
+only, like the rest of this file's GUI coverage below — nobody has opened an `.ac3` file from
+Finder on a Mac yet.
 
 ## CI: what has and has not been verified
 
 Build, `ctest` (see [Verified configuration](../building.md#verified-configuration) for how the
 suite's composition differs from Windows/Linux) and the [gold-reference correctness
-gate](../building.md#gold-reference-correctness-gate) all pass on real GitHub Actions runners —
-not a simulation or a local guess, on `macos-llvm`. `ac3gui_qmltests` registers and passes there
-too: 582 ctest entries total, 100% passing, that one entry in 39.74s of a 56.81s total run - the
-leg's first-ever GUI run, confirmed clean on a second push after two real fixes
-(`QSG_RENDER_LOOP=basic` for a Qt Quick render-loop deadlock, and forcing the `Fusion` style in
-the test binary for a native-`ComboBox`-under-offscreen hang - see [GUI on macOS](#gui-on-macos)
-above and `apps/gui/tests/CMakeLists.txt`/`qml_test_main.cpp` for the full detail). Real SNR
-numbers from the CI run that first proved the gate on macOS: 61.81/61.82 dB, against 67.84/67.82
-dB on Linux and Windows for the same material, above the gate's 30 dB floor. That
-gap is **not** a Homebrew-LLVM-libm-vs-glibc/MSVC difference, despite what this page and
-`ci.yml` used to say (see `docs/building.md`'s "Floating-point contraction"
-section) traced it to every real arm64/aarch64 CI leg, `macos-llvm` included, landing on the
-same ~6.0 dB offset from every x86 leg regardless of OS or C library, which rules out a
-macOS-specific explanation; the gap tracks CPU architecture, and the actual mechanism is still
-open pending real hardware access neither this project nor `qemu-user` emulation can substitute
-for. `macos-llvm-x64` turned out to be new, confirmed data for exactly this question: same OS,
-same toolchain stack as `macos-llvm`, x86_64 instead of arm64, and its real gold-reference
-numbers land with the other x86 legs — 67.80/67.82/67.76 dB across three separate real runs — not
-with the ~61.8 dB every arm64/aarch64 leg (`macos-llvm` included) reports. That is further
-evidence the offset is architecture-bound rather than OS-bound: two macOS legs on the same
-toolchain now sit on opposite sides of the split, purely by CPU architecture. See `ci.yml`'s VX11
-comment for the fuller record.
+gate](../building.md#gold-reference-correctness-gate) all pass on GitHub-hosted runners, on
+`macos-llvm`. `ac3gui_qmltests` registers and passes there too. In the leg's first GUI run,
+confirmed clean on a second push after two fixes, 582 ctest entries all passed, and that one entry
+took 39.74 s of a 56.81 s total run. The fixes were `QSG_RENDER_LOOP=basic` for a Qt Quick
+render-loop deadlock, and forcing the `Fusion` style in the test binary for a
+native-`ComboBox`-under-offscreen hang (see [GUI on macOS](#gui-on-macos) above and
+`apps/gui/tests/CMakeLists.txt` and `qml_test_main.cpp` for the detail).
+
+The SNR numbers from the run that first proved the gold-reference gate on macOS were 61.81 and
+61.82 dB, against 67.84 and 67.82 dB on Linux and Windows for the same material. This page and
+`ci.yml` used to attribute the gap to Homebrew LLVM's libm against glibc and MSVC. It follows CPU
+architecture instead: every arm64 and aarch64 CI leg, `macos-llvm` included, sits about 6.0 dB
+below every x86 leg, whatever the OS or C library. `macos-llvm-x64` is the direct comparison, with
+the same OS and toolchain stack on x86_64. Its numbers, 67.80, 67.82 and 67.76 dB across three
+runs, land with the other x86 legs and not with the ~61.8 dB of the arm64 legs, so two macOS legs
+on the same toolchain sit on opposite sides of the split by CPU architecture alone. The difference
+is one bit of rounding in the decode path, since the encoder's output is byte-identical on both
+architectures. Why arm64 is the lower side is still unanswered, and needs arm64 hardware to
+answer, because no emulated run has reproduced it ([Why arm64 and x86-64
+disagree](../verification.md#why-arm64-and-x86-64-disagree)). The gate's floors are set per
+channel from the lowest value any leg has produced, which on the channels that split is the arm64
+value ([One floor per
+channel](../verification.md#one-floor-per-channel-not-one-per-file)).
 
 **Crucible on macOS, as of 2026-09-06.** Both legs build it — every `.mm`, every file under
 `apps/crucible/engine/platform/macos/`, and `bin/ac3crucible.app/Contents/MacOS/ac3crucible` —
-and both run all eleven of its Qt Quick suites (sixteen `tst_*.qml` files are in the tree on
-2026-09-30). Eight of those eleven drive the **real** macOS platform seams rather than fakes: `Main.qml` starts the engine whenever the window is built, so the
-session monitor, the foreground, the default device, the virtual device and the output stage
-all execute on the runner.
+and both run its Qt Quick suites: eleven on that date, and sixteen `tst_*.qml` files are in the
+tree on 2026-09-30. Of the eleven, eight drive the macOS platform seams themselves rather than
+fakes: `Main.qml` starts the engine whenever the window is built, so the session monitor, the
+foreground, the default device, the virtual device and the output stage all execute on the
+runner.
 
 That is how the one hang this platform half has produced was found. The Apple Silicon leg
 (`macos-latest`, macOS 26.6.2) timed out at 300 s on `ac3crucible_qml_tests_firstrun`, `_room`
@@ -428,9 +430,10 @@ which is why `apps/gui/tests/CMakeLists.txt` sets `QSG_RENDER_LOOP=basic` on `AP
 amount of render-loop configuration would have moved it.
 
 The application itself has never been launched on either leg.
+
 ---
 
-If you get a Mac, that's still useful information for this project — running these instructions
-on real local hardware, or actually launching `ac3gui.app` and using it (CI's `--smoke` run
-proves it starts, loads its QML and drives a real encode headlessly, not that the interactive
-experience is right), would be new information. Consider filing an issue with what you found.
+If you have a Mac, running these instructions on local hardware, or launching `ac3gui.app` and
+using it, would be new information for this project. CI's `--smoke` run shows that the app starts,
+loads its QML and drives an encode headlessly, and does not show that the interactive experience
+is right. Consider filing an issue with what you found.

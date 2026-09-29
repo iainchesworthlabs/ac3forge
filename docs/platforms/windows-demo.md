@@ -272,7 +272,7 @@ fifteen seconds each):
 The one-block frame holds its cadence with the same zero-underrun margin as the six-block
 one; the start-up worst case is the first frame's device opens.
 
-**End to end, measured (2026-09-03, spike S5).** `apps/windows/spikes/s5_latency` renders
+**End to end, measured (2026-09-03, spike S5).** `apps/crucible/spikes/s5_latency` renders
 5 ms tone bursts on a pseudo-random schedule into the null sink from its own process, taps
 the runner's output by process loopback, and times both on the QPC clock (`IAudioClock` on the
 render side, the capture packet position on the tap side); `Measure-Latency.ps1` runs the
@@ -374,7 +374,7 @@ the GUI rather than copying them. Screens:
 - **Output**: what mode is active, which endpoint, why (the probe result in one line each), and
   a pin. The default-device switch lives here with its confirmation.
 - **Settings**: six blocks, whose keys are `DeskController`'s in
-  `apps/windows/ui/desk_controller.cpp`. Latency (normal or low-latency frames,
+  `apps/crucible/ui/crucible_controller.cpp`. Latency (normal or low-latency frames,
   `codec/lowLatency`). Codec (the bitrate, `codec/bitrate`, and the split-stereo default for
   applications the engine meets from now on, `codec/splitStereo`). Signing key (the key
   file's path, `signing/keyPath`; the `AC3FORGE_SIGNING_KEY_FILE` and `AC3FORGE_SIGNING_KEY`
@@ -449,7 +449,7 @@ The library gains, in `src/audio`:
   started and stopped wherever the backend exists, since registering needs no endpoint).
 
 Session enumeration, default-device switching and the foreground check are **app-level**, under
-`apps/windows/engine/`, because they are demo policy rather than audio I/O and because one of
+`apps/crucible/engine/`, because they are demo policy rather than audio I/O and because one of
 them touches policy-config COM interfaces that have no business in the library.
 
 Android wraps the repo root from its own Gradle build because Gradle owns that build. Here the
@@ -483,16 +483,16 @@ that are the developer's to-do rather than code are listed where they bite.
 
 ### Phase 0: spikes
 
-Throwaway console programs in `apps/windows/spikes/`, each answering one question, each
+Throwaway console programs in `apps/crucible/spikes/`, each answering one question, each
 leaving its answer in this page. None of it is reused as code.
 
 | Spike | Question | Exit |
 |---|---|---|
-| **S1 taps** | Does process loopback work against N processes at once, what format arrives, does it keep delivering when the session is muted, when the app is routed to the FxSound endpoint, and when the default endpoint is held exclusively by us? | **Done 2026-09-03**, results in `apps/windows/spikes/README.md`: 16 taps separate exactly at 48 kHz float, mute kills a tap, the FxSound null-sink model works, exclusive on another endpoint is fine, exclusive on the apps' own endpoint is refused and destructive, the probe alone is harmless |
+| **S1 taps** | Does process loopback work against N processes at once, what format arrives, does it keep delivering when the session is muted, when the app is routed to the FxSound endpoint, and when the default endpoint is held exclusively by us? | **Done 2026-09-03**, results in `apps/crucible/spikes/README.md`: 16 taps separate exactly at 48 kHz float, mute kills a tap, the FxSound null-sink model works, exclusive on another endpoint is fine, exclusive on the apps' own endpoint is refused and destructive, the probe alone is harmless |
 | **S2 bitstream** | Does `PassthroughSink` in E-AC-3 and AC-3 exclusive mode lock on a real Atmos receiver from this workstation? This is DR9's Windows row. | **Confirmed**, via `ac3cli` rather than the Crucible app itself — see [Windows](windows.md#audio-backend-wasapi): an Onkyo TX-RZ740 locked Dolby Digital, then Dolby Digital Plus, then Atmos/DD+ for a signed object stream (decoded to 5.0.4, audible object motion), at zero-to-near-zero underruns each run. Crucible's own output stage wraps the same `PassthroughSink`, but the app itself has not yet been run against a receiver directly |
 | **S3 headphones** | With Windows Sonic enabled on the Realtek endpoint, does encode then decode then `SpatialObjectSink` produce audible height and rear movement by ear? | yes or no, and the measured round-trip latency |
-| **S4 throughput** | Does a 15-object `AtmosEncoder` plus 16 taps plus the bed mix hold 32 ms cadence on this machine with margin? | **Done 2026-09-03**, results in `apps/windows/spikes/README.md`: p99 1.8 ms of the 32 ms budget in normal mode; the 1-block frame p99 0.7 ms of 5.3 ms, but needs at least about 1.5 Mb/s to carry 15 objects' metadata (640 kb/s is refused) |
-| **S5 latency** | End to end, application to output, how far behind is each mode, and how much of it is the codec? Run under Phase 5, kept here with the others (`s5_latency.cpp`, `period_probe.cpp`, `Measure-Latency.ps1`) | **Done 2026-09-03**, results in `apps/windows/spikes/README.md` and under [Low-latency mode](#low-latency-mode): normal frames about 127 ms and low-latency about 110 ms tap to tap, of which 19 ms is the measuring tap itself; `period_probe` found the Realtek endpoint offers only a 10 ms shared-mode period, so the low-latency render period has no travel there |
+| **S4 throughput** | Does a 15-object `AtmosEncoder` plus 16 taps plus the bed mix hold 32 ms cadence on this machine with margin? | **Done 2026-09-03**, results in `apps/crucible/spikes/README.md`: p99 1.8 ms of the 32 ms budget in normal mode; the 1-block frame p99 0.7 ms of 5.3 ms, but needs at least about 1.5 Mb/s to carry 15 objects' metadata (640 kb/s is refused) |
+| **S5 latency** | End to end, application to output, how far behind is each mode, and how much of it is the codec? Run under Phase 5, kept here with the others (`s5_latency.cpp`, `period_probe.cpp`, `Measure-Latency.ps1`) | **Done 2026-09-03**, results in `apps/crucible/spikes/README.md` and under [Low-latency mode](#low-latency-mode): normal frames about 127 ms and low-latency about 110 ms tap to tap, of which 19 ms is the measuring tap itself; `period_probe` found the Realtek endpoint offers only a 10 ms shared-mode period, so the low-latency render period has no travel there |
 
 Prerequisites: Windows Sonic enabled on the headphone endpoint (S3). S3 and S4 do not wait
 on S2, which is now done.
@@ -510,7 +510,7 @@ owns, and starts and stops a `DeviceWatcher`.
 
 ### Phase 2: engine
 
-`apps/windows/engine/`, headless. Session monitor, tap pool, slot allocator, bed mixer,
+`apps/crucible/engine/`, headless. Session monitor, tap pool, slot allocator, bed mixer,
 placement, output stage with the mode state machine, signing hook, and the frame loop modelled
 on `run_live`. Everything that does not touch Windows is unit-tested on CTest; everything that
 does is behind an interface the tests can fake. Exit: a console runner that takes positions on
@@ -543,7 +543,7 @@ exercised: any bitstream mode (no receiver, and this workstation's HDMI endpoint
 neither format), the spatial path (Windows Sonic is off here), and a real device-arrival
 switch. Fades on a mode switch are not written; the switch is a stop and a start.
 
-The runner's surface as it stands on 2026-09-03 (`apps/windows/runner/main.cpp`). Flags:
+The runner's surface as it stands on 2026-09-03 (`apps/crucible/runner/main.cpp`). Flags:
 `--null-sink SUBSTR` names the silent endpoint (default "Desktop Atmos"); `--key PATH` loads
 a signing key file, otherwise the `AC3FORGE_SIGNING_KEY_FILE` and `AC3FORGE_SIGNING_KEY`
 variables are read; `--pin MODE` starts pinned to one of `atmos`, `ddplus`, `dd`, `pcm`,
@@ -560,9 +560,9 @@ The Qt Quick shell, the room in plan and elevation, the bed tray, the output scr
 and tray residency. Exit: the user story above, minus the driver, works end to end.
 
 **Progress, 2026-09-03:** built to the design canvas after a human-factors pass on it.
-`ac3desk` (`apps/windows/ui/`, QML module `Ac3ForgeDesk`) has the three pages, the tray icon
+`ac3desk` (`apps/crucible/ui/`, QML module `Ac3ForgeDesk`) has the three pages, the tray icon
 with its output submenu and default-output switch, the status strip, and the capture aids
-borrowed from the GUI's smoke modes (`apps/windows/ui/main.cpp`): `--shot <png>` grabs the
+borrowed from the GUI's smoke modes (`apps/crucible/ui/main.cpp`): `--shot <png>` grabs the
 window once it has settled and quits, `--page room|output|settings|room3d` picks the page it
 shows first, and `--place Name=x,y,z[,split]` positions a listed application, as a pair with
 the suffix, before the capture. The GUI's Theme, Card, RailBlock and
@@ -753,13 +753,13 @@ gate is gcov on the Linux preset and the demo is Windows-only. Three steps, in t
    directly, so the frame loop and the five routes cannot run without an audio device. A
    small sink interface (open, submit, stop) and a capture-source interface behind the tap
    pool, with the library classes as the production implementations and in-memory fakes in
-   `tests/windemo/`, let Catch2 drive the loop: taps in, access units and bed out, a mode
+   `tests/crucible/`, let Catch2 drive the loop: taps in, access units and bed out, a mode
    switch mid-stream, the bypass fold, the null-sink width change, a starved tap. The
    platform files stay integration-tested by the guest.
 
 All three landed on 2026-09-03. `ac3desk_qmltests` runs five suites (shell, settings, output,
 room, language) under the `desk` label; `AudioDevices` (`engine/audio_devices.hpp`) is the
-seam, with `wasapi_devices.cpp` behind it in the app and `tests/windemo/fake_devices.hpp` in
+seam, with `wasapi_devices.cpp` behind it in the app and `tests/crucible/fake_devices.hpp` in
 the tests, and the tap pool and output stage now compile into `ac3tests` on every platform
 (59 `windemo` cases at the end of Phase 5, 17 of them over the fakes in `test_tap_pool.cpp` and
 `test_output_stage.cpp`: the five routes with real access units, the bypass fold, a mode
@@ -777,7 +777,7 @@ suites), all passing:
 | `engine/engine.cpp` | 79% | 68% | the desk suites start the real engine |
 | `engine/output_stage.cpp` | 78% | 65% | fakes; decoded-headphones and DD 5.1 error legs thin |
 | `engine/bed_mixer.cpp` | 77% | 83% | the 4-channel and "anything else" folds |
-| `ui/desk_controller.cpp` | 73% | 59% | the driver-install path is guarded, not run |
+| `ui/crucible_controller.cpp` | 73% | 59% | the driver-install path is guarded, not run |
 | `platform/windows/session_monitor.cpp` | 81% | 61% | live, through the desk suites |
 | `platform/windows/default_device.cpp` | 46% | 40% | the set-default path is never taken in a test |
 | `platform/windows/wasapi_devices.cpp` | 59% | 40% | the modes this machine cannot enter |
@@ -1164,7 +1164,7 @@ each other.
     endpoint are tapped identically; and with them there, the Realtek endpoint could be taken
     in exclusive mode without disturbing the taps. Two hazards confirmed: session mute silences
     the tap, and an exclusive open on an endpoint with live shared streams is refused *and*
-    kills those streams. The full table is in `apps/windows/spikes/README.md`.
+    kills those streams. The full table is in `apps/crucible/spikes/README.md`.
 
 !!! note "S4 verified on the development workstation, 2026-09-03"
     Fifteen objects, sixteen taps folded and mixed, encode and burst-wrap: p99 1.8 ms of the
@@ -1172,9 +1172,9 @@ each other.
     refuses below roughly 1.5 Mb/s because the object metadata no longer fits. Same file.
 
 What the phase records above claim was checked on the workstation or in the guest, as each
-record says; a by-ear check of the spatial path and a real device-arrival switch still wait on
+record says; a by-ear check of the spatial path and a device-arrival switch still wait on
 hardware, and so does the demo's own app, though S2 has now confirmed the `PassthroughSink`
-primitive it would use, and `ac3cli spatial` has driven a real spatial endpoint through
+primitive it would use, and `ac3cli spatial` has driven a spatial endpoint through
 `SpatialObjectSink` — see [Windows](windows.md#audio-backend-wasapi).
 
 ## Open questions this plan does not settle
@@ -1185,7 +1185,7 @@ primitive it would use, and `ac3cli spatial` has driven a real spatial endpoint 
 - Whether the foreground full-screen check should use the shell's full-screen notification
   (`SHQueryUserNotificationState`) or a window-rect comparison. Either is app-level; the
   first is cheaper and the plan starts there.
-- The app's real name. It was settled on 2026-09-04 as AC3Forge Crucible; "Desktop Atmos
+- The app's name. It was settled on 2026-09-04 as AC3Forge Crucible; "Desktop Atmos
   Speakers" is still the silent device's name, until the driver is rebuilt and re-signed.
 
 ## Deliberately not in scope

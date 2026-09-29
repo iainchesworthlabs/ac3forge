@@ -74,15 +74,15 @@ What each can carry:
 | `PassthroughSink` | IEC 61937 bursts of AC-3 and E-AC-3, the latter with its JOC objects | AC-4, refused with `kUnsupportedFormat` |
 | `SpatialObjectSink` | E-AC-3 object streams, as dynamic objects and a static LFE | AC-4 objects |
 
-These five are not equally verified against real hardware, and the project's own documentation
-is deliberately explicit about the difference.
+These five are not equally verified on hardware, and the project's own documentation
+is explicit about the difference.
 
-!!! note "MonitorSink is confirmed against real hardware"
-    `ac3cli monitor` and `ac3cli live`'s monitor leg have actually played decoded AC-3 and E-AC-3
-    (including an Atmos stream's 5.1 bed) through a real Realtek output in real time, and a live
-    microphone capture→encode→monitor session has run end to end. Building this path against
-    real hardware surfaced two bugs that neither unit tests nor silent/synthetic input
-    would have caught — a fixed submit-readiness threshold smaller than an actual chunk, which
+!!! note "MonitorSink is confirmed on hardware"
+    `ac3cli monitor` and `ac3cli live`'s monitor leg have played decoded AC-3 and E-AC-3
+    (including an Atmos stream's 5.1 bed) through a Realtek output in real time, and a live
+    microphone capture→encode→monitor session has run end to end. Building this path on
+    hardware surfaced two bugs that neither unit tests nor silent/synthetic input
+    would have caught — a fixed submit-readiness threshold smaller than one chunk, which
     let the ring buffer silently perform a partial write while reporting failure, and the live
     pipeline's Atmos metering step writing past the end of a buffer sized for the object count
     rather than the bed's fixed six channels. Both are fixed; see
@@ -207,7 +207,7 @@ is deliberately explicit about the difference.
 !!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
     see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink) — and that read
-    (`ac3::audio::sink_capabilities`) is real today on ALSA and on PipeWire (see
+    (`ac3::audio::sink_capabilities`) exists today for ALSA and for PipeWire (see
     [Linux](linux.md#reading-a-sinks-own-edideld)). WASAPI answers "will this
     endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already
     uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
@@ -215,7 +215,7 @@ is deliberately explicit about the difference.
     documented public API was found that hands the source data back. `play` falls back to the
     same `IsFormatSupported` probe here, exactly as it always has.
 
-    The one real avenue checked and ruled out: WMI's `root\wmi` monitor provider
+    The one avenue checked and ruled out: WMI's `root\wmi` monitor provider
     (`WmiMonitorID`/`WmiMonitorDescriptor`) does expose raw EDID bytes on Windows, but it is a
     *display* API keyed to the desktop/monitor topology, not an audio one. Tried against the
     Onkyo TX-RZ740 used for the passthrough confirmation above:
@@ -393,8 +393,8 @@ never show a prompt of any kind.
 
 ## ARM64
 
-A third Windows leg, `windows-msvc-arm64`, runs on GitHub's hosted `windows-11-vs2026-arm` runner
-— real ARM64 hardware, not x64 emulation. It shares every file the two x64 legs above use; only
+A third Windows leg, `windows-msvc-arm64`, runs on GitHub's hosted `windows-11-vs2026-arm` runner,
+an ARM64 host. It shares every file the two x64 legs above use; only
 the vcpkg triplet and the resolved MSVC tools directory differ. It is `experimental: true`
 (`continue-on-error`, so a failure fails no run) and belongs to the nightly tier, so it runs in
 the nightly run and in a release, not after each merge (`.github/ci/legs.jsonc`). Its packages
@@ -429,7 +429,7 @@ since 6.8) is `win64_msvc2022_arm64_cross_compiled` (`python -m aqt list-qt wind
 6.10.3`) — a cross-compile kit that expects a paired `win64_msvc2022_64` install to supply its
 host build tools (`moc`/`uic`/`rcc`), and `aqtinstall`/`jurplel/install-qt-action` have a
 documented CI bug against exactly that combination (`qtpaths.bat` pointing at the wrong x64
-setup). That is real complexity a *native*-ARM64-host build doesn't need for a first pass, so this
+setup). That is complexity a *native*-ARM64-host build doesn't need for a first pass, so this
 leg stays CLI-only. Revisiting this is a natural fast-follow once Qt ships a native-hosted ARM64
 Windows kit.
 
