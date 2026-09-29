@@ -1,0 +1,196 @@
+#include "ac4_encode_settings.hpp"
+
+#include <fmt/format.h>
+#include <limits>
+
+#include "ac4_encode_core.hpp"
+
+namespace ac3gui {
+
+namespace {
+
+// Part 1 Tables 149 and 149a in dB, in the order of kAc4CentreLevels and
+// kAc4SurroundLevels; "off" is -infinity, as ac3cli reads it.
+constexpr double kOff = -std::numeric_limits<double>::infinity();
+constexpr std::array<double, 8> kCentreDb{3.0, 1.5, 0.0, -1.5, -3.0, -4.5, -6.0, kOff};
+constexpr std::array<double, 6> kSurroundDb{0.0, -1.5, -3.0, -4.5, -6.0, kOff};
+
+constexpr std::array<ac4::RateMode, 3> kRateModes{
+    ac4::RateMode::kConstant, ac4::RateMode::kAverage, ac4::RateMode::kVariable};
+constexpr std::array<ac4::CodecMode, 6> kCodecModes{
+    ac4::CodecMode::kAuto,      ac4::CodecMode::kSimple,    ac4::CodecMode::kAspx,
+    ac4::CodecMode::kAspxAcpl1, ac4::CodecMode::kAspxAcpl2, ac4::CodecMode::kAspxAcpl3};
+constexpr std::array<ac4::LoudnessPractice, 7> kPractices{
+    ac4::LoudnessPractice::kEbuR128,    ac4::LoudnessPractice::kAtscA85,
+    ac4::LoudnessPractice::kAribTrB32,  ac4::LoudnessPractice::kFreeTvOp59,
+    ac4::LoudnessPractice::kManual,     ac4::LoudnessPractice::kConsumerLeveller,
+    ac4::LoudnessPractice::kNotIndicated};
+constexpr std::array<ac4::DrcProfile, 5> kProfiles{
+    ac4::DrcProfile::kFilmStandard, ac4::DrcProfile::kFilmLight, ac4::DrcProfile::kMusicStandard,
+    ac4::DrcProfile::kMusicLight, ac4::DrcProfile::kSpeech};
+constexpr std::array<ac4::PreferredDownmix, 4> kPreferred{
+    ac4::PreferredDownmix::kLoRo, ac4::PreferredDownmix::kLtRt,
+    ac4::PreferredDownmix::kLtRtProLogicII, ac4::PreferredDownmix::kNotIndicated};
+
+// The index `at` of a table of `size` entries, or the first where it is past
+// the end.
+[[nodiscard]] std::size_t within(std::size_t at, std::size_t size) {
+    return at < size ? at : 0;
+}
+
+[[nodiscard]] std::string dialogue_channels(const Ac4EncodeSettings& s) {
+    std::string out;
+    const auto add = [&out](bool on, std::string_view name) {
+        if (on) {
+            out += out.empty() ? "" : ",";
+            out += name;
+        }
+    };
+    add(s.dialogue_left, "l");
+    add(s.dialogue_right, "r");
+    add(s.dialogue_centre, "c");
+    return out;
+}
+
+}  // namespace
+
+bool ac4_downmix_named(const Ac4EncodeSettings& settings) {
+    return settings.centre_level.has_value() || settings.surround_level.has_value() ||
+           settings.preferred_downmix.has_value();
+}
+
+bool ac4_dialogue_named(const Ac4EncodeSettings& settings) {
+    return settings.dialogue_left || settings.dialogue_right || settings.dialogue_centre;
+}
+
+std::optional<ac4::LoudnessPractice> ac4_loudness_practice(const Ac4EncodeSettings& settings) {
+    if (!settings.loudness) {
+        return std::nullopt;
+    }
+    return kPractices[within(*settings.loudness, kPractices.size())];
+}
+
+std::vector<std::string> ac4_cli_tokens(const Ac4EncodeSettings& s, bool mp4) {
+    std::vector<std::string> out;
+    const auto put = [&out](std::string_view key, std::string_view value) {
+        out.push_back(fmt::format("{}={}", key, value));
+    };
+    if (const std::size_t rate = within(s.frame_rate, kAc4FrameRates.size());
+        rate != kAc4NativeFrameRate) {
+        put("frame-rate", kAc4FrameRates[rate].token);
+    }
+    if (const std::size_t mode = within(s.rate_mode, kAc4RateModes.size()); mode != 0) {
+        put("rate-mode", kAc4RateModes[mode].token);
+    }
+    if (const std::size_t mode = within(s.codec_mode, kAc4CodecModes.size()); mode != 0) {
+        put("codec-mode", kAc4CodecModes[mode].token);
+    }
+    // With loudness= the dialnorm is always named: without it, ac4-encode
+    // measures one, and the page would not show which it sends.
+    if (s.measure_dialnorm) {
+        put("dialnorm", "auto");
+    } else if (s.dialnorm_db != 31.0 || s.loudness) {
+        put("dialnorm", fmt::format("{:g}", s.dialnorm_db));
+    }
+    if (s.loudness) {
+        put("loudness", kAc4LoudnessPractices[within(*s.loudness, kPractices.size())].token);
+    }
+    if (s.drc) {
+        put("drc", kAc4DrcProfiles[within(*s.drc, kProfiles.size())].token);
+    }
+    if (s.centre_level) {
+        put("cmixlev", kAc4CentreLevels[within(*s.centre_level, kCentreDb.size())].token);
+    }
+    if (s.surround_level) {
+        put("surmixlev", kAc4SurroundLevels[within(*s.surround_level, kSurroundDb.size())].token);
+    }
+    if (s.preferred_downmix) {
+        put("dmixmod",
+            kAc4PreferredDownmixes[within(*s.preferred_downmix, kPreferred.size())].token);
+    }
+    if (ac4_dialogue_named(s)) {
+        put("dialogue-channels", dialogue_channels(s));
+        if (s.dialogue_mid) {
+            put("dialogue-method", "mid");
+        }
+        if (const int gain =
+                kAc4DialogueMaxGains[within(s.dialogue_max_gain, kAc4DialogueMaxGains.size())];
+            gain != 9) {
+            put("dialogue-max-gain", fmt::format("{}", gain));
+        }
+    }
+    if (s.iframe_interval != 24) {
+        put("iframe-interval", fmt::format("{}", s.iframe_interval));
+    }
+    if (!s.crc && !mp4) {
+        put("crc", "off");
+    }
+    return out;
+}
+
+std::optional<std::string> ac4_settings_refusal(const Ac4EncodeSettings& settings,
+                                                std::size_t channels, int sample_rate_hz) {
+    if (sample_rate_hz == 44100 && within(settings.frame_rate, kAc4FrameRates.size()) !=
+                                       kAc4NativeFrameRate) {
+        return std::string{
+            "at 44.1 kHz AC-4 has the native frame rate alone (Part 1 Table 83); frame-rate= "
+            "names another"};
+    }
+    if (ac4_downmix_named(settings) && channels < 5) {
+        return fmt::format(
+            "the downmix options describe the stereo downmix of 5.0, 5.1, 7.0, 7.1 and the "
+            "immersive layouts; the source is {}",
+            ac3::apps::ac4_layout_name(channels, ac4::AdditionalPair::kNone));
+    }
+    return std::nullopt;
+}
+
+ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& s, int channels, int sample_rate_hz,
+                                      int bitrate_kbps) {
+    ac4::EncoderConfig config;
+    config.channels = channels;
+    config.sample_rate_hz = sample_rate_hz;
+    config.frame_rate_index = static_cast<int>(within(s.frame_rate, kAc4FrameRates.size()));
+    config.bitrate_kbps = bitrate_kbps;
+    config.rate_mode = kRateModes[within(s.rate_mode, kRateModes.size())];
+    config.codec_mode = kCodecModes[within(s.codec_mode, kCodecModes.size())];
+    config.iframe_interval = s.iframe_interval;
+    config.dialnorm_db = -s.dialnorm_db;
+    if (s.drc) {
+        // ac4-encode's drc=: Table 161's four modes on the profile.
+        ac4::DrcConfig drc;
+        drc.profile = kProfiles[within(*s.drc, kProfiles.size())];
+        for (int id = 0; id < 4; ++id) {
+            drc.modes.push_back(ac4::DrcModeConfig{.id = id, .gains_config = std::nullopt});
+        }
+        config.drc = drc;
+    }
+    if (ac4_downmix_named(s)) {
+        ac4::DownmixConfig downmix;
+        if (s.centre_level) {
+            downmix.loro_centre_db = kCentreDb[within(*s.centre_level, kCentreDb.size())];
+        }
+        if (s.surround_level) {
+            downmix.loro_surround_db = kSurroundDb[within(*s.surround_level, kSurroundDb.size())];
+        }
+        if (s.preferred_downmix) {
+            downmix.preferred = kPreferred[within(*s.preferred_downmix, kPreferred.size())];
+        }
+        config.downmix = downmix;
+    }
+    if (ac4_dialogue_named(s)) {
+        ac4::DialogueConfig dialogue;
+        dialogue.method =
+            s.dialogue_mid ? ac4::DialogueMethod::kMid : ac4::DialogueMethod::kChannelIndependent;
+        dialogue.source = ac4::DialogueSource::kMarkedChannels;
+        dialogue.max_gain_db =
+            kAc4DialogueMaxGains[within(s.dialogue_max_gain, kAc4DialogueMaxGains.size())];
+        dialogue.left = s.dialogue_left;
+        dialogue.right = s.dialogue_right;
+        dialogue.centre = s.dialogue_centre;
+        config.dialogue = dialogue;
+    }
+    return config;
+}
+
+}  // namespace ac3gui

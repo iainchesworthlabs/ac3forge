@@ -66,6 +66,17 @@ struct RawResult {
     // own object indexing - audition playback only, never shown as a
     // QVariantList property.
     std::vector<std::vector<float>> object_audio = {};
+    // AC-4: what ac4::Decoder reports, read-only - the table of contents'
+    // presentations by their labels (ac3gui::ac4_presentation_label), the one
+    // decoded, its bed and dynamic objects, and the frames decoded. `frames`
+    // holds a frame's objects where the presentation has any, a bed object
+    // labelled with its speaker.
+    bool ac4 = false;
+    QStringList presentations = {};
+    std::size_t presentation = 0;
+    int ac4_bed_objects = 0;
+    int ac4_dynamic_objects = 0;
+    std::size_t unit_count = 0;
 };
 
 }  // namespace objdec_detail
@@ -120,6 +131,15 @@ class ObjectDecodeController : public QObject {
     // through the monitor sink, -1 when none. Only one plays at a time -
     // see auditionObject()'s own comment.
     Q_PROPERTY(int auditioningIndex READ auditioningIndex NOTIFY auditionChanged)
+    // AC-4: whether the file inspected is AC-4, its presentations, the one
+    // the decoder chose with no preference, and that presentation's bed and
+    // dynamic objects. Read-only: exporting AC-4 objects is a later phase
+    // (planning/ac4.md, I5), which the dialog says in its own text.
+    Q_PROPERTY(bool isAc4 READ isAc4 NOTIFY resultChanged)
+    Q_PROPERTY(QStringList presentationNames READ presentationNames NOTIFY resultChanged)
+    Q_PROPERTY(int decodedPresentation READ decodedPresentation NOTIFY resultChanged)
+    Q_PROPERTY(int ac4BedObjects READ ac4BedObjects NOTIFY resultChanged)
+    Q_PROPERTY(int ac4DynamicObjects READ ac4DynamicObjects NOTIFY resultChanged)
 
    public:
     explicit ObjectDecodeController(QObject* parent = nullptr);
@@ -133,6 +153,17 @@ class ObjectDecodeController : public QObject {
     [[nodiscard]] QVariantList frames() const;
     [[nodiscard]] int frameCount() const;
     [[nodiscard]] int auditioningIndex() const { return auditioning_index_; }
+    [[nodiscard]] bool isAc4() const { return result_ && result_->ac4; }
+    [[nodiscard]] QStringList presentationNames() const {
+        return result_ ? result_->presentations : QStringList{};
+    }
+    [[nodiscard]] int decodedPresentation() const {
+        return result_ && result_->ac4 ? static_cast<int>(result_->presentation) : -1;
+    }
+    [[nodiscard]] int ac4BedObjects() const { return result_ ? result_->ac4_bed_objects : 0; }
+    [[nodiscard]] int ac4DynamicObjects() const {
+        return result_ ? result_->ac4_dynamic_objects : 0;
+    }
 
     // Reads `url`, decodes it as E-AC-3 (AC-3's bsid <= 8 never carries OAMD
     // - Annex E only) and collects every access unit's object metadata/

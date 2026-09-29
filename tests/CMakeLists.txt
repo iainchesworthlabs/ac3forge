@@ -739,13 +739,17 @@ endif()
 target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     gui/test_gui_diagnostics.cpp
+    gui/test_ac4_encode_settings.cpp
     decoder/test_stream_playback.cpp
     audio/test_sink_wait.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/stream_playback.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/common/ac4_encode_core.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/gui/ac4_encode_settings.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/gui/ac4_presentations.cpp")
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common"
     "${CMAKE_SOURCE_DIR}/apps/gui")
@@ -941,6 +945,7 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_ac3_transcoder.cpp
         hearth/test_ac4_engine.cpp
         hearth/test_decoder_settings.cpp
+        hearth/test_device_sink_live.cpp
         hearth/test_diagnostics.cpp
         hearth/test_engine.cpp
         hearth/test_engine_queue_commands.cpp

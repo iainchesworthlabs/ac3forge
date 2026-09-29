@@ -57,6 +57,8 @@
 #include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
 #include "mpegts/mpegts.hpp"
+#include "ac4_encode_core.hpp"
+#include "ac4enc/encoder.hpp"
 #include "channel_geometry.hpp"
 #include "fmp4_folder_writer.hpp"
 #include "recording_sink.hpp"
@@ -64,6 +66,107 @@
 namespace plan = ac3::plan;
 
 namespace {
+
+QString to_qstring(std::string_view text);
+
+// What one AC-4 encode did, handed from the worker to the GUI thread.
+struct Ac4Outcome {
+    QString problem;  // empty on success
+    std::size_t frames = 0;
+    std::size_t bytes = 0;
+};
+
+// `ac3cli ac4-encode`'s steps for one input and one substream
+// (apps/cli/commands/ac4_encode.cpp): the configuration checked with loudness
+// values in place, then the programme measured for dialnorm=auto and
+// loudness=, the encode, and the sync frames or MP4 file written to `path`.
+// `planes` are the WAV file's channels as read.
+Ac4Outcome encode_ac4_file(const QString& path, const ac3gui::Ac4EncodeSettings& settings,
+                           const std::vector<std::vector<float>>& planes, std::uint32_t sample_rate,
+                           int bitrate_kbps, bool mp4) {
+    Ac4Outcome out;
+    const auto speakers =
+        ac3::apps::ac4_input_speakers(planes.size(), ac4::AdditionalPair::kNone, false, false);
+    const auto wav_index = ac3::apps::ac4_wav_index(speakers);
+    ac4::EncoderConfig config =
+        ac3gui::ac4_encoder_config(settings, static_cast<int>(speakers.size()),
+                                   static_cast<int>(sample_rate), bitrate_kbps);
+    const auto practice = ac3gui::ac4_loudness_practice(settings);
+    ac4::EncoderConfig sized = config;
+    if (practice) {
+        ac4::FurtherLoudness loudness;
+        loudness.practice = *practice;
+        loudness.integrated_lkfs = -23.0;
+        loudness.loudness_range_lu = 0.0;
+        loudness.max_true_peak_dbtp = 0.0;
+        loudness.max_momentary_lufs = -23.0;
+        loudness.max_short_term_lufs = -23.0;
+        sized.loudness = loudness;
+    }
+    if (!ac4::Encoder::create(sized).has_value()) {
+        out.problem = QStringLiteral("The AC-4 encoder refuses %1.")
+                          .arg(to_qstring(ac4::Encoder::refusal_reason(sized)));
+        return out;
+    }
+    std::vector<std::span<const float>> views;
+    views.reserve(wav_index.size());
+    for (const std::size_t w : wav_index) {
+        views.emplace_back(planes[w]);
+    }
+    if (settings.measure_dialnorm || practice) {
+        const auto measured = ac3::apps::measure_ac4_programme(views, sample_rate);
+        if (!measured) {
+            out.problem = QStringLiteral(
+                "No audio above the -70 LKFS gate, so the loudness cannot be measured. Set "
+                "dialnorm by hand and leave loudness off.");
+            return out;
+        }
+        if (settings.measure_dialnorm) {
+            config.dialnorm_db = -ac3::apps::ac4_dialnorm_for(measured->integrated);
+        }
+        if (practice) {
+            config.loudness = ac3::apps::ac4_further_loudness(*practice, *measured);
+        }
+    }
+    auto encoder = ac4::Encoder::create(config);
+    if (!encoder.has_value()) {
+        out.problem = QStringLiteral("The AC-4 encoder refuses %1.")
+                          .arg(to_qstring(ac4::Encoder::refusal_reason(config)));
+        return out;
+    }
+    auto frames = encoder->encode(views);
+    if (!frames.has_value()) {
+        out.problem = to_qstring(ac4::describe(frames.error()));
+        return out;
+    }
+    auto rest = encoder->flush();
+    if (!rest.has_value()) {
+        out.problem = to_qstring(ac4::describe(rest.error()));
+        return out;
+    }
+    frames->insert(frames->end(), rest->begin(), rest->end());
+    const auto packaged = ac3::apps::package_ac4(*frames, encoder->toc(), mp4, settings.crc);
+    if (!packaged.has_value()) {
+        out.problem = QString::fromStdString(packaged.error().message);
+        return out;
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        out.problem = QStringLiteral("Could not open the output file for writing.");
+        return out;
+    }
+    for (const auto& chunk : packaged->chunks) {
+        file.write(reinterpret_cast<const char*>(chunk.data()),
+                   static_cast<qint64>(chunk.size()));
+        out.bytes += chunk.size();
+    }
+    if (!file.commit()) {
+        out.problem = QStringLiteral("Writing the stream failed.");
+        return out;
+    }
+    out.frames = frames->size();
+    return out;
+}
 
 // AC-3 accepts only these three rates (A/52 Table 5.6). Used for capture
 // devices too, deliberately: real audio hardware does not offer the Annex E
@@ -626,7 +729,280 @@ EncoderController::~EncoderController() = default;
 
 QStringList EncoderController::codecNames() const {
     return {to_qstring(plan::codec_label(plan::Codec::kAc3)),
-            to_qstring(plan::codec_label(plan::Codec::kEac3))};
+            to_qstring(plan::codec_label(plan::Codec::kEac3)),
+            to_qstring(plan::codec_label(plan::Codec::kAc4))};
+}
+
+namespace {
+
+template <std::size_t N>
+QStringList choice_labels(const std::array<ac3gui::Ac4Choice, N>& choices,
+                          const QString& unset = QString()) {
+    QStringList out;
+    if (!unset.isEmpty()) {
+        out.append(unset);
+    }
+    for (const auto& choice : choices) {
+        out.append(to_qstring(choice.label));
+    }
+    return out;
+}
+
+}  // namespace
+
+QStringList EncoderController::ac4FrameRateNames() const {
+    return choice_labels(ac3gui::kAc4FrameRates);
+}
+
+QStringList EncoderController::ac4RateModeNames() const {
+    return choice_labels(ac3gui::kAc4RateModes);
+}
+
+QStringList EncoderController::ac4CodecModeNames() const {
+    return choice_labels(ac3gui::kAc4CodecModes);
+}
+
+QStringList EncoderController::ac4LoudnessNames() const {
+    return choice_labels(ac3gui::kAc4LoudnessPractices, QStringLiteral("Off"));
+}
+
+QStringList EncoderController::ac4DrcNames() const {
+    return choice_labels(ac3gui::kAc4DrcProfiles, QStringLiteral("Off"));
+}
+
+QStringList EncoderController::ac4CentreNames() const {
+    return choice_labels(ac3gui::kAc4CentreLevels, QStringLiteral("Stream default (-3 dB)"));
+}
+
+QStringList EncoderController::ac4SurroundNames() const {
+    return choice_labels(ac3gui::kAc4SurroundLevels, QStringLiteral("Stream default (-3 dB)"));
+}
+
+QStringList EncoderController::ac4PreferredDownmixNames() const {
+    return choice_labels(ac3gui::kAc4PreferredDownmixes, QStringLiteral("Stream default (Lo/Ro)"));
+}
+
+QStringList EncoderController::ac4DialogueMaxGainNames() const {
+    QStringList out;
+    for (const int db : ac3gui::kAc4DialogueMaxGains) {
+        out.append(QStringLiteral("%1 dB").arg(db));
+    }
+    return out;
+}
+
+bool EncoderController::ac4DownmixAvailable() const {
+    return source_ && source_->wav.channels.size() >= 5;
+}
+
+QString EncoderController::ac4Tokens() const {
+    QStringList tokens;
+    for (const auto& token : ac3gui::ac4_cli_tokens(ac4_, container_index_ == kContainerMp4)) {
+        tokens.append(QString::fromStdString(token));
+    }
+    return tokens.join(QLatin1Char(' '));
+}
+
+void EncoderController::setAc4Choice(std::optional<std::size_t>& choice, int index,
+                                     std::size_t size) {
+    if (busy_ || index < 0 || static_cast<std::size_t>(index) > size) {
+        return;
+    }
+    const std::optional<std::size_t> next =
+        index == 0 ? std::nullopt : std::optional<std::size_t>{static_cast<std::size_t>(index - 1)};
+    if (next == choice) {
+        return;
+    }
+    choice = next;
+    emit planChanged();
+}
+
+void EncoderController::setAc4FrameRateIndex(int index) {
+    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= ac3gui::kAc4FrameRates.size() ||
+        static_cast<std::size_t>(index) == ac4_.frame_rate) {
+        return;
+    }
+    ac4_.frame_rate = static_cast<std::size_t>(index);
+    emit planChanged();
+}
+
+void EncoderController::setAc4RateModeIndex(int index) {
+    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= ac3gui::kAc4RateModes.size() ||
+        static_cast<std::size_t>(index) == ac4_.rate_mode) {
+        return;
+    }
+    ac4_.rate_mode = static_cast<std::size_t>(index);
+    emit planChanged();
+}
+
+void EncoderController::setAc4CodecModeIndex(int index) {
+    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= ac3gui::kAc4CodecModes.size() ||
+        static_cast<std::size_t>(index) == ac4_.codec_mode) {
+        return;
+    }
+    ac4_.codec_mode = static_cast<std::size_t>(index);
+    emit planChanged();
+}
+
+void EncoderController::setAc4Dialnorm(double db) {
+    // Part 1 clause 4.3.12.2.1's steps of 0.25 dB from 0 to 31.75.
+    const double stepped = std::clamp(std::round(db * 4.0) / 4.0, 0.0, 31.75);
+    if (busy_ || stepped == ac4_.dialnorm_db) {
+        return;
+    }
+    ac4_.dialnorm_db = stepped;
+    emit planChanged();
+}
+
+void EncoderController::setAc4MeasureDialnorm(bool on) {
+    if (busy_ || on == ac4_.measure_dialnorm) {
+        return;
+    }
+    ac4_.measure_dialnorm = on;
+    emit planChanged();
+}
+
+void EncoderController::setAc4LoudnessIndex(int index) {
+    setAc4Choice(ac4_.loudness, index, ac3gui::kAc4LoudnessPractices.size());
+}
+
+void EncoderController::setAc4DrcIndex(int index) {
+    setAc4Choice(ac4_.drc, index, ac3gui::kAc4DrcProfiles.size());
+}
+
+void EncoderController::setAc4CentreIndex(int index) {
+    setAc4Choice(ac4_.centre_level, index, ac3gui::kAc4CentreLevels.size());
+}
+
+void EncoderController::setAc4SurroundIndex(int index) {
+    setAc4Choice(ac4_.surround_level, index, ac3gui::kAc4SurroundLevels.size());
+}
+
+void EncoderController::setAc4PreferredDownmixIndex(int index) {
+    setAc4Choice(ac4_.preferred_downmix, index, ac3gui::kAc4PreferredDownmixes.size());
+}
+
+void EncoderController::setAc4DialogueLeft(bool on) {
+    if (busy_ || on == ac4_.dialogue_left) {
+        return;
+    }
+    ac4_.dialogue_left = on;
+    emit planChanged();
+}
+
+void EncoderController::setAc4DialogueRight(bool on) {
+    if (busy_ || on == ac4_.dialogue_right) {
+        return;
+    }
+    ac4_.dialogue_right = on;
+    emit planChanged();
+}
+
+void EncoderController::setAc4DialogueCentre(bool on) {
+    if (busy_ || on == ac4_.dialogue_centre) {
+        return;
+    }
+    ac4_.dialogue_centre = on;
+    emit planChanged();
+}
+
+void EncoderController::setAc4DialogueMid(bool on) {
+    if (busy_ || on == ac4_.dialogue_mid) {
+        return;
+    }
+    ac4_.dialogue_mid = on;
+    emit planChanged();
+}
+
+void EncoderController::setAc4DialogueMaxGainIndex(int index) {
+    if (busy_ || index < 0 ||
+        static_cast<std::size_t>(index) >= ac3gui::kAc4DialogueMaxGains.size() ||
+        static_cast<std::size_t>(index) == ac4_.dialogue_max_gain) {
+        return;
+    }
+    ac4_.dialogue_max_gain = static_cast<std::size_t>(index);
+    emit planChanged();
+}
+
+void EncoderController::setAc4IframeInterval(int frames) {
+    const int clamped = std::clamp(frames, 1, 100000);
+    if (busy_ || clamped == ac4_.iframe_interval) {
+        return;
+    }
+    ac4_.iframe_interval = clamped;
+    emit planChanged();
+}
+
+void EncoderController::setAc4Crc(bool on) {
+    if (busy_ || on == ac4_.crc) {
+        return;
+    }
+    ac4_.crc = on;
+    emit planChanged();
+}
+
+void EncoderController::followSourceLayoutForAc4() {
+    if (!source_) {
+        return;
+    }
+    switch (source_->wav.channels.size()) {
+        case 1:
+            bed_acmod_ = ac3::Acmod::k1_0;
+            bed_lfe_ = false;
+            break;
+        case 2:
+            bed_acmod_ = ac3::Acmod::k2_0;
+            bed_lfe_ = false;
+            break;
+        case 5:
+            bed_acmod_ = ac3::Acmod::k3_2;
+            bed_lfe_ = false;
+            break;
+        case 6:
+            bed_acmod_ = ac3::Acmod::k3_2;
+            bed_lfe_ = true;
+            break;
+        default:
+            return;
+    }
+    extras_mask_ = 0;
+}
+
+QString EncoderController::ac4Refusal() const {
+    if (!source_) {
+        return QString();
+    }
+    const std::size_t channels = source_->wav.channels.size();
+    if (!extra_sources_.empty() || has_explicit_assignment_) {
+        return QStringLiteral(
+            "AC-4 encodes one source in its own layout, as ac3cli ac4-encode takes a WAV file; "
+            "remove the other sources and the assignment.");
+    }
+    if (source_offset_seconds_ > 0.0) {
+        return QStringLiteral("AC-4 encodes the source as it is; set its start offset to 0.");
+    }
+    if (container_index_ != 0 && container_index_ != kContainerMp4) {
+        return QStringLiteral("AC-4 is written as a raw stream or an MP4 file; pick one of those "
+                              "containers.");
+    }
+    if (channels != 1 && channels != 2 && channels != 5 && channels != 6) {
+        return QStringLiteral("AC-4 encoding here takes mono, stereo, 5.0 and 5.1; the source has "
+                              "%1 channels.")
+            .arg(channels);
+    }
+    const bool lfe = channels == 6;
+    const auto acmod = channels == 1   ? ac3::Acmod::k1_0
+                       : channels == 2 ? ac3::Acmod::k2_0
+                                       : ac3::Acmod::k3_2;
+    if (bed_acmod_ != acmod || bed_lfe_ != lfe || extras_mask_ != 0) {
+        return QStringLiteral("AC-4 encodes the source in its own layout; pick the %1 bed, "
+                              "which is the source's.")
+            .arg(to_qstring(ac3::apps::ac4_layout_name(channels, ac4::AdditionalPair::kNone)));
+    }
+    if (const auto refused = ac3gui::ac4_settings_refusal(
+            ac4_, channels, static_cast<int>(source_->wav.sample_rate))) {
+        return QStringLiteral("ac4-encode refuses this: %1.").arg(QString::fromStdString(*refused));
+    }
+    return QString();
 }
 
 QStringList EncoderController::containerNames() const {
@@ -1090,7 +1466,16 @@ QVariantList EncoderController::bitrates() const {
     // directly instead, so a rung otherwise expressible - a Table 5.18 entry
     // for A/B parity, or 768 for a wide object/7.2.4 session - still has to
     // fit the loaded source's syncframe; see eac3_bitrates_for_rate(). With
-    // no source loaded yet, every rung stays offered.
+    // no source loaded yet, every rung stays offered. AC-4's encoder takes
+    // any rate over whole frames; these are the rungs DEE's streams use, and
+    // ac4::Encoder refuses a rate a layout cannot be coded at.
+    if (codec_ == plan::Codec::kAc4) {
+        QVariantList out;
+        for (const int kbps : {32, 48, 64, 96, 128, 144, 192, 256, 320, 384, 448, 512, 640, 768}) {
+            out.append(kbps);
+        }
+        return out;
+    }
     if (codec_ == plan::Codec::kEac3 && source_) {
         if (const auto sr = to_sample_rate_for_file(source_->wav.sample_rate, codec_)) {
             return eac3_bitrates_for_rate(*sr);
@@ -1254,11 +1639,22 @@ void EncoderController::setVbrMaxKbps(int value) {
 }
 
 void EncoderController::setCodecIndex(int index) {
-    const auto codec = index == 1 ? plan::Codec::kEac3 : plan::Codec::kAc3;
+    const auto codec = index == 2   ? plan::Codec::kAc4
+                       : index == 1 ? plan::Codec::kEac3
+                                    : plan::Codec::kAc3;
     if (codec == codec_ || busy_) {
         return;
     }
     codec_ = codec;
+    // AC-4 takes the source in its own layout, as `ac4-encode` takes a WAV
+    // file, to a raw stream or an MP4 file.
+    if (codec_ == plan::Codec::kAc4) {
+        extras_mask_ = 0;
+        followSourceLayoutForAc4();
+        if (container_index_ != kContainerMp4) {
+            container_index_ = 0;
+        }
+    }
     // AC-3 has no dependent substreams at all, so extras that needed one have
     // to go somewhere: dropping them is what the extras lock itself would
     // have refused going forward, and leaving them set would silently build a
@@ -1270,6 +1666,11 @@ void EncoderController::setCodecIndex(int index) {
         // extras are dropped.
         if (bitrate_kbps_ > 640) {
             bitrate_kbps_ = 640;
+        }
+        // An AC-4 rung that is not one of Table 5.18's.
+        if (std::ranges::find(ac3::kBitratesKbps, static_cast<std::uint16_t>(bitrate_kbps_)) ==
+            ac3::kBitratesKbps.end()) {
+            bitrate_kbps_ = 192;
         }
     }
     emit planChanged();
@@ -1325,10 +1726,10 @@ void EncoderController::toggleExtra(const QString& id) {
         if (!ac3::eac3::chanmap::allocate(static_cast<std::uint16_t>(bed_mask | tentative))) {
             return;
         }
-        // Adding any extra under plain AC-3 promotes the codec - the extras
-        // decide the codec, never the reverse, exactly as a preset needing
-        // a dependent substream already does.
-        if (!checked && codec_ == plan::Codec::kAc3) {
+        // Adding any extra under plain AC-3, or AC-4, promotes the codec -
+        // the extras decide the codec, never the reverse, exactly as a
+        // preset needing a dependent substream already does.
+        if (!checked && codec_ != plan::Codec::kEac3) {
             codec_ = plan::Codec::kEac3;
             emit outputChanged();
         }
@@ -1383,7 +1784,7 @@ void EncoderController::applyChannelPreset(const QString& name) {
         }
         // A preset needing extras has to bring E-AC-3 with it, the same way a
         // manual tick would otherwise find the row locked and refuse.
-        if (preset.extras != 0 && codec_ == plan::Codec::kAc3) {
+        if (preset.extras != 0 && codec_ != plan::Codec::kEac3) {
             codec_ = plan::Codec::kEac3;
         }
         bed_acmod_ = preset.acmod;
@@ -4181,6 +4582,12 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
     if (busy_ || recording_ || live_active_) {
         return;
     }
+    if (codec_ == plan::Codec::kAc4 && !atmos_enabled_) {
+        setStatus(QStringLiteral("A live session encodes AC-3 or E-AC-3, as ac3cli live does; "
+                                 "pick one of those codecs."));
+        emit encodeRefused(status_);
+        return;
+    }
     if (captureDeviceIndex < 0 ||
         static_cast<std::size_t>(captureDeviceIndex) >= devices_.size()) {
         setStatus(QStringLiteral("Choose a capture device first."));
@@ -5849,6 +6256,10 @@ void EncoderController::loadSourceFile(const QUrl& url) {
         }
         emit planChanged();
     }
+    if (codec_ == plan::Codec::kAc4) {
+        followSourceLayoutForAc4();
+        emit planChanged();
+    }
 
     source_info_ = QStringLiteral("%1 Hz · %2 channel%5 · %3:%4")
                        .arg(rate)
@@ -6475,6 +6886,24 @@ void EncoderController::encodeTo(const QUrl& url) {
         emit encodeRefused(status_);
         return;
     }
+    if (codec_ == plan::Codec::kAc4 && !atmos_enabled_) {
+        if (const QString why = ac4Refusal(); !why.isEmpty()) {
+            setStatus(why);
+            emit encodeRefused(status_);
+            return;
+        }
+        const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+        output_path_ = path;
+        output_eac3_ = false;
+        emit outputChanged();
+        cancel_requested_.store(false, std::memory_order_relaxed);
+        startRun(path);
+        setBusy(true);
+        setProgress(0.0);
+        setStatus(QStringLiteral("Encoding…"));
+        encodeAc4(path, source_->wav.channels, source_->wav.sample_rate);
+        return;
+    }
 
     // Built and validated here, once, rather than inside encodeChannels -
     // the same routing the pre-encode preview (refreshRouting/fedChannels)
@@ -6868,6 +7297,35 @@ void EncoderController::encodeChannels(const QString& path,
                 }
             }
             emit encodeFinished(!cancelled && problem.isEmpty(), status());
+        });
+    });
+}
+
+void EncoderController::encodeAc4(const QString& path, std::vector<std::vector<float>> planes,
+                                  std::uint32_t sample_rate) {
+    const ac3gui::Ac4EncodeSettings settings = ac4_;
+    const bool mp4 = container_index_ == kContainerMp4;
+    const int kbps = bitrate_kbps_;
+    const QString layout =
+        to_qstring(ac3::apps::ac4_layout_name(planes.size(), ac4::AdditionalPair::kNone));
+    std::ignore = QtConcurrent::run([this, path, settings, mp4, kbps, sample_rate, layout,
+                                     planes = std::move(planes)] {
+        const Ac4Outcome outcome = encode_ac4_file(path, settings, planes, sample_rate, kbps, mp4);
+        QMetaObject::invokeMethod(this, [this, outcome, layout, kbps] {
+            const bool ok = outcome.problem.isEmpty();
+            setBusy(false);
+            setProgress(ok ? 1.0 : 0.0);
+            if (ok) {
+                setStatus(QStringLiteral("Wrote %1 %2 AC-4 frames (%3 KB) to %4")
+                              .arg(outcome.frames)
+                              .arg(layout)
+                              .arg(outcome.bytes / 1024)
+                              .arg(QFileInfo(output_path_).fileName()));
+                pending_rate_text_ = QStringLiteral("%1 kbps").arg(kbps);
+            } else {
+                setStatus(outcome.problem);
+            }
+            emit encodeFinished(ok, status());
         });
     });
 }

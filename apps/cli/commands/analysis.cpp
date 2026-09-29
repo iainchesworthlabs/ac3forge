@@ -19,7 +19,6 @@
 #include <string_view>
 #include <vector>
 
-#include "../ac4_channels.hpp"
 #include "../exit_codes.hpp"
 #include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
@@ -38,9 +37,15 @@
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
 #include "ac4/ac4.hpp"
+#include "ac4_channels.hpp"
 #include "ac4dec/decoder.hpp"
 
 namespace ac3cli::commands {
+
+using ac3::apps::ac4_bed_acmod;
+using ac3::apps::ac4_location;
+using ac3::apps::ac4_meter_rank;
+using ac3::apps::ac4_order;
 
 namespace {
 

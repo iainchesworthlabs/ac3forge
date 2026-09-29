@@ -202,6 +202,46 @@ produce — see [the window layout's own run strip section](index.md#the-window)
 detail, including how a run encoded through Guided's amp destination carries its device pick along
 with it so Play there needs no fresh pick.
 
+## AC-4
+
+**Codec** offers AC-4 (ETSI TS 103 190) as its third choice. AC-4 encodes the loaded source in its
+own layout, the way `ac3cli ac4-encode` takes a WAV file: mono, stereo, 5.0 or 5.1, one source,
+no assignment and no start offset. Choosing AC-4 sets the bed to the source's layout, clears the
+extras, and leaves **Container** at Elementary stream (a raw `.ac4` of sync frames) or MP4; the
+other containers are refused when Encode is pressed, as is a bed that is not the source's. A
+preset or an extra that needs a dependent substream moves the codec to E-AC-3, as it does from
+AC-3. A live session encodes AC-3 or E-AC-3 only.
+
+The **AC-4** tab takes the place of Coding tools and Metadata, which belong to the other two
+codecs, and its badge counts the options it adds to the command line:
+
+| Control | `ac3cli ac4-encode` option | Default |
+|---|---|---|
+| Frame rate | `frame-rate=` (Part 1 Table 83; native alone at 44.1 kHz) | native, 2 048-sample frames |
+| Rate mode | `rate-mode=constant\|average\|variable` | constant |
+| Codec mode | `codec-mode=simple\|aspx\|aspx-acpl-1\|aspx-acpl-2\|aspx-acpl-3` | chosen by the bit rate |
+| I-frame interval | `iframe-interval=` | 24 frames |
+| CRC on each raw sync frame | `crc=off` (a raw stream only; an MP4 sample has none) | on |
+| dialnorm, in quarter-dB steps | `dialnorm=0..31.75` | 31 |
+| Measure dialnorm from the programme | `dialnorm=auto` | off |
+| Loudness values | `loudness=<practice>`, which names dialnorm too | off |
+| DRC profile | `drc=<profile>` | off |
+| Stereo downmix: centre, surround, preferred (a 5.0 or 5.1 source) | `cmixlev=`, `surmixlev=`, `dmixmod=` | the stream's defaults |
+| Dialogue in L, R, C; Raise the Mid of L and R; Largest dialogue boost | `dialogue-channels=`, `dialogue-method=mid`, `dialogue-max-gain=` | off, 9 dB |
+
+The command bar echoes one command, `ac3cli ac4-encode <source> out.ac4 <kbps> <options>`, or
+`out.mp4` for MP4, since `ac4-encode` writes the MP4 file itself. Run where the source is, it
+writes the same bytes the page writes; the Qt Quick Tests hold a raw stream, an MP4 file and a
+5.1 downmix to that. The page and the command share their channel order, loudness measurement
+and packaging (`apps/common/ac4_encode_core.hpp`).
+
+What the tab leaves to the command line: several substreams and presentations, dialogue stems
+and hybrid dialogue enhancement, a DRC profile per decoder mode, Lt/Rt's own mix levels, the LFE
+mix and the downmix corrections, I-frames at named frames or fragment starts, the syntax trace,
+and the 3.0, 7.X and immersive layouts. None of these fits one source in one layout, and each is
+an option of [`ac3cli ac4-encode`](../cli/commands.md#ac4-encode). Encoding objects arrives with
+plan phase I5.
+
 ## Next
 
 - [Multi-source & assignment](source-assignment.md) — the table everything above derives from.

@@ -29,6 +29,19 @@ add_library(ac3hearth_engine STATIC
 target_include_directories(ac3hearth_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(ac3hearth_engine PUBLIC cxx_std_23)
 
+# native_log_sink.hpp's one function, exactly one platform/<os>/*.cpp
+# defining it, no #ifdef selecting between them - the same shape
+# apps/crucible/engine/platform_services.hpp's own comment states for
+# platform_session_monitor(). Windows' is the only one that needs
+# <windows.h>, hence the same WIN32_LEAN_AND_MEAN/NOMINMAX pair Crucible's
+# own WIN32 block already sets.
+if(WIN32)
+    target_sources(ac3hearth_engine PRIVATE platform/windows/native_log_sink.cpp)
+    target_compile_definitions(ac3hearth_engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+else()
+    target_sources(ac3hearth_engine PRIVATE platform/posix/native_log_sink.cpp)
+endif()
+
 # The pairing records are a key ring for src/sendspin's server sessions, which
 # a core-only build leaves out, so they are left out with them, and the server
 # identity those records are bound to with them. NetworkSinks (discovery and

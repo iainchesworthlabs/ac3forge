@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <map>
+#include <unordered_set>
 #include <utility>
 
 // Qt's <QObject> headers define `slots` as a macro unless QT_NO_KEYWORDS is
@@ -423,7 +424,13 @@ struct LayoutFields {
     return map;
 }
 
-[[nodiscard]] QVariantMap detail_to_variant(const ac3::hearth::SinkDetail& detail) {
+// `in_group` is not one of SinkDetail's own fields: group membership is a
+// fact about the WHOLE roster of groups, not about one sink's own facts, so
+// it stays out of network_view.hpp's pure, single-sink to_detail() the same
+// way the settings pages' own fields do (this file's header comment on A6's
+// second slice). poll() computes it once, from status.groups, and passes it
+// in here - the same boundary, drawn for the same reason.
+[[nodiscard]] QVariantMap detail_to_variant(const ac3::hearth::SinkDetail& detail, bool in_group) {
     QVariantMap map;
     map[QStringLiteral("id")] = QString::fromStdString(detail.id);
     map[QStringLiteral("name")] = QString::fromStdString(detail.name);
@@ -443,6 +450,7 @@ struct LayoutFields {
     map[QStringLiteral("pairing")] = QString::fromStdString(detail.pairing);
     map[QStringLiteral("canPair")] = detail.can_pair;
     map[QStringLiteral("canConnect")] = detail.can_connect;
+    map[QStringLiteral("inGroup")] = in_group;
     return map;
 }
 
@@ -713,6 +721,18 @@ void NetworkController::poll() {
     const ac3::hearth::NetworkStatus status = sinks_engine_->status();
     poll_firmware(status);
 
+    // Every sink id that belongs to at least one group, computed once here
+    // rather than in the pure view layer (detail_to_variant()'s own comment
+    // says why) - the group-creation UX nudge (Network.qml's post-pairing
+    // banner) needs to tell a paired-but-ungrouped sink from one already
+    // playing to something.
+    std::unordered_set<std::string> grouped_sink_ids;
+    for (const ac3::hearth::GroupFacts& group_facts : status.groups) {
+        for (const ac3::hearth::GroupMemberFacts& member : group_facts.members) {
+            grouped_sink_ids.insert(member.sink_id);
+        }
+    }
+
     QVariantList rows;
     rows.reserve(static_cast<qsizetype>(status.sinks.size()));
     QVariantMap selected;
@@ -724,7 +744,7 @@ void NetworkController::poll() {
     for (const ac3::hearth::SinkFacts& facts : status.sinks) {
         rows.push_back(row_to_variant(ac3::hearth::to_row(facts)));
         if (facts.id == status.selected_id) {
-            selected = detail_to_variant(ac3::hearth::to_detail(facts));
+            selected = detail_to_variant(ac3::hearth::to_detail(facts), grouped_sink_ids.count(facts.id) > 0);
             selected_settable = facts.pair_state == ac3::hearth::PairState::kPaired &&
                                  facts.ac3forge_support.has_value();
             if (selected_settable) {

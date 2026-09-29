@@ -124,12 +124,18 @@ Dialog {
                       + "management. Nothing in the system's own sound settings changes.")
         }
 
-        // 03. Network sinks need pairing before they play.
+        // 03. Network sinks need pairing AND a group before they play - a
+        // paired sink alone is not yet something Hearth can play to
+        // (hearth-followups-group-ux-and-live-diagnostics-2026-09-26: this
+        // step used to stop at "paired", which is why a paired-but-ungrouped
+        // sink's first Play fell back to the local output with nothing
+        // having told the user a group was still needed).
         Step {
             ordinal: "03"
-            heading: qsTr("Network sinks play once they're paired")
-            body: qsTr("Hearth lists the Sendspin players it finds on the network. To play to "
-                      + "one, pair it with the code the sink shows.")
+            heading: qsTr("Network sinks need a group to play")
+            body: qsTr("Hearth lists the Sendspin players it finds on the network. Pair one, "
+                      + "then add it to a group on the Network page - a group of one plays to "
+                      + "a single sink.")
         }
 
         RowLayout {

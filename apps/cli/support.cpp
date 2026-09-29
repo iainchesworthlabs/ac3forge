@@ -4267,11 +4267,6 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 
 // --- AC-4 ----------------------------------------------------------------------
 
-bool is_ac4_stream(std::span<const std::byte> bytes) {
-    return bytes.size() >= 2 && std::to_integer<unsigned>(bytes[0]) == 0xACU &&
-           (std::to_integer<unsigned>(bytes[1]) & 0xFEU) == 0x40U;
-}
-
 namespace {
 
 // AC-4's DRC decoder mode by drcmode='s name (parse_options checked it).

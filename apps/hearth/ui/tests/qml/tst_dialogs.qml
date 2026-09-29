@@ -43,6 +43,14 @@ TestCase {
         tryVerify(function() { return notNow.visible; }, 5000, "the first-run dialog did not open on a first start");
         // Its first step names the output it will play to.
         verify(findChild(win, "firstRunOutputRow") !== null);
+        // Its third step says a GROUP, not just pairing, is what a network
+        // sink needs to play - the gap behind the report that a paired
+        // sink's first Play fell back to the local output with nothing said
+        // (hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
+        const dialog = findChild(win, "firstRunDialog");
+        verify(dialog !== null);
+        verify(H.textContaining(dialog.contentItem, "a group to play") !== null,
+               "the first-run dialog's network step does not mention groups");
         mouseClick(notNow);
         tryVerify(function() { return !notNow.visible; }, 5000);
         tryCompare(HearthController, "firstRunSeen", true, 2000);

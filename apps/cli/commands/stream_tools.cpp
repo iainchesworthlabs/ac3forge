@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "../ac4_channels.hpp"
 #include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "ac4/ac4.hpp"
@@ -40,11 +39,14 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac4_channels.hpp"
 #include "stream_playback.hpp"
 
 namespace ac3cli::commands {
 
 namespace plan = ac3::plan;
+using ac3::apps::ac4_location;
+using ac3::apps::ac4_meter_rank;
 
 // The INPUT is read whole, the same way decode/mkv/mp4/ts/spdif already read
 // theirs: an elementary stream has to be framed before anything can be done

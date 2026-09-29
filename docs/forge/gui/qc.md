@@ -77,6 +77,22 @@ positions reach `ebu-r128-s2`, `atsc-a85` and `atsc-a85-streaming` — so the th
 selected at all. **All** is unaffected: it iterates the whole table, so every preset's verdict row
 is still reported. `ac3cli qc preset=<name>` reaches all five.
 
+## AC-4
+
+An AC-4 file, raw (`*.ac4`, which has a filter of its own) or in an MP4, is recognised by its sync
+word and measured the way `ac3cli qc` measures one: the presentation decoded as the stream codes
+it, with no output level and so no DRC, dialogue enhancement or downmix, metered over its 1/0,
+2/0, 3/0 or 3/2 bed (a 7.X element's last pair left out). The card's dialnorm check reads AC-4's
+dialnorm, in quarter-dB steps (ETSI TS 103 190-1 clause 4.3.12.2.1), and adds the integrated
+loudness the stream states in its further loudness information where it sends one; AC-4 has no
+`compr`, so that line is left out.
+
+A **Presentation** picker appears for an AC-4 file. Its first entry is the decoder's own choice
+with no preference, `ac3cli qc`'s default; the others are the table of contents' presentations
+by position, each labelled with its channels as coded, its language and its `presentation_id`
+where the stream sends them, and picking one measures that presentation, as
+`ac3cli qc presentation=<n>` does. Opening another file starts at the decoder's choice again.
+
 ## What it does not do
 
 This reads a stream that already exists; it has no connection to the workbench's own encode

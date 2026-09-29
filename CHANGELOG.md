@@ -970,6 +970,24 @@ The sections below contain the complete change list and fixes.
     WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds its output level, downmixes and
     dialogue enhancement to the formulas it holds `ac3cli decode` to, on the committed streams and
     the encoder's, in the Hearth CI job.
+- **The Forge GUI encodes and reads AC-4** (phase I3 of `planning/ac4.md`).
+  - AC-4 is the codec picker's third choice. The AC-4 tab, in place of Coding tools and Metadata,
+    sets the frame rate, the rate and codec modes, the I-frame interval, the CRC, dialnorm (or
+    measures it), the loudness values, the DRC profile, the stereo downmix of a 5.0 or 5.1 source
+    and dialogue enhancement. The page encodes one source in its own layout, mono to 5.1, to a raw
+    stream or an MP4 file, and echoes the `ac3cli ac4-encode` line that reproduces it; run through
+    `ac3cli`, the line writes the same bytes, which `tst_e2e_ac4.qml` and `tst_ac4_encode.qml`
+    check for a raw stream, an MP4 file and a 5.1 downmix. The steps that decide those bytes, the
+    channel order, the BS.1770 measurement and the packaging, moved from `ac4-encode` to
+    `apps/common` so both run the same code.
+  - QC, Open stream and Inspect objects recognise AC-4 by its sync word. QC measures a chosen
+    presentation as `ac3cli qc` does, with AC-4's quarter-dB dialnorm and the stream's stated
+    loudness; the player decodes a chosen presentation through `ac4::Decoder` as `ac3cli play`
+    does; the object page lists the presentations and the beds and objects the decoder reports,
+    read-only, and says that exporting AC-4 objects comes later (I5).
+  - Substreams and presentations, dialogue stems, per-mode DRC profiles, the LFE mix and the
+    layouts past 5.1 stay with `ac3cli ac4-encode`. A live session under AC-4 is refused, as
+    `ac3cli live` has no AC-4.
 
 **Audio outputs**
 
@@ -2211,6 +2229,12 @@ The sections below contain the complete change list and fixes.
   - A `PUT /name`, `/wiring` or `/slot-width` sent while the player was starting could be
     lost: the server started with the board's old description, which is what servers
     read in its hello. The server now gets the new one.
+- **Hearth's transport bar kept the last error for ever.** The player held the reason a play
+  had failed until another failure replaced it, and the bar shows an error over the note, so
+  after an output refused to open, "The output could not be opened..." stayed on screen over
+  items that were playing without trouble - including once another output had been chosen and
+  had worked. The error now goes when the next play, next or previous command starts. An item
+  a command skipped keeps its reason until the following command, as before.
 
 **Codec correctness**
 
@@ -2665,6 +2689,15 @@ The sections below contain the complete change list and fixes.
   and for the equivalent channel-count/nominal-rate checks on Core Audio. PipeWire and AAudio
   hand format negotiation to a graph or mixer that converts rather than refuses, so neither
   backend returns it.
+- **On Windows, `MonitorSink` refused every sample rate but the one its endpoint runs at.**
+  Shared mode takes only the mix format's own rate and channel count unless the stream is
+  initialised with `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`, and `start()` never set it, so a
+  44.1 kHz item on a 48 kHz endpoint - the ordinary pair - ended in `kFormatRejected`. Hearth
+  opens its output at each item's own rate, and could not play such a file on that machine at
+  all ("The output could not be opened at 44100 Hz"). `start()` now sets the flag, with
+  `AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY`, so the engine resamples; `kFormatRejected` stays
+  for a format the converter cannot take. `"[monitor-live]"` opens at 44.1, 48 and 96 kHz, and
+  `"[hearth-device]"` does the same through Hearth's own output sink.
 - **An output device that went away left the sink saying it was still playing.** A render
   thread that met a device failure - an unplugged endpoint answering
   `AUDCLNT_E_DEVICE_INVALIDATED`, ALSA giving up on `-ENODEV`, an AAudio write refused -

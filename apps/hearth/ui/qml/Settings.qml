@@ -39,6 +39,80 @@ ScrollView {
         onAccepted: HearthController.exportDiagnostics(selectedFile.toString())
     }
 
+    // The same report Save/Copy already produce, refreshed on a timer while
+    // open - diagnosticsReport() is a plain invokable with no signal a
+    // declarative binding could follow, so this re-invokes it itself rather
+    // than binding to it once (which would freeze on whatever it returned at
+    // page load). Laid out the same way LicencesDialog.qml already is.
+    Dialog {
+        id: liveDiagnosticsDialog
+        objectName: "liveDiagnosticsDialog"
+        modal: true
+        focus: true
+        onOpened: { root.refreshLiveDiagnostics(); liveDiagnosticsCloseButton.forceActiveFocus(); }
+        anchors.centerIn: parent
+        width: Math.min(760, parent ? parent.width - 60 : 760)
+        height: Math.min(640, parent ? parent.height - 60 : 640)
+        padding: Theme.space6
+        title: ""
+        background: Rectangle {
+            color: Theme.bg
+            border.color: Theme.text
+            border.width: 2
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Theme.space2
+            Accessible.role: Accessible.Dialog
+            Accessible.name: qsTr("Live diagnostics")
+            Text {
+                text: qsTr("LIVE DIAGNOSTICS")
+                font.pixelSize: Theme.fontMicro
+                font.letterSpacing: 1.2
+                color: Theme.textMuted
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                TextArea {
+                    id: liveDiagnosticsText
+                    objectName: "liveDiagnosticsText"
+                    readOnly: true
+                    selectByMouse: true
+                    wrapMode: TextEdit.Wrap
+                    textFormat: TextEdit.PlainText
+                    font.family: Theme.monoFamily
+                    font.pixelSize: Theme.fontMono
+                    color: Theme.text
+                    background: null
+                }
+            }
+            RowLayout {
+                Layout.topMargin: Theme.space3
+                Item { Layout.fillWidth: true }
+                Button {
+                    id: liveDiagnosticsCloseButton
+                    objectName: "liveDiagnosticsCloseButton"
+                    text: qsTr("Close")
+                    highlighted: true
+                    onClicked: liveDiagnosticsDialog.close()
+                }
+            }
+        }
+
+        Timer {
+            interval: 500
+            running: liveDiagnosticsDialog.visible
+            repeat: true
+            onTriggered: root.refreshLiveDiagnostics()
+        }
+    }
+
+    function refreshLiveDiagnostics() {
+        liveDiagnosticsText.text = HearthController.diagnosticsReport();
+    }
+
     ColumnLayout {
         width: root.availableWidth
         implicitWidth: root.availableWidth
@@ -469,14 +543,43 @@ ScrollView {
                         font.pixelSize: Theme.fontNormal
                         wrapMode: Text.WordWrap
                     }
-                    AppButton {
-                        objectName: "settingsDiagnosticsButton"
-                        text: qsTr("Save diagnostics…")
-                        Accessible.description: qsTr("Writes a plain-text support file where you choose. Nothing is sent anywhere.")
-                        onClicked: {
-                            diagnosticsDialog.selectedFile = HearthController.suggestedDiagnosticsFile();
-                            diagnosticsDialog.open();
+                    RowLayout {
+                        spacing: Theme.gap
+
+                        AppButton {
+                            objectName: "settingsDiagnosticsButton"
+                            text: qsTr("Save diagnostics…")
+                            Accessible.description: qsTr("Writes a plain-text support file where you choose. Nothing is sent anywhere.")
+                            onClicked: {
+                                diagnosticsDialog.selectedFile = HearthController.suggestedDiagnosticsFile();
+                                diagnosticsDialog.open();
+                            }
                         }
+                        AppButton {
+                            objectName: "settingsDiagnosticsLiveButton"
+                            text: qsTr("View live…")
+                            Accessible.description: qsTr("Opens the same report in a window that keeps itself up to date. Nothing is sent anywhere.")
+                            onClicked: liveDiagnosticsDialog.open()
+                        }
+                        AppButton {
+                            objectName: "settingsDiagnosticsCopyButton"
+                            text: qsTr("Copy diagnostics")
+                            Accessible.description: qsTr("Copies the same report to the clipboard. Nothing is sent anywhere.")
+                            onClicked: {
+                                diagnosticsClipboard.text = HearthController.diagnosticsReport();
+                                diagnosticsClipboard.selectAll();
+                                diagnosticsClipboard.copy();
+                            }
+                        }
+                    }
+                    // A hidden TextEdit is the portable way to reach the system
+                    // clipboard from pure QML (Media.qml's own copyJson() carries
+                    // the identical comment). Set just before each copy rather
+                    // than bound to it, since diagnosticsReport() is a plain
+                    // invokable with no signal a reactive binding could follow.
+                    TextEdit {
+                        id: diagnosticsClipboard
+                        visible: false
                     }
                     Text {
                         objectName: "settingsDiagnosticsMessage"

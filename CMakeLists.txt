@@ -269,9 +269,10 @@ if(NOT AC3FORGE_BUILD_MPEGTS AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI OR
         "AC3FORGE_BUILD_GUI, AC3FORGE_BUILD_TESTS and AC3FORGE_BUILD_EXAMPLES to all be OFF too - "
         "they all link mpegts::mpegts unconditionally.")
 endif()
-if(NOT AC3FORGE_BUILD_AC4 AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_TESTS))
-    message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_CLI and "
-        "AC3FORGE_BUILD_TESTS to both be OFF too - they both link ac4::ac4 unconditionally.")
+if(NOT AC3FORGE_BUILD_AC4 AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI OR AC3FORGE_BUILD_TESTS))
+    message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_CLI, "
+        "AC3FORGE_BUILD_GUI and AC3FORGE_BUILD_TESTS to all be OFF too - they all link ac4::ac4 "
+        "unconditionally.")
 endif()
 # Hearth's applications, which a board's build leaves out: a board takes src/sendspin's player
 # half alone (AC3FORGE_SENDSPIN_PLAYER_ONLY, set by esp-idf/ac3forge/CMakeLists.txt, with the

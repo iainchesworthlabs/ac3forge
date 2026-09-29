@@ -36,6 +36,7 @@
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 
+#include "ac4_encode_settings.hpp"
 #include "gui_diagnostics.hpp"
 
 // The QObject facade the QML layer talks to. All codec and capture work
@@ -249,9 +250,11 @@ class EncoderController : public QObject {
     Q_PROPERTY(double recordedSeconds READ recordedSeconds NOTIFY recordedSecondsChanged)
 
     // ---- format -----------------------------------------------------------
-    // AC-3 (bsid 8) or E-AC-3 (bsid 16). The codec gates almost everything
-    // else: AC-3 has no substream layer, so no layout wider than 5.1, and no
-    // Annex E coding tools or mixmdate group.
+    // AC-3 (bsid 8), E-AC-3 (bsid 16) or AC-4 (ETSI TS 103 190), in
+    // plan::Codec's order. The codec gates almost everything else: AC-3 has no
+    // substream layer, so no layout wider than 5.1, and no Annex E coding
+    // tools or mixmdate group; AC-4 takes its own options (the AC-4 block
+    // below) and none of the other two's.
     Q_PROPERTY(int codecIndex READ codecIndex WRITE setCodecIndex NOTIFY planChanged)
     Q_PROPERTY(QStringList codecNames READ codecNames CONSTANT)
     Q_PROPERTY(QString layoutDetail READ layoutDetail NOTIFY planChanged)
@@ -279,6 +282,58 @@ class EncoderController : public QObject {
     Q_PROPERTY(int kbpsPerChannelFloor READ kbpsPerChannelFloor CONSTANT)
     Q_PROPERTY(int containerIndex READ containerIndex WRITE setContainerIndex NOTIFY planChanged)
     Q_PROPERTY(QStringList containerNames READ containerNames CONSTANT)
+
+    // ---- AC-4 ---------------------------------------------------------------
+    // The AC-4 tab's choices (ac4_encode_settings.hpp), each an option of
+    // `ac3cli ac4-encode`. An AC-4 encode takes one source in its own layout,
+    // mono, stereo, 5.0 or 5.1, to a raw stream or an MP4 file. Each *Index
+    // picks from its *Names list; where a list opens with "Off" or "Stream
+    // default", index 0 sends nothing.
+    Q_PROPERTY(int ac4FrameRateIndex READ ac4FrameRateIndex WRITE setAc4FrameRateIndex NOTIFY
+                   planChanged)
+    Q_PROPERTY(QStringList ac4FrameRateNames READ ac4FrameRateNames CONSTANT)
+    Q_PROPERTY(int ac4RateModeIndex READ ac4RateModeIndex WRITE setAc4RateModeIndex NOTIFY
+                   planChanged)
+    Q_PROPERTY(QStringList ac4RateModeNames READ ac4RateModeNames CONSTANT)
+    Q_PROPERTY(int ac4CodecModeIndex READ ac4CodecModeIndex WRITE setAc4CodecModeIndex NOTIFY
+                   planChanged)
+    Q_PROPERTY(QStringList ac4CodecModeNames READ ac4CodecModeNames CONSTANT)
+    // dialnorm=, 0 to 31.75 dB below full scale in steps of 0.25, or measured.
+    Q_PROPERTY(double ac4Dialnorm READ ac4Dialnorm WRITE setAc4Dialnorm NOTIFY planChanged)
+    Q_PROPERTY(bool ac4MeasureDialnorm READ ac4MeasureDialnorm WRITE setAc4MeasureDialnorm NOTIFY
+                   planChanged)
+    Q_PROPERTY(int ac4LoudnessIndex READ ac4LoudnessIndex WRITE setAc4LoudnessIndex NOTIFY
+                   planChanged)
+    Q_PROPERTY(QStringList ac4LoudnessNames READ ac4LoudnessNames CONSTANT)
+    Q_PROPERTY(int ac4DrcIndex READ ac4DrcIndex WRITE setAc4DrcIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList ac4DrcNames READ ac4DrcNames CONSTANT)
+    // The stereo downmix's values, which a 5.X source alone has.
+    Q_PROPERTY(bool ac4DownmixAvailable READ ac4DownmixAvailable NOTIFY sourceChanged)
+    Q_PROPERTY(int ac4CentreIndex READ ac4CentreIndex WRITE setAc4CentreIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList ac4CentreNames READ ac4CentreNames CONSTANT)
+    Q_PROPERTY(int ac4SurroundIndex READ ac4SurroundIndex WRITE setAc4SurroundIndex NOTIFY
+                   planChanged)
+    Q_PROPERTY(QStringList ac4SurroundNames READ ac4SurroundNames CONSTANT)
+    Q_PROPERTY(int ac4PreferredDownmixIndex READ ac4PreferredDownmixIndex WRITE
+                   setAc4PreferredDownmixIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList ac4PreferredDownmixNames READ ac4PreferredDownmixNames CONSTANT)
+    // Dialogue enhancement over the channels that carry dialogue alone.
+    Q_PROPERTY(bool ac4DialogueLeft READ ac4DialogueLeft WRITE setAc4DialogueLeft NOTIFY
+                   planChanged)
+    Q_PROPERTY(bool ac4DialogueRight READ ac4DialogueRight WRITE setAc4DialogueRight NOTIFY
+                   planChanged)
+    Q_PROPERTY(bool ac4DialogueCentre READ ac4DialogueCentre WRITE setAc4DialogueCentre NOTIFY
+                   planChanged)
+    Q_PROPERTY(bool ac4DialogueMid READ ac4DialogueMid WRITE setAc4DialogueMid NOTIFY planChanged)
+    Q_PROPERTY(int ac4DialogueMaxGainIndex READ ac4DialogueMaxGainIndex WRITE
+                   setAc4DialogueMaxGainIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList ac4DialogueMaxGainNames READ ac4DialogueMaxGainNames CONSTANT)
+    Q_PROPERTY(int ac4IframeInterval READ ac4IframeInterval WRITE setAc4IframeInterval NOTIFY
+                   planChanged)
+    Q_PROPERTY(bool ac4Crc READ ac4Crc WRITE setAc4Crc NOTIFY planChanged)
+    // The trailing tokens of the `ac3cli ac4-encode` line these choices echo,
+    // space-joined; empty at every default.
+    Q_PROPERTY(QString ac4Tokens READ ac4Tokens NOTIFY planChanged)
 
     // ---- the channel model --------------------------------------------------
     // Tier 1: exactly one bed, always - one of Table 5.8's seven speaker
@@ -706,6 +761,39 @@ public:
     [[nodiscard]] int containerIndex() const { return container_index_; }
     [[nodiscard]] QStringList containerNames() const;
 
+    [[nodiscard]] int ac4FrameRateIndex() const { return static_cast<int>(ac4_.frame_rate); }
+    [[nodiscard]] QStringList ac4FrameRateNames() const;
+    [[nodiscard]] int ac4RateModeIndex() const { return static_cast<int>(ac4_.rate_mode); }
+    [[nodiscard]] QStringList ac4RateModeNames() const;
+    [[nodiscard]] int ac4CodecModeIndex() const { return static_cast<int>(ac4_.codec_mode); }
+    [[nodiscard]] QStringList ac4CodecModeNames() const;
+    [[nodiscard]] double ac4Dialnorm() const { return ac4_.dialnorm_db; }
+    [[nodiscard]] bool ac4MeasureDialnorm() const { return ac4_.measure_dialnorm; }
+    [[nodiscard]] int ac4LoudnessIndex() const { return optional_index(ac4_.loudness); }
+    [[nodiscard]] QStringList ac4LoudnessNames() const;
+    [[nodiscard]] int ac4DrcIndex() const { return optional_index(ac4_.drc); }
+    [[nodiscard]] QStringList ac4DrcNames() const;
+    [[nodiscard]] bool ac4DownmixAvailable() const;
+    [[nodiscard]] int ac4CentreIndex() const { return optional_index(ac4_.centre_level); }
+    [[nodiscard]] QStringList ac4CentreNames() const;
+    [[nodiscard]] int ac4SurroundIndex() const { return optional_index(ac4_.surround_level); }
+    [[nodiscard]] QStringList ac4SurroundNames() const;
+    [[nodiscard]] int ac4PreferredDownmixIndex() const {
+        return optional_index(ac4_.preferred_downmix);
+    }
+    [[nodiscard]] QStringList ac4PreferredDownmixNames() const;
+    [[nodiscard]] bool ac4DialogueLeft() const { return ac4_.dialogue_left; }
+    [[nodiscard]] bool ac4DialogueRight() const { return ac4_.dialogue_right; }
+    [[nodiscard]] bool ac4DialogueCentre() const { return ac4_.dialogue_centre; }
+    [[nodiscard]] bool ac4DialogueMid() const { return ac4_.dialogue_mid; }
+    [[nodiscard]] int ac4DialogueMaxGainIndex() const {
+        return static_cast<int>(ac4_.dialogue_max_gain);
+    }
+    [[nodiscard]] QStringList ac4DialogueMaxGainNames() const;
+    [[nodiscard]] int ac4IframeInterval() const { return ac4_.iframe_interval; }
+    [[nodiscard]] bool ac4Crc() const { return ac4_.crc; }
+    [[nodiscard]] QString ac4Tokens() const;
+
     [[nodiscard]] int bedIndex() const;
     [[nodiscard]] QVariantList bedChoices() const;
     [[nodiscard]] bool bedLfe() const { return bed_lfe_; }
@@ -868,6 +956,23 @@ public:
     void setBedIndex(int index);
     void setBedLfe(bool on);
     void setContainerIndex(int index);
+    void setAc4FrameRateIndex(int index);
+    void setAc4RateModeIndex(int index);
+    void setAc4CodecModeIndex(int index);
+    void setAc4Dialnorm(double db);
+    void setAc4MeasureDialnorm(bool on);
+    void setAc4LoudnessIndex(int index);
+    void setAc4DrcIndex(int index);
+    void setAc4CentreIndex(int index);
+    void setAc4SurroundIndex(int index);
+    void setAc4PreferredDownmixIndex(int index);
+    void setAc4DialogueLeft(bool on);
+    void setAc4DialogueRight(bool on);
+    void setAc4DialogueCentre(bool on);
+    void setAc4DialogueMid(bool on);
+    void setAc4DialogueMaxGainIndex(int index);
+    void setAc4IframeInterval(int frames);
+    void setAc4Crc(bool on);
     void setCoupling(bool on);
     void setSpx(bool on);
     void setAht(bool on);
@@ -1367,6 +1472,22 @@ private:
     // showed.
     void encodeChannels(const QString& path, std::vector<std::vector<float>> planes,
                         const ac3::plan::Routing& routing, std::uint32_t sample_rate);
+    // AC-4: the source's own channels through ac4::Encoder, the steps
+    // `ac3cli ac4-encode` takes (apps/common/ac4_encode_core.hpp), so the
+    // command line the page echoes writes these bytes.
+    void encodeAc4(const QString& path, std::vector<std::vector<float>> planes,
+                   std::uint32_t sample_rate);
+    // Why an AC-4 encode of the current source is refused before it starts;
+    // empty where it is not.
+    [[nodiscard]] QString ac4Refusal() const;
+    [[nodiscard]] static int optional_index(const std::optional<std::size_t>& value) {
+        return value ? static_cast<int>(*value) + 1 : 0;
+    }
+    void setAc4Choice(std::optional<std::size_t>& choice, int index, std::size_t size);
+    // The bed that is the loaded source's own layout, where AC-4 encodes it:
+    // mono, stereo, 5.0 or 5.1. Other channel counts leave the bed alone, and
+    // ac4Refusal() says why.
+    void followSourceLayoutForAc4();
     // Objects over a 5.1 bed. `planes` is every loaded channel in flat order;
     // which of them ride as dynamic objects, which pin to a bed position as
     // static objects, and which are dropped follows the assignment table
@@ -1653,6 +1774,7 @@ private:
     std::uint32_t vbr_max_kbps_ = 640;
 
     ac3::plan::Codec codec_ = ac3::plan::Codec::kAc3;
+    ac3gui::Ac4EncodeSettings ac4_{};
     // Tier 1: the bed and its independent LFE. Defaults to stereo, matching
     // what a freshly opened window always used to call itself; loading a
     // source or picking a preset moves it.
