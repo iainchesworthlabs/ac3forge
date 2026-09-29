@@ -38,6 +38,7 @@
 
 #include "ac4_encode_settings.hpp"
 #include "ac4_objects_core.hpp"
+#include "background_jobs.hpp"
 #include "gui_diagnostics.hpp"
 
 // The QObject facade the QML layer talks to. All codec and capture work
@@ -2035,6 +2036,10 @@ private:
     std::unique_ptr<ac3::audio::Capture> capture_;
     std::atomic_bool cancel_requested_{false};
     std::atomic_bool stop_recording_{false};
+    // Set only by the destructor: nothing in the window stops a file that is
+    // being streamed to a receiver (playFileToReceiver), so without it quitting
+    // would wait for the rest of the file.
+    std::atomic_bool stop_receiver_playback_{false};
 
     // ---- live session --------------------------------------------------
     // What startLiveSession was asked for, kept so switchLiveLayout can
@@ -2174,4 +2179,9 @@ private:
     // tie this feature's lifecycle to liveActive's own signals for no
     // reason.
     std::unique_ptr<ac3::audio::MonitorSink> motion_preview_monitor_sink_;
+
+    // Where every worker above runs. ~EncoderController() sets the flag each of
+    // them polls and waits for all of them before any member is destroyed;
+    // declared last, so ~BackgroundJobs() would wait ahead of them too.
+    ac3gui::BackgroundJobs jobs_;
 };

@@ -16,6 +16,7 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "background_jobs.hpp"
 
 namespace ac3::audio {
 class MonitorSink;
@@ -246,4 +247,10 @@ class StreamPlayerController : public QObject {
 
     bool exporting_ = false;
     QString export_error_;
+
+    // Where the decode, the playback loop and the exports run.
+    // ~StreamPlayerController() stops the loop and waits for all of them before
+    // any member above is destroyed; declared last, so ~BackgroundJobs() would
+    // wait ahead of them too.
+    ac3gui::BackgroundJobs jobs_;
 };

@@ -14,7 +14,6 @@
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QTimer>
-#include <QtConcurrent/QtConcurrentRun>
 
 #include <iterator>
 
@@ -776,7 +775,21 @@ EncoderController::EncoderController(QObject* parent)
     refreshRouting();
 }
 
-EncoderController::~EncoderController() = default;
+// Each worker that can still be running polls one of these flags, so set them
+// all and wait (see background_jobs.hpp): nothing then reads a member or posts
+// to this object after it is gone. The exceptions are encodeAc4() and
+// encodeAc4Objects(), each one call into the encoder library with no flag to
+// poll, which this waits out.
+EncoderController::~EncoderController() {
+    cancel_requested_.store(true, std::memory_order_relaxed);
+    stop_recording_.store(true, std::memory_order_relaxed);
+    stop_live_.store(true, std::memory_order_relaxed);
+    stop_motion_preview_.store(true, std::memory_order_relaxed);
+    stop_receiver_playback_.store(true, std::memory_order_relaxed);
+    // A meter preview stops once it is no longer the newest one.
+    preview_generation_.fetch_add(1, std::memory_order_relaxed);
+    jobs_.wait();
+}
 
 // ---------------------------------------------------------------------------
 // Choices. Every list here is built from ac3::plan or ac3::meta rather than
@@ -3017,8 +3030,8 @@ void EncoderController::startMotionPreview() {
     emit motionPreviewTimeChanged();
     setBusy(true);
 
-    std::ignore = QtConcurrent::run([this, p, sample_rate, nobjects, paths = std::move(paths),
-                                     planes = std::move(planes)]() mutable {
+    jobs_.run([this, p, sample_rate, nobjects, paths = std::move(paths),
+               planes = std::move(planes)]() mutable {
         // Heap-allocated - see encodeObjects'/runLiveSession's own PREfast
         // C6262 comment on why: a multi-KB internal history buffer pushes a
         // worker thread's stack frame too far.
@@ -4189,9 +4202,9 @@ void EncoderController::previewPlanMeters() {
     // same as sample_rate/acmod/lfe above.
     const auto lfe_indices = has_explicit_assignment_ ? lfe_coded_indices(coded)
                                                       : std::vector<std::size_t>{};
-    std::ignore = QtConcurrent::run([this, generation, routing = *routing,
-                                     sources = std::move(sources), sample_rate, acmod, lfe,
-                                     offsets, lfe_indices] {
+    jobs_.run([this, generation, routing = *routing,
+               sources = std::move(sources), sample_rate, acmod, lfe,
+               offsets, lfe_indices] {
         const auto coded_count = static_cast<std::size_t>(routing.coded_channels);
         ac3::analysis::LevelMeter meter{acmod, lfe, sample_rate,
                                         static_cast<int>(coded_count)};
@@ -4563,7 +4576,7 @@ void EncoderController::playFileToReceiver(const QString& path, int deviceIndex)
     emit playingChanged();
     setStatus(QStringLiteral("Streaming to %1…").arg(QString::fromStdString(device.name)));
 
-    std::ignore = QtConcurrent::run([this, path, device] {
+    jobs_.run([this, path, device] {
         std::ifstream in{path.toStdString(), std::ios::binary};
         const std::vector<char> raw{std::istreambuf_iterator<char>(in),
                                     std::istreambuf_iterator<char>()};
@@ -4613,6 +4626,12 @@ void EncoderController::playFileToReceiver(const QString& path, int deviceIndex)
                     } else {
                         ac3::iec61937::Eac3BurstPacker eac3_packer;
                         for (const auto& unit : *units) {
+                            // Only ~EncoderController() sets this: the window
+                            // has no way to stop a file once it is streaming,
+                            // and quitting must not wait for the rest of it.
+                            if (stop_receiver_playback_.load(std::memory_order_relaxed)) {
+                                break;
+                            }
                             std::vector<std::byte> burst;
                             if (eac3) {
                                 auto result = eac3_packer.push(unit);
@@ -4641,6 +4660,9 @@ void EncoderController::playFileToReceiver(const QString& path, int deviceIndex)
                                     lost = true;
                                     break;
                                 }
+                                if (stop_receiver_playback_.load(std::memory_order_relaxed)) {
+                                    break;
+                                }
                                 std::this_thread::sleep_for(std::chrono::milliseconds(4));
                             }
                             if (lost) {
@@ -4656,6 +4678,7 @@ void EncoderController::playFileToReceiver(const QString& path, int deviceIndex)
                             // sink that stops rendering mid-drain must not
                             // hold this thread here forever either.
                             while (sink.running() &&
+                                  !stop_receiver_playback_.load(std::memory_order_relaxed) &&
                                   sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
                                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                             }
@@ -5366,16 +5389,16 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
     // mid-session.
     const QString shape_name = channelShapeName();
 
-    std::ignore = QtConcurrent::run([this, p, atmos, eac3, downmix_leg, downmix_bitrate_kbps,
-                                     cp = std::move(cp), routing = std::move(routing), nobjects,
-                                     channels, channels2, combined_channels, sample_rate,
-                                     sample_rate2, monitor, passthrough, write_to_disk, file_path,
-                                     shape_name, device_name = QString::fromStdString(device.name),
-                                     device2_name =
-                                         device2 ? QString::fromStdString(device2->name)
-                                                : QString(),
-                                     has_device2 = device2.has_value(),
-                                     writers = std::move(writers)]() mutable {
+    jobs_.run([this, p, atmos, eac3, downmix_leg, downmix_bitrate_kbps,
+               cp = std::move(cp), routing = std::move(routing), nobjects,
+               channels, channels2, combined_channels, sample_rate,
+               sample_rate2, monitor, passthrough, write_to_disk, file_path,
+               shape_name, device_name = QString::fromStdString(device.name),
+               device2_name =
+                   device2 ? QString::fromStdString(device2->name)
+                          : QString(),
+               has_device2 = device2.has_value(),
+               writers = std::move(writers)]() mutable {
         // Heap-allocated: each of these carries a multi-KB internal history/
         // delay buffer, and stacking all four on this lambda's frame (which
         // PREfast's C6262 flagged) pushed it well past what's comfortable for
@@ -6278,8 +6301,8 @@ void EncoderController::startRecording(int deviceIndex, const QUrl& url) {
     const auto sample_rate = capture_->sample_rate();
     const bool eac3 = p.codec == plan::Codec::kEac3;
 
-    std::ignore = QtConcurrent::run([this, path, p, routing = *routing, channels, sample_rate,
-                                     cp, eac3]() {
+    jobs_.run([this, path, p, routing = *routing, channels, sample_rate,
+               cp, eac3]() {
         const auto coded_count = static_cast<std::size_t>(routing.coded_channels);
         // Heap-allocated, not stack: each carries a multi-KB internal history
         // buffer, and both together pushed this lambda's stack frame well
@@ -7447,9 +7470,9 @@ void EncoderController::encodeChannels(const QString& path,
     // assignment-based routing, never the automatic single-source overload.
     const auto lfe_indices =
         has_explicit_assignment_ ? lfe_coded_indices(coded) : std::vector<std::size_t>{};
-    std::ignore = QtConcurrent::run([this, path, p, routing, cp, sample_rate,
-                                     eac3, label, keep_partial, lfe_indices,
-                                     planes = std::move(planes)]() mutable {
+    jobs_.run([this, path, p, routing, cp, sample_rate,
+               eac3, label, keep_partial, lfe_indices,
+               planes = std::move(planes)]() mutable {
         const auto coded_count = static_cast<std::size_t>(routing.coded_channels);
         // Heap-allocated, not stack: each carries a multi-KB internal history
         // buffer, and both together pushed this lambda's stack frame well
@@ -7653,8 +7676,8 @@ void EncoderController::encodeAc4(const QString& path, std::vector<std::vector<f
     const int kbps = bitrate_kbps_;
     const QString layout =
         to_qstring(ac3::apps::ac4_layout_name(planes.size(), ac4::AdditionalPair::kNone));
-    std::ignore = QtConcurrent::run([this, path, settings, mp4, kbps, sample_rate, layout,
-                                     planes = std::move(planes)] {
+    jobs_.run([this, path, settings, mp4, kbps, sample_rate, layout,
+               planes = std::move(planes)] {
         const Ac4Outcome outcome = encode_ac4_file(path, settings, planes, sample_rate, kbps, mp4);
         QMetaObject::invokeMethod(this, [this, outcome, layout, kbps] {
             const bool ok = outcome.problem.isEmpty();
@@ -7711,10 +7734,9 @@ void EncoderController::encodeAc4Objects(const QString& path) {
     const std::size_t count = stream_objects.size();
     const QString coding =
         ac4_.object_coding == 0 ? QStringLiteral("A-JOC") : QStringLiteral("direct-coded");
-    std::ignore = QtConcurrent::run([this, path, scene_path, json = ac3::oba::to_json(*scene),
-                                     stream_objects, flat = std::move(flat),
-                                     scene = std::move(*scene), params, mp4, crc, kbps, count,
-                                     coding] {
+    jobs_.run([this, path, scene_path, json = ac3::oba::to_json(*scene), stream_objects,
+               flat = std::move(flat), scene = std::move(*scene), params, mp4, crc, kbps, count,
+               coding] {
         const Ac4Outcome outcome = encode_ac4_objects_file(path, scene_path, json, stream_objects,
                                                            flat, scene, params, mp4, crc);
         QMetaObject::invokeMethod(this, [this, outcome, count, coding, kbps] {
@@ -7853,9 +7875,9 @@ void EncoderController::encodeObjects(const QString& path,
     clearClipLatches();
 
     const bool keep_partial = keep_partial_output_;
-    std::ignore = QtConcurrent::run([this, path, p, sample_rate, nobjects, keep_partial,
-                                     paths = std::move(paths),
-                                     planes = std::move(planes)]() mutable {
+    jobs_.run([this, path, p, sample_rate, nobjects, keep_partial,
+               paths = std::move(paths),
+               planes = std::move(planes)]() mutable {
         ac3::oba::AtmosEncoder encoder{{.sample_rate = p.sample_rate,
                                         .bitrate_kbps = p.bitrate_kbps,
                                         .dialnorm = p.meta.dialnorm,

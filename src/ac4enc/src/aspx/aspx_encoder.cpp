@@ -64,6 +64,9 @@ constexpr double kSineGap = 0.2;
 // Interleaved waveform coding, where asked for, takes a group whose tone is
 // steadier still.
 constexpr double kInterleaveTonal = 0.8;
+// The share of a noise group's energy its patch, sinusoids and noise floor
+// together deliver, at least (AspxChannelEncoder::fill_undelivered()).
+constexpr double kFillDelivered = 0.75;
 
 [[nodiscard]] std::size_t at(int index) noexcept {
     return static_cast<std::size_t>(index);
@@ -427,7 +430,7 @@ AspxChannelFields AspxChannelEncoder::propose(long long frame, bool iframe) {
     std::vector<QmfSample> tone_ext;
     gather(frame, tone_ext, tone_lead());
     AspxChannelFields fields = framed(choose_framing(ext));
-    const std::vector<int> noise = choose_inverse_filtering(tone_ext, fields);
+    std::vector<int> noise = choose_inverse_filtering(tone_ext, fields);
     // Interleaving, where asked for, takes a steady tone first: the spectral
     // frontend codes it where it is, and a sinusoid would sit at its group's
     // middle subband.
@@ -435,6 +438,7 @@ AspxChannelFields AspxChannelEncoder::propose(long long frame, bool iframe) {
         choose_interleaving(tone_ext, fields);
     }
     choose_sinusoids(tone_ext, fields);
+    fill_undelivered(ext, fields, noise);
     std::array<bool, dsp::kQmfSubbands> waveform{};
     for (const auto& [first, last] : interleaved_subbands(fields)) {
         std::fill(waveform.begin() + first, waveform.begin() + last, true);
@@ -564,6 +568,83 @@ void AspxChannelEncoder::choose_sinusoids(std::span<const QmfSample> ext, AspxCh
         any = any || harmonic[at(sbg)];
     }
     fields.add_harmonic = any ? harmonic : std::vector<bool>{};
+}
+
+// The noise floors a patch that cannot fill its groups needs. The decoder
+// (Pseudocodes 94 and 95) scales the patch of a subband to the envelope's
+// energy over 1 + its noise floor Q, with an epsilon of 1 added to the
+// patch's own energy, and adds noise of the rest, Q / (1 + Q) of the
+// envelope's energy, whatever the patch holds; a sinusoid or a group the
+// spectral frontend codes takes its own energy. A patch of energy est per
+// QMF subsample therefore delivers est / (1 + est) of its share, and where
+// the low band holds nothing to copy while the band above it does (a sweep,
+// while it is above the crossover), a group comes out silent unless its noise
+// makes up the rest. Each noise group's delivered share of the input's
+// energy over the interval is brought up to kFillDelivered by a noise floor
+// at least as loud as that share needs.
+void AspxChannelEncoder::fill_undelivered(std::span<const QmfSample> ext,
+                                          const AspxChannelFields& fields,
+                                          std::vector<int>& noise) const {
+    const aspx::SubbandGroups& g = setup_->groups;
+    const FrameTiming& t = setup_->timing;
+    const std::vector<int> borders =
+        interval_borders(fields.framing, stop_prev_ - t.aspx_slots, t.aspx_slots);
+    // The generator's matrix holds the frame's own slots; an interval that
+    // runs on past them is measured up to where they stop.
+    const int first = t.ts_in_ats * borders.front();
+    const int last = std::min(t.ts_in_ats * borders.back(), t.qmf_slots);
+    if (last <= first) {
+        return;
+    }
+    const std::vector<std::uint8_t> modes = tna_bytes(fields.tna_mode);
+    aspx::HfGeneratorState<double> state = hf_;
+    std::vector<QmfSample> q_high;
+    generate(ext, modes, state, q_high);
+    // The mean energy per QMF subsample of the input's own band and of the
+    // patch, by subband.
+    std::array<double, dsp::kQmfSubbands> target{};
+    std::array<double, dsp::kQmfSubbands> patch{};
+    for (int ts = first; ts < last; ++ts) {
+        const std::size_t row = at(ts + aspx::kTsOffsetHfadj) * kSubbands;
+        for (int sb = g.sbx; sb < g.sbx + g.num_sb_aspx; ++sb) {
+            target[at(sb)] += norm(ext[row + at(sb)]);
+            patch[at(sb)] += norm(q_high[at(ts) * kSubbands + at(sb)]);
+        }
+    }
+    const double length = static_cast<double>(last - first);
+    // Subbands that another part of the syntax delivers whole.
+    std::array<bool, dsp::kQmfSubbands> covered{};
+    for (int sbg = 0; sbg < g.num_sbg_sig_highres; ++sbg) {
+        const bool tone = at(sbg) < fields.add_harmonic.size() && fields.add_harmonic[at(sbg)];
+        const bool coded =
+            at(sbg) < fields.fic_used_in_sfb.size() && fields.fic_used_in_sfb[at(sbg)];
+        if (tone || coded) {
+            std::fill(covered.begin() + g.sbg_sig_highres[at(sbg)],
+                      covered.begin() + g.sbg_sig_highres[at(sbg + 1)], true);
+        }
+    }
+    for (int group = 0; group < g.num_sbg_noise; ++group) {
+        const int lo = g.sbg_noise[at(group)];
+        const int hi = g.sbg_noise[at(group + 1)];
+        double total = 0.0;
+        double delivered = 0.0;
+        for (int sb = lo; sb < hi; ++sb) {
+            const double energy = target[at(sb)] / length;
+            const double est = patch[at(sb)] / length;
+            total += energy;
+            delivered += energy * (covered[at(sb)] ? 1.0 : est / (1.0 + est));
+        }
+        if (total < kSilence * static_cast<double>(hi - lo) ||
+            delivered >= kFillDelivered * total) {
+            continue;
+        }
+        // The noise floor Q at which (share + Q) / (1 + Q) is kFillDelivered.
+        const double share = delivered / total;
+        const double needed = (kFillDelivered - share) / (1.0 - kFillDelivered);
+        const int q = std::clamp(
+            static_cast<int>(std::lround(kNoiseFloorOffset - std::log2(needed))), 0, kMaxNoise);
+        noise[at(group)] = std::min(noise[at(group)], q);
+    }
 }
 
 AspxChannelFields AspxChannelEncoder::fallback(bool iframe, bool silent,

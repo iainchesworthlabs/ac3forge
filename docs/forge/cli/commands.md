@@ -969,7 +969,8 @@ Verification link above). Each `presentations_v0[]` entry carries `presentation_
 `substreams[]`, whose entries are a `chan` substream's members (below) with its `role` beside
 them. Each `substream_groups[]` entry carries `b_substreams_present`,
 `b_channel_coded`, `oamd` (null unless the group is object-coded and carries an OAMD substream:
-`b_oamd_ndot`, `substream_index`), and `substreams[]`. Each `presentations_v0[]` entry also carries
+`b_oamd_ndot`, `substream_index` and `oamd_common_data`, below), and `substreams[]`. Each
+`presentations_v0[]` entry also carries
 `decoded`, the decoder's reading of it, with the members of a `presentations_v1[]` entry (below).
 Each substream entry is a tagged union —
 `kind` (`"chan"`, `"ajoc"` or `"obj"`) says which one of `chan`/`ajoc`/`obj` is non-null, the
@@ -979,8 +980,8 @@ other two `null`:
   whether channels `channel_mode` implies exist are real content or encoded silence, e.g. a 5.1.4
   source carried in a 7.1.4-coded substream).
 - `ajoc`: `b_lfe`, `b_static_dmx`, `n_fullband_dmx_signals`, `static_objects[]`,
-  `n_fullband_upmix_signals`, `upmix_objects[]`, `sf_multiplier`, `bitrate_kbps`,
-  `substream_index`.
+  `oamd_common_data` (below), `n_fullband_upmix_signals`, `upmix_objects[]`, `sf_multiplier`,
+  `bitrate_kbps`, `substream_index`.
 - `obj`: `objects[]`, `b_dynamic_objects`, `sf_multiplier`, `bitrate_kbps`, `substream_index`.
 - Every object list entry (`static_objects`/`upmix_objects`/`objects`) is `{kind: "bed"|"dyn"|
   "isf", lfe, ajoc_coded}`.
@@ -1006,10 +1007,16 @@ The decoder's reading adds, after those:
   corrections), each null where the stream sends none.
 
 An A-JOC substream's `oamd_common_data()` (§6.2.8.1), present when its
-`b_oamd_common_data_present` flag is set, is read as part of the table of contents: the fields
-that follow it can only be found by reading it. `probe` does not report its contents. Like audio
-content, an OAMD substream's payload (`oamd_substream()`, §6.2.2.4) is not parsed, including the
-second `oamd_common_data()` it can carry.
+`b_oamd_common_data_present` flag is set, is read as part of the table of contents, and `probe`
+reports it as `oamd_common_data` on the substream's entry. A group's own OAMD substream
+(`oamd_substream()`, §6.2.2.4, which an object group can have, direct-coded or A-JOC) carries a
+second `oamd_common_data()`: the decoder reads it from the frame, and `probe` reports
+the first one the substream sends as `oamd_common_data` on the group's `oamd` member. Both are the
+same object: `b_default_screen_size_ratio`, `master_screen_size_ratio_code` (null with the default
+ratio), `b_bed_object_chan_distribute`, and a flag for each of the optional `trim()`,
+`bed_render_info()` and `headphone()` of its `add_data`, `trim_present`, `bed_render_info_present`
+and `headphone_present`, without their own fields. Either is null where the stream sends none. The
+rest of an OAMD substream's payload, its timing and each object's metadata, is not reported.
 
 `stream.integrity` has the same four members as the AC-3/E-AC-3 shape: `crc_valid`,
 `crc_failures`, `parse_failures` and `first_parse_error`. Two of them hold something different

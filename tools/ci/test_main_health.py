@@ -223,6 +223,21 @@ class Rendering(unittest.TestCase):
         body = mh.render_issue_body(ctx(), [job("Linux GCC")], self.suspects(), 1, baseline=None)
         self.assertIn("no verified commit", body.lower())
 
+    def test_the_nightly_issue_says_it_is_the_nightly_run_and_what_it_was_judged_against(self):
+        body = mh.render_issue_body(
+            ctx(event="schedule"), [job("Linux GCC")], self.suspects(), 1, baseline="f" * 40
+        )
+        self.assertIn("nightly run of `main` failed", body)
+        self.assertIn("last commit the nightly run verified", body)
+        self.assertIn("ffffffff", body)
+        self.assertNotIn("Post-merge verification of `main` failed", body)
+
+    def test_a_nightly_with_no_verified_commit_says_so(self):
+        body = mh.render_issue_body(
+            ctx(event="schedule"), [job("Linux GCC")], self.suspects(), 1, baseline=None
+        )
+        self.assertIn("nightly run has not verified a commit yet", body)
+
     def test_excerpt_prefers_error_lines_and_is_bounded(self):
         tail = "\n".join(
             ["noise"] * 200 + ["##[error]Process completed with exit code 2."] + ["more"] * 5
@@ -365,6 +380,110 @@ class Flow(unittest.TestCase):
         self.assertFalse(any("Failed jobs" in part for part in cmd))
 
 
+class NightlyFlow(unittest.TestCase):
+    """The scheduled run keeps its own baseline and its own issue."""
+
+    JOB = json.dumps(
+        {
+            "id": 1,
+            "name": "Build & Test / Build (Linux) / Linux LLVM ASan+UBSan",
+            "html_url": f"{RUN}/job/1",
+            "steps": ["Test"],
+        }
+    )
+    ISSUES = ("gh", "issue", "list", "-R", "o/r", "--label")
+
+    def table(self, extra=None):
+        table = {
+            ("gh", "api", "repos/o/r/actions/runs/77/jobs"): self.JOB,
+            ("gh", "api", "repos/o/r/check-runs/1/annotations"): "",
+            ("gh", "api", "repos/o/r/actions/jobs/1/logs"): "##[error]heap-use-after-free\n",
+            ("git", "log"): "c" * 40 + "\tMerge pull request #12 from o/feature/a\n",
+            ("git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/verified"): "e" * 40,
+            (
+                "git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/verified-nightly",
+            ): "f" * 40,
+            (*self.ISSUES, "main-red"): "[]",
+            (*self.ISSUES, "main-red-nightly"): "[]",
+        }
+        table.update(extra or {})
+        return table
+
+    def test_a_green_nightly_moves_both_refs(self):
+        sh = FakeSh(self.table())
+        self.assertEqual(mh.health(ctx(conclusion="success", event="schedule"), sh), "advance")
+        targets = sorted(c[0][-1] for c in sh.ran("git", "push"))
+        self.assertEqual(
+            targets, [f"{'a' * 40}:refs/heads/verified", f"{'a' * 40}:refs/heads/verified-nightly"]
+        )
+
+    def test_a_green_nightly_closes_both_issues(self):
+        table = self.table(
+            {
+                (*self.ISSUES, "main-red"): '[{"number": 9}]',
+                (*self.ISSUES, "main-red-nightly"): '[{"number": 10}]',
+            }
+        )
+        sh = FakeSh(table)
+        mh.health(ctx(conclusion="success", event="schedule"), sh)
+        self.assertTrue(sh.ran("gh", "issue", "close", "9"))
+        self.assertTrue(sh.ran("gh", "issue", "close", "10"))
+
+    def test_a_green_run_after_a_merge_leaves_the_nightly_alone(self):
+        table = self.table(
+            {
+                (*self.ISSUES, "main-red"): '[{"number": 9}]',
+                (*self.ISSUES, "main-red-nightly"): '[{"number": 10}]',
+            }
+        )
+        sh = FakeSh(table)
+        mh.health(ctx(conclusion="success", event="push"), sh)
+        self.assertEqual(
+            [c[0][-1] for c in sh.ran("git", "push")], [f"{'a' * 40}:refs/heads/verified"]
+        )
+        self.assertTrue(sh.ran("gh", "issue", "close", "9"))
+        self.assertEqual(sh.ran("gh", "issue", "close", "10"), [])
+        self.assertEqual(sh.ran(*self.ISSUES, "main-red-nightly"), [])
+
+    def test_a_red_nightly_is_judged_against_the_last_green_nightly(self):
+        sh = FakeSh(self.table())
+        self.assertEqual(mh.health(ctx(event="schedule"), sh), "report")
+        log = sh.ran("git", "log")[0][0]
+        self.assertIn(f"{'f' * 40}..{'a' * 40}", log)
+        self.assertNotIn(f"{'e' * 40}..", " ".join(log))
+
+    def test_a_red_nightly_opens_its_own_issue_and_names_no_pull_request(self):
+        sh = FakeSh(self.table())
+        mh.health(ctx(event="schedule"), sh)
+        cmd, body = sh.ran("gh", "issue", "create")[0]
+        self.assertIn("main-red-nightly", cmd)
+        title = cmd[cmd.index("--title") + 1]
+        self.assertTrue(title.startswith("the nightly run is red at "), title)
+        self.assertIn("ASan+UBSan", title)
+        self.assertIn("nightly run of `main` failed", body)
+        self.assertEqual(sh.ran("gh", "pr", "comment"), [])
+        self.assertTrue(sh.ran("gh", "label", "create", "main-red-nightly"))
+
+    def test_a_red_nightly_updates_the_open_nightly_issue(self):
+        sh = FakeSh(self.table({(*self.ISSUES, "main-red-nightly"): '[{"number": 10}]'}))
+        mh.health(ctx(event="schedule"), sh)
+        self.assertEqual(sh.ran("gh", "issue", "create"), [])
+        self.assertTrue(sh.ran("gh", "issue", "comment", "10"))
+
+    def test_a_red_run_after_a_merge_still_files_under_main_red(self):
+        sh = FakeSh(self.table())
+        mh.health(ctx(event="push"), sh)
+        cmd, _ = sh.ran("gh", "issue", "create")[0]
+        self.assertIn("main-red", cmd)
+        self.assertNotIn("main-red-nightly", cmd)
+        self.assertTrue(sh.ran("gh", "pr", "comment", "12"))
+        self.assertIn(f"{'e' * 40}..{'a' * 40}", sh.ran("git", "log")[0][0])
+
+
 class Cli(unittest.TestCase):
     def test_attempt_and_flags_parse(self):
         args = mh.parse_args(
@@ -385,9 +504,39 @@ class Cli(unittest.TestCase):
             ]
         )
         self.assertEqual((args.run_id, args.attempt, args.dry_run), (5, 2, True))
+        self.assertEqual(args.event, "")
+
+    def test_the_event_flag_marks_the_nightly_run(self):
+        args = mh.parse_args(
+            [
+                *("--repo", "o/r", "--run-id", "5", "--head-sha", "b" * 40),
+                *("--conclusion", "success", "--run-url", RUN, "--event", "schedule"),
+            ]
+        )
+        self.assertEqual(args.event, "schedule")
+        self.assertTrue(mh.nightly(ctx(event=args.event)))
+        self.assertFalse(mh.nightly(ctx(event="push")))
+        self.assertFalse(mh.nightly(ctx()))
 
     def test_marker_is_stable(self):
         self.assertTrue(re.fullmatch(r"<!-- main-health run:77 -->", mh.run_marker(77)))
+
+
+class Workflow(unittest.TestCase):
+    """main-health.yml only runs from main, so what it passes to the script is pinned here."""
+
+    TEXT = (Path(__file__).resolve().parents[2] / ".github/workflows/main-health.yml").read_text(
+        encoding="utf-8"
+    )
+
+    def test_it_tells_the_script_which_event_ended_the_run(self):
+        self.assertIn("EVENT: ${{ github.event.workflow_run.event }}", self.TEXT)
+        self.assertIn('--event "$EVENT"', self.TEXT)
+
+    def test_it_takes_every_value_from_the_run_through_env(self):
+        # The script's own arguments carry `$NAME`, never a `${{ }}` expansion.
+        run = self.TEXT.split("        run: |", maxsplit=1)[1]
+        self.assertNotIn("${{", run)
 
 
 if __name__ == "__main__":

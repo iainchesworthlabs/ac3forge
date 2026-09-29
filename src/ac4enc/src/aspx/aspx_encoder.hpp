@@ -181,6 +181,11 @@ class AspxChannelEncoder {
     [[nodiscard]] std::vector<int> choose_inverse_filtering(std::span<const QmfSample> ext,
                                                             AspxChannelFields& fields) const;
     void choose_sinusoids(std::span<const QmfSample> ext, AspxChannelFields& fields) const;
+    // Lowers the noise floors of the noise groups whose patch, sinusoids and
+    // coded groups leave most of the input's energy undelivered, so that the
+    // decoder's noise makes up the rest.
+    void fill_undelivered(std::span<const QmfSample> ext, const AspxChannelFields& fields,
+                          std::vector<int>& noise) const;
     // aspx_fic_used_in_sfb, with interleaving on: the high resolution
     // groups that hold a steady tone the patch does not make, which the
     // spectral frontend then codes; sinusoids take the groups left.

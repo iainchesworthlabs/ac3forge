@@ -1144,6 +1144,7 @@ the channel-based library.
 | 24 | [N1](#n1-the-names) | the names | I5 |
 | | [G1](#g0-the-gold-set) | the golden masters, extending G0's set | any time before DEE's licence ends on 2026-11-06 |
 | | [D11](#d11-ac-4-over-iec-61937) | AC-4 over IEC 61937 | D1; any time |
+| | [E10](#e10-a-spx-noise-floors-on-sweeps) | A-SPX noise floors on sweeps: the gap E8 left to DEE | E2, E8 |
 
 Hearth's AC-4 pages activate for channel-based content in I2, for immersive content and objects in
 I5.
@@ -2108,8 +2109,9 @@ mode. Measured locally against DEE's 5.1.4 legs from 192 to 768 kbps, in full an
 (`tools/checks/score_ac4_encode.py --gold`, pinned): ViSQOL within 0.035 of DEE's or over it on music, film
 and speech, the SNR below the crossover up to 10.5 dB under DEE's from 192 to 320 kbps and within 1.4 dB
 of it or over it from 384;
-on sweeps above 16.5 kHz the shared A-SPX encoder leaves the band emptier than DEE's does, 0.03 to 0.18
-under DEE's ViSQOL from 256 to 512 kbps. librempeg does not decode the immersive element.
+on sweeps the shared A-SPX encoder left the band above the crossover emptier than DEE's did, 0.03 to 0.18
+under DEE's ViSQOL from 256 to 512 kbps, which [E10](#e10-a-spx-noise-floors-on-sweeps) closed.
+librempeg does not decode the immersive element.
 
 #### E9: A-JOC objects
 
@@ -2151,6 +2153,71 @@ there is no race, and librempeg refuses object coding, so there is no second dec
 direct-coded substreams, objects beside channel-coded substreams, frame rates other than index 13 and
 the intermediate spatial format are refused.
 
+#### E10: A-SPX noise floors on sweeps
+
+- E8's race left the shared A-SPX encoder 0.03 to 0.18 under DEE's ViSQOL on 5.1.4's sweeps from 256 to
+  512 kbps, the band above the crossover emptier than DEE's. Which layouts and rates show it, the two
+  streams' A-SPX side information and decoded band compared frame by frame, and the fix in
+  `src/ac4enc`'s A-SPX analysis.
+
+**Exit:** on the sweep legs ViSQOL within 0.035 of DEE's or over it at every layout and rate where the
+gap was measured, and no other pinned leg regressing beyond its own tolerance; a synthetic sweep through
+the encoder and the decoder keeps each band above 16.5 kHz within a stated number of dB of the source's
+energy.
+
+**Verified by:** `tools/checks/score_ac4_encode.py --gold` over G1's sweeps at 2.0, 5.1 and 5.1.4 and
+over the music, film and speech legs as controls; `ac3tests`; the WSL GCC and Clang gates. ViSQOL and DEE
+are local only.
+
+**Built** (phase E10): E8's gap is at 5.1.4 alone. Scored as `score_ac4_encode.py --gold` scores it (ViSQOL
+of the channels' mean over the middle four seconds), G1's sweeps stood, this encoder's less DEE's: at 2.0,
+from 0.00 to 0.10 over from 64 to 144 kbps and 0.04 under at 48; at 5.1, from 0.03 to 0.21 over from 96
+to 320, though its A-SPX tiles were 2 to 11 dB further from the source's energy than DEE's (27.7 dB
+against 16.7 at 192 kbps); at 5.1.4, 0.03 over at 192 kbps and 0.145, 0.154, 0.107, 0.071, 0.034 and 0.183
+under at 256, 288, 320, 384, 448 and 512, in core decoding 0.02 to 0.04 nearer DEE's; 5.1.4's music leg at
+256 kbps, the control, 0.03 over. E8 put the gap above 16.5 kHz. Taking DEE's decoded band from 10.5 kHz
+up in place of this encoder's, at 256 kbps, gives DEE's ViSQOL (4.262 against DEE's 4.260 and this
+encoder's 4.115), and from 16.5 kHz up alone 4.174, two fifths of the way: the gap is the whole A-SPX
+band, three fifths of it below 16.5 kHz. What the decoder does with a group explains it (Pseudocodes 94
+and 95): its noise is Q / (1 + Q) of the envelope whatever the patch holds, and its patch gain divides by
+1 plus the patch's own energy, so a patch with nothing in it delivers nothing of the envelope. A sweep
+above the crossover has nothing in the low band to copy. The two streams' A-SPX configurations are the
+same (start, stop and master scale, noise groups, interpolation, pre-flattening, limiter), so are the
+framing class (FIXFIX), the high frequency resolution of every envelope, the quantisation step (1.5 dB in
+a frame of one envelope, 3 dB in two) and the delta direction (along time but in I-frames), and frame by
+frame on the 5.1.4 sweep at 256 kbps (`tools/references/ac4_syntax.py`'s reader, on DEE's streams as
+output only) what differs is these: DEE's noise floors are `qscf_noise` 7 to 17, 2^-1 to 2^-11, and this
+encoder's 29, the least, in 95 to 99 % of its values (on music DEE's are 7 in nine of ten, this
+encoder's 29 in 80 to 96 %); DEE inverse-filters at mode 0 in 96 to 98 % of the core channels' values,
+this encoder at 0 or 3; DEE frames one frame in ten as two envelopes (one in five in the top pairs); and
+this encoder adds a sinusoid to a group in one frame in twenty at most. Decoded, the tone above 16.5 kHz lands 15 to 17 dB under the
+source's energy in DEE's stream, which is its noise floor's share (2^-5 of the envelope in the tone's
+group is -15 dB), and 32 to 61 dB under it in this encoder's at 5.1 and 48 to 61 at 5.1.4, in every
+channel A-SPX codes.
+
+`AspxChannelEncoder::fill_undelivered` sends the floor the patch needs. Per noise group and interval it
+measures the share of the input's energy that the decoder's generator, run on the input's low band at
+the inverse filtering chosen, delivers (est / (1 + est) of each subband, a subband with a sinusoid or
+coded by the spectral frontend counting as delivered whole), and where that is under three quarters
+sends the floor at which (share + Q) / (1 + Q) reaches three quarters, when it is louder than the one
+the tonality rule chose: `qscf_noise` 4 for an empty patch. Music, film, speech, noise, transients and
+tones at 2.0 from 48 to 144 kbps, 5.1 from 96 to 320 and 5.1.4 from 192 to 512 encode to the same bytes
+as before (91 streams); only the sweeps change, and the SIMPLE and SCPL rates have no A-SPX. The test
+(`tests/ac4enc/test_ac4enc_encoder.cpp`) encodes a sweep from 11 to 21 kHz in one channel of a stereo and
+a 5.1.4 stream and holds the energy of each band from 16.5 to 20.5 kHz to 6 dB of the source's: before,
+seven of the eight came back 8 to 13 dB under it, and after all eight 2 to 4 dB under. Against DEE's
+streams ViSQOL is now over DEE's on every sweep leg: 0.15 to 0.28 at 2.0, 0.05 to 0.48 at 5.1 and 0.13 to
+0.66 at 5.1.4 (core decoding 0.05 to 0.65), the A-SPX tiles 3.5 to 5.7 dB nearer the source's energy than
+DEE's at 5.1.4 and 4 to 7 at 2.0 and 5.1. What it costs is log-spectral distance, which the noise
+raises by 0.2 to 0.9 dB on sweeps, to 0.55, 0.79 and 1.14 dB over DEE's at 2.0 and 48, 64 and 96 kbps
+and 0.55 to 2.7 dB under it everywhere else. The pins moved for that reason alone: the 5.1.4 sweeps' LSD
+ceilings up 0.4 to 0.7 dB, their ViSQOL floors up 0.17 to 0.63, their tile ceilings down by 7 to 19 dB, and
+their SNR floors unchanged but for 0.1 dB in a channel or two at 256 to 320 kbps; the 2.0 and 5.1 sweeps
+and the three A-CPL ones are pinned for the first time. `src/ac4enc/ERRATA.md` records the reading. Not
+done: `choose_sinusoids` holds a group's tone to twice the group's mean energy, which no group of two
+subbands can show, so sinusoids reach only the three-subband groups above 16.5 kHz and the single
+subbands; changing it would change music's streams, and E10 leaves it.
+
 ### Application phases
 
 `ac3cli` grows with the library: D2 and D8 give it AC-4 decoding and media information, and E1 and
@@ -2185,8 +2252,13 @@ through `tools/checks/generate_support_matrices.py`).
   other; a 7.X presentation keeps its pair in E-AC-3 at Table E2.5's locations and folds for AC-3
   by Table 219. `record` and `live` share one `TakeEncoder` with `transcode`; `RecordingSink`
   carries AC-4 in every container but Matroska, which has no AC-4 codec ID (FFmpeg 8.0.1 cannot
-  mux one either), and `record` no longer writes the frames of its bitstream check after the rest
-  of the take. `play` decodes AC-4 to PCM, since no receiver found takes it over IEC 61937, and
+  mux one either). Checked on 2026-09-29: the Matroska registry still lists no AC-4 ID. The
+  request ([issue 176](https://github.com/ietf-wg-cellar/matroska-specification/issues/176) of
+  the specification's repository, opened in 2017) and a proposal for `A_AC4`
+  ([pull request 874](https://github.com/ietf-wg-cellar/matroska-specification/pull/874), aimed
+  at the v5 document, last changed in March 2025) are open. The refusal stays until the registry
+  has an ID and a mapping. `record` no longer writes the frames of its bitstream check after the
+  rest of the take. `play` decodes AC-4 to PCM, since no receiver found takes it over IEC 61937, and
   `live` sends a receiver the 5.1 AC-3 leg. `fmp4`'s CMAF track takes the readings
   `src/ac4enc/ERRATA.md` records under "Manifests and CMAF tracks".
 
@@ -2228,6 +2300,13 @@ through `tools/checks/generate_support_matrices.py`).
   preferred downmix". And a group item whose burst type differed from what the group carried, AC-3
   after E-AC-3 as well as AC-4 after either, was sent on the first item's stream start; the group
   now starts again.
+
+Decided on 2026-09-29 about what I2's pull request recorded. A sink on the extension role that
+does not list `"ac4"` is sent nothing for an AC-4 item until D14 puts the decoder on its part; I6
+settles what such a sink is sent. The decoder's latency, 1 313 samples at index 13, is not
+trimmed at an item's start, so two AC-4 items in a queue have a gap of about 27 ms between them;
+I6 trims it. The page's downmix control stays as it is, following the stream's preferred
+downmix; Pro Logic II is a follow-up after I6.
 
 **Exit:** the engine plays every committed AC-4 stream through the decoder's public API; each
 control, driven from the page, changes the decoded output as its formula says, measured with tones;
@@ -2409,10 +2488,13 @@ extended `tests/hearth/test_diagnostics.cpp`, `apps/gui/tests/qml/tst_e2e_inspec
 `tools/ci/run_codec_matrix.sh`'s new AC-4 legs (5.1.4, objects both codings, both Atmos-ingest
 commands' `codec=ac4`), and the whole of `ac3tests` once, at the end (a full run's own numbers are in
 the phase's report rather than repeated here, since a later merge would make them stale immediately).
-Not done: a direct-coded group's own separate `oamd_substream` in `probe`'s JSON; `zone_mask`'s
-mapping onto `ac3::oba::ZoneConstraint` is a reading, not independently checked against the spec
-text (neither library's syntax, so not an ERRATA entry). The GUI's encoder-page AC-4 object path,
-which this list named when the phase merged, landed as I5b, below.
+Not done: `zone_mask`'s mapping onto
+`ac3::oba::ZoneConstraint` is a reading, not independently checked against the spec text (neither
+library's syntax, so not an ERRATA entry). A direct-coded group's own separate `oamd_substream`,
+which this phase left out of `probe`'s JSON, landed afterwards: `ac4::SubstreamReport` holds the
+substream's `oamd_common_data()`, and `probe` writes the first one as `oamd_common_data` on the
+group's `oamd` member, in the shape of the A-JOC substream's. The GUI's encoder-page AC-4 object
+path, which this list named when the phase merged, landed as I5b, below.
 
 #### I5b: the encoder page's AC-4 objects
 
@@ -2508,6 +2590,9 @@ On each part after its D14 figures: the P4 first, then the S3 and the C6.
   data types. On the P4 here, whose I2S has no clock for TDM, it plays to two channels.
 - AC-4's frames last from 16 to 43 ms across its frame rates, where the sink's queue and its hold
   of the first unit were sized for E-AC-3's 32 ms.
+- Two things I2 left ([I2](#i2-hearth-desktop)): what a sink that does not list `"ac4"` is sent
+  for an AC-4 item, and the decoder's latency of 1 313 samples at index 13, which the engine does
+  not trim at an item's start. Both are settled here.
 
 **Exit:** D14's board figures, and a sink playing an AC-4 stream Hearth sends it.
 

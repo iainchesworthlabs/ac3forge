@@ -934,6 +934,23 @@ TEST_CASE("an object group of A-JOC and direct-coded substreams and OAMD reads e
     check_read(find(*report, 2), SubstreamReport::Kind::kOamd);
     check_read(find(*report, 3), SubstreamReport::Kind::kPresentation);
 
+    // The OAMD substream's own common data, as it sent it: a screen size ratio
+    // code, bed and object channels distributed, no trim, no bed render info,
+    // and the headphone data in add_data. No other substream reports any.
+    const std::optional<ac4::OamdCommonData>& common = find(*report, 2).oamd_common_data;
+    REQUIRE(common.has_value());
+    CHECK_FALSE(common->b_default_screen_size_ratio);
+    CHECK(common->master_screen_size_ratio_code == 9);
+    CHECK(common->b_bed_object_chan_distribute);
+    CHECK_FALSE(common->trim.has_value());
+    CHECK_FALSE(common->bed_render_info.has_value());
+    REQUIRE(common->headphone.has_value());
+    CHECK(common->headphone->hp_operation_mode == 0b001);
+    CHECK(common->headphone->b_head_track_disable_all == true);
+    for (const int index : {0, 1, 3}) {
+        CHECK_FALSE(find(*report, index).oamd_common_data.has_value());
+    }
+
     const auto value_of = [&records](int substream, std::string_view name,
                                      int nth = 0) -> std::optional<std::uint64_t> {
         for (const ac4::SyntaxRecord& record : records) {

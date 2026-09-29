@@ -64,7 +64,8 @@ land: the first measurement plus 0.25 dB and less 0.05.
 
 --gold DIR runs the race instead, locally: for each of phase G0's 2.0 legs, ASPX from 48 to 144
 kbps and SIMPLE from 192 to 768, and its 5.1 legs from 96 to 768, ASPX_ACPL_3 at 96, ASPX_ACPL_2 at
-128 and 144 and ASPX to 320 kbps, DEE's stream
+128 and 144 and ASPX to 320 kbps, and G1's sweeps in the codec modes that carry A-SPX (phase E10,
+RACE_G1_CONTENT), DEE's stream
 (DIR/streams/<leg>/dee.ac4) and this encoder's stream of the same source (DIR/sources/<source>.wav)
 at the same rate are both decoded and scored as above. The encoder's scores are checked against
 RACE, and in the A-CPL legs against RACE_ACPL, pinned the same way, and its gaps to DEE's are
@@ -291,6 +292,14 @@ ACPL_FLOORS = {
 # and 0.02 on music, and within 0.01 at 768. The log-spectral distance is lower on every leg, the
 # A-SPX tiles land within 0.07 dB of DEE's distance from the source's energy or closer, and the
 # LFE, which DEE low-passes, comes back 15 to 29 dB over its noise by the rate.
+# The sweeps at the end (G1's, RACE_G1_CONTENT), measured 2026-09-29 with the encoder of phase E10,
+# whose noise floors for a group the patch cannot fill are what they hold: DEE's ViSQOL on the 2.0
+# sweeps is 4.22 to 4.54 and 4.17 to 4.27 on the 5.1 ones (A-CPL 4.44, 4.45), and this encoder's is
+# 0.15 to 0.28 over it at 2.0 (0.04 under at 48 kbps before the floors), 0.05 to 0.48 over at 5.1
+# (0.03 to 0.21 over before, its tiles 2 to 11 dB further from the source's energy than DEE's), the
+# tiles now 4 to 7 dB nearer to it than DEE's. The log-spectral distance is 0.55, 0.79 and 1.14 dB
+# over DEE's in 2.0 at 48, 64 and 96 kbps (0.93 over before at 96) and 0.55 to 2.7 dB under it
+# elsewhere: the noise the floors send fills bands where the source holds one tone.
 RACE = {
     "20-music-48": ((12.4, 12.6), 2.05, 2.23, 4.44),
     "20-music-64": ((14.9, 15.1), 1.59, 2.75, 4.55),
@@ -355,6 +364,15 @@ RACE = {
     "51-tones-448": ((81.2, 82.1, 80.6, 69.0, 82.2, 79.4), 10.34, None, 4.63),
     "51-tones-512": ((81.2, 82.1, 80.6, 69.0, 82.2, 79.4), 10.30, None, 4.63),
     "51-tones-768": ((81.3, 82.2, 80.7, 69.0, 82.3, 79.5), 10.17, None, 4.63),
+    "20-sweep-128": ((76.2, 76.0), 11.39, 10.92, 4.59),
+    "20-sweep-144": ((76.3, 76.0), 11.31, 10.85, 4.59),
+    "20-sweep-48": ((46.3, 46.1), 13.97, 8.79, 4.40),
+    "20-sweep-64": ((46.6, 46.4), 14.06, 10.48, 4.58),
+    "20-sweep-96": ((46.8, 46.6), 14.29, 11.07, 4.58),
+    "51-sweep-192": ((75.6, 75.4, 75.5, 39.4, 75.5, 75.3), 11.65, 9.96, 4.55),
+    "51-sweep-256": ((76.1, 75.8, 75.9, 39.4, 76.0, 75.7), 11.49, 10.32, 4.58),
+    "51-sweep-288": ((76.2, 75.9, 76.0, 39.4, 76.1, 75.8), 11.41, 10.34, 4.58),
+    "51-sweep-320": ((76.3, 75.9, 76.1, 39.4, 76.1, 75.9), 11.35, 10.30, 4.58),
 }
 # The race's A-CPL legs, 5.1 at 96, 128 and 144 kbps, pinned as ACPL_FLOORS are. Measured 2026-09-25
 # with the encoder of phase E4, both streams decoded by the decoder of phase D5. Against DEE's, the
@@ -366,7 +384,9 @@ RACE = {
 # spread of noise across the band. Phase E6 gave every presentation a presentation_id, as DEE's
 # streams and CMAF have it: three bits of the table of contents that take a byte of the audio from
 # each frame at 128 kbps, which moved film's coded C from 21.4 to 20.2 dB and its other downmixes by
-# 0.1 to 0.4 dB, ViSQOL unchanged; its C floor is pinned again from there.
+# 0.1 to 0.4 dB, ViSQOL unchanged; its C floor is pinned again from there. The three sweep legs are
+# G1's (RACE_G1_CONTENT), measured 2026-09-29 with the encoder of phase E10; the RACE comment says
+# how they stand against DEE's.
 RACE_ACPL = {
     "51-music-96": (
         (17.7, 17.7, 21.9),
@@ -419,10 +439,32 @@ RACE_ACPL = {
         None,
         None,
         15.3, 12.78, 4.63),
+    "51-sweep-128": (
+        (73.5, 73.4, 75.3, 39.4),
+        (4.61, 15.33, None, None, None, None, None, None, None, None, None, None, None, None, None),
+        (0.276, 0.509, None, None, None, None, None, None, None, None, None, None, None, None,
+         None),
+        None, 12.37, 4.58),
+    "51-sweep-144": (
+        (74.6, 74.3, 75.6, 39.4),
+        (4.61, 15.34, None, None, None, None, None, None, None, None, None, None, None, None, None),
+        (0.276, 0.510, None, None, None, None, None, None, None, None, None, None, None, None,
+         None),
+        None, 12.24, 4.58),
+    "51-sweep-96": (
+        (70.8, 70.7, 39.4),
+        (4.61, 15.35, None, None, None, None, None, None, None, None, None, None, None, None, None),
+        (0.276, 0.511, None, None, None, None, None, None, None, None, None, None, None, None,
+         None),
+        None, 13.78, 4.39),
 }
 # The G0 legs the race runs, by rate: 2.0 in ASPX where DEE writes it and in SIMPLE from 192 kbps,
 # and 5.1 from 96 kbps, in A-CPL below 192.
 RACE_RATES = (48, 64, 96, 128, 144, 192, 256, 288, 320, 384, 448, 512, 768)
+# G1's legs the 2.0 and 5.1 race takes beside G0's, by content, in the codec modes that carry A-SPX
+# (phase E10): the sweeps, whose tone passes through the band above A-SPX's crossover, where the
+# patch holds nothing to copy while it is there.
+RACE_G1_CONTENT = ("sweep",)
 # The codec modes a 5_X_codec_mode or stereo_codec_mode names, where A-CPL is on (Part 1 Tables 95
 # and 97).
 ACPL_MODES = {2: "ASPX_ACPL_1", 3: "ASPX_ACPL_2", 4: "ASPX_ACPL_3"}
@@ -550,12 +592,18 @@ IMMERSIVE_EXTRA = {
 # within 0.2 dB of DEE's distance from the source's energy or closer, and A-CPL's top pairs 0.06
 # to 0.16 dB closer to the source's level difference than DEE's and 0.04 to 0.06 closer in
 # correlation. The tones come back 25 to 50 dB over DEE's SNR, the transients 8 to 12 dB. The
-# sweeps' waveform is 31 to 40 dB over DEE's, but above 16.5 kHz, where A-SPX's patch holds
-# nothing to copy while the sweep is up there, this encoder's A-SPX leaves the band some 50 dB
-# under the sweep's energy where DEE's comes within about 10 dB of it: the tiles land 4 to 14 dB
-# further from the source's energy than DEE's, and ViSQOL is 0.03 to 0.18 under DEE's from 256 to
-# 512 kbps (E2's A-SPX encoder, which every layout shares; G1's 5.1 sweeps show the tiles' gap
-# too, 27.7 dB against DEE's 16.7 at 192 kbps).
+# sweeps' waveform is 31 to 40 dB over DEE's. The sweeps' entries were measured again 2026-09-29
+# with the encoder of phase E10. With E8's, A-SPX's patch held nothing to copy while a sweep was
+# above the crossover and the encoder sent no noise floor there, the decoder's noise being a share
+# of the envelope whatever the patch holds (Part 1 Pseudocodes 94 and 95): the band came back 30
+# to 68 dB under the sweep's energy where DEE's floors, 2^-1 to 2^-11, bring it to 15 to 17 dB
+# under, the tiles landed 4 to 14 dB further from the source's energy than DEE's, and ViSQOL 0.03
+# to 0.18 under DEE's from 256 to 512 kbps. With the floors of src/ac4enc/ERRATA.md's "A noise
+# floor for a group whose patch holds nothing" the tiles land 3.5 to 5.7 dB nearer than DEE's,
+# ViSQOL is 0.13 to 0.66 over DEE's in full decoding and 0.05 to 0.65 in core decoding at every
+# A-SPX rate, and the log-spectral distance, still 0.8 to 1.3 dB under DEE's, is 0.4 to 0.7 dB
+# higher than E8's pins had it (the noise fills bands where the source holds one tone), the
+# SNR floors unchanged but for 0.1 dB in a channel or two at 256 to 320 kbps.
 RACE_IMMERSIVE_CONTENT = ("music", "tones", "film", "speech", "sweep", "transient")
 RACE_IMMERSIVE = {
     ("514-music-192", "full"): ((17.3, 17.3, 18.9, 21.6, 12.3, 12.4, 13.3, 13.5), None, 2.53, 4.40),
@@ -656,34 +704,34 @@ RACE_IMMERSIVE = {
                                  None, 1.62, 4.61),
     ("514-speech-768", "core"): ((46.3, 46.3, 53.0, None, 34.6, 34.7, 34.8, 35.0), None, 1.45,
                                  4.61),
-    ("514-sweep-192", "full"): ((74.5, 74.3, 74.6, 39.4, 73.6, 73.7, 73.8, 73.8), None, 10.53,
-                                3.41),
-    ("514-sweep-192", "core"): ((74.5, 74.3, 74.6, 39.4, 73.6, 73.7, 73.8, 73.8), None, 10.53,
-                                3.38),
-    ("514-sweep-256", "full"): ((75.6, 75.3, 75.5, 39.4, 75.0, 75.0, 75.0, 75.2), None, 10.27,
-                                4.02),
-    ("514-sweep-256", "core"): ((75.6, 75.3, 75.5, 39.4, 75.0, 75.0, 75.0, 75.2), None, 10.27,
-                                4.01),
-    ("514-sweep-288", "full"): ((75.9, 75.6, 75.8, 39.4, 75.4, 75.4, 75.4, 75.6), None, 10.18,
-                                4.01),
-    ("514-sweep-288", "core"): ((75.9, 75.6, 75.8, 39.4, 75.4, 75.4, 75.4, 75.6), None, 10.18,
+    ("514-sweep-192", "full"): ((74.5, 74.3, 74.6, 39.4, 73.6, 73.7, 73.8, 73.8), None, 11.23,
+                                4.04),
+    ("514-sweep-192", "core"): ((74.5, 74.3, 74.6, 39.4, 73.6, 73.7, 73.8, 73.8), None, 11.23,
                                 4.00),
-    ("514-sweep-320", "full"): ((75.9, 75.7, 75.9, 39.4, 75.5, 75.5, 75.5, 75.7), None, 10.28,
-                                4.33),
-    ("514-sweep-320", "core"): ((75.9, 75.7, 75.9, 39.4, 75.5, 75.5, 75.5, 75.7), None, 10.28,
-                                4.33),
-    ("514-sweep-384", "full"): ((76.2, 75.9, 76.1, 39.4, 75.8, 75.8, 75.8, 76.0), None, 10.14,
-                                4.37),
-    ("514-sweep-384", "core"): ((76.2, 75.9, 76.1, 39.4, 75.8, 75.8, 75.8, 76.0), None, 10.14,
-                                4.36),
-    ("514-sweep-448", "full"): ((76.3, 76.0, 76.2, 39.4, 75.9, 76.0, 75.9, 76.2), None, 10.03,
-                                4.41),
-    ("514-sweep-448", "core"): ((76.3, 76.0, 76.2, 39.4, 75.9, 76.0, 75.9, 76.2), None, 10.03,
-                                4.40),
+    ("514-sweep-256", "full"): ((75.5, 75.3, 75.5, 39.4, 74.9, 75.0, 75.0, 75.2), None, 10.97,
+                                4.53),
+    ("514-sweep-256", "core"): ((75.5, 75.3, 75.5, 39.4, 74.9, 75.0, 75.0, 75.2), None, 10.96,
+                                4.52),
+    ("514-sweep-288", "full"): ((75.9, 75.6, 75.8, 39.4, 75.3, 75.4, 75.4, 75.6), None, 10.88,
+                                4.52),
+    ("514-sweep-288", "core"): ((75.9, 75.6, 75.8, 39.4, 75.3, 75.4, 75.4, 75.6), None, 10.87,
+                                4.51),
+    ("514-sweep-320", "full"): ((75.9, 75.7, 75.9, 39.4, 75.4, 75.5, 75.5, 75.7), None, 10.73,
+                                4.57),
+    ("514-sweep-320", "core"): ((75.9, 75.7, 75.9, 39.4, 75.4, 75.5, 75.5, 75.7), None, 10.72,
+                                4.57),
+    ("514-sweep-384", "full"): ((76.2, 75.9, 76.1, 39.4, 75.8, 75.8, 75.8, 76.0), None, 10.59,
+                                4.58),
+    ("514-sweep-384", "core"): ((76.2, 75.9, 76.1, 39.4, 75.8, 75.8, 75.8, 76.0), None, 10.58,
+                                4.57),
+    ("514-sweep-448", "full"): ((76.3, 76.0, 76.2, 39.4, 75.9, 76.0, 75.9, 76.2), None, 10.46,
+                                4.58),
+    ("514-sweep-448", "core"): ((76.3, 76.0, 76.2, 39.4, 75.9, 76.0, 75.9, 76.2), None, 10.46,
+                                4.57),
     ("514-sweep-512", "full"): ((76.2, 75.9, 76.0, 39.4, 75.7, 75.8, 75.9, 76.0, 75.7, 76.2),
-                                None, 11.80, 4.18),
-    ("514-sweep-512", "core"): ((76.2, 75.9, 76.0, 39.4, 75.7, 75.8, 75.8, 76.1), None, 10.53,
-                                4.34),
+                                None, 12.23, 4.56),
+    ("514-sweep-512", "core"): ((76.2, 75.9, 76.0, 39.4, 75.7, 75.8, 75.8, 76.1), None, 11.03,
+                                4.55),
     ("514-sweep-768", "full"): ((76.3, 76.0, 76.2, 39.4, 76.0, 76.1, 76.1, 76.2, 75.9, 76.4),
                                 None, 11.45, 4.42),
     ("514-sweep-768", "core"): ((76.3, 76.0, 76.2, 39.4, 76.0, 76.1, 76.0, 76.3), None, 10.38,
@@ -827,42 +875,42 @@ RACE_IMMERSIVE_EXTRA = {
     "514-speech-512": (2.58, None, None),
     "514-speech-768": (None, None, None),
     "514-sweep-192": (
-        29.46,
+        13.19,
         (4.00, 19.96, None, None, None, None, None, None, None, None, None, None, None, None,
          None),
         (0.197, 0.670, None, None, None, None, None, None, None, None, None, None, None, None,
          None)),
     "514-sweep-256": (
-        28.54,
+        9.46,
         (4.00, 19.97, None, None, None, None, None, None, None, None, None, None, None, None,
          None),
         (0.197, 0.670, None, None, None, None, None, None, None, None, None, None, None, None,
          None)),
     "514-sweep-288": (
-        26.14,
+        9.44,
         (4.00, 19.96, None, None, None, None, None, None, None, None, None, None, None, None,
          None),
         (0.197, 0.670, None, None, None, None, None, None, None, None, None, None, None, None,
          None)),
     "514-sweep-320": (
-        22.13,
+        10.26,
         (4.00, 19.96, None, None, None, None, None, None, None, None, None, None, None, None,
          None),
         (0.197, 0.670, None, None, None, None, None, None, None, None, None, None, None, None,
          None)),
     "514-sweep-384": (
-        19.57,
+        10.23,
         (4.00, 19.97, None, None, None, None, None, None, None, None, None, None, None, None,
          None),
         (0.197, 0.670, None, None, None, None, None, None, None, None, None, None, None, None,
          None)),
     "514-sweep-448": (
-        17.73,
+        10.24,
         (4.00, 19.96, None, None, None, None, None, None, None, None, None, None, None, None,
          None),
         (0.197, 0.670, None, None, None, None, None, None, None, None, None, None, None, None,
          None)),
-    "514-sweep-512": (25.70, None, None),
+    "514-sweep-512": (9.99, None, None),
     "514-sweep-768": (None, None, None),
     "514-transient-192": (1.98, None, None),
     "514-transient-256": (1.67, None, None),
@@ -1498,18 +1546,29 @@ def acpl_gaps(ours, dee):
     return text
 
 
+def race_legs(args, manifest):
+    """The race's 2.0 and 5.1 legs at RACE_RATES: G0's, in every codec mode, and G1's
+    RACE_G1_CONTENT where A-SPX codes them."""
+    legs = []
+    for key in ("legs", "g1_legs"):
+        modes = ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
+        if key == "g1_legs":
+            modes = modes[1:]
+        for name, leg in sorted(manifest.get(key, {}).items()):
+            parts = name.split("-")
+            if (len(parts) == 3 and parts[0] in ("20", "51")
+                    and (key == "legs" or parts[1] in RACE_G1_CONTENT)
+                    and leg.get("codec_mode") in modes
+                    and leg.get("frame_rate_index") == 13
+                    and leg.get("bitrate_kbps") in RACE_RATES
+                    and (args.only is None or args.only in name)):
+                legs.append((name, leg))
+    return legs
+
+
 def gold_run(args, work):
     manifest = json.loads((args.gold / "gold-manifest.json").read_text(encoding="utf-8"))
-    legs = [
-        (name, leg)
-        for name, leg in sorted(manifest["legs"].items())
-        if name.split("-")[0] in ("20", "51")
-        and len(name.split("-")) == 3
-        and leg.get("codec_mode") in ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
-        and leg.get("frame_rate_index") == 13
-        and leg.get("bitrate_kbps") in RACE_RATES
-        and (args.only is None or args.only in name)
-    ]
+    legs = race_legs(args, manifest)
     immersive = immersive_race_legs(args, manifest)
     if not legs and not immersive:
         raise SystemExit(f"no 2.0, 5.1 or 5.1.4 leg at the race's rates in {args.gold}")
