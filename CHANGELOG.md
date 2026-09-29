@@ -2139,7 +2139,7 @@ The sections below contain the complete change list and fixes.
 
 **CI and static analysis**
 
-- **Pull requests are gated on a fast Linux build, and `main` is verified after the merge**
+- **Pull requests are gated on a Linux build, and `main` is verified after the merge**
   (`pr-gate.yml`, `ci.yml`, `main-health.yml`; the measurements and the design are in
   `docs/ci-agentic.md`). Over 3.5 days in September, 300 runs of `ci.yml` and about 15,000 jobs
   asked for roughly 1,750 runner-hours, of which 51% went into runs that were cancelled and 19%
