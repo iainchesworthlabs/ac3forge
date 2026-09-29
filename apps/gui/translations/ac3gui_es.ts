@@ -3911,7 +3911,7 @@
         <translation>sonoridad declarada %1 LKFS (información adicional de sonoridad)</translation>
     </message>
     <message>
-        <location filename="../qml/QcDialog.qml" line="277"/>
+        <location filename="../qml/QcDialog.qml" line="307"/>
         <source></source>
         <translation></translation>
     </message>
@@ -4131,104 +4131,104 @@
         <translation>Audio WAV (*.wav)</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="67"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="68"/>
         <source>Choose a folder for the exported objects</source>
         <translation>Elige una carpeta para los objetos exportados</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="80"/>
-        <location filename="../qml/StreamPlayerDialog.qml" line="86"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="81"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="87"/>
         <source>Open stream</source>
         <translation>Abrir flujo</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="94"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="95"/>
         <source>Close</source>
         <translation>Cerrar</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="101"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="102"/>
         <source>Decodes an already-encoded AC-3/E-AC-3 file and plays its decoded bed through an ordinary output — like every other decode in this window, an Atmos stream plays its 5.1 bed here, not unmixed objects (see Inspect objects for those). Export writes the decode to a WAV, and for an Atmos stream one WAV per object.</source>
         <translation>Decodifica un archivo AC-3/E-AC-3 ya codificado y reproduce su cama decodificada por una salida corriente — como cualquier otra decodificación de esta ventana, un flujo Atmos reproduce aquí su cama 5.1, no objetos sin mezclar (para eso, mira Inspeccionar objetos). Exportar escribe la decodificación en un WAV y, para un flujo Atmos, un WAV por objeto.</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="112"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="113"/>
         <source>Choose file…</source>
         <translation>Elegir archivo…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="120"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="121"/>
         <source>No file chosen yet</source>
         <translation>Todavía no hay ningún archivo elegido</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="132"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="133"/>
         <source>Decoding…</source>
         <translation>Decodificando…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="145"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="146"/>
         <source>PRESENTATION</source>
         <translation>PRESENTACIÓN</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="155"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="156"/>
         <source>The decoder&apos;s choice</source>
         <translation>La elección del decodificador</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="179"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="180"/>
         <source>Choose an AC-3/E-AC-3 file above to play it.</source>
         <translation>Elige arriba un archivo AC-3/E-AC-3 para reproducirlo.</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="213"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="214"/>
         <source>Pause</source>
         <translation>Pausar</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="213"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="214"/>
         <source>Play</source>
         <translation>Reproducir</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="240"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="241"/>
         <source>Position</source>
         <translation>Posición</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="241"/>
-        <location filename="../qml/StreamPlayerDialog.qml" line="255"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="242"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="256"/>
         <source>%1 / %2 s</source>
         <translation>%1 / %2 s</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="271"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="272"/>
         <source>Export decoded WAV…</source>
         <translation>Exportar el WAV decodificado…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="277"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="278"/>
         <source>Export objects…</source>
         <translation>Exportar objetos…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="289"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="290"/>
         <source>Exporting…</source>
         <translation>Exportando…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="305"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="306"/>
         <source>LEVELS</source>
         <translation>NIVELES</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="334"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="335"/>
         <source>SOUNDFIELD</source>
         <translation>CAMPO SONORO</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="342"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="343"/>
         <source>Solid dots are bed positions this stream carries. Objects are not here — this plays the 5.1 bed only; open Inspect objects for per-object playback and position.</source>
         <translation>Los puntos sólidos son posiciones de la cama que lleva este flujo. Los objetos no están aquí — esto solo reproduce la cama 5.1; abre Inspeccionar objetos para la reproducción y la posición por objeto.</translation>
     </message>
