@@ -268,6 +268,24 @@ TestCase {
         tryCompare(findAccessible(tab, "LFE send — object 1"), "enabled", true);
     }
 
+    function test_theCountLineCountsAChannelAssignedToASpeakerAsAnObjectNotAsABed() {
+        const win = openAc4Objects(stereoUrl);
+        const line = findByName(win.contentItem, "objectsCountLine");
+        verify(line !== null, "no count line");
+        // Nothing assigned: each channel is an object, counted against the writer's 64.
+        verify(line.text.indexOf("2 of 64 objects") >= 0, line.text);
+        // A channel assigned to a speaker is an object held there. It spends one of the 64, and
+        // there is no bed for it to be pinned to.
+        EncoderController.setAssignment(0, 0, "L");
+        tryVerify(() => line.text.indexOf("1 of 63 objects") >= 0);
+        verify(line.text.indexOf("1 assigned to speakers") >= 0, line.text);
+        verify(line.text.indexOf("bed") < 0, line.text);
+        // E-AC-3's own wording and limit of fifteen are as they were.
+        EncoderController.codecIndex = 1;
+        tryVerify(() => line.text.indexOf("1 pinned to the bed") >= 0);
+        verify(line.text.indexOf("of 14 objects") >= 0, line.text);
+    }
+
     function test_aContainerAnObjectStreamCannotBeIsRefusedBesideTheControlsAndBeforeEncode() {
         const win = openAc4Objects(stereoUrl);
         EncoderController.containerIndex = 1;   // Matroska

@@ -2060,6 +2060,10 @@
             <translation>[Chàngé whàt fééds thém → ~~~~~~~~~~]</translation>
         </message>
         <message>
+            <source>%1 of %2 objects · %3 assigned to speakers</source>
+            <translation>[%1 õf %2 õbjécts · %3 àssîgnéd tõ spéàkérs ~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>%1 of %2 objects · %3 pinned to the bed</source>
             <translation>[%1 õf %2 õbjécts · %3 pînnéd tõ thé béd ~~~~~~~~~~~~~~~~]</translation>
         </message>

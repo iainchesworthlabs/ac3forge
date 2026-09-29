@@ -5450,6 +5450,7 @@ ApplicationWindow {
                                             }
                                             Item { Layout.fillWidth: true }
                                             Text {
+                                                objectName: "objectsCountLine"
                                                 // The bed's LFE is the sixteenth object,
                                                 // and every bed-pinned channel spends a
                                                 // dynamic slot - the denominator says
@@ -5458,6 +5459,12 @@ ApplicationWindow {
                                                 text: {
                                                     const pinned = EncoderController.pinnedObjectCount;
                                                     const cap = EncoderController.objectLimit - pinned;
+                                                    if (pinned > 0 && EncoderController.ac4Objects) {
+                                                        // No bed: a channel assigned to a speaker
+                                                        // is an object held at that speaker.
+                                                        return qsTr("%1 of %2 objects · %3 assigned to speakers")
+                                                            .arg(EncoderController.objectCount).arg(cap).arg(pinned);
+                                                    }
                                                     if (pinned > 0) {
                                                         return qsTr("%1 of %2 objects · %3 pinned to the bed")
                                                             .arg(EncoderController.objectCount).arg(cap).arg(pinned);

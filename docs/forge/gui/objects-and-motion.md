@@ -212,9 +212,10 @@ Measured dialnorm is refused, since an object stream has no bed to measure it on
 frame with one position update per object per frame, taken from the timeline at each frame's
 end as the E-AC-3 encoders take it; it holds 64 objects at most, one of them the LFE; and it is
 a raw stream or an MP4 file, so Container's other choices are refused. The Objects tab says so
-under its header, its count line reads `<n> of 64 objects`, and what cannot be written now is
-named there and at the top of the AC-4 tab, in the words Encode would refuse it with, before
-anything starts:
+under its header, its count line reads `<n> of 64 objects`, less one for each channel assigned to
+a speaker, which it names (`<k> assigned to speakers`), and what cannot be written now is named
+there and at the top of the AC-4 tab, in the words Encode would refuse it with, before anything
+starts:
 
 - a container that is not a raw stream or an MP4 file;
 - more than 64 objects, more than one channel assigned to an LFE, or no object that is not the
