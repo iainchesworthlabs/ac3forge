@@ -93,6 +93,26 @@ TEST_CASE("diagnostics: the log keeps the newest lines in order and counts what 
     CHECK(tiny.dropped() == 1);
 }
 
+TEST_CASE("diagnostics: an observer sees every future note, stamped the same way the ring keeps it",
+          "[hearth][diagnostics]") {
+    DiagnosticLog log(4);
+    log.note("before the observer");  // not delivered - added after this line
+    std::vector<std::string> seen;
+    log.add_observer([&seen](std::string_view line) { seen.emplace_back(line); });
+    log.note("first");
+    log.note("second");
+    REQUIRE(seen.size() == 2);
+    CHECK(stamped(seen[0]));
+    CHECK(stamped(seen[1]));
+    CHECK(seen[0].ends_with(" first"));
+    CHECK(seen[1].ends_with(" second"));
+    // The exact text the ring itself kept for each of those two notes.
+    const auto lines = log.lines();
+    REQUIRE(lines.size() == 3);
+    CHECK(seen[0] == lines[1]);
+    CHECK(seen[1] == lines[2]);
+}
+
 TEST_CASE("diagnostics: a note is one line, cut whole characters short of the cap",
           "[hearth][diagnostics]") {
     DiagnosticLog log(4);
