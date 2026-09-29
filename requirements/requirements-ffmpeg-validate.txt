@@ -707,7 +707,7 @@ typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
     --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via soundfile
-visqol-python==3.7.0 \
-    --hash=sha256:105e63bd2957e53d18a5f515215e0312361e0d4bd83a7c5d624ef4f4243c3d58 \
-    --hash=sha256:c7f039537ab4eb1d9dbb2b5210b718c471c82b06bb8b60026a2050d2e4b112ed
+visqol-python==3.8.0 \
+    --hash=sha256:876460a8d7526f7fa7af1f29b6e007ec1d08a47cf256d764e81f6a9b65b41bc5 \
+    --hash=sha256:a4b9aca64e348c26db815f61c98739e1bb21560deb87cebd5596adaefb2fcd78
     # via -r requirements-ffmpeg-validate.in
