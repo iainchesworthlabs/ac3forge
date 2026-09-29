@@ -157,6 +157,7 @@ suites, so **Before** reads "new".
 | Export objects (one WAV per object) | none | UI | E2eInspect::test_playerExportsOneWavPerObjectFromAnAtmosStream |
 | Export objects, AC-4 (A-JOC or direct-coded) | none | UI | E2eInspect::test_playerExportsOneWavPerObjectFromAnAc4Stream |
 | Closing the dialog stops playback | none | UI | E2eInspect::test_playerPlayScrubAndPauseFromItsOwnControls |
+| Quitting while a decode, QC measurement, object inspection or encode is running | none | logic | Ac4Decode::cleanupTestCase (the first three) and Teardown::test_anEncodeStartedAsTheSuiteEnds leave the work running as the suite ends; the process must exit with code 0 |
 
 ## QC panel and gate meters
 

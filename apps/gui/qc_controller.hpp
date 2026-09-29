@@ -12,6 +12,8 @@
 #include <optional>
 #include <vector>
 
+#include "background_jobs.hpp"
+
 // The raw measurement, in the units the library reports them - kept OUTSIDE
 // QcController itself so the measurement helpers in qc_controller.cpp (an
 // anonymous namespace mirroring ac3cli's own measure_qc_ac3/measure_qc_eac3,
@@ -135,6 +137,8 @@ class QcController : public QObject {
 
    public:
     explicit QcController(QObject* parent = nullptr);
+    // Waits for a measurement still running - see background_jobs.hpp.
+    ~QcController() override;
 
     [[nodiscard]] QString filePath() const { return file_path_; }
     [[nodiscard]] bool busy() const { return busy_; }
@@ -181,4 +185,9 @@ class QcController : public QObject {
     std::optional<qc_detail::RawResult> result_;
     int preset_index_ = 0;
     int presentation_index_ = -1;
+
+    // Where the measurement runs. ~QcController() waits for it before any
+    // member above is destroyed; declared last, so ~BackgroundJobs() would
+    // wait ahead of them too.
+    ac3gui::BackgroundJobs jobs_;
 };
