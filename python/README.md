@@ -1,9 +1,13 @@
 # ac3forge
 
 Python bindings for [ac3forge](https://github.com/iainchesworthlabs/ac3forge), a clean-room
-AC-3/E-AC-3 (Dolby Digital/Digital Plus) and AC-4 encoder and decoder written in C++23,
-including the Atmos-in-DD+ object layer (OAMD + JOC). The AC-4 half is the `ac3forge.ac4`
-submodule.
+AC-3/E-AC-3 (Dolby Digital/Digital Plus) and AC-4 encoder and decoder written in C++23, including
+the Atmos-in-DD+ object layer (OAMD + JOC). The AC-4 (ETSI TS 103 190) decoder and encoder, objects
+included, are in the `ac3forge.ac4` submodule.
+
+```bash
+pip install ac3forge      # or, from a checkout of the repository: pip install ./python
+```
 
 ```python
 import numpy as np
@@ -18,8 +22,13 @@ decoded = decoder.decode_frame(frame)
 print(decoded.channels[0].shape)  # (1536,)
 ```
 
+`ac3forge.ac4` is in a wheel built from a release that has it; the wheels for 0.10.0b1 and earlier
+predate it, and `pip install ./python` from a checkout builds it. PyPI carries 0.10.0b1's wheels for
+Windows x64, Linux x86_64 and macOS on Apple Silicon; on Linux aarch64 and macOS Intel, where no
+release has carried a wheel, install from a checkout.
+
 See [docs/library/python-api.md](https://iainchesworthlabs.github.io/ac3forge/library/python-api/)
-for the full surface (E-AC-3, Atmos object encode/decode and AC-4 included) and
+for the full surface (E-AC-3, Atmos object and AC-4 encode/decode included) and
 [the main project README](https://github.com/iainchesworthlabs/ac3forge) for what the codec
 itself covers. Licensed GPL-3.0-or-later, same as the rest of the project — see
 [LICENSE](https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE).

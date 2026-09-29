@@ -1,12 +1,14 @@
 # ac3forge-wasm-decoder
 
 A streaming AC-3/E-AC-3 (Dolby Digital/Digital Plus) decoder for the browser, compiled from
-[`ac3::forge`](https://github.com/iainchesworthlabs/ac3forge) to WebAssembly. Built because
-**Chrome still cannot decode EC-3** ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297)
-is open) - this package is an embeddable answer to that. The `ac3forge-wasm-decoder/ac4`
-subpath adds an AC-4 decoder and encoder, described under [AC-4](#ac-4) below.
+[`ac3::forge`](https://github.com/iainchesworthlabs/ac3forge) to WebAssembly. The
+`ac3forge-wasm-decoder/ac4` export decodes and encodes AC-4 ([AC-4](#ac-4)).
+Built because a browser cannot be relied on to decode EC-3:
+[Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297) when an EC-3
+track turns up in an MPD, in a report that has been open since 2023. This package is an embeddable
+decoder for it.
 
-Four pieces:
+Four pieces for AC-3 and E-AC-3:
 
 - **A push-frame decode API** (`PushDecoder`) over `ac3::Eac3Decoder::decode_access_unit_into`'s
   caller-buffer form - the hot path allocates nothing on the C++ side.
@@ -25,8 +27,21 @@ you control your own CORS/CDN story instead of assuming a bundler will do it for
 
 ## Install
 
+The package is not on the npm registry. Build it from a checkout of the main repository and
+install the directory:
+
 ```bash
-npm install ac3forge-wasm-decoder
+git clone https://github.com/iainchesworthlabs/ac3forge
+cd ac3forge/js
+npm ci          # TypeScript is the only dependency
+npm run build   # compiles src/ to dist/
+npm test        # optional: the unit tests, under the coverage floors listed below
+```
+
+then, in your own project:
+
+```bash
+npm install /path/to/ac3forge/js
 ```
 
 ## Loading the WASM module
@@ -138,7 +153,14 @@ const decoder = new Ac4Decoder(module);
 const decoded = decoder.decodeFrame(frames[0].data); // null until a frame has output
 ```
 
-The module builds in CI only where an Emscripten SDK is installed, and no demo page serves it yet.
+`decodeFrame` takes one raw frame (an MP4 sample, or the payload of a sync frame), and its PCM is a
+view into the WASM heap that lasts until the next call. `Ac4Decoder` also has `setOutput()`,
+`setPresentation()`, `reset()`, `presentations`, `refusalReason` and `latencySamples`; `Ac4Encoder`
+has `flush()`, `error`, `codecMode`, `delaySamples`, `decoderDelaySamples`, `buildDac4()` and
+`dac4Refusal()`; `syncFrame()` wraps a raw frame for a `.ac4` file. Call `close()` on either class
+when done: Embind objects are not garbage collected.
+
+The module builds in CI only where an Emscripten SDK is installed, and no demo page serves it.
 
 ## hls.js/MSE bridge
 
@@ -212,9 +234,10 @@ image, so it is worth stating plainly.
 
 ## Versioning and publishing
 
-**Not yet published to npm.** The package name `ac3forge-wasm-decoder` is not on the registry;
-consume it from source (`js/`) for now. When publishing is enabled its version will track the
-main repository's own release tags exactly the way the `ac3forge` PyPI package does (see
+**Not published to npm.** The package name `ac3forge-wasm-decoder` is not on the registry;
+consume it from source (`js/`, see [Install](#install)). When publishing is enabled its version will track the
+main repository's own release
+tags exactly the way the `ac3forge` PyPI package does (see
 [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md)) -
 this package's `package.json` carries only a `0.0.0-dev` placeholder; `npm.yml`'s `publish` job
 stamps the release version immediately before publishing.

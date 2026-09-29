@@ -19,7 +19,7 @@
 // V1.3.1 (2025-07), "... Part 2: Immersive and personalized audio". Section
 // numbers on each declaration cite whichever part actually defines that
 // element; Part 2 clause 6 supersedes Part 1 clause 4 for bitstream_version
-// >= 2 (see Toc::bitstream_version and parse_toc()).
+// >= 2 (see Toc::bitstream_version and parse_raw_frame()).
 //
 // This is a bitstream INSPECTOR, not a decoder: audio_data and metadata()
 // payloads are reported as byte ranges (Substream::audio_size, Substream
@@ -38,8 +38,9 @@
 // follow it in the same element, so reading it correctly is what keeps the
 // rest of the TOC in step. The OAMD substream DATA payload itself
 // (oamd_substream(), §6.2.2.4 - which embeds a second, independent
-// oamd_common_data() of its own) was never in scope either way - like every
-// non-audio substream, it is reported as a byte range only.
+// oamd_common_data() of its own) was never in scope of this inspector either
+// way - like every non-audio substream, it is reported as a byte range only.
+// ac4::Decoder (src/ac4dec) reads it.
 //
 // The bitstream_version >= 2 path (TS 103 190-2 clause 6, presentation_v1
 // and substream-group framing) is cross-checked against real Dolby
@@ -57,13 +58,15 @@
 // substreams.
 //
 // A-JOC/direct-coded-object/OAMD framing has a narrower verification story
-// still: no real stream reaches it either - `dee_ac4ajoc_encoder.exe`
-// accepts only an Atmos ADM BWF mezzanine, which this project's own tooling
-// cannot produce one DEE accepts (the same "gates on content provenance,
-// not syntax" limit docs/verification.md already states for the AC-3/
-// E-AC-3 side), and `dee_ac4ims_encoder.exe` - the other locally available
-// object-adjacent encoder, despite its name - was confirmed to stay
-// channel-coded regardless. What stands in for it is a set of synthetic,
+// still: the one encoded A-JOC stream this project has is Chromium's
+// ac4-ajoc.ac4, kept out of the tree (tests/ac4/test_ac4.cpp holds its table
+// of contents), and `dee_ac4ajoc_encoder.exe` accepts only an Atmos ADM BWF
+// mezzanine, which this project's own tooling cannot produce one DEE accepts
+// (the same "gates on content provenance, not syntax" limit
+// docs/verification.md already states for the AC-3/E-AC-3 side), and
+// `dee_ac4ims_encoder.exe` - the other locally available object-adjacent
+// encoder, despite its name - was confirmed to stay channel-coded
+// regardless. What stands in for more streams is a set of synthetic,
 // hand-built bitstreams cross-checked between this parser and
 // tools/references/ac4_parse.py, each built by an independent bit writer
 // in neither module - see tests/ac4/test_ac4.cpp. See docs/verification.md.
@@ -559,7 +562,7 @@ struct Toc {
     int payload_base = 0;  // bytes, relative to the end of the byte-aligned ac4_toc()
 
     // Exactly one of these two is populated, selected by bitstream_version
-    // (see parse_toc()): presentations_v0 for <= 1, presentations_v1 and
+    // (see parse_raw_frame()): presentations_v0 for <= 1, presentations_v1 and
     // substream_groups for >= 2.
     std::vector<PresentationInfoV0> presentations_v0;
     std::vector<PresentationInfoV1> presentations_v1;

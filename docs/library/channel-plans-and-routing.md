@@ -42,6 +42,15 @@ full-bandwidth channel left to share its substream.
 `ChannelPlan` exactly the way they do over a named `LayoutId` — a custom selection and a named
 layout go through the same reporting path.
 
+`Plan::codec` can also be `Codec::kAc4`, for a front end that hands the plan's channels, rate and
+metadata to `ac4::Encoder` ([AC-4](ac4.md)); `ac3::forge` itself encodes AC-3 and E-AC-3 only, so
+`eac3_config(plan)` has nothing to say about it. `ac3::plan::validate(plan)` holds an AC-4 plan to
+what the AC-4 encoder takes from a plan: the named layouts mono, stereo and 5.1, or a
+`custom_locations` selection that is mono, stereo, 5.0 or 5.1, at 48 or 44.1 kHz, with no `vbr`
+(`PlanError::kLayoutNotInAc4`, `kSampleRateNotInAc4` and `kVbrNeedsEac3`). `ac3cli ac4-encode`
+does not go through a plan: it takes the immersive layouts, and the experimental 7.X and 3.0 ones,
+from the WAV file's own channels.
+
 ## Multiple sources: `ac3::plan::Assignment`
 
 `ac3/encoder/assignment.hpp`. `plan::route()`'s other overload places *one* source by

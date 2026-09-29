@@ -28,10 +28,10 @@ the CMake configure the same way Gradle does.
 You need, on `PATH`: **CMake** (the same minimum this project already requires — see the root
 `CMakeLists.txt`), a **C++23 compiler**, and **libclang** (bindgen's own dependency — set
 `LIBCLANG_PATH` if it isn't auto-detected; on Windows it ships next to `clang.exe` in an LLVM
-install). No vcpkg toolchain file is needed: `build.rs` configures with `AC3FORGE_BUILD_CAPI` on
-and the CLI, GUI, tests, examples, fuzzers, ADM, container writers (Matroska, MP4, MPEG-TS) and
-Hearth off. Options it does not name keep their defaults, so the AC-4 libraries build too (the C
-API embeds them). The one third-party dependency that survives that ({fmt}) resolves via
+install). No vcpkg toolchain file is needed: `build.rs` configures with `AC3FORGE_BUILD_CAPI` on,
+the CLI, GUI, tests, examples, fuzzers, ADM bridge, container writers and Hearth off, and the rest at
+their defaults, AC-4 included (a trimmed set like the one `python/pyproject.toml` uses for its own
+extension-module build), and the one dependency that survives that ({fmt}) resolves via
 `find_package(CONFIG)` with a `FetchContent` fallback (`cmake/Fmt.cmake`).
 
 ```bash
@@ -62,11 +62,14 @@ library at its own runtime, same as any crate wrapping a dynamically-linked C li
 
 ## What's covered
 
-AC-3 and E-AC-3 encode and decode, single substream — solid and tested (synthesized audio,
-several frames, per CONTRIBUTING.md's validation discipline), not six surfaces half-covered:
+AC-3, E-AC-3 and AC-4 encode and decode — solid and tested (synthesized audio, several
+frames, per CONTRIBUTING.md's validation discipline), not six surfaces half-covered. The first
+pass was AC-3 and single-substream E-AC-3:
 
 - `ac3forge::ac3` — `Encoder`/`EncoderConfig`, `Decoder`/`DecodedFrame`.
 - `ac3forge::eac3` — `Eac3Encoder`/`Eac3FrameConfig`, `Eac3Decoder`/`DecodedSubstream`.
+- `ac3forge::ac4` — `Encoder`/`EncoderConfig`, `Decoder`/`DecodedFrame`, objects included (see
+  Coverage below).
 
 Every config type follows the C header's own `_config_init` growth convention: construct with
 `Default::default()` (which calls the raw `ac3forge_*_config_init()` FFI function first) and
@@ -110,14 +113,15 @@ closed everything that list deferred:
 
 Still deliberately out: the caller-buffer `_into` decode forms (a realtime-embedder
 convenience whose Rust ergonomics want `&mut [f32]` scratch the value forms already avoid
-allocating twice for) and the level meter (`ac3forge_level_meter_t`) — recorded, not silently
-missing.
+allocating twice for), the level meter (`ac3forge_level_meter_t`) and the QC gates, and a few
+scanned-stream, frame-metadata and latency accessors — recorded, not silently missing; the full
+list is [What is not wrapped](https://iainchesworthlabs.github.io/ac3forge/library/rust-api/#what-is-not-wrapped).
 
 ## Header defects found while building this
 
 The point of AP9, per the roadmap entry, isn't the crate — the C API had never crossed a real FFI
 boundary before (Python is pybind11-direct C++, WASM is Embind, Android is JNI, all three
-compiling the same C++23 source this binding instead links as a black box). Three things surfaced:
+compiling the same C++23 source this binding instead links as a black box). Four things surfaced:
 
 1. **`ac3forge_object_placement_t` had no `_init()`, unlike every sibling config struct.**
    `ac3::oba::ObjectPlacement` default-member-initializes `gain = 1.0`; the C struct's own doc
