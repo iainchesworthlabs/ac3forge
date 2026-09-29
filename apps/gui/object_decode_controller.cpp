@@ -1,7 +1,6 @@
 #include "object_decode_controller.hpp"
 
 #include <QVariantMap>
-#include <QtConcurrent/QtConcurrentRun>
 
 #include <chrono>
 #include <cstddef>
@@ -322,14 +321,19 @@ InspectOutcome inspect_file(const QString& path) {
 
 ObjectDecodeController::ObjectDecodeController(QObject* parent) : QObject(parent) {}
 
-// Out-of-line even though it is just = default: audition_sink_ is a
-// unique_ptr<ac3::audio::MonitorSink>, and MonitorSink is only
-// forward-declared in the header (see its own comment on why) - the
-// destructor needs the complete type, which this translation unit's
+// Out-of-line: audition_sink_ is a unique_ptr<ac3::audio::MonitorSink>, and
+// MonitorSink is only forward-declared in the header (see its own comment on
+// why) - the destructor needs the complete type, which this translation unit's
 // #include "ac3/audio/monitor.hpp" above provides. Same shape as
-// EncoderController's own out-of-line ~EncoderController() = default for its
-// analogous motion_preview_monitor_sink_.
-ObjectDecodeController::~ObjectDecodeController() = default;
+// EncoderController's own out-of-line destructor for its analogous
+// motion_preview_monitor_sink_. It also ends the workers before anything they
+// read goes away: the audition loop runs until stop_audition_ is set, and a
+// decode still going posts its result back to `this` when it finishes (see
+// background_jobs.hpp).
+ObjectDecodeController::~ObjectDecodeController() {
+    stop_audition_.store(true, std::memory_order_relaxed);
+    jobs_.wait();
+}
 
 QString ObjectDecodeController::summaryLine() const {
     if (!result_) {
@@ -390,7 +394,7 @@ void ObjectDecodeController::inspectFile(const QUrl& url) {
     busy_ = true;
     emit busyChanged();
 
-    std::ignore = QtConcurrent::run([this, path] {
+    jobs_.run([this, path] {
         auto outcome = inspect_file(path);
         QMetaObject::invokeMethod(this, [this, outcome = std::move(outcome)]() mutable {
             busy_ = false;
@@ -434,7 +438,7 @@ void ObjectDecodeController::auditionObject(int index) {
     auditioning_index_ = index;
     emit auditionChanged();
 
-    std::ignore = QtConcurrent::run([this, samples] {
+    jobs_.run([this, samples] {
         std::size_t at = 0;
         QString error;
         while (at < samples.size()) {

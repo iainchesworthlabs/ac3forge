@@ -343,12 +343,12 @@
 <context>
     <name>EncoderController</name>
     <message>
-        <location filename="../encoder_controller.cpp" line="7792"/>
+        <location filename="../encoder_controller.cpp" line="7814"/>
         <source>Saved to %1</source>
         <translation>אויפֿגעהיט אין %1</translation>
     </message>
     <message>
-        <location filename="../encoder_controller.cpp" line="7795"/>
+        <location filename="../encoder_controller.cpp" line="7817"/>
         <source>Could not write %1: %2</source>
         <translation>האָט ניט געקענט שרײַבן %1: %2</translation>
     </message>
