@@ -391,6 +391,23 @@ output level's gain and no DRC, so an object presentation refuses DRC gains.
 - **Evidence:** Readers: each update of a moving object decodes at its sample, in A-JOC and direct-coded
   streams (`tests/ac4enc/test_ac4enc_objects.cpp`).
 
+### The screen factor and the depth exponent
+
+- **Where:** Part 2 6.2.8.7, `object_render_info()`, pp. 144 and 145, Table 105's `group_other_mask` and
+  6.3.9.8.17 and 6.3.9.8.18, p. 195: bit 1 of `group_other_mask` sends `object_screen_factor_code` (3 bits) and
+  `object_depth_factor` (2 bits) together, the factor is printed `object_screen_factor_code+1/8`, and "If the
+  object_screen_factor_code element is not present, object_screen_factor shall be 0".
+- **Reading:** the factor is (code + 1) / 8, from 1/8 to 1, as the decoder reads it (`apply_other()` in
+  `src/ac4dec/src/pcm/objects.cpp`), so the group has no code for a factor of 0: a factor of 0 is the group's
+  absence, which also leaves the depth exponent at 1 ([the decoder's reading](../ac4dec/ERRATA.md#object-audio-metadata)).
+  The encoder sends the group for an object whose factor is above 0 or whose exponent is not 1. An exponent
+  other than 1 with a factor of 0 has no code. The encoder refuses such an object at configuration, naming the
+  reason, and such properties in a metadata update as invalid input; it used to send a factor of 1/8, which
+  the decoder then reported. A factor between 0 and 1/16 still rounds to 1/8, the smallest the group holds.
+- **Evidence:** Text; readers: an exponent of each of Table 107's codes with its factor reads back as given
+  (`tests/ac4enc/test_ac4enc_objects.cpp`), and the C API answers a configuration and an update with its two
+  encoder statuses (`tests/capi/test_capi_ac4_arguments.cpp`).
+
 ### md_compat for objects
 
 - **Where:** Part 2 Table 55, p. 157: md_compat 0 to 3 allow 2, 6, 9 and 11 tracks; the decoder's reading

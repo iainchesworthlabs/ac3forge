@@ -305,6 +305,11 @@ const ac4::ObjectMetadataUpdate move{
 auto frames = encoder->encode(channels, std::span(&move, 1));
 ```
 
+An object's screen factor and depth exponent are sent as one group of fields, whose factor has no
+code for 0, so an exponent other than 1 needs a screen factor of 1/8 or more: `Encoder::create()`
+refuses an object without one, and `encode()` an update with such properties
+(`EncodeError::kInvalidInput`).
+
 `ObjectsConfig::coding` chooses between an A-JOC substream (Part 2 clause 5.7), the default, and
 direct-coded object substreams. A-JOC codes a downmix and the matrices that rebuild the objects from
 it: `downmix` is a computed downmix of `downmix_signals` signals (by default one a 32 kbps, up to

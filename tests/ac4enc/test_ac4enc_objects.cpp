@@ -576,6 +576,80 @@ TEST_CASE("the encoder refuses the object configurations it does not write", "[a
     CHECK_FALSE(encoder->encode(views, std::span(&bad, 1)).has_value());
 }
 
+TEST_CASE(
+    "an object's depth exponent goes with a screen factor, and the encoder refuses one without",
+    "[ac4enc][objects]") {
+    // Part 2 clause 6.2.8.7 sends object_screen_factor_code and object_depth_factor as one group of
+    // fields, and the factor, (code + 1) / 8, has no code for 0 (src/ac4enc/ERRATA.md, "The screen
+    // factor and the depth exponent"). An exponent other than 1 with a factor of 0 used to be
+    // written with a factor of 1/8, which the decoder reported back.
+    constexpr std::string_view kReason =
+        "an object with a depth exponent other than 1 and a screen factor of 0, which the group of "
+        "fields that sends both has no code for";
+    // The four dynamic objects of direct(), each with an exponent of a code of Table 107 and a
+    // factor.
+    struct Depth {
+        std::size_t object;
+        double exponent;
+        double factor;
+    };
+    constexpr std::array<Depth, 4> kDepths = {Depth{0, 0.25, 0.125}, Depth{1, 0.5, 0.5},
+                                              Depth{3, 2.0, 1.0}, Depth{4, 1.0, 0.25}};
+    Case c = direct();
+    for (const Depth& d : kDepths) {
+        ac4::ObjectProperties& properties = c.objects.objects[d.object].properties;
+        properties.depth_exponent = d.exponent;
+        properties.screen_factor = d.factor;
+    }
+    // With a factor each, the stream reads back and the decoder reports what the encoder was given.
+    const Encoded encoded = encode(config_of(c), input_of(c, 4 * kFrame));
+    check_frames_read_back(encoded);
+    const DecodedObjects full = decode(encoded, ac4::DecodingMode::kFull);
+    const std::vector<std::size_t> order = decoded_order(c.objects);
+    REQUIRE(full.last.size() == order.size());
+    for (std::size_t decoded = 0; decoded < order.size(); ++decoded) {
+        for (const Depth& d : kDepths) {
+            if (order[decoded] != d.object) {
+                continue;
+            }
+            CAPTURE(d.object, d.exponent, d.factor);
+            CHECK(full.last[decoded].properties.depth_exponent == d.exponent);
+            CHECK(full.last[decoded].properties.screen_factor == d.factor);
+        }
+    }
+
+    // Without a factor, each exponent other than 1 is refused at configuration, naming the reason.
+    for (const double exponent : {0.25, 0.5, 2.0}) {
+        CAPTURE(exponent);
+        Case without = direct();
+        without.objects.objects[0].properties.depth_exponent = exponent;
+        const ac4::EncoderConfig config = config_of(without);
+        CHECK(ac4::Encoder::refusal_reason(config) == kReason);
+        const auto refused = ac4::Encoder::create(config);
+        REQUIRE_FALSE(refused.has_value());
+        CHECK(refused.error() == ac4::EncodeError::kInvalidConfig);
+        without.objects.objects[0].properties.screen_factor = 0.125;
+        CHECK(ac4::Encoder::refusal_reason(config_of(without)).empty());
+    }
+
+    // And an update with such properties is invalid input, and leaves the encoder taking one with a
+    // factor.
+    auto encoder = ac4::Encoder::create(config_of(c));
+    REQUIRE(encoder.has_value());
+    const std::vector<std::vector<float>> input = input_of(c, 256);
+    const std::vector<std::span<const float>> views(input.begin(), input.end());
+    ac4::ObjectMetadataUpdate update;
+    update.object = 1;
+    update.sample = 100;
+    update.properties = c.objects.objects[1].properties;
+    update.properties.screen_factor = 0.0;
+    const auto refused_update = encoder->encode(views, std::span(&update, 1));
+    REQUIRE_FALSE(refused_update.has_value());
+    CHECK(refused_update.error() == ac4::EncodeError::kInvalidInput);
+    update.properties.screen_factor = 0.125;
+    CHECK(encoder->encode(views, std::span(&update, 1)).has_value());
+}
+
 TEST_CASE("the object streams for listening are written where AC4ENC_WRITE_LISTENING says",
           "[ac4enc][objects]") {
     // Ten seconds each: a tone crossing the front from the left wall to the

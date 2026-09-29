@@ -449,10 +449,12 @@ enum class BedChannel : std::uint8_t {
 // of 1/62 and Z -1 to 1 in steps of 1/15; zone_mask 0 to 7; each width 0 to 1
 // in steps of 1/31, one object_width where the three are equal; the screen
 // factor 0, or 1/8 to 1 in steps of 1/8; the depth exponent 0.25, 0.5, 1 or
-// 2; a distance of 1 or more (Table 108's nearest) or infinity; the
-// divergence 0 to 1 (Table 111's nearest); hp_render_mode_obj 0 to 3. A
-// dynamic object sends them all, a bed object and the LFE the activity, gain,
-// priority and add_per_object_md()'s data alone.
+// 2, which needs a screen factor of 1/8 or more where it is not 1 (the two
+// are one group of fields, whose factor has no code for 0); a distance of 1
+// or more (Table 108's nearest) or infinity; the divergence 0 to 1 (Table
+// 111's nearest); hp_render_mode_obj 0 to 3. A dynamic object sends them all,
+// a bed object and the LFE the activity, gain, priority and
+// add_per_object_md()'s data alone.
 
 struct ObjectConfig {
     // A bed object, from this loudspeaker; unset for a dynamic object.
