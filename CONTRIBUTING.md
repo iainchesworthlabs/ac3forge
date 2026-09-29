@@ -8,10 +8,18 @@ Setup is in [docs/building.md](https://github.com/iainchesworthlabs/ac3forge/blo
 cmake --preset config-windows-msvc-debug && cmake --build --preset build-windows-msvc-debug && ctest --preset test-windows-msvc-debug
 ```
 
-There is no bare `debug` preset — swap `windows-msvc` for whichever platform/compiler fragment matches your machine (`windows-llvm`, `linux-gcc`, `linux-llvm`, `linux-gcc-arm64`, `linux-llvm-arm64`, `macos-llvm`).
+There is no bare `debug` preset — swap `windows-msvc` for whichever platform/compiler fragment matches your machine (`windows-msvc-arm64`, `windows-llvm`, `linux-gcc`, `linux-llvm`, `linux-gcc-arm64`, `linux-llvm-arm64`, `macos-llvm`, `macos-llvm-x64`).
 
-Everything must pass before you push. There are no known-failing tests and no skips; if
-something fails, that is your change or a regression, not noise.
+Before you push, `python tools/ci/precheck.py` runs the static checks the pull-request gate runs
+(ruff, the documentation path check, the platform and support matrices, the fixture corpus, the
+preprocessor-conditional rule, patch attribution and the branch name) in seconds and prints what
+the gate will build; a check whose tool is missing says SKIP. `--unit` adds the unit tests of the
+scripts under `tools/`.
+
+Everything must pass before you push. No test is expected to fail, and the few cases that skip
+themselves do so only when the machine cannot run them (an unset environment variable naming
+local streams, a CPU with no AVX2, a file system that refuses a symlink). If something fails,
+that is your change or a regression, not noise.
 
 ## Branches and pull requests
 
@@ -22,15 +30,25 @@ first. Topic branches are named `<type>/<short-name>`, with `<type>` one of `fea
 separated by single hyphens — no underscores, dots, spaces, other special characters, or
 trailing hyphens (for example `feature/eac3-decoder` or `chore/bump-packaging-manifests`).
 CI's `Branch Name` check enforces
-`^(feature|bugfix|hotfix|docs|chore)/[a-z0-9]+(-[a-z0-9]+)*$` on every PR, and its error
-message points back to this file.
+`^(feature|bugfix|hotfix|docs|chore)/[a-z0-9]+(-[a-z0-9]+)*$` on every PR (Dependabot's
+`dependabot/**` branches are exempt), and its error message points back to this file.
 
 PRs target `main`. To merge, a PR must pass the required checks: `Branch Name`, the `CI Status`
-aggregate (every required CI job — the build/test matrix, coverage, the
-FFmpeg-oracle validation and the rest) and the `Scan dependency diff` dependency review; a
-merge queue serializes landing when several PRs are ready at once (see
+aggregate and the `Scan dependency diff` dependency review. `CI Status` is the pull-request gate
+(`pr-gate.yml`): the static checks, then a Linux GCC build with every test and the gold-reference
+gate. A merge queue serializes landing when several PRs are ready at once, and runs the gate on
+the merged tree with the Qt GUI built, plus Windows MSVC and, for a change under `src/`, a speed
+and a heap-churn comparison against the commit the entry is queued on: a workload that takes
+twice as long, or whose heap churn at least doubles, fails the entry unless the PR carries
+`perf-regression-approved` or `memory-regression-approved`. The rest runs after the merge: the
+other compilers and platforms one run at a time, and nightly the sanitizers, coverage, the FFmpeg
+validation and every other leg. When a merge breaks `main`, `main-health` opens a `main-red`
+issue naming the merges since the last verified commit. A change that needs more than the gate
+before it merges (an ESP-IDF, Android or WASM change, a sanitizer question) can label its PR
+`ci:deep` or dispatch `ci.yml` on its branch. [CI for many agents](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/ci-agentic.md)
+describes the stages, and
 [.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)
-for the full required-check list and the merge-queue rationale). clang-tidy, CodeQL, MSVC
+has the required-check list and the merge-queue rationale. clang-tidy, CodeQL, MSVC
 PREfast and SonarCloud do not gate a PR: they run nightly against `main` and open a
 `nightly-analysis` issue when a run finds something new (same file, "Nightly analysis and
 other visible-only scanners"). Releases are tags cut directly
@@ -41,13 +59,19 @@ from `main` — see [docs/releasing.md](https://github.com/iainchesworthlabs/ac3
 This is the constraint the whole project rests on. Breaking it makes the code unusable.
 
 - Every table and algorithm is transcribed from the published standard — ATSC A/52:2018, or
-  for the object layer ETSI TS 103 420 and TS 102 366 — with its section or table number cited
-  in a comment.
+  for the object layer ETSI TS 103 420 and TS 102 366, or for AC-4 ETSI TS 103 190-1 and -2
+  (and IEC 61937-14 for its carriage in IEC 61937 bursts) — with its section or table number
+  cited in a comment.
 - Open-source encoders (FFmpeg, Aften, anything else) may be consulted for **architecture
   lessons only**. Never transcribe code. The spec contains every table, so there is never a
-  need to.
-- One exception, normative by construction: TS 103 420 ships its JOC Huffman tables *as* a C
-  file in its companion archive. That file is the standard, not an implementation of it.
+  need to. For AC-4 the rule is stricter: another decoder, librempeg's for one, runs as a
+  separate program whose output is compared, and its source is not read.
+- Two exceptions, normative by construction: TS 103 420 ships its JOC Huffman tables *as* a C
+  file in its companion archive, and TS 103 190 ships AC-4's Huffman codebooks, the QMF window
+  and the A-JOC and A-JCC codebooks the same way. Those files are the standard, not an
+  implementation of it.
+- Where a standard is ambiguous or contradicts itself, the reading taken and its evidence go in
+  an `ERRATA.md` beside the code (`src/ac4dec/ERRATA.md`, `src/ac4enc/ERRATA.md`).
 
 If you cannot cite where something came from, it does not go in.
 
@@ -55,16 +79,20 @@ If you cannot cite where something came from, it does not go in.
 
 **`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/forge` is
 the AC-3, E-AC-3 and Atmos codec. `src/ac4`, `src/ac4core`, `src/ac4dec` and `src/ac4enc` are the
-AC-4 codec, in namespace `ac4`, and link nothing from `src/forge`.
-`apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` are the consumers of both, and
-`apps/common` is shared application code, compiled directly into its consumers. `apps/windows`
-holds Crucible's separately licensed null-sink driver and its guest VM. Nothing under `src/`
-may depend on anything under `apps/`.
+AC-4 codec, in namespace `ac4`, and link nothing from `src/forge`. `src/arithmetic` is the
+header-only target both codecs link for their scalar types (`Fixed32`, the project's own float
+functions) and the SIMD seam; it is not installed.
+`apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` consume them (Crucible and the Shield app
+use the AC-3, E-AC-3 and Atmos codec only), and `apps/common` is shared application code,
+compiled directly into its consumers. `apps/windows` holds Crucible's separately licensed
+null-sink driver and its guest VM, `apps/linux` a scripted guest for Crucible's Linux tray, and
+`apps/notices` the licence notices Forge's packages install. Nothing under `src/` may depend on
+anything under `apps/`.
 
 **The tree holds four products, and the directories say which is which.** `src/`
-other than `src/audio`, the bindings under `python/`, `js/` and `rust/`, and `examples/`,
-`fuzz/` and `apps/baremetal` are **the library** — `ac3forge` and `ac3::forge` name it, and
-those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common` are
+other than `src/audio` and `src/sendspin`, the bindings under `python/`, `js/` and `rust/`, and
+`examples/`, `fuzz/` and `apps/baremetal` are **the library** — `ac3forge` and `ac3::forge` name
+it, and those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common` are
 **Forge**, the tooling pair, built and packaged as one thing. `apps/crucible`, with the driver
 in `apps/windows`, is **Crucible**. `apps/hearth`, `src/sendspin` and the `hearth_sink` example
 are **Hearth**. `apps/android` and `apps/wasm` are library demonstrations. `src/audio`, `tests/`,
@@ -99,13 +127,18 @@ here — it's a different axis (language surface, not dependency) that happens t
 
 **One subdirectory per platform audio backend, selected by CMake, never `#ifdef`.**
 `src/audio/src/backend/{alsa,pipewire,android,macos,posix,windows}` — adding a backend means a
-new directory and a new CMake guard, not a new preprocessor branch. There are zero
-`#ifdef`-based platform branches anywhere in `src/`; keep it that way.
+new directory and a new CMake guard, not a new preprocessor branch. There are no
+preprocessor conditionals in `src/`, `apps/`, `tests/` or `python/` (the C API header's
+`#ifdef __cplusplus` pair is the one exemption, and `esp-idf/` uses Kconfig's `#if CONFIG_*`);
+CI's platform check fails on a new one. Keep it that way.
 
 **A leading underscore on a workflow file means "reusable, not directly triggered."**
-`.github/workflows/_build.yml` and `_toolchain-versions.yml` are `workflow_call` targets invoked
-by `ci.yml` and `release.yml`; every other workflow file responds to a real GitHub event
-(`pull_request`, `push`, a schedule) on its own.
+`.github/workflows/_build.yml`, `_ci-core.yml`, `_ci-linux.yml`, `_ci-windows.yml`,
+`_ci-macos.yml`, `_static.yml` and `_toolchain-versions.yml` are `workflow_call` targets, called by
+`pr-gate.yml`, `ci.yml`, `release.yml` and (for `_toolchain-versions.yml`) the scheduled analysis
+workflows; every other workflow file responds to a real GitHub event (`pull_request`, `push`, a
+schedule) on its own, though `wheels.yml`, `npm.yml`, `esp-component.yml` and `manifest-bump.yml`
+can also be called.
 
 ## Code conventions
 
@@ -170,8 +203,9 @@ Not useful:
 ```
 
 Where behaviour is deliberately narrower than the standard, say so and say why — see the
-decoder's header for the pattern. "Deliberately unsupported (clean errors, not wrong audio)"
-is a design statement; a silent gap is a bug waiting to be found by someone else.
+opening comment of `src/ac4dec/include/ac4dec/decoder.hpp` for the pattern: what the decoder
+does, then what it refuses, by name and with a reason. A clean refusal is a design statement;
+a silent gap is a bug waiting to be found by someone else.
 
 ## Validation discipline
 
@@ -221,13 +255,15 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    above is still the only decoder either way. Two separate CI mechanisms use FFmpeg, answering
    different questions:
 
-   - **`ffmpeg-validate`** (Linux-only, this job): *correctness* across the full option space.
+   - **`ffmpeg-validate`** (Linux-only, in the nightly run; `ci:deep` on a pull request, or a
+     dispatch of `ci.yml`, runs it on a branch): *correctness* across the full option space.
      `tools/ci/run_codec_matrix.sh`'s FFmpeg strict-decode checks for conformance,
      `tools/checks/check_drc.py` and `tools/checks/check_coupling.py`/`check_coupling_level.py` for metadata
      that only a discriminating decode can confirm, and `tools/ci/quality_race.py ci` for a numeric
      SNR/LSD floor per E-AC-3 tool variant. Running any of these locally needs `ffmpeg` on `PATH`
      and, for the Python ones, `AC3CLI` (or `--cli`) pointed at your build's `ac3cli`.
-   - **The gold-reference gate** (`tools/checks/verify_gold_reference.sh`, every platform leg):
+   - **The gold-reference gate** (`tools/checks/verify_gold_reference.sh`, in the pull-request
+     gate and on every platform leg):
      *quality* and cross-platform reproducibility on one fixed sample - does ac3cli's own decoder
      agree with FFmpeg's, by SNR, on every compiler this project builds with. See
      [docs/building.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/building.md#gold-reference-correctness-gate).
@@ -250,8 +286,11 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    every resulting stream held against both decoders. It exists because the `deltbaie` defect
    (`deltbaie = 0` means "retain", not "no delta") produced streams both decoders reject and
    escaped every gate above — reaching it needed an input *shape*, not an option combination.
-   Bounded to two minutes per pull request; `fuzz.yml`'s `encoder-space-nightly` runs it deeper.
-   Every failure prints a case seed that regenerates the exact input (`--replay <seed>`).
+   `tools/ci/fuzz_eac3_encoder_space.py` and `tools/ci/fuzz_ac4_encoder_space.py` do the same for
+   E-AC-3 and AC-4 (for AC-4 the streams are read back through the decoder and the syntax trace;
+   FFmpeg only frames them). Each is bounded to two minutes in that job, and `fuzz.yml`'s
+   `encoder-space-nightly` runs each for fifteen. Every failure prints a case seed that
+   regenerates the exact input (`--replay <seed>`).
 3. **Somebody else's bitstreams.** Points 1 and 2 both decode something this project encoded.
    Reading a stream *nobody here produced* is a different question, and the one that found five
    Annex E parsing defects in a single sitting once anything actually asked it. Two tiers, both
@@ -268,13 +307,29 @@ Ranked by how much they prove. Prefer the strongest one available for what you a
    self-consistent round trip cannot.
 5. **Dolby's Reference Player and Media Encoder**, for object-layer syntax.
 
+**AC-4 has a ladder of its own**, set out in [docs/verification.md](https://iainchesworthlabs.github.io/ac3forge/verification/#ac-4)
+and in `planning/ac4.md`. FFmpeg reads AC-4's framing and its MP4 track and has no AC-4 decoder, so
+it does not check audio. The decoder is scored against the streams Dolby Encoding Engine (DEE)
+makes from known sources, the committed ones in `tests/golden/external-baseline/ac4-*` and a larger
+gold set kept locally (DEE's licence ends on 2026-11-06 and is not renewed), by
+`tools/checks/score_ac4_decode.py`; its gains and mixing are held to the standard's formulas by
+`gain_ac4_decode.py` and `mix_ac4_decode.py`; librempeg's decoder is a second opinion wherever it
+reads the stream; and the syntax is transcribed a second time in `tools/references/ac4_syntax.py`,
+whose trace must agree with the C++ record for record. The encoder is held to the same trace
+comparison, to MediaInfo's frame-by-frame reading and DEE's MP4 muxer
+(`check_ac4_encode_readers.py`), and raced against DEE's streams of the same sources by
+`score_ac4_encode.py`. Nothing outside the project decodes the immersive element or objects
+(librempeg does not decode the one and refuses the other) or reads IEC 61937 bursts: for those,
+say so in the commit message and hold the change to the standard's own tables and formulas, as
+the tests there do.
+
 **Object reconstruction has none of the four.** Dolby's tooling above verifies the object
 layer's *syntax*, not its audio: that decoder gates object decoding on a keyed authenticity tag
 this project ships no key for, so it renders these streams as their 5.1 bed, and FFmpeg
 implements no JOC reconstruction at all. Nothing outside this repository can produce an
 independent object decode of an ac3forge stream. What exists instead is a self-consistency
 series with real resolution — `tools/ci/quality_race.py`'s `objects` mode scores a committed
-five-object scene per object per rate on every push, trended at [Object quality
+five-object scene per object per rate in the nightly run, trended at [Object quality
 trend](https://iainchesworthlabs.github.io/ac3forge/object-quality-trend/). If you are changing
 `ac3::oba::joc` or `ac3::oba`, run it before and after and put both numbers in the commit message;
 it takes seconds and it is the only quality signal that layer has.
@@ -298,8 +353,16 @@ are the authority and must be updated with it. README.md's own summary of the sa
 should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/history.md) is a
 record of past work and is not maintained against the current state.
 
+The platform tables under `docs-snippets/generated/` are generated from
+`docs/assets/data/support-catalogue.json` by `python tools/checks/generate_support_matrices.py`:
+edit the JSON and regenerate, since the static checks fail on a stale copy. `python
+tools/checks/check_doc_paths.py` checks every path the prose names, `python tools/ci/precheck.py`
+runs both, and `python -m mkdocs build --strict` (after `pip install -r
+requirements/requirements-docs.txt`) builds the site.
+
 **Voice.** No hyperbole, marketing copy, or flourishes. State the fact; do not set it up as
-"it is not A, it is B." Shorter is better. If two sentences say the same thing, keep one.
+"it is not A, it is B." Shorter is better. If two sentences say the same thing, keep one. Write
+the codecs as AC-3, E-AC-3 and AC-4, hyphenated.
 
 Product and usage pages — Forge, Crucible, Hearth (except `design/`), install and first-run
 guides — are for a technical lay reader. Be clear, professional, and direct. Explain a domain

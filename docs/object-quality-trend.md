@@ -1,10 +1,13 @@
 # Object quality trend
 
-Per-object reconstruction quality, by commit. Every push to
+Per-object reconstruction quality, by commit. Each nightly run on
 `main` encodes one fixed five-object Atmos scene with this build's
 `atmos-encode`, decodes it back to per-object WAVs with this build's
 `decode`, and scores each recovered object against the source channel it was
-built from.
+built from. The scene is E-AC-3's: joint object coding in an E-AC-3 stream, which
+is what Dolby Atmos carries. AC-4's objects, A-JOC and direct-coded, have no series;
+[Validation](verification.md#the-decoders-objects) says how the decoder's and the
+encoder's are checked.
 
 **There is no external oracle for object decode at all, so this is a
 self-consistency series.** That is a weaker position than every other trend
@@ -493,7 +496,7 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
   Promise.all([fetchTrack("main"), fetchTrack("develop"), fetchReleaseShaMap()]).then(([mainRecords, developRecords, releasesBySha]) => {
     const allRecords = [...mainRecords, ...developRecords];
     if (allRecords.length === 0) {
-      root.innerHTML = '<p class="object-trend-status">No object-quality history yet - it is written by CI on the first push to main after this page landed.</p>';
+      root.innerHTML = '<p class="object-trend-status">No object-quality history yet - the first run on main after this page landed writes it.</p>';
       return;
     }
     render(allRecords, releasesBySha);
@@ -516,8 +519,9 @@ is the default view (falling back to the full file while still small), and
 `develop`'s frozen pre-2026-08-25 history is available as
 an explicitly-labelled historical track (dashed, muted) via the "Show
 historical" control, and a 🏷 badge marks a row whose commit was tagged. This
-page's own history is thin enough that the distinction barely shows yet —
-see "Where the data lives" below.
+series began on 2026-08-26, after that move, so it has no `develop` era and the
+"Show historical" control has nothing to add — see "Where the data lives"
+below.
 
 **`scene`** is the plain mean of that leg's five objects, not a sixth object.
 It is the "did the object layer move" number; an object that collapsed on its
@@ -564,16 +568,16 @@ Same `quality-history` branch mechanism as
 [Quality trend](quality-trend.md#where-the-data-lives) and its siblings —
 `object-quality-<branch>.jsonl` this time, written by a job in `_ci-core.yml`
 (`persist-object-quality-trend`, called from `ci.yml`) downstream of
-`ffmpeg-validate`'s compute-only `objects` step, on direct pushes to `main`
-only.
+`ffmpeg-validate`'s compute-only `objects` step, on `main` only. FFmpeg
+Validate runs in the nightly run and not after a merge, so the job publishes
+once a night.
 
-Unlike its siblings, this page's history has no `develop` era to show yet:
+Unlike its siblings, this page's history has no `develop` era to show:
 neither `object-quality-develop.jsonl` nor `object-quality-main.jsonl` had
 been written as of 2026-08-25's move to trunk-based development, so the
-"Show historical" control above currently has nothing to add — the job
-exists and is wired up, it simply had not landed a row on either branch
-before `develop` was retired. Going forward every row lands on `main` only,
-the same as its siblings.
+"Show historical" control above has nothing to add — the job
+was wired up but had not landed a row on either branch before `develop` was
+retired, and its first row on `main` is from 2026-08-26.
 
 Reproduce any row locally, after building `ac3cli`:
 
