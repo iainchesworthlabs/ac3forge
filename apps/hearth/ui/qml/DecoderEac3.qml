@@ -25,8 +25,10 @@ ScrollView {
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
     readonly property var settings: HearthController.decoderSettings
+    // The one key a control changed: the controller keeps the rest as last
+    // requested, which the settings this page reads may not show yet.
     function set(key, value) {
-        const next = Object.assign({}, settings);
+        const next = {};
         next[key] = value;
         HearthController.setDecoderSettings(next);
     }

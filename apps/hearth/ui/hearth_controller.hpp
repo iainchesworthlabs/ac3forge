@@ -380,11 +380,12 @@ public:
     Q_INVOKABLE void setVolumeDb(double db);
 
     [[nodiscard]] QVariantMap decoderSettings() const { return decoder_settings_; }
-    // Rebuilds a DecoderSettings from `settings` (every key
-    // decoderSettings() reads back) and posts it whole, the way a settings
-    // page's "apply what changed" always does here - Engine::
-    // set_decoder_settings() takes the whole struct in any case. Unknown or
-    // missing keys keep the engine's last-known value for that field.
+    // Applies the keys `settings` carries (any of those decoderSettings()
+    // reads back) on top of the last settings requested, and posts the result
+    // whole - Engine::set_decoder_settings() takes the whole struct. Missing
+    // or unknown keys keep their requested value, so a page writes only the
+    // key its control changed. decoderSettings() reads the request at once,
+    // until the engine's status catches up with it.
     Q_INVOKABLE void setDecoderSettings(const QVariantMap& settings);
 
     [[nodiscard]] QVariantList trimDb() const { return trim_db_; }
@@ -607,6 +608,11 @@ private:
     qlonglong duration_ms_ = 0;
 
     QVariantMap decoder_settings_;
+    // The last settings setDecoderSettings() posted, until poll() reads them
+    // back from the engine's status; empty when nothing is in flight. Two
+    // changes inside one poll would otherwise build the second on a status
+    // without the first, and put the first back.
+    QVariantMap requested_decoder_settings_;
 
     QVariantList trim_db_;
     QVariantList delay_ms_;
