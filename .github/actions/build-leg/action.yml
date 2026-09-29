@@ -319,7 +319,17 @@ runs:
       shell: bash
       env:
         LEG_PRESET: ${{ inputs.preset }}
-      run: cmake --build --preset "build-$LEG_PRESET" -- -k 0
+        CTEST_JOBS: ${{ inputs.ctest-jobs }}
+      run: |
+        set -euo pipefail
+        if [ -z "$CTEST_JOBS" ]; then
+          cmake --build --preset "build-$LEG_PRESET" -- -k 0
+          exit 0
+        fi
+        # The gate keeps the output as well as printing it, so a failed build can
+        # be summarised (see "Summarise the failure" below) instead of leaving an
+        # agent to find the one compiler error in a thousand lines of ninja.
+        cmake --build --preset "build-$LEG_PRESET" -- -k 0 2>&1 | tee "${RUNNER_TEMP}/build.log"
 
     # What the cache bought this run, on the run's summary page, and the miss
     # count the save step below keys off: a run that compiled nothing new has
@@ -398,26 +408,41 @@ runs:
         fi
         exit "$rc"
 
-    # For an agent reading a red run: the failing test names and the command
-    # that reproduces each, without scrolling a 3,000-line log.
-    - name: Summarise failed tests
+    # For an agent reading a red run: what failed and the command that reproduces
+    # it, at the top of the run's summary page instead of somewhere in a
+    # thousand-line log. A failed build (the compiler diagnostics and ninja's
+    # FAILED: lines) or the failing test names, whichever this run has.
+    - name: Summarise the failure
       if: ${{ failure() && inputs.ctest-jobs != '' }}
       shell: bash
       env:
         LEG_PRESET: ${{ inputs.preset }}
       run: |
         set -euo pipefail
-        log="${RUNNER_TEMP}/ctest.log"
-        [ -f "$log" ] || exit 0
-        {
-          echo "### Failed tests"
-          echo
-          echo '```'
-          sed -n '/The following tests FAILED:/,/^Errors while running CTest/p' "$log" | head -60
-          echo '```'
-          echo
-          echo "Reproduce one: \`ctest --preset test-${LEG_PRESET} -R '<name>' --output-on-failure\`"
-        } >> "$GITHUB_STEP_SUMMARY"
+        build_log="${RUNNER_TEMP}/build.log"
+        test_log="${RUNNER_TEMP}/ctest.log"
+        if [ -f "$build_log" ] && grep -q -E 'FAILED:|: error[ :]|error C[0-9]+|error LNK[0-9]+|undefined reference|ld returned' "$build_log"; then
+          {
+            echo "### Build errors"
+            echo
+            echo '```'
+            grep -E 'FAILED:|: error[ :]|error C[0-9]+|error LNK[0-9]+|undefined reference|ld returned' "$build_log" | head -40
+            echo '```'
+            echo
+            echo "Reproduce: \`cmake --preset config-${LEG_PRESET} && cmake --build --preset build-${LEG_PRESET}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+        if [ -f "$test_log" ] && grep -q 'The following tests FAILED:' "$test_log"; then
+          {
+            echo "### Failed tests"
+            echo
+            echo '```'
+            sed -n '/The following tests FAILED:/,/^Errors while running CTest/p' "$test_log" | head -60
+            echo '```'
+            echo
+            echo "Reproduce one: \`ctest --preset test-${LEG_PRESET} -R '<name>' --output-on-failure\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
 
     # Only when this run compiled enough the cache did not have (see
     # ccache-save-min-misses), and only when the caller says this is a
