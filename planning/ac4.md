@@ -3708,9 +3708,11 @@ words, asked for 25 in their own words, and took the recommendations for the res
 
     **Recommend (a):** the emulators then stand in for the boards on correctness. Cost: the
     fastest `float` kernels stay out of the portable tier. **Taken: (a).** As measured in D14b, the
-    output is identical on the host, the Cortex-M3 leg and the P4 for the probe's five fixtures and
-    for every stream without companding, and differs on the five plays with companding, where
-    `std::pow` and `std::exp2` at `float` give another last bit in each C library.
+    output was identical on the host, the Cortex-M3 leg and the P4 for the probe's five fixtures and
+    for every stream without companding, and differed on the five plays with companding, where
+    `std::pow` and `std::exp2` at `float` give another last bit in each C library. D14a4 took those
+    calls out of libm, and the output is identical for all twenty plays and for the probe's six
+    fixtures.
 
 27. **The P4's role.**
     - (a) **The `float` tier's part for 5.1 and full 5.1.4.**
