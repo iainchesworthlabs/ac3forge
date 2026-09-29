@@ -2294,7 +2294,7 @@ energy.
 over the music, film and speech legs as controls; `ac3tests`; the WSL GCC and Clang gates. ViSQOL and DEE
 are local only.
 
-**Built** (phase E10): E8's gap is at 5.1.4 alone. Scored as `score_ac4_encode.py --gold` scores it (ViSQOL
+**Built** (phase E10): E8's gap is at 5.1.4, with a smaller one at stereo 48 kbps. Scored as `score_ac4_encode.py --gold` scores it (ViSQOL
 of the channels' mean over the middle four seconds), G1's sweeps stood, this encoder's less DEE's: at 2.0,
 from 0.00 to 0.10 over from 64 to 144 kbps and 0.04 under at 48; at 5.1, from 0.03 to 0.21 over from 96
 to 320, though its A-SPX tiles were 2 to 11 dB further from the source's energy than DEE's (27.7 dB
@@ -2315,10 +2315,10 @@ output only) what differs is these: DEE's noise floors are `qscf_noise` 7 to 17,
 encoder's 29, the least, in 95 to 99 % of its values (on music DEE's are 7 in nine of ten, this
 encoder's 29 in 80 to 96 %); DEE inverse-filters at mode 0 in 96 to 98 % of the core channels' values,
 this encoder at 0 or 3; DEE frames one frame in ten as two envelopes (one in five in the top pairs); and
-this encoder adds a sinusoid to a group in one frame in twenty at most. Decoded, the tone above 16.5 kHz lands 15 to 17 dB under the
-source's energy in DEE's stream, which is its noise floor's share (2^-5 of the envelope in the tone's
-group is -15 dB), and 32 to 61 dB under it in this encoder's at 5.1 and 48 to 61 at 5.1.4, in every
-channel A-SPX codes.
+this encoder adds a sinusoid to a group in one frame in twenty at most. Decoded, the tone above 16.5
+kHz lands 15 to 17 dB under the source's energy in DEE's stream, which is its noise floor's share (2^-5 of
+the envelope in the tone's group is -15 dB), and 32 to 61 dB under it in this encoder's at 5.1 and 48 to
+61 at 5.1.4, in every channel A-SPX codes.
 
 `AspxChannelEncoder::fill_undelivered` sends the floor the patch needs. Per noise group and interval it
 measures the share of the input's energy that the decoder's generator, run on the input's low band at
