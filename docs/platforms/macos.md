@@ -34,7 +34,7 @@
 | What runs here | The library, `ac3cli` and `ac3gui`. Hearth's window builds, and Crucible's macOS half compiles and its suites run |
 | Build | Two CI legs, Apple Silicon after each merge and native Intel nightly; neither is experimental |
 | Minimum OS | macOS 13.3 (Ventura): the deployment target `cmake/toolchains/macos.llvm.toolchain.cmake` sets for C++23 libc++ features, which the Homebrew cask also requires. The Core Audio process tap needs 14.2 |
-| Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project, and no hosted runner has an audio device, a desktop session, or a way to grant a consent prompt |
+| Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project. A hosted runner has a virtual output device (`Apple Virtual Sound Device`) and a window session, but no audio hardware and no way to grant a consent prompt |
 | Core Audio process tap | Written, compiled, **never created at runtime** |
 | Crucible | Compiles and is exercised by the CI suites; the application has never been launched on a Mac |
 | AC-4 | Decoded and encoded by `ac3cli` and `ac3gui` in the same code the other platforms run. Core Audio defines no AC-4 format, so AC-4 can reach an output only as decoded PCM, and nothing on macOS has played a sound. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |

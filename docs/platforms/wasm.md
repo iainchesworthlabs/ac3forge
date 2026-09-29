@@ -41,7 +41,7 @@ pages in this section.
 | `ac3forge-wasm-decoder` npm package | **Never released to npm.** Building it from `js/` is the only way to get it |
 | AC-4 module | Decodes and encodes AC-4, objects included. Built in the same CI job as the two modules above, and the package's Node tests drive its wrapper against a fake module; no test runs the compiled module, and there is no demo page yet |
 | Why the package exists | Chrome still cannot decode EC-3 |
-| Correctness | Checked in CI against the native decoder's own output, not by hand |
+| Correctness | CI asserts stream properties and known-signal measurements (channel count, sample rate, object count and movement, non-silent output, a 997 Hz tone's true peak, a decode round trip). It does not compare the WebAssembly decoder's samples with the native decoder's |
 | Real hardware | Not applicable — the browser is the target |
 
 --8<-- "docs-snippets/generated/platform-browser.md"
