@@ -577,7 +577,7 @@ TEST_CASE("the encoder refuses the object configurations it does not write", "[a
 }
 
 TEST_CASE(
-    "an object's depth exponent goes with a screen factor, and the encoder refuses one without",
+    "an object's depth exponent goes with a screen factor and the encoder refuses one without",
     "[ac4enc][objects]") {
     // Part 2 clause 6.2.8.7 sends object_screen_factor_code and object_depth_factor as one group of
     // fields, and the factor, (code + 1) / 8, has no code for 0 (src/ac4enc/ERRATA.md, "The screen
