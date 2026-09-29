@@ -36,18 +36,17 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
 
   **Since 2026-09-29 these come from `pr-gate.yml`, not `ci.yml`.** A pull
   request and each merge-queue entry run the gate: the static checks (one job,
-  `_static.yml`), Linux GCC, and in the queue Windows MSVC. `ci.yml` runs the full
-  matrix after the merge, one run at a time, and its aggregate is named
-  `Verify Status` so it can never be mistaken for the required check on a commit
-  both ran on. The names of the three required checks did not change, so this
-  needed no rule edit. See [CI for many agents](../docs/ci-agentic.md). The
-  sections below that mention `ci.yml` jobs as members of `CI Status` (Script
-  Lint, the performance and memory gates, `Python coverage` and the rest) record
-  the arrangement before that date: those jobs now run after the merge and are
-  not required.
+  `_static.yml`), Linux GCC (with the Qt GUI when the change touches it, and
+  always in the queue), and in the queue Windows MSVC. `ci.yml` runs after the
+  merge, one run at a time: the legs a merge can break, and nightly and on
+  request the whole matrix. Its aggregate is named `Verify Status` so it can
+  never be mistaken for the required check on a commit both ran on. The names of
+  the three required checks did not change, so this needed no rule edit. See
+  [CI for many agents](../docs/ci-agentic.md).
 
-  `No Quarantine On Main` is not selected in its own right - it is a step of the
-  gate's static job, so it still gates every merge through `CI Status`. `Analyze (C++)` was removed 2026-08-31: `codeql.yml`'s PR
+  The quarantine check (no `src/quarantine` in the tree) is not selected in its
+  own right - it is a step of the gate's static job, so it still gates every
+  merge through `CI Status`. `Analyze (C++)` was removed 2026-08-31: `codeql.yml`'s PR
   trigger then `paths-ignore`d `docs/**`/`**/*.md`, so on a docs-only PR the
   required context never reported and the PR sat green-but-BLOCKED forever (the
   code-scanning ruleset section below records the fuller version of the same
@@ -63,59 +62,46 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
 - **Block force pushes**
 - **Restrict deletions**
 
-### What the recent CI additions did and did not change here
+On 2026-09-30 the rule on `main` carries the three required checks, zero
+required approvals with stale approvals dismissed, and blocks force pushes and
+deletions. It does not require conversation resolution and is not enforced for
+administrators (`enforce_admins` is off, and the `merge-queue-main` ruleset
+lists the repository admin role as an always-bypass actor), and its only push
+restriction is the pull-request requirement. Turning the first two on is the
+repository admin's decision.
 
-Nothing in the 2026-08 `VX14`-`VX17` batch (script lint, the `apps/cli`
-coverage floor, the ThreadSanitizer leg, the PR-time performance comparison),
-nor the PR-time memory comparison that followed it in 2026-09, **requires** a
-ruleset edit, and the list above is deliberately unchanged:
+### Which jobs feed `CI Status`
 
-- `Script Lint` (`ci.yml`) is in `CI Status`'s `needs` list, so it already
-  gates through the required check that exists. Selecting it as a required
-  check in its own right is optional - it would only make a lint failure name
-  itself in the merge box rather than showing up as `CI Status` failing.
-- `Linux LLVM TSan` is a `_build.yml` matrix leg, and `CI Status` covers the
-  whole matrix by design - that is what the parenthetical above means.
-- `Performance vs merge base` (`ci.yml`) must NOT be made required. It is
-  informational, carries `continue-on-error`, and is deliberately absent from
-  `CI Status`'s `needs`; requiring it would turn hosted-runner timing noise
-  into a merge blocker. Its verdict still blocks, through the separate
-  `Performance gate` job, which is in `CI Status`'s `needs` and builds nothing
-  - that split is the whole point of the two-job shape.
-- `Memory vs merge base` (`ci.yml`, added 2026-09) is the same shape and the
-  same rule: informational, `continue-on-error`, not required, with
-  `Memory gate` carrying its verdict into `CI Status`'s `needs`. The noise
-  argument does not apply to it - `ac3membench`'s counts are deterministic for
-  a fixed binary - but the infrastructure one does, since it builds twice and a
-  container or vcpkg flake there must not block a PR.
-- `codeql.yml` is nightly-only since 2026-09 and no check-name constraint
-  remains on it (its legs never report on a PR). Keep `CI Status`'s own
-  `name:` stable - that rendered string is what the required check above is
-  selected by, and renaming it leaves every PR pending until an admin edits
-  the rule.
-- `Python coverage` and `Build wheels` (`wheels.yml`) were not required checks
-  when `wheels.yml` was triggered independently of `ci.yml` (its own
-  `pull_request`/`push` with a `paths:` filter) - a Python-only regression
-  could go red there and block nothing, the exact non-required-satellite trap
-  this whole file exists to name elsewhere. The CI lane partitions plan's
-  fold-satellites phase (docs/ci-lanes.md) closed that gap: `ci.yml` now
-  calls `wheels.yml` (gated on the `python` lane), `npm.yml` (the `npm`
-  lane) and `esp-component.yml` (the `esp` lane) as `wheels`/`npm`/
-  `esp-component`, all three in `CI Status`'s `needs` list - so `Python
-  coverage`, `Build wheels`, `Build and test` (`npm.yml`) and `Pack and
-  verify`/`ESPHome external component` (`esp-component.yml`) are now required
-  through that one aggregate, the same way `Script Lint` and the `_build.yml`
-  matrix already were. No ruleset edit needed for the same reason as those -
-  and none of the three workflows needed a `merge_group` trigger added
-  either: they are `workflow_call`-only now for PR/push validation (their own
-  `push: tags: v*` trigger stays, for release publishing only), so they run
-  as nested jobs of `ci.yml`'s own `merge_group`-triggered run rather than as
-  independently-triggered workflows that would need to opt in themselves -
-  see the "Merge queue" section below for why a standalone workflow does.
+`CI Status` needs the gate's own jobs and nothing else: `Plan`, `Branch Name`,
+`Static checks`, `Toolchain versions`, `Linux GCC` and, when the plan or the
+queue asks for it, `Windows MSVC`. It fails closed: a job the plan asked for
+that was skipped is a failure. The static job (`_static.yml`) holds the
+lint, the oracle scripts' unit tests, the documentation path check, the
+generated support matrices, the packaging, fixture and quarantine checks and
+patch attribution, so all of them gate every merge through `CI Status`.
 
-Ruleset edits are the repository admin's, not a pull request's. If any of the
-optional checks above are wanted as required ones, add them by their exact
-names as rendered here.
+Nothing in `ci.yml` is a member: the post-merge legs, the nightly matrix, the
+coverage, the ABI gate, `Python coverage`, `Build wheels` (`wheels.yml`),
+`Build and test` (`npm.yml`) and `Pack and verify` (`esp-component.yml`) run
+after the merge and cannot block one. A failure there reaches
+`main-health.yml`, which opens a `main-red` issue naming the merges since the
+`verified` branch. None of that is a required check.
+
+Two rules from earlier arrangements still hold:
+
+- Keep `CI Status`'s own `name:` stable. That rendered string is what the
+  required check above is selected by, and renaming it leaves every PR pending
+  until an admin edits the rule.
+- `performance-compare` and `memory-compare` (`_ci-core.yml`, the PR-time
+  comparisons with their `perf-regression-approved` and
+  `memory-regression-approved` labels) have not run since the gate replaced
+  `ci.yml` on pull requests. If they return, they must not be made required:
+  they are informational and carry `continue-on-error`, so requiring them would
+  turn hosted-runner timing noise into a merge blocker. The trend jobs after
+  the merge fail at the same +100% thresholds instead.
+
+Ruleset edits are the repository admin's, not a pull request's. If any check
+is wanted as a required one, add it by its exact name as rendered.
 
 ## Merge queue
 
@@ -132,12 +118,14 @@ up-to-date state automatically, then merges when green - no manual rebase-and-re
 
 Configured `merge_queue` rule parameters: `merge_method: MERGE` (matches
 this repo's real-merge-commit convention, not squash), `grouping_strategy:
-ALLGREEN`, `max_entries_to_build: 4` (raised from 2 on 2026-08-28 when the
-self-hosted fleet grew to 13 Linux / 7 Windows runners shared org-wide, see
-`docs/ci-self-hosted-runners.md`; GitHub-hosted concurrency is still capped
-at 20 jobs account-wide on this org's Free plan, and building more queue
-entries at once than the two pools can bear just adds to the same backlog
-the queue is meant to relieve), `max_entries_to_merge: 5`,
+ALLGREEN`, `max_entries_to_build: 8` (2 to begin with, raised to 4 on
+2026-08-28 when the self-hosted fleet grew to 13 Linux / 7 Windows runners
+shared org-wide, see `docs/ci-self-hosted-runners.md`, and to 8 by the
+ruleset's last edit, on 2026-09-12; GitHub-hosted concurrency is still capped
+at 20 jobs account-wide on this org's Free plan, and the gate's jobs run on
+hosted runners, so building more queue entries at once than that pool can
+bear just adds to the same backlog the queue is meant to relieve),
+`max_entries_to_merge: 5`,
 `min_entries_to_merge: 1`, `min_entries_to_merge_wait_minutes: 5`,
 `check_response_timeout_minutes: 180` (raised from 60 on the same date: a
 queue entry's matrix legs can wait more than an hour for a fleet slot under
@@ -173,16 +161,17 @@ With a gate that finishes in about a quarter of an hour,
 `min_entries_to_merge_wait_minutes` (5) is a large share of each merge's
 latency, and `check_response_timeout_minutes` (180) is far longer than a
 healthy entry needs. Lowering the first to 1 and the second to 60 are ruleset
-edits for the repository admin; this change does not make them.
+edits for the repository admin, and both are still at 5 and 180.
 
-## Code-scanning gate (ruleset, deleted)
+## Code-scanning gate (ruleset, disabled)
 
 A repository ruleset `code-scanning-gate-main` (`target: branch`,
 `refs/heads/main`, one `code_scanning` rule: PREfast at
 `errors_and_warnings`, CodeQL at `errors` alerts / `high_or_higher` security
-alerts) was created 2026-08-24 to block merges on new scanner findings,
-**disabled** on 2026-08-31 and **deleted** by the owner in 2026-09 when the
-analysis workflows moved to a nightly schedule. Why it was disabled: a
+alerts) was created 2026-08-24 to block merges on new scanner findings and
+**disabled** on 2026-08-31. It still exists in that state (as of 2026-09-30);
+the analysis workflows moved to a nightly schedule in 2026-09. Why it was
+disabled: a
 `code_scanning` rule waits for every analysis category the target branch has
 previously seen, and `main` carries four CodeQL categories - `cpp`,
 `python`, `javascript-typescript` and `java-kotlin` - and at the time the
@@ -192,13 +181,13 @@ and `msvc-analysis.yml` also `paths-ignore`d docs then. A docs-only PR
 therefore could never satisfy the rule and sat un-mergeable forever: no
 docs-only PR merged between the ruleset's creation and its disabling.
 
-Why it must not come back: since 2026-09 every CodeQL category - `cpp`,
+Why it must stay disabled: since 2026-09 every CodeQL category - `cpp`,
 `python`, `javascript-typescript` and `java-kotlin`, the last having moved
 out of `build-android` into the nightly matrix - and the PREfast analysis
 are produced only by nightly runs on `refs/heads/main`, never on a PR merge
 commit or a merge-queue ref. A `code_scanning` rule would wait for an
 analysis of the PR merge commit in every category `main` has ever seen, so
-re-creating it would block every PR - docs-only or not - on "Code scanning
+enabling it would block every PR - docs-only or not - on "Code scanning
 is waiting for results" indefinitely. If a merge-time analysis gate is ever
 wanted again, it has to come with per-PR analysis in every category, which
 this repo has deliberately moved away from.
@@ -207,8 +196,11 @@ this repo has deliberately moved away from.
 
 `codeql.yml`, `msvc-analysis.yml` (MSVC Code Analysis, `/analyze`),
 `static-analysis.yml` (clang-tidy) and `sonarcloud.yml` run nightly against
-`main` - 02:17 to 02:35 UTC, see `docs/ci-self-hosted-runners.md` "Nightly
-analysis window" - and none of them reports on a PR at all. The first three
+`main` - cron times of 02:17 to 02:35 UTC, see `docs/ci-self-hosted-runners.md`
+"Nightly analysis window"; GitHub starts scheduled workflows four to six and a
+half hours after their cron time (see "The tiers" in
+[CI for many agents](../docs/ci-agentic.md)) - and none of them reports on a PR
+at all. The first three
 put their alerts in **Security → Code scanning** against `refs/heads/main`;
 because nothing reliably notifies anyone about a new default-branch alert,
 each workflow fails on findings since the previous nightly and opens or
