@@ -1158,7 +1158,7 @@ Beside the legs, the run after a merge builds the satellite jobs whose own tree 
 run adds `linux-appimage` (builds `ac3gui`'s self-contained AppImage in an older `ubuntu:22.04`
 container and smoke-tests it in a second container that never had Qt installed at all — see
 [Linux](platforms/linux.md#appimage)), coverage, the ABI gate, ffmpeg-validate and every satellite
-whatever changed. The static checks in `_static.yml` (ruff over every `.py`, shellcheck over every
+whatever changed. A run at tier `all`, which the `ci:deep` label dispatches, adds the same. The static checks in `_static.yml` (ruff over every `.py`, shellcheck over every
 `.sh`, actionlint over the workflows, all three pinned in `requirements/requirements-lint.txt`) run
 in the gate, not after the merge; `python tools/ci/precheck.py` runs the ones that need no build on
 your machine before a push. clang-tidy runs nightly against `main` from

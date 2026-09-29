@@ -228,7 +228,7 @@ Most of what used to be a manual post-release checklist here is now automated:
    this workflow pushed straight to the tap's `main` and was refused, and the bumps to
    `v0.8.0-beta.2`, `v0.9.0-beta.1` and `v0.10.0-beta.1` reached the tap as pull requests. A
    person merges the tap's pull request after `brew audit` and `brew test` on a macOS machine,
-   since nothing in CI has Homebrew.
+   since no job in CI runs them.
 
    Merging that PR is still a separate, reviewed step - this closes the gap between "tagged" and
    "the bump has started", not the whole gap, which is why
@@ -236,9 +236,10 @@ Most of what used to be a manual post-release checklist here is now automated:
    a hard gate. What is **not** automated, because it means writing to a repository this project
    does not own: each manifest's own **Every release tag** section below still lists a follow-up
    PR to `microsoft/vcpkg` (once the port is merged upstream), `conan-center-index` (once the
-   recipe is merged upstream) or `microsoft/winget-pkgs`, plus Homebrew's local, macOS-only
-   `brew audit`/`brew install --build-from-source`/`brew test` validation - there is no Homebrew,
-   and no macOS runner, on any of this project's CI.
+   recipe is merged upstream) or `microsoft/winget-pkgs`, plus Homebrew's local
+   `brew audit`/`brew install --build-from-source`/`brew test` validation on a macOS machine. No job
+   runs them on the formula or the cask; the macOS legs use Homebrew only to install their own
+   build tools (`ccache`, `llvm`, `ffmpeg`, `ninja`).
 
    **Testing this without cutting a release**: `manifest-bump.yml` is also directly
    `workflow_dispatch`-able (Actions > Manifest Bump > Run workflow), with `dry_run: true` by
@@ -481,16 +482,16 @@ The GUI (`ac3gui`) is a separate Homebrew Cask,
 [`packaging/homebrew/Casks/ac3gui.rb`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/Casks/ac3gui.rb)
 - a Cask, not a Formula, is the right shape for a bundled, prebuilt `.app` the way `ac3gui.app`
 already ships in every platform's release archive (`cmake/Packaging.cmake`'s DragNDrop `.dmg` on
-macOS). It's staged the same way the formula is. `v0.8.0-beta.2` is the first tagged release
-whose macOS build actually contains `ac3gui` - `macos-llvm` only started building the GUI at all
-once [GUI on macOS](platforms/macos.md#gui-on-macos) landed - so the cask's `version`/`sha256`
-are now pinned from a real release rather than placeholders; see the cask file's own header
-comment.
+macOS). It's staged the same way the formula is, and pinned to `v0.10.0-beta.1` today (its `version` and
+`sha256`, which `manifest-bump.yml` rewrites for each release; see the cask file's own header
+comment). `v0.8.0-beta.2` was the first tagged release whose macOS build contained `ac3gui` -
+`macos-llvm` only started building the GUI at all once
+[GUI on macOS](platforms/macos.md#gui-on-macos) landed.
 
 **Every release tag** needs a follow-up update to the formula, same shape as the vcpkg port's.
 Steps 1 and 3 are now done by [`manifest-bump.yml`'s PR and tap pull request](#post-release)
-rather than by hand - step 2, local `brew` validation, still is, since there is no
-Homebrew on any of this project's CI runners:
+rather than by hand - step 2, local `brew` validation, still is, since no job runs `brew` on
+the formula or the cask:
 
 1. Bump `packaging/homebrew/Formula/ac3forge.rb`'s `url` to the new tag and `sha256` to match
    (`sha256sum` the tag's release tarball - the same tarball the vcpkg port's `SHA512` already
@@ -524,9 +525,9 @@ brew install --cask ./packaging/homebrew/Casks/ac3gui.rb
 brew uninstall --cask ac3gui
 ```
 
-There is no Homebrew on any of this project's CI runners or on Windows/Linux dev machines, so
-this validation is manual and macOS-only - there is nothing here to automate against, unlike
-the vcpkg `--overlay-ports` flow above.
+No job runs `brew audit`, `brew install` or `brew test` on the formula or the cask (the macOS
+legs use Homebrew only for their own build tools), so this validation is manual, and nothing checks
+the tap's pull request for you - unlike the vcpkg `--overlay-ports` flow above.
 
 ## winget manifest
 

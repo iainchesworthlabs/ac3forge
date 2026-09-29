@@ -57,7 +57,7 @@ legs](ci-agentic.md#the-legs)).
 | `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
 | `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
 | `macos` | `build-macos` (macos-llvm, macos-llvm-x64), `package-macos-universal` (alongside `do_package`, which it already required) |
-| `core` | the whole `core` job-call (`_ci-core.yml`: coverage, ADM module, Hearth's Sendspin library, the ABI gate, FFmpeg validate, the external-comparison and object-quality persisters, and the two pull-request comparisons and gates that no longer run) - see "The core lane" below |
+| `core` | the whole `core` job-call (`_ci-core.yml`: coverage, ADM module, Hearth's Sendspin library, the ABI gate, FFmpeg validate, and the external-comparison and object-quality persisters) - see "The core lane" below |
 | `python` | `ci.yml`'s `wheels` job-call (`.github/workflows/wheels.yml`: `build`, `python-coverage`) - see "The fold-satellites phase" below |
 | `npm` | `ci.yml`'s `npm` job-call (`.github/workflows/npm.yml`: `build`) - see "The fold-satellites phase" below |
 
@@ -81,15 +81,15 @@ with none there is no artifact to record. See that job's own comment in `_build.
 ## The core lane
 
 `_ci-core.yml` contains coverage, ADM and Hearth validation, the ABI gate, FFmpeg-oracle
-validation, the external-comparison and object-quality persisters, and the pull-request
-performance and memory comparisons with their gates - 11 jobs, called as one `core` job and gated
-on `needs.changes.outputs.core == 'true'`. Only a change that touches the library or trips a
-conservative fallback runs those 11 jobs; a platform-only change does not. None tests anything
+validation, and the external-comparison and object-quality persisters - seven jobs, called as one
+`core` job and gated on `needs.changes.outputs.core == 'true'`. Only a change that touches the
+library or trips a conservative fallback runs those seven jobs; a platform-only change does not. None tests anything
 platform-specific, so this is the intended behaviour, not an accident of the lane boundaries - see
 each job's own header comment in `_ci-core.yml` for why.
 
-Three of them are nightly only (`inputs.tier != 't2'`): `coverage`, `abi-gate` and
-`ffmpeg-validate`, and the two persisters read `ffmpeg-validate`'s artifacts. The performance and
+Three of them run only above tier `t2` (`inputs.tier != 't2'`), that is in the nightly run and in
+a run at tier `all`, which the `ci:deep` label dispatches: `coverage`, `abi-gate` and
+`ffmpeg-validate`. The two persisters read `ffmpeg-validate`'s artifacts. The performance and
 memory comparisons and their two gates have left `_ci-core.yml`: they ran on pull requests until the
 gate replaced `ci.yml` there, and now `_compare.yml`, called by `pr-gate.yml`, runs them for a
 merge-queue entry that changes `src/` ([The merge queue](ci-agentic.md#the-merge-queue)). `ci.yml`'s
@@ -137,7 +137,7 @@ the job... success, failure, or cancelled") into its own `outputs: result: ...`,
 ### What `_ci-core.yml` needs from `ci.yml`
 
 Same shape as `_build.yml`'s per-platform inputs: `check-runner` and `toolchain-versions` stay in
-`ci.yml` (six of the 11 jobs share `runs-on: ${{ fromJSON(inputs.runner) }}` - one live-runner
+`ci.yml` (four of the seven jobs share `runs-on: ${{ fromJSON(inputs.runner) }}` - one live-runner
 decision reused by all of them, unlike `_build.yml`'s per-leg `check-runners` fan-out), and
 `ci.yml`'s `core` job-call forwards `check-runner.outputs.runner`,
 `toolchain-versions.outputs.vcpkg_commit`, `toolchain-versions.outputs.llvm_version` (`llvm_version`
