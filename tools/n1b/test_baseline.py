@@ -76,6 +76,24 @@ class Headers(unittest.TestCase):
             ["src/a/include/a/version.hpp.in", "src/a/include/a/x.hpp"],
         )
 
+    def test_headers_are_recorded_from_git_without_a_build(self) -> None:
+        made = baseline.record(None, "none", ("headers",), self.root, root=self.root)
+        self.assertEqual(
+            sorted(made["headers"]["headers"]),
+            ["src/a/include/a/version.hpp.in", "src/a/include/a/x.hpp"],
+        )
+        self.assertEqual(
+            made["headers"]["measured_at"], git(self.root, "rev-parse", "HEAD").strip()
+        )
+        self.assertEqual(made["headers"]["label"], "")
+
+    def test_every_other_kind_needs_a_build(self) -> None:
+        for kinds in (("cli",), ("headers", "symbols")):
+            with self.subTest(kinds=kinds), self.assertRaises(SystemExit):
+                baseline.record(None, "none", kinds, self.root, root=self.root)
+        with self.assertRaises(SystemExit):
+            baseline.record(None, "none", ("headers",), self.root)
+
     def test_a_pure_move_keeps_every_header_with_its_bytes(self) -> None:
         directory = self.baseline_dir()
         self.move_header()
