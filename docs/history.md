@@ -59,8 +59,8 @@ variation), 2/0 rematrixing (§7.5.3 minimum-power rule, with the decoder-side u
 bit-rate-aware bandwidth defaults.
 
 This is the point at which output quality passed FFmpeg's encoder on the SNR metric. Current
-numbers and method are in the [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/README.md#validation); `ac3cli encode`
-gained arbitrary stereo WAV input here. Decoder parity held on rematrix-active material at max
+numbers are on [Quality trend](quality-trend.md) and [Landscape](landscape.md), and the method is
+in [Validation](verification.md); `ac3cli encode` gained arbitrary stereo WAV input here. Decoder parity held on rematrix-active material at max
 difference 1.1e-5.
 
 ## Milestones 8–9 — space, and getting it to a receiver
@@ -98,8 +98,9 @@ volume-scale the bursts and destroy the bit pattern.
 unavailable device reports *why* — "cannot bitstream" (an analog output) as against "no
 exclusive access" (disabled or in use).
 
-This has never been confirmed against bitstreaming hardware; see the
-[verification-gap table](verification.md#where-the-oracles-dont-reach).
+When this was written it had not been confirmed against bitstreaming hardware. It has been
+since: an Onkyo TX-RZ740 over HDMI locks AC-3, E-AC-3 and signed Atmos sent through
+`PassthroughSink` ([Windows](platforms/windows.md#audio-backend-wasapi)).
 
 ## Channel coupling
 
@@ -261,8 +262,9 @@ microphone capture and real decoded AC-3/E-AC-3 (including an Atmos stream's 5.1
 this machine's Realtek output in real time, end to end, including a live capture→encode→monitor
 session. Exclusive-mode E-AC-3 passthrough did not get the same confirmation — this machine has
 no S/PDIF/HDMI endpoint behind a real AV receiver, so `IsFormatSupported` was exercised (and
-correctly answers no everywhere available) but no receiver has locked onto either the existing
-AC-3 burst or the new E-AC-3 one. See the [verification-gap table](verification.md#where-the-oracles-dont-reach) for the full
+correctly answers no everywhere available) but no receiver had locked onto either the existing
+AC-3 burst or the new E-AC-3 one; a later run with a receiver cabled to a Windows machine
+confirmed both (see above). See the [verification-gap table](verification.md#where-the-oracles-dont-reach) for the full
 account.
 
 ## The ALSA backend
@@ -320,9 +322,11 @@ than a separate system — `ac3::plan::channel_plan_for(id)` is a one-line looku
 - AddressSanitizer + UndefinedBehaviorSanitizer (`cmake/Sanitizers.cmake`, the
   `linux-llvm-asan-ubsan` preset) and clang-tidy (`.clang-tidy`, a curated `bugprone-*` /
   `clang-analyzer-*` / `performance-*` / narrow `cert-*` set) both promoted to required,
-  green CI legs.
+  green CI legs. Both run in the nightly run now, not on each pull request; see
+  [CI for many agents](ci-agentic.md).
 - libFuzzer harnesses (`fuzz/`) over every untrusted-input entry point — `scan`, both decoders,
-  WAV reading — Clang-only and off by default (`AC3FORGE_BUILD_FUZZERS`); see
+  WAV reading, and later AC-4, the containers and the Sendspin messages — Clang-only and off by
+  default (`AC3FORGE_BUILD_FUZZERS`); see
   [`fuzz/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md). Runs on every push (`fuzz-regress`, seed/regression
   replay only) and nightly (`fuzz-nightly`, bounded mutation).
 - Dual mono (`acmod` 0, "1+1"): two independent single-channel programmes sharing one
@@ -473,3 +477,43 @@ without pinning a value that is legitimately content-dependent. The existing ste
 test's identical-tone case already exercised the decoder's real undo path end to end once
 rematrixing went live, without needing a new test written for it. Verified against real gcc-15,
 clang-21 and MSVC builds, plus clang-tidy, before landing.
+
+## AC-4
+
+AC-4 (ETSI TS 103 190) was built in the phases [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md)
+sets out, from the standard's two parts alone. The inspector came first (`src/ac4`): sync frames,
+the table of contents, presentations and substream framing, checked against Annex G's CRC-16 over
+every sync frame of the committed Dolby Encoding Engine (DEE) streams, MediaInfo's reading of them,
+and a Python transcription (`tools/references/ac4_parse.py`) that caught three of its bugs. Fuzzing
+it first ran uninstrumented; the instrumented runs then found out-of-bounds reads, an integer
+overflow and a loop that never ended on malformed input.
+
+The decoder's syntax layer is transcribed twice, in C++ and in `tools/references/ac4_syntax.py`, and
+the two traces have to agree element for element over every committed stream, a census of 107 local
+DEE streams and the public DASH-IF, CTA WAVE and Chromium streams. Neither part of the standard says
+what correct output is: there is no conformance clause, tolerance, reference decoder or test vector,
+and the one open decoder that reads AC-4, librempeg's, does not read all of it. So each later phase
+(PCM for stereo, the QMF domain with A-SPX and companding, the 5.X and 7.X elements, A-CPL, every
+frame rate with the output level, DRC, dialogue enhancement and the downmix, presentations, the
+immersive element and A-JOC objects) was scored against the sources DEE encoded, by SNR,
+log-spectral distance, ViSQOL and each A-SPX tile's energy, and against librempeg's decoder where it
+reads the stream. About seventy places where the standard's pseudocode, a formula and a table
+disagree are kept in `src/ac4dec/ERRATA.md` with the reading taken and its evidence. Two of them
+changed the output: the QMF synthesis modulation offset, where only Pseudocode 66's 255 reconstructs
+(78 dB, against 43 dB for the formula's 257), and A-SPX's pre-flattening, which the standard prints
+as the inverse of the gain it needs and which left the top of DEE's 5.1 film centre 4.6 dB under the
+source at 256 kbps.
+
+The encoder (`src/ac4enc`) followed each decoder phase that reads what it writes, sharing
+`src/ac4core`'s transforms, and was raced against DEE's streams of the same sources. In stereo in
+the SIMPLE mode at 192 kbps its SNR was 5.6 dB above DEE's on music and 14.9 dB on speech, with
+ViSQOL within 0.02. The races also found that a tone sweeping above A-SPX's crossover left the band
+empty in the encoder's streams, which phase E10 fixed by measuring the share of each noise group's
+energy that the decoder's patch delivers. DEE's licence ends on 2026-11-06 and is not renewed, so
+two phases (G0 and G1) made the streams the other phases would need while it ran.
+
+The applications came last: `ac3cli`, Hearth, the Forge GUI, the C API and the Python, Rust and
+WebAssembly bindings, then the immersive and object content in each. IEC 61937 carriage was written
+from IEC 61937-14 with no receiver to try it on. The decoder's arithmetic moved to `float` on the
+host and its memory came down before it ran on an ESP32-P4, where 2.0 decodes in real time and the
+wider layouts do not.
