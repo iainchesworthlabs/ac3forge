@@ -27,7 +27,7 @@
     What is missing is everything built *on top of* that correct core: CLI/JSON reporting stops
     partway through the struct, the C API and Python bindings expose none of it (already
     self-documented as a known gap in `docs/library/c-api.md`), the GUI exposes three fields out
-    of roughly thirty, test coverage has specific, named holes, and — the one genuinely new
+    of roughly thirty, test coverage has specific, named holes, and — the one new
     feature here — nothing anywhere *uses* the decoded values to actually combine a main
     programme with an associated service's audio.
 
@@ -43,7 +43,7 @@
 | Layer | State | Evidence |
 |---|---|---|
 | Data model | Complete | `ac3::meta::MixMetadata`/`MixingParameters`/`ExternalScales`/`SpeechEnhancement`/`PanInfo` (`src/forge/include/ac3/meta/mixing.hpp:254-320`) model every field Table E1.2 defines. |
-| Encoder | Complete; one bug found and fixed during Phase 2 | `eac3_frame.cpp:1267-1600` writes every field/variant, including the `strmtyp` gate (`!dependent`, i.e. `kIndependent` **or** `kConvertible` — deliberately, not `kDependent` alone; see below). Writing the Phase 2 `blkmixcfginfo`×`numblkscod==0x0` test (below) surfaced a real one: the encoder always wrote `blkmixcfginfo`'s six-block wire form regardless of `numblkscod`, while the decoder (and the independent Python reference parser, `tools/references/eac3_parse.py`) already correctly implemented §E2.3.1.60's one-block special case — so the two went out of sync whenever a caller combined `numblkscod=0` with `blkmixcfginfo`, and the encoder's own stream failed its own decoder. Fixed in the same phase; see the Phase 2 write-up. |
+| Encoder | Complete; one bug found and fixed during Phase 2 | `eac3_frame.cpp:1267-1600` writes every field/variant, including the `strmtyp` gate (`!dependent`, i.e. `kIndependent` **or** `kConvertible` — deliberately, not `kDependent` alone; see below). Writing the Phase 2 `blkmixcfginfo`×`numblkscod==0x0` test (below) surfaced one: the encoder always wrote `blkmixcfginfo`'s six-block wire form regardless of `numblkscod`, while the decoder (and the independent Python reference parser, `tools/references/eac3_parse.py`) already correctly implemented §E2.3.1.60's one-block special case — so the two went out of sync whenever a caller combined `numblkscod=0` with `blkmixcfginfo`, and the encoder's own stream failed its own decoder. Fixed in the same phase; see the Phase 2 write-up. |
 | Decoder | Complete, correct | `eac3_decoder.cpp:128-286` (`read_mixing_parameters`/`read_mixing_metadata`) reads the full group symmetrically, including `mixdef==3`'s length-prefixed skip-forward for sub-fields this build doesn't otherwise need. |
 | CLI authoring (primary programme) | Complete, under-documented | `apps/cli/support.cpp:1136-1267` implements `pgmscl=`/`pgmscl2=`/`extpgmscl=`/`mixdef=`/`premixcmp=`/`mixdata=`/`extmix=`/`auxmix=`/`speechmix=`/`paninfo=`/`paninfo2=`/`blkmixcfg=` in full, documented in `docs/forge/cli/metadata-options.md:68-85,210-235` — but absent from `ac3cli --help` (`apps/cli/usage.cpp`). |
 | Round-trip tests | Real, but incomplete | `tests/meta/test_bsi.cpp`'s "DC4" section (lines 435-767) round-trips most of the struct through real encode→decode. Specific gaps below. |
@@ -195,7 +195,7 @@ encode-side widgets.
 `mixing.hpp` and the mixer's tests do not exist. The two readings under "Before writing the pan-law/premix-scale code"
 are unchecked, and Decision 3 is open.
 
-The one genuinely new feature. Full design (produced via a dedicated design pass, included in
+The one new feature. Full design (produced via a dedicated design pass, included in
 full below the phase list) recommends a small, stateful, **post-decode, PCM-domain** component:
 
 ```cpp
@@ -292,7 +292,7 @@ reviewable as one self-contained unit.
   FFmpeg nor the Dolby Reference Player — this project's usual cross-checks — decode more than one
   programme at a time, so there's no reference implementation of "combine two decoded E-AC-3
   programmes" to compare against. Confidence here rests on spec citations and internal consistency,
-  not an external match, which is a genuinely different (weaker) evidence class than most of this
+  not an external match, which is a different (weaker) evidence class than most of this
   codebase's other DSP claims.
 - The two items in Decision 3 stay open until someone reads the primary spec text directly; this
   plan states the assumed readings rather than presenting them as settled.

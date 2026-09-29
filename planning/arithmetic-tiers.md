@@ -187,8 +187,8 @@ channel of the gold AC-3 stream came out 98.8 dB from the double decode, the E-A
 and the E-AC-3 coupling one 87.8. A raw unit is 2^-24 of full scale wherever a value sits, so a
 mantissa of sixteen bits under an exponent of twelve keeps twelve of them; the transform sums
 two hundred and fifty-six such errors; and standard coupling's factor of eight scales them by
-eight. The information was on the wire and lost at dequantisation. The store was not too
-narrow - it was in the wrong place.
+eight. The information was on the wire and lost at dequantisation, because the store put every
+value at one absolute scale; a wider store would not have kept it.
 
 So the store is normalised (`src/forge/src/decoder/block_norm.hpp`): each stream's
 coefficients are kept scaled up by 2^norm per block, with norm chosen so the largest sits just

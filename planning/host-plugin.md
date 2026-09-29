@@ -344,9 +344,9 @@ The recommendation is therefore:
 
 - **Type: metering and QC.** It is the only candidate the library supports today, it needs no
   encoder on the audio thread, and it is the one whose value does not depend on a format feature
-  that does not exist. It also puts the project's loudness and QC instruments — which are
-  unusually complete, including BS.1770-5 Annex 3 wide layouts and named broadcast presets — in
-  front of people who cannot use a CLI.
+  that does not exist. It also puts the project's loudness and QC instruments, which include
+  BS.1770-5 Annex 3 wide layouts and named broadcast presets, in front of people who cannot use a
+  CLI.
 - **Formats: CLAP first, VST3 alongside it.** Both are MIT as of 2026-09-07, both have a
   command-line validator that can run in CI, and both build on all three platforms the project
   already targets. CLAP is first because `clap-validator` is the easier CI citizen and the

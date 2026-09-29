@@ -168,7 +168,7 @@ than research:
    onward to a receiver rather than render it, which the server needs in order to know that this
    endpoint's latency is unknown and unbounded.
 
-**Why it is strategically the right target.** It is where Home Assistant is going, ESPHome will
+**Why it is the target.** It is where Home Assistant is going, ESPHome will
 ship the client, and Music Assistant is already the controller. An endpoint that speaks Sendspin
 appears in an existing installation with no integration to write. And the extension would be
 useful to that project independently of this one: Opus at multi-channel is not what anyone wants
