@@ -312,6 +312,11 @@ struct SubstreamReport {
     std::size_t bits_read = 0;           // bits the syntax consumed, alignment included
     std::optional<DecodeError> refused;  // set when this substream was not read to its end
     std::string_view refused_reason;
+    // A kOamd substream's own oamd_common_data() (Part 2 clause 6.2.8.1), where
+    // this frame's oamd_substream() sends one (b_oamd_common_data_present); an
+    // A-JOC substream's, in the table of contents, is
+    // AjocSubstreamInfo::oamd_common_data.
+    std::optional<OamdCommonData> oamd_common_data;
 };
 
 // Every substream of the frame's substream_index_table(), in index order.

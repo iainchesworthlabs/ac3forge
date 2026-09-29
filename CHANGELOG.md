@@ -1791,8 +1791,9 @@ The sections below contain the complete change list and fixes.
   and TS 103 420 §5.6.1 share one room and one dB convention; `zone_mask` is read against
   `ac3::oba::ZoneConstraint`'s own numbering, a reading not independently verified against the spec
   text — see the phase's own report). `probe`'s JSON gains an `oamd_common_data` object on an A-JOC
-  substream's entry (additive; the schema stays compatible) — a direct-coded group's own separate
-  `oamd_substream` is not yet surfaced there.
+  substream's entry and on the `oamd` member of a group with an OAMD substream of its own, a
+  direct-coded group's among them (additive; the schema stays compatible); the decoder's
+  `ac4::SubstreamReport` carries the second as `oamd_common_data`.
 - **Hearth's engine renders AC-4 objects**, through the same `Ac4ObjectRenderer`
   (`apps/common/ac4_object_render.hpp`) `ac3cli decode` plays them with: the AC-4 path now reads a
   whole frame through `ac4::Decoder::decode()` instead of `decode_by_block()`, so a presentation
