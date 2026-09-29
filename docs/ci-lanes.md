@@ -18,9 +18,12 @@ gate yet.
 > [`pr-gate.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml),
 > described in [CI for many agents](ci-agentic.md). The lanes on this page now decide what the run
 > on main covers, and what a dispatch on a branch covers (`gh workflow run ci.yml --ref <branch>`
-> forces every lane on). Sections below that describe `pull_request` behaviour, such as the hosted
-> legs that were skipped on pull requests, record how `ci.yml` behaved before that change and no
-> longer take effect, since `ci.yml` has no `pull_request` trigger.
+> forces every lane on). The run after a merge takes its lanes from the files merged since the last
+> verified commit, and runs a satellite lane only for a change in its own tree; the nightly run
+> forces every lane on ([The tiers](ci-agentic.md#the-tiers)). Sections below that describe
+> `pull_request` behaviour, such as the hosted legs that were skipped on pull requests, record how
+> `ci.yml` behaved before that change and no longer take effect, since `ci.yml` has no
+> `pull_request` trigger.
 
 ## Current status
 
@@ -72,12 +75,13 @@ previous phase could deliver.
 `package-macos-universal` and `quality-trend` used to `needs: build` (the one
 cross-OS job); they now `needs: build-macos` and
 `needs: [build-windows, build-linux, build-macos]` respectively. The latter
-still behaves exactly as before in practice: `quality-trend` only ever runs
-when `persist_quality_trend` is true, which is only true for a direct push to
-`main`, and that same trigger forces every `run_<lane>` true in
-`classify_changes.py`'s `--force-all` path - so on the one trigger this job
-actually fires on, none of its three `needs:` is ever skipped for a lane
-reason. See that job's own comment in `_build.yml`.
+runs only when `persist_quality_trend` is true, which is true for a push to
+`main` and for the nightly run. The nightly run forces every `run_<lane>` true, but
+the run after a merge takes its lanes from the files merged since the last
+verified commit, so one of the three `needs:` can be skipped for a lane
+reason. The job accepts a skipped platform as long as one of the three ran and
+passed, since with none there is no artifact to record. See that job's own
+comment in `_build.yml`.
 
 ## The core lane
 
@@ -225,15 +229,21 @@ few minutes:
   `planning/` that has never been given a lane. One unmapped path anywhere
   in the change is enough; the fallback does not degrade to "build only what
   matched".
-- **`push` to `main`, a `merge_group` run or a manual `workflow_dispatch`** -
-  passed as `--force-all` from `ci.yml`, bypassing path classification
-  entirely. A queued or direct-to-main run has no single PR diff to classify
-  against, and the merge queue's purpose is to catch what one PR's own lane
-  subset could not see; both must stay full-matrix regardless of what the
-  queue entry's own diff looks like. A dispatch is how a branch asks for the
-  legs a pull_request run defers (next section). It does not arrive with an
-  empty file list: `github.event.before` is unset, so it would otherwise
-  classify only its head commit's own diff.
+- **A `merge_group` run, the nightly `schedule` run or a manual
+  `workflow_dispatch`** - passed as `--force-all` from `ci.yml`, bypassing path
+  classification entirely. A queue entry has no single PR diff to classify
+  against, and the merge queue's purpose was to catch what one PR's own lane
+  subset could not see; the nightly run exists to run everything the run after
+  a merge did not. A dispatch is how a branch asks for the legs a pull_request
+  run defers (next section). It does not arrive with an empty file list:
+  `github.event.before` is unset, so it would otherwise classify only its head
+  commit's own diff.
+
+  A `push` to `main` is no longer on this list. Its file list is everything merged
+  since the `verified` ref, and it is classified with `--satellites-direct`, so
+  the Android, WASM, ESP-IDF, Rust, Python and npm lanes light only for a change in
+  their own tree. With no `verified` ref, or a range GitHub will not list in full,
+  the list is empty and every lane is true.
 
 ## Scarce hosted legs wait for the merge queue
 
@@ -251,7 +261,9 @@ lane is true:
 
 They run in the `merge_group` run, on a push to `main` (for the newest `main`
 commit only, see the next section) and on a dispatch. `CI Status` reads their
-`skipped` as a pass, as it does for any lane-skipped job.
+`skipped` as a pass, as it does for any lane-skipped job. After a merge, the
+satellite lanes among them (`rust`, `python`, `android`, `wasm`, `npm`, `esp`)
+run only when a path in their own tree changed; the nightly run runs them all.
 
 **Why:** GitHub Free runs 20 GitHub-hosted jobs at a time, org-wide. A PR push with
 every lane set used to ask for about 25. On 2026-09-25 about 400 were queued, some
@@ -267,10 +279,11 @@ before it.
 **Running them on a branch before queueing:** `gh workflow run ci.yml --ref <branch>`
 runs the full set, since a dispatch forces every lane on.
 
-Windows on Arm (`windows-msvc-arm64`) still runs on pull requests. It is one
-entry in `_ci-windows.yml`'s static matrix, beside the two x64 legs, and a
-job-level `if` cannot see matrix values. Deferring it means restructuring
-that matrix, which is left for a follow-up.
+Windows on Arm (`windows-msvc-arm64`) used to run on pull requests, because it
+was one entry in `_ci-windows.yml`'s static matrix beside the two x64 legs and a
+job-level `if` cannot see matrix values. Both halves of that are gone: the
+matrices are in `.github/ci/legs.jsonc`, where this leg is nightly-only, and
+pull requests run the gate, not this matrix.
 
 ## Only the newest main commit runs the hosted jobs
 
