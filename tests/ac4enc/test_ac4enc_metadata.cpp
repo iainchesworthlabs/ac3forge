@@ -518,15 +518,16 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
           "[ac4enc][metadata]") {
     // Two seconds at -40 dBFS, which the profile boosts, then two at -12,
     // which it cuts, and back: 1 kHz in every channel but the LFE. Under the
-    // sanitizers a second, a second and a second and three quarters: film
-    // standard's curve boosts by 6 dB from the first frames, cuts to -3.4 dB
-    // within 0.6 s of the loud part, and has released to +3.8 dB 1.5 s after
-    // it, as with two seconds of each.
+    // sanitizers half a second, a second and a second and three quarters, and
+    // only the first case goes on to the release; the others end with the loud
+    // part: film standard's curve boosts by 6 dB from the first frames, cuts to
+    // -3.4 dB within 0.6 s of the loud part, and has released to +3.8 dB 1.5 s
+    // after it, as with two seconds of each.
     const std::size_t second = 48000;
-    const std::size_t quiet_part = kSanitized ? second : 2 * second;
+    const std::size_t quiet_part = kSanitized ? second / 2 : 2 * second;
     const std::size_t loud_part = kSanitized ? second : 2 * second;
-    const std::size_t length = quiet_part + loud_part + (kSanitized ? 7 * second / 4 : 2 * second);
-    const auto programme = [&](int channels) {
+    const std::size_t release_part = kSanitized ? 7 * second / 4 : 2 * second;
+    const auto programme = [&](int channels, std::size_t length) {
         std::vector<std::vector<float>> out;
         const std::vector<float> quiet = tone(1000.0, 0.01, length);
         for (int c = 0; c < channels; ++c) {
@@ -548,6 +549,8 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
                 continue;
             }
             CAPTURE(channels, gains_config);
+            const bool release = !kSanitized || (channels == 2 && gains_config == 0);
+            const std::size_t length = quiet_part + loud_part + (release ? release_part : 0);
             ac4::EncoderConfig config;
             config.channels = channels;
             config.bitrate_kbps = channels == 2 ? 192 : 384;
@@ -567,7 +570,7 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
             repeat.repeat_of = 0;
             config.drc = ac4::DrcConfig{.profile = ac4::DrcProfile::kFilmStandard,
                                         .modes = {gains, curve, repeat}};
-            const Encoded encoded = encode(config, programme(channels));
+            const Encoded encoded = encode(config, programme(channels, length));
             std::vector<std::size_t> starts;
             const std::vector<ac4::SyntaxRecord> read = read_back(encoded, starts);
             CHECK(values(read, starts, 0, "drc_gains_config") ==
@@ -596,10 +599,13 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
                 return 10.0 * std::log10(sum / static_cast<double>(count) + 1e-30);
             };
             const std::size_t lag = 3072 + 1313;
-            // Three quarters into the quiet part and into the loud one, and a
-            // second and a half after the loud one.
-            for (const std::size_t at : {quiet_part * 3 / 4, quiet_part + loud_part * 3 / 4,
-                                         quiet_part + loud_part + 3 * second / 2}) {
+            // Three quarters into the quiet part and into the loud one, and,
+            // where the signal goes on, a second and a half after the loud one.
+            std::vector<std::size_t> checked = {quiet_part * 3 / 4, quiet_part + loud_part * 3 / 4};
+            if (release) {
+                checked.push_back(quiet_part + loud_part + 3 * second / 2);
+            }
+            for (const std::size_t at : checked) {
                 CAPTURE(at);
                 const double gains_db =
                     rms_db(by_gains[0], lag + at, 4800) - rms_db(plain[0], lag + at, 4800);
