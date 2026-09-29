@@ -4,7 +4,7 @@
 
 | Capability | x64 | ARM64 |
 |---|---|---|
-| C++ library | **Published**<br>required CI<br>release archive | **Next release**<br>experimental CI<br>release archive |
+| C++ library | **Published**<br>CI<br>release archive | **Next release**<br>experimental CI<br>release archive |
 | Forge CLI | **Published**<br>confirmed on hardware<br>ZIP and NSIS installer | **Next release**<br>experimental CI<br>ZIP and NSIS installer |
 | Forge GUI | **Published**<br>confirmed on hardware<br>ships with Forge | **Unavailable**<br>Qt kit is not wired |
 | Crucible | **Published**<br>confirmed on hardware<br>UI/driver run; receiver output untested | **Unavailable** |
