@@ -1,9 +1,54 @@
 # Releasing ac3forge
 
-How to cut a release: what triggers `.github/workflows/release.yml`, what it produces, and how
-to set up the optional GPG signing key. Modelled on an earlier project's release process, with
-the parts that don't apply to ac3forge (APT/DNF repository publishing, a Docker image, a Home
-Assistant add-on) removed.
+How to cut a release: what triggers `.github/workflows/release.yml`, what it produces, what a
+release publishes and where, and how to set up the signing keys. Modelled on an earlier
+project's release process, with the parts that don't apply to ac3forge (APT/DNF repository
+publishing, a Docker image, a Home Assistant add-on) removed.
+
+## What a release does today
+
+A tag push, or a dispatch of `release.yml`, starts the workflows below. Each row says what the
+workflow publishes and where:
+
+| Workflow | What it does for a `v*` tag | What reaches a registry |
+|---|---|---|
+| `release.yml` | builds and tests everything `_build.yml` builds (`tier: all`) with packaging on, checks the package list, signs with GPG, writes an SBOM, attests build provenance, creates the GitHub Release from the CHANGELOG section, uploads the assets and redeploys the documentation site | a GitHub Release on this repository, marked a prerelease when the tag has a suffix |
+| `manifest-bump.yml`, called by `release.yml` once the release is up | rewrites the four staged packaging manifests to the new tag and opens a pull request on this repository; with `HOMEBREW_TAP_TOKEN` it also opens a pull request on the Homebrew tap | the Homebrew tap, once a person merges its pull request; the pull request on this repository publishes nothing |
+| `wheels.yml` | builds the Python wheels; its `publish` job uploads them to PyPI through trusted publishing | PyPI, package `ac3forge` |
+| `npm.yml` | builds and tests `js/` and packs the tarball; its `publish` job runs only from a manual dispatch on a tag | nothing |
+| `esp-component.yml` | packs and verifies the ESP-IDF component; its `publish` job runs only from a manual dispatch on a tag, and needs an `esp-component` environment and token that do not exist | nothing |
+
+What has been published so far, from each registry's own listing and from GitHub:
+
+- **GitHub Releases:** ten prereleases, `v0.2.0-beta.1` through `v0.10.0-beta.1`
+  (`v0.8.0-beta.2` is the second one for 0.8.0). No stable release has been tagged.
+- **PyPI:** [`ac3forge`](https://pypi.org/project/ac3forge/) 0.9.0b1, uploaded on 2026-08-22, and
+  0.10.0b1, uploaded on 2026-09-01. Each has fifteen wheels (CPython 3.10 to 3.14 on Windows
+  x64, macOS arm64 and Linux x86-64) and no sdist. The Linux aarch64 and Intel macOS rows were
+  added to `wheels.yml` on 2026-09-02, so the next release is the first to carry them.
+- **Homebrew:** the tap
+  [`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge)
+  is a public repository. Its `Formula/ac3forge.rb` and `Casks/ac3gui.rb` are both at
+  `v0.10.0-beta.1`. The formula was added on 2026-08-18, and the bumps to `v0.8.0-beta.2`,
+  `v0.9.0-beta.1` and `v0.10.0-beta.1` are the tap's merged pull requests #1 to #3.
+- **vcpkg:** not in the registry. The port was submitted to `microsoft/vcpkg` as pull request
+  #53470 on 2026-08-18; it is a draft with changes requested and has not been updated since
+  2026-08-19.
+- **winget:** not in the registry. The only submission is `microsoft/winget-pkgs` #419594, for
+  `0.8.0-beta.1`, opened on 2026-08-18 from the `iainchesworthlabs/winget-pkgs` fork. A reviewer
+  asked for changes on 2026-09-21, nobody replied, and a bot closed it on 2026-09-29. The
+  fork still has its branch. The tree stages `0.8.0-beta.1`, `0.8.0-beta.2`, `0.9.0-beta.1` and
+  `0.10.0-beta.1`; the last three have not been submitted. See [winget manifest](#winget-manifest).
+- **Conan:** not in ConanCenter. No pull request on `conan-center-index` names the recipe.
+- **npm:** nothing. Neither `ac3forge-wasm-decoder` nor `ac3forge` exists on npmjs.com, and
+  `npm.yml`'s `publish` job cannot run from a tag.
+- **crates.io:** nothing. The crates under `rust/` (`ac3forge` and `ac3forge-sys`) have no publish
+  step, and neither name exists on crates.io.
+- **ESP Component Registry:** nothing. The registry has no component named `ac3forge` and no
+  `iainchesworthlabs` namespace, and `esp-component.yml`'s `publish` job cannot run from a tag.
+
+A release does not publish an APT or DNF repository, a Docker image or a Home Assistant add-on.
+The GitHub environments the repository has are `pypi` and `github-pages`.
 
 ## Versioning
 
@@ -35,7 +80,9 @@ Tags are strict SemVer 2.0.0: `vMAJOR.MINOR.PATCH[-(alpha|beta|rc).N]`, e.g. `v0
 marks the GitHub Release as a prerelease. The suffix also flows into the build: CMake's
 `project()` `VERSION` field can only hold the bare `X.Y.Z` (that's what `PROJECT_VERSION` and
 CPack's package version use), but the full tag - suffix included - is carried separately as
-`PROJECT_VERSION_FULL` and shows up as `ac3cli --version`'s `version_full` field.
+`PROJECT_VERSION_FULL`. It is the `ac3::version_full` string, the headline of `ac3cli --version`
+(`ac3forge 0.10.0-beta.1`, with `+N` after it for a build N commits past the tag, so a build from
+`main` is not mistaken for the release), and the `generator` field of `ac3cli probe ... json=1`.
 
 A checkout that can't see any `v*` tag (no history, or a shallow CI clone - see `_build.yml`'s
 `fetch_depth` input) falls back to version `0.0.0-dev` rather than failing the build. Ordinary
@@ -62,23 +109,30 @@ dispatched build fetches full history (or gets the version stamped directly via
    until a promotion merge landed them all on `main` at once.
 
    The analysis engines - CodeQL, MSVC PREfast, clang-tidy and SonarCloud - analyse `main`
-   nightly (02:17 to 02:35 UTC), not per pull request, so a release cut before the following
-   night's run has not had that day's merges scanned. Either wait for the nightly or
-   dispatch them by hand first (`gh workflow run codeql.yml`, `msvc-analysis.yml`,
-   `static-analysis.yml`, `sonarcloud.yml`) and let them finish before running the query
-   above. An open `nightly-analysis` issue means a run found something that has not been
+   nightly (their crons are 02:17 to 02:35 UTC, and GitHub starts them about six and a half
+   hours later, [Self-hosted CI runners](ci-self-hosted-runners.md#nightly-analysis-window)),
+   not per pull request, so a release cut before the following night's run has not had that
+   day's merges scanned. Either wait for the nightly or dispatch them by hand first
+   (`gh workflow run codeql.yml`, `msvc-analysis.yml`, `static-analysis.yml`, `sonarcloud.yml`)
+   and let them finish before running the query above. An open `nightly-analysis` issue means a run found something that has not been
    triaged yet - deal with it before tagging.
 
    The query above and `release.yml`'s `alert-review` job both read Security > Code
    scanning, which SonarCloud does not write to. Check its dashboard separately:
    <https://sonarcloud.io/project/overview?id=iainchesworthlabs_ac3forge>.
-2. CI green on `main` for the commit you're about to tag.
+2. CI green on `main` for the commit you're about to tag. The `verified` branch points at the
+   newest commit a green run of `ci.yml` proved, so `git log verified..main` lists what has merged
+   since main was last proven ([After the merge](ci-agentic.md#after-the-merge)); tagging
+   `verified` rather than the tip of `main` ties the release to a proven commit. The nightly run
+   covers the legs the run after a merge leaves out (the sanitizers, coverage, the ABI gate), and a
+   green one also moves `verified-nightly`, which does not exist until a nightly run has passed.
 3. Releases must be **cut from main** - `resolve-version` checks this with
    `git merge-base --is-ancestor` and fails otherwise (dry runs are exempt).
 4. Decide the tag.
 5. **Update [CHANGELOG.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md)**
    - move `## [Unreleased]`'s content down to a `## [x.y.z] - YYYY-MM-DD` section matching the
-     tag from step 4, [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, grouped by
+     tag from step 4 without its `v` (`## [0.10.0-beta.1] - 2026-09-01` for `v0.10.0-beta.1`),
+     [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, grouped by
      user-facing area with bold lead-in bullets. This has to happen *before* tagging, not after:
      `github-release`'s "Render release notes from CHANGELOG.md" step
      (`tools/release/render_release_notes.py`, see [Post-release](#post-release)) extracts this
@@ -101,12 +155,13 @@ Actions > Release.
 
 Actions > Release > Run workflow, fill in `version` (e.g. `v0.2.0`), `prerelease`, `dry_run`.
 The tag does not exist yet when the run starts; `resolve-version` fails fast if it already does.
-The `github-release` job pushes the tag itself, at the very end, only after
-build/package/sign/attest have all succeeded - so a failed dispatch run leaves nothing behind to
-clean up by hand for a real release. For a **prerelease** dispatch specifically, if the tag gets
-pushed but a later step still fails, `cleanup-failed-prerelease` deletes the orphaned tag
-automatically; a non-prerelease tag is left alone even on failure; deleting a version someone
-explicitly declared is a bigger surprise than a maintainer cleaning it up by hand.
+The `github-release` job pushes the tag itself, only after build/package/sign/attest have all
+succeeded and before it renders the release notes and creates the release - so a dispatch run
+that fails in the build, the package check or the signing leaves no tag behind. For a
+**prerelease** dispatch, if the tag gets pushed but a later step (the notes, the release, the asset
+upload) still fails, `cleanup-failed-prerelease` deletes the orphaned tag automatically; a
+non-prerelease tag is left alone even on failure, because deleting a version someone explicitly
+declared is a bigger surprise than a maintainer cleaning it up by hand.
 
 ## Dry run
 
@@ -116,7 +171,7 @@ run from any branch - use it to validate a packaging change before merging.
 
 ## Post-release
 
-Most of what used to be a manual post-release checklist here is now automated (roadmap DR2):
+Most of what used to be a manual post-release checklist here is now automated:
 
 1. **Release notes come from CHANGELOG.md, not `--generate-notes`.** The `github-release` job's
    "Render release notes from CHANGELOG.md" step
@@ -150,10 +205,14 @@ Most of what used to be a manual post-release checklist here is now automated (r
    cross-checks the two platform-asset digests against the release's published `SHA512SUMS` (the
    source tarball has none to check against - see that workflow's own comments), and opens a PR
    bumping [vcpkg port](#vcpkg-port), [Homebrew formula and cask](#homebrew-formula-and-cask),
-   [winget manifest](#winget-manifest) and [Conan recipe](#conan-recipe) together. It also pushes
-   the Formula/Cask straight to the live `iainchesworthlabs/homebrew-ac3forge` tap, if
-   `HOMEBREW_TAP_TOKEN` is provisioned (see below) - that tap has no review gate of its own, same
-   as a maintainer copying the file in and pushing by hand used to.
+   [winget manifest](#winget-manifest) and [Conan recipe](#conan-recipe) together. It also opens
+   a pull request on the live `iainchesworthlabs/homebrew-ac3forge` tap with the new Formula and
+   Cask, if `HOMEBREW_TAP_TOKEN` is provisioned (see below). The tap carries a `main protection`
+   ruleset with no bypass actors, so a pull request is the only way into it: an earlier version of
+   this workflow pushed straight to the tap's `main` and was refused, and the bumps to
+   `v0.8.0-beta.2`, `v0.9.0-beta.1` and `v0.10.0-beta.1` reached the tap as pull requests. A
+   person merges the tap's pull request after `brew audit` and `brew test` on a macOS machine,
+   since nothing in CI has Homebrew.
 
    Merging that PR is still a separate, reviewed step - this closes the gap between "tagged" and
    "the bump has started", not the whole gap, which is why
@@ -172,10 +231,12 @@ Most of what used to be a manual post-release checklist here is now automated (r
    written, committed, pushed or opened - this is release-path automation that otherwise cannot
    be exercised except by shipping a real release.
 
-   **`HOMEBREW_TAP_TOKEN`** (optional): a fine-grained GitHub PAT scoped to `Contents: Read and
-   write` on `iainchesworthlabs/homebrew-ac3forge` only. Without it, the tap push step is
-   skipped (its `if:` gate simply doesn't fire, with nothing logged) - the in-tree PR still
-   opens - and the PR body says so. Add it the same way as
+   **`HOMEBREW_TAP_TOKEN`** (optional, and set on this repository): a fine-grained GitHub PAT
+   scoped to `Contents: Read and write` and `Pull requests: Read and write` on
+   `iainchesworthlabs/homebrew-ac3forge` only (the first pushes the branch, the second opens the
+   pull request; the built-in `GITHUB_TOKEN` cannot reach another repository). Without it, the
+   tap step is skipped (its `if:` gate simply doesn't fire, with nothing logged) - the in-tree PR
+   still opens - and the PR body says so. Add it the same way as
    any other repo secret (Settings > Secrets and variables > Actions); nobody but a human with
    access to GitHub's secret store should ever generate or handle it. The in-tree PR itself needs
    no new secret - it opens with the same built-in `GITHUB_TOKEN` every other job here already
@@ -191,9 +252,10 @@ Most of what used to be a manual post-release checklist here is now automated (r
 A vcpkg port for `ac3forge` is staged in-tree at
 [`packaging/vcpkg-port/ac3forge/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/vcpkg-port/ac3forge)
 (`vcpkg.json`,
-`portfile.cmake`, `usage`) and is pending submission to the curated `microsoft/vcpkg` registry -
-see [docs/library/index.md](library/index.md) for how a consumer uses it either
-way. It installs the library only (`ac3::forge`, plus `matroska::matroska`/`mp4::mp4`/
+`portfile.cmake`, `usage`). It is not in the curated `microsoft/vcpkg` registry: it was submitted
+as pull request #53470, which is a draft with changes requested (last updated 2026-08-19) - see
+[docs/library/index.md](library/index.md) for how a consumer uses it either way. It installs the
+library only (`ac3::forge`, plus `matroska::matroska`/`mp4::mp4`/
 `mpegts::mpegts` behind their own `matroska`/`mp4`/`mpegts` features, `ac3::forge_c` behind
 `capi` (see the note below), the AC-4 libraries behind `ac4`, `ac3iab::ac3iab` behind `iab` and
 `iamf::iamf` behind `iamf` - see `cmake/InstallLibrary.cmake`'s `AC3FORGE_BUILD_<NAME>` and
@@ -227,12 +289,12 @@ exported. `vcpkg.json` also declares `"supports": "!(android & !arm64)"` - only 
 Android is a real target (see [docs/platforms/android.md](platforms/android.md)); other Android
 architectures fail to build (`matroska`'s size comparisons assume a 64-bit `size_t`).
 
-`ac3::forge_c` (roadmap F1) is exposed as the port's `capi` feature (`vcpkg install
+`ac3::forge_c` is exposed as the port's `capi` feature (`vcpkg install
 ac3forge[capi]`), off by default like the others above. Its `capiTargets` export
 used to require `forge_static` even when `AC3FORGE_INSTALL_BOTH_LINKAGES=OFF` left that target
 unexported - a real bug independent of vcpkg, fixed in `cmake/InstallLibrary.cmake` by exporting
 `forge_static` alongside `forge_shared` in that branch whenever `AC3FORGE_BUILD_CAPI` is `ON`
-(#227) - which is what made adding the feature itself (roadmap AP7) a scope decision rather than
+(#227) - which is what made adding the feature itself a scope decision rather than
 a bug workaround.
 
 Any future optional library component follows the same three-step recipe this repo's own
@@ -251,10 +313,10 @@ of its own, the way `ac3adm`/`ac3::admbridge` do (see
 stay self-contained without re-exporting the third party), but deliberately have no vcpkg/Conan
 feature of their own for now.
 
-**Every release tag, once the port has been merged upstream**, needs a follow-up PR to
-`microsoft/vcpkg` - the curated registry has no mechanism to track a moving `main`, so a new
+**Every release tag, once the port has been merged upstream** (#53470 has not been), needs a
+follow-up PR to `microsoft/vcpkg` - the curated registry has no mechanism to track a moving `main`, so a new
 `ac3forge` release is invisible to `vcpkg install` until this happens. Step 1 below is now done
-by [`manifest-bump.yml`'s PR](#post-release) (roadmap DR2) rather than by hand; steps 2-3 still
+by [`manifest-bump.yml`'s PR](#post-release) rather than by hand; steps 2-3 still
 are, since they write to a repository this project does not own:
 
 1. Bump `packaging/vcpkg-port/ac3forge/vcpkg.json`'s `version-semver` to the new tag, and
@@ -299,16 +361,21 @@ that scratch copy, and discard it once validated - never commit that substitutio
 
 ## Publishing to PyPI
 
-Roadmap **F2**: Python bindings (`python/`, see
-[docs/library/python-api.md](library/python-api.md)) as the `ac3forge` PyPI package, with wheels
-for Windows, macOS and Linux built by `.github/workflows/wheels.yml` via `cibuildwheel`. That
-workflow's `build` job runs continuously - every push/PR touching `python/**`, called from
-`ci.yml`'s own `wheels` job on the `python` lane since the CI lane partitions split
-(docs/ci-lanes.md), same "buildable is checked continuously" reasoning as `windows-msvc`'s
-packaging smoke test above - and always uploads the wheels it builds as a workflow artifact.
+The Python bindings (`python/`, see
+[docs/library/python-api.md](library/python-api.md)) are the `ac3forge` PyPI package, with wheels
+for Windows (x64), macOS (arm64 and Intel) and Linux (x86_64 and aarch64) built by
+`.github/workflows/wheels.yml` via `cibuildwheel`, one wheel per CPython from 3.10 to 3.14. That
+workflow's `build` job runs in `ci.yml`'s own `wheels` job, on the `python` lane ([CI lane
+partitions](ci-lanes.md)): after a merge that touches `python/` or `examples/python/`, and in the
+nightly run, and not on pull requests. It always uploads the wheels it builds as a workflow
+artifact.
 
 **Publishing to PyPI is live**: the `pypi` GitHub environment is provisioned and
-[`ac3forge`](https://pypi.org/project/ac3forge/) is a real published package. `wheels.yml`'s
+[`ac3forge`](https://pypi.org/project/ac3forge/) is a published package, with two releases,
+0.9.0b1 (2026-08-22) and 0.10.0b1 (2026-09-01). Both carry the same fifteen wheels, CPython
+3.10 to 3.14 on Windows x64, macOS arm64 and Linux x86_64, and no sdist: the Linux aarch64 and
+Intel macOS rows of the wheel matrix were added on 2026-09-02, after `v0.10.0-beta.1`.
+`wheels.yml`'s
 `publish` job is gated on both a `v*` tag push and the `pypi` environment, and uses
 [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) rather than a stored
 API token — there is no `PYPI_API_TOKEN` secret to leak in the first place. **Nobody should ever
@@ -334,12 +401,13 @@ and on GitHub, and not something a future release needs to repeat):
 Pushing a `v*` tag (the same tag that triggers `release.yml`, see
 [Option A](#option-a-tag-based-release-the-normal-path) above) triggers `wheels.yml`'s `publish`
 job for that tag, which requests an OIDC token against the `pypi` environment and uploads the
-built wheels — the `build` job (and its artifact) runs on every push regardless.
+built wheels. The upload passes `skip-existing`, so pushing a tag again (to pick up a
+release-workflow fix, as `v0.10.0-beta.1` needed) does not fail on files PyPI already has.
 
 ## Publishing to npm
 
-Roadmap **UX5**: the browser decoder package (`js/`, see
-[docs/platforms/wasm.md](platforms/wasm.md)) as the
+The browser decoder package (`js/`, see
+[docs/platforms/wasm.md](platforms/wasm.md)) is meant to be the
 `ac3forge-wasm-decoder` npm package.
 Versioning mirrors the PyPI package above rather than reinventing it: `js/package.json` carries a
 `0.0.0-dev` placeholder in the tree (the same untagged-build fallback CMake's own
@@ -404,22 +472,23 @@ are now pinned from a real release rather than placeholders; see the cask file's
 comment.
 
 **Every release tag** needs a follow-up update to the formula, same shape as the vcpkg port's.
-Steps 1 and 3 are now done by [`manifest-bump.yml`'s PR and tap push](#post-release) (roadmap
-DR2) rather than by hand - step 2, local `brew` validation, still is, since there is no Homebrew
-on any of this project's CI runners:
+Steps 1 and 3 are now done by [`manifest-bump.yml`'s PR and tap pull request](#post-release)
+rather than by hand - step 2, local `brew` validation, still is, since there is no
+Homebrew on any of this project's CI runners:
 
 1. Bump `packaging/homebrew/Formula/ac3forge.rb`'s `url` to the new tag and `sha256` to match
    (`sha256sum` the tag's release tarball - the same tarball the vcpkg port's `SHA512` already
    points at, just a different digest algorithm).
 2. Validate locally first (see below) before touching a tap - a formula change that fails
    `brew audit` is slower to iterate on there than here.
-3. Copy the updated formula into the `homebrew-ac3forge` tap's `Formula/ac3forge.rb` and push.
+3. Open a pull request on the `homebrew-ac3forge` tap with the updated formula as
+   `Formula/ac3forge.rb`; the tap's `main` accepts nothing else.
 
 The same three steps apply to the cask now that it tracks a real release too: bump `version` to
 the new tag and `sha256` to the release's `ac3forge-*-Darwin.dmg` (`sha256sum` it, or trust
 CPack's own published `.dmg.sha512` after converting digest algorithms), validate locally, then
-copy `packaging/homebrew/Casks/ac3gui.rb` into the tap's `Casks/ac3gui.rb` and push - both files
-ship from the same tap.
+put `packaging/homebrew/Casks/ac3gui.rb` into the same tap pull request as `Casks/ac3gui.rb` -
+both files ship from the same tap.
 
 **Validating the formula locally**, from a macOS machine with Homebrew installed:
 
@@ -430,8 +499,8 @@ brew audit --formula ./packaging/homebrew/Formula/ac3forge.rb
 brew uninstall ac3forge
 ```
 
-**Validating the cask locally**, the same way, once you have a macOS machine with Homebrew
-installed - not yet run for real, same caveat as the formula above:
+**Validating the cask locally**, the same way, from a macOS machine with Homebrew
+installed:
 
 ```bash
 brew audit --cask ./packaging/homebrew/Casks/ac3gui.rb
@@ -449,28 +518,39 @@ A winget manifest for `ac3forge` (`ac3cli` and `ac3gui` together) is staged in-t
 [`packaging/winget/manifests/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/winget/manifests),
 at the exact `manifests/<first-letter>/<publisher>/<package>/<version>/` path a
 `microsoft/winget-pkgs` submission uses, so the version directory can be copied straight into a
-fork of that repo.
+fork of that repo. It is not in the winget registry. The one submission, for `0.8.0-beta.1`
+(`microsoft/winget-pkgs` #419594, opened on 2026-08-18 from the `iainchesworthlabs/winget-pkgs`
+fork), raised a Windows Defender error in its first validation run, which cleared when a
+moderator re-ran the validation on 2026-08-24, and then passed. On 2026-09-21 a reviewer asked
+for changes: the manifest is missing dependencies it should declare, and the review attaches two
+screenshots. Nobody replied, and a bot closed the pull request on 2026-09-29, three days after a
+stale warning. The fork still has the branch. The tree stages `0.8.0-beta.1`, `0.8.0-beta.2`,
+`0.9.0-beta.1` and `0.10.0-beta.1`, and the last three have not been submitted.
 
-As of DR7, `.github/workflows/_build.yml`'s `windows-msvc` leg installs `makensis` via
-Chocolatey and `cpack` produces a real NSIS `.exe` installer on every push - the leg fails
-outright if it doesn't (see `cmake/Packaging.cmake`'s `find_program(makensis)` gate and the
-"Assert the NSIS installer was produced" step). **The next release tag onward**, bump the
-manifest with `InstallerType: nullsoft` against that release's `ac3forge-X.Y.Z-win64.exe`,
-dropping `NestedInstallerType`/`NestedInstallerFiles` entirely - a real installer replaces the
+The `windows-msvc` leg of `.github/workflows/_ci-windows.yml` installs `makensis` via
+Chocolatey and `cpack` produces a real NSIS `.exe` installer in every run of `ci.yml` that
+builds that leg - the leg fails outright if it doesn't (see `cmake/Packaging.cmake`'s
+`find_program(makensis)` gate and the "Assert the NSIS installer was produced" step). From
+`v0.10.0-beta.1` on, a release carries that installer, and the manifest should use
+`InstallerType: nullsoft` against that release's `ac3forge-X.Y.Z-win64.exe`, dropping
+`NestedInstallerType`/`NestedInstallerFiles` entirely - a real installer replaces the
 nested-portable-zip shape, it doesn't add to it.
 
-Every version directory published **before** DR7 landed (`0.9.0-beta.1` and earlier) legitimately
-keeps `InstallerType: zip` with `NestedInstallerType: portable` against that release's
-`win64.zip`: those releases really did ship without an NSIS `.exe` (`makensis` wasn't on the
-runner yet), and a staged manifest must describe what a release actually shipped, not what a
-later fix made possible. Never rewrite an already-published version directory to claim an
-installer that release never produced.
+Every version directory for a release cut **before** the installer existed (`0.9.0-beta.1` and
+earlier) legitimately keeps `InstallerType: zip` with `NestedInstallerType: portable` against that
+release's `win64.zip`: those releases really did ship without an NSIS `.exe` (`makensis` wasn't
+on the runner yet), and a staged manifest must describe what a release actually shipped, not what
+a later fix made possible. Never rewrite an earlier release's version directory to claim an
+installer that release never produced. `v0.10.0-beta.1` is the first release that carries the
+installer (`ac3forge-0.10.0-win64.exe`), and its staged directory is still the zip shape, because
+`manifest-bump.yml` rendered it that way and the conversion below has not been done for any
+release.
 
 **Every release tag** needs a new version directory, since winget-pkgs versions each release
 independently rather than tracking a moving tag the way vcpkg's `version-semver` does. Step 1
-is now done by [`manifest-bump.yml`'s PR](#post-release) (roadmap DR2), which renders all three
+is now done by [`manifest-bump.yml`'s PR](#post-release), which renders all three
 files fresh from a template rather than copying the previous version directory - but it renders
-the pre-DR7 shape (`InstallerType: zip` with `NestedInstallerType: portable`, digested against
+the zip shape (`InstallerType: zip` with `NestedInstallerType: portable`, digested against
 the release's `win64.zip`; `tools/release/bump_manifests.py` never downloads the `win64.exe` at
 all), so step 2's nullsoft conversion, step 3's local `winget validate`, and step 4's fork PR
 all still need a human with the `winget` CLI:
@@ -486,11 +566,11 @@ all still need a human with the `winget` CLI:
 4. Copy the new version directory into the `microsoft/winget-pkgs` fork at the matching
    `manifests/i/iainchesworthlabs/ac3forge/<new-version>/` path and open the submission PR.
 
-The binaries inside that `.exe` are unsigned (roadmap DR6, blocked on code-signing
-certificates) - the installer building at all does not by itself resolve DR4's winget
-resubmission block, which cites an unsigned-binary Defender false positive as the likely cause.
-An unsigned NSIS installer may trip the same detection, or Windows SmartScreen on top of it;
-resolve DR6 before assuming a DR4 resubmission will go through clean.
+The binaries inside that `.exe` are unsigned: the project has no code-signing certificate yet.
+The Defender error on the `0.8.0-beta.1` submission cleared on a re-run, so signing is not what
+stopped it, but an unsigned installer can still draw a SmartScreen warning from a user. What
+stopped it was the reviewer's request for dependencies, and none of the staged manifests has a
+`Dependencies:` block, so a resubmission starts by finding out which ones the reviewer meant.
 
 **Validating the manifest locally**, with the `winget` CLI (ships with Windows 10/11):
 
@@ -502,8 +582,8 @@ winget validate --manifest packaging/winget/manifests/i/iainchesworthlabs/ac3for
 
 A Conan (2.x) recipe for `ac3forge` is staged in-tree at
 [`packaging/conan/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/conan)
-(`conanfile.py`, `conandata.yml`, `test_package/`) and is pending submission to ConanCenter
-(`conan-center-index`). Scoped the same as the vcpkg port - the library only (`ac3::forge`,
+(`conanfile.py`, `conandata.yml`, `test_package/`) and has not been submitted to ConanCenter
+(`conan-center-index`), where no pull request names it. Scoped the same as the vcpkg port - the library only (`ac3::forge`,
 plus `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts` behind their own default-on `matroska`/
 `mp4`/`mpegts` options, and `ac3::forge_c`, the AC-4 libraries, `ac3iab::ac3iab` and
 `iamf::iamf` behind default-off `capi`/`ac4`/`iab`/`iamf` options), never the
@@ -521,7 +601,7 @@ at the config `cmake/InstallLibrary.cmake` already installs - see `conanfile.py`
 **Every release tag**, once the recipe has been merged upstream, needs a follow-up PR to
 `conan-center-index` - ConanCenter has no mechanism to track a moving `main` either, same as
 vcpkg's curated registry. Step 1 is now done by [`manifest-bump.yml`'s PR](#post-release)
-(roadmap DR2) rather than by hand; steps 2-3 still are:
+rather than by hand; steps 2-3 still are:
 
 1. Add a new entry to `packaging/conan/conandata.yml`'s `sources` map, keyed by the new
    version, with the tag's release tarball `url` and `sha256` (same tarball the vcpkg port's
@@ -555,13 +635,14 @@ tarball) to validate a CMake option added since the last tag.
 ## What gets published
 
 One package per OS **and architecture**, not one per compiler-toolchain leg: `_build.yml`'s matrix
-builds and tests both Windows toolchains (MSVC, clang-cl), both Linux toolchains (GCC, Clang) - on
-both x64 and arm64 - and, since DR8, both macOS architectures (arm64 and x86_64) on every push. For
-Windows and Linux, only the leg marked `release_package: true` per OS/arch actually packages for a
-release - windows-msvc, windows-msvc-arm64, linux-gcc and linux-gcc-arm64. windows-llvm,
-linux-llvm and linux-llvm-arm64 still catch compiler-specific bugs in full, every push; they just
-don't produce a second, redundantly canonical archive that a downloader would have no way to
-choose between. `cmake/Packaging.cmake` arch-qualifies the Linux archive filename
+(the legs in `.github/ci/legs.jsonc`) builds and tests both Windows toolchains (MSVC, clang-cl),
+both Linux toolchains (GCC, Clang) - on both x64 and arm64 - and both macOS
+architectures (arm64 and x86_64), all of them in a release run. For Windows and Linux, only the
+leg marked `release_package: true` per OS/arch actually packages for a release - windows-msvc,
+windows-msvc-arm64, linux-gcc and linux-gcc-arm64. windows-llvm and linux-llvm still catch
+compiler-specific bugs in full in every run after a merge, and linux-llvm-arm64 in the nightly run;
+they just don't produce a second, redundantly canonical archive that a downloader would have no way
+to choose between. `cmake/Packaging.cmake` arch-qualifies the Linux archive filename
 (`ac3forge-X.Y.Z-Linux-x86_64.tar.gz` vs. `...-Linux-aarch64.tar.gz`) specifically so the two
 Linux architectures' TGZ/ZIP downloads never collide; DEB/RPM already carry their arch in their
 own filenames. The two linux-llvm legs are the one exception to all of that, and only for
@@ -595,8 +676,8 @@ described after the table.
 |---|---|---|---|---|
 | Windows | x64 | windows-msvc | `.zip`, `.exe` (NSIS) | `.zip` |
 | Windows | arm64 | windows-msvc-arm64 | `.zip`, `.exe` (NSIS) - `ac3cli` only, and the leg is still `experimental: true`; both are explained below | `.zip` |
-| Linux | x86_64 | linux-gcc | `.tar.gz`, `.deb`, `.rpm` | `.tar.gz`, plus real system packages: `libac3forge0`/`ac3forge-devel` (RPM) and `libac3forge0`/`libac3forge-dev` (DEB) |
-| Linux | aarch64 (Raspberry Pi 4/5 and other arm64 targets) | linux-gcc-arm64 | `.tar.gz`, `.deb`, `.rpm` | same split as x86_64, above |
+| Linux | x86_64 | linux-gcc | `.tar.gz`, `.zip`, `.deb`, `.rpm` | `.tar.gz` and `.zip`, plus real system packages: `libac3forge0`/`ac3forge-devel` (RPM) and `libac3forge0`/`libac3forge-dev` (DEB) |
+| Linux | aarch64 (Raspberry Pi 4/5 and other arm64 targets) | linux-gcc-arm64 | `.tar.gz`, `.zip`, `.deb`, `.rpm` | same split as x86_64, above |
 | macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
 | AC3Forge Crucible, Windows | x64 | windows-msvc | `ac3forge-crucible-*-win64.zip` | none - the `crucible` component carries no headers or CMake config |
@@ -604,7 +685,7 @@ described after the table.
 | AC3Forge Crucible, Linux | aarch64 | linux-llvm-arm64 | `ac3forge-crucible-*-Linux-aarch64.tar.gz`, `ac3forge-crucible_*_arm64.deb` | none, same reason |
 
 Windows x64 additionally ships AC3Forge Crucible as its own
-`ac3forge-crucible-*-win64.zip` (roadmap UX12, [the Crucible guide](crucible/index.md)): the
+`ac3forge-crucible-*-win64.zip` ([the Crucible guide](crucible/index.md)): the
 `crucible` CPack component - `ac3crucible.exe`, the `ac3crucible-run` runner, the driver's
 install/remove scripts, a Qt runtime of its own, and `NOTICES.txt` beside `LICENSE.txt` at the
 archive root (the third-party notices, generated per platform from `apps/crucible/notices/` at
@@ -658,11 +739,10 @@ that carries a PowerShell script; on both platforms it also reads `NOTICES.txt` 
 notices file written for the other platform, or one whose Quick 3D section disagrees with what
 the archive ships.
 
-Linux x86_64 also ships a self-contained `ac3gui` `.AppImage` (roadmap DR8), built by its own
+Linux x86_64 also ships a self-contained `ac3gui` `.AppImage`, built by its own
 `linux-appimage` job rather than a `release_package: true` leg above - it isn't a CPack product
-at all, so it sits outside this table's "one canonical leg per OS/arch" framing, but it runs on
-every push the same continuous-packaging way `windows-msvc` does and lands in every real release
-alongside the row above. See [docs/platforms/linux.md](platforms/linux.md#appimage) for why it
+at all, so it sits outside this table's "one canonical leg per OS/arch" framing, but it is built
+in the nightly run and lands in every real release alongside the row above. See [docs/platforms/linux.md](platforms/linux.md#appimage) for why it
 exists and how it's built.
 
 The end-user packages are `ac3cli`/`ac3gui` (CPack's `runtime` component) on desktop, or the
@@ -695,16 +775,16 @@ the CMake package config all thrown in beside the binary), which this split also
 side effect.
 
 The Shield `.apk` is signed with a real release keystore when one is provisioned (see
-"Provisioning the Android release keystore" below), and falls back to AGP's default debug
-keystore cleanly if it isn't - either way it's fine for sideloading onto a Shield in developer
-mode. A release keystore is a prerequisite before this could ever go through the Play Store,
+"Provisioning the Android release keystore" below; the four `ANDROID_KEY*` secrets are set on
+this repository), and falls back to AGP's default debug keystore cleanly if it isn't - either way
+it's fine for sideloading onto a Shield in developer mode. A release keystore is a prerequisite before this could ever go through the Play Store,
 which sideloading itself doesn't require. (Not to be confused with **object signing** - the EMDF
 Atmos authenticity tag, provisioned separately via the `ATMOS_SIGNING_KEY` secret and
 unrelated to APK code-signing; see "Provisioning the Android object-signing key" below.)
 
 Alongside the packages, one artifact that is not a build of anything:
-**`ac3forge-conformance-vectors-<version>.tar.gz`**, the published conformance vector set
-(roadmap VX20) - 60 AC-3 / E-AC-3 / Atmos streams covering each coding tool, layout and sample
+**`ac3forge-conformance-vectors-<version>.tar.gz`**, the published conformance vector set:
+60 AC-3 / E-AC-3 / Atmos streams covering each coding tool, layout and sample
 rate the encoder can emit, with the source PCM each was encoded from, the expected decode hashes
 and a manifest of what each exercises. `_build.yml`'s linux-gcc leg builds it, from
 `tools/generators/gen_conformance_vectors.py`; the release call additionally sets
@@ -716,7 +796,9 @@ See [Conformance vectors](conformance-vectors.md) for what is in it and how a de
 uses it.
 
 And **the Hearth sink firmware** ([planning/esp32-ota.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-ota.md#published-images),
-O8). `_build.yml`'s `package-esp32-firmware` job gathers the four board images `build-esp32s3`
+O8). No tag has been cut since this job landed (`v0.10.0-beta.1` has no `hearth-sink-*` assets), so
+this is what the workflow is configured to publish rather than a route a published release has
+been seen to take. `_build.yml`'s `package-esp32-firmware` job gathers the four board images `build-esp32s3`
 and `build-esp32c3` build: `hearth-sink-esp32s3`, `hearth-sink-esp32c6` (4 MB table),
 `hearth-sink-esp32c6-16mb` and `hearth-sink-esp32p4-rev1`. Each is published as four files:
 
@@ -736,29 +818,33 @@ signed with a key the boards check (O7). Every CI run keeps the same set for 14 
 `esp32-firmware` artifact, which `ota.py push --run <run id>` takes.
 
 One leg is still `experimental: true`, `windows-msvc-arm64` on its own runner label
-(`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well, so a
-release run packages it and its files are collected with the rest. What it packages is `ac3cli`
-and not `ac3gui`: `CMakePresets.json`'s `windows-msvc-arm64` preset leaves `AC3FORGE_BUILD_GUI`
-off, because Qt's only Windows arm64 kit for the pinned 6.9.3 is a cross-compile kit expecting a
-paired x64 install for its host tools - that preset's own description says the rest. What
+(`.github/ci/legs.jsonc` says why), and it carries `release_package: true` as well, so a
+release run packages it and its files are collected with the rest. `v0.10.0-beta.1` carried its
+`.exe`, `.zip` and library archive. What it packages is `ac3cli` and not `ac3gui`:
+`CMakePresets.json`'s `windows-msvc-arm64` preset leaves `AC3FORGE_BUILD_GUI` off, because when the
+leg was written Qt's only Windows arm64 kit was a cross-compile kit expecting a paired x64
+install for its host tools - that preset's own description says the rest. What
 `experimental` costs is the leg's own failure signal: `_build.yml` runs it under
 `continue-on-error`, so it can die and still report green to the reusable workflow. That is why
 `release.yml`'s "Verify every documented package was built" step names each package this section
 promises and fails on whatever is absent, rather than counting files - a release cannot quietly
-go out missing this platform. That line is still on the leg, and `_build.yml`'s header says it
-comes off only once a run has gone green, so read that row as what the workflow is configured to
-produce rather than as something a release has been seen to carry. The other four package for
-real rather than best-effort - a packaging failure on any of them blocks the release the same as
-a build or test failure would. Every package - end-user or library - gets a `.sha512`
-(`CPACK_PACKAGE_CHECKSUM` in `cmake/Packaging.cmake`), an aggregate `SHA512SUMS` manifest,
-keyless Sigstore/OIDC build
+go out missing this platform. That line is still on the leg, and comes off only once a run has
+gone green. The other four package for real rather than best-effort - a packaging failure on any
+of them blocks the release the same as a build or test failure would. Every package - end-user or
+library - gets a `.sha512` (`CPACK_PACKAGE_CHECKSUM` in `cmake/Packaging.cmake`), and the release
+carries an aggregate `SHA512SUMS` manifest, keyless Sigstore/OIDC build provenance (a
+`.intoto.jsonl` beside each file, also attested through GitHub's attestation API) and an SPDX SBOM
+(`ac3forge-<version>.spdx.json`). With the GPG key provisioned, each file also has a detached
+`.asc` signature, `SHA512SUMS.asc` signs the manifest, and the public key is attached as
+`ac3forge-signing-key.asc`.
 
 ## Provisioning the GPG signing key (optional, one-time)
 
-GPG signing is off by default - the release workflow checks whether `REPO_GPG_PRIVATE_KEY` is
-set and skips the signing steps cleanly if it isn't. The `SHA512SUMS` manifest itself is
+The release workflow checks whether `REPO_GPG_PRIVATE_KEY` is set and skips the signing steps
+cleanly if it isn't. Both `REPO_GPG_PRIVATE_KEY` and `REPO_GPG_PASSPHRASE` are set on this
+repository, and the assets of `v0.10.0-beta.1` carry the `.asc` signatures. The `SHA512SUMS` manifest itself is
 generated either way, unconditionally, in its own step ahead of the GPG-gated one - GPG only adds
-a detached signature over it and over each artifact; `manifest-bump.yml` (roadmap DR2) depends on
+a detached signature over it and over each artifact; `manifest-bump.yml` depends on
 `SHA512SUMS` existing for every release, signed or not. **Nobody should ever paste a private key
 into chat with an agent, or ask one to generate/handle key material** - do this yourself,
 locally:
@@ -870,7 +956,7 @@ Then, in the GitHub repo, go to Settings > Secrets and variables > Actions and a
 # Provenance (keyless, ties the bytes to this exact repo/workflow/commit)
 gh attestation verify ac3forge-0.2.0-win64.zip --repo iainchesworthlabs/ac3forge
 
-# GPG (ties the bytes to the maintainer's key, once one is provisioned)
+# GPG (ties the bytes to the maintainer's key)
 gpg --import ac3forge-signing-key.asc
 gpg --verify SHA512SUMS.asc SHA512SUMS && sha512sum -c SHA512SUMS
 gpg --verify ac3forge-0.2.0-win64.zip.asc ac3forge-0.2.0-win64.zip
@@ -894,7 +980,7 @@ failure does not turn the job red by itself (`experimental: true`, so `continue-
 step exists to catch exactly that. What that leg packages is `ac3cli` without `ac3gui` (see
 [What gets published](#what-gets-published) above), so its absence is one package and not two.
 
-Three absences are expected and deliberately not required. The macOS `ac3forge-dev-*` archive is
+Two absences are expected and deliberately not required. The macOS `ac3forge-dev-*` archive is
 best-effort, as above. So is the x86_64 Linux AC3Forge Crucible package: it comes off
 `linux-llvm`, which carries no `release_package`, and that leg skips the window and its package
 with a warning when the Qt it finds is older than 6.8 - so a release with no
@@ -905,7 +991,10 @@ release missing `ac3forge-crucible-*-Linux-aarch64.tar.gz` means that leg failed
 
 ## What's deliberately not here
 
-A tag-triggered release publishes signed, attested, SBOM'd packages and a GitHub Release. It does
-**not** publish an APT/DNF package repository, a Docker image, or anything Home Assistant-shaped -
-the earlier project this process was modelled on has release and repository-publishing workflows
-to copy from if any of those are ever wanted here.
+A tag-triggered release publishes signed, attested, SBOM'd packages and a GitHub Release,
+`wheels.yml` uploads the Python wheels to PyPI, and `manifest-bump.yml` opens the pull request that
+updates the Homebrew tap ([What a release does today](#what-a-release-does-today)). It does **not** publish an APT/DNF package repository, a Docker
+image, or anything Home Assistant-shaped - the earlier project this process was modelled on has
+release and repository-publishing workflows to copy from if any of those are ever wanted here -
+and it publishes nothing to npm, the ESP Component Registry, crates.io, vcpkg, ConanCenter or
+winget.
