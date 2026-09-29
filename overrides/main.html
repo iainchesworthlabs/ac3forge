@@ -17,7 +17,7 @@
         <p class="ac3f-lede">A clean-room AC-3, E-AC-3, AC-4 and Dolby Atmos codec, written from the
           published standards in C++23 — <strong>Library</strong> — with <strong>Forge</strong>,
           the CLI and GUI; <strong>Crucible</strong>, a desktop per-application Atmos mixer; and
-          <strong>Hearth</strong>, the playback project.</p>
+          <strong>Hearth</strong>, the player and its network sinks.</p>
         <div class="ac3f-cta-row">
           <a class="ac3f-btn ac3f-btn-primary" href="{{ 'quickstart/'|url }}">Getting started</a>
           <a class="ac3f-btn ac3f-btn-ghost" href="{{ 'library/'|url }}">Browse the reference</a>
@@ -36,7 +36,7 @@
           <h3>Library</h3>
           <p>Encodes and decodes AC-3 and E-AC-3, including Atmos objects via Joint Object
             Coding, and decodes and encodes AC-4. C++23, with C, Python, Rust and WebAssembly
-            bindings for AC-3 and E-AC-3.</p>
+            bindings for AC-3, E-AC-3 and AC-4.</p>
           <span class="ac3f-fam-go">Read the library docs &rarr;</span>
         </a>
         <a class="ac3f-fam-card" href="{{ 'forge/'|url }}">
@@ -44,15 +44,17 @@
           <h3>Forge</h3>
           <p><code>ac3cli</code> and <code>ac3gui</code> are one product: they build together,
             ship together, and the GUI shows the equivalent CLI command live at the bottom of
-            its window. <code>ac3cli</code> also decodes and encodes AC-4.</p>
+            its window. Both read and write AC-4.</p>
           <span class="ac3f-fam-go">Read the Forge docs &rarr;</span>
         </a>
         <a class="ac3f-fam-card" href="{{ 'crucible/'|url }}">
           <span class="ac3f-fam-tag">desktop app</span>
           <h3>Crucible</h3>
-          <p>Every application on your desktop becomes an object in an Atmos scene — drag one
-            into position, and what leaves for your receiver follows your hardware. Windows and
-            Linux run it; the macOS half compiles but has never been launched.</p>
+          <p>Captures each application separately and places it in an Atmos scene: drag one into
+            position, and whatever is not placed stays in the 5.1 bed. The output follows the
+            hardware, E-AC-3 with the objects to an Atmos receiver and AC-3 5.1 to a Dolby
+            Digital one. Windows and Linux run it; the macOS half compiles but has never been
+            launched.</p>
           <span class="ac3f-fam-go">Read the Crucible docs &rarr;</span>
         </a>
         <a class="ac3f-fam-card" href="{{ 'hearth/'|url }}">
@@ -142,7 +144,7 @@
         <a class="ac3f-demo-card" href="{{ 'forge/cli/commands/'|url }}">
           <span class="ac3f-demo-tag">CLI</span>
           <h3>Probe a stream</h3>
-          <p><code>ac3cli probe --json</code> — every declared field, no decode required.</p>
+          <p><code>ac3cli probe json=1</code> — every declared field, no decode required.</p>
         </a>
       </div>
     </section>
@@ -158,13 +160,16 @@
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Raspberry Pi</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Android (Shield)</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>ESP32-S3</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>ESP32-C6</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>ESP32-P4</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>macOS</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>WebAssembly</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-low"></span>ESP32-C3</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-low"></span>Bare metal</span>
       </div>
       <p class="ac3f-status-legend">
         <span class="ac3f-dot ac3f-dot-good" style="display:inline-block"></span> confirmed against real hardware &nbsp;
-        <span class="ac3f-dot ac3f-dot-mid" style="display:inline-block"></span> required and green in CI, no hardware confirmation &nbsp;
+        <span class="ac3f-dot ac3f-dot-mid" style="display:inline-block"></span> built and tested in CI, no hardware confirmation &nbsp;
         <span class="ac3f-dot ac3f-dot-low" style="display:inline-block"></span> correct under emulation only
       </p>
     </section>
