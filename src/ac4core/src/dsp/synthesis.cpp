@@ -132,12 +132,11 @@ bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<con
 
 template class TransformSet<Real>;
 template class ChannelSynthesis<Real>;
-#if AC4CORE_ALSO_DOUBLE
 // ac4core's own tests (tests/ac4core/test_ac4core_dsp.cpp) exercise both at
 // double directly, alongside Real (see this target's CMakeLists.txt,
-// AC4CORE_ALSO_DOUBLE).
-template class TransformSet<double>;
-template class ChannelSynthesis<double>;
-#endif
+// AC4CORE_ALSO_AT_DOUBLE).
+AC4CORE_ALSO_AT_DOUBLE(
+    template class TransformSet<double>;
+    template class ChannelSynthesis<double>;)
 
 }  // namespace ac4::detail::dsp

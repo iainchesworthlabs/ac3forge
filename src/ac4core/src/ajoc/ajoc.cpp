@@ -440,12 +440,10 @@ void Reconstruction<Real>::enhance_core(const FrameParameters& p, int num_ts,
 }
 
 template class Reconstruction<Real>;
-#if AC4CORE_ALSO_DOUBLE
 // The A-JOC encoder (src/ac4enc/src/ajoc/ajoc_encoder.cpp) drives this at
 // double regardless of the decoder's scalar, to measure its candidate
 // parameters as a decoder will reconstruct them (see this target's
-// CMakeLists.txt, AC4CORE_ALSO_DOUBLE).
-template class Reconstruction<double>;
-#endif
+// CMakeLists.txt, AC4CORE_ALSO_AT_DOUBLE).
+AC4CORE_ALSO_AT_DOUBLE(template class Reconstruction<double>;)
 
 }  // namespace ac4::detail::ajoc

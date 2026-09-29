@@ -1618,8 +1618,8 @@ The sections below contain the complete change list and fixes.
   `double`, since the encoder has no float tier of its own (decision 34) and `ac4core` is one shared
   library rather than `ac3::forge`'s separately-compiled encoder and decoder DSP; those kernels (and
   a few others `ac4core`'s own tests exercise directly at `double`) now also explicitly instantiate
-  `<double>` when `Real` is not already `double`, guarded by a new `AC4CORE_ALSO_DOUBLE` macro that
-  adds nothing to a `double`-configured build. The `double` build's output is unchanged bit for bit:
+  `<double>` when `Real` is not already `double`, through a new `AC4CORE_ALSO_AT_DOUBLE` macro the
+  per-scalar `real.hpp` defines, which adds nothing to a `double`-configured build. The `double` build's output is unchanged bit for bit:
   the whole test suite - 2,389 cases, 11,171,235 assertions - passes identically before and after,
   on both scalars. The QMF bank rewrite (real and imaginary planes, an index-moving delay line), the
   wider memory audit beyond the three findings above, the cached bit reader and Huffman table, the

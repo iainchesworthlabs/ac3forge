@@ -1749,8 +1749,8 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   encoder has no `float` tier of its own ([decision 34](#decisions-of-2026-09-25)) and `ac4core` is
   one shared library rather than `ac3::forge`'s separately-compiled encoder and decoder DSP; those
   kernels, and a few others `ac4core`'s own tests exercise directly at `double`, now also explicitly
-  instantiate `<double>` when `Real` is not already `double` (`AC4CORE_ALSO_DOUBLE`), adding nothing
-  to a `double`-configured build - the encoder's own tests, part of the unmoved whole suite above,
+  instantiate `<double>` when `Real` is not already `double` (`AC4CORE_ALSO_AT_DOUBLE`, defined by
+  the per-scalar `real.hpp`), adding nothing to a `double`-configured build - the encoder's own tests, part of the unmoved whole suite above,
   hold on that path unchanged.
 
   The QMF bank rewrite (real and imaginary planes, an index-moving delay line), the memory audit
