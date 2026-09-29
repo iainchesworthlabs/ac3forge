@@ -3344,6 +3344,24 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
             --name hearth-sink-esp32p4-rev1 --out "$GITHUB_WORKSPACE/esp32-firmware"
 
+      # The same sink with the AC-4 decoder in it (CONFIG_AC3FORGE_AC4, sdkconfig.ac4;
+      # planning/ac4.md, D14b) and the stage timers on, built and not run, for the reason the
+      # step above gives. What CI can hold is that the AC-4 archives still compile and link into
+      # a firmware for this part - with the profile's compile options and the project's
+      # -Werror, under the RISC-V toolchain's own warnings, which the host builds do not share -
+      # and that the option's build leaves the step above's alone. No image is packaged from
+      # it: it is a measurement build, and the release images have the decoder off.
+      - name: Build hearth_sink with the AC-4 decoder for the ESP32-P4 (no emulator for this part)
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          dir="$RUNNER_TEMP/hearth_sink-p4-ac4"
+          idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 \
+            "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4" \
+            -DAC3FORGE_STAGE_TIMERS=ON build
+
       - name: Upload the C6 and P4 images for packaging
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <numbers>
 
+#include "ac4/detail/profiling.hpp"
 #include "syntax/acpl.hpp"
 #include "syntax/reset.hpp"
 
@@ -421,6 +422,7 @@ void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfVa
 
 void AcplStage::apply(int ch_mode, bool add_ch_base, ElementKind kind, int codec_mode, const AcplFrameValues& values,
                       int num_ts, const AcplChannels& channels) {
+    AC4_ZONE_SCOPED_N("ac4_acpl");
     const std::size_t n = at(num_ts) * kSubbands;
     const auto matrix_of = [&](Speaker speaker) -> std::vector<QmfValue>* {
         for (std::size_t c = 0; c < channels.speakers.size(); ++c) {

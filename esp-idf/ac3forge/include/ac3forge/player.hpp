@@ -8,6 +8,8 @@
 #include <optional>
 #include <span>
 
+#include "sdkconfig.h"
+
 #include "freertos/FreeRTOS.h"
 
 #include "ac3/decoder/decoder.hpp"
@@ -50,6 +52,13 @@
 // the §E3.8.2 assembly then refuses the two-channel core - recorded as a
 // hand-over in planning/esp32-player.md), so a unit that is exactly one AC-3
 // syncframe goes to FrameDecoder itself.
+//
+// And AC-4, when the component is built with CONFIG_AC3FORGE_AC4 (its Kconfig):
+// a stream that opens with an AC-4 sync word is read by ac4::SyncFrameSplitter
+// and ac4::Decoder in place of the accumulator and the two above, once for the
+// whole play, and its blocks go through the same renderer and sink. Everything
+// that is AC-4's alone is behind that switch, in this header and in player.cpp
+// (src/ac4_bridge.hpp has the rest), so a build without it is what it was.
 
 namespace ac3forge {
 
@@ -156,6 +165,28 @@ struct PlayerConfig {
     // fails with the reason "sample rate" and the stream's rate, in Hz, as its
     // error - rather than played at the wrong speed.
     std::uint32_t sample_rate_hz = 48000;
+
+#if CONFIG_AC3FORGE_AC4
+    // How a stream that opens with an AC-4 sync word is decoded
+    // (CONFIG_AC3FORGE_AC4; planning/ac4.md, D14b). Its output layout is served
+    // as an AC-3 stream's is: the decoder's own fold for a stereo or mono
+    // layout (`stereo_fold` above), the renderer placing the decoded bed for
+    // any other.
+    struct Ac4Options {
+        // Core decoding (ETSI TS 103 190-2 clause 4.7): an immersive
+        // element's 5.X.2 core, with A-CPL and A-JCC replaced or reduced, in
+        // place of full decoding. The Part 1 channel elements decode alike in
+        // both.
+        bool core = false;
+        // FNV-1a over the bit pattern of every sample the decoder hands over,
+        // in delivery order (PlayerStats::ac4_pcm_hash), which is what says
+        // whether the float output is the same on the host and on this part
+        // (decision 26). It takes time, which is measured, so that
+        // PlayerStats::ac4_hash_us can be taken back out of decode_us.
+        bool pcm_hash = false;
+    };
+    Ac4Options ac4;
+#endif
 };
 
 // What the first decoded access unit said the stream is, and what the player
@@ -182,6 +213,13 @@ struct StreamInfo {
     const char* render = "";
     std::array<char, 96> coded{};
     std::array<char, 160> silent{};
+
+#if CONFIG_AC3FORGE_AC4
+    // The stream is AC-4, and `eac3`, `acmod` and `substreams` mean nothing
+    // for it: `channels` is what the decoder handed over, and `coded` names
+    // them in its order.
+    bool ac4 = false;
+#endif
 };
 
 struct PlayerStats {
@@ -218,6 +256,19 @@ struct PlayerStats {
     std::size_t decode_stack_free = 0;
     bool finished = false;
     bool failed = false;
+#if CONFIG_AC3FORGE_AC4
+    // What an AC-4 play adds (all zero for any other). `ac4_samples` is the audio
+    // the play has decoded, in samples of each channel at the sink's rate: the
+    // 2,048 samples of a frame at 23.44 fps, 1,920 at 25 fps and 1,601 or 1,602
+    // at 29.97 are not `frames_played` times one figure, so an AC-4 play's
+    // real-time ratio is its time against this and not against a frame length.
+    // `ac4_hash_us` is the time PlayerConfig::Ac4Options::pcm_hash spent, inside
+    // `decode_us`. `ac4_pcm_hash` is that hash of the last completed pass, and of
+    // the play so far until one completes.
+    std::uint64_t ac4_samples = 0;
+    std::uint64_t ac4_hash_us = 0;
+    std::uint64_t ac4_pcm_hash = 0;
+#endif
     // Why the run ended, once `finished`: "passes" (max_passes reached), "end
     // of stream" (the source could not rewind), or with `failed` set,
     // "framing" or "decode" with the library's own error code in `error`,

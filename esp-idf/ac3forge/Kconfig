@@ -25,6 +25,31 @@ config AC3FORGE_SENDSPIN
         rest: X25519, SHA-256, SHA-512 and AES-256-GCM are on in ESP-IDF's
         default configuration.
 
+# THE AC-4 DECODER - src/ac4, src/ac4core and src/ac4dec, and the player's
+# reading of AC-4 streams (src/ac4_bridge.hpp; planning/ac4.md, D14b). Off by
+# default: a firmware that plays AC-3 and E-AC-3 carries none of it, and its
+# build is what it was without this option.
+config AC3FORGE_AC4
+    bool "AC-4 decoder"
+    depends on SOC_CPU_HAS_FPU
+    default n
+    help
+        Builds the AC-4 inspector, core and decoder (ETSI TS 103 190-1 and
+        -2) into the component, in single precision, and lets the player
+        decode an AC-4 stream: raw sync frames, from any source the player
+        takes, told from AC-3 and E-AC-3 by their sync word. The encoder is
+        never built.
+
+        Only parts with a floating-point unit offer it: the fixed-point
+        tier of the AC-4 decoder is a later phase of planning/ac4.md.
+
+        The decoder holds about half a megabyte at 2.0 and two at 5.1.4,
+        which is more than the internal RAM of any part this component
+        supports: a part that offers it has PSRAM, and hands its heap to it
+        (CONFIG_SPIRAM_USE_MALLOC). Its decode task wants a stack of about
+        24 KB. docs/platforms/bare-metal/esp32-p4.md has what a stream of each
+        kind held on an ESP32-P4, and how fast it decoded.
+
 # An int rather than a choice, so it reaches C++ as a plain constant: the
 # component reads no configuration through the preprocessor.
 config AC3FORGE_SENDSPIN_SUITE

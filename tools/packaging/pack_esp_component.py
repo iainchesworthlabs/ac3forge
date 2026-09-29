@@ -19,10 +19,18 @@ STAGED_TREES below for what that means and where it stops.
 
     python tools/packaging/pack_esp_component.py --version 0.10.0-beta.1
     python tools/packaging/pack_esp_component.py --version 0.10.0-beta.1 --verify
+    python tools/packaging/pack_esp_component.py --version 0.10.0-beta.1 --with-ac4 --verify \
+        --verify-targets esp32p4
 
 --verify configures and builds a throwaway ESP-IDF project against the packed
 archive, which is the only check that actually establishes the thing this script
 is for. Needs an exported IDF environment; without one it says so and stops.
+
+--with-ac4 also stages the AC-4 inspector, core and decoder, for a project that
+turns on CONFIG_AC3FORGE_AC4 (planning/ac4.md, D14b). Without it the archive is
+what it was before that option existed: the option is off by default, and a
+project that turns it on against an archive packed without the AC-4 sources is
+told so at configure.
 """
 
 from __future__ import annotations
@@ -60,6 +68,17 @@ STAGED_TREES = (
     "cmake",
 )
 
+# What --with-ac4 adds: the AC-4 inspector, the core both AC-4 libraries link and
+# the decoder, whole, as the trees above are. Not src/ac4enc, which no ESP32 part
+# builds (planning/ac4.md, decision 34); the root adds it only under
+# AC3FORGE_BUILD_AC4, which the component keeps off. Off by default, so an
+# archive packed without the flag holds exactly the trees it always did.
+STAGED_AC4_TREES = (
+    "src/ac4",
+    "src/ac4core",
+    "src/ac4dec",
+)
+
 # Individual files the root build needs before it reaches src/forge.
 STAGED_FILES = (
     "CMakeLists.txt",
@@ -83,7 +102,7 @@ PRUNE = (
 )
 
 
-def stage(destination: pathlib.Path) -> None:
+def stage(destination: pathlib.Path, with_ac4: bool = False) -> None:
     """Copy the component plus the sources it needs into `destination`.
 
     The library lands under lib/, NOT beside the component's own files. Both
@@ -101,7 +120,7 @@ def stage(destination: pathlib.Path) -> None:
     shutil.rmtree(destination / "examples" / "hearth_sink" / "www", ignore_errors=True)
 
     library = destination / "lib"
-    for tree in STAGED_TREES:
+    for tree in STAGED_TREES + (STAGED_AC4_TREES if with_ac4 else ()):
         src = REPO / tree
         if not src.is_dir():
             raise SystemExit(f"missing staged tree: {src}")
@@ -148,11 +167,20 @@ def describe(archive: pathlib.Path) -> tuple[int, int]:
     return len(names), len(sources)
 
 
-def verify(archive: pathlib.Path) -> None:
+def verify(archive: pathlib.Path, with_ac4: bool = False, targets: list[str] | None = None) -> None:
     """Build a throwaway project against the archive.
 
     The only check that establishes self-containment. Everything else - entry
     counts, file lists - can pass on an archive that does not configure.
+
+    With `with_ac4` the parts that have a floating-point unit (the component's
+    Kconfig offers CONFIG_AC3FORGE_AC4 to no others) turn the AC-4 decoder on, and
+    the throwaway application constructs one and calls it, for the reason the
+    AC-3 decoder is called: an archive whose AC-4 headers or archives were left
+    out would still link an application that never named them.
+
+    `targets` narrows the parts built to some of the manifest's, for a run that
+    only asks whether one option builds and does not need the rest.
     """
     if "IDF_PATH" not in os.environ:
         raise SystemExit("--verify needs an exported ESP-IDF environment (IDF_PATH is unset)")
@@ -169,37 +197,11 @@ def verify(archive: pathlib.Path) -> None:
         (root / "main" / "CMakeLists.txt").write_text(
             'idf_component_register(SRCS "main.cpp" REQUIRES ac3forge)\n', encoding="utf-8"
         )
-        # Calls into the library rather than merely linking it: a component that
-        # unpacked but whose headers do not resolve would still LINK an empty
-        # main, and prove nothing.
-        (root / "main" / "main.cpp").write_text(
-            "\n".join(
-                [
-                    '#include "ac3/decoder/decoder.hpp"',
-                    '#include "ac3/decoder/output.hpp"',
-                    "#include <array>",
-                    "#include <span>",
-                    "",
-                    "extern \"C\" void app_main() {",
-                    "    // Instantiated and CALLED, not merely linked: a component",
-                    "    // that unpacked but whose headers did not resolve would",
-                    "    // still link an empty app_main and prove nothing.",
-                    "    static ac3::FrameDecoder decoder{",
-                    "        {.output = {.target = ac3::DownmixTarget::kLoRo}}};",
-                    "    static std::array<float, ac3::kSamplesPerFrame> pcm{};",
-                    "    static std::array<std::span<float>, 1> spans{std::span<float>(pcm)};",
-                    "    (void)decoder.decode_frame_into({}, spans);",
-                    "}",
-                ]
-            )
-            + "\n",
-            encoding="utf-8",
-        )
         (root / "CMakeLists.txt").write_text(
             "\n".join(
                 [
                     "cmake_minimum_required(VERSION 3.28)",
-                    'include($ENV{IDF_PATH}/tools/cmake/project.cmake)',
+                    "include($ENV{IDF_PATH}/tools/cmake/project.cmake)",
                     "project(ac3forge_component_verify LANGUAGES C CXX)",
                 ]
             )
@@ -218,13 +220,79 @@ def verify(archive: pathlib.Path) -> None:
         # (planning/arithmetic-tiers.md), so a package that links for one can
         # still fail to configure for the other. The manifest's own list is
         # the source - adding a target there is what adds it here.
-        for target in manifest_targets():
-            (root / "sdkconfig.defaults").write_text(
-                f'CONFIG_IDF_TARGET="{target}"\nCONFIG_COMPILER_OPTIMIZATION_SIZE=y\n',
-                encoding="utf-8",
-            )
+        for target in targets or manifest_targets():
+            # AC-4 only where the component offers it: a part with a
+            # floating-point unit, which is the S3 and the P4 among these.
+            ac4_here = with_ac4 and target_has_fpu(target)
+            defaults = f'CONFIG_IDF_TARGET="{target}"\nCONFIG_COMPILER_OPTIMIZATION_SIZE=y\n'
+            if ac4_here:
+                defaults += "CONFIG_AC3FORGE_AC4=y\n"
+            (root / "sdkconfig.defaults").write_text(defaults, encoding="utf-8")
+            (root / "main" / "main.cpp").write_text(main_source(ac4_here), encoding="utf-8")
             for command in (["set-target", target], ["build"]):
                 subprocess.run([sys.executable, str(idf_py), *command], cwd=root, check=True)
+
+
+def main_source(with_ac4: bool) -> str:
+    """The throwaway project's application.
+
+    Calls into the library rather than merely linking it: a component that
+    unpacked but whose headers do not resolve would still LINK an empty main, and
+    prove nothing.
+    """
+    lines = [
+        '#include "ac3/decoder/decoder.hpp"',
+        '#include "ac3/decoder/output.hpp"',
+    ]
+    if with_ac4:
+        lines.append('#include "ac4dec/decoder.hpp"')
+    lines += [
+        "#include <array>",
+        "#include <span>",
+        "",
+        'extern "C" void app_main() {',
+        "    // Instantiated and CALLED, not merely linked: a component",
+        "    // that unpacked but whose headers did not resolve would",
+        "    // still link an empty app_main and prove nothing.",
+        "    static ac3::FrameDecoder decoder{",
+        "        {.output = {.target = ac3::DownmixTarget::kLoRo}}};",
+        "    static std::array<float, ac3::kSamplesPerFrame> pcm{};",
+        "    static std::array<std::span<float>, 1> spans{std::span<float>(pcm)};",
+        "    (void)decoder.decode_frame_into({}, spans);",
+    ]
+    if with_ac4:
+        lines += [
+            "    // The AC-4 decoder the same way: an empty frame is a table of",
+            "    // contents that does not read, which it refuses.",
+            "    static ac4::Decoder ac4_decoder;",
+            "    (void)ac4_decoder.decode({});",
+        ]
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def target_has_fpu(target: str) -> bool:
+    """Whether ESP-IDF's soc component says `target` has a floating-point unit.
+
+    The same fact the component keys its decode arithmetic and CONFIG_AC3FORGE_AC4
+    on (CONFIG_SOC_CPU_HAS_FPU, which Kconfig generates from this header), read
+    from where it is written so that a part added to the manifest needs nothing
+    added here.
+    """
+    caps = (
+        pathlib.Path(os.environ["IDF_PATH"])
+        / "components"
+        / "soc"
+        / target
+        / "include"
+        / "soc"
+        / "soc_caps.h"
+    )
+    for line in caps.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) >= 3 and fields[0] == "#define" and fields[1] == "SOC_CPU_HAS_FPU":
+            return fields[2] == "1"
+    return False
 
 
 def manifest_targets() -> list[str]:
@@ -263,12 +331,24 @@ def main() -> int:
         action="store_true",
         help="build a throwaway IDF project against the packed archive",
     )
+    parser.add_argument(
+        "--verify-targets",
+        default="",
+        help="with --verify: build only these of the manifest's targets, comma-separated "
+        "(default: every one)",
+    )
+    parser.add_argument(
+        "--with-ac4",
+        action="store_true",
+        help="also stage the AC-4 inspector, core and decoder, for CONFIG_AC3FORGE_AC4 "
+        "(off by default: the archive is then what it was before that option)",
+    )
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ac3forge-stage-") as tmp:
         staged = pathlib.Path(tmp) / "ac3forge"
-        stage(staged)
+        stage(staged, args.with_ac4)
         archive = pack(staged, args.version)
         entries, sources = describe(archive)
         final = args.output / archive.name
@@ -277,6 +357,8 @@ def main() -> int:
     print(f"packed {final}")
     print(f"  entries: {entries}")
     print(f"  src/forge sources: {sources}")
+    if args.with_ac4:
+        print("  with the AC-4 inspector, core and decoder")
     # The number that would have caught the original three-file archive. A
     # threshold rather than an exact count, because minimal.cmake's source list
     # is meant to change.
@@ -286,7 +368,13 @@ def main() -> int:
             "See this script's own docstring."
         )
     if args.verify:
-        verify(final)
+        wanted = [t for t in args.verify_targets.split(",") if t]
+        unknown = [t for t in wanted if t not in manifest_targets()]
+        if unknown:
+            raise SystemExit(
+                f"--verify-targets names {unknown}, not in the manifest's {manifest_targets()}"
+            )
+        verify(final, args.with_ac4, wanted or None)
         print("  verified: a throwaway IDF project builds against it")
     return 0
 

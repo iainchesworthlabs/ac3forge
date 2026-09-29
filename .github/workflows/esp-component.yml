@@ -97,6 +97,20 @@ jobs:
           . "$IDF_PATH/export.sh"
           python tools/packaging/pack_esp_component.py --version 0.0.0-ci --verify
 
+      # The archive the AC-4 decoder needs, and one part built against it: packed with
+      # --with-ac4, which also stages src/ac4, src/ac4core and src/ac4dec, and built for the
+      # ESP32-P4 with CONFIG_AC3FORGE_AC4 on and an application that constructs an AC-4
+      # decoder and calls it (planning/ac4.md, D14b). The archive above is what it always
+      # was, without them; this asks that the flag does what it says. One part rather than
+      # all four: the others are the step above's, and only the parts with a floating-point
+      # unit offer the option. Nothing is uploaded from it.
+      - name: Pack with the AC-4 decoder and build against the archive for the ESP32-P4
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python tools/packaging/pack_esp_component.py --version 0.0.0-ci --with-ac4 --verify \
+            --verify-targets esp32p4 --output "$RUNNER_TEMP/esp-component-ac4"
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: esp-component

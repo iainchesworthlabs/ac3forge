@@ -1861,6 +1861,48 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   timers per part of the decode. The `float` output is identical on the host, the Cortex-M3 leg and
   the P4 ([decision 26](#decisions-of-2026-09-25)).
 
+  **Built in D14b.** `CONFIG_AC3FORGE_AC4` builds the inspector, the core and the decoder into the
+  component in `float`, behind a switch that is off by default and offered only on a part with a
+  floating-point unit. `AC3FORGE_MINIMAL_AC4` in the root CMake gives `src/ac4`, `src/ac4core` and
+  `src/ac4dec` the minimum-footprint profile's compile options as static archives, with no encoder
+  and no shared library, and the packer's `--with-ac4` puts their sources in the component archive.
+  With the switch off the component's objects disassemble identically to those of the tree before
+  it (35 of 35). The player reads a stream that opens with an AC-4 sync word through the same ring,
+  renderer and sinks, and `hearth_sink` plays it over Wi-Fi and ends a play with its time, heap,
+  stack and PCM hash and, under `AC3FORGE_STAGE_TIMERS`, the time in each part of the decode:
+  markers (`AC4_ZONE_SCOPED_N`, empty without the timers) in the QMF banks, the inverse transform,
+  A-SPX, A-CPL, the converter, and the syntax and reconstruction around them. The compile errors
+  that only the RISC-V compiler found (a `std::min` on a `long`, two integer-to-`float`
+  conversions) were fixed the same way on main by D14a's third part.
+
+  On the board, at 360 MHz with the network up, twenty plays of DEE's streams cover 2.0, 5.1 and
+  5.1.4 in full decoding, the three 5.1.4 modes in core decoding, and the converter's ratios (24,
+  23.976, 25 and 29.97 fps), with D14a's third part in the decoder and, as the baseline it is
+  measured against, without it. The P4 decodes 2.0 in SIMPLE mode in real time, at 0.53 of a frame,
+  and 2.0 in A-SPX mode at 0.74, and nothing wider: 5.1 takes 1.4 to 4.1, 5.1.4 in full decoding 2.8
+  to 3.7 (2.3 to 3.1 in core decoding) and the converter's frame rates 5.6 to 6.6, where AC-3 and
+  E-AC-3 through the same image take 0.20 for 5.1 and 0.38 for 7.1.4. Before the third part the
+  figures were 0.86 and 1.04, 3.5 to 6.7 and 5.4 to 6.1: it made a frame 1.1 to 2.5 times faster,
+  cut the decode task's stack from 49-50 KB to 20-24 and moved the decoder's large blocks to PSRAM.
+  Four findings say where the time goes now. The QMF banks and the inverse transform are 22 to 29%
+  of a frame, and A-CPL mode 3 two thirds of its play's. The converter runs in `double` on an FPU
+  that is single precision: 185 to 231 ms a frame, five times real time by itself and 84 to 88% of
+  the frame, and 5.5 s more than an ordinary first frame to design its table at 1001/960. ESP-IDF's
+  default allocation policy fills internal RAM, and before the third part it cost the decoder up to
+  1.9 times and after it 1.0 to 1.2, while a policy that suits AC-4 costs the AC-3 and E-AC-3
+  decoders 1.1 to 1.7 times, so `sdkconfig.ac4` keeps the default; why it costs anything is not
+  established. The `float` output equals the pinned hashes of the probe's five fixtures, and the
+  host's on 15 of the 20 plays and all six core plays, and differs on the five with companding,
+  because `std::pow` and `std::exp2` at `float` in `pcm/companding.cpp` and `pcm/aspx.cpp` give a
+  different last bit in each C library; routed through `scalar_exp2` and `scalar_log2` in a scratch
+  copy, before the third part, the host, a Cortex-M3 program and the board gave the same hashes on
+  four cuts. **Of the exit criteria: the per-stream time against real time, the heap and the stack,
+  and the statement beside AC-3 and E-AC-3 hold, and decision 26's identical output holds on the
+  probe's pinned fixtures and on every stream without companding; the change that would make the
+  companding streams agree is not in this phase.** The options, a recommendation and their cost are
+  in the pull request's report.
+  [ESP32-P4](../docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables.
+
   **Exit:** per stream, the time per frame against real time, peak heap and stack left, and a
   statement of what the P4 decodes in real time, in which mode and to which layout, beside what
   AC-3 and E-AC-3 do there.

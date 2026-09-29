@@ -258,6 +258,39 @@ void print_ring_low(const ac3forge::PlayerStats& s) {
 // sink_us_per_frame are the parts of us_per_frame spent placing blocks onto the
 // layout and inside the sink's write (meter included); the rest is the
 // decoder's own.
+#if CONFIG_AC3FORGE_AC4
+// An AC-4 play's time against the audio it made. The frame lengths differ by
+// frame rate - 2,048 samples at 23.44 fps, 1,920 at 25, 1,601 or 1,602 at 29.97 -
+// so `us_per_frame` above, whose realtime_permille takes a 32 ms frame, means
+// nothing here, and this is measured against the samples the decoder handed
+// over. The decoder's own time is the decode call's less what the play did in it
+// that is not the decoder's: placing blocks onto the layout, the sink's write
+// (on a paced sink mostly the wait for the DAC) and the PCM hash. The totals are
+// printed as well as the ratios so that two laps' figures can be subtracted.
+void report_ac4(const char* label, unsigned long value, const ac3forge::PlayerStats& s) {
+    if (s.ac4_samples == 0 || s.frames_played == 0) {
+        return;
+    }
+    const std::uint64_t others = s.render_us + s.sink_us + s.ac4_hash_us;
+    const std::uint64_t decoder_us = s.decode_us > others ? s.decode_us - others : 0;
+    const std::uint64_t audio_us = (s.ac4_samples * 1000000ULL) / kSampleRate;
+    std::printf("ac4.%s=%lu frames=%lu samples=%lu audio_ms=%lu decode_us=%lu render_us=%lu "
+                "sink_us=%lu hash_us=%lu decoder_us=%lu decoder_us_per_frame=%lu "
+                "audio_us_per_frame=%lu decoder_permille=%lu worst_frame_us=%lu pcm_hash=%08lx%08lx\n",
+                label, value, static_cast<unsigned long>(s.frames_played),
+                static_cast<unsigned long>(s.ac4_samples), static_cast<unsigned long>(audio_us / 1000),
+                static_cast<unsigned long>(s.decode_us), static_cast<unsigned long>(s.render_us),
+                static_cast<unsigned long>(s.sink_us), static_cast<unsigned long>(s.ac4_hash_us),
+                static_cast<unsigned long>(decoder_us),
+                static_cast<unsigned long>(decoder_us / s.frames_played),
+                static_cast<unsigned long>(audio_us / s.frames_played),
+                static_cast<unsigned long>((decoder_us * 1000) / (audio_us > 0 ? audio_us : 1)),
+                static_cast<unsigned long>(s.worst_frame_us),
+                static_cast<unsigned long>(s.ac4_pcm_hash >> 32),
+                static_cast<unsigned long>(s.ac4_pcm_hash & 0xFFFFFFFFULL));
+}
+#endif
+
 void report_timing(const char* label, unsigned long value, const ac3forge::PlayerStats& s) {
     const auto per_frame = [&s](std::uint64_t us) {
         return static_cast<unsigned long>(s.frames_played > 0 ? us / s.frames_played : 0);
@@ -274,12 +307,20 @@ void report_timing(const char* label, unsigned long value, const ac3forge::Playe
     std::printf(" heap_free=%lu\n",
                 static_cast<unsigned long>(
                     heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+#if CONFIG_AC3FORGE_AC4
+    report_ac4(label, value, s);
+#endif
 }
 
 void describe(const ac3forge::StreamInfo& info) {
+#if CONFIG_AC3FORGE_AC4
+    const char* const codec = info.ac4 ? "AC-4" : (info.eac3 ? "E-AC-3" : "AC-3");
+#else
+    const char* const codec = info.eac3 ? "E-AC-3" : "AC-3";
+#endif
     std::printf("stream: %s acmod=%d channels=%d substreams=%d dialnorm=-%d objects=%s, onto %s "
                 "(%d slots%s)\n",
-                info.eac3 ? "E-AC-3" : "AC-3", info.acmod, info.channels, info.substreams,
+                codec, info.acmod, info.channels, info.substreams,
                 info.dialnorm, info.objects ? "yes" : "no", g_layout.text().data(), info.slots,
                 info.objects_rendered ? ", objects placed" : "");
 }
@@ -295,6 +336,10 @@ struct Session {
 
 MeteredSink g_sink;
 SeamSource g_source;
+#if CONFIG_AC3FORGE_AC4
+std::size_t g_heap_at_start_internal = 0;
+std::size_t g_heap_at_start_psram = 0;
+#endif
 
 void end_play() {
     std::unique_ptr<ac3forge::Player> finished;
@@ -391,6 +436,26 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     config.max_passes = kMaxLaps;
     config.volume = g_volume.load();
     config.sample_rate_hz = kSampleRate;
+#if CONFIG_AC3FORGE_AC4
+    // The location can ask for what the Kconfig does not: a query of decoding=core
+    // is core decoding for this play, and hash=off is no hash, so that one image
+    // measures both modes and a run with the hash off is the control for the time
+    // the hash is taken to have cost. Read from the location the source was given.
+    const std::string_view location{player::source_location()};
+    config.ac4.core = CONFIG_AC3FORGE_EXAMPLE_AC4_CORE != 0 ||
+                      location.find("decoding=core") != std::string_view::npos;
+    config.ac4.pcm_hash = CONFIG_AC3FORGE_EXAMPLE_AC4_PCM_HASH != 0 &&
+                          location.find("hash=off") == std::string_view::npos;
+    // The play's own demand on the heap, which report_end prints: what was free
+    // as it began, and the least that was free from there to its end, read with
+    // the heap monitor rather than sampled (planning/esp32-stream-set.md has why
+    // a sample reads high). Everything running counts - the network stack, the
+    // Sendspin player, the ring and the decode task's stack - so what the
+    // decoder alone asked for is a little less.
+    g_heap_at_start_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    g_heap_at_start_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    (void)heap_caps_monitor_local_minimum_free_size_start();
+#endif
 
     auto player = std::make_unique<ac3forge::Player>(config, g_source, g_sink);
     if (!player->start()) {
@@ -451,10 +516,40 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
                 static_cast<unsigned long>(stats.fetched_bytes), g_layout.text().data(),
                 static_cast<unsigned long>(stats.layout_mismatches));
     print_ring_low(stats);
+#if CONFIG_AC3FORGE_AC4
+    // An AC-4 play's audio is the samples it decoded; its frames have no one length.
+    const std::uint64_t audio_ms = stats.ac4_samples > 0
+                                       ? (stats.ac4_samples * 1000) / kSampleRate
+                                       : (stats.frames_played * kFrameDurationUs) / 1000;
+#else
+    const std::uint64_t audio_ms = (stats.frames_played * kFrameDurationUs) / 1000;
+#endif
     std::printf(" stream.decode_stack_free=%lu stream.audio_ms=%lu stream.wall_ms=%lu\n",
                 static_cast<unsigned long>(stats.decode_stack_free),
-                static_cast<unsigned long>((stats.frames_played * kFrameDurationUs) / 1000),
-                static_cast<unsigned long>(wall_us / 1000));
+                static_cast<unsigned long>(audio_ms), static_cast<unsigned long>(wall_us / 1000));
+#if CONFIG_AC3FORGE_AC4
+    if (stats.ac4_samples > 0) {
+        // Bytes, internal and external: free as the play began, and the least free
+        // since. Their difference is what the play asked for at its peak.
+        const std::size_t least_internal =
+            heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        const std::size_t least_psram =
+            heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        (void)heap_caps_monitor_local_minimum_free_size_stop();
+        std::printf("ac4.heap internal_start=%lu internal_least=%lu internal_peak=%lu "
+                    "psram_start=%lu psram_least=%lu psram_peak=%lu\n",
+                    static_cast<unsigned long>(g_heap_at_start_internal),
+                    static_cast<unsigned long>(least_internal),
+                    static_cast<unsigned long>(g_heap_at_start_internal > least_internal
+                                                   ? g_heap_at_start_internal - least_internal
+                                                   : 0),
+                    static_cast<unsigned long>(g_heap_at_start_psram),
+                    static_cast<unsigned long>(least_psram),
+                    static_cast<unsigned long>(g_heap_at_start_psram > least_psram
+                                                   ? g_heap_at_start_psram - least_psram
+                                                   : 0));
+    }
+#endif
     // Where the play's frames went, stage by stage, when the library was built
     // with AC3FORGE_STAGE_TIMERS; nothing otherwise.
     ac3probe::report_stages("play", static_cast<int>(stats.frames_played));
@@ -722,7 +817,11 @@ extern "C" void app_main() {
         return;
     }
     g_layout = *layout;
+#if CONFIG_AC3FORGE_AC4
+    std::printf("ac3forge hearth_sink: AC-3, E-AC-3 or AC-4 onto %s\n", g_layout.text().data());
+#else
     std::printf("ac3forge hearth_sink: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
+#endif
 
     g_commands = xQueueCreate(4, sizeof(Command));
     g_player_mutex = xSemaphoreCreateMutex();

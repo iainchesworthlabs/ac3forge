@@ -2,6 +2,7 @@
 
 #include <cstddef>
 
+#include "ac4/detail/profiling.hpp"
 #include "dsp/qmf_kernels.hpp"
 #include "dsp/qmf_vector.hpp"
 
@@ -30,6 +31,7 @@ void QmfAnalysis<Real>::process(std::span<const Real> pcm, std::span<Complex> ou
     if (pcm.size() % kSubbands != 0 || out.size() < pcm.size()) {
         return;
     }
+    AC4_ZONE_SCOPED_N("ac4_qmf_analysis");
     const std::size_t slots = pcm.size() / kSubbands;
     for (std::size_t ts = 0; ts < slots; ++ts) {
         // The new block goes over the oldest, and is the newest: qmf_filt[sb] =
@@ -67,6 +69,7 @@ void QmfSynthesis<Real>::process(std::span<const Complex> in, std::span<Real> pc
     if (in.size() % kSubbands != 0 || pcm.size() < in.size()) {
         return;
     }
+    AC4_ZONE_SCOPED_N("ac4_qmf_synthesis");
     const std::size_t slots = in.size() / kSubbands;
     for (std::size_t ts = 0; ts < slots; ++ts) {
         // The 128 new values go over the oldest block, and are the newest.

@@ -30,6 +30,8 @@ C6 / S3 / P4 sink modules on one dual-ES9080 PCB, are on
 - **Have an ESP32-P4?** [ESP32-P4](esp32-p4.md) is the "best" tier of the shared sink family,
   real time on every fixture with no network yet — and, if the board is pre-production silicon
   like the one this was measured on, a chip-revision trap worth reading before flashing anything.
+  It plays AC-4 behind a switch: 2.0 in SIMPLE and A-SPX modes in real time, wider layouts slower
+  ([AC-4](esp32-p4.md#ac-4)).
 - **Building with ESPHome instead of raw ESP-IDF?** [ESPHome](esphome.md) is the external
   component, and where it stops short of a `media_player` or `speaker` source today.
 

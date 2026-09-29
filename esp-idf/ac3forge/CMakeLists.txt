@@ -220,6 +220,25 @@ set(AC3FORGE_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE)
 
+# The AC-4 decoder is the one addition to that list, behind a switch that is off
+# by default. AC3FORGE_BUILD_AC4 above stays off, since it also builds the
+# encoder, the applications and the tests; AC3FORGE_MINIMAL_AC4 is the root's
+# own option for the decoder inside this profile - the inspector, the core and
+# the decoder as static archives with the profile's compile options - and this
+# is the only place it is set. With CONFIG_AC3FORGE_AC4 off the root configures
+# exactly as before.
+if(CONFIG_AC3FORGE_AC4)
+    if(NOT EXISTS "${AC3FORGE_ROOT}/src/ac4dec/CMakeLists.txt")
+        message(FATAL_ERROR
+            "CONFIG_AC3FORGE_AC4 is on and there is no AC-4 decoder at '${AC3FORGE_ROOT}/src/ac4dec'. "
+            "A component archive carries the AC-4 sources only when it was packed with "
+            "tools/packaging/pack_esp_component.py --with-ac4.")
+    endif()
+    set(AC3FORGE_MINIMAL_AC4 ON CACHE BOOL "" FORCE)
+else()
+    set(AC3FORGE_MINIMAL_AC4 OFF CACHE BOOL "" FORCE)
+endif()
+
 # src/sendspin's player half, for the Sendspin player: the core and the
 # player's session, pairing and Noise, with its crypto seam over ESP-IDF's own
 # mbedTLS (the PSA Crypto API, which v6.1's mbedTLS 4 provides). The WebSocket
@@ -314,6 +333,12 @@ add_subdirectory("${AC3FORGE_ROOT}" ac3forge_build)
 target_link_libraries(${COMPONENT_LIB} PUBLIC ac3::forge_minimal)
 if(CONFIG_AC3FORGE_SENDSPIN)
     target_link_libraries(${COMPONENT_LIB} PUBLIC ac3::sendspin)
+endif()
+# The decoder's static archive brings the inspector and the core with it (the
+# core as a link-only dependency, src/ac4dec/CMakeLists.txt), and its include
+# directories for src/ac4_bridge.cpp.
+if(CONFIG_AC3FORGE_AC4)
+    target_link_libraries(${COMPONENT_LIB} PUBLIC ac4::decoder_static)
 endif()
 
 # The burst player's source under the same switch as player.cpp: it renders,

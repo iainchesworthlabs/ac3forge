@@ -115,6 +115,23 @@ idf_component_register(
              esp_wifi esp_eth esp_http_client esp_netif esp_event nvs_flash
              esp_app_format espressif__mdns)
 
+# The backend's object has to be in the link. Nothing that comes before it in
+# the link asks for it: this component's own reset_stages and report_stages
+# (hearth_sink.cpp) are weak, so that a component archive without apps/ links,
+# and a weak definition in an earlier object is all the linker needs to leave the
+# strong one in libmain.a where it is. The two zone functions it defines are
+# wanted by the library (ac3forge, and the AC-4 archives), which comes later in
+# the link than this archive and cannot pull a member out of one already passed;
+# without this the link ends in undefined references to
+# ac3::internal::profiling::zone_enter and zone_leave. Naming the first makes it
+# undefined from the start of the link, so the member is taken from libmain.a
+# when it is reached, and the rest of that object with it. Only for a build that
+# has markers to serve: a plain build carries none of it.
+if(AC3FORGE_STAGE_TIMERS AND AC3FORGE_STAGE_TIMER_SRCS)
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        "-Wl,--undefined=_ZN3ac38internal9profiling10zone_enterEPKc")
+endif()
+
 # How long the audio actually is. The partition is 256 KB and the sample is
 # 10,752 bytes, so without this the player reads a quarter of a megabyte of
 # erased flash every lap and the accumulator dutifully skips all of it looking

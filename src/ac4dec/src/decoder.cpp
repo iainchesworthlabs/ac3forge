@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "ac4/ac4.hpp"
+#include "ac4/detail/profiling.hpp"
 #include "bit_reader.hpp"
 #include "pcm/downmix.hpp"
 #include "pcm/drc.hpp"
@@ -2023,6 +2024,9 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
     // Part 2 clause 5.11: phi_t is sequence_counter modulo 5, but where a
     // splicer wrote 0 it goes on from the frame before, and it is 0 for a
     // first frame of 0.
+    // What follows is everything after the syntax: the reconstruction of the
+    // presentation's channels, whose kernels carry markers of their own.
+    AC4_ZONE_SCOPED_N("ac4_reconstruct");
     const int counter = report->sequence_counter;
     const int phase = counter != 0 ? counter % 5 : (d.converter_phase ? (*d.converter_phase + 1) % 5 : 0);
     d.converter_phase = phase;
@@ -2212,6 +2216,7 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
 
 std::expected<FrameReport, DecodeError> Decoder::Impl::read(
     std::span<const std::byte> raw_ac4_frame) {
+    AC4_ZONE_SCOPED_N("ac4_parse");
     Capture* const capture = &frame_capture;
     auto frame = ac4::parse_raw_frame(raw_ac4_frame);
     if (!frame) {
