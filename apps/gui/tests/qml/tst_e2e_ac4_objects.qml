@@ -9,7 +9,7 @@ import Ac3Forge
 // build's ac3cli in a folder holding copies of what it names: the sources, and the scene
 // file an AC-4 object encode writes beside its output. The two streams must be the same
 // bytes, for a raw stream and an MP4 file, with A-JOC and direct coding, one source and
-// several with an assignment, a trim, an fold, a speaker, an LFE and an offset. The page's
+// several with an assignment, a trim, a fold, a speaker, an LFE and an offset. The page's
 // file is then decoded by the object page, each object's place and gain read back.
 //
 // The last case is I5's round trip held to the page: an ADM BWF master (the fixture
@@ -54,6 +54,14 @@ TestCase {
         EncoderController.ac4ObjectCodingIndex = 0;
         EncoderController.ac4Dialnorm = 31;
         EncoderController.ac4Crc = true;
+    }
+
+    // Every encode and inspection a case starts is waited for before it ends, so no job of
+    // this suite is left running at teardown (tst_teardown.qml and tst_ac4_decode.qml are the
+    // suites that leave one on purpose).
+    function cleanupTestCase() {
+        tryCompare(EncoderController, "busy", false, 15000);
+        tryCompare(ObjectDecodeController, "busy", false, 15000);
     }
 
     // ---- helpers (tst_e2e_ac4.qml's) --------------------------------------

@@ -41,6 +41,13 @@ TestCase {
         EncoderController.ac4Crc = true;
     }
 
+    // No test here starts an encode (every refusal is raised before a run opens), and the
+    // controllers are idle as the suite ends: no job of this suite is left running at teardown.
+    function cleanupTestCase() {
+        tryCompare(EncoderController, "busy", false, 15000);
+        tryCompare(ObjectDecodeController, "busy", false, 15000);
+    }
+
     // ---- helpers (tst_ac4_encode.qml's) ----------------------------------
 
     function findByName(root, name) {
