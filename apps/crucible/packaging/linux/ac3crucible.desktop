@@ -2,7 +2,7 @@
 Type=Application
 Name=Crucible
 GenericName=Spatial audio mixer
-Comment=Every application on the desk as an object in a live Dolby Atmos scene
+Comment=Capture each application separately and place it as an object in a live Dolby Atmos scene
 Exec=ac3crucible
 Icon=ac3crucible
 Terminal=false

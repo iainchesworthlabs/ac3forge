@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=ac3hearth
-GenericName=AC-3 / E-AC-3 Reference Player
-Comment=Hearth — the AC3Forge desktop reference player, with passthrough and Sendspin network outputs
+GenericName=AC-3 / E-AC-3 / AC-4 Player
+Comment=Play AC-3, E-AC-3 and AC-4 streams on local speakers, a receiver or Sendspin network sinks
 Exec=ac3hearth %F
 Icon=ac3hearth
 Terminal=false
