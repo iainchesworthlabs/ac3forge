@@ -42,7 +42,7 @@ that a reader of a section below knows whether to rely on it. The sections are k
 | The form, the control surface, the API | Dropped. There is no headless service, kiosk, web page, REST API, event stream or OSC surface. cpp-httplib is in the tree, carrying Sendspin's WebSocket transport |
 | Platforms | Windows, macOS and Linux, as a desktop application. The service integrations (systemd, a Windows service, launchd) were not built |
 | Whole-house audio | Replaced by Sendspin groups and the extension role |
-| What UX9 needs | The six gaps were closed in Hearth's engine, and the PipeWire capability read exists in `src/audio`. `ac3cli play` still takes the default endpoint at its word |
+| What UX9 needs | The six gaps were closed in Hearth's engine, and the PipeWire capability read exists in `src/audio`. `ac3cli play` keeps two of them: it takes the default endpoint at its word, and its transcode leg still goes through a temp file |
 | Build identity | Partly. `ac3hearth_engine`, `ac3hearth`, the option and the CPack component `hearth` exist. The `core/`, `net/`, `platform/`, `kiosk/` and `web/` directories, the `ac3hearth-kiosk` component, a configuration file, a service unit and a service user do not |
 | Tests | Partly. `tests/hearth` compiles into `ac3tests` on every leg, tagged `[hearth]`. There are no `[hearth-net]` or `[hearth-device]` tags and no `hearth_platform_probe.cpp` |
 | CI | Replaced. Hearth builds by default on every leg rather than under a `hearth: true` flag, and the packaging legs check the `hearth` component. Since 2026-09-29 pull requests run `pr-gate.yml` ([CI for many agents](../docs/ci-agentic.md)), so the leg table and the docs-only rule below describe the earlier CI |

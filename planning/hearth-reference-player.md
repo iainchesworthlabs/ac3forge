@@ -115,7 +115,7 @@ installed or packaged.*
   and marked as not playable until [chip D](#chip-d-the-ac-4-decoder) delivers a decoder.
   *As built, chip D delivered it and AC-4 plays.*
 - Duration and seek come from each stream's samples per access unit. The GUI's stream player
-  assumes 1,536 (`apps/gui/stream_player_controller.cpp:147`), which is wrong for E-AC-3 with
+  assumes 1,536 (`ac3::kSamplesPerFrame` in `apps/gui/stream_player_controller.cpp`), which is wrong for E-AC-3 with
   fewer than six blocks per frame.
 
 ### Playback configuration
@@ -183,6 +183,7 @@ dynamic range, downmix, the immersive layout, full or core decoding and the outp
   outputs allowed to stay unassigned. `src/audio` has no routing today and assumes the
   WAVE_FORMAT_EXTENSIBLE channel order. On the ESP32 a per-speaker layout list already expresses
   a patch, and duplicates are refused.
+  *As built, A1 added the routing patch to the renderer and A2 made `src/audio` place channels by it.*
 - **Identify tone**, one channel at a time.
 - **Per-output trim** in dB and **per-output delay** in milliseconds.
 - **Bass management**: small speakers crossed over into the LFE. The renderer takes a crossover
@@ -204,7 +205,9 @@ stands as written.
   substream mixing metadata and channel maps, `io::scan` (programmes, associated services,
   channel map), and the whole-file `io::probe` report (measured and declared bitrate, VBR,
   metadata ranges, EMDF payload ids, OAMD and JOC, CRC, coding tools). `ac3cli probe json=1`
-  (schema `ac3forge.probe/1`) is the precedent and reads raw streams only.
+  (schema `ac3forge.probe/1`) is the precedent and reads raw streams only. *As built, `probe` reads
+  Matroska, MP4 and MPEG-TS as well, and AC-4; Hearth's own media information JSON, schema
+  `ac3forge.hearth.media/1`, shares the probe's JSON writer through `apps/common`.*
 - **Objects**: OAMD object metadata; whether an authenticity tag is present
   (`has_authenticity_tag`; verification needs a key and checks only this project's own tag).
 - **Container**: codec configuration box (`dac3`, `dec3`), track, duration.
@@ -553,8 +556,8 @@ speaker; the Pi for ALSA and PipeWire; macOS compiled and unit-tested in CI only
 and selector, meters released at play time, media information and diagnostics. The six
 sink-following gaps were closed in the engine (`output_decision.cpp`, `output_selector.cpp`,
 `Player::refollow()`), and the PipeWire capability read exists in `src/audio`. `ac3cli play` was
-not changed with them: it still takes the default endpoint at its word (see
-[Coordination](#coordination)).
+not changed with them: it still takes the default endpoint at its word and transcodes through a
+temp file (see [Coordination](#coordination)).
 
 `apps/hearth/engine/` (`ac3hearth_engine`, no Qt):
 

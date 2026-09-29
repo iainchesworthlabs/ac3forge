@@ -583,7 +583,7 @@ states.
 Under option C, a new application needs its own six catalogues plus `xx`, its own RTL pass and its
 own accessibility audit. Note for whoever takes that on: `apps/crucible/translations/` has `ar`,
 `de`, `es`, `fr`, `he`, `yi` and **no `xx`**, so the pseudo-locale is a GUI-only practice today
-rather than a family one.
+rather than a family one (Hearth's six catalogues have none either).
 
 ## Identity assets
 

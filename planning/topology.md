@@ -64,6 +64,11 @@ three separate things that looked unrelated: why Crucible can only ever feed the
 is cabled to, why the appliance plan had nowhere to put multi-room audio, and why the ESP32-S3
 port reads as a curiosity rather than as a product.
 
+*The three roles table and the two shapes are the tree of 2026-09-07. Since 2026-09-15 a third shape exists for
+stored files: `ac3hearth` sends a file's bitstream over Sendspin to ESP32 and test sinks that decode it, so the
+transport row also lists Sendspin with the extension role, and the sink row lists the Hearth desktop player and
+the ESP32 sinks. A live source feeding a network sink, from Crucible or `ac3cli live`, still does not exist.*
+
 ## Why no existing ecosystem closes the gap
 
 This was checked before proposing anything, because the cheapest answer would have been to adopt
