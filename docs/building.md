@@ -7,16 +7,17 @@ Every command here has been run on the configuration described under
 
 | | Version | Notes |
 |---|---|---|
-| A compiler | MSVC (VS 2026), clang-cl 22, GCC 16, or Clang 22 | C++23, including `std::expected` and deducing `this`. See [Verified configuration](#verified-configuration) for the CI matrix. |
+| A compiler | MSVC (VS 2026, toolset 14.5x), clang-cl 22, GCC 16, Clang 22, or Homebrew LLVM on macOS | C++23, including `std::expected` and deducing `this`. CI pins GCC 16 (`.github/toolchain/02-gcc-toolchain.sh`), LLVM 22 (`03-llvm-toolchain.sh`) and the MSVC toolset prefix 14.5 (`.github/toolchain-versions.json`); the Linux toolchain files fall back to older GCC versions so a machine one release behind still configures. See [Verified configuration](#verified-configuration) for the CI matrix. |
 | CMake | ≥ 3.28 | `cmake_minimum_required(VERSION 3.28...4.3)`. |
 | Ninja | any recent | The presets hard-code the Ninja generator. |
-| vcpkg | any recent | Supplies fmt and Catch2, plus optional Boost and Tracy features. fmt and Catch2 can use `FetchContent` when vcpkg is unavailable. See [Options](#options). |
-| Qt | 6.5+ prebuilt | GUI only. **Never from vcpkg** — see [Qt](#qt). |
+| vcpkg | a checkout that contains the commit in `vcpkg.json`'s `builtin-baseline` | Supplies fmt and Catch2, and the `hearth` feature's cpp-httplib, mbedTLS, libFLAC, Opus and mdns (selected by every hosted preset), plus the opt-in `adm` (Boost) and `profiling` (Tracy) features. A shallow or old checkout that lacks the baseline commit cannot resolve it. fmt and Catch2 can use `FetchContent` when vcpkg is unavailable. See [Options](#options). |
+| Qt | 6.5+ prebuilt for `ac3gui`, 6.8+ for `ac3hearth` and Crucible | GUI applications only. CI pins 6.10.3 (`.github/toolchain-versions.json`). **Never from vcpkg** — see [Qt](#qt). |
 | ALSA (`libasound2-dev`) | any recent | Optional Linux audio backend. See [Linux audio](#linux-audio). |
 | PipeWire (`libpipewire-0.3-dev`) | any recent | Optional Linux audio backend; required by Crucible. See [Linux audio](#linux-audio). |
 | libxcb (`libxcb1-dev`) | any recent | Optional; used by Crucible for X11 full-screen detection. |
-| Python 3 + numpy | 3.11+ | Only for `tools/`; not part of the build. |
+| Python 3 + numpy | 3.10+ | Only for `tools/`; not part of the build. `ruff.toml` targets 3.10, the floor of the Python package; CI's dependency locks use 3.14. |
 | FFmpeg CLI | 8.x | Only for validation scripts; not part of the build. |
+| Other targets | see the platform pages | WebAssembly needs Emscripten (`config-wasm-emscripten`), the ESP32 builds ESP-IDF v6.1, the bare-metal probe an `arm-none-eabi` GCC and QEMU, and the Android app the NDK: [WebAssembly](platforms/wasm.md), [Bare metal](platforms/bare-metal/index.md), [Android](platforms/android.md). |
 
 ## The short version
 
@@ -53,7 +54,8 @@ be picked up by mistake the way a bare `find_package`-less configure would.
 That toolchain directory has to come from somewhere. If `VCToolsInstallDir` and `INCLUDE` are
 already set — a Developer PowerShell — it uses them. Otherwise
 `cmake/toolchains/windows.msvc.environment.cmake` locates the newest Visual Studio install with
-`vswhere`, runs its `vcvarsall.bat x64` in a subprocess, and imports the result into the CMake
+`vswhere`, runs its `vcvarsall.bat x64` (the arm64 form for `windows-msvc-arm64`) in a subprocess,
+and imports the result into the CMake
 process so every compiler check, `try_compile` and the actual `ninja` invocation inherit it —
 which is what makes an ordinary shell work at all. The include/lib search paths are then baked
 onto the compile and link lines themselves, not left in the environment, so the build tree stays
@@ -72,78 +74,89 @@ with C++" workload if you hit that.
 hidden fragments composed together, not a flat list:
 
 - `core` — the Ninja generator, the vcpkg toolchain file from `$env{VCPKG_ROOT}`,
-  `AC3FORGE_BUILD_CLI`/`AC3FORGE_BUILD_TESTS` pinned `ON`, and the vcpkg overlay triplets under
-  `cmake/vcpkg/triplets/`. (`CMAKE_EXPORT_COMPILE_COMMANDS` comes from the top-level
+  `AC3FORGE_BUILD_CLI`/`AC3FORGE_BUILD_TESTS` pinned `ON`, `VCPKG_MANIFEST_FEATURES=hearth`, the
+  vcpkg overlay triplets under `cmake/vcpkg/triplets/` and the overlay ports under
+  `cmake/vcpkg/ports/`. (`CMAKE_EXPORT_COMPILE_COMMANDS` comes from the top-level
   `CMakeLists.txt` itself, not the presets.)
 - `debug` / `release` — just `CMAKE_BUILD_TYPE`.
-- `windows-msvc`, `windows-llvm`, `linux-gcc`, `linux-llvm`, `linux-gcc-arm64`,
-  `linux-llvm-arm64`, `macos-llvm` — one per platform/compiler pair. Each sets
-  `VCPKG_TARGET_TRIPLET`, chainloads that platform's toolchain
+- `windows-msvc`, `windows-msvc-arm64`, `windows-llvm`, `linux-gcc`, `linux-llvm`,
+  `linux-gcc-arm64`, `linux-llvm-arm64`, `macos-llvm`, `macos-llvm-x64` — one per
+  platform/compiler pair. Each sets `VCPKG_TARGET_TRIPLET`, chainloads that platform's toolchain
   file (see [above](#the-compiler-is-pinned-not-path-found)) via `VCPKG_CHAINLOAD_TOOLCHAIN_FILE`,
   and is gated by a `condition` on `hostSystemName` so only the presets for the machine you're on
-  even appear. `AC3FORGE_BUILD_GUI` is `ON` for the two Windows ones and `OFF` for the rest — see
-  [Verified configuration](#verified-configuration).
+  even appear. `AC3FORGE_BUILD_GUI` is `ON` for `windows-msvc` and `windows-llvm` and `OFF` for
+  the rest, `windows-msvc-arm64` included — see [Verified configuration](#verified-configuration).
+- `wasm-emscripten` — the Emscripten toolchain for the browser demos. It does not inherit `core`:
+  there is no host condition and no vcpkg toolchain, so it sets the generator, the binary
+  directory and the options itself, and turns off everything a browser build has no use for (the
+  CLI, GUI, tests, examples, Hearth, the three container writers and the C API). The AC-4
+  libraries stay on. See [WebAssembly](platforms/wasm.md).
+- `sanitize-asan-ubsan`, `sanitize-tsan`, `coverage`, `shared-libs`, `minimal-decoder` and
+  `minimal-encoder` — the variant fragments described below, each adding a few cache variables to
+  a platform preset.
 
-Fourteen concrete `config-<platform>[-debug]` presets inherit `[ release|debug, <platform>, core ]`,
+Eighteen concrete `config-<platform>[-debug]` presets inherit `[ release|debug, <platform>, core ]`,
 each with a matching `build-<platform>[-debug]` and `test-<platform>[-debug]` preset:
 
 | Platform | Compiler | Configure preset | Build preset | Test preset |
 |---|---|---|---|---|
 | Windows | MSVC | `config-windows-msvc[-debug]` | `build-windows-msvc[-debug]` | `test-windows-msvc[-debug]` |
+| Windows (arm64) | MSVC | `config-windows-msvc-arm64[-debug]` | `build-windows-msvc-arm64[-debug]` | `test-windows-msvc-arm64[-debug]` |
 | Windows | clang-cl | `config-windows-llvm[-debug]` | `build-windows-llvm[-debug]` | `test-windows-llvm[-debug]` |
 | Linux | GCC 16 | `config-linux-gcc[-debug]` | `build-linux-gcc[-debug]` | `test-linux-gcc[-debug]` |
 | Linux | Clang 22 | `config-linux-llvm[-debug]` | `build-linux-llvm[-debug]` | `test-linux-llvm[-debug]` |
 | Linux (arm64) | GCC 16 | `config-linux-gcc-arm64[-debug]` | `build-linux-gcc-arm64[-debug]` | `test-linux-gcc-arm64[-debug]` |
 | Linux (arm64) | Clang 22 | `config-linux-llvm-arm64[-debug]` | `build-linux-llvm-arm64[-debug]` | `test-linux-llvm-arm64[-debug]` |
 | macOS | Homebrew LLVM | `config-macos-llvm[-debug]` | `build-macos-llvm[-debug]` | `test-macos-llvm[-debug]` |
+| macOS (x64) | Homebrew LLVM | `config-macos-llvm-x64[-debug]` | `build-macos-llvm-x64[-debug]` | `test-macos-llvm-x64[-debug]` |
 
-The two `-arm64` rows are the same `linux.gcc.toolchain.cmake`/`linux.llvm.toolchain.cmake` files as
-their x64 counterparts — only the vcpkg triplet (`arm64-linux-gcc`/`arm64-linux-llvm`) differs; the
-toolchain files already resolve aarch64 vs x86_64 from `VCPKG_TARGET_ARCHITECTURE`. See
-[Raspberry Pi](platforms/raspberry-pi.md), the primary hardware this target is validated against.
+The `-arm64` Linux rows are the same `linux.gcc.toolchain.cmake`/`linux.llvm.toolchain.cmake`
+files as their x64 counterparts — only the vcpkg triplet (`arm64-linux-gcc`/`arm64-linux-llvm`)
+differs, because the toolchain files already resolve aarch64 vs x86_64 from
+`VCPKG_TARGET_ARCHITECTURE`. `windows-msvc-arm64` and `macos-llvm-x64` follow the same pattern
+(`arm64-windows-msvc`, `x64-macos-llvm`). See [Raspberry Pi](platforms/raspberry-pi.md), the
+primary hardware the Linux arm64 target is validated against.
 
-There is a fifteenth configure/build/test trio, Debug-only and not part of the table above
-because it isn't a platform/compiler pair but an instrumented variant of `linux-llvm`:
-`config-linux-llvm-asan-ubsan` / `build-linux-llvm-asan-ubsan` / `test-linux-llvm-asan-ubsan`,
-which inherits `linux-llvm` plus a `sanitize-asan-ubsan` fragment setting
+The presets that are not platform/compiler pairs are variants of the Linux and Windows ones, or
+build something other than the whole project. `cmake --list-presets` (and `cmake --build
+--list-presets`, `ctest --list-presets`, `cpack --list-presets`, `cmake --workflow --list-presets`)
+lists the ones that apply on the machine you are on; the WebAssembly and minimum-footprint
+presets have no test preset.
+
+**Sanitizers.** `config-linux-llvm-asan-ubsan` / `build-linux-llvm-asan-ubsan` /
+`test-linux-llvm-asan-ubsan` is Debug-only, an instrumented variant of `linux-llvm`, and inherits
+`linux-llvm` plus a `sanitize-asan-ubsan` fragment setting
 `AC3FORGE_SANITIZERS=address,undefined` (see `cmake/Sanitizers.cmake`; MSVC is rejected outright,
-so this only exists for GCC/Clang). See [Verified configuration](#verified-configuration) for what CI says
-about all eighteen. There are also 11 `ci-<platform>` `workflowPresets` (Release except for the
-two sanitizer ones, which are Debug-only) that chain configure→build→test in one
-`cmake --workflow --preset ci-windows-msvc` call. There is no coverage workflow preset — the
-`config-`/`build-`/`test-linux-gcc-coverage` trio exists, but nothing chains it — and CI does not
-call `cmake --workflow` at all: `_build.yml` runs `cmake --preset config-<leg>`,
-`cmake --build --preset build-<leg>` and `ctest --preset test-<leg>` as three separate steps,
-because a leg has per-leg overrides to append (`-DAC3FORGE_BUILD_GUI=ON` on the GUI legs,
-`-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"` on Windows) that a single `--workflow` invocation has
-nowhere to put. The workflow presets are the one-command local equivalent of those three steps,
-not the path CI takes.
-
-With any `AC3FORGE_SANITIZERS` set, `tests/CMakeLists.txt` defines `AC3FORGE_TEST_SANITIZED=1` for
-`ac3tests` (0 otherwise), and `tests/sanitized.hpp` gives it to the tests as `ac3::test::kSanitized`.
+so this only exists for GCC/Clang). Its test preset leaves out the `Performance` label, because
+the throughput guards are not meant to run under a sanitizer. With any `AC3FORGE_SANITIZERS` set,
+`tests/CMakeLists.txt` defines `AC3FORGE_TEST_SANITIZED=1` for `ac3tests` (0 otherwise), and
+`tests/sanitized.hpp` gives it to the tests as `ac3::test::kSanitized`.
 The heaviest AC-4 tests take less under it: fewer frames, shorter signals, a stride through their
 cases, one leg per frame rate or one committed stream of each kind, each still running every code
-path it covers, to the same tolerances. A debug build under ASan and UBSan runs the codecs many times slower, and CI's
-sanitizer leg runs ctest serially; a new test that takes minutes there takes the flag the same way.
+path it covers, to the same tolerances. A debug build under ASan and UBSan runs the codecs many
+times slower, and CI's sanitizer leg runs ctest serially; a new test that takes minutes there takes
+the flag the same way.
 
-There is an eighteenth trio, the ThreadSanitizer sibling of the pair above:
-`config-linux-llvm-tsan` / `build-linux-llvm-tsan` / `test-linux-llvm-tsan`, inheriting
-`linux-llvm` plus a `sanitize-tsan` fragment setting `AC3FORGE_SANITIZERS=thread`. It is a
-separate preset rather than more entries in the ASan/UBSan list because the two runtimes are
-mutually exclusive — Clang refuses `-fsanitize=address,thread` outright — and because they
-answer different questions: ASan/UBSan ask whether one thread's memory and arithmetic are sound,
-TSan asks whether two threads agree on who owns what. Nothing else in this repository can see a
-data race, and `src/audio` is a lock-free SPSC ring, a silence watchdog and a clock-drift servo
-shared between a real-time callback thread and the encoder thread.
+`config-linux-llvm-tsan` / `build-linux-llvm-tsan` / `test-linux-llvm-tsan` is the ThreadSanitizer
+sibling, inheriting `linux-llvm` plus a `sanitize-tsan` fragment setting
+`AC3FORGE_SANITIZERS=thread`. It is a separate preset rather than more entries in the ASan/UBSan
+list because the two runtimes are mutually exclusive — Clang refuses `-fsanitize=address,thread`
+outright — and because they answer different questions: ASan/UBSan ask whether one thread's
+memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing
+else in this repository can see a data race, and `src/audio` is a lock-free SPSC ring, a silence
+watchdog and a clock-drift servo shared between a real-time callback thread and the encoder
+thread.
 
-Its test preset runs only the `concurrency` ctest label — `tests/audio/` plus
-`tests/cli/test_cli_live.cpp`, 36 cases — because TSan's shadow memory makes everything several
-times slower and the rest of the suite is single-threaded codec maths. The label comes from the
-Catch2 tags themselves (`catch_discover_tests(... ADD_TAGS_AS_LABELS)` in `tests/CMakeLists.txt`),
-so `ctest -L ring`, `-L encoder` and the rest work the same way. `tsan.supp` at the repository
-root holds the suppressions, and is meant to stay near-empty; `ac3membench` is not built under
-this preset, because its global `operator new`/`delete` replacements collide with TSan's own
-runtime at link time.
+Its test preset runs only the `concurrency` ctest label — the cases under `tests/audio/`, the
+CLI's live-capture commands (`tests/cli/test_cli_live*.cpp`), the Crucible engine's threads
+(`tests/crucible/`) and the Hearth engine's threaded cases (`tests/hearth/`) — because TSan's
+shadow memory makes everything several times slower and the rest of the suite is single-threaded
+codec maths. The label comes from the Catch2 tags themselves
+(`catch_discover_tests(... ADD_TAGS_AS_LABELS)` in `tests/CMakeLists.txt`), so `ctest -L ring`,
+`-L encoder` and the rest work the same way ([Running the tests](#running-the-tests)). `tsan.supp`
+at the repository root holds the suppressions, and is meant to stay near-empty; `ac3membench` is
+not built under this preset, because its global `operator new`/`delete` replacements collide with
+TSan's own runtime at link time.
 
 ```bash
 cmake --preset config-linux-llvm-tsan
@@ -151,29 +164,38 @@ cmake --build --preset build-linux-llvm-tsan -- -k 0
 ctest --preset test-linux-llvm-tsan
 ```
 
-There is also a `minimal-decoder` fragment and the three configure/build presets that inherit
-it — `config-arm-none-eabi-minimal`, `config-linux-gcc-minimal`, `config-linux-llvm-minimal`.
-They are not part of the table above because they do not build the project: they build
-PF7's decode-only library and its probe, and nothing else. The arm one does not inherit `core`
-either — there is no vcpkg triplet for bare-metal arm and nothing that profile builds has a
-third-party dependency. See
+**The minimum-footprint profiles.** A `minimal-decoder` fragment and a `minimal-encoder` fragment,
+and the configure/build presets that inherit them, build the decode-only library and its probe (or
+the encode-only ones) and nothing else, so they are not part of the tables above and have no test
+presets. The decoder ones are `config-linux-gcc-minimal`, `config-linux-llvm-minimal` and
+`config-arm-none-eabi-minimal`; `config-arm-none-eabi-minimal-encoder` and
+`config-linux-gcc-minimal-encoder` are the encoder's; and `config-linux-gcc-minimal-ac4` and
+`config-arm-none-eabi-minimal-ac4` add the AC-4 decoder to the decoder profile. A `-icount` suffix
+on the `arm-none-eabi` ones (`config-arm-none-eabi-minimal-icount`,
+`-minimal-ac4-icount`, `-minimal-encoder-icount`) puts the probe's clock on the CMSDK timer so
+that QEMU's `-icount` counts instructions, in its own build directory. The `arm-none-eabi` ones
+do not inherit `core` either: there is no vcpkg triplet for bare-metal arm and nothing the
+profile builds has a third-party dependency. See
 [Minimum-footprint decoder profile](#minimum-footprint-decoder-profile).
 
-There is a sixteenth trio, `config-linux-gcc-coverage` / `build-linux-gcc-coverage` /
-`test-linux-gcc-coverage`, the same shape as the asan-ubsan one: an instrumented variant of
-`linux-gcc`, Debug-only, not a platform/compiler pair. It inherits a `coverage` fragment setting
-`AC3FORGE_ENABLE_COVERAGE=ON` (see `cmake/Coverage.cmake`, GCC/Clang's `--coverage` gcov
-instrumentation; other compilers just warn and skip it), `AC3FORGE_BUILD_ADM=ON` with vcpkg's
-`adm` feature (so the opt-in ADM pair — `ac3adm` and its bridge — is measured alongside the
-always-on seven) and `AC3FORGE_BUILD_CLI=ON`, since `apps/cli` is gated too. Only
-`AC3FORGE_BUILD_EXAMPLES` stays off, as a build-time saving: `examples/` is documentation that
-happens to compile, over an API surface `tests/` already covers, and each one is its own `ctest`
-process. `config-linux-gcc-coverage` itself (not the shared `coverage` fragment, since
-`config-windows-llvm-coverage` also inherits that fragment and stays Crucible-scoped) extends
-`VCPKG_MANIFEST_FEATURES` to `adm;hearth` so `src/sendspin` and `apps/hearth`'s engine and test
-sink — on by default like everywhere else — are measured too; see
+**Coverage.** `config-linux-gcc-coverage` / `build-linux-gcc-coverage` /
+`test-linux-gcc-coverage` is Debug-only, an instrumented variant of `linux-gcc` rather than a
+platform/compiler pair. It inherits a `coverage` fragment setting
+`AC3FORGE_ENABLE_COVERAGE=ON` (see `cmake/Coverage.cmake`: gcov's `--coverage` on GCC and Clang,
+and on clang-cl LLVM's source-based coverage; MSVC just warns and skips it),
+`AC3FORGE_BUILD_ADM=ON` with vcpkg's `adm` feature (so the opt-in ADM pair — `ac3adm` and its
+bridge — is measured alongside the always-on library components) and `AC3FORGE_BUILD_CLI=ON`,
+since `apps/cli` is gated too. Only `AC3FORGE_BUILD_EXAMPLES` stays off, as a build-time saving: `examples/` is
+documentation that happens to compile, over an API surface `tests/` already covers, and each one
+is its own `ctest` process. `config-linux-gcc-coverage` itself (not the shared `coverage`
+fragment, since `config-windows-llvm-coverage` also inherits that fragment and stays
+Crucible-scoped) extends `VCPKG_MANIFEST_FEATURES` to `adm;hearth` so `src/sendspin` and
+`apps/hearth`'s engine and test sink — on by default like everywhere else — are measured too; see
 [`tools/checks/coverage_report.sh`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/coverage_report.sh)
-for their floors.
+for their floors. `config-windows-llvm-coverage` is the Windows counterpart, Release-based (the
+profile runtime is built against the release CRT), with Crucible on and ADM and Hearth off; its
+test preset runs the `crucible` and `crucible-ui` labels, and
+`tools/checks/coverage_crucible.ps1` reads its result.
 
 Note that `ac3cli` has to link `ac3::coverage` itself (`apps/cli/CMakeLists.txt`) and not merely
 link an instrumented library. The gcov *runtime* propagates to consumers automatically, but
@@ -181,8 +203,8 @@ link an instrumented library. The gcov *runtime* propagates to consumers automat
 `apps/cli` compiles uninstrumented and emits no `.gcno` at all, which reads as *no data* rather
 than as low coverage. The same applies to any other executable added to the report later.
 
-After `ctest`, `tools/checks/coverage_report.sh` (the same script `.github/workflows/ci.yml`'s
-`coverage` job runs) makes one `gcovr` extraction pass and then gates line *and* branch coverage
+After `ctest`, `tools/checks/coverage_report.sh` (the same script the `coverage` job of
+`_ci-core.yml` runs) makes one `gcovr` extraction pass and then gates line *and* branch coverage
 per component — the `src/` library components, `apps/cli`, `apps/common`, Crucible's platform-free
 engine and Hearth's engine and test sink — and prints a per-command
 breakdown of `apps/cli` below the gate, reported but not gated, so a thin command module shows as
@@ -197,19 +219,21 @@ ctest --preset test-linux-gcc-coverage -LE Performance
 ```
 
 `apps/gui` is deliberately absent from that report: instrumenting its C++ needs a Qt kit on the
-coverage leg, and no Linux CI leg installs one today. Its interactive surfaces are covered by
-`apps/gui/tests`' own Qt Quick suite, and its one Qt-free class (`RecordingSink`) is already in
-`ac3tests`. `python/` has its own floor instead, in `.github/workflows/wheels.yml`'s
-`python-coverage` job — `pytest --cov` against the built wheel; see that job's own comment for
-what a Python percentage does and does not measure when nearly all of the binding surface is C++.
+coverage job, which installs none (CI puts Qt only on the plain `gui` build legs, which are not
+instrumented). Its interactive surfaces are covered by `apps/gui/tests`' own Qt Quick suite, and
+its one Qt-free class (`RecordingSink`) is already in `ac3tests`. `python/` has its own floor
+instead, in `.github/workflows/wheels.yml`'s `python-coverage` job — `pytest --cov` against the
+built wheel; see that job's own comment for what a Python percentage does and does not measure
+when nearly all of the binding surface is C++.
 
-There is a seventeenth trio, `config-linux-llvm-shared` / `build-linux-llvm-shared` /
+**Shared libraries.** `config-linux-llvm-shared` / `build-linux-llvm-shared` /
 `test-linux-llvm-shared`, same shape again: an instrumented variant of `linux-llvm`, Debug-only.
-It inherits a `shared-libs` fragment setting `BUILD_SHARED_LIBS=ON`, proving `ac3::forge_shared`/
-`matroska::matroska_shared` actually work — not just that the CMake topology configures, but that
-every in-tree consumer (`ac3cli`, `ac3gui`, `ac3tests`, `examples/`) links and runs against the
-real `.so`. `.github/workflows/_build.yml` runs it as an extra step inside the existing
-`linux-llvm` leg rather than a new matrix entry, the same shape as the ASan/UBSan pass.
+It inherits a `shared-libs` fragment setting `BUILD_SHARED_LIBS=ON`, proving
+`ac3::forge_shared`/`matroska::matroska_shared` actually work — not just that the CMake topology
+configures, but that every in-tree consumer (`ac3cli`, `ac3gui`, `ac3tests`, `examples/`) links
+and runs against the real `.so`. `.github/workflows/_ci-linux.yml` runs it as an extra step inside
+the existing `linux-llvm` leg rather than a new matrix entry (in the nightly run only), the same
+shape as the ASan/UBSan pass.
 
 Passing tests do not show that `ac3tests` ran against `libac3forge.so`, so that is checked
 separately: `tools/checks/check_shared_forge_binding.sh` reads the dynamic linker's bindings
@@ -217,6 +241,17 @@ separately: `tools/checks/check_shared_forge_binding.sh` reads the dynamic linke
 binds to another library, or if the binary carries its own copy of the codec. The few test files
 that reach into the library's internals — the AC-4 syntax cases and `core/test_fixed32_ecpl.cpp` —
 are built only when `ac3::forge` is the static library, because a `.so` exports none of that.
+
+There are 11 `ci-<platform>` `workflowPresets` (Release except for the two sanitizer ones, which
+are Debug-only) that chain configure→build→test in one call, for the nine platform/compiler pairs
+and the ASan/UBSan and TSan variants: `cmake --workflow --preset ci-windows-msvc`. There is no
+coverage or shared-library workflow preset, and CI does not call `cmake --workflow` at all: the
+`build-leg` composite action (`.github/actions/build-leg`, which every leg of `ci.yml` and both
+jobs of `pr-gate.yml` run) runs `cmake --preset config-<leg>`, `cmake --build --preset
+build-<leg>` and `ctest --preset test-<leg>` as three separate steps, because a leg has per-leg
+overrides to append (`-DAC3FORGE_BUILD_GUI=ON` on the GUI legs, `-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"`
+where a Qt kit was installed) that a single `--workflow` invocation has nowhere to put. The
+workflow presets are the one-command local equivalent of those three steps, not the path CI takes.
 
 Anything machine-specific belongs in `CMakeUserPresets.json`, which is gitignored. The pattern
 is a hidden `local` preset carrying the paths, inherited alongside the checked-in fragments:
@@ -247,9 +282,9 @@ is a hidden `local` preset carrying the paths, inherited alongside the checked-i
 ```
 
 `debug` alone has no generator or binary directory — those live on the hidden `core` preset,
-and the compiler selection on a platform preset (`windows-msvc` here; `windows-llvm`,
-`linux-gcc`, `linux-llvm`, `linux-gcc-arm64`, `linux-llvm-arm64` and `macos-llvm` are the
-others — see `CMakePresets.json`). Missing either from `dev`'s
+and the compiler selection on a platform preset (`windows-msvc` here; `windows-msvc-arm64`,
+`windows-llvm`, `linux-gcc`, `linux-llvm`, `linux-gcc-arm64`, `linux-llvm-arm64`, `macos-llvm` and
+`macos-llvm-x64` are the others — see `CMakePresets.json`). Missing either from `dev`'s
 `inherits` list still configures, but silently: CMake
 falls back to its platform default generator (Visual Studio, on this machine) and an in-source
 binary directory instead of `build/dev`, which is a mess to notice and worse to undo. Inherit
@@ -259,12 +294,40 @@ That keeps vcpkg's working directories off the system drive, which matters becau
 several gigabytes. Substitute your own paths, and swap `windows-msvc` for whichever
 platform/compiler fragment matches your machine.
 
+## Running the tests
+
+The test presets (`test-<platform>[-debug]`) run `ctest` over what CMake registered for that
+build. `ac3tests`, the Catch2 binary that holds nearly all of the C++ cases, registers one ctest
+entry per test case, and `catch_discover_tests(... ADD_TAGS_AS_LABELS)` turns every Catch2 tag on a
+case into a ctest label, so a tag selects a subset in two ways:
+
+```bash
+ctest --preset test-linux-gcc-debug -L ac4dec           # the cases tagged [ac4dec], through ctest
+ctest --preset test-linux-gcc-debug -N -L ac4           # list what a label selects, run nothing
+build/config-linux-gcc-debug/bin/ac3tests "[ac4dec]"    # the same cases, through the Catch2 binary
+build/config-linux-gcc-debug/bin/ac3tests --list-tags   # every tag and how many cases carry it
+```
+
+A case carries several tags, one for the component under test and others for what it checks. The
+codecs have `eac3`, `ac4`, `ac4core`, `ac4dec` and `ac4enc`; the libraries and applications
+`cli`, `capi`, `hearth`, `sendspin` and `crucible`; and there are `oba` (Atmos objects), `dsp`,
+`iec61937`, `fixed32`, `simd` and `avx2`, and `concurrency` for the cases ThreadSanitizer runs.
+`ac3tests --list-tags` has the full list.
+
+Three things register their own ctest entries beside `ac3tests`. `ac3perf`, the real-time
+throughput guards, is a separate binary whose cases carry the `Performance` label, so
+`ctest -LE Performance` leaves them out. The Qt Quick suites register one entry per `tst_*.qml`
+file: `ac3gui_qml_tests_*` (label `gui`), `ac3hearth_qml_tests_*` (`hearth-ui`) and
+`ac3crucible_qml_tests_*` (`crucible-ui`), and only when the matching application is built.
+`ctest -R <name>` selects by test name and `ctest --rerun-failed --output-on-failure` repeats
+the failures of the last run; add `--output-on-failure` to any run to see a failing case's output.
+
 ## Options
 
 | Option | Default | Effect |
 |---|---|---|
 | `AC3FORGE_BUILD_CLI` | `ON` | Build `ac3cli`. |
-| `AC3FORGE_BUILD_GUI` | `ON` on the two Windows presets, `OFF` on Linux and macOS | Build `ac3gui`. Requires Qt. Off by default outside Windows because a Qt kit isn't assumed present there — see [Building on Linux](#building-on-linux). |
+| `AC3FORGE_BUILD_GUI` | `ON` on `windows-msvc` and `windows-llvm`, `OFF` on every other preset | Build `ac3gui`. Requires Qt 6.5+. Off by default elsewhere because a Qt kit isn't assumed present there — see [Building on Linux](#building-on-linux). |
 | `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} 11.1.0 or newer is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. An older local copy, such as Ubuntu 26.04's `libfmt-dev` 10.1.1, is skipped and named in the configure output. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
 | `AC3FORGE_BUILD_TESTS` | `ON` | Build the Catch2 suite. Requires Catch2. |
 | `AC3FORGE_FETCH_CATCH2` | `ON` | When no local Catch2 3 is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v3.15.3 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `tests/CMakeLists.txt`. Irrelevant when `AC3FORGE_BUILD_TESTS` is off. |
@@ -274,23 +337,31 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_MPEGTS` | `ON` | Build `mpegts::mpegts` (`src/mpegts`), the standalone MPEG-TS container writer. Same all-off constraint as `AC3FORGE_BUILD_MATROSKA`. |
 | `AC3FORGE_BUILD_IAB` | `ON` | Build `ac3iab::ac3iab` (`src/ac3iab`), the standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader. Like the three container writers above it needs no opt-in third-party library, so it defaults on the same way; unlike them nothing in `apps/` or `examples/` links it yet, so there is no all-off guard — `tests/CMakeLists.txt` simply adds its test file when this is on. |
 | `AC3FORGE_BUILD_IAMF` | `ON` | Build `iamf::iamf` (`src/iamf`), the standalone IAMF v1.1 OBU and ISOBMFF writer. Same zero-third-party-dependency shape as `ac3iab`, and like it linked by nothing in `apps/` (`examples/mux_iamf.cpp` builds when this is on). The vcpkg port's `iamf` feature and the Conan recipe's `iamf` option install it, off by default. |
-| `AC3FORGE_BUILD_AC4` | `ON` | Build the AC-4 libraries: the inspector `ac4::ac4` (`src/ac4`), the decoder `ac4::decoder` (`src/ac4dec`), the encoder `ac4::encoder` (`src/ac4enc`) and the core the decoder and the encoder share (`src/ac4core`) — see [AC-4](library/ac4.md). The inspector, the decoder and the encoder are installed and exported, and the core with the static libraries that call into it. `OFF` needs the CLI, the tests and Hearth off too, since they link them (the root `CMakeLists.txt` guard). The Android app, the WebAssembly preset, the Python wheel and the ESP-IDF component turn it off, linking none of them yet. The vcpkg port's `ac4` feature and the Conan recipe's `ac4` option install them, off by default. |
+| `AC3FORGE_BUILD_AC4` | `ON` | Build the AC-4 libraries: the inspector `ac4::ac4` (`src/ac4`), the decoder `ac4::decoder` (`src/ac4dec`), the encoder `ac4::encoder` (`src/ac4enc`) and the core the decoder and the encoder share (`src/ac4core`) — see [AC-4](library/ac4.md). The inspector, the decoder and the encoder are installed and exported, and the core with the static libraries that call into it. `OFF` needs the CLI, the GUI and the tests off too, and Hearth unless it is the ESP-IDF player half (the root `CMakeLists.txt` guards), since they link them. The Python wheel binds them (`ac3forge.ac4`), the WebAssembly preset builds them for the `ac3forge_wasm_ac4` module, and the Android app builds them without linking them yet; the ESP-IDF component and the minimum-footprint presets turn the option off and take the decoder alone through `AC3FORGE_MINIMAL_AC4`. The vcpkg port's `ac4` feature and the Conan recipe's `ac4` option install them, off by default. |
 | `AC3FORGE_BUILD_CAPI` | `ON` | Build `ac3::forge_c` (`src/capi`), the C API over the encode/decode core — see [C API](library/c-api.md). Depends on nothing but `ac3::forge_static`, so unlike `AC3FORGE_BUILD_ADM` there is no extra dependency footprint to opt out of. |
 | `AC3FORGE_BUILD_PYTHON` | `OFF` | Build the pybind11 extension module (`python/`). Off by default for the same reason as `AC3FORGE_BUILD_ADM`: nothing under `src/`, `apps/`, `tests/` or `examples/` links it, so a normal C++ build is unaffected either way. `python/pyproject.toml` turns it on itself via scikit-build-core when `pip install`/cibuildwheel drives the configure. |
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
 | `AC3FORGE_BUILD_CRUCIBLE` | `OFF` | Build the Crucible engine, console runner, and desktop window. Linux requires PipeWire; see [Crucible installation](crucible/install.md#linux). |
-| `AC3FORGE_BUILD_HEARTH` | `ON` | Build `ac3::sendspin`, the Hearth engine, `ac3hearth` (the desktop window, Windows/macOS/Linux with a Qt 6.8+ kit), `ac3hearth-testsink`, `ac3hearth-testserver`, and `ac3hearth-render` (an item through the engine into a WAV file, for the checks). Qt not found skips just `ac3hearth` with a configure warning rather than failing; the engine and its tests still build. Every CI leg has built and tested it since A7, so this defaults on the same way — a plain preset configure needs no extra flag any more. The vcpkg side follows: `CMakePresets.json`'s `core` fragment selects the root manifest's `hearth` feature by default too, for its network, pairing, FLAC, and Opus dependencies. A few presets that cannot build Hearth turn both back off explicitly — the minimum-footprint decoder/encoder profiles (no OS), the Emscripten/WASM demo (no vcpkg toolchain), and the Windows LLVM coverage leg (deliberately Crucible-only) — see their own entries in `CMakePresets.json`. The vcpkg port and the Conan recipe (`packaging/`) pin it off: they build the library only. See [Hearth](hearth/index.md). |
+| `AC3FORGE_BUILD_HEARTH` | `ON` | Build `ac3::sendspin`, the Hearth engine, `ac3hearth` (the desktop window, Windows/macOS/Linux with a Qt 6.8+ kit), `ac3hearth-testsink`, `ac3hearth-testserver`, and `ac3hearth-render` (an item through the engine into a WAV file, for the checks). Qt not found skips just `ac3hearth` with a configure warning rather than failing; the engine and its tests still build. Every CI leg has built and tested it since A7, so this defaults on the same way — a plain preset configure needs no extra flag any more. The vcpkg side follows: `CMakePresets.json`'s `core` fragment selects the root manifest's `hearth` feature by default too, for its network, pairing, FLAC, and Opus dependencies. A few presets that cannot build Hearth turn both back off explicitly — the minimum-footprint decoder/encoder profiles (no OS), the Emscripten/WASM demo (no vcpkg toolchain), and the Windows LLVM coverage leg (deliberately Crucible-only) — see their own entries in `CMakePresets.json`. The ESP-IDF component builds only `src/sendspin`'s player half, behind `CONFIG_AC3FORGE_SENDSPIN` (`esp-idf/ac3forge/Kconfig`). The vcpkg port and the Conan recipe (`packaging/`) pin it off: they build the library only. See [Hearth](hearth/index.md). |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
 | `AC3FORGE_CRUCIBLE_X11` | `AUTO` | Linux only, with `AC3FORGE_BUILD_CRUCIBLE`. `AUTO` compiles Crucible's X11 full-screen check over libxcb when `libxcb1-dev` is present; `ON` requires it; `OFF` never builds it. Without it the rule is off at runtime and the Room page says so. The configure summary prints `Crucible X11   : xcb` or `none`. |
 | `AC3FORGE_SIMD` | `auto` | Which `src/arithmetic/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from the *effective target* architecture (`CMAKE_SYSTEM_PROCESSOR`, or `CMAKE_OSX_ARCHITECTURES` where a macOS cross-build sets one) and falls back to `generic` everywhere else, including a macOS universal binary, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
 | `AC3FORGE_AVX2` | `ON` | x86_64 only. Compiles an AVX2 SIMD tier alongside the baseline SSE2 one, selected at *runtime* rather than at configure time. See [Runtime AVX2 dispatch](#runtime-avx2-dispatch). `OFF` (or a non-x86_64 target) yields a provably AVX2-free binary. |
-| `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` preset above rather than by hand. |
-| `AC3FORGE_ENABLE_COVERAGE` | `OFF` | `--coverage` gcov instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. Off is a no-op; GCC/Clang only, other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` preset above rather than by hand. |
+| `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` or `-tsan` preset above rather than by hand. |
+| `AC3FORGE_ENABLE_COVERAGE` | `OFF` | Coverage instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. gcov's `--coverage` on GCC and Clang, LLVM source-based coverage on clang-cl; off is a no-op, and other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` presets above rather than by hand. |
 | `AC3FORGE_ENABLE_TRACY` | `OFF` | Tracy profiler instrumentation (`ac3::tracy` — see `cmake/Tracy.cmake`). Needs vcpkg's `profiling` manifest feature (`-DVCPKG_MANIFEST_FEATURES=profiling`), which supplies Tracy itself; off is a no-op. |
 | `AC3FORGE_BUILD_FUZZERS` | `OFF` | Build the libFuzzer harnesses under `fuzz/`. Clang only (GCC and MSVC ship no libFuzzer); use `fuzz/run.sh` rather than this option directly — it configures a dedicated `build/fuzz` with the right compiler. See [`fuzz/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md). |
 | `AC3FORGE_MINIMAL_DECODER` | `OFF` | Build **only** `ac3::forge_minimal`: one decode-only static library with no exceptions, no RTTI and no direct-form transform tables, for a target with a few hundred kilobytes of RAM and no operating system. Not a "build X too" option — it replaces what `src/forge` builds, and configure fails with a list if any component that needs the full library is still on. GCC/Clang only. See [Minimum-footprint decoder profile](#minimum-footprint-decoder-profile). |
-| `AC3FORGE_MINIMAL_AC4` | `OFF` | Only with `AC3FORGE_MINIMAL_DECODER`: also build the AC-4 inspector, core and decoder (`src/ac4`, `src/ac4core`, `src/ac4dec`) as static archives with the profile's own compile options - no encoder, no shared library, no position-independent code. `AC3FORGE_DECODE_SCALAR=float` for the ESP32-P4 and S3; the fixed-point tier of the AC-4 decoder is a later phase. Set by the ESP-IDF component from `CONFIG_AC3FORGE_AC4` ([ESP32-P4](platforms/bare-metal/esp32-p4.md#ac-4)); `AC3FORGE_BUILD_AC4` stays the full build's option and the profile refuses it. |
+| `AC3FORGE_MINIMAL_ENCODER` | `OFF` | The same profile pointed the other way: build **only** an encode-only `ac3::forge_minimal` carrying the AC-3 and the E-AC-3 encoder. Mutually exclusive with `AC3FORGE_MINIMAL_DECODER`, which configure enforces (see [The encode direction](#the-encode-direction)). GCC/Clang only. |
+| `AC3FORGE_MINIMAL_AC4` | `OFF` | Only with `AC3FORGE_MINIMAL_DECODER`: also build the AC-4 inspector, core and decoder (`src/ac4`, `src/ac4core`, `src/ac4dec`) as static archives with the profile's own compile options - no encoder, no shared library, no position-independent code. The ESP-IDF component sets it from `CONFIG_AC3FORGE_AC4`, which only a part with a floating-point unit offers ([ESP32-P4](platforms/bare-metal/esp32-p4.md#ac-4) is the part built and measured), and the `-minimal-ac4` presets set it together with `AC3FORGE_DECODE_SCALAR=float`; the fixed-point tier of the AC-4 decoder is a later phase. `AC3FORGE_BUILD_AC4` stays the full build's option and the profile refuses it. |
+| `AC3FORGE_STAGE_TIMERS` | `OFF` | Minimum-footprint profiles only: route the library's zone markers (the ones `AC3FORGE_ENABLE_TRACY` turns into Tracy zones) to two functions the application supplies, so a bare-metal probe can report microseconds per stage. Configure fails outside the profile. |
+| `AC3FORGE_DECODE_SCALAR` | `double` | The arithmetic the AC-3 and E-AC-3 decoders carry their coefficients in: `double`, `float`, or `fixed` (`ac3::internal::Fixed32`, Q7.24 in an `int32`, for a part with no FPU). The AC-4 decoder follows it: `float` builds its kernels in single precision, and `fixed` builds them in `double`, since its fixed-point tier is not built yet. The minimum-footprint profile takes `float` unless it is given `fixed`, and the ESP-IDF component picks `float` or `fixed` from the part. See [A float32-only path](#gaps) and the fixed-point section there. |
+| `AC3FORGE_ENCODE_SCALAR` | `double` | The arithmetic of the AC-3 and E-AC-3 encoders' analysis front end (transient detection, the forward transform and the coefficient store through the coupling, spectral-extension and enhanced-coupling fits): `double` or `float`. The AC-4 encoder always runs in `double`. The minimum-footprint profile takes `float`. |
+| `AC3FORGE_INSTALL_BOTH_LINKAGES` | `ON` | Install and export both the static and the shared variant of each library. `OFF` installs only the one `BUILD_SHARED_LIBS` selects, which is what the vcpkg port and the Conan recipe pass. See `cmake/InstallLibrary.cmake` and [Releasing](releasing.md#vcpkg-port). |
+| `AC3FORGE_QT_ROOT` | empty | Path to a Qt kit or a Qt install root, searched before the default install roots `cmake/FindQt6.cmake` looks in; a value that yields no kit is an error. The `AC3FORGE_QT_ROOT`, `QT_ROOT_DIR` and `QTDIR` environment variables work the same way (a stale `QT_ROOT_DIR` or `QTDIR` falls through to the defaults instead), and `-DCMAKE_PREFIX_PATH` and `-DQt6_DIR` take priority over all of them. See [Qt](#qt). |
+
+The ESP-IDF component and the bare-metal probes read further variables and Kconfig symbols (`AC3FORGE_ESP_PROFILE`, `AC3FORGE_MINIMAL_HOT_O2`, `AC3FORGE_BAREMETAL_CLOCK`, `CONFIG_AC3FORGE_AC4`, `CONFIG_AC3FORGE_SENDSPIN`, and others); the Kconfig symbols are in `esp-idf/ac3forge/Kconfig`, and the rest are described in [`esp-idf/ac3forge/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/README.md) and on the [ESP32-S3](platforms/bare-metal/esp32-s3.md), [ESP32-P4](platforms/bare-metal/esp32-p4.md) and [Cortex-M3](platforms/bare-metal/cortex-m3.md) pages.
 
 Building the library and CLI alone, with neither Qt nor vcpkg's extra features involved:
 
@@ -306,9 +377,8 @@ vcpkg at all, configure without the preset and pass the generator and build type
 
 ## Minimum-footprint decoder profile
 
-The next users of the decoder are set-top boxes, receivers and DSP ports, and what
-they need is not a claim about being small but a build that is small, a target it demonstrably
-runs on, and a number that stops moving quietly.
+The next users of the decoder are set-top boxes, receivers and DSP ports. What they need is a
+build that is small, a target it runs on, and a footprint number that CI holds.
 
 ```bash
 # Cross-compile for arm-none-eabi and run on QEMU's mps2-an385 (Cortex-M3, no OS)
@@ -351,20 +421,23 @@ writes down, and substituting a different arithmetic would defeat its only purpo
 
 ### The probe
 
-`apps/baremetal/probe.cpp` links the archive, decodes six frames each of four real streams —
-5.1 AC-3 (448 kbit/s, coupling), 5.1 E-AC-3 (384 kbit/s, AHT + spx + standard coupling), 5.1
-E-AC-3 with §E3.5 enhanced coupling (`cpl+ecpl`, which `tools=all` does not select) and 2/0
-E-AC-3 (192 kbit/s, the only layout §7.5.4 rematrixing exists in) — compares every channel's
-level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines that
-`tools/checks/run_baremetal_probe.sh` gates on. It is not a unit test — the profile requires
+`apps/baremetal/probe.cpp` links the archive and decodes six frames of each of fourteen rows, four
+AC-3 and ten E-AC-3, built from ten committed streams. The AC-3 rows are 5.1 (448 kbit/s,
+coupling) and its Lo/Ro fold, 2/0 (192 kbit/s, the layout §7.5.4 rematrixing exists in) and 1/0.
+The E-AC-3 rows are 5.1 (384 kbit/s, AHT + spx + standard coupling) and its Lo/Ro fold, the same
+with §E3.5 enhanced coupling (`cpl+ecpl`, which `tools=all` does not select), 2/0, a 5.1 stream
+with dynrng words and dialnorm 24 in line mode, 7.1.4 (a bed and two dependent substreams) and its
+fold, and three Atmos rows: the bed alone, the objects reconstructed, and the objects placed onto
+7.1.4. It compares every channel's level against `apps/baremetal/fixture.hpp`, and prints
+`key=value` lines that `tools/checks/run_baremetal_probe.sh` gates on. It is not a unit test — the profile requires
 `AC3FORGE_BUILD_TESTS=OFF`, since nothing under `tests/` builds against a decode-only archive —
 and it answers three questions a test could not: does the archive link with everything else
 absent, does it produce the right audio on a 32-bit soft-float target, and what did it cost.
 Regenerate its fixtures with
 `python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`. Adding a configuration is a
 row in that script's `STREAMS`, a layout is a row in its `LAYOUTS`, and a fixture is a row in
-`probe.cpp`'s `kEac3Fixtures`; neither runner script names a fixture, so nothing else has to be
-widened to keep gating one.
+`probe.cpp`'s `kEac3Fixtures` (`kAc3Fixtures` for AC-3); neither runner script names a fixture, so
+nothing else has to be widened to keep gating one.
 
 Nothing regenerates the fixtures automatically and nothing detects that they have drifted from
 the encoder — the probe decodes the committed bitstream and compares it against the committed
@@ -410,12 +483,12 @@ the Cortex-M3, `-Os`, soft float throughout, held to the ceilings in
 
 | Row | Peak heap | Allocations per frame | Instructions per frame | Ceiling | Decode row's count |
 |---|---:|---:|---:|---:|---:|
-| `ac3_stereo` 2/0, 192 kbit/s | 52,707 | 34 | 9,136,000 | 16,000,000 | 3,548,000 |
-| `eac3_stereo` 2/0, 192 kbit/s, no tools | 79,894 | 76 | 12,683,000 | 30,000,000 | 4,851,000 |
+| `ac3_stereo` 2/0, 192 kbit/s | 52,707 | 34 | 9,136,000 | 16,000,000 | 3,550,000 |
+| `eac3_stereo` 2/0, 192 kbit/s, no tools | 79,894 | 76 | 12,683,000 | 30,000,000 | 4,858,000 |
 | `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 143,037 | 47 | 16,920,000 | 31,000,000 | - |
-| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 130,887 | 87 | 48,217,000 | 104,000,000 | 28,861,000 |
-| `ac3` 5.1, 448 kbit/s | 110,918 | 67 | 24,866,000 | 43,000,000 | 10,224,000 |
-| `eac3` 5.1, 384 kbit/s | 158,602 | 173 | 33,207,000 | 78,000,000 | 12,928,000 |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 130,887 | 87 | 48,217,000 | 104,000,000 | 28,863,000 |
+| `ac3` 5.1, 448 kbit/s | 110,918 | 67 | 24,866,000 | 43,000,000 | 10,228,000 |
+| `eac3` 5.1, 384 kbit/s | 158,602 | 173 | 33,207,000 | 78,000,000 | 12,965,000 |
 
 Between 1.7 and 2.6 times the decode row's count for the same layout, with the encoders in
 `float` end to end since 2026-09-10 (the analysis front end first, then the coefficient store and
@@ -465,14 +538,17 @@ Two things about the probe differ from the decode one, and both follow from the 
   `tests/golden/bitstream-hashes.json` already pins across x86_64 and aarch64 to a target with no
   FPU at all.
 
-Steady-state churn is **78 allocations per frame for AC-3 and 249 for E-AC-3**, against the
-decoders' 1–31. That gap is in the API rather than the implementation: both encoders return
-`std::vector<std::byte>` from `encode_frame`, and there is no `encode_frame_into` to match
-`decode_frame_into`. It is the same zero-heap gap [above](#gaps) records for the decode side, wider
-here, and it is the thing to close before this profile is fit for a real-time encode.
+Steady-state churn is **34 to 87 allocations per frame on the 2/0 rows, 67 for AC-3 5.1 and 173
+for E-AC-3 5.1**, against the decoders' 1–35, and the runner gates it at 260. That gap is in the
+API rather than the implementation: both encoders return `std::vector<std::byte>` from
+`encode_frame`, and there is no `encode_frame_into` to match `decode_frame_into`. It is the same
+zero-heap gap [above](#gaps) records for the decode side, wider here, and it is the thing to close
+before this profile is fit for a real-time encode.
 
 The measured numbers are in [the footprint table](performance-trend.md#minimum-footprint-decoder).
-CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`).
+CI runs this in the `esp` lane (`build-footprint` in `.github/workflows/_build.yml`): after a merge
+that changes the probe, the ESP-IDF component or a tree the component ships, and in the nightly run
+([CI lane partitions](ci-lanes.md)).
 
 ### The AC-4 decoder in the profile
 
@@ -500,17 +576,17 @@ not carry AC-4 by default.
 
 ### Gaps
 
-One of PF7's requirements is not met, and is recorded here rather than half-enforced: no heap
-traffic in the decode loop. The float32-only path is met for the decode path, and the retained
+One of the profile's requirements is not met, and is recorded here rather than half-enforced: no
+heap traffic in the decode loop. The float32-only path is met for the decode path, and the retained
 scratch below has since been closed; both are kept here with what they cost and what closed them.
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
 (`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, and the
 `_by_block` forms hand the decoder's own storage over a block at a time, which is what the probe
 uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
-not per-frame growth), but the steady state is **3 allocations per frame for AC-3, 12 for
-E-AC-3 and for E-AC-3 with §E3.5 enhanced coupling, 10 for 2/0, and 41 for Atmos with
-objects**. The per-block geometry vectors inside the decoders no longer account for any of it —
+not per-frame growth), but the steady state is **3 allocations per frame for AC-3 5.1 (1 for its
+2/0 and 1/0 rows), 12 for E-AC-3 and for E-AC-3 with §E3.5 enhanced coupling, 10 for 2/0, 20 for an
+Atmos bed, 31 for Atmos with objects and 35 for 7.1.4**. The per-block geometry vectors inside the decoders no longer account for any of it —
 they are `Impl` members, reused frame to frame. What is left is the `std::vector` members of
 the returned `DecodedFrame`/`DecodedSubstream` (`blksw` is AC-3's whole remainder, `channels`
 is 7 of E-AC-3's 12) and, on the Atmos fixtures, the EMDF payload chain. Reaching zero means
@@ -596,7 +672,7 @@ travels with the block - a tool that needs more room lowers it where it runs, an
 is exact from its reconstructed peaks - and the overlap-add aligns the two halves it sums before
 the conversion applies the power of two exactly. Measured with
 `tools/checks/check_decode_scalar_snr.py` on 2026-09-10: 121, 122 and 122 dB on the worst
-channel of the three gold streams, and no channel of the thirteen checked-in third-party streams
+channel of the three gold streams, and no channel of the thirteen third-party streams then checked in
 (Dolby Encoding Engine and FFmpeg, AC-3 and E-AC-3, with coupling, spectral extension and the
 AHT) below 111 dB. The gold-reference gate passes with the fixed CLI at the same floors as the
 double one, and its encoder - `encode_scalar_t` is a separate axis - writes the pinned bitstreams
@@ -651,7 +727,7 @@ the `encfloat` mode.
 
 No gold-reference number moved, because the choice is per-profile rather than global. The
 ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite
-passes identically (4,032,916 assertions).
+passes identically.
 
 The oracle run was done separately, and for a long time it could not be done again. `decode_scalar_t` used to live in `ac3/internal/profile.hpp` alongside the profile's
 other facts, so `float` was reachable only in a build that was also decode-only, exception-free
@@ -676,22 +752,25 @@ transform alone the disagreement is 2.7e-7 peak-normalised (`tests/core/test_mdc
 about one LSB at 24 bits.
 
 What that gate does **not** say is whether either decode is right — two builds agreeing says only
-that they agree. Running `verify_gold_reference.sh` itself against a float32 CLI is the other
-half, and is not wired yet.
+that they agree. `verify_gold_reference.sh` itself is the other half, and CI runs it against each
+variant: the `scalar_variants` passes of the Linux GCC leg (in the nightly run) build a float32
+decoder, a fixed-point decoder and a float32 encoder as their own binaries and run the
+gold-reference gate against each, beside their comparisons with the double build.
 
 Two things it does not cover:
 
-- The **encoder** is `double` everywhere and stays so. It is not built in this profile, and the
-  fifteen cross-platform bitstream hashes in `tests/golden/bitstream-hashes.json` pin its output.
-- The **transforms' direct form**, the QMF bank and JOC's object reconstruction are still
-  `double`. The float32 forms take no `fast` parameter: the direct form is the spec's own
-  evaluation and the oracle the fast path is validated against, so it stays double-precision.
-
-  Both directions have float32 fast paths now. The forward's exist for `oba::joc`, which analyses
-  the bed inside a *decode* before un-mixing it — the only forward transform a decode runs (PF8).
-  The encoder's forward path is untouched and stays `double`: the fifteen bitstream hashes in
-  `tests/golden/bitstream-hashes.json` pin its output, and they are byte-identical across this
-  change.
+- The **encoder**. This gate compares decodes. The encoder's `float` front end has its own,
+  `tools/checks/check_encode_scalar_quality.py` (above), and `tests/golden/bitstream-hashes.json`
+  pins the encoder's bitstreams per kernel and transform mode: the `x86_64-sse2`, `aarch64-neon`
+  and `generic` kernels with the fast transform, the two that have a reference transform, and the
+  float front end on x86-64 (`encfloat`).
+- The **transforms' direct form** and the QMF bank. The float32 forms of the transforms take no
+  `fast` parameter: the direct form is the spec's own evaluation and the oracle the fast path is
+  validated against, so it stays double-precision, and the QMF bank keeps its history in `double`
+  (`ac3/dsp/qmf.hpp`) whatever the decode scalar. JOC's object reconstruction is `float` in every
+  build (`recon_scalar_t`). Both directions have float32 fast paths otherwise: the forward's exist
+  for `oba::joc`, which analyses the bed inside a *decode* before un-mixing it — the only forward
+  transform a decode runs — and for the encoders' float front end.
 
 The profile still exercises the `double` path without hardware floating point. `decode_scalar_t`
 is a profile choice, so an `arm-none-eabi` build of the ordinary profile software-emulates every
@@ -719,9 +798,8 @@ ctest --preset test-linux-gcc-debug
 
 Substitute `linux-llvm` for `linux-gcc` to build with Clang instead. `VCPKG_ROOT` works the same
 way as on Windows: it must point at a vcpkg checkout for the toolchain file the preset
-references, even though (as on Windows) it supplies nothing but fmt and Catch2. This project's
-own convention keeps that checkout under `/opt/vcpkg`, but any path works — there is nothing
-Linux-specific about vcpkg here.
+references, even though (as on Windows) it supplies nothing but fmt and Catch2. Any path
+works — there is nothing Linux-specific about vcpkg here.
 
 ### GUI on Linux
 
@@ -766,9 +844,11 @@ dialog is available, and which a headless `--smoke` run (verified with
 ### Linux audio
 
 Three of ac3forge's features touch the sound hardware — live capture (`ac3cli devices`,
-`record`), monitor playback (`monitor`), and IEC 61937 bitstream passthrough (`outputs`,
-`play`). Everything else is file I/O and needs no audio stack at all; `ac3cli spdif` in
-particular reaches an AV receiver by writing a WAV, on any machine.
+`record`, `live`), monitor playback (`monitor`, and `identify`, which walks a test tone across an
+output's speakers), and IEC 61937 bitstream passthrough (`outputs`, `play`). `play` decodes an
+AC-4 stream and plays it as PCM, since no receiver takes AC-4 over IEC 61937 yet. (`spatial`, the
+fourth audio command, is Windows-only.) Everything else is file I/O and needs no audio stack at
+all; `ac3cli spdif` in particular reaches an AV receiver by writing a WAV, on any machine.
 
 On Linux those three are implemented over **ALSA** when its headers are present, and over
 **PipeWire** when they are not but PipeWire's are — see [Why ALSA still comes
@@ -853,7 +933,8 @@ alone already has today.
 #### What has and has not been verified
 
 **ALSA.** Verified on WSL2 Ubuntu 26.04 with the local development loop's gcc 15.2 and clang 22.1
-(CI's own Linux legs pin GCC 16 — see [Requirements](#requirements)), in every configuration:
+(CI's own Linux legs pin GCC 16 — see [Requirements](#requirements); this record was not re-run
+for this revision), in every configuration:
 with libasound present and absent, and under ASan+UBSan with leak detection. The full suite
 passes in all of them. The device-independent halves of the backend — device-name construction,
 channel-status derivation, the negotiation, the render and capture threads, start/stop, and the
@@ -908,8 +989,8 @@ dependency entirely.
 ## Packaging
 
 `cmake/Packaging.cmake` wires CPack up behind the platform preset matrix. A plain ZIP is
-always produced; NSIS (Windows), DEB/RPM (Linux) and DragNDrop (macOS) are added on top when
-the packaging tool for that format is found on `PATH`, so `cpack` degrades gracefully instead
+always produced; NSIS (Windows), TGZ and DEB/RPM (Linux) and DragNDrop (macOS) are added on top
+when the packaging tool for that format is found on `PATH`, so `cpack` degrades gracefully instead
 of failing outright on a machine that does not have e.g. `makensis` installed.
 
 From a Developer PowerShell, with `VCPKG_ROOT` set:
@@ -927,11 +1008,13 @@ cpack --preset pack-windows-msvc
 ```
 
 The equivalent `pack-<platform>` preset exists for every entry in the platform matrix
-(`pack-windows-llvm`, `pack-linux-gcc`, `pack-linux-llvm`, `pack-linux-gcc-arm64`,
-`pack-linux-llvm-arm64`, `pack-macos-llvm`). A pack preset reuses whatever the matching build
+(`pack-windows-msvc-arm64`, `pack-windows-llvm`, `pack-linux-gcc`, `pack-linux-llvm`,
+`pack-linux-gcc-arm64`, `pack-linux-llvm-arm64`, `pack-macos-llvm`, `pack-macos-llvm-x64`). A pack
+preset reuses whatever the matching build
 tree was configured with — on a non-Windows preset that includes the GUI only if you opted in
 (`-DAC3FORGE_BUILD_GUI=ON`, which is exactly what CI's Linux and macOS packaging legs pass — see
-[GUI on Linux](#gui-on-linux) and [macOS](platforms/macos.md#gui-on-macos)). Beyond `windows-msvc`'s continuous per-push packaging, the
+[GUI on Linux](#gui-on-linux) and [macOS](platforms/macos.md#gui-on-macos)). Beyond `windows-msvc`'s
+packaging in every run of `ci.yml` that builds it, the
 `release_package` legs have run for real on tagged releases, and `pack-linux-gcc-arm64` has
 additionally been run by hand on a real Raspberry Pi 4B with the resulting `.deb` inspected —
 see [Raspberry Pi](platforms/raspberry-pi.md#verified-configuration). Packages land in
@@ -950,25 +1033,27 @@ archive. See
 `ac3::audio` (live capture/monitor/passthrough, `src/audio/`) stays link-only and unpackaged -
 a CLI/GUI implementation detail, not part of either component.
 
-CI packages the `windows-msvc` leg on every push and uploads the result as a workflow
-artifact (`.github/workflows/_build.yml`), so the packaging path is exercised continuously
-rather than only when someone remembers to run it locally.
+CI packages the `windows-msvc` leg in every run of `ci.yml` that builds it and uploads the result
+as a workflow artifact (`.github/workflows/_ci-windows.yml`), and the nightly run also packages
+both macOS legs, so the packaging path is exercised continuously rather than only when someone
+remembers to run it locally.
 
 A tag-triggered release workflow (`.github/workflows/release.yml`) builds, signs, attests and
-publishes packages for the three `release_package` legs — `windows-msvc`, `linux-gcc` and
-`linux-gcc-arm64` — plus, since DR8, a `package-macos-universal` job that `lipo`-merges
+publishes packages for the four `release_package` legs — `windows-msvc`, `windows-msvc-arm64`,
+`linux-gcc` and `linux-gcc-arm64` — plus a `package-macos-universal` job that `lipo`-merges
 `macos-llvm`'s (arm64) and `macos-llvm-x64`'s (x86_64) install trees into one universal `.dmg`
 rather than either leg packaging solo: one canonical build per OS/architecture, whenever a
 `vX.Y.Z` tag is pushed; a packaging failure on any of them blocks the release like any other
 required leg. See [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) for how
-the macOS merge works. The release carries GPG signing (optional, off until a key is provisioned),
-keyless Sigstore/OIDC build provenance, an SPDX SBOM, and a GitHub Release; nine beta releases
-(v0.2.0-beta.1 through v0.9.0-beta.1) have shipped through this path for real. See
+the macOS merge works. The release carries GPG signing (when the key is provisioned, which it is),
+keyless Sigstore/OIDC build provenance, an SPDX SBOM, and a GitHub Release; ten beta releases
+(v0.2.0-beta.1 through v0.10.0-beta.1) have shipped through this path for real. See
 [docs/releasing.md](releasing.md) for the full process, including how to provision the GPG key.
 
-There is also a staged, unpublished vcpkg port at `packaging/vcpkg-port/ac3forge/`
-(`portfile.cmake`, `usage`, its own `vcpkg.json`), pending submission to the curated
-`microsoft/vcpkg` registry. It exposes a feature for each library beside the codec — `matroska`,
+There is also a staged vcpkg port at `packaging/vcpkg-port/ac3forge/`
+(`portfile.cmake`, `usage`, its own `vcpkg.json`), which is not in the curated `microsoft/vcpkg`
+registry: it was submitted as pull request #53470, a draft with changes requested. It exposes a
+feature for each library beside the codec — `matroska`,
 `mp4` and `mpegts` for the container writers, `capi` for the C API, and `ac4`, `iab` and `iamf`
 for the AC-4 libraries, the IAB reader and the IAMF writer — and declares no `default-features`,
 so none of them is on by default: a plain `vcpkg install ac3forge` gets the codec alone, and
@@ -994,9 +1079,16 @@ To set that up, fetch:
 | ETSI TS 102 366 | Carries the EMDF metadata format in Annex H. |
 | ETSI TS 103 420 | Joint Object Coding. |
 | `ts_103420v010201p0.zip` | The TS 103 420 companion archive. The JOC Huffman tables are in `ts_103420_tables.c` inside it, and nowhere in the PDF. |
+| ETSI TS 103 190-1 (V1.4.1) | AC-4 part 1: the bitstream syntax, the decoding process and the tables the AC-4 generators transcribe. |
+| `ts_10319001v010401p0.zip` | The TS 103 190-1 companion archive. Every Huffman codebook's lengths and codewords are in `ts_103190_tables.c` inside it, unzipped to `spec/ts_10319001_attach/`. |
+| ETSI TS 103 190-2 (V1.3.1) | AC-4 part 2: the immersive and personalized audio tools, A-JCC and A-JOC. |
+| `ts_10319002v010301p0.zip` | The TS 103 190-2 companion archive: `ts_103190_tables_part2.c`, the A-JCC and A-JOC codebooks and the intermediate spatial format's rendering matrices, unzipped to `spec/ts_10319002_attach/`. |
 
 Extract each PDF to page-marked text beside the PDF, with page separators of the form
-`===== PDF PAGE n =====`. The generators locate tables by page.
+`===== PDF PAGE n =====`. The generators locate tables by page. The two AC-4 table generators,
+`tools/generators/gen_ac4_tables.py` and `gen_ac4_reference_tables.py`, read the extracted text as
+`ts_10319001v010401p.txt` and `ts_10319002v010301p.txt` and the unzipped archives from `--spec-dir`
+(`spec/` by default).
 
 ## Verified configuration
 
@@ -1020,7 +1112,7 @@ The Linux instructions were run on:
 | | |
 |---|---|
 | OS | Ubuntu 26.04 (WSL2) |
-| Compilers | GCC 15.2.0 and Clang 22.1.x, both tried — this is the local development loop, not the CI pin. CI installs GCC 16 (`.github/toolchain/02-gcc-toolchain.sh`), which is what [Requirements](#requirements) and [Linux](platforms/linux.md#toolchains) state; the toolchain files' `find_program` fallback list is why an older GCC still configures and passes. |
+| Compilers | GCC 15.2.0 (the default `gcc`) and Clang 22.1.x, both tried — this is the local development loop, not the CI pin. CI installs GCC 16 (`.github/toolchain/02-gcc-toolchain.sh`), which is what [Requirements](#requirements) and [Linux](platforms/linux.md#toolchains) state, and `g++-16` is installed beside GCC 15 on this machine: `linux.gcc.toolchain.cmake` prefers it, and its `find_program` fallback list is why an older GCC still configures and passes. |
 | CMake | ≥ 3.28, Ninja generator |
 | Qt | 6.10.2, apt-packaged (`qt6-base-dev`, `qt6-declarative-dev`) |
 | ALSA | `libasound2-dev`, both present and as the no-ALSA fallback — see [Linux audio](#linux-audio) |
@@ -1029,10 +1121,10 @@ The Linux instructions were run on:
 
 Result: configure, build and `ctest` all clean on both compilers, GUI and ALSA both included.
 The base suite is `ac3tests` and `ac3perf`'s Catch2 cases plus one ctest entry per example
-program; `AC3FORGE_WITH_ALSA`'s `tests/backend/alsa/` adds 15 entries (or, on a build that
-selected pipewire/ instead, `tests/backend/pipewire/` adds 5), and the GUI's Qt Quick
+program; `AC3FORGE_WITH_ALSA`'s `tests/backend/alsa/` adds its own cases (or, on a build that
+selected pipewire/ instead, `tests/backend/pipewire/` does), and the GUI's Qt Quick
 Test harness (`ac3gui_qmltests`, `apps/gui/tests/CMakeLists.txt`) adds one more per `tst_*.qml`
-suite under `apps/gui/tests/qml/` (21 today) — unlike every other GUI-related target, that one
+suite under `apps/gui/tests/qml/` — unlike every other GUI-related target, that one
 harness *does* register its own `ctest` entries, gated on both
 `AC3FORGE_BUILD_GUI` and `AC3FORGE_BUILD_TESTS`. A Linux build with neither ALSA nor the GUI
 runs the base suite; with the GUI on and ALSA off it matches Windows exactly. `ac3gui --smoke`
@@ -1044,28 +1136,34 @@ A pull request and each merge-queue entry run the gate in `pr-gate.yml` (the sta
 Linux GCC, and in the queue Windows MSVC); see [CI for many agents](ci-agentic.md). The legs
 below run after the merge, on main.
 
-CI no longer has one cross-OS build matrix. `_build.yml` orchestrates three
-reusable workflows: `_ci-windows.yml`, `_ci-linux.yml`, and `_ci-macos.yml`.
-Their platform matrices contain 11 legs in total and can be gated independently
-by the change classifier.
+CI no longer has one cross-OS build matrix. The build legs are data: `.github/ci/legs.jsonc`
+lists them, `_build.yml`'s `plan-legs` job picks the ones a run needs, and the reusable workflows
+`_ci-windows.yml`, `_ci-linux.yml` and `_ci-macos.yml` run each platform's list as their matrix
+([CI for many agents](ci-agentic.md#the-legs)). There are 11 legs, each with a tier: the run after
+a merge builds the six of tier `t2`, and the nightly run builds all 11 and adds the slow extra
+passes the `t2` legs leave out ([The tiers](ci-agentic.md#the-tiers)).
 
-linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan,
-linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label — `tests/audio/` and the
-headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
-linux-appimage (builds `ac3gui`'s self-contained AppImage in an older `ubuntu:22.04` container and
-smoke-tests it in a second container that never had Qt installed at all — see
-[Linux](platforms/linux.md#appimage)),
-the static checks in `_static.yml` (ruff over every `.py`, shellcheck over every `.sh`, actionlint
-over the workflows, all three pinned in `requirements/requirements-lint.txt`; they run in the gate,
-not after the merge),
-coverage (`tools/checks/coverage_report.sh` over every `src/` library
-component *and* `apps/cli`, via `config-linux-gcc-coverage`),
-adm-validate (the opt-in ADM module) and ffmpeg-validate all run on every push to main, as does
-build-android (the Shield app's debug APK) — the four Linux build legs install the same
-Qt6/ALSA packages and build/smoke-test the GUI too. clang-tidy is no longer among them:
-since 2026-09 it runs nightly against `main` from `.github/workflows/static-analysis.yml`,
-on the same DEBUG preset with the same `-warnings-as-errors='*'`, so the local recipe above
-is unchanged and a finding opens a `nightly-analysis` issue instead of failing a PR. ffmpeg-validate is a
+| Runs | Legs |
+|---|---|
+| After each merge (`t2`) | windows-msvc, windows-llvm, linux-gcc, linux-llvm, linux-gcc-arm64, macos-llvm |
+| Nightly only | windows-msvc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label, via `config-linux-llvm-tsan`), macos-llvm-x64 |
+
+The four Linux build legs install the same Qt6/ALSA packages and build and smoke-test the GUI too,
+and so do both macOS legs. One leg, `windows-msvc-arm64`, is still marked experimental, and still
+packages for release.
+
+Beside the legs, the run after a merge builds the satellite jobs whose own tree changed
+(`build-android`, the Shield app's debug APK, the WebAssembly, Rust and ESP32 jobs), and runs
+`adm-validate` (the opt-in ADM module), `hearth-validate` and the performance trend. The nightly
+run adds `linux-appimage` (builds `ac3gui`'s self-contained AppImage in an older `ubuntu:22.04`
+container and smoke-tests it in a second container that never had Qt installed at all — see
+[Linux](platforms/linux.md#appimage)), coverage, the ABI gate, ffmpeg-validate and every satellite
+whatever changed. A run at tier `all`, which the `ci:deep` label dispatches, adds the same. The static checks in `_static.yml` (ruff over every `.py`, shellcheck over every
+`.sh`, actionlint over the workflows, all three pinned in `requirements/requirements-lint.txt`) run
+in the gate, not after the merge; `python tools/ci/precheck.py` runs the ones that need no build on
+your machine before a push. clang-tidy runs nightly against `main` from
+`.github/workflows/static-analysis.yml`, on the Debug preset with `-warnings-as-errors='*'`, and a
+finding opens a `nightly-analysis` issue instead of failing a pull request. ffmpeg-validate is a
 separate, CLI-only linux-llvm build that runs FFmpeg as an independent oracle against the full
 layout/tool/metadata option space (see
 [CONTRIBUTING.md's Oracles section](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#oracles)) — a different question from the
@@ -1073,39 +1171,39 @@ layout/tool/metadata option space (see
 fixed sample to check output *quality*; ffmpeg-validate instead checks that every option
 combination produces a *structurally correct* stream at all, plus a numeric fidelity floor for
 the Annex E tool combinations the one fixed gold-reference sample does not itself exercise.
-One leg, `windows-msvc-arm64`, is still marked experimental, and still packages for release.
 
-The coverage job gates line and branch coverage per component, not as one blended
+The coverage job (nightly only) gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each
 floor was calibrated against, and why `src/audio` and `apps/common` sit on a hardware-class floor
 (their device paths run headless against alsa-lib's software devices, but card enumeration
 needs a real card) all live in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
-comment in `ci.yml`.
+comment in `_ci-core.yml`.
 
-In the merge queue, for an entry that changes `src/`, a `performance-compare` job
-(`_compare.yml`, called from `pr-gate.yml`) builds `ac3bench`/`ac3kernelbench` at the commit the
-entry is queued on and at the entry's head on one runner and posts a table of per-workload deltas
-to the job summary, using the same soft/hard tiers `tools/ci/append_performance_history.py`
-applies on merge. The comparison job is informational and has `continue-on-error`; its
-`hard_regression` verdict feeds the separate blocking `performance-gate` job.
-`ac3perf` also enforces its absolute real-time budget on every eligible leg,
-and the main-branch trend job enforces the same hard relative tier after push.
+In the merge queue, for an entry that changes `src/`, `pr-gate.yml` calls `_compare.yml`. Its
+`performance-compare` and `memory-compare` jobs build the benchmarks at the commit the entry is
+queued on and at the entry's head, and write per-workload deltas to the job summary, using the same
+soft and hard tiers `tools/ci/append_performance_history.py` applies on merge. They are
+informational and have `continue-on-error`; a hard regression (twice as slow, or twice the heap
+churn) reaches the separate, blocking `performance-gate` and `memory-gate` jobs, unless the pull
+request carries the matching approval label. `ac3perf` also enforces its absolute real-time budget
+on every leg whose test preset includes it, and the performance and memory trend jobs that run after
+a merge fail at the same +100% relative thresholds.
 
-An `abi-gate` job (`_ci-core.yml`, called from `ci.yml`) runs on the same advisory footing: on a code-touching change it
-builds `config-linux-llvm-shared` at a comparison point in a git worktree beside HEAD, then
-runs `abidiff` between the two and checks the actual exported dynamic-symbol set
+The `abi-gate` job (`_ci-core.yml`, nightly only) runs on an advisory footing: it builds
+`config-linux-llvm-shared` for HEAD and for the newest `v*` tag in a git worktree beside HEAD,
+then runs `abidiff` between the two and checks the actual exported dynamic-symbol set
 (`tools/ci/check_abi_symbols.py`, `nm -D --defined-only`) against the checked-in allowlist.
-On a pull request the comparison point is the PR's own merge base — the same ref
-`performance-compare` uses, and the only one that answers "what does this branch do to the
-ABI"; on a push or a tag it is the last release tag instead, which is the release-notes view.
-`abidiff` runs under `tools/ci/abi-suppressions.ini`, which drops the libstdc++ template
-instantiations that are not part of any ABI this project controls.
+The comparison point is the last release tag, the release-notes view of how far the ABI has moved
+this cycle; the job also has a mode that compares a pull request with its own merge base, which
+never runs while pull requests go through the gate. `abidiff` runs under
+`tools/ci/abi-suppressions.ini`, which drops the libstdc++ template instantiations that are not
+part of any ABI this project controls.
 
 Both checks report into the job summary and leave the job green, gated on a single
 `ABI_ENFORCE: 'false'` job-level variable; [the interface freeze](library/api-stability.md) is what would make
 the gate required, by flipping that one value. When enforcing, `abidiff` fails only on an
-*incompatible* change — a pure addition passes. The job is deliberately absent from
-`CI Status`'s `needs` list either way.
+*incompatible* change — a pure addition passes. `Verify Status` does not read the job's result
+either way.
 
 `ABI_ENFORCE` deliberately replaces the `continue-on-error: true` this job used to carry.
 That setting stops a failing job from failing the *workflow run*, but GitHub still reports the
@@ -1115,7 +1213,9 @@ pre-1.0 ABI change. With it gone, anything unexpected in this job is red and a p
 is not.
 
 No macOS host exists for this project, so `config-macos-llvm`/`config-macos-llvm-debug` are only
-ever exercised by CI (`macos-latest`, Apple Silicon) — never locally. That CI leg is green:
+ever exercised by CI (`macos-latest`, Apple Silicon) — never locally — and
+`config-macos-llvm-x64` on `macos-15-intel`, native Intel hardware, in the nightly run. The
+`macos-llvm` CI leg is green:
 configure, build and `ctest` all clean, using a Homebrew-installed LLVM
 (`cmake/toolchains/macos.llvm.toolchain.cmake` prefers it over Apple's bundled clang) rather than
 a version-pinned one — Homebrew's core `llvm` formula has no versioned sibling the way
@@ -1157,7 +1257,8 @@ comments on where its research came from (three independent real-world CoreAudio
 implementations, surveyed since no Mac is available to try it on directly).
 
 The `-arm64` presets are exercised in CI on GitHub's hosted `ubuntu-24.04-arm` runner (real ARM
-hardware, not QEMU) and, separately, on a real Raspberry Pi 4B — see
+hardware, not QEMU; `windows-msvc-arm64` on `windows-11-vs2026-arm`) and, separately, on a real
+Raspberry Pi 4B — see
 [Raspberry Pi](platforms/raspberry-pi.md#verified-configuration) for the on-device numbers, which
 are tracked there rather than duplicated here since that page is the canonical source for
 Pi-specific hardware findings (real ALSA/HDMI device names, resolved compiler versions on Raspberry
@@ -1320,19 +1421,19 @@ flag.
 linkable C++ on MSVC, clang-cl, GCC, Clang and AppleClang alike, with zero hardware dependency.
 `tests/core/test_simd_kernels.cpp`'s `[avx2]`-tagged cases go further and actually execute it —
 guarded by `has_avx2()`, with a loud, explicit `SKIP()` (never a silent pass) on hardware that
-lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
-run and self-hosted CPU features are not documented anywhere in this repo, so no leg may assume the
-host it landed on qualifies. `AC3FORGE_REQUIRE_AVX2=1` turns that skip into a hard failure instead —
-set on the `linux-llvm-asan-ubsan` leg (`.github/workflows/_build.yml`), the one leg pinned to a
-GitHub-hosted (rather than the dynamic self-hosted/GitHub-hosted `matrix.runner`) label, so there is
-always at least one leg per PR where "the AVX2 path actually ran and passed" is a guaranteed, not
-aspirational, statement.
+lacks it. The x86_64 CI legs resolve to a self-hosted or a GitHub-hosted runner per run, and
+the self-hosted CPU features are not documented anywhere in this repo, so no leg may assume the
+host it landed on qualifies. `AC3FORGE_REQUIRE_AVX2=1` turns that skip into a hard failure instead.
+`.github/actions/build-leg/action.yml` sets it for the `linux-llvm-asan-ubsan` leg, so that leg
+fails, rather than skips, on a host without AVX2, and "the AVX2 path actually ran and passed" is
+something the leg enforces. Nothing pins that leg to a hosted machine: it takes its runner from a
+fleet slot (`linux_runner_3` in `.github/ci/legs.jsonc`) like the other legs.
 
 `tools/ci/run_codec_matrix.sh`'s own `AC3FORGE_CROSS_TIER_CHECK=1` mode is the corpus-level
 analogue of the `AC3FORGE_SIMD=generic` cross-*build* check above, but cross-*tier* from the SAME
 binary: it runs the whole matrix twice, once under `AC3FORGE_SIMD_TIER=sse2` and once under `=avx2`,
-and byte-diffs the two output trees. Wired into the same `linux-llvm-asan-ubsan` leg for the same
-reason. On a host that cannot execute AVX2 (`/proc/cpuinfo` has no `avx2` flag) the second pass is
+and byte-diffs the two output trees. `.github/workflows/_ci-linux.yml` wires it into the same
+`linux-llvm-asan-ubsan` leg. On a host that cannot execute AVX2 (`/proc/cpuinfo` has no `avx2` flag) the second pass is
 skipped with an explicit message and the script still exits 0 — degrading to exactly today's
 guarantee, never silently claiming a check that did not run:
 
@@ -1540,7 +1641,7 @@ last-bit difference is all that is left; the third-party fixtures carry dither, 
 every channel except the LFE. One mechanism, two fixture populations.
 
 With the encoder excluded by these hashes, FFmpeg's own kernels excluded by the `-cpuflags 0`
-test above, and contraction and libm excluded before that, what remains for VX11 is the decode
+test above, and contraction and libm excluded before that, what remains open is the decode
 path on real arm64 silicon — which is also the one thing no emulated run has reproduced.
 
 ## Gold-reference correctness gate

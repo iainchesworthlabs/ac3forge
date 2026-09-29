@@ -1,13 +1,24 @@
 # Generators
 
-Everything in this directory produces a **committed artefact**: a fixture, a
-table, or a baseline. None of it runs in CI. Each script is run by hand, its
-output is reviewed as a normal PR diff, and the output is what the rest of the
-project actually depends on — so a change here is a change to the ground truth
-every measurement sits on, not an implementation detail.
+Nearly everything in this directory produces a **committed artefact**: a fixture, a
+table, or a baseline. Each script is run by hand, its output is reviewed as a
+normal PR diff, and the output is what the rest of the project actually depends
+on — so a change here is a change to the ground truth every measurement sits
+on, not an implementation detail.
 
-Two of them extract tables from specification text and two more produce golden
-vectors; the rest produce the **fixture corpus** described below.
+Three scripts are the exception. `gen_dee_gold.py` and `gen_ac4_baseline.py --gold-set`
+write sets that stay on a local disk. `gen_conformance_vectors.py` builds the
+conformance vector bundle that a release publishes, and it is the only script CI
+runs: the `linux-gcc` leg builds the bundle, and a release run builds it twice
+with `--check-determinism`.
+
+Some of the scripts extract tables from specification text (the specifications
+themselves are not committed; [The standards documents](../../docs/building.md#the-standards-documents)
+says where they go), some produce golden vectors or designed tables, some
+capture other encoders' streams, and some make the fixtures the bare-metal
+probes and the ESP32 player check against. The rest produce the **fixture corpus**
+described below. The table under [Running them](#running-them) lists all of
+them.
 
 ## The fixture corpus
 
@@ -31,12 +42,15 @@ a failing check instead.
 | --- | --- | --- | --- | --- |
 | `reference_51.wav` | synthetic | 5.1, 16-bit | 2.50 s | `gen_gold_reference_wav.py` |
 | `reference_stereo.wav` | synthetic | stereo, 16-bit | 3.00 s | `gen_stereo_reference_wav.py` |
+| `reference_objects.wav` | synthetic | five mono objects, 16-bit | 2.00 s | `gen_object_scene_wav.py` |
+| `reference_objects.paths` | placements | — | — | `gen_object_scene_wav.py` |
 | `programme_speech_stereo.flac` | speech | stereo, 16-bit | 30.00 s | `gen_programme_fixtures.py` |
 | `programme_music_stereo.flac` | music | stereo, 16-bit | 30.00 s | `gen_programme_fixtures.py` |
 | `reference_51_eac3_448k_cplbndstrce0.ec3` | bitstream | — | — | FFmpeg (captured, see below) |
 
-The last of those is not audio material and no generator here produces it: it
-is a real FFmpeg-encoded E-AC-3 stream, committed so
+`reference_objects.paths` is a plain-text file, `atmos-path`'s keyframe format, that
+places the five objects in the room at unit gain. The last row is not audio material and
+no generator here produces it: it is a real FFmpeg-encoded E-AC-3 stream, committed so
 `tools/checks/verify_gold_reference.sh` can check this project's decoder
 against a third-party bitstream that sets `cplbndstrce == 0` — Annex E's
 default coupling band structure, which nothing this project's own encoder
@@ -125,15 +139,26 @@ All of these are run from the repo root.
 | --- | --- | --- |
 | `gen_gold_reference_wav.py` | `tests/golden/audio/reference_51.wav` | stdlib only |
 | `gen_stereo_reference_wav.py` | `tests/golden/audio/reference_stereo.wav` | stdlib only |
-| `gen_gui_resample_test_wav.py` | the GUI's 44.1 kHz resample fixture | stdlib only |
+| `gen_object_scene_wav.py` | `tests/golden/audio/reference_objects.wav` and `reference_objects.paths`, the five-object scene the object-quality leg encodes | stdlib only |
+| `gen_gui_resample_test_wav.py` | `fuzz/seeds/fuzz_wav_read/resample-44100.wav`, which the GUI's resample-on-load QML test also loads | stdlib only |
 | `gen_programme_fixtures.py` | both programme fixtures + `corpus.json` | needs `--source-dir` and `ffmpeg` |
 | `gen_external_baseline.py` | `tests/golden/external-baseline/` | needs **Dolby DEE**, `ffmpeg`, a built `ac3cli` |
 | `gen_dee_gold.py` | a local set of DEE's AC-3, E-AC-3, E-AC-3 JOC and TrueHD streams, never committed | needs **Dolby DEE**, `ffmpeg`; `--cli` records a built `ac3cli`'s reading |
 | `gen_dee_tpn_fixture.py` | `tests/golden/external-baseline/eac3-transient-stereo-128/` | needs the local DEE golden-master set (`--gold`) |
+| `gen_object_fixture.py` | `tests/golden/object-fixture/dee_joc_514.ec3`, a DD+ JOC stream that DEE makes from the synthetic 5.1.4 tone bed this script also writes | needs **Dolby DEE** and numpy |
+| `gen_ac4_baseline.py` | the committed AC-4 set: `tests/golden/external-baseline/ac4-*/dee.ac4`, `ac4-manifest.json` and the syntax digests under `tests/golden/ac4dec/`. With `--gold-set DIR`, a local set that is never committed | needs **Dolby DEE** (its licence ends 2026-11-06), numpy, `ffmpeg` and a built `ac3cli` (`--cli`) |
+| `gen_ac4_presentation_sources.py` | the six encoder-made substreams under `tests/golden/ac4dec/presentations/sources/` that the presentation tests multiplex | needs a built `ac3cli` (`--cli`) |
 | `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | encoder/decoder tables | read spec text, not committed |
-| `gen_mdct_goldens.py` | filterbank golden vectors | |
+| `gen_ac4_tables.py` | the AC-4 tables under `src/ac4core/src/tables/`: Huffman codebooks, scale factor bands, noise and QMF tables, the ISF rendering matrices | reads the TS 103 190-1 and -2 text and companion archives from `--spec-dir` (default `spec/`) |
+| `gen_ac4_reference_tables.py` | `tools/references/ac4_tables.py`, the tables of the Python AC-4 syntax transcription | written separately from `gen_ac4_tables.py` so that a table misread in one shows as a trace difference against the other; takes the same `--spec-dir` |
+| `gen_mdct_goldens.py` | `tests/golden/mdct_goldens.hpp`, the analysis filterbank's golden vectors | needs numpy |
+| `gen_qmf_prototype.py` | `src/forge/src/dsp/qmf_prototype.hpp`, the prototype filter of JOC's 64-band QMF (this project's own design) | needs numpy |
 | `gen_ac4_qmf_twiddles.py` | `src/ac4core/src/tables/qmf_twiddles.hpp`, the cosines the AC-4 QMF banks' twiddle factors are built from | stdlib only; `--check` compares the committed header |
-| `gen_baremetal_ac4_fixture.py` | `apps/baremetal/ac4_fixture.hpp`, the committed AC-4 streams the bare-metal AC-4 probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`); the E-AC-3 probe's `fixture.hpp` is `gen_baremetal_fixture.py`'s |
+| `gen_baremetal_fixture.py` | `apps/baremetal/fixture.hpp`, the AC-3 and E-AC-3 streams the minimum-footprint probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`); `atmos_height_scene.txt`, beside it, is the object placement it gives `atmos-encode` for the render row |
+| `gen_baremetal_ac4_fixture.py` | `apps/baremetal/ac4_fixture.hpp`, the committed AC-4 streams the bare-metal AC-4 probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`) |
+| `gen_device_streams.py` | `esp-idf/ac3forge/examples/hearth_sink/www/`: the ESP32 player's stream set and its `streams.json` | needs a built `ac3cli` (`--ac3cli`) and numpy; `tools/checks/check_stream_set.py` checks the committed set |
+| `gen_conformance_vectors.py` | the conformance vector bundle under `--out`, and with `--archive` its `.tar.gz` | needs a built `ac3cli` (`--cli`); the one script CI runs, see above |
+| `gen_pseudo_locale.py` | `apps/gui/translations/ac3gui_xx.ts`, the GUI's pseudo-locale, made from `ac3gui_fr.ts` | stdlib only |
 
 Regenerating a programme fixture:
 

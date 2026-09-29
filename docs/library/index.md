@@ -3,10 +3,10 @@
 `ac3::forge` is the C++23 codec library used by Forge, Crucible, and Hearth. It encodes and
 decodes AC-3 and E-AC-3, including E-AC-3 streams with Dolby Atmos objects represented through
 Joint Object Coding (JOC). It also provides loudness metering, level analysis, and quality
-measurement.
+measurement. AC-4 has libraries of its own beside it, which share no code with it ([AC-4](ac4.md)).
 
 Related targets provide container writing, IAB and ADM/BW64 reading, IAMF writing, object
-signing, platform audio, and AC-4 decoding. Build and linkage requirements differ by target. [Capabilities](capabilities.md) lists supported formats and limits;
+signing, platform audio, and AC-4 decoding and encoding. Build and linkage requirements differ by target. [Capabilities](capabilities.md) lists supported formats and limits;
 [Development status](development-status.md) is the compact done / partial / not-started companion.
 [Validation](../verification.md) describes how output is checked.
 
@@ -15,7 +15,8 @@ Use this page to link the C++ library. Other interfaces are documented under the
 [WebAssembly](../platforms/wasm.md) pages. Packages are listed under
 [Releasing](../releasing.md#what-gets-published).
 
-The main public headers are under `src/forge/include/ac3/`.
+The main public headers are under `src/forge/include/ac3/`. The AC-4 headers are under
+`src/ac4/include/ac4/`, `src/ac4dec/include/ac4dec/` and `src/ac4enc/include/ac4enc/`.
 
 | CMake target | Purpose |
 |---|---|
@@ -132,7 +133,7 @@ APIs/targets/binaries, and each of these is exactly that):
 
 Opt in with `vcpkg install ac3forge[matroska,mp4,mpegts]` for the three container writers, or any
 subset, such as `ac3forge[ac4]` for AC-4 alone. `ac3adm::ac3adm`/`ac3::admbridge` have no vcpkg
-feature — out of scope for this port for now, even though upstream now installs/exports both
+feature — out of scope for this port, even though upstream installs and exports both
 (shared-only, see the note above). Once merged into `microsoft/vcpkg`, the same two snippets work
 with a plain `vcpkg install ac3forge` — no `--overlay-ports` needed.
 
@@ -249,12 +250,13 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [Rust bindings](rust-api.md) — `ac3forge-sys` (raw, `bindgen`-generated) plus the safe
   `ac3forge` crate, both over the C API.
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
-  `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
-  `eac3::FrameEncoder`/`AccessUnitEncoder`.
+  `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder`,
+  `eac3::FrameEncoder`/`AccessUnitEncoder` and, in a build from this tree, `ac4::Decoder` and
+  `ac4::Encoder`.
 - [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` package, built
-  from this tree and not yet on the npm registry: a
+  from this tree and not on the npm registry: a
   push-frame decode API, an AudioWorklet playback pipeline, and an hls.js/MSE bridge over the
-  decoder compiled to WASM.
+  decoder compiled to WASM, and wrappers for the AC-4 decoder and encoder.
 
 ## Conventions
 
@@ -262,7 +264,9 @@ These hold across the whole API.
 
 **Errors are `std::expected`.** Nothing throws for a stream-level or configuration problem.
 `FrameError` covers encoding, `DecodeError` decoding, `ScanError` scanning, `WavError` file
-I/O, `MuxError` muxing. All five have a `describe()` returning a `std::string_view`.
+I/O, `MuxError` muxing. All five have a `describe()` returning a `std::string_view`. The AC-4
+libraries do the same with `ac4::Error`, `ac4::DecodeError` and `ac4::EncodeError`, which are not
+`ac3::DecodeError` and `ac3::FrameError` under other names ([AC-4](ac4.md#errors)).
 
 **The `ac3::` namespace tree is codec-aware; `matroska::`/`mp4::`/`mpegts::`/`ac3adm::`/`ac3iab::`
 are codec-blind.** This is the namespace-level face of the header-prefix rule
@@ -279,7 +283,10 @@ overrides live in `ac3::eac3`, nested rather than parallel. `ac3::FrameEncoder` 
 consistently, not an accident — the same split the Python bindings mirror by putting the E-AC-3
 encoder in a real `ac3.eac3` submodule rather than a same-module name that would collide.
 
-**Audio is `float`, nominally in [-1, 1).** Internally the transform runs in `double`.
+**Audio is `float`, nominally in [-1, 1).** Internally the transform runs in `double` in an
+ordinary build; `AC3FORGE_DECODE_SCALAR` and `AC3FORGE_ENCODE_SCALAR` choose `float` or, for the
+decoder, fixed point on parts that need it ([Building](../building.md)). The AC-4 decoder builds in
+`double` or `float` (a `fixed` request gives it `double`), and the AC-4 encoder always in `double`.
 
 **Channels are passed as `std::span<const std::span<const float>>`.** The inner spans must
 outlive the call. Build the outer vector once and refill the buffers underneath it — a fresh
@@ -288,7 +295,9 @@ vector of spans per frame is a pure waste.
 **Channel order is A/52 Table 5.8, not WAV order.** That is `L, C, R, SL, SR` with LFE last,
 against WAVE_FORMAT_EXTENSIBLE's `FL, FR, FC, LFE, BL, BR`. `ac3::io::ac3_layout_for` and
 `ac3::io::wav_channel_order` give you the permutation both ways; use them rather than writing
-it out again.
+it out again. AC-4 uses neither: `ac4::Decoder` writes `L, R, C, LFE, Ls, Rs` and then the
+layout's remaining pairs, each channel named in `DecodedFrame::speakers`, and `ac4::Encoder` takes
+the same order.
 
 **Encoders are stateful and per-stream.** They carry MDCT overlap, the 44.1 kHz rate
 accumulator, and the DRC and heavy-compression controllers, all of which smooth across frames.
@@ -307,12 +316,12 @@ one.
 std::unique_ptr<Impl> impl_;` is the only private member on `FrameEncoder`
 (both codecs), `FrameDecoder`, `Eac3Decoder`, `oba::AtmosEncoder`,
 `eac3::AccessUnitEncoder`, `meta::RangeController`/`HeavyCompressor`,
-`meta::LoudnessMeter`, `analysis::LevelMeter`, `iec61937::Eac3BurstPacker` and
-the three `io::Wav*` classes that started the pattern — adding a buffer or
+`meta::LoudnessMeter`, `analysis::LevelMeter`, `iec61937::Eac3BurstPacker`, `ac4::Decoder`,
+`ac4::Encoder` and the three `io::Wav*` classes that started the pattern — adding a buffer or
 growing a scratch array changes only `Impl`, defined in the `.cpp`, so it is
-never an ABI break for a caller linking `ac3::forge_shared`. The five plain
+never an ABI break for a caller linking `ac3::forge_shared`. The plain
 config aggregates (`EncoderConfig`, `DecoderConfig`, `AtmosConfig`,
-`FrameConfig`, `AccessUnitConfig`) are the deliberate exception: callers build
+`FrameConfig`, `AccessUnitConfig` and the AC-4 encoder's and decoder's own) are the deliberate exception: callers build
 them with designated initializers, so they stay ordinary value types rather
 than opaque handles, and that ergonomics is worth more than hiding four or
 five `double`s. Their layout is what `SameMajorVersion` actually has to

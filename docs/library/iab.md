@@ -6,11 +6,10 @@ carry, and that Netflix's IMF pipeline (SMPTE ST 2067-201) delivers inside MXF t
 `ac3adm::ac3adm`, `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, it links nothing from
 `ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
-Phase 1 is the bitstream reader (`ac3iab.hpp`); phase 2 is MXF Track File
-extraction (`mxf.hpp`), both covered here. Mapping the parsed bed/object graph onto
-`ac3::oba::AtmosEncoder` (phase 3) is a separate module, `ac3::admbridge`'s `build_iab()` — see
-[ADM → Atmos bridging](adm-bridge.md#bridging-iab) — driven end to end by
-`ac3cli atmos-iab` (see [Commands](../forge/cli/commands.md)).
+The bitstream reader is `ac3iab.hpp` and the MXF Track File extraction is `mxf.hpp`, both covered
+here. Mapping the parsed bed/object graph onto `ac3::oba::AtmosEncoder` is a separate module,
+`ac3::admbridge`'s `build_iab()` — see [ADM → Atmos bridging](adm-bridge.md#bridging-iab) — driven
+end to end by `ac3cli atmos-iab` (see [Commands](../forge/cli/commands.md)).
 
 ```cpp
 const auto frames = ac3iab::parse_iabitstream(path);   // a bare elementary .iab file
@@ -44,10 +43,10 @@ The vcpkg port and the Conan recipe install it where asked for, off by default:
 `vcpkg install ac3forge[iab]`, or `-o "ac3forge/*:iab=True"` (see
 [Using ac3::forge](index.md)).
 
-`ac3cli atmos-iab` (phase 3, needs `-DAC3FORGE_BUILD_ADM=ON` — the same flag
-`ac3::admbridge` itself rides, since that is the module with a consumer for this graph) is this
-module's own real-world driver; nothing else in this build (`ac3gui`, the other examples) consumes
-it yet.
+`ac3cli atmos-iab` (needs `-DAC3FORGE_BUILD_ADM=ON` — the same flag `ac3::admbridge` itself rides,
+since that is the module with a consumer for this graph) is this module's own real-world driver,
+writing E-AC-3 or, with `codec=ac4`, AC-4 objects; nothing else in this build (`ac3gui`, the other
+examples) consumes it.
 
 ## What gets parsed
 
@@ -63,7 +62,7 @@ it yet.
   predictor plus entropy-coded residual is left as an opaque `std::vector<std::byte>` rather than
   decoded. This is IM1's one deliberately unfinished piece; see that struct's own comment in
   `model.hpp`.
-- **The MXF wrapping** (`mxf.hpp`, phase 2) — SMPTE ST 2098-2 itself has no MXF content at all; the
+- **The MXF wrapping** (`mxf.hpp`) — SMPTE ST 2098-2 itself has no MXF content at all; the
   wrapping is a separate, much shorter standard, **SMPTE ST 2067-201:2021** ("IMF — Immersive Audio
   Bitstream Level 0 Plug-in"), which in turn references the base MXF standards (ST 377-1 file
   format, ST 379-1/-2 Generic/Constrained Generic Container, ST 336 KLV/BER encoding). All five are

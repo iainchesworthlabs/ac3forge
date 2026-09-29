@@ -30,9 +30,11 @@ for (int frame = 0; frame < 31; ++frame) {
 }
 ```
 
-`FrameConfig` carries nearly everything `EncoderConfig` does, plus the Annex E tools. One AC-3
-field does not carry over: there is no `cplendf` — the coupling end frequency is derived (the
-top of the coded spectrum, or from `spxbegf` when spectral extension is on, §E3.3.1).
+`FrameConfig` carries nearly everything `EncoderConfig` does, plus the Annex E tools. Three AC-3
+fields do not carry over as they are: there is no `cplendf` — the coupling end frequency is derived
+(the top of the coded spectrum, or from `spxbegf` when spectral extension is on, §E3.3.1) — no
+`cmixlev`/`surmixlev`, which the `mixing` group below replaces, and no `alternate_bsi`, since
+Annex D is AC-3 syntax.
 
 `chbwcod` now behaves exactly as AC-3's does: −1, the default, asks the encoder to choose. It
 used to default to a fixed 60 — the whole 23.7 kHz at every rate — on the reasoning that Annex
@@ -60,6 +62,9 @@ rejects them outright.
 | `transient_prenoise` | `false` | §3.7 (`tpn`): a post-IMDCT correction that overwrites the pre-echo ahead of a detected transient with a synthesized copy of the clean audio just before it. Reuses the same transient detector block switching relies on, so it only has an effect on channels/frames that also block-switch. See [Decoding](decoding.md) for the 1536-sample decoder-side latency this introduces and the `flush()` call it requires. |
 | `delta_allocation` | `true` | §7.2.2.6 delta bit allocation, as for AC-3: the corrections chosen per run and the second fit that weighs them. `false` skips both - the first level of the encoders' effort axis, measured on the ESP32-S3 page - and the stream has `dbaflde` clear. The CLI accepts the command-wide `delta=off` option; inside `eac3-encode`'s fourth positional `[tools]` argument, the spelling is `nodelta`, not `tools=nodelta`. |
 | `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation — a performance choice, not a coding tool: nothing in the bitstream's syntax changes, only how the coefficients were computed (verified ~3e-12 max relative error against the direct form; 0.000 dB SNR delta against an independent oracle at 192–448 kbps). `false` forces the direct reference form, which stays maintained as the oracle the fast path is validated against — the CLI spells that `tools=nofastmdct`. All three forward transforms accelerate — the long one and both halves of a block-switched pair, each down its own independently-derived fold (`ac3/core/mdct.hpp`), and `FrameConfig::fast_mdct` reaches all of them. |
+| `fgaincod` | -1 | §7.2.2.4 fast gain, Table 7.11. -1 leaves Table E1.4's implied `0x4` and writes no `fgaincode` element; 0–7 pins the code, which opens that element in every block (132 bits a frame at 5.1 with coupling), where AC-3 carries the code on the `snroffst` element it sends anyway. `search` moves it as one of its two axes. |
+| `dither` | `true` | §7.3.4 `dithflag`, decided per channel per block from content as for AC-3, except that a frame using spectral extension always dithers off; `false` pins it at 0. |
+| `info` | none | `std::optional<meta::BsiInfo>`: the `infomdat` group (Table E1.2), the informational fields AC-3 carries in bsi — see [Bit stream information](metadata.md#bit-stream-information-ac3metabsihpp). |
 | `search` | `kNone` | Per-frame search over §7.2.2's transmitted bit-allocation parameters against `ac3::quality`'s decoded-domain distortion, instead of the fixed `dbpbcod` 3 EQ3 measured its way to on average. CBR only (`FrameConfig::vbr` unset) - silently inert under VBR/ABR, the same documented boundary EQ5 draws around AHT streams, not a rejected configuration. `kDistortion` only: `kPerceptual` is accepted but inert too, on the same grounds [Decision search](encoding-ac3.md#decision-search) already found it for AC-3. Two axes, the same pair AC-3's search moves: `dbpbcod` over `{kAllocCodes' 3, Table E1.4's 2}`, and `fgaincod` over `ac3::rate_adaptive_fgaincod`'s measured code plus §8.2.12's own default. Unlike AC-3's, the `fgaincod` candidates are not free - `baie` carries no fast gain, so a non-default code opens the per-block `fgaincode` element (`frmfgaincode` 1) and buys its masking curve out of the mantissa budget - so each candidate is scored after a refit against its own side-info cost rather than against the incumbent's. Measured on real CC0 stereo material at 96-640 kbit/s, `dbpbcod` alone was negligible everywhere tried, which is what this axis was added to move. CLI: `search=distortion`/`search=perceptual`/`search=off`. |
 | `mixing` | none | The `mixmdate` group (Table E1.2). E-AC-3 dropped `cmixlev`/`surmixlev` from `bsi` entirely, so without this the stream carries no downmix levels at all. |
 | `strmtyp`, `substreamid`, `chanmap`, `last_dependent` | independent, 0, none, false | Substream identity. Set by `AccessUnitEncoder`; you rarely touch these directly. |
@@ -359,11 +364,11 @@ which at a fixed bit rate comes straight out of the mantissas, plus the Table E1
 `numblkscod` row in the `FrameConfig` table above sets out (`expstre` implied 1, `ahte` implied
 0, both refused by `validate()` rather than silently dropped).
 
-**`eac3_latency()` does not yet account for it.** `LatencyBudget::frame_samples` is
-`kSamplesPerFrame` unconditionally, so `latency_samples()` still reports 1792 (plus any
-hold-back) on a short-syncframe configuration — the real input granularity is
-`samples_per_frame()`, and a pipeline sizing its buffers against a short syncframe should use
-that rather than the reported budget until the two are reconciled.
+**`eac3_latency()` counts it.** `LatencyBudget::frame_samples` is `samples_per_frame()` — 256,
+512, 768 or 1536 — so `latency_samples()` on a one-block configuration is 512 (256 of frame and
+256 of transform), and 768, 1024 and 1792 for two, three and six blocks. The hold-back does not
+shrink with the syncframe: it is 1536 samples whatever the length, six one-block syncframes where
+a six-block configuration holds one (`tests/decoder/test_latency.cpp` pins both).
 
 ## More than one programme
 

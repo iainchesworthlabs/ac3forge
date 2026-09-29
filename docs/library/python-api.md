@@ -2,8 +2,9 @@
 
 A pybind11 module (`python/src/ac3forge_ext/bindings.cpp`) bound straight onto
 `ac3::FrameEncoder`, `ac3::FrameDecoder`, `ac3::Eac3Decoder`, `ac3::eac3::FrameEncoder`,
-`ac3::eac3::AccessUnitEncoder` and `ac3::oba::AtmosEncoder` — pybind11-direct, not layered on a
-separate C API. Install from PyPI:
+`ac3::eac3::AccessUnitEncoder` and `ac3::oba::AtmosEncoder`, and, in the `ac3forge.ac4` submodule,
+`ac4::Decoder` and `ac4::Encoder` — pybind11-direct, not layered on a separate C API. Install from
+PyPI:
 
 ```bash
 pip install ac3forge
@@ -15,6 +16,12 @@ here uses:
 ```bash
 pip install ./python
 ```
+
+A wheel built from a release that predates the AC-4 module has no `ac3forge.ac4`: the wheels for
+0.10.0b1 and earlier are of that kind, and a build from a checkout has the module. PyPI carries
+0.10.0b1's wheels for Windows x64, Linux x86_64 and macOS on Apple Silicon, for Python 3.10 to 3.14.
+`wheels.yml` also builds Linux aarch64 and macOS Intel wheels, which no release has carried, and
+PyPI has no source archive, so on those two `pip install ./python` from a checkout is the way in.
 
 The package's own readme — layout, build notes and examples not duplicated here — lives at
 [`python/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/python/README.md).
@@ -48,9 +55,13 @@ samples. It returns one syncframe as `bytes`. See [Zero-copy numpy and buffer
 reuse](#zero-copy-numpy-and-buffer-reuse) below for what "zero-copy" means here and the one
 caveat it comes with.
 
-`ac3.EncoderConfig` mirrors `ac3::EncoderConfig` field for field (`encoder/encoder.hpp`) —
-construct it with keyword arguments for whichever fields you want to change from their C++
-defaults; an unrecognised keyword raises `TypeError` rather than being silently ignored:
+`ac3.EncoderConfig` mirrors the coding and metadata fields of `ac3::EncoderConfig`
+(`encoder/encoder.hpp`): `sample_rate`, `bitrate_kbps`, `dialnorm`, `dialnorm2`, `chbwcod`, `acmod`,
+`lfe`, `coupling`, `cplbegf`, `cplendf`, `fast_mdct`, `drc`, `heavy`, `drc2`, `heavy2`, `cmixlev`
+and `surmixlev`. `fgaincod`, `dither`, `delta_allocation`, `search`, `info` (the bsi fields),
+`alternate_bsi` (Annex D) and `trace` are not bound. Construct it with keyword arguments for
+whichever fields you want to change from their C++ defaults; an unrecognised keyword raises
+`TypeError` rather than being silently ignored:
 
 ```python
 config = ac3.EncoderConfig(
@@ -221,8 +232,9 @@ the three `fscod2` reduced rates), bitrate, `numblkscod`, `acmod`/`lfe`, the Ann
 (`auto_tools` and the individual `coupling`/`spx`/`aht` flags it overrides), substream identity
 (`strmtyp`/`substreamid`/`chanmap`/`last_dependent`), and `drc`/`heavy`/`drc2`/`heavy2` (the same
 `ac3.Profile`/`ac3.HeavyConfig` types the AC-3 side uses). Not mirrored: the `mixmdate`/`infomdat`
-metadata groups, `vbr`/ABR (`EQ12`) and `search` (`EQ7`/`EQ13`'s per-frame bit-allocation codes
-search) — real gaps, not design decisions, unlike the C API's own documented trim.
+metadata groups (`mixing`, `info`), `vbr`/ABR (`EQ12`), `search` (`EQ7`/`EQ13`'s per-frame
+bit-allocation codes search), `fgaincod` and `delta_allocation`. None of these is left out for a
+reason of design, as the C API's own documented trim is.
 
 ### Wide layouts: `ac3.eac3.AccessUnitEncoder`
 
@@ -289,11 +301,9 @@ does not need to import wholesale).
 | `ac3.Ac3DecodeError` | `FrameDecoder.decode_frame`/`decode_frame_into`, `Eac3Decoder.decode_substream`/`decode_access_unit`/`decode_access_unit_into`, `ac3.split_frames`/`split_access_units`/`stream_bsid` | `ac3.DecodeError` |
 | `ac3.Ac3ScanError` | `ac3.scan`, `ac3.read_frame_header` | `ac3.ScanError` |
 
-All three derive from `ac3.Ac3Error(RuntimeError)`. `ac3.FrameError` has no C++-side `describe()`
-(see [docs/library/index.md](index.md#conventions)'s own note — some codec-level failures never
-got a text description on the C++ side either), so an `Ac3EncodeError`'s message is the
-enumerator's own name; `ac3.DecodeError`/`ac3.ScanError` both do (`ac3.describe`, overloaded for
-either), so an `Ac3DecodeError`/`Ac3ScanError`'s message is real spec-level text.
+All three derive from `ac3.Ac3Error(RuntimeError)`. Each message is the C++ `describe()` text of
+the error after a prefix such as `ac3forge encode failed:`; `ac3.describe` is overloaded for
+`FrameError`, `DecodeError` and `ScanError`, so the same text is available without an exception.
 
 A wrong-length or wrong-count channel array (not `ac3.SAMPLES_PER_FRAME` samples, or not
 `channel_count` of them) raises a plain `ValueError` instead — that is a Python-level usage
@@ -303,10 +313,38 @@ documented as "a programming error, not a runtime one"). `decode_frame_into`/
 buffer that's too short, or one that isn't C-contiguous or writeable all raise `ValueError`; the
 wrong dtype raises `TypeError`. See [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above.
 
+## Latency
+
+`FrameEncoder.latency`, `AtmosEncoder.latency` (with `AtmosEncoder.bed_latency`, the 5.1 bed a
+legacy decoder hears), `eac3.FrameEncoder.latency` and `eac3.AccessUnitEncoder.latency` return an
+`ac3.LatencyBudget`: the `frame_samples`, `transform_samples`, `lookahead_samples` and
+`holdback_samples` terms of [Encoding AC-3](encoding-ac3.md#latency), their `total_samples`, and
+`milliseconds(sample_rate)`. Each of those encoders also has a `latency_samples` total, and
+`FrameDecoder`, `Eac3Decoder` and `ac4.Decoder` have `latency_samples` for the delay they add.
+`ac3.BLOCKS_PER_FRAME` (6) and `ac3.TRANSFORM_DELAY_SAMPLES` (256) sit beside `SAMPLES_PER_FRAME`.
+
+## Enums and result types
+
+Every enum keeps its C++ enumerator names (`ac3.Acmod.k3_2`, `ac3.SampleRate.k48000`), and the
+result types are read-only.
+
+| Names | Where they appear |
+|---|---|
+| `Acmod`, `SampleRate`, `StreamType`, `StreamKind`, `ProfileId`, `CentreMixLevel`, `SurroundMixLevel` | Configs and results throughout. `ac3.sample_rate_hz(rate)` gives a `SampleRate` in hertz, `ac3.fullbw_channel_count(acmod)` the full-bandwidth channel count and `ac3.profile_name(id)` a profile's name |
+| `FrameError`, `DecodeError`, `ScanError` | The `.error` of the exceptions in [Errors](#errors) |
+| `FrameHeader`, `ScannedStream`, `ScannedProgramme`, `SubstreamService`, `AccessUnitTiming` | Results of `ac3.read_frame_header`, `ac3.scan` (`programmes` holds `ScannedProgramme`s, `associated_substreams` `SubstreamService`s) and `ac3.access_unit_timing` (`start_sample`, `duration_samples`, `start_seconds`, `duration_seconds`, `start_in_timescale(timescale)`, `duration_in_timescale(timescale)`) |
+| `Program`, `DecodedProgram`, `DynamicObject`, `Position`, `ObjectPlacement` | The OAMD side of [E-AC-3 and Atmos objects](#e-ac-3-and-atmos-objects): `Program` (`dynamic_only`, `lfe`, `bed`, `dynamic_objects`) is what `AtmosEncoder.program` and `DecodedProgram.program` return |
+| `eac3.LayoutId`, `eac3.FrameMetadata` | [Encoding E-AC-3](#encoding-e-ac-3). `eac3.FrameEncoder.encode_frame(channels, metadata=None, aux=b"")` takes the §7.7 words as an `eac3.FrameMetadata` (`dynrng`, `compr`, `dynrng2`, `compr2`) and an EMDF `aux` payload |
+| `meta.QcPresetId`, `QcLoudnessLimit`, `QcPreset`, `QcVerdict` | `meta.qc_preset(id)` returns a `QcPreset` (`target_lkfs`, `tolerance_lu`, `max_true_peak_dbtp`, `loudness_limit` of `kBand` or `kCeiling`, `source`); `meta.evaluate_qc_gate` returns a `QcVerdict` (`loudness_delta_lu`, `loudness_pass`, `true_peak_margin_dbtp`, `true_peak_pass`, `passed`) |
+| `signing.VerifySummary` | `signing.verify_atmos_stream`'s counts: `valid`, `mismatch`, `no_container` and `all_valid` |
+| `containers.TsCodec`, `TsProfile` | `TsTrack.codec` (`kAc3`, `kEac3`, `kAc4`) and `mux_mpegts`'s `profile` (`kDvb`, `kAtsc`) |
+| `ac4.Speaker`, `ObjectKind`, `DownmixTarget`, `DrcMode`, `AssociatedType`, `ConcealmentPolicy`, `ConcealmentAction`, `DecodingMode`, `CodecMode`, `RateMode`, `BedChannel`, `ObjectCoding`, `AjocDownmix`, `AdditionalPair`, `DecodeError`, `EncodeError` | The enums of `ac4::` behind the [AC-4](ac4.md) controls, under their C++ enumerator names |
+| `ac4.OutputConfig`, `PresentationChoice`, `DecoderConfig`, `Concealment`, `PresentationInfo`, `LoudnessInfo`, `EncodedFrame` | `OutputConfig` has `output_level_dbfs`, `drc`, `headphones`, `dialogue_enhancement_db`, `downmix`, `mix_lfe`, `dialogue_gain_db` and `associated_gain_db`; `PresentationChoice` `presentation_id`, `index`, `language`, `associated`, `associated_type` and `headphones`; `DecoderConfig` `output`, `concealment`, `presentation`, `level` and `decoding`; `Concealment` the `error` and `action` of a frame the decoder made in place of one that did not decode; `PresentationInfo` `index`, `presentation_id`, `md_compat`, `enabled`, `alternative`, `pre_virtualized`, `name`, `language`, `decodable`, `selectable` and `speakers`; `LoudnessInfo` `dialnorm_dbfs`, `integrated_lkfs`, `true_peak_dbtp` and `loudness_range_lu`, each `None` until the stream sends it; `EncodedFrame` `data`, `samples` and `iframe`. A `DecodedFrame` also has `sample_rate_hz`, `sequence_counter`, `presentation_index`, `presentation_id` and `concealed` |
+
 ## Containers, metering, QC and signing
 
-A completeness pass added four submodules, each pybind11-direct over the same C++
-classes every other binding here wraps:
+Three more submodules, each pybind11-direct over the same C++ classes every other binding here
+wraps, and a context manager:
 
 - **`ac3forge.containers`** — the three container writers and the batch read side, bytes in /
   bytes out: `mux_matroska`/`mux_mp4`/`mux_mpegts` over `MatroskaTrack`/`Mp4Track`/`TsTrack`
@@ -314,8 +352,13 @@ classes every other binding here wraps:
   `demux_matroska`/`demux_mp4`/`demux_mpegts` bringing frames back out. `Mp4Track.codec_config`
   takes the `dac3`/`dec3` payload `ac3forge.build_codec_config_box(stream)` produces — built
   straight off the bitstream, never off whatever a source container declared, exactly like
-  `ac3cli mp4`. The incremental `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH
-  surface stay C++-only for now — a boundary, not a silent gap.
+  `ac3cli mp4`. AC-4 goes through in part: `containers.TsCodec.kAc4` for MPEG-TS (DVB only), and
+  `Mp4Track(codec_id="ac-4", codec_config=...)` with the `dac4` payload of
+  `ac4.Encoder.toc.build_dac4()`; `demux_mp4` and `demux_mpegts` read AC-4 tracks back. `Mp4Track`
+  has no `timescale` and `mux_mp4` no sync-sample list, so every sample is marked a sync sample and
+  a frame rate whose frames alternate in length (29.97, 59.94 and 119.88 fps) has no
+  `samples_per_frame` to give; `ac3cli` or the C++ `mp4::mux` writes those. The incremental
+  `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH surface are C++-only, by design.
 - **`ac3forge.meta`** — `LoudnessMeter` (BS.1770; every gated measurement is `None` until it
   can mean anything), the cited `qc_preset()` table, and `evaluate_qc_gate()` — `ac3cli qc`'s
   own machinery, callable from a notebook.
@@ -330,9 +373,11 @@ holds them to the compiled module on every push.
 
 ## AC-4
 
-`ac3forge.ac4` is a submodule in the present-or-absent pattern `containers`/`meta`/`signing`
-above already use — pybind11-direct on `ac4::Decoder`/`ac4::Encoder` (ETSI TS 103 190-1 V1.4.1,
-TS 103 190-2 V1.3.1), not layered on the C API. It binds a deliberate subset of both C++ headers:
+`ac3forge.ac4` is one of the extension's optional submodules, with `containers` and `signing`: it
+exists only in a build that also built the libraries behind it (`AC3FORGE_BUILD_AC4`), and the
+wheel build turns them all on. It is pybind11-direct on `ac4::Decoder`/`ac4::Encoder` (ETSI TS
+103 190-1 V1.4.1, TS 103 190-2 V1.3.1), not layered on the C API, and binds a deliberate subset of
+both C++ headers:
 decoder output config, presentation selection, concealment, decoded PCM/speakers/objects (with the
 metadata updates within a frame) and loudness metadata; encoder config (the core fields,
 `iframes` and `fragment_starts`, the `experimental` flags that need no nested group, and one
@@ -367,14 +412,20 @@ takes a 2-D array or a sequence of 1-D arrays, one per `EncoderConfig.channels`,
 fixed `SAMPLES_PER_FRAME`. `encoder.flush()` pads to the end of the last frame and returns whatever
 the delay still held; `encoder.toc` reads back a `Toc` snapshot whose `build_dac4()`/
 `dac4_refusal()`/`media_timing()`/`samples_per_frame()` feed a container muxer the same way the
-C API's `ac3forge_ac4_toc_t` accessors do.
+C API's `ac3forge_ac4_toc_t` accessors do, and `ac4.sync_frame(raw_frame, crc)` wraps a raw frame
+for a `.ac4` file or MPEG-2 TS. `encoder.codec_mode` is what `kAuto` chose, and
+`encoder.delay_samples` and `encoder.decoder_delay_samples` say where an input sample lands in the
+decoded output.
 
 `decoder.decode(frame_bytes)` returns `None` when the frame has no output yet — not an error —
 and otherwise a `DecodedFrame` whose `.channels`/`.objects[].samples` are read-only `numpy` views
 with the same zero-copy convention as [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above;
 both `encoder.encode()` and `decoder.decode()` release the GIL for the underlying call.
-`decoder.presentations` reads the last frame's table of contents, and `decoder.metadata_loudness`
-reads the selected presentation's loudness fields.
+`decoder.presentations` reads the last frame's table of contents, `decoder.metadata_loudness`
+reads the selected presentation's loudness fields, `decoder.set_output()` and
+`decoder.set_presentation()` change the output processing and the chosen presentation from the next
+frame, and `decoder.refusal_reason`, `decoder.latency_samples` and `decoder.reset()` are the
+C++ decoder's own.
 
 ### Encoding objects
 
@@ -450,14 +501,21 @@ tooling, not part of this binding's surface — the DECODE-side `trace`/`eac3_tr
 encoder/decoder mirror self-check `ac3::verify::MirrorEncoder`/`Eac3MirrorEncoder` drive
 in-repo) and is exposed. `DecodedAccessUnit`/`DecodedSubstream`'s full Table E2.5 channel-map
 machinery (`chanmap`, `location_map()`, `layout`) is likewise not exposed beyond the convenience
-`channel_labels` list above — deliberately unsupported for now, the same "say so and say why"
-convention `CONTRIBUTING.md` asks of the C++ side itself, not a silent gap.
+`channel_labels` list above — deliberately unsupported, and said so here, the "say so and say why"
+convention `CONTRIBUTING.md` asks of the C++ side itself.
+
+`ac3.DecoderConfig` binds `drc_scale` and `heavy_compression`, and the research `trace` and
+`eac3_trace` handles. The §7.8 output stage (`output`: dialnorm normalisation, the downmix, the
+operating modes), `concealment`, `programme`, `drc_boost_scale`, `fast_imdct`, `fast_mdct`,
+`joc_domain`, `syntax`, `skip_reconstruction`, `skip_object_reconstruction` and `diagnostics` are
+not bound: the Python decoders return the coded channels as decoded, and a fold, concealment or
+the choice of one programme among several happens on the arrays or in C++.
 
 `ac3.eac3.FrameConfig`'s `trace` hook is the same ENCODE-side omission as `FrameEncoder`'s above -
 `ac3.verify.Eac3AccessUnitTrace` is decode-only from Python too, same as its AC-3 counterpart. Its
-`mixmdate`/`infomdat` metadata groups, `vbr`/ABR and `search` are unmirrored too, but those **are**
-gaps rather than decisions (see [Encoding E-AC-3](#encoding-e-ac-3) above) — `AccessUnitConfig` is
-also missing `additional` (further independent programmes, I1-I7).
+`mixmdate`/`infomdat` metadata groups, `vbr`/ABR and `search` are unmirrored too, with no reason of
+design behind it (see [Encoding E-AC-3](#encoding-e-ac-3) above); `AccessUnitConfig` also lacks
+`additional` (further independent programmes, I1-I7).
 
 There is no `Eac3Decoder.decode_substream_into` — only the two forms that assemble a full
 programme (`FrameDecoder.decode_frame_into`, `Eac3Decoder.decode_access_unit_into`) have a
@@ -467,17 +525,13 @@ single substream's own PCM is always freshly allocated.
 
 `ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
-here either, and that is a decision rather than an omission - but no longer the shape-instability
-one it used to be. `SceneCursor` existed precisely because the seam a live position source would
-plug into wasn't finished; the OSC wire form
-([`ac3/oba/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)) has since landed as a sibling
-header, and it changed nothing about `scene.hpp`: no method on `ObjectScene`/`SceneCursor` gained
-or lost a parameter, nothing was added to either class. The shape has settled. What is left is a
-plain "not done yet": this surface is a candidate for the coming API freeze, where an
-experimental type would be a lasting commitment, and exposing half of it - the serialisation
-without the type, say - would still be worse than exposing none, because a caller would get a
-scene it could load and not evaluate. Read and write the JSON form from the host language and
-hand the resulting placements to the encoder entry points above until it is exposed properly.
+here either. Its shape has settled: `SceneCursor` is the seam a live position source plugs into,
+and the OSC wire form ([`ac3/oba/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)), a
+sibling header, changed nothing about `scene.hpp`. It is left out because this surface is a
+candidate for the coming API freeze, where an experimental type would be a lasting commitment, and
+exposing half of it - the serialisation without the type, say - would be worse than exposing none,
+because a caller would get a scene it could load and not evaluate. Read and write the JSON form
+from the host language and hand the resulting placements to the encoder entry points above.
 
 ---
 

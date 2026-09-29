@@ -9,8 +9,8 @@ Nothing here is on by default. `EncoderConfig::search` and its E-AC-3 counterpar
 `eac3::FrameConfig::search`, are the only things in the library that read them, and both are
 `kNone` unless a caller asks — see [Encoding AC-3 § Decision
 search](encoding-ac3.md#decision-search) and [Encoding E-AC-3](encoding-eac3.md)'s own `search`
-row, which is narrower (CBR only, `kDistortion` only, one axis rather than two — see its own
-entry for why).
+row, which is narrower: CBR only, `kDistortion` only, and its `fgaincod` axis has to be paid for in
+side information — see its own entry.
 
 ## Why this exists
 
@@ -131,12 +131,12 @@ distance, ViSQOL) show it trading SNR against per-band spectral shape. `kPercept
 currently loses at every rate tested - a real finding about the model's calibration on real
 material, not a claim this page is hiding.
 
-`eac3::FrameConfig::search` is the E-AC-3 side, narrower on purpose: CBR only,
-`kDistortion` only, and one axis (`dbpbcod`) rather than the two AC-3's search has, because
-E-AC-3 has no per-frame `fgaincod` to search yet. Measured on real CC0 stereo material, its effect
-is negligible at every rate tried - see [Encoding E-AC-3](encoding-eac3.md)'s own `search` row and
-the encoder notes for the numbers, and why a single-axis search over an already-tuned
-default has little left to find.
+`eac3::FrameConfig::search` is the E-AC-3 side, narrower on purpose: CBR only and `kDistortion`
+only. It moves the same two axes as AC-3's search, `dbpbcod` and `fgaincod`, but `fgaincod` is not
+free there: `baie` carries no fast gain, so a non-default code opens the per-block `fgaincode`
+element, and each candidate is scored after a refit against its own side-information cost. The
+`dbpbcod` axis alone was negligible on real CC0 stereo material at every rate tried, 96 to 640
+kbit/s — see [Encoding E-AC-3](encoding-eac3.md)'s own `search` row.
 
 Reproducing the numbers needs material this project does not check in (the committed fixtures are
 narrow-band synthesized noise, exactly the trap `encoder.cpp`'s `chbwcod` comment warns about) and
