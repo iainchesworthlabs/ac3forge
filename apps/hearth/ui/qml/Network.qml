@@ -14,7 +14,10 @@ import Ac3ForgeHearth
 // issue #875) show once NetworkController.selectedSinkSettable is true (a
 // paired Hearth sink), replacing the plain "paired" card below. A paired
 // sink that is not connected - another server took it, or it is not
-// answering - gets a banner above either, with the way to connect to it now.
+// answering - gets a banner above either, with the way to connect to it now;
+// a paired sink not yet in ANY group gets a second banner beneath that one,
+// offering to create or join one right there (the group-creation UX gap
+// raised in hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
 // Groups (NetworkGroupEdit.qml, issue #874: create, add, remove, volume,
 // mute, and playing to one) are backed by an actual ac3::sendspin::Group.
 //
@@ -24,6 +27,38 @@ import Ac3ForgeHearth
 // cannot today); only the after-the-fact notice is here.
 Item {
     id: root
+
+    // The post-pairing group prompt's own dismissal, cleared the moment the
+    // selection actually changes (a real value change on NetworkController.
+    // selectedId, not just a re-poll of something else - onSelectedSinkIdChanged
+    // fires only then, matching QML's own value-change semantics for a bound
+    // property). Deliberately NOT persisted: the banner reappears on a later
+    // visit to the same still-ungrouped sink, exactly like the connect
+    // banner above it - a discussed trade against a settings-file entry, not
+    // an oversight (hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
+    property string dismissedSinkId: ""
+    readonly property string selectedSinkId: NetworkController.selectedId
+    onSelectedSinkIdChanged: dismissedSinkId = ""
+
+    // Shared by the prompt's "Create a group" and "Or create a new group"
+    // actions: chains three calls that already exist rather than adding one
+    // new one, named for the sink itself (NetworkSinkList.qml's own comment
+    // on "New group" explains the rename-after-creation idiom this follows -
+    // starting from the sink's name instead needs no rename step at all) and
+    // selected so the group editor - "Play to this group" - is what the
+    // person lands on next. Returns the new group's id: createGroup() alone
+    // republishes synchronously (its own comment), but addGroupMember()/
+    // selectGroup() do not, so selectedGroupId can still read stale until the
+    // next poll() tick - the id this function already has is the only
+    // reliable way to know which group was just made, both here and in a
+    // test driving this same button.
+    function createGroupForSelectedSink() {
+        const sink = NetworkController.selectedSink;
+        const groupId = NetworkController.createGroup(sink.name);
+        NetworkController.addGroupMember(groupId, sink.id);
+        NetworkController.selectGroup(groupId);
+        return groupId;
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -86,6 +121,143 @@ Item {
                         text: (NetworkController.selectedSink.notice ?? "").length > 0 ? qsTr("Take it back")
                                                                                         : qsTr("Connect now")
                         onClicked: NetworkController.connectSink(NetworkController.selectedSink.id)
+                    }
+                }
+            }
+
+            // A paired sink not yet in any group: pairing alone does not
+            // make Hearth play to it, and nothing else on this page says so
+            // as directly as this - the gap behind the report that a paired
+            // sink's first Play silently fell back to the local output
+            // (hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
+            // Accent-bordered rather than the connect banner's plain
+            // surface: that one reports a fact, this one is an offer to act
+            // on, the same visual weight difference AppButton's own
+            // `primary` draws between an action and everything beside it.
+            Rectangle {
+                objectName: "networkGroupPromptBanner"
+                Layout.fillWidth: true
+                visible: NetworkController.selectedGroup.id === undefined
+                         && NetworkController.selectedSink.badge === "paired"
+                         && NetworkController.selectedSink.inGroup === false
+                         && NetworkController.selectedSink.id !== root.dismissedSinkId
+                implicitHeight: promptCol.implicitHeight + Theme.gap
+                color: Theme.accent100
+                border.color: Theme.accent
+                border.width: 1
+
+                ColumnLayout {
+                    id: promptCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: Theme.gap
+                    spacing: Theme.gap / 2
+
+                    Text {
+                        text: qsTr("JUST PAIRED")
+                        color: Theme.accentInk
+                        font.pixelSize: Theme.fontMicro
+                        font.bold: true
+                        font.letterSpacing: 1.2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        text: qsTr("%1 isn't playing anything yet").arg(NetworkController.selectedSink.name ?? "")
+                        color: Theme.text
+                        font.bold: true
+                        font.pixelSize: Theme.fontBody
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        text: NetworkController.groupCount === 0
+                              ? qsTr("It needs to be in a group Hearth plays to - a group of one plays to a "
+                                    + "single sink.")
+                              : qsTr("It needs to be in a group Hearth plays to - choose one, or make "
+                                    + "another.")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
+                    }
+
+                    // No groups exist yet: one action, name and all.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        visible: NetworkController.groupCount === 0
+
+                        AppButton {
+                            objectName: "networkGroupPromptCreate"
+                            text: qsTr("Create a group")
+                            primary: true
+                            onClicked: root.createGroupForSelectedSink()
+                        }
+                        AppButton {
+                            objectName: "networkGroupPromptNotNowA"
+                            text: qsTr("Not now")
+                            onClicked: root.dismissedSinkId = NetworkController.selectedSink.id
+                        }
+                    }
+
+                    // At least one group already exists: add to one,
+                    // mirroring NetworkGroupEdit.qml's own "Add to the
+                    // group" combo-plus-button shape exactly, just inverted
+                    // (there, pick a sink for the current group; here, pick
+                    // a group for the current sink).
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        visible: NetworkController.groupCount > 0
+
+                        AppComboBox {
+                            id: promptGroupBox
+                            objectName: "networkGroupPromptChoice"
+                            Layout.fillWidth: true
+                            textRole: "text"
+                            valueRole: "id"
+                            model: NetworkController.groups.map((g) => ({ id: g.id, text: g.name }))
+                        }
+                        AppButton {
+                            objectName: "networkGroupPromptAdd"
+                            text: qsTr("Add to the group")
+                            primary: true
+                            // Not just promptGroupBox.count > 0
+                            // (NetworkGroupEdit.qml's own addMemberBox
+                            // guard): that combo is built fresh each time
+                            // its card is shown, but this one can flip
+                            // between hidden and visible repeatedly, on the
+                            // SAME instance, as the sink leaves and rejoins
+                            // groups - currentValue is what the click
+                            // actually needs, and checking it directly
+                            // rather than count avoids ever sending an empty
+                            // group id if the two are not in sync.
+                            enabled: (promptGroupBox.currentValue ?? "").length > 0
+                            onClicked: {
+                                NetworkController.addGroupMember(promptGroupBox.currentValue,
+                                                                  NetworkController.selectedSink.id);
+                                NetworkController.selectGroup(promptGroupBox.currentValue);
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        visible: NetworkController.groupCount > 0
+
+                        AppButton {
+                            objectName: "networkGroupPromptCreateAnother"
+                            text: qsTr("Or create a new group")
+                            onClicked: root.createGroupForSelectedSink()
+                        }
+                        Item { Layout.fillWidth: true }
+                        AppButton {
+                            objectName: "networkGroupPromptNotNowB"
+                            text: qsTr("Not now")
+                            onClicked: root.dismissedSinkId = NetworkController.selectedSink.id
+                        }
                     }
                 }
             }
