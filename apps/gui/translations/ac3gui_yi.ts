@@ -3911,7 +3911,7 @@
         <translation>דערקלערטע הילכיקייט %1 LKFS (ווײַטערדיקע הילכיקייט־אינפֿאָרמאַציע)</translation>
     </message>
     <message>
-        <location filename="../qml/QcDialog.qml" line="277"/>
+        <location filename="../qml/QcDialog.qml" line="307"/>
         <source></source>
         <translation></translation>
     </message>
@@ -4131,104 +4131,104 @@
         <translation>WAV אַודיאָ (*.wav)</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="67"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="68"/>
         <source>Choose a folder for the exported objects</source>
         <translation>אויסקלײַבן אַ פּאַפּקע פֿאַר די עקספּאָרטירטע אָביעקטן</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="80"/>
-        <location filename="../qml/StreamPlayerDialog.qml" line="86"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="81"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="87"/>
         <source>Open stream</source>
         <translation>עפֿענען אַ סטרים</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="94"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="95"/>
         <source>Close</source>
         <translation>פֿאַרמאַכן</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="101"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="102"/>
         <source>Decodes an already-encoded AC-3/E-AC-3 file and plays its decoded bed through an ordinary output — like every other decode in this window, an Atmos stream plays its 5.1 bed here, not unmixed objects (see Inspect objects for those). Export writes the decode to a WAV, and for an Atmos stream one WAV per object.</source>
         <translation>דעקאָדירט אַ שוין־קאָדירטע AC-3/E-AC-3 טעקע און שפּילט איר דעקאָדירט בעט דורך אַ געוויינטלעכן אַרויסגאַנג — ווי יעדע אַנדערע דעקאָדירונג אין דעם דאָזיקן פֿענצטער, שפּילט אַן Atmos סטרים דאָ זײַן 5.1 בעט, ניט אומגעמישטע אָביעקטן (זעט באַטראַכטן די אָביעקטן פֿאַר יענע). עקספּאָרטירן שרײַבט די דעקאָדירונג אין אַ WAV, און פֿאַר אַן Atmos סטרים איין WAV פּער אָביעקט.</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="112"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="113"/>
         <source>Choose file…</source>
         <translation>אויסקלײַבן אַ טעקע…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="120"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="121"/>
         <source>No file chosen yet</source>
         <translation>נאָך קיין טעקע ניט אויסגעקליבן</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="132"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="133"/>
         <source>Decoding…</source>
         <translation>דעקאָדירט…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="145"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="146"/>
         <source>PRESENTATION</source>
         <translation>פּרעזענטאַציע</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="155"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="156"/>
         <source>The decoder&apos;s choice</source>
         <translation>דעם דעקאָדירערס ברירה</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="179"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="180"/>
         <source>Choose an AC-3/E-AC-3 file above to play it.</source>
         <translation>קלײַבט אויס אַן AC-3/E-AC-3 טעקע אויבן כּדי זי אָפּצושפּילן.</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="213"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="214"/>
         <source>Pause</source>
         <translation>פּויזירן</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="213"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="214"/>
         <source>Play</source>
         <translation>שפּילן</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="240"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="241"/>
         <source>Position</source>
         <translation>פּאָזיציע</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="241"/>
-        <location filename="../qml/StreamPlayerDialog.qml" line="255"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="242"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="256"/>
         <source>%1 / %2 s</source>
         <translation>%1 / %2 ס</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="271"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="272"/>
         <source>Export decoded WAV…</source>
         <translation>עקספּאָרטירן דעם דעקאָדירטן WAV…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="277"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="278"/>
         <source>Export objects…</source>
         <translation>עקספּאָרטירן די אָביעקטן…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="289"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="290"/>
         <source>Exporting…</source>
         <translation>עקספּאָרטירט…</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="305"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="306"/>
         <source>LEVELS</source>
         <translation>ניוואָען</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="334"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="335"/>
         <source>SOUNDFIELD</source>
         <translation>קלאַנגפֿעלד</translation>
     </message>
     <message>
-        <location filename="../qml/StreamPlayerDialog.qml" line="342"/>
+        <location filename="../qml/StreamPlayerDialog.qml" line="343"/>
         <source>Solid dots are bed positions this stream carries. Objects are not here — this plays the 5.1 bed only; open Inspect objects for per-object playback and position.</source>
         <translation>פֿולע פּינטלעך זײַנען בעט־פּאָזיציעס וואָס דער דאָזיקער סטרים טראָגט. אָביעקטן זײַנען ניט דאָ — דאָס שפּילט בלויז דאָס 5.1 בעט; עפֿנט באַטראַכטן די אָביעקטן פֿאַר פּער־אָביעקט אָפּשפּילן און פּאָזיציע.</translation>
     </message>
