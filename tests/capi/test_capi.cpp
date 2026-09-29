@@ -3773,6 +3773,13 @@ TEST_CASE(
 
 namespace {
 
+// An enumeration's value outside its enumerators, which a caller's C code can hold: taken through
+// a function argument so that no compiler sees a constant converted out of the range.
+template <typename E>
+E enumerator(int value) {
+    return static_cast<E>(value);
+}
+
 std::string refusal_of(const ac3forge_ac4_encoder_config_t& config) {
     return ac3forge_ac4_encoder_refusal_reason(&config);
 }
@@ -3897,18 +3904,18 @@ TEST_CASE("the object configuration's limits and refusals are the encoder's", "[
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->objects_config.objects = scene->objects.data();
         scene->objects[3].bed =
-            static_cast<ac3forge_ac4_bed_channel_t>(3);  // no loudspeaker has code 3
+            enumerator<ac3forge_ac4_bed_channel_t>(3);  // no loudspeaker has code 3
         CHECK(refusal_of(scene->config) == not_an_argument);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->objects[3].bed = AC3FORGE_AC4_BED_TOP_BACK_RIGHT;
         CHECK(refusal_of(scene->config).empty());
-        scene->objects_config.coding = static_cast<ac3forge_ac4_object_coding_t>(2);
+        scene->objects_config.coding = enumerator<ac3forge_ac4_object_coding_t>(2);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->objects_config.coding = AC3FORGE_AC4_OBJECT_CODING_AJOC;
-        scene->objects_config.downmix = static_cast<ac3forge_ac4_ajoc_downmix_t>(3);
+        scene->objects_config.downmix = enumerator<ac3forge_ac4_ajoc_downmix_t>(3);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->objects_config.downmix = AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED;
-        scene->config.experimental.seven_x = static_cast<ac3forge_ac4_additional_pair_t>(4);
+        scene->config.experimental.seven_x = enumerator<ac3forge_ac4_additional_pair_t>(4);
         CHECK(create_status(scene->config) == AC3FORGE_ERROR_INVALID_ARGUMENT);
         scene->config.experimental.seven_x = AC3FORGE_AC4_PAIR_NONE;
         scene->config.iframes = nullptr;
