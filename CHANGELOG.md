@@ -1541,6 +1541,28 @@ The sections below contain the complete change list and fixes.
   which the encoder then could not write; and that the 7.X layout's pair went to every substream, so
   a 7.1 substream could not have mono dialogue beside it. All three are fixed. `docs/library/ac4.md`
   describes the encoder.
+- **`src/ac4core`'s QMF-domain kernels take a complex type of the project's own** (`dsp::Complex<Real>`,
+  in place of `std::complex<Real>`, which a fixed-point type cannot instantiate) and join
+  `AC3FORGE_DECODE_SCALAR`, the same option `ac3::forge`'s own decoder scalar resolves from (plan
+  phase D14a, the first part of AC-4 on the ESP32s): the analysis/synthesis QMF pair, the FFT and
+  MDCT, A-SPX's high-frequency generator, A-CPL's decorrelators and transient ducker, A-JOC's
+  reconstruction and A-JCC's accumulator are each explicitly instantiated at the resolved scalar
+  rather than a hardcoded `double`, and the `float` build compiles `src/ac4core` with
+  `-Wdouble-promotion` as an error. `Fixed32` and the project's own float transcendentals move to a
+  new header-only target, `src/arithmetic`, that `ac3::forge` and `src/ac4core` both link, so neither
+  carries its own copy. The decoder's `QmfValue` and the encoder's `QmfSample` take the same complex
+  type, since both call straight into these kernels at `double`; the double build's output is
+  unchanged bit for bit as far as the whole test suite can tell. `src/ac4dec/src/pcm` and
+  `src/ac4enc`'s own QMF-domain code are not yet templated on `Real` - retemplating them, so a full
+  decoder or encoder build at `float` can exist at all, is the next part of the phase.
+- **Three memory findings from D14a's survey are fixed.** `bitrate_kbps()`'s lookup was a
+  function-local static `std::unordered_map`, guarded and heap-allocating on first call; Table 90's
+  `brate_ind` column is a contiguous range, so a `constexpr` array indexed directly replaces it.
+  The |q|^(4/3) dequantisation table was the same guarded-static pattern over 8,192 doubles, moved to
+  namespace scope so the one-time cost lands before `main()` rather than as a latency spike on
+  whichever frame decodes first. `stereo_parameters()` returned a 32 KiB `StereoParameters` by value
+  at every call, a stack temporary despite every caller already owning a slot to write into; it now
+  takes the destination by reference.
 
 **Browser (WASM)**
 
