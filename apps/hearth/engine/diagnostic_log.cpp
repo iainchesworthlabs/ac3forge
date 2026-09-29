@@ -90,20 +90,34 @@ DiagnosticLog::DiagnosticLog(std::size_t capacity)
 }
 
 void DiagnosticLog::note(std::string_view line) {
-    // Built before the lock is taken, so a writer holds it for one move.
+    // Built before either lock is taken, so a writer holds mutex_ for one
+    // ring write and observers_mutex_ for the notify loop below, never both
+    // at once. entry outlives the ring write (kept for the notify loop
+    // too), so this copies into the ring rather than moving as it once did.
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - start_)
                              .count();
     std::string entry = fmt::format("+{:04}.{:03} ", elapsed / 1000, elapsed % 1000);
     entry += one_line(line);
-    const std::scoped_lock lock(mutex_);
-    if (ring_.size() < capacity_) {
-        ring_.push_back(std::move(entry));
-        return;
+    {
+        const std::scoped_lock lock(mutex_);
+        if (ring_.size() < capacity_) {
+            ring_.push_back(entry);
+        } else {
+            ring_[head_] = entry;
+            head_ = (head_ + 1) % capacity_;
+            ++dropped_;
+        }
     }
-    ring_[head_] = std::move(entry);
-    head_ = (head_ + 1) % capacity_;
-    ++dropped_;
+    const std::scoped_lock lock(observers_mutex_);
+    for (const auto& observer : observers_) {
+        observer(entry);
+    }
+}
+
+void DiagnosticLog::add_observer(std::function<void(std::string_view)> observer) {
+    const std::scoped_lock lock(observers_mutex_);
+    observers_.push_back(std::move(observer));
 }
 
 std::vector<std::string> DiagnosticLog::lines() const {

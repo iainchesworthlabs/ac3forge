@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 100> kOptionTokens{{
+constexpr std::array<OptionToken, 101> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -93,6 +93,7 @@ constexpr std::array<OptionToken, 100> kOptionTokens{{
     {"syntax-trace=", "ac4-encode, and decode of AC-4: write every syntax element written or read"},
     {"codec-mode=", "ac4-encode: simple, aspx, aspx-acpl-1 to 3, and for 5.1.4 scpl, aspx-scpl or aspx-ajcc"},
     {"experimental=", "ac4-encode: tools and layouts no outside reader has checked yet"},
+    {"objects=", "ac4-encode: a scene file making the WAV's channels objects (experimental=objects)"},
     {"frame-rate=", "ac4-encode: a frame rate of Table 83 in fps, or native (2 048-sample frames)"},
     {"rate-mode=", "ac4-encode: constant, average or variable"},
     {"iframe-interval=", "ac4-encode: an I-frame every this many frames (default 24)"},
@@ -480,9 +481,15 @@ void print_ac4_encode_topic() {
     fmt::println("       coding-configs, acpl (ASPX_ACPL_1 in 5.X and the immersive layouts,");
     fmt::println("       A-CPL in stereo), 7x-back|7x-wide|7x-top-front for 7.0 and 7.1,");
     fmt::println("       back-pair for 7.0.4 and 7.1.4 (11 and 12 channels, with Lb and Rb),");
-    fmt::println("       ajcc for codec-mode=aspx-ajcc, three-zero for 3.0 (L R C), and");
+    fmt::println("       ajcc for codec-mode=aspx-ajcc, three-zero for 3.0 (L R C),");
     fmt::println("       drc-gains-0 to drc-gains-3 (the DRC modes send gains, ETSI TS 103");
-    fmt::println("       190-1 Table 163).");
+    fmt::println("       190-1 Table 163), and objects for objects=<scene file>: the WAV's");
+    fmt::println("       channels as objects, a raw stream of one object substream. The");
+    fmt::println("       file's lines: coding ajoc|direct, downmix computed|5.0|5.1,");
+    fmt::println("       downmix-signals <n>, decorrelation on|off, object <channel> dynamic");
+    fmt::println("       <x> <y> <z> [<gain dB>], object <channel> bed L|R|C|Ls|Rs|Lb|Rb|");
+    fmt::println("       Tfl|Tfr|Tsl|Tsr|Tbl|Tbr|Lw|Rw [<gain dB>], object <channel> lfe, and");
+    fmt::println("       update <channel> <sample> <ramp> <x> <y> <z> [<gain dB>].");
     fmt::println("       A raw stream's sync frames carry the CRC of TS 103 190-2 Annex G");
     fmt::println("       unless crc=off; an MP4 sample is the frame alone, without either.");
     fmt::println("       frame-rate=23.976|24|25|29.97|30|47.95|48|50|59.94|60|100|119.88|120,");

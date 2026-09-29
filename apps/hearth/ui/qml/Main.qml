@@ -295,6 +295,6 @@ ApplicationWindow {
         onNetworkPageRequested: window.page = "network"
     }
 
-    FirstRunDialog { id: firstRun; onOpenSpeakers: window.page = "speakers" }
+    FirstRunDialog { id: firstRun; objectName: "firstRunDialog"; onOpenSpeakers: window.page = "speakers" }
     function openFirstRun() { firstRun.open(); }
 }

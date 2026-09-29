@@ -40,6 +40,20 @@ For an Atmos-mode stream, playback is the **5.1 bed only** — like `ac3cli moni
 what a legacy decoder hears, not unmixed objects. Use **Export objects…** below, or
 [Inspect objects](inspect-objects.md), for the object audio itself.
 
+## AC-4
+
+A raw AC-4 file (`*.ac4`, which has a filter of its own) is recognised by its sync word and decoded
+through `ac4::Decoder`'s public API, as `ac3cli play` and Hearth's engine decode it: each frame's
+channels in the WAV order `ac3cli decode` writes, frames that wait for an I-frame playing
+nothing, and a layout that changes mid-stream refused. The summary line names the channels as
+coded (`AC-4 · L R C LFE Ls Rs · 48000 Hz · …`).
+
+A **Presentation** picker appears for an AC-4 file: the decoder's own choice with no preference
+first, then each presentation of the table of contents by position, with its channels, language
+and `presentation_id`. Picking one decodes that presentation, as `ac3cli play presentation=<n>`
+does, and the meters follow its channels. An AC-4 stream has no JOC objects, so **Export
+objects…** stays hidden; **Export decoded WAV…** writes the presentation playing.
+
 ## Exporting
 
 - **Export decoded WAV…** writes the whole decode to a WAV file, the GUI twin of `ac3cli decode`'s

@@ -1027,7 +1027,7 @@ ColumnLayout {
                                         return roomExtraRow.modelData.reason;
                                     }
                                     if (!roomExtraRow.modelData.checked
-                                        && EncoderController.codecIndex === 0
+                                        && EncoderController.codecIndex !== 1
                                         && !EncoderController.atmosEnabled
                                         && !EncoderController.dualMono) {
                                         return qsTr("moves to Dolby Digital Plus");

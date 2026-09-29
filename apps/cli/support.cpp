@@ -2198,6 +2198,14 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.syntax_trace_path = std::string{value};
             continue;
         }
+        if (key == "objects" && command == "ac4-encode") {
+            if (value.empty()) {
+                fmt::println(stderr, "error: objects= needs the path of a scene file");
+                return false;
+            }
+            out.ac4_objects_path = std::string{value};
+            continue;
+        }
         if (key == "codec-mode" && command == "ac4-encode") {
             if (!is_ac4_codec_mode(value)) {
                 fmt::println(
@@ -2237,6 +2245,8 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                     out.ac4_experimental_back_pair = true;
                 } else if (tool == "ajcc") {
                     out.ac4_experimental_ajcc = true;
+                } else if (tool == "objects") {
+                    out.ac4_experimental_objects = true;
                 } else if (tool == "7x-back" || tool == "7x-wide" || tool == "7x-top-front") {
                     out.ac4_experimental_seven_x = std::string{tool.substr(3)};
                 } else if (tool.size() == 11 && tool.starts_with("drc-gains-") && tool[10] >= '0' &&
@@ -2248,9 +2258,9 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                     fmt::println(
                         stderr,
                         "error: experimental takes aspx-balance, aspx-varvar, aspx-interleave, "
-                        "coding-configs, acpl, three-zero, back-pair, ajcc, one of 7x-back, "
-                        "7x-wide and 7x-top-front, and one of drc-gains-0 to drc-gains-3, "
-                        "comma-separated (got '{}')",
+                        "coding-configs, acpl, three-zero, back-pair, ajcc, objects, one of "
+                        "7x-back, 7x-wide and 7x-top-front, and one of drc-gains-0 to "
+                        "drc-gains-3, comma-separated (got '{}')",
                         token);
                     return false;
                 }
@@ -4256,11 +4266,6 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 }
 
 // --- AC-4 ----------------------------------------------------------------------
-
-bool is_ac4_stream(std::span<const std::byte> bytes) {
-    return bytes.size() >= 2 && std::to_integer<unsigned>(bytes[0]) == 0xACU &&
-           (std::to_integer<unsigned>(bytes[1]) & 0xFEU) == 0x40U;
-}
 
 namespace {
 

@@ -50,6 +50,7 @@
 
 #include "ac3/sendspin/firewall.hpp"
 #include "language_manager.hpp"
+#include "native_log_sink.hpp"
 
 namespace {
 
@@ -81,6 +82,12 @@ int main(int argc, char** argv) {
     // to need (ac3/sendspin/firewall.hpp): std::exit()s before touching Qt when argv says this
     // is that relaunch, so an ordinary launch is the only one that reaches the window below.
     ac3::sendspin::firewall::maybe_run_as_firewall_helper_and_exit(argc, argv);
+
+    // Once, for the process's whole life - never from HearthController's
+    // constructor, so ac3tests and the Qt Quick test binary (each their own
+    // main(), never this one) don't register it (native_log_sink.hpp's own
+    // comment says why that matters).
+    ac3::hearth::install_native_log_sink();
 
     // Render on the GUI thread, as Crucible's window does and for the same
     // reason: the threaded loop's render thread paints a frame behind a

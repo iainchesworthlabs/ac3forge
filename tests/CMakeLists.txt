@@ -63,6 +63,7 @@ add_executable(ac3tests
     ac4enc/test_ac4enc_frame_rates.cpp
     ac4enc/test_ac4enc_immersive.cpp
     ac4enc/test_ac4enc_metadata.cpp
+    ac4enc/test_ac4enc_objects.cpp
     ac4enc/test_ac4enc_presentations.cpp
     ac4enc/test_ac4enc_rates.cpp
     analysis/test_analysis.cpp
@@ -405,15 +406,16 @@ endif()
 # test_ac4dec_objects.cpp for Chromium's A-JOC stream, and
 # test_ac4dec_object_render.cpp for where to write the streams to listen to),
 # ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode,
-# ac4enc/test_ac4enc_presentations.cpp, for where to write its streams, and
-# ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's.
+# ac4enc/test_ac4enc_presentations.cpp, for where to write its streams,
+# ac4enc/test_ac4enc_objects.cpp, for where to write its streams and those to
+# listen to, and ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's.
 # iec61937/test_iec61937_ac4.cpp reads one too, for the census directory it packs.
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
         ac4dec/test_ac4dec_constructed.cpp ac4dec/test_ac4dec_objects.cpp ac4dec/test_ac4dec_presentations.cpp
         ac4dec/test_ac4dec_api.cpp ac4dec/test_ac4dec_object_render.cpp
-        ac4enc/test_ac4enc_presentations.cpp ac4enc/test_ac4enc_presentations_race.cpp
-        iec61937/test_iec61937_ac4.cpp
+        ac4enc/test_ac4enc_objects.cpp ac4enc/test_ac4enc_presentations.cpp
+        ac4enc/test_ac4enc_presentations_race.cpp iec61937/test_iec61937_ac4.cpp
         PROPERTIES COMPILE_OPTIONS "/wd4996")
 endif()
 
@@ -740,13 +742,17 @@ endif()
 target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     gui/test_gui_diagnostics.cpp
+    gui/test_ac4_encode_settings.cpp
     decoder/test_stream_playback.cpp
     audio/test_sink_wait.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/stream_playback.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/common/ac4_encode_core.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/gui/ac4_encode_settings.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/gui/ac4_presentations.cpp")
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common"
     "${CMAKE_SOURCE_DIR}/apps/gui")
@@ -942,6 +948,7 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_ac3_transcoder.cpp
         hearth/test_ac4_engine.cpp
         hearth/test_decoder_settings.cpp
+        hearth/test_device_sink_live.cpp
         hearth/test_diagnostics.cpp
         hearth/test_engine.cpp
         hearth/test_engine_queue_commands.cpp
@@ -1130,6 +1137,12 @@ if(AC3FORGE_BUILD_HEARTH)
         target_link_libraries(ac3tests_sink_firmware_board
             PRIVATE ac3hearth_engine ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
         target_link_libraries(ac3tests PRIVATE ac3tests_sink_firmware_board)
+        # The opt-in diagnostics endpoint (diagnostics_server.hpp) against a real bound server -
+        # same reason, same isolation as ac3tests_sink_firmware_board just above.
+        add_library(ac3tests_diagnostics_server OBJECT hearth/test_diagnostics_server.cpp)
+        target_link_libraries(ac3tests_diagnostics_server
+            PRIVATE ac3hearth_engine ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
+        target_link_libraries(ac3tests PRIVATE ac3tests_diagnostics_server)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
         # as core/test_simd_kernels.cpp's. test_aiosendspin_group.cpp's own environment() helper

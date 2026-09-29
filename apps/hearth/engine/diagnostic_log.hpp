@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -56,6 +57,18 @@ public:
     [[nodiscard]] std::size_t capacity() const { return capacity_; }
     [[nodiscard]] std::chrono::system_clock::time_point started_at() const { return wall_start_; }
 
+    // A live tap: called with the same stamped, one-line text the ring
+    // stores, after every future note() (never for notes already in the
+    // ring). Permanent for this log's whole life - there is no remove, the
+    // same as this log itself is never destroyed (see process_diagnostics()
+    // below); building removal for a subscriber shorter-lived than the
+    // process is a future extension, not something either of today's two
+    // callers (native_log_sink.hpp's install_native_log_sink(), and
+    // ac3tests) needs. An observer must not call back into this log (note(),
+    // lines(), dropped() or add_observer() itself) and must do nothing that
+    // could block - the same rule note() already holds itself to.
+    void add_observer(std::function<void(std::string_view)> observer);
+
 private:
     mutable std::mutex mutex_;
     std::size_t capacity_;
@@ -66,6 +79,17 @@ private:
     std::uint64_t dropped_ = 0;
     std::chrono::steady_clock::time_point start_;
     std::chrono::system_clock::time_point wall_start_;
+
+    // Separate from mutex_ (the ring's own, tiny critical section stays
+    // exactly as it was) and held for the whole notify loop in note(), not
+    // just the append in add_observer() - so a future remove could
+    // synchronise against any notify already in flight before erasing.
+    // Moot today (add_observer has no remove), kept because notify-under-
+    // lock is the discipline that would make one safe to add later without
+    // revisiting note(). Exactly why an observer must not call back into
+    // this log: doing so would re-enter this same non-recursive mutex.
+    mutable std::mutex observers_mutex_;
+    std::vector<std::function<void(std::string_view)>> observers_;
 };
 
 // The log the window's message handler, the engine and the window share.

@@ -159,4 +159,14 @@ TestCase {
         compare(written.split("\n")[0], HearthController.diagnosticsReport().split("\n")[0]);
         verify(TestServices.removeFile(suggested));
     }
+
+    // Copy diagnostics puts the same report straight on the clipboard, with
+    // no dialog - tst_media_page.qml's own Copy JSON case reads it back the
+    // identical way, through TestServices.clipboardText().
+    function test_copyDiagnosticsPutsTheReportOnTheClipboard() {
+        const page = makePage();
+        click(findChild(page, "settingsDiagnosticsCopyButton"), "Copy diagnostics");
+        tryVerify(function() { return TestServices.clipboardText() === HearthController.diagnosticsReport(); }, 5000,
+                  "Copy diagnostics did not put the report on the clipboard");
+    }
 }

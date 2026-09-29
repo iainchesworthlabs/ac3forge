@@ -18,7 +18,6 @@
 #include <system_error>
 #include <vector>
 
-#include "../ac4_channels.hpp"
 #include "../adm/atmos_adm.hpp"
 #include "../adm/decode_adm.hpp"
 #include "../exit_codes.hpp"
@@ -39,11 +38,17 @@
 #include "ac3/verify/eac3_mirror.hpp"
 #include "ac3/verify/mirror.hpp"
 #include "ac4/ac4.hpp"
+#include "ac4_channels.hpp"
 #include "ac4_object_render.hpp"
 #include "ac4dec/decoder.hpp"
 #include "stream_playback.hpp"
 
 namespace ac3cli::commands {
+
+using ac3::apps::ac4_bed_acmod;
+using ac3::apps::ac4_meter_rank;
+using ac3::apps::ac4_order;
+using ac3::apps::ac4_wav_rank;
 
 namespace {
 

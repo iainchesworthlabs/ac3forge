@@ -33,6 +33,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "ac4_sync_word.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
 #include "matroska/matroska.hpp"
@@ -144,6 +145,11 @@ struct Options {
     bool ac4_experimental_back_pair = false;
     bool ac4_experimental_ajcc = false;
     std::string ac4_experimental_seven_x;
+    // 'ac4-encode' only: experimental=objects, and objects=, the path of a
+    // scene file that makes the WAV file's channels objects
+    // (commands/ac4_encode_objects.cpp), empty for none.
+    bool ac4_experimental_objects = false;
+    std::string ac4_objects_path;
     // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
     // dialnorm is taken to (ac4::OutputConfig::output_level_dbfs), unset to
     // leave the coded level; and the DRC decoder mode drcmode= names there,
@@ -1236,11 +1242,9 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 
 // --- AC-4 ----------------------------------------------------------------------
 
-// Whether `bytes` opens with an AC-4 sync word, 0xAC40 or 0xAC41 (ETSI TS 103
-// 190-2 Annex G), where AC-3's and E-AC-3's is 0x0B77: how every command that
-// reads a stream decides which decoder reads it, before anything reads it as
-// AC-3.
-[[nodiscard]] bool is_ac4_stream(std::span<const std::byte> bytes);
+// Whether `bytes` opens with an AC-4 sync word (apps/common/ac4_sync_word.hpp):
+// how every command that reads a stream decides which decoder reads it.
+using ac3::apps::is_ac4_stream;
 
 // The ac4::DecoderConfig AC-4's decode options ask for, which decode, monitor
 // and play read alike: the presentation presentation=, presentation-id=,

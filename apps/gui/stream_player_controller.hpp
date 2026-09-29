@@ -58,6 +58,11 @@ struct RawResult {
     // Atmos E-AC-3 stream - export only (exportObjects()), never shown as a
     // QVariantList property the way the bed's channels are.
     std::vector<std::vector<float>> object_audio;
+    // AC-4: the table of contents' presentations by their labels
+    // (ac3gui::ac4_presentation_label), and the one decoded.
+    bool ac4 = false;
+    QStringList presentations;
+    std::size_t presentation = 0;
 };
 
 }  // namespace splayer_detail
@@ -125,6 +130,16 @@ class StreamPlayerController : public QObject {
     Q_PROPERTY(bool exporting READ exporting NOTIFY exportingChanged)
     Q_PROPERTY(QString exportError READ exportError NOTIFY exportFinished)
 
+    // AC-4, decoded through ac4::Decoder as `ac3cli play` and Hearth's engine
+    // decode it: whether the open file is AC-4, its presentations, and which
+    // one plays - `presentation=<n>`'s n, or -1 for the decoder's own choice.
+    // Setting it decodes the file again.
+    Q_PROPERTY(bool isAc4 READ isAc4 NOTIFY resultChanged)
+    Q_PROPERTY(QStringList presentationNames READ presentationNames NOTIFY resultChanged)
+    Q_PROPERTY(int presentationIndex READ presentationIndex WRITE setPresentationIndex NOTIFY
+                   presentationChanged)
+    Q_PROPERTY(int decodedPresentation READ decodedPresentation NOTIFY resultChanged)
+
    public:
     explicit StreamPlayerController(QObject* parent = nullptr);
     ~StreamPlayerController() override;
@@ -149,6 +164,16 @@ class StreamPlayerController : public QObject {
 
     [[nodiscard]] bool exporting() const { return exporting_; }
     [[nodiscard]] QString exportError() const { return export_error_; }
+
+    [[nodiscard]] bool isAc4() const { return result_ && result_->ac4; }
+    [[nodiscard]] QStringList presentationNames() const {
+        return result_ ? result_->presentations : QStringList{};
+    }
+    [[nodiscard]] int presentationIndex() const { return presentation_index_; }
+    void setPresentationIndex(int index);
+    [[nodiscard]] int decodedPresentation() const {
+        return result_ && result_->ac4 ? static_cast<int>(result_->presentation) : -1;
+    }
 
     // Reads and decodes `url` off the GUI thread (QtConcurrent, mirroring
     // ObjectDecodeController::inspectFile/QcController::measureFile) into
@@ -188,8 +213,12 @@ class StreamPlayerController : public QObject {
     void levelsChanged();
     void exportingChanged();
     void exportFinished();
+    void presentationChanged();
 
    private:
+    void decodePath(const QString& path);
+    int presentation_index_ = -1;
+
     // `source` is always the worker's own captured shared_ptr, never read
     // from result_ directly - see stream_player_controller.cpp's own
     // comment on why a superseded worker (openFile() loaded a second file

@@ -968,6 +968,24 @@ The sections below contain the complete change list and fixes.
     WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds its output level, downmixes and
     dialogue enhancement to the formulas it holds `ac3cli decode` to, on the committed streams and
     the encoder's, in the Hearth CI job.
+- **The Forge GUI encodes and reads AC-4** (phase I3 of `planning/ac4.md`).
+  - AC-4 is the codec picker's third choice. The AC-4 tab, in place of Coding tools and Metadata,
+    sets the frame rate, the rate and codec modes, the I-frame interval, the CRC, dialnorm (or
+    measures it), the loudness values, the DRC profile, the stereo downmix of a 5.0 or 5.1 source
+    and dialogue enhancement. The page encodes one source in its own layout, mono to 5.1, to a raw
+    stream or an MP4 file, and echoes the `ac3cli ac4-encode` line that reproduces it; run through
+    `ac3cli`, the line writes the same bytes, which `tst_e2e_ac4.qml` and `tst_ac4_encode.qml`
+    check for a raw stream, an MP4 file and a 5.1 downmix. The steps that decide those bytes, the
+    channel order, the BS.1770 measurement and the packaging, moved from `ac4-encode` to
+    `apps/common` so both run the same code.
+  - QC, Open stream and Inspect objects recognise AC-4 by its sync word. QC measures a chosen
+    presentation as `ac3cli qc` does, with AC-4's quarter-dB dialnorm and the stream's stated
+    loudness; the player decodes a chosen presentation through `ac4::Decoder` as `ac3cli play`
+    does; the object page lists the presentations and the beds and objects the decoder reports,
+    read-only, and says that exporting AC-4 objects comes later (I5).
+  - Substreams and presentations, dialogue stems, per-mode DRC profiles, the LFE mix and the
+    layouts past 5.1 stay with `ac3cli ac4-encode`. A live session under AC-4 is refused, as
+    `ac3cli live` has no AC-4.
 
 **Audio outputs**
 
@@ -1497,6 +1515,20 @@ The sections below contain the complete change list and fixes.
   after the presentation substreams for the first group's audio. `fuzz_ac4_encode` draws the
   substreams and presentations; `ac3cli ac4-encode` takes them in E7. `src/ac4enc/ERRATA.md` records
   the readings.
+- **The AC-4 encoder codes objects** (phase E9 of `planning/ac4.md`), behind `experimental.objects`. A
+  substream of objects (`SubstreamConfig::objects`, `ObjectsConfig`) takes each object's PCM and its Annex
+  F properties over time, `encode()` taking `ObjectMetadataUpdate`s beside the input; `ObjectProperties`
+  moves to `ac4/ac4.hpp`, where the decoder and the encoder share it. The objects are coded as an A-JOC
+  substream, over a computed downmix of one to eleven signals in a `var_channel_element()` (each the sum
+  of a run of the objects in azimuth order, with its group's centre for core decoding) or a static 5.0 or
+  5.1 bed, the matrices chosen frame by frame by running the decoder's reconstruction on candidate fits,
+  with bed objects, the LFE and, as an option, decorrelators; or as direct-coded object substreams with
+  the group's OAMD substream. Each update lands at the output sample its input sample does, to within 32
+  samples. Decoded in full, each object of the tests comes back at 40 to 75 dB SNR against its source;
+  core decoding gives the downmix at its metadata. `ac3cli ac4-encode objects=<scene file>` takes a scene
+  in the library's terms, the encoder-space harness draws object cases, and
+  `check_ac4_encode_readers.py --only objects` reads the committed streams with MediaInfo where DEE is
+  installed. `src/ac4enc/ERRATA.md` records the readings.
 - **The AC-4 encoder codes 5.1.4** (phase E8 of `planning/ac4.md`). Nine or ten input channels, 5.0.4
   and 5.1.4, are coded in Part 2's immersive channel element as DEE writes it: SCPL from 640 kbps, ASPX_SCPL
   from 480 and ASPX_ACPL_2 below, each coupled pair as its sum and difference with the difference predicted
@@ -2184,6 +2216,12 @@ The sections below contain the complete change list and fixes.
   - A `PUT /name`, `/wiring` or `/slot-width` sent while the player was starting could be
     lost: the server started with the board's old description, which is what servers
     read in its hello. The server now gets the new one.
+- **Hearth's transport bar kept the last error for ever.** The player held the reason a play
+  had failed until another failure replaced it, and the bar shows an error over the note, so
+  after an output refused to open, "The output could not be opened..." stayed on screen over
+  items that were playing without trouble - including once another output had been chosen and
+  had worked. The error now goes when the next play, next or previous command starts. An item
+  a command skipped keeps its reason until the following command, as before.
 
 **Codec correctness**
 
@@ -2638,6 +2676,15 @@ The sections below contain the complete change list and fixes.
   and for the equivalent channel-count/nominal-rate checks on Core Audio. PipeWire and AAudio
   hand format negotiation to a graph or mixer that converts rather than refuses, so neither
   backend returns it.
+- **On Windows, `MonitorSink` refused every sample rate but the one its endpoint runs at.**
+  Shared mode takes only the mix format's own rate and channel count unless the stream is
+  initialised with `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`, and `start()` never set it, so a
+  44.1 kHz item on a 48 kHz endpoint - the ordinary pair - ended in `kFormatRejected`. Hearth
+  opens its output at each item's own rate, and could not play such a file on that machine at
+  all ("The output could not be opened at 44100 Hz"). `start()` now sets the flag, with
+  `AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY`, so the engine resamples; `kFormatRejected` stays
+  for a format the converter cannot take. `"[monitor-live]"` opens at 44.1, 48 and 96 kHz, and
+  `"[hearth-device]"` does the same through Hearth's own output sink.
 - **An output device that went away left the sink saying it was still playing.** A render
   thread that met a device failure - an unplugged endpoint answering
   `AUDCLNT_E_DEVICE_INVALIDATED`, ALSA giving up on `-ENODEV`, an AAudio write refused -
@@ -2697,6 +2744,24 @@ The sections below contain the complete change list and fixes.
   real licensed decoder, which is how a real AV receiver refusing to unlock a signed
   Atmos object layer surfaced it. Now recognises the format and refuses ambiguous
   hex/array-shaped content instead of silently taking it as raw key bytes.
+
+**Hearth**
+
+- **A `player@v1` stream that ended before the clock's first exchange completed lost
+  every chunk it had ever carried, not just the ones still in flight.** `PlayerSession`
+  holds an aiosendspin 9.1.1 server's early chunks until the clock's first reply arrives
+  (`planning/hearth-sendspin-extension.md`, C13), but `restart_audio()` discarded the
+  held buffer outright whenever the stream ended, on the assumption that a reply was
+  always close behind. Dynamic-code pairing's extra CPace round trips, and raw PCM's
+  own lack of an encoder's setup latency to absorb them, can together push a short
+  stream's whole run past the clock exchange's `kReplyTimeout` (five seconds) with no
+  reply ever seen — reproduced against `ac3hearth-testsink` under CPU contention, where
+  it reliably dropped an entire PCM stream paired by dynamic code while the same stream
+  paired by token, or encoded as FLAC or Opus, kept its lead time. `PlayerSession` now
+  delivers what is held before forgetting it when a stream genuinely ends (a
+  `stream/end` message or a deactivating `server/activate`), on whatever time mapping
+  the clock can give pre-convergence; a stream/clear or a format change within a
+  running stream still discards it, since that data really is stale.
 
 ## [0.10.0-beta.1] - 2026-09-01
 

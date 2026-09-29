@@ -64,6 +64,11 @@ class NetworkController : public QObject {
     // may offer for it: pairing ("none" | "requested" | "code" | "active"),
     // canPair and canConnect (network_view.hpp's SinkDetail says what each
     // means); an empty map while nothing is selected or the selection is gone.
+    // inGroup is NOT one of SinkDetail's own fields - poll() computes it
+    // across every group's membership (network_controller.cpp's own
+    // detail_to_variant() comment says why) - and is what Network.qml's
+    // post-pairing banner gates on: true for a sink already in a group,
+    // whether or not that group is the one Hearth plays to.
     Q_PROPERTY(QVariantMap selectedSink READ selectedSink NOTIFY sinksChanged)
     Q_PROPERTY(int discoveredCount READ discoveredCount NOTIFY sinksChanged)
     Q_PROPERTY(int groupCount READ groupCount NOTIFY sinksChanged)
