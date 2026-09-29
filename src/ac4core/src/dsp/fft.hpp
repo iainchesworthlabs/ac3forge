@@ -1,10 +1,12 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <cstddef>
 #include <span>
 #include <vector>
+
+#include "ac4/detail/real.hpp"
+#include "dsp/complex.hpp"
 
 // A complex FFT for every length of the form 2^a * 3^b * 5^c, which covers
 // every transform AC-4 needs: an inverse MDCT of N spectral lines runs an
@@ -27,7 +29,7 @@ namespace ac4::detail::dsp {
 template <typename Real>
 class Fft {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = ac4::detail::dsp::Complex<Real>;
 
     // A length with a prime factor above 5, or 0, gives a plan that is not
     // valid() and transforms nothing.
@@ -61,6 +63,6 @@ class Fft {
     std::vector<Complex> work_;
 };
 
-extern template class Fft<double>;
+extern template class Fft<Real>;
 
 }  // namespace ac4::detail::dsp

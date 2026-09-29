@@ -1717,6 +1717,32 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   - Vector kernels on the host (`f32x4`, `f64x2`) on the split planes, each identical bit for bit
     to the loop it replaces.
 
+  **Built in D14a, in part.** Decision 31's header-only target (`src/arithmetic`) moved `Fixed32`
+  and the float scalar functions out of `ac3::forge`'s own tree with no copy; both `ac3::forge` and
+  `src/ac4core` link it. `src/ac4core`'s own QMF-domain kernels - the analysis/synthesis pair, the
+  FFT and MDCT, A-SPX's high-frequency generator, A-CPL's decorrelators and ducker, A-JOC's
+  reconstruction, A-JCC's accumulator - take a complex type of the project's own (`dsp::Complex<Real>`)
+  in place of `std::complex<Real>`, joined `AC3FORGE_DECODE_SCALAR` through the directory-selection
+  mechanism `ac3::forge`'s own `decode_scalar_t` uses, and the float build compiles `src/ac4core`
+  alone with `-Wdouble-promotion` as an error: clean, confirmed by building that one target
+  (0 warnings). `QmfValue` (`pcm/aspx.hpp`) and `QmfSample` (`aspx_encoder.hpp`) take the same
+  complex type, since both cross straight into these kernels at `double`; the double build's output
+  is unchanged bit for bit as far as the full test suite can tell (2 358 cases, 11 168 384
+  assertions, no hash re-pin needed). Three of the memory findings are fixed on their own, apart
+  from the scalar work: `bitrate_kbps()`'s guarded hash map, the |q|^(4/3) table's guarded lazy
+  init, and `stereo_parameters()`'s 32 KiB return.
+
+  `src/ac4dec/src/pcm`'s and `src/ac4enc`'s own QMF-domain code is not templated on `Real`: it
+  still spells `double` throughout and calls these kernels with a literal `<double>`, which a float
+  build no longer explicitly instantiates, so a full decoder or encoder build at float does not yet
+  link. That retemplating - about seventeen files in `pcm/` alone, each needing the same
+  double-to-Real and std::complex-to-dsp::Complex change this phase made in `src/ac4core`, checked
+  the same way - is D14a's largest remaining piece. The QMF bank rewrite (real and imaginary planes,
+  an index-moving delay line, memory beyond the three fixes above, the cached bit reader and
+  Huffman table, the host's vector kernels, and the probe's AC-4 rows were not reached. **Exit
+  criteria a, b, c and d below are accordingly not met**: each needs a working float decoder, which
+  does not exist yet. The options, a recommendation and their cost are in the pull request's report.
+
   **Exit:** on every committed stream, the `float` build's agreement with the `double` build
   stated below and above the crossover and pinned; the scorers at their pins with a `float` CLI;
   the probe's AC-4 rows with peak heap, allocations per frame, stack and the Cortex-M3 leg's

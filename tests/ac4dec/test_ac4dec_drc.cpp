@@ -35,7 +35,7 @@ namespace {
 
 using ac3::test::kSanitized;
 namespace detail = ac4::detail;
-using QmfValue = std::complex<double>;
+using QmfValue = ac4::detail::QmfValue;
 
 constexpr int kSlots = 32;  // num_qmf_timeslots at frame_rate_index 13
 constexpr int kFrame = kSlots * 64;

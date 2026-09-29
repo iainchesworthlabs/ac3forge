@@ -23,13 +23,21 @@
 
 #include "acpl/acpl.hpp"
 #include "ajoc/ajoc.hpp"
+#include "dsp/complex.hpp"
 
 namespace {
 
 namespace ajoc = ac4::detail::ajoc;
 namespace acpl = ac4::detail::acpl;
-using Complex = std::complex<double>;
+// ac4core's own complex type (dsp/complex.hpp), not std::complex: every
+// function under test takes this type since D14a (planning/ac4.md).
+using Complex = ac4::detail::dsp::Complex<double>;
 using Catch::Approx;
+
+// std::polar returns std::complex<double>, not this file's own Complex.
+[[nodiscard]] Complex polar(double magnitude, double angle) {
+    return {magnitude * std::cos(angle), magnitude * std::sin(angle)};
+}
 
 constexpr int kSlots = 32;
 constexpr int kSubbands = 64;
@@ -237,8 +245,8 @@ TEST_CASE("A-JOC's wet path is the ducked decorrelator of D x, D = |C_wet| C_dry
     // have something to do.
     std::vector<Complex> x(kValues);
     for (std::size_t k = 0; k < kValues; ++k) {
-        x[k] = std::polar(1.0 + 0.5 * std::sin(0.1 * static_cast<double>(k)),
-                          0.3 * static_cast<double>(k));
+        x[k] = polar(1.0 + 0.5 * std::sin(0.1 * static_cast<double>(k)),
+                    0.3 * static_cast<double>(k));
     }
     Run run({x}, 1);
     // The same decorrelator and ducker, on D x by hand.
@@ -263,7 +271,7 @@ TEST_CASE("A-JOC's wet path is the ducked decorrelator of D x, D = |C_wet| C_dry
                 const std::size_t k = at(ts) * kSubbands + at(sb);
                 const Complex want = dry * x[k] + wet * y[k];
                 CAPTURE(frame, ts, sb);
-                CHECK(std::abs(run.z[0][k] - want) < 1e-12);
+                CHECK(abs(run.z[0][k] - want) < 1e-12);
             }
         }
     }
@@ -287,8 +295,8 @@ TEST_CASE("A-JOC's decorrelation input matrix takes each object at its own bands
     auto r = std::make_unique<ajoc::Reconstruction<double>>();
     std::vector<Complex> x(kValues);
     for (std::size_t k = 0; k < kValues; ++k) {
-        x[k] = std::polar(1.0 + 0.5 * std::cos(0.07 * static_cast<double>(k)),
-                          0.2 * static_cast<double>(k));
+        x[k] = polar(1.0 + 0.5 * std::cos(0.07 * static_cast<double>(k)),
+                    0.2 * static_cast<double>(k));
     }
     Run run({x}, 2);
     auto decorrelator = std::make_unique<acpl::Decorrelator<double>>(0);
@@ -312,7 +320,7 @@ TEST_CASE("A-JOC's decorrelation input matrix takes each object at its own bands
                 const double scale = frame == 0 && ts == 0 ? 0.0 : 1.0;
                 const Complex want = scale * (0.5 * x[k] + 0.3 * y[k]);
                 CAPTURE(frame, ts, sb);
-                CHECK(std::abs(run.z[1][k] - want) < 1e-12);
+                CHECK(abs(run.z[1][k] - want) < 1e-12);
             }
         }
     }
@@ -330,7 +338,7 @@ TEST_CASE("A-JOC dialogue enhancement scales the dialogue objects after D is tak
     auto enhanced = std::make_unique<ajoc::Reconstruction<double>>();
     std::vector<Complex> x(kValues);
     for (std::size_t k = 0; k < kValues; ++k) {
-        x[k] = std::polar(1.0, 0.7 * static_cast<double>(k));
+        x[k] = polar(1.0, 0.7 * static_cast<double>(k));
     }
     Run a({x}, 1);
     Run b({x}, 1);
@@ -342,7 +350,7 @@ TEST_CASE("A-JOC dialogue enhancement scales the dialogue objects after D is tak
     // Every value of the enhanced object twice the plain one's: the same
     // decorrelator input, both paths doubled.
     for (std::size_t k = kSubbands; k < kValues; k += 13) {
-        CHECK(std::abs(b.z[0][k] - 2.0 * a.z[0][k]) < 1e-12);
+        CHECK(abs(b.z[0][k] - 2.0 * a.z[0][k]) < 1e-12);
     }
     // A gain of 1 or less leaves the coefficients alone.
     auto unity = std::make_unique<ajoc::Reconstruction<double>>();
@@ -351,7 +359,7 @@ TEST_CASE("A-JOC dialogue enhancement scales the dialogue objects after D is tak
         unity->reconstruct(p, kSlots, c.in, c.out, 0.5, dialogue);
     }
     for (std::size_t k = 0; k < kValues; k += 13) {
-        CHECK(std::abs(c.z[0][k] - a.z[0][k]) < 1e-12);
+        CHECK(abs(c.z[0][k] - a.z[0][k]) < 1e-12);
     }
 }
 
@@ -373,13 +381,13 @@ TEST_CASE("A-JOC core decoding's dialogue enhancement adds H_M H_A x", "[ac4core
         const Complex dlg = h_a * (0.5 * x0 + 0.25 * x1);
         const double alpha = (ts + 1) / static_cast<double>(kSlots);
         CAPTURE(ts);
-        CHECK(std::abs(x[0][at(ts) * kSubbands + 9] - (x0 + alpha * 1.0 * dlg)) < 1e-12);
-        CHECK(std::abs(x[1][at(ts) * kSubbands + 9] - (x1 + alpha * 0.5 * dlg)) < 1e-12);
+        CHECK(abs(x[0][at(ts) * kSubbands + 9] - (x0 + alpha * 1.0 * dlg)) < 1e-12);
+        CHECK(abs(x[1][at(ts) * kSubbands + 9] - (x1 + alpha * 0.5 * dlg)) < 1e-12);
     }
     // The next frame's H_M is the coefficients throughout.
     x = {constant(x0), constant(x1)};
     r->enhance_core(p, kSlots, ptrs, 1.0, dialogue, coeff);
     const Complex dlg = 0.5 * x0 + 0.25 * x1;
-    CHECK(std::abs(x[0][9] - (x0 + dlg)) < 1e-12);
-    CHECK(std::abs(x[1][9] - (x1 + 0.5 * dlg)) < 1e-12);
+    CHECK(abs(x[0][9] - (x0 + dlg)) < 1e-12);
+    CHECK(abs(x[1][9] - (x1 + 0.5 * dlg)) < 1e-12);
 }

@@ -342,7 +342,7 @@ void TransientDucker<Real>::process(std::span<Complex> inout, int num_ts) noexce
         // Pseudocode 113, then 112, then 114, for this slot.
         std::array<Real, kMaxParamBands> energy{};
         for (std::size_t sb = 0; sb < kSubbands; ++sb) {
-            energy[at(kBand[sb])] += std::norm(inout[ts * kSubbands + sb]);
+            energy[at(kBand[sb])] += norm(inout[ts * kSubbands + sb]);
         }
         std::array<Real, kMaxParamBands> gain{};
         for (std::size_t pb = 0; pb < at(kMaxParamBands); ++pb) {
@@ -360,7 +360,7 @@ void TransientDucker<Real>::process(std::span<Complex> inout, int num_ts) noexce
     }
 }
 
-template class Decorrelator<double>;
-template class TransientDucker<double>;
+template class Decorrelator<Real>;
+template class TransientDucker<Real>;
 
 }  // namespace ac4::detail::acpl

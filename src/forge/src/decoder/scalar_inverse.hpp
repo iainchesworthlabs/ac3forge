@@ -4,7 +4,7 @@
 #include <type_traits>
 
 #include "ac3/core/mdct.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 #include "mdct_fixed.hpp"
 #include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"

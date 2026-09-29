@@ -15,7 +15,7 @@
 #include <span>
 
 #include "ac3/core/mdct.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 #include "mdct_fixed.hpp"
 
 using ac3::internal::Fixed32;

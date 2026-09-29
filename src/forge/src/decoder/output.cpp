@@ -17,7 +17,7 @@
 #include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "eac3_seat_fold.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"  // to_db
 #include "ac3/meta/mixing.hpp"

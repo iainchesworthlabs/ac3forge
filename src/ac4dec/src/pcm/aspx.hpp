@@ -1,13 +1,13 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <cstdint>
 #include <span>
 #include <vector>
 
 #include "aspx/frequency_tables.hpp"
 #include "aspx/hf_generator.hpp"
+#include "dsp/complex.hpp"
 #include "syntax/aspx.hpp"
 #include "syntax/context.hpp"
 
@@ -27,7 +27,16 @@
 
 namespace ac4::detail {
 
-using QmfValue = std::complex<double>;
+// ac4core's own complex type (in place of std::complex<double>): the
+// decoder's QMF-domain reconstruction (this file and its neighbours in
+// pcm/) calls straight into src/ac4core's A-SPX, A-CPL and A-JOC kernels,
+// which take this type since D14a (planning/ac4.md), and a std::complex
+// buffer cannot be passed where one of those is asked for even at the same
+// underlying double representation - the two are unrelated types. pcm/'s own
+// classes are not yet templated on Real (that remains D14a's largest
+// unfinished piece, per this PR's report); QmfValue names the concrete
+// double this decoder still always runs at.
+using QmfValue = dsp::Complex<double>;
 
 // What one channel's A-SPX keeps from one interval to the next.
 struct AspxChannelState {

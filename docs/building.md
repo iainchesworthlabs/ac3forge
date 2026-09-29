@@ -536,7 +536,7 @@ encoder's - and with it the last of the decode path is in `decode_scalar_t`.
 
 **A fixed-point decode path, for parts with no FPU.** The third value of the same axis,
 `-DAC3FORGE_DECODE_SCALAR=fixed`, carries `decode_scalar_t` as `ac3::internal::Fixed32`
-(`src/forge/src/core/fixed32.hpp`): a signed 32-bit integer read as Q7.24, products through 64
+(`src/arithmetic/include/ac3/internal/fixed32.hpp`): a signed 32-bit integer read as Q7.24, products through 64
 bits and rounded once, sums wrapping, conversions saturating. It is the tier for an ESP32-C3 or
 a Cortex-M3, where even `float` is a compiled subroutine, and the minimum-footprint profile
 honours it (every other value of the option is `float` there). The ESP-IDF component
@@ -600,7 +600,7 @@ model's own arithmetic, and the allocation search, which is integer. `TransientD
 reasons; `to_fixed25_block`, `accumulate_peak_exponents`, `choose_delta_segments` and
 `PerceptualModel::analyse` have `float` overloads; the short-block forward pair and the two peak
 meters that read the overlap history take either. The float path's `log2` and `exp` are the
-project's own (`src/forge/src/core/scalar_math.hpp`: a bit-level `frexp` and a short series,
+project's own (`src/arithmetic/include/ac3/internal/scalar_math.hpp`: a bit-level `frexp` and a short series,
 Cody-Waite reduction and a short series), because the profile's fixture hashes are checked on
 the x86 host, the Cortex-M3 leg and the ESP32-S3 and three C libraries' `logf` do not agree in
 their last bit; the `double` overloads are libm's, called as before. Every `<double>`

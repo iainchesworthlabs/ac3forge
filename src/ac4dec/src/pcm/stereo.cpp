@@ -26,9 +26,8 @@ constexpr std::array<double, 4> kMidSide = {1.0, 1.0, 1.0, -1.0};
 
 }  // namespace
 
-StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& info,
-                                   const ChparamInfo& chparam, StereoUse use) {
-    StereoParameters out;
+void stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const ChparamInfo& chparam,
+                       StereoParameters& out, StereoUse use) {
     const bool pair = use == StereoUse::kPair;
     const AsfPsyInfo& psy = info.psy;
     // alpha_q of a band sap_data() sent no coefficient for is never read by a
@@ -81,7 +80,6 @@ StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& in
         }
         max_sfb_prev = max_sfb_g;
     }
-    return out;
 }
 
 void apply_stereo(const SfInfo& info, const SfData& layout, const StereoParameters& parameters,

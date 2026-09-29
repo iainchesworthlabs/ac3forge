@@ -4,6 +4,7 @@
 #include <span>
 #include <vector>
 
+#include "ac4/detail/real.hpp"
 #include "dsp/mdct.hpp"
 
 // The inverse transform's windowing and overlap-add with block switching:
@@ -87,7 +88,7 @@ class ChannelSynthesis {
     std::vector<Real> x_;        // 2N samples of the block being added
 };
 
-extern template class TransformSet<double>;
-extern template class ChannelSynthesis<double>;
+extern template class TransformSet<Real>;
+extern template class ChannelSynthesis<Real>;
 
 }  // namespace ac4::detail::dsp

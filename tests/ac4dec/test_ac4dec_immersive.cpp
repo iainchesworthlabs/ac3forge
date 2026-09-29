@@ -59,7 +59,8 @@ std::size_t index_of(std::span<const Speaker> speakers, Speaker speaker) {
 std::vector<QmfValue> matrix(double scale, double step) {
     std::vector<QmfValue> out(kValues);
     for (std::size_t i = 0; i < kValues; ++i) {
-        out[i] = scale * std::polar(1.0, step * static_cast<double>(i));
+        const double angle = step * static_cast<double>(i);
+        out[i] = scale * QmfValue(std::cos(angle), std::sin(angle));
     }
     return out;
 }
@@ -85,8 +86,8 @@ TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands an
         return static_cast<double>(static_cast<float>(alpha_q) * 0.1f);
     };
     using ac4::detail::StereoUse;
-    const auto prediction =
-        ac4::detail::stereo_parameters(ctx, info, chparam, StereoUse::kPrediction);
+    ac4::detail::StereoParameters prediction;
+    ac4::detail::stereo_parameters(ctx, info, chparam, prediction, StereoUse::kPrediction);
     const std::array<double, 8> expected = {gain(5),  gain(5),  0.0,      0.0,
                                             gain(-3), gain(-3), gain(-3), gain(-3)};
     for (std::size_t sfb = 0; sfb < 8; ++sfb) {
@@ -98,7 +99,8 @@ TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands an
         CHECK(d == 1.0);
     }
     // The same chparam_info() as a 2 x 2 step: Pseudocode 59's (1 + g, 1, 1 - g, -1).
-    const auto pair = ac4::detail::stereo_parameters(ctx, info, chparam);
+    ac4::detail::StereoParameters pair;
+    ac4::detail::stereo_parameters(ctx, info, chparam, pair);
     CHECK(pair.abcd[0][0] == std::array{1.0 + gain(5), 1.0, 1.0 - gain(5), -1.0});
     CHECK(pair.abcd[0][2] == std::array{1.0, 0.0, 0.0, 1.0});
 
@@ -107,8 +109,8 @@ TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands an
         CAPTURE(mode);
         chparam.sap_mode = mode;
         chparam.ms_used[0].fill(true);
-        const auto none =
-            ac4::detail::stereo_parameters(ctx, info, chparam, StereoUse::kPrediction);
+        ac4::detail::StereoParameters none;
+        ac4::detail::stereo_parameters(ctx, info, chparam, none, StereoUse::kPrediction);
         for (std::size_t sfb = 0; sfb < 8; ++sfb) {
             CHECK(none.abcd[0][sfb] == std::array{1.0, 0.0, 0.0, 1.0});
         }
@@ -261,15 +263,15 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
             CAPTURE(i);
             // z0, z2 and z4: L, R and C doubled.
             for (const Speaker front : {S::kLeft, S::kRight, S::kCentre}) {
-                CHECK(std::abs(value(channels, front, i) - 2.0 * value(in, front, i)) < 1e-12);
+                CHECK(abs(value(channels, front, i) - 2.0 * value(in, front, i)) < 1e-12);
             }
             for (std::size_t m = 0; m < 4; ++m) {
                 // x_in = 2 x, and every output times the square root of 2.
                 const QmfValue full = 2.0 * kSqrt2 * value(in, pairs[m][0], i);
                 const QmfValue first = m % 2 == 0 ? full : QmfValue{};
                 const QmfValue second = m % 2 == 0 ? QmfValue{} : full;
-                CHECK(std::abs(value(channels, pairs[m][0], i) - first) < 1e-12);
-                CHECK(std::abs(value(channels, pairs[m][1], i) - second) < 1e-12);
+                CHECK(abs(value(channels, pairs[m][0], i) - first) < 1e-12);
+                CHECK(abs(value(channels, pairs[m][1], i) - second) < 1e-12);
             }
         }
 
@@ -284,9 +286,9 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
         for (std::size_t i = 0; i < kValues; i += 131) {
             CAPTURE(i);
             for (const auto& [x, r] : pairs) {
-                CHECK(std::abs(value(channels, x, i) -
+                CHECK(abs(value(channels, x, i) -
                                kSqrt2 * (value(in, x, i) + value(in, r, i))) < 1e-12);
-                CHECK(std::abs(value(channels, r, i) -
+                CHECK(abs(value(channels, r, i) -
                                kSqrt2 * (value(in, x, i) - value(in, r, i))) < 1e-12);
             }
         }
@@ -340,7 +342,7 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
                 for (std::size_t m = 0; m < 4; ++m) {
                     const QmfValue difference = channels[index_of(speakers, pairs[m][0])][i] -
                                                 channels[index_of(speakers, pairs[m][1])][i];
-                    CHECK(std::abs(difference - kSqrt2 * y[m < 2 ? 0 : 1][i]) < 1e-9);
+                    CHECK(abs(difference - kSqrt2 * y[m < 2 ? 0 : 1][i]) < 1e-9);
                 }
             }
         }
@@ -473,7 +475,7 @@ void check_ajcc(DecodingMode decoding, int core_mode, std::array<Decorrelated, 6
              {S::kRight, S::kRightSurround, S::kTopSideRight}}};
         for (std::size_t i = 0; i < kValues; i += 89) {
             CAPTURE(i);
-            CHECK(std::abs(channels[index_of(speakers, S::kCentre)][i] -
+            CHECK(abs(channels[index_of(speakers, S::kCentre)][i] -
                            gain * in[index_of(speakers, S::kCentre)][i]) < 1e-9);
             for (std::size_t side = 0; side < 2; ++side) {
                 for (std::size_t o = 0; o < (full ? 5U : 3U); ++o) {
@@ -481,7 +483,7 @@ void check_ajcc(DecodingMode decoding, int core_mode, std::array<Decorrelated, 6
                     const Speaker s = full ? full_out[side][o] : core_out[side][o];
                     // Pseudocode 8's sqrt 2 on every output but L, R and C.
                     const double out_gain = full && o > 0 ? kSqrt2 : 1.0;
-                    CHECK(std::abs(channels[index_of(speakers, s)][i] - out_gain * z[side][o][i]) <
+                    CHECK(abs(channels[index_of(speakers, s)][i] - out_gain * z[side][o][i]) <
                           1e-9);
                 }
             }
@@ -624,8 +626,8 @@ TEST_CASE("A-JCC's pre-modification follows ajcc_core_mode (Pseudocode 9)",
             const double g = f == 0 ? 1.0 : f == 1 ? 1.0 - step : f == 2 ? 0.0 : step;
             const std::size_t i = ts * 64 + 17;
             CAPTURE(ts);
-            CHECK(std::abs(out1[i] - (g * in2[i] + (1.0 - g) * in1[i])) < 1e-12);
-            CHECK(std::abs(out2[i] - (g * in4[i] + (1.0 - g) * in3[i])) < 1e-12);
+            CHECK(abs(out1[i] - (g * in2[i] + (1.0 - g) * in1[i])) < 1e-12);
+            CHECK(abs(out2[i] - (g * in4[i] + (1.0 - g) * in3[i])) < 1e-12);
         }
     }
 }

@@ -5,6 +5,7 @@
 #include <complex>
 #include <numbers>
 
+#include "dsp/complex.hpp"
 #include "tables/qmf_tables.hpp"
 
 namespace ac4::detail {
@@ -167,14 +168,14 @@ void DrcGainEncoder::push_slot(std::span<const std::array<double, dsp::kQmfSubba
     // sample at full scale 1.0: the slot's 64 samples put sum(QWIN^2) times
     // their power into the subbands.
     double power = 0.0;
-    std::array<std::complex<double>, kSubbands> slot{};
+    std::array<dsp::Complex<double>, kSubbands> slot{};
     for (std::size_t c = 0; c < analyses_.size() && c < samples.size(); ++c) {
         analyses_[c].process(samples[c], slot);
         if (weight_[c] == 0.0) {
             continue;
         }
         for (std::size_t k = 0; k < kSubbands; ++k) {
-            power += weight_[c] * k_weight_[k] * std::norm(slot[k]);
+            power += weight_[c] * k_weight_[k] * norm(slot[k]);
         }
     }
     const double p = std::max(power / (static_cast<double>(kSubbands) * qmf_gain_), kPowerFloor);

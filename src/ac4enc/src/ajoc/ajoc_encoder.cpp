@@ -9,7 +9,7 @@
 namespace ac4::detail {
 namespace {
 
-using Complex = std::complex<double>;
+using Complex = dsp::Complex<double>;
 
 constexpr int kFrameSlots = 32;
 // The centred window's lead past the frame's slots.
@@ -312,7 +312,7 @@ AjocEncoder::Values AjocEncoder::fit(long long from, int ramp, const Weight& wei
             }
             for (int i = 0; i < m; ++i) {
                 for (int j = i; j < m; ++j) {
-                    const double v = a * a * std::real(std::conj(x[at(i)]) * x[at(j)]);
+                    const double v = a * a * (conj(x[at(i)]) * x[at(j)]).real();
                     rxx[at(i * m + j)] += v;
                     if (j != i) {
                         rxx[at(j * m + i)] += v;
@@ -329,7 +329,7 @@ AjocEncoder::Values AjocEncoder::fit(long long from, int ramp, const Weight& wei
                 }
                 std::vector<double>& rxz = r_xz[at(o)][at(pb)];
                 for (int i = 0; i < m; ++i) {
-                    rxz[at(i)] += a * std::real(std::conj(x[at(i)]) * y);
+                    rxz[at(i)] += a * (conj(x[at(i)]) * y).real();
                 }
             }
         }
@@ -377,7 +377,7 @@ double AjocEncoder::run(const Values& values, Reconstruction& state,
     double error = 0.0;
     for (std::size_t o = 0; o < z_.size(); ++o) {
         for (std::size_t k = 0; k < z_[o].size(); ++k) {
-            error += std::norm(z_[o][k] - out[o][k]);
+            error += norm(z_[o][k] - out[o][k]);
         }
     }
     return error;
@@ -469,8 +469,8 @@ AjocFields AjocEncoder::propose(long long frame, bool iframe, std::size_t max_bi
                 for (int sb = 0; sb < kSubbands; ++sb) {
                     const std::size_t k = at(t * kSubbands + sb);
                     const auto pb = at(ajoc::sb_to_pb(b, sb));
-                    missing[pb] += std::norm(z_[o][k]) - std::norm(dry[o][k]);
-                    decorrelated[pb] += std::norm(with[o][k] - dry[o][k]);
+                    missing[pb] += norm(z_[o][k]) - norm(dry[o][k]);
+                    decorrelated[pb] += norm(with[o][k] - dry[o][k]);
                 }
             }
             const std::size_t d = o % at(setup_.num_decorr);

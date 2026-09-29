@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <numbers>
 
@@ -26,10 +27,12 @@ std::complex<double> turn(long long num, long long den) {
 template <typename Real>
 QmfAnalysis<Real>::QmfAnalysis() : fft_(128) {
     for (std::size_t n = 0; n < pre_.size(); ++n) {
-        pre_[n] = Complex(turn(static_cast<long long>(n), 128));
+        const std::complex<double> z = turn(static_cast<long long>(n), 128);
+        pre_[n] = Complex(static_cast<Real>(z.real()), static_cast<Real>(z.imag()));
     }
     for (std::size_t sb = 0; sb < post_.size(); ++sb) {
-        post_[sb] = Complex(turn(-static_cast<long long>(2 * sb + 1), 256));
+        const std::complex<double> z = turn(-static_cast<long long>(2 * sb + 1), 256);
+        post_[sb] = Complex(static_cast<Real>(z.real()), static_cast<Real>(z.imag()));
     }
 }
 
@@ -70,10 +73,12 @@ void QmfAnalysis<Real>::process(std::span<const Real> pcm, std::span<Complex> ou
 template <typename Real>
 QmfSynthesis<Real>::QmfSynthesis() : fft_(128) {
     for (std::size_t sb = 0; sb < pre_.size(); ++sb) {
-        pre_[sb] = Complex(turn(-255 * static_cast<long long>(2 * sb + 1), 256) / 64.0);
+        const std::complex<double> z = turn(-255 * static_cast<long long>(2 * sb + 1), 256) / 64.0;
+        pre_[sb] = Complex(static_cast<Real>(z.real()), static_cast<Real>(z.imag()));
     }
     for (std::size_t n = 0; n < post_.size(); ++n) {
-        post_[n] = Complex(turn(static_cast<long long>(n), 128));
+        const std::complex<double> z = turn(static_cast<long long>(n), 128);
+        post_[n] = Complex(static_cast<Real>(z.real()), static_cast<Real>(z.imag()));
     }
 }
 
@@ -115,7 +120,7 @@ void QmfSynthesis<Real>::process(std::span<const Complex> in, std::span<Real> pc
     }
 }
 
-template class QmfAnalysis<double>;
-template class QmfSynthesis<double>;
+template class QmfAnalysis<Real>;
+template class QmfSynthesis<Real>;
 
 }  // namespace ac4::detail::dsp

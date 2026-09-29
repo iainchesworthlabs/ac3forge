@@ -20,7 +20,7 @@
 
 #include "ac3/core/eac3_tools.hpp"
 #include "eac3_tools_fixed.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 
 using ac3::internal::Fixed32;
 

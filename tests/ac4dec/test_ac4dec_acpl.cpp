@@ -63,7 +63,8 @@ ChannelElement pair_element(const AcplData1ch& data) {
 std::vector<QmfValue> matrix(double scale) {
     std::vector<QmfValue> out(kValues);
     for (std::size_t i = 0; i < kValues; ++i) {
-        out[i] = scale * std::polar(1.0, 0.37 * static_cast<double>(i));
+        const double angle = 0.37 * static_cast<double>(i);
+        out[i] = scale * QmfValue(std::cos(angle), std::sin(angle));
     }
     return out;
 }
@@ -182,14 +183,14 @@ TEST_CASE("steep interpolation switches a pair between its outputs at each set's
             const std::size_t i = ts * 64 + sb;
             CAPTURE(ts, sb);
             if (ts < 8) {  // alpha 0: both the downmix
-                CHECK(std::abs(left[i] - x0[i]) < 1e-12);
-                CHECK(std::abs(right[i] - x0[i]) < 1e-12);
+                CHECK(abs(left[i] - x0[i]) < 1e-12);
+                CHECK(abs(right[i] - x0[i]) < 1e-12);
             } else if (ts < 20) {  // alpha 1: all in L
-                CHECK(std::abs(left[i] - 2.0 * x0[i]) < 1e-12);
-                CHECK(std::abs(right[i]) < 1e-12);
+                CHECK(abs(left[i] - 2.0 * x0[i]) < 1e-12);
+                CHECK(abs(right[i]) < 1e-12);
             } else {  // alpha -1: all in R
-                CHECK(std::abs(left[i]) < 1e-12);
-                CHECK(std::abs(right[i] - 2.0 * x0[i]) < 1e-12);
+                CHECK(abs(left[i]) < 1e-12);
+                CHECK(abs(right[i] - 2.0 * x0[i]) < 1e-12);
             }
         }
     }
@@ -228,11 +229,11 @@ TEST_CASE("ASPX_ACPL_3 makes the centre of gamma5 and gamma6", "[ac4dec][acpl]")
         }
         for (std::size_t i = 0; i < kValues; i += 97) {
             CAPTURE(i);
-            CHECK(std::abs(c[i] - gain * (x0[i] + x1[i])) < 1e-12);
-            CHECK(std::abs(l[i]) < 1e-12);
-            CHECK(std::abs(r[i]) < 1e-12);
-            CHECK(std::abs(ls[i]) < 1e-12);
-            CHECK(std::abs(rs[i]) < 1e-12);
+            CHECK(abs(c[i] - gain * (x0[i] + x1[i])) < 1e-12);
+            CHECK(abs(l[i]) < 1e-12);
+            CHECK(abs(r[i]) < 1e-12);
+            CHECK(abs(ls[i]) < 1e-12);
+            CHECK(abs(rs[i]) < 1e-12);
         }
     }
 }

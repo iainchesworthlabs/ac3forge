@@ -366,7 +366,7 @@ double DrcStage::slot_level(std::span<std::vector<QmfValue>* const> side, int sl
         const QmfValue* row = side[c]->data() + static_cast<std::size_t>(slot) * kSubbands;
         double channel = 0.0;
         for (std::size_t k = 0; k < kSubbands; ++k) {
-            channel += k_weight_[k] * std::norm(row[k]);
+            channel += k_weight_[k] * norm(row[k]);
         }
         power += weight * channel;
     }

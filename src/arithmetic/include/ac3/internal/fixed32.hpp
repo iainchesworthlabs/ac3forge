@@ -14,6 +14,12 @@
 // unit at all: an ESP32-C3 or a Cortex-M3, where even `float` is a compiled
 // subroutine and a 5.1 E-AC-3 frame is 12.9 M soft-float instructions.
 //
+// Header-only, in its own target (src/arithmetic) so that ac3::forge and
+// src/ac4core both use this one copy rather than each carrying their own
+// (planning/ac4.md, decision 31: "a copied Fixed32 would drift"). It lived at
+// src/forge/src/core/fixed32.hpp until AC-4's D14a moved it here; nothing
+// about the type changed in the move.
+//
 // What the format is for. A/52's coefficients are a mantissa in [-1, 1)
 // times 2^-exponent, so they are below unity; the transform's intermediate
 // growth and a downmix sum are what the headroom absorbs; and the

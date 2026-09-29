@@ -27,7 +27,7 @@
 namespace {
 
 namespace detail = ac4::detail;
-using QmfValue = std::complex<double>;
+using QmfValue = detail::QmfValue;
 
 constexpr int kSlots = 32;
 constexpr std::size_t kValues = kSlots * 64;
@@ -184,7 +184,7 @@ TEST_CASE("at its cap, dialogue enhancement applies the gains its parameters giv
                 } else if (band >= 0 && c == 2) {
                     expected = 1.0 + g * values.p[1][static_cast<std::size_t>(band)];
                 }
-                const double got = std::abs(channels.data[c][at]) / std::abs(before[c][at]);
+                const double got = abs(channels.data[c][at]) / abs(before[c][at]);
                 if (std::abs(20.0 * std::log10(got / expected)) >= 0.01) {
                     FAIL("channel " << c << " slot " << slot << " subband " << k << ": " << got
                                     << ", expected " << expected);
@@ -221,8 +221,8 @@ TEST_CASE("with de_ms_proc_flag, dialogue enhancement raises the Mid and leaves 
             const int band = band_of(k);
             const double expected =
                 (k < 32 && band >= 0) ? 1.0 + g * values.p[0][static_cast<std::size_t>(band)] : 1.0;
-            CHECK(std::abs(std::abs(left[i]) / std::abs(QmfValue{1.0, 0.5}) - expected) < 1e-12);
-            CHECK(std::abs(std::abs(right[i]) / std::abs(QmfValue{1.0, 0.5}) - expected) < 1e-12);
+            CHECK(std::abs(abs(left[i]) / abs(QmfValue{1.0, 0.5}) - expected) < 1e-12);
+            CHECK(std::abs(abs(right[i]) / abs(QmfValue{1.0, 0.5}) - expected) < 1e-12);
         }
     }
 }
@@ -260,7 +260,7 @@ TEST_CASE("cross-channel dialogue enhancement adds g r p^T m to the processed ch
                 }
                 expected += g * values.r[i] * dialogue;
             }
-            CHECK(std::abs(channels.data[i][at] - expected) < 1e-12);
+            CHECK(abs(channels.data[i][at] - expected) < 1e-12);
         }
         // The LFE and the surrounds take no part.
         CHECK(channels.data[3][at] == m[3][at]);

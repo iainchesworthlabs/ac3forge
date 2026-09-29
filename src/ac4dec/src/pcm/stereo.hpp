@@ -38,10 +38,13 @@ struct StereoParameters {
 enum class StereoUse : std::uint8_t { kPair, kPrediction };
 
 // Pseudocode 59 for one chparam_info() under the sf_info() it was read with,
-// as `use` takes it.
-[[nodiscard]] StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& info,
-                                                 const ChparamInfo& chparam,
-                                                 StereoUse use = StereoUse::kPair);
+// as `use` takes it. Writes into `out` rather than returning a
+// StereoParameters by value: the struct is 32 KiB (kMaxWindows * kMaxSfb * 4
+// doubles), which a return value or a temporary at the call site would put on
+// the stack (planning/ac4.md, D14a's memory rules - no stack object over 4
+// KiB); every caller already owns the storage this writes into.
+void stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const ChparamInfo& chparam,
+                       StereoParameters& out, StereoUse use = StereoUse::kPair);
 
 // The matrix, band by band, on two tracks' lines in bitstream order (see
 // pcm/asf_reconstruct.hpp); `layout` is either track's SfData, whose band

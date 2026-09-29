@@ -234,10 +234,13 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src
 # through a whole encode. Same pattern as the signing headers above.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
 
-# test_scalar_math.cpp includes src/forge/src/core/scalar_math.hpp, the float
-# encode path's own log2/log/exp - internal for the same reason as the
-# exponent-run planner above, and worth holding to accuracy bounds on its own
-# rather than only through the fixture hashes that depend on it.
+# test_scalar_math.cpp includes ac3/internal/scalar_math.hpp and
+# test_fixed32*.cpp/test_mdct_fixed.cpp include ac3/internal/fixed32.hpp - the
+# shared arithmetic target (src/arithmetic) both ac3::forge and src/ac4core
+# use (planning/ac4.md, decision 31), worth holding to their own accuracy/
+# correctness bounds rather than only through the fixture hashes that depend
+# on them.
+target_link_libraries(ac3tests PRIVATE ac3::arithmetic)
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/core")
 # test_block_norm.cpp includes src/forge/src/decoder/block_norm.hpp, the
 # fixed-point tier's block exponent, which both decoders share and which is not

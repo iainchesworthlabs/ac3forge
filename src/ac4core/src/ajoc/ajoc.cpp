@@ -439,6 +439,6 @@ void Reconstruction<Real>::enhance_core(const FrameParameters& p, int num_ts,
     h_m_prev_ = h_m_;
 }
 
-template class Reconstruction<double>;
+template class Reconstruction<Real>;
 
 }  // namespace ac4::detail::ajoc

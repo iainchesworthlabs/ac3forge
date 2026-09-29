@@ -1,10 +1,11 @@
 #pragma once
 
-#include <complex>
 #include <cstddef>
 #include <span>
 #include <vector>
 
+#include "ac4/detail/real.hpp"
+#include "dsp/complex.hpp"
 #include "dsp/fft.hpp"
 
 // The MDCT pair of ETSI TS 103 190-1 V1.4.1 clause 5.5.2.
@@ -39,7 +40,7 @@ namespace ac4::detail::dsp {
 template <typename Real>
 class Imdct {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = ac4::detail::dsp::Complex<Real>;
 
     explicit Imdct(std::size_t length);
 
@@ -59,7 +60,7 @@ class Imdct {
 template <typename Real>
 class Mdct {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = ac4::detail::dsp::Complex<Real>;
 
     explicit Mdct(std::size_t length);
 
@@ -76,7 +77,7 @@ class Mdct {
     std::vector<Complex> z_;
 };
 
-extern template class Imdct<double>;
-extern template class Mdct<double>;
+extern template class Imdct<Real>;
+extern template class Mdct<Real>;
 
 }  // namespace ac4::detail::dsp

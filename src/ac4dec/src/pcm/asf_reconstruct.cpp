@@ -14,15 +14,24 @@ namespace {
 // which is also the most ext_code (Pseudocode 20, 21 bits) can escape to.
 constexpr std::size_t kMaxQuant = 8191;
 
-// sign(q) |q|^(4/3), clause 5.1.3.2.
+// sign(q) |q|^(4/3), clause 5.1.3.2. A namespace-scope table, not a
+// function-local static (planning/ac4.md, D14a's memory rules): the values
+// are the same 8 192 std::pow() calls either way, computed once before
+// main() rather than guarded and computed lazily on this function's first
+// call - no per-call thread-safety check, and no latency spike on whichever
+// frame happens to decode first. Still 64 KiB of RAM rather than flash: the
+// table is not constexpr (std::pow has no such guarantee), which a later
+// phase's own constexpr power routine could change without moving a value
+// here (this table's numbers are unaffected either way).
+const std::array<double, kMaxQuant + 1> kPow43 = [] {
+    std::array<double, kMaxQuant + 1> table{};
+    for (std::size_t m = 0; m < table.size(); ++m) {
+        table[m] = std::pow(static_cast<double>(m), 4.0 / 3.0);
+    }
+    return table;
+}();
+
 [[nodiscard]] double reconstruct_line(std::int32_t q) noexcept {
-    static const std::array<double, kMaxQuant + 1> kPow43 = [] {
-        std::array<double, kMaxQuant + 1> table{};
-        for (std::size_t m = 0; m < table.size(); ++m) {
-            table[m] = std::pow(static_cast<double>(m), 4.0 / 3.0);
-        }
-        return table;
-    }();
     const std::int64_t wide = q;
     const auto magnitude = static_cast<std::uint64_t>(wide < 0 ? -wide : wide);
     const double value = magnitude < kPow43.size() ? kPow43[static_cast<std::size_t>(magnitude)]

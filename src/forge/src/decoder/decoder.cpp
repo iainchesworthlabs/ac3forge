@@ -25,7 +25,7 @@
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 #include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
 #include "scalar_inverse.hpp"

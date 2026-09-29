@@ -1,6 +1,6 @@
 #pragma once
 
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 
 // The type the DECODER carries its coefficients, transform scratch and
 // overlap-add history in, in the FIXED-POINT variant. See the double variant

@@ -123,12 +123,12 @@ std::vector<double> subband_energy(std::span<const float> samples) {
     for (std::size_t n = 0; n < pcm.size(); ++n) {
         pcm[n] = static_cast<double>(samples[n]);
     }
-    std::vector<std::complex<double>> q(pcm.size());
+    std::vector<ac4::detail::dsp::Complex<double>> q(pcm.size());
     analysis.process(pcm, q);
     std::vector<double> energy(64, 0.0);
     for (std::size_t ts = 0; ts < slots; ++ts) {
         for (std::size_t sb = 0; sb < 64; ++sb) {
-            energy[sb] += std::norm(q[ts * 64 + sb]) / static_cast<double>(slots);
+            energy[sb] += norm(q[ts * 64 + sb]) / static_cast<double>(slots);
         }
     }
     return energy;

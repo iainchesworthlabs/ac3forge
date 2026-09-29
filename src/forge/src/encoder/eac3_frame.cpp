@@ -41,7 +41,7 @@
 #include "dither.hpp"
 #include "eac3_seat_fold.hpp"
 #include "exp_strategy.hpp"
-#include "scalar_math.hpp"
+#include "ac3/internal/scalar_math.hpp"
 #include "scalar_transform.hpp"
 #include "snr_search.hpp"
 

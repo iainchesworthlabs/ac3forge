@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cstddef>
 #include <cstring>
 #include <limits>
 #include <numeric>
 #include <string>
-#include <unordered_map>
 
 namespace ac4 {
 
@@ -526,12 +526,15 @@ int read_bitrate_indicator(Reader& r) {
 }
 
 std::optional<int> bitrate_kbps(int indicator) {
-    static const std::unordered_map<int, int> kTable = {
-        {0, 16}, {1, 20}, {2, 24}, {3, 28}, {4, 32},  {5, 40},
-        {6, 48}, {7, 56}, {8, 64}, {9, 80}, {10, 96}, {11, 112},
-    };
-    const auto it = kTable.find(indicator);
-    return it == kTable.end() ? std::nullopt : std::optional<int>(it->second);
+    // Table 90's own brate_ind column, 0 to 11, indexed directly: a constexpr
+    // array in flash rather than a function-local static hash map (planning/
+    // ac4.md, D14a's memory rules - a guarded static that also has to hash
+    // and heap-allocate on a part that can least afford either).
+    constexpr std::array<int, 12> kTable = {16, 20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112};
+    if (indicator < 0 || indicator >= static_cast<int>(kTable.size())) {
+        return std::nullopt;
+    }
+    return kTable[static_cast<std::size_t>(indicator)];
 }
 
 // --- Table 88 (§4.3.3.7.1) / Table 56 (§6.3.2.7.2): channel_mode -----------

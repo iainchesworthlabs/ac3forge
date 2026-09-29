@@ -659,7 +659,7 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
         }
         const std::size_t needed = chparams_of(part.count);
         for (std::size_t i = 0; i < needed; ++i) {
-            parameters_[i] = stereo_parameters(ctx, info, element.chparams[at(part.first_chparam) + i]);
+            stereo_parameters(ctx, info, element.chparams[at(part.first_chparam) + i], parameters_[i]);
         }
         if (part.count == 2) {
             // Clause 5.3.3.2, on tracks laid out alike: with b_dual_maxsfb
@@ -707,9 +707,8 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
         const auto second = at(channel_of(step.second));
         const auto framing = at(channel_of(step.framing));
         const SfInfo& info = element.infos[at(element.tracks[at(track_of_[framing])].info)];
-        parameters_[0] =
-            stereo_parameters(ctx, info, element.chparams[at(step.chparam)],
-                              step.prediction ? StereoUse::kPrediction : StereoUse::kPair);
+        stereo_parameters(ctx, info, element.chparams[at(step.chparam)], parameters_[0],
+                          step.prediction ? StereoUse::kPrediction : StereoUse::kPair);
         if (auto ok = apply_additional_pair(ctx, info.psy, parameters_[0], lengths_[first], lengths_[second],
                                             spectra_[first], spectra_[second]);
             !ok) {

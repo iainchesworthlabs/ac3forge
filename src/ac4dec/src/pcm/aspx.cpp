@@ -319,13 +319,13 @@ void ChannelAssembly::estimate(std::span<const QmfValue> q_high) {
                 const int hi = table[at(sbg + 1)];
                 for (int ts = tsa; ts < tsz; ++ts) {
                     for (int j = lo; j < hi; ++j) {
-                        est += std::norm(q_high[at(ts) * kSubbands + at(j)]);
+                        est += norm(q_high[at(ts) * kSubbands + at(j)]);
                     }
                 }
                 est /= hi - lo;
             } else {
                 for (int ts = tsa; ts < tsz; ++ts) {
-                    est += std::norm(q_high[at(ts) * kSubbands + at(sb + sbx)]);
+                    est += norm(q_high[at(ts) * kSubbands + at(sb + sbx)]);
                 }
             }
             est_sig_[at(atsg)][at(sb)] = est / length;

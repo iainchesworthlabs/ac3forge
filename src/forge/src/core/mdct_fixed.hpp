@@ -9,7 +9,7 @@
 
 #include "ac3/core/window.hpp"
 #include "fft_kernel.hpp"
-#include "fixed32.hpp"
+#include "ac3/internal/fixed32.hpp"
 
 // The fixed-point tier's §7.9.4 inverse pair (planning/arithmetic-tiers.md,
 // Phase B): the same pre-twiddle, N/4-point FFT, post-twiddle and window as

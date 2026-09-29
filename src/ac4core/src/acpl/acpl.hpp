@@ -1,9 +1,11 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <cstdint>
 #include <span>
+
+#include "ac4/detail/real.hpp"
+#include "dsp/complex.hpp"
 
 // Advanced coupling's signal processing, ETSI TS 103 190-1 V1.4.1 clause 5.7.7:
 // the parameter bands (5.7.7.2, Table 197), interpolation (5.7.7.3,
@@ -119,7 +121,7 @@ inline constexpr std::array<Region, 3> kRegions = {{{0, 7, 7}, {7, 10, 4}, {23, 
 template <typename Real>
 class Decorrelator {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = dsp::Complex<Real>;
 
     explicit Decorrelator(int index) noexcept;
 
@@ -150,7 +152,7 @@ class Decorrelator {
 template <typename Real>
 class TransientDucker {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = dsp::Complex<Real>;
 
     // The state of before the first frame: 0 (the NOTE after Pseudocode 112).
     void reset() noexcept;
@@ -164,7 +166,7 @@ class TransientDucker {
     std::array<Real, kMaxParamBands> smooth_peak_diff_{};
 };
 
-extern template class Decorrelator<double>;
-extern template class TransientDucker<double>;
+extern template class Decorrelator<Real>;
+extern template class TransientDucker<Real>;
 
 }  // namespace ac4::detail::acpl

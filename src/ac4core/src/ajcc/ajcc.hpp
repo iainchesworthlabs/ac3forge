@@ -1,12 +1,13 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 
+#include "ac4/detail/real.hpp"
 #include "acpl/acpl.hpp"
+#include "dsp/complex.hpp"
 
 // Advanced joint channel coding's signal processing, ETSI TS 103 190-2 V1.3.1
 // clause 5.6, for the 7.X.4 channel modes (b_5fronts 0): differential decoding
@@ -92,8 +93,8 @@ struct Term {
 // out += weight * in, value by value over `num_ts` slots: one term of
 // Pseudocodes 11 and 14's sums, `weight` the interpolated coefficient.
 template <typename Real>
-void accumulate(std::span<const Real> weight, std::span<const std::complex<Real>> in,
-                std::span<std::complex<Real>> out, int num_ts) noexcept;
+void accumulate(std::span<const Real> weight, std::span<const dsp::Complex<Real>> in,
+                std::span<dsp::Complex<Real>> out, int num_ts) noexcept;
 
 // Pseudocode 9, input_sig_pre_modification(): out1 = g in2 + (1 - g) in1 and
 // out2 = g in4 + (1 - g) in3, g 1 while ajcc_core_mode stays 0 and 0 while it
@@ -101,7 +102,7 @@ void accumulate(std::span<const Real> weight, std::span<const std::complex<Real>
 template <typename Real>
 class PreModification {
    public:
-    using Complex = std::complex<Real>;
+    using Complex = dsp::Complex<Real>;
 
     // ajcc_core_mode_prev takes the next frame's ajcc_core_mode.
     void reset() noexcept { primed_ = false; }
@@ -116,9 +117,9 @@ class PreModification {
     int core_mode_prev_ = 0;
 };
 
-extern template void accumulate<double>(std::span<const double>,
-                                        std::span<const std::complex<double>>,
-                                        std::span<std::complex<double>>, int) noexcept;
-extern template class PreModification<double>;
+extern template void accumulate<Real>(std::span<const Real>,
+                                      std::span<const dsp::Complex<Real>>,
+                                      std::span<dsp::Complex<Real>>, int) noexcept;
+extern template class PreModification<Real>;
 
 }  // namespace ac4::detail::ajcc

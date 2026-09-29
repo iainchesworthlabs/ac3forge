@@ -412,7 +412,8 @@ std::vector<AcplEncoder::Spectrum> AcplEncoder::spectra(long long first) const {
             for (std::size_t k = 0; k < at(kWindowSlots); ++k) {
                 std::complex<double> sum{};
                 for (std::size_t t = 0; t < at(kWindowSlots); ++t) {
-                    sum += weights[k][t] * slot(c, from + static_cast<long long>(t))[sb];
+                    const dsp::Complex<double> s = slot(c, from + static_cast<long long>(t))[sb];
+                    sum += weights[k][t] * std::complex<double>(s.real(), s.imag());
                 }
                 out[c][sb][k] = sum;
             }
