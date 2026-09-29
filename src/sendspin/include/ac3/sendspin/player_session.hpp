@@ -290,8 +290,15 @@ class PlayerSession {
     void send_state(SessionOutput& out);
     // Hands the listener one player@v1 chunk, unless it is a replay.
     void deliver_audio(std::int64_t timestamp_us, std::span<const std::uint8_t> frame);
-    // Forgets the held chunks and the last timestamp: the stream began again, was cleared or ended.
+    // Forgets the held chunks and the last timestamp: the stream began again or was cleared, and
+    // whatever was held for the clock's first exchange is no longer wanted in the new format or
+    // the empty buffer those imply.
     void restart_audio();
+    // The stream ended: chunks still held for the clock's first exchange were never a replay and
+    // are not discarded like restart_audio()'s - they are delivered now, with whatever time
+    // mapping the clock can give before its own convergence gates on it (roles/player/v1.md,
+    // Audio Chunks; a server can end a stream well within kReplyTimeout of activation).
+    void end_audio();
     void send_clock(SessionOutput& out);
     [[nodiscard]] bool player_active() const;
     [[nodiscard]] bool ac3forge_active() const;

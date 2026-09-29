@@ -1468,3 +1468,58 @@ TEST_CASE("sessions: from an aiosendspin 9.1.1 server a player holds audio for i
     REQUIRE(server.events.audio.size() == 5);
     CHECK(server.events.audio[4].frame[0] == 5);
 }
+
+TEST_CASE("sessions: a stream that ends before the clock's first exchange delivers what it held",
+          "[sendspin][sessions]") {
+    // A dynamic-code pairing's rounds, and a raw PCM stream's lack of any encoder latency to
+    // absorb them, can together outrun the clock's first exchange (kReplyTimeout, five seconds)
+    // well within a short stream's own length: the server ends it having never answered a
+    // client/time. What was held for that exchange is real programme audio, not a replay - it
+    // must reach the listener now rather than being silently dropped with the buffer.
+    LegacyServer server;
+    server.send_json(m::write_stream_start(
+        {.server_transmitted = 0, .player = m::PlayerStream{.format = kPcm, .codec_header = {}}, .ac3forge = std::nullopt}));
+    REQUIRE(server.events.starts.size() == 1);
+
+    server.send_audio(3'000'000, 1);
+    server.send_audio(3'010'000, 2);
+    server.send_audio(3'020'000, 3);
+    CHECK(server.events.audio.empty());
+
+    // The clock never gets its first reply before the server ends the stream.
+    server.send_json(m::write_stream_end({.roles = std::vector<std::string>{"player"}}));
+    CHECK(server.events.ends == 1);
+    REQUIRE(server.events.audio.size() == 3);
+    CHECK(server.events.audio[0].frame[0] == 1);
+    CHECK(server.events.audio[1].frame[0] == 2);
+    CHECK(server.events.audio[2].frame[0] == 3);
+
+    // A stream after it starts with nothing held over from the one that ended.
+    server.send_json(m::write_stream_start(
+        {.server_transmitted = 0, .player = m::PlayerStream{.format = kPcm, .codec_header = {}}, .ac3forge = std::nullopt}));
+    server.send_audio(3'000'000, 9);
+    CHECK(server.events.audio.size() == 3);
+    server.answer_time(2 * static_cast<int>(ac3::sendspin::ClockSync::kBurstLength));
+    REQUIRE(server.events.audio.size() == 4);
+    CHECK(server.events.audio[3].frame[0] == 9);
+}
+
+TEST_CASE("sessions: deactivating a player before the clock's first exchange delivers what it held",
+          "[sendspin][sessions]") {
+    // The same loss, reached the way Music Assistant's own stop actually ends a stream: a fresh
+    // server/activate that drops playback, not a stream/end message (on_activate()'s own ended
+    // stream, distinct from on_json()'s stream/end - both must flush, not just one of them).
+    LegacyServer server;
+    server.send_json(m::write_stream_start(
+        {.server_transmitted = 0, .player = m::PlayerStream{.format = kPcm, .codec_header = {}}, .ac3forge = std::nullopt}));
+    server.send_audio(3'000'000, 1);
+    server.send_audio(3'010'000, 2);
+    CHECK(server.events.audio.empty());
+
+    server.send_json(m::write_activate({.activities = {}, .active_roles = std::vector<std::string>{}, .pairing = std::nullopt},
+                                       ac3::sendspin::Dialect::kAiosendspin911));
+    CHECK(server.events.ends == 1);
+    REQUIRE(server.events.audio.size() == 2);
+    CHECK(server.events.audio[0].frame[0] == 1);
+    CHECK(server.events.audio[1].frame[0] == 2);
+}

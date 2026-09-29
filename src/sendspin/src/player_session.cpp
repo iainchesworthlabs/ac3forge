@@ -441,7 +441,7 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
         const auto end = m::read_stream_end(payload);
         if (end && stream_ && names(end->roles, "player")) {
             stream_.reset();
-            restart_audio();
+            end_audio();
             listener_->on_stream_end();
         }
         if (end && burst_stream_ && names(end->roles, ac3forge::kObjectKey)) {
@@ -613,7 +613,7 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
 
     if (had_player && !player_active() && stream_) {
         stream_.reset();
-        restart_audio();
+        end_audio();
         listener_->on_stream_end();
     }
     if (had_ac3forge && !ac3forge_active() && burst_stream_) {
@@ -809,6 +809,25 @@ void PlayerSession::restart_audio() {
     held_audio_.clear();
     held_audio_bytes_ = 0;
     last_audio_timestamp_.reset();
+}
+
+void PlayerSession::end_audio() {
+    // held_audio_ is not a replay (deliver_audio()'s own guard is what drops those): it is real
+    // programme audio a 9.1.1 server already sent, waiting only on the clock's first exchange
+    // (on_message(), kPlayerAudio). A server can end the stream within that exchange's own
+    // kReplyTimeout of activation, which used to make restart_audio() discard every chunk the
+    // stream ever carried. Deliver what is held before forgetting it, on whatever time mapping
+    // the clock can give pre-convergence (roles/player/v1.md's ±1 ms goal does not apply until
+    // then, and this stream is ending regardless).
+    if (!held_audio_.empty()) {
+        std::vector<std::pair<std::int64_t, std::vector<std::uint8_t>>> held;
+        held.swap(held_audio_);
+        held_audio_bytes_ = 0;
+        for (const auto& [timestamp_us, frame] : held) {
+            deliver_audio(timestamp_us, frame);
+        }
+    }
+    restart_audio();
 }
 
 bool PlayerSession::available_now() const {
