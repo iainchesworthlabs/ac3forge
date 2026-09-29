@@ -13,8 +13,8 @@ spectral extension" against them the way this project can against its own
 history. What's shown is `landscape` — this project's `auto`-tools E-AC-3
 encode (the set the encoder picks from the per-channel rate, which is the
 like-for-like answer to FFmpeg's and DEE's own automatic choices), or AC-3's
-unconditionally-automatic encode — since that's the number a real user of
-either tool actually gets, not an internal detail.
+unconditionally-automatic encode — since that's the number a user of
+either tool gets, not an internal detail.
 
 This page covers the AC-3 and E-AC-3 encoders. AC-4 is not in it: its encoder is scored in CI
 against floors, decoded and compared with its own source (`tools/checks/score_ac4_encode.py`),
@@ -405,7 +405,7 @@ longer window, measured).
 Everything above this section is a waveform or model measure. SNR and LSD are
 distances; MOS-LQO is a *prediction* of what a panel would say, from a model
 trained on panels — which is closer to "how it sounds" than a distance is, and
-still not a listener. This section is where a real one goes.
+still not a listener. This section is where a listening session's result goes.
 
 **No session has been run yet.** The apparatus is in the repository
 ([`tools/listening/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/tools/listening));
@@ -494,7 +494,7 @@ used is part of the result — the two are not the same experiment.
 
 **Decoder complaints ride through to the table.** FFmpeg reports two
 out-of-range exponents decoding DEE's own committed stereo stream. A concealed
-error is a real artifact a listener hears, but it is that decoder reading that
+error is an artifact a listener hears, but it is that decoder reading that
 stream, not DEE's encoder being worse, and any row scored from a flagged
 stimulus carries the flag.
 

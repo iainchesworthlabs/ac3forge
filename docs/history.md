@@ -245,7 +245,7 @@ multi-frame audio and hand-built multi-syncframe accumulation; the `Pd`-in-bits 
 burst-size-6144 bugs were both deliberately reintroduced and confirmed to fail the suite before
 being reverted.
 
-Building the monitor path against real hardware — not just unit tests — found two real bugs
+Building the monitor path against real hardware — not just unit tests — found two bugs
 neither would have caught. `MonitorSink::submit()` gated a write on a fixed ~20 ms readiness
 threshold smaller than an actual chunk (~32 ms, one AC-3/E-AC-3 frame); `RingBuffer::write()`
 then silently performed a *partial* write while `submit()` still reported failure, so the
@@ -337,7 +337,7 @@ than a separate system — `ac3::plan::channel_plan_for(id)` is a one-line looku
   decode oracle exists for the audio content at these rates, not even Dolby's own Reference
   Player; see the [verification-gap table](verification.md#where-the-oracles-dont-reach).
 - Delta bit allocation (§7.2.2.6) on both encoders: corrects bands where the coarse
-  exponent-only masking curve and the real pre-quantization coefficient magnitude clearly
+  exponent-only masking curve and the pre-quantization coefficient magnitude clearly
   diverge. Skipped for the LFE and, on the encode side only, whenever coupling is active that
   frame; both decoders accept it on the coupling channel regardless, from any encoder that
   sends it.
@@ -428,7 +428,7 @@ unavailable, it would reject a correctly-formed stream on syntax it doesn't reco
 is self-consistency only: round-trip unit tests in `tests/decoder/test_eac3_decoder.cpp`, and
 `tools/ci/quality_race.py`'s CI gate, extended with a `decode_scores_ours` path that decodes through
 this project's own `ac3cli decode` instead of FFmpeg for exactly these two tools, with SNR/LSD
-floors sized off a real measured run rather than guessed.
+floors sized off a measured run rather than guessed.
 
 ## Enhanced coupling's real angle/chaos fit
 
@@ -442,13 +442,13 @@ chaos-scaled noise to the fitted angle independently per bin, a discontinuous ef
 linear degree of freedom absorbs - but `ecpl_rand_notrans` is a pure, deterministic function of
 (channel, bin), the *exact* sequence the decoder will use, so instead of a statistical proxy for
 how much decorrelation a band needs, the encoder searches its 8 legal codes directly: reconstruct
-the band exactly as the decoder would for each, keep whichever lands closest to the real channel
-by squared error.
+the band exactly as the decoder would for each, keep whichever lands closest to the original
+channel by squared error.
 
 The regression test built for the amplitude-only MVP (two channels' different tones forced into
 one 6-bin coupling band, the narrowest §E3.5.2 allows) measured the improvement directly rather
-than assuming one: ~3 dB under the old fit, ~6 dB under the real one. Real, worthwhile — and also
-the ceiling this test was designed to demonstrate rather than defeat, since no single coordinate
+than assuming one: ~3 dB under the old fit, ~6 dB under the new one. That is the ceiling this
+test was designed to demonstrate rather than defeat, since no single coordinate
 pair per band can fully separate two different signals sharing that few bins; the test's
 own comment and threshold were updated to say so rather than imply the tool has been made
 transparent there. Verified against real gcc-15, clang-21 and MSVC builds before landing, following

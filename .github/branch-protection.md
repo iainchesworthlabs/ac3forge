@@ -19,9 +19,9 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
 
   Zero, not one: this is a solo-maintainer repo, and GitHub does not count an
   author's own approval toward their own PR, so "require 1 approval" was
-  unsatisfiable through the normal merge button - every PR in this repo's
-  history has landed via `gh pr merge --admin`, bypassing the requirement
-  rather than meeting it. Dropping the count to 0 keeps "require a pull
+  unsatisfiable through the normal merge button - PRs had to land via
+  `gh pr merge --admin`, bypassing the requirement rather than meeting it.
+  Dropping the count to 0 keeps "require a pull
   request before merging" itself (still blocks direct pushes, still requires
   every required status check below to pass, still dismisses stale approvals
   if a second maintainer ever does leave one) while letting a green PR merge
@@ -133,7 +133,7 @@ load, and the default timed entries out before their checks reported). Re-tune
 `max_entries_to_build` if the fleet changes size or the account moves off
 the Free tier.
 
-**The queue alone does not fix a genuinely oversubscribed account.** On
+**The queue alone does not fix an oversubscribed account.** On
 2026-08-24, ~30 topic branches were open and pushing at once; even with only
 2 entries building at a time, each PR's *own* pre-queue `pull_request` CI run
 still competed for the same ~20-job account-wide ceiling and 3/2-runner

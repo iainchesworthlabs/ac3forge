@@ -34,16 +34,18 @@ standards in C++23, and the applications built on it.
 | **Crucible** — `ac3crucible` | Captures desktop applications separately and positions them in an Atmos scene. Runs on Windows and Linux; macOS code builds in CI but has not run with audio hardware. | [Crucible](docs/crucible/index.md), [install](docs/crucible/install.md) |
 | **Hearth** | Plays streams through speakers, a receiver, or ESP32 network sinks. The desktop player plays to local outputs and to network sinks, and plays AC-4; the ESP32-S3 sink runs on hardware. | [Hearth](docs/hearth/index.md) |
 
-Nothing here links FFmpeg or any other codec library. The FFmpeg command-line tools are used
-during development as an independent decoder to check output against; the build does not
-depend on them.
+The AC-3, E-AC-3 and AC-4 codecs link no other codec library, FFmpeg included. The FFmpeg
+command-line tools, and a librempeg build for AC-4, are used during development as independent
+decoders to check output against; the build does not depend on them. Hearth's Sendspin transport
+links libFLAC and Opus for the audio formats Sendspin itself defines.
 
 **Standards and trademarks.** "Dolby", "Dolby Digital" and "Dolby Atmos" are trademarks of
 Dolby Laboratories. This project implements the openly published standards — ATSC A/52:2018
 (of which E-AC-3 is normative Annex E), ETSI TS 102 366, ETSI TS 103 420 and ETSI TS 103 190
 (AC-4) — and is not affiliated with, endorsed by, or certified by Dolby Laboratories. Code and
-documentation use the technical names AC-3, E-AC-3 and AC-4. Whether the patents reading on these formats matter for
-your use is your problem to assess, not something this project resolves.
+documentation use the technical names AC-3, E-AC-3 and AC-4. Whether the patents reading on
+these formats matter for your use is your problem to assess, not something this project
+resolves.
 
 **Status.** The API is not stable — releases so far are 0.x betas; the Latest release badge
 above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each contains.
