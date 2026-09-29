@@ -32,7 +32,9 @@ Full program: [`examples/mux_mkv.cpp`](https://github.com/iainchesworthlabs/ac3f
 `mux` returns the whole file as bytes and does no file I/O, which keeps it testable without a
 disk. It writes one audio track, one SimpleBlock per frame, clusters closed on a time budget,
 and Info with TimestampScale and Duration. No SeekHead, no Cues, no chapters, no tags — those
-matter for seeking in large files, not for playing back what this project produces.
+matter for seeking in large files, not for playing back what this project produces. Matroska
+registers no `CodecID` for AC-4, so this module has no constant for one and `ac3cli mkv` refuses an
+AC-4 stream.
 
 ### Incremental muxing: `matroska::Writer`
 
@@ -216,7 +218,7 @@ order (version 0 or 1), each with its `segment_duration` in the movie's timescal
 the codec. `apps/common/container_input.hpp` turns the shape an audio encoder writes into a
 `StreamTrim`: any empty edits, then one edit at normal speed. The trim is the samples to skip and
 the samples to play, and Hearth's player plays only that part. Any other shape leaves the stream
-whole, with a note saying why. `ac3cli` and the GUI do not apply the trim yet. Neither `elst`
+whole, with a note saying why. `ac3cli` and the GUI do not apply the trim. Neither `elst`
 nor `mvhd` is needed to find a sample, so one too short to read, one that declares more entries
 than it holds, or one longer than `ReadOptions::max_edits` is left out, and the file still reads.
 
@@ -232,8 +234,8 @@ real. `fuzz/fuzz_mp4_demux.cpp` drives both entry points with arbitrary bytes.
 ## Muxing: `mpegts::mux`
 
 `mpegts/mpegts.hpp`, library `mpegts::mpegts`. Same shape as `matroska::mux` above — it links
-nothing from `ac3::forge` beyond the AC-3/E-AC-3 choice it is told, and takes access units as
-opaque bytes.
+nothing from `ac3::forge` beyond the AC-3, E-AC-3 or AC-4 choice it is told, and takes access
+units as opaque bytes.
 
 ```cpp
 // One PES-wrapped access unit per TS access unit. For E-AC-3 an access
@@ -277,7 +279,7 @@ reasoning as `matroska::mux`. It writes a single program — one PAT, one PMT (r
 periodically so a receiver tuning in mid-stream doesn't wait for byte zero), and one PES-wrapped
 elementary stream carrying PCR every access unit. No video, no other elementary streams, no PID
 remapping: a general-purpose multiplexer is out of scope, this is enough for a player or
-`ffprobe` to recognize one AC-3/E-AC-3 programme.
+`ffprobe` to recognize one AC-3, E-AC-3 or AC-4 programme.
 
 **Broadcast profile.** Two standards register AC-3/E-AC-3 for MPEG-TS carriage — ATSC and DVB —
 with different, non-interoperable signalling, so a stream is written to satisfy one of them,
@@ -359,12 +361,15 @@ many-to-one summary forward (Table D.5/G.3/A4.5's "more than 5.1 channels" row c
 not one value) with no exact acmod to recover backward — a caller that has the elementary stream
 already has those exact values from `ac3::io::scan()`, the same source `mux`'s own caller used.
 
-**All three signalling forms**, one more than the writer. `mux` chooses between DVB and ATSC
-through `MuxOptions::profile` (see above), and commits to one of them wholly. A reader has no
-such luxury: a third family of files names the codec through neither, using a
-`registration_descriptor`'s `'AC-3'`/`'EAC3'` `format_identifier` instead. All three are
-recognised on read, reported as `ReadStream::signalling` (`CodecSignalling::kAtscStreamType` /
-`kDvbDescriptor` / `kRegistrationDescriptor`) so a caller remuxing back out knows which it was.
+**Four signalling forms.** For AC-3 and E-AC-3, `mux` chooses between DVB and ATSC through
+`MuxOptions::profile` (see above), and commits to one of them wholly. A reader has no such luxury:
+a third family of files names the codec through neither, using a
+`registration_descriptor`'s `'AC-3'`/`'EAC3'` `format_identifier` instead, and AC-4 is named by
+DVB's extension descriptor `0x7F/0x15` beside a `stream_type` of `0x06`. All four are recognised
+on read, reported as `ReadStream::signalling` (`CodecSignalling::kAtscStreamType` /
+`kDvbDescriptor` / `kRegistrationDescriptor` / `kDvbExtensionDescriptor`) so a caller remuxing back
+out knows which it was; `ReadStream::ac4` says the payload is AC-4, whose PES bytes come back
+without framing, for `ac4::scan` or `ac4::SyncFrameSplitter` to split.
 
 **Three packet grids**, detected rather than assumed: 188 bytes (ISO/IEC 13818-1's own), 192
 (M2TS — a Blu-ray/AVCHD rip, each packet prefixed by a 4-byte arrival timestamp), and 204 (a
@@ -461,7 +466,8 @@ dot-separated profile/level fields RFC 6381 §3 makes room for (unlike e.g. `avc
 is confirmed against every real HLS manifest example
 [Apple's HLS Authoring Specification for Apple
 Devices](https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices)
-shows. Dolby Digital Plus with Atmos objects additionally needs `CHANNELS="<N>/JOC"` on the HLS
+shows. AC-4's string is the dotted one `ac4::rfc6381_codec_string()` gives (`ac-4.02.01.00`),
+which the caller puts in `AudioTrack::rfc6381`. Dolby Digital Plus with Atmos objects additionally needs `CHANNELS="<N>/JOC"` on the HLS
 media rendition instead of a plain channel count, where N is the decodable object count
 (`ac3::io::ScannedStream::oba_complexity_index`, TS 103 420 §8.3.2's `complexity_index_type_a`)
 — reiterated, with a worked example (`CHANNELS="12/JOC"`), by [Dolby's own Online Delivery Kit
@@ -643,7 +649,7 @@ its own `describe()` overload beside `MuxError`'s:
 |---|---|
 | `mp4::DemuxError` | `kNotIsobmff`; `kTruncated`; `kMalformed` (a box, sample table or fragment layout that cannot be parsed); `kNoAudioTrack`; `kLimitExceeded`; `kMoovAfterMdat` (`Reader` only — the sample table follows the data it indexes; use `demux`). |
 | `matroska::DemuxError` | `kNotMatroska` (no EBML header where one has to be); `kTruncated` (the input ends before any track was described — a cut *after* one is not an error, see above); `kMalformed` (a vint, element or block layout that cannot be parsed, including a lace whose declared sizes overrun its block); `kNoAudioTrack` (Tracks held nothing selectable, or the requested `track_number` is absent); `kLimitExceeded` (an element size or nesting depth beyond `ReadOptions`). |
-| `mpegts::DemuxError` | `kNotTransportStream` (no 188/192/204-byte sync grid found within `ReadOptions::max_sync_search_bytes`); `kNoProgramme` (no PAT, or no PMT for the programme it named — including one whose CRC failed); `kNoAudioStream` (the PMT held no AC-3/E-AC-3 elementary stream under any of the three signalling forms); `kMalformed` (a PES or section layout that cannot be parsed); `kLimitExceeded` (a PES packet or PSI section beyond `ReadOptions`). |
+| `mpegts::DemuxError` | `kNotTransportStream` (no 188/192/204-byte sync grid found within `ReadOptions::max_sync_search_bytes`); `kNoProgramme` (no PAT, or no PMT for the programme it named — including one whose CRC failed); `kNoAudioStream` (the PMT held no AC-3, E-AC-3 or AC-4 elementary stream under any of the four signalling forms); `kMalformed` (a PES or section layout that cannot be parsed); `kLimitExceeded` (a PES packet or PSI section beyond `ReadOptions`). |
 
 ## Bitstream sinks (`ac3::audio`)
 
@@ -718,9 +724,9 @@ whole session of it.
 
 ### `ac3::audio::PassthroughSink` — exclusive-mode passthrough
 
-`ac3/audio/passthrough.hpp`. Exclusive-mode/direct bitstream output, AC-3 or E-AC-3 — WASAPI on
-Windows, ALSA on Linux, CoreAudio on macOS — the path an AV receiver needs to see the raw
-compressed bitstream rather than decoded PCM.
+`ac3/audio/passthrough.hpp`. Exclusive-mode/direct bitstream output, AC-3, E-AC-3 or AC-4 — WASAPI
+on Windows, ALSA or PipeWire on Linux, CoreAudio on macOS, a JNI-bridged `AudioTrack` on Android —
+the path an AV receiver needs to see the raw compressed bitstream rather than decoded PCM.
 
 Like `MonitorSink` below, it reports where the device has got to (`position()`), and can
 `flush()`, `pause()` and `resume()`. The position counts the content's frames, 1536 to a burst in
@@ -793,7 +799,8 @@ SADs: Windows' WASAPI and macOS' CoreAudio both answer negotiated-format questio
 ### `ac3::audio::MonitorSink` — shared-mode monitor playback
 
 `ac3/audio/monitor.hpp`. The non-exclusive counterpart to `PassthroughSink`: shared-mode PCM
-playback — WASAPI, ALSA or CoreAudio, resampled and mixed like any other app — that decodes what is being
+playback — WASAPI, ALSA, PipeWire, CoreAudio or AAudio on Android, resampled and mixed like any
+other app — that decodes what is being
 encoded and plays it back on an ordinary output, for previewing a decode without a
 bitstream-capable receiver. Backs `ac3cli monitor` and `live`'s monitor leg.
 
@@ -824,7 +831,7 @@ unit tests nor silent/synthetic input would have caught — see
 ## Capture: `ac3::audio`
 
 `ac3/audio/capture.hpp`, `ring_buffer.hpp`. Live input/loopback capture — WASAPI on Windows,
-ALSA on Linux, CoreAudio on macOS — through the lock-free SPSC ring in `ring_buffer.hpp`, which
+ALSA or PipeWire on Linux, CoreAudio on macOS — through the lock-free SPSC ring in `ring_buffer.hpp`, which
 sits between the audio callback and whatever consumes the samples (an encoder, a monitor sink,
 or both). On macOS capture is input-only: no loopback endpoint is ever enumerated, and
 `start()` refuses `DeviceKind::kLoopback` outright rather than silently opening a microphone.
