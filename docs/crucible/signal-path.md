@@ -58,11 +58,14 @@ thing `wpctl set-default` writes — and restores the previous default on exit.
 
 ### macOS
 
-**There is no station 1.** macOS process taps can mute an application at the point they capture
-it, so each application is silenced individually and no default output is moved at all. The
-macOS half is written now, and its `DefaultDevice` seam answers that the default never moves, so
-the window drops that station and shows two rather than three. Read off the source rather than
-seen: nothing macOS has been run, and the two CI legs that compile it cannot launch a window.
+**There is no silent device.** macOS process taps can mute an application at the point they
+capture it, so each application is silenced individually and no default output is moved at all.
+Its `DefaultDevice` seam answers that the default never moves, and the first-run dialog, the
+Settings silent-device block and the Send buttons follow that answer. The window still draws
+station 1: it carries a warning with the platform's own words, "nothing to install: macOS
+silences each application at the point Crucible taps it, so no silent device is needed", and its
+button is disabled. That is read off the source and the Qt Quick suites, which build the window
+offscreen on both macOS CI legs; nobody has seen it on a Mac.
 
 ## What the mode line means
 
@@ -74,7 +77,7 @@ Station 3's line names the mode Crucible chose and why:
 | **DD+ 5.1** | as above, but no signing key | panned onto the bed |
 | **DD 5.1** (AC-3) | an endpoint takes AC-3 but not E-AC-3 | panned onto the bed |
 | **PCM surround** | an endpoint offers 6 or 8 channels and no bitstream format | encoded, then decoded and rendered |
-| **Headphones** | the endpoint has a spatial format enabled | objects handed to the OS renderer |
+| **Headphones** | the endpoint has a spatial format enabled and a signing key is loaded | objects handed to the OS renderer |
 | **Stereo** | nothing above applies | encoded, then decoded, folded down |
 
 Two of these need saying plainly.
@@ -85,24 +88,45 @@ a hard error on a validating decoder.
 
 **Headphones is Windows-only.** It needs an OS object renderer, and neither Linux nor macOS
 exposes one a third party can hand Atmos objects to. On those platforms the headphone route
-decodes and folds instead.
+decodes and folds instead. It also needs a signing key, because the decoder rebuilds objects only
+from a signed stream; without one the stream is a 5.1 bed and stereo is the fold.
+
+The modes are tried in the order of the table, and Crucible takes the first that some endpoint
+can carry. It writes E-AC-3 and AC-3 only, and has no AC-4 mode.
 
 You can **pin** a mode to stop Crucible changing its mind, and **choose the endpoint** you hear
 it on rather than letting the policy pick. An impossible pin leaves the automatic choice standing
 and the reason line says so.
+
+## The Signal path page
+
+The page has five blocks.
+
+| Block | What it holds |
+|---|---|
+| **01 SIGNAL PATH** | the two-device idea in one paragraph |
+| **02 WHAT YOU HEAR IT AS** | the mode and why it was chosen, and the **Pin** list: Automatic, Atmos, Dolby Digital Plus 5.1, Dolby Digital 5.1, PCM surround, Headphones (where an OS renderer exists) and Stereo |
+| **03 ENDPOINTS** | what the last probe found on each render endpoint: whether it takes E-AC-3 and AC-3 as a bitstream, how many PCM channels, whether spatial sound is on. **Hear it here** chooses that endpoint and **Automatic** hands the choice back. **Send applications here** makes it the default output |
+| **04 WHERE APPLICATIONS PLAY** | the current default output, the button that moves it to the silent device or restores it, **Open Sound settings**, and **Re-probe** |
+| **05 CODEC PATH** | **Bypass the codec on headphones and PCM**. Off, headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On, headphones render the engine's own objects, and PCM and stereo take its 5.1 bed |
+
+The endpoint list is probed again on every device change. If an output device goes away and comes
+back, the next probe finds the dead output and Crucible restarts it; **Re-probe** asks for that at
+once.
 
 ## The one rule that is not obvious
 
 Probing an endpoint is safe. **Opening one is not.**
 
 Crucible can ask any endpoint whether it accepts a format at any time, whatever else is playing.
-But *taking* an endpoint exclusively while other applications are rendering to it is refused, and
-invalidates their streams in the process — they stop playing, and the taps deliver silence from
-then on.
+But on Windows *taking* an endpoint exclusively while other applications are rendering to it is
+refused, and invalidates their streams in the process — they stop playing, and the taps deliver
+silence from then on.
 
-So Crucible takes an output exclusively only after the default has moved to the silent device and
-nothing is left on the endpoint it wants. If you see it decline to take your receiver, this is
-usually why: something is still playing to it.
+So Crucible, on every platform, chooses a bitstream mode only on an endpoint that is not the
+default output: it takes the output exclusively only after the default has moved to the silent
+device and nothing is left on the endpoint it wants. If you see it decline to take your receiver,
+this is usually why: something is still playing to it.
 
 ## Nothing is tapped until there is somewhere to play
 

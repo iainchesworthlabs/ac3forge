@@ -141,17 +141,18 @@ recommendation for; the reviewer chooses it and it goes in here.
 | stream | Stream | flux | flujo | البث | זרם | — |
 | address form | Sie | vous | tú | masculine singular imperative | plural imperative | איר |
 
-What the audit found and the review has to settle, per language. The counts were re-read off the
-filled catalogues on 2026-09-06, so they are what a reviewer will find in the files today:
+What the audit found and the review has to settle, per language. The counts are read off the
+filled catalogues in this tree, so they are what a reviewer will find in the files:
 
 - **fr** — "endpoint" is rendered `point de sortie` in nine entries and `point de terminaison` in
   two, and "receiver" `récepteur` in five and `ampli` in two. "underrun" became
   `sous-alimentation`, which is undernourishment.
 - **es** — "endpoint" is rendered `punto de salida` in nine entries, `punto final` in one, and
   bare `salida` elsewhere. "underrun" became `subdesbordamiento`.
-- **de** — "silent device" is `stilles Gerät`, declined to its case, in nineteen entries and
-  `Stummes Gerät` in one: the Advanced row's label on the Settings page, which is also that
-  field's accessible name. "pin" is two stems for one term — `anheften` / `Anheftung` in six
+- **de** — "silent device" is `stilles Gerät`, declined to its case, in eighteen entries and
+  `stummes Gerät` in two: the Advanced row's label on the Settings page (`Stummes Gerät`), which is
+  also that field's accessible name, and the launch-move setting under Behaviour. "pin" is two
+  stems for one term — `anheften` / `Anheftung` in six
   entries, against `FESTLEGEN` on the kicker and `Festlegung` in a sentence.
 - **ar** — "bed" is `القاعدة` in thirteen entries, `الطبقة الأساسية` in seven and `سرير` (a
   sleeping bed) in two. "mode" and "place" both became `وضع`, so "best mode" and "place an
@@ -179,10 +180,10 @@ where there was one. `LUPDATE_OPTIONS -no-obsolete` on the `qt_add_translations(
 translation memory: git history is the memory, and the dead-entry rule below wants the files
 clean after every regeneration.
 
-The six files were regenerated from the current source and filled on 2026-09-06. Each carries 385
-messages, none marked `unfinished`, `vanished` or `obsolete`, and the six hold the same set of
-(context, source) pairs. That is the state the gate below now enforces, so a regeneration that
-adds a string leaves the tree red until the new entry is filled.
+Each of the six files carries 385 messages, none marked `unfinished`, `vanished` or `obsolete`,
+and the six hold the same set of (context, source) pairs. That is the state the gate below
+enforces, so a regeneration that adds a string leaves the tree red until the new entry is
+filled.
 
 Filled is not reviewed. The renderings are machine-made and no speaker of any of the six languages
 has read them; the window says so in its own language note under the chooser. The glossary above
@@ -221,7 +222,7 @@ what they found. What they assert is that every entry has a translation, which i
 than that every translation is right — the review the glossary describes is what settles that, and
 arming these rules does not stand in for it.
 
-`.github/workflows/_build.yml` also runs `ac3crucible_lupdate` and then
+`.github/workflows/_ci-windows.yml` also runs `ac3crucible_lupdate` and then
 `git diff --exit-code -- apps/crucible/translations`, the way it already does for `ac3gui`. It
 runs on the `windows-msvc` leg alone, because the `ac3crucible_lupdate` target exists only where
 Crucible is configured and the matrix build tree carries Crucible on Windows; one leg is enough,
