@@ -1,10 +1,12 @@
 # A playback appliance: the player as a product
 
-!!! note "Status as of 2026-09-16: replaced, not built in this form"
+!!! note "Status as of 2026-09-30: replaced, not built in this form"
     Written and decided 2026-09-07, and reframed the same day. This form — a headless daemon, a
     web control page, a kiosk window and an HLS client — was replaced on 2026-09-15 by
-    [hearth-reference-player.md](hearth-reference-player.md). That later plan is being built:
-    `apps/hearth` and `src/sendspin` exist for it. Nothing on this page was shipped as specified.
+    [hearth-reference-player.md](hearth-reference-player.md). That later plan is built, apart from
+    the items its own status names: `apps/hearth` and `src/sendspin` exist for it and the desktop
+    player plays. Nothing on this page was shipped as specified;
+    [What became of each part](#what-became-of-each-part) says what happened to each section.
 
     This page plans **Hearth**, the sink member: the project's decode and passthrough path as a
     product, on a machine that plays what it is given and turns it into sound in a room. It keeps
@@ -27,6 +29,30 @@
     sink-capability helper) carry over, and so do the sink-following gaps in
     [What UX9 needs](#what-ux9-needs-before-it-can-carry-this). The rest of this page is kept as
     the record of what was decided on 2026-09-07.
+
+## What became of each part
+
+The status says the form was replaced. This is the state of each part of the page on 2026-09-30, so
+that a reader of a section below knows whether to rely on it. The sections are kept as written.
+
+| Part of this page | State |
+|---|---|
+| The name, and which member it belongs to | Carried over. Hearth is the name and a fourth member: `ac3hearth`, `ac3::hearth`, `AC3FORGE_BUILD_HEARTH` (on by default), the `ac3forge-hearth` package and the bundle id `com.iainchesworthlabs.ac3hearth` exist |
+| Scope, and what it builds on | Replaced. `ac3hearth` is a desktop application with a queue, gapless playback and passthrough, and it plays to Sendspin groups instead of an HLS origin. The build-on table is a map of the tree on 2026-09-07; its "what is missing" column is what phases A1 to A3 of the reference player plan built |
+| The form, the control surface, the API | Dropped. There is no headless service, kiosk, web page, REST API, event stream or OSC surface. cpp-httplib is in the tree, carrying Sendspin's WebSocket transport |
+| Platforms | Windows, macOS and Linux, as a desktop application. The service integrations (systemd, a Windows service, launchd) were not built |
+| Whole-house audio | Replaced by Sendspin groups and the extension role |
+| What UX9 needs | The six gaps were closed in Hearth's engine, and the PipeWire capability read exists in `src/audio`. `ac3cli play` still takes the default endpoint at its word |
+| Build identity | Partly. `ac3hearth_engine`, `ac3hearth`, the option and the CPack component `hearth` exist. The `core/`, `net/`, `platform/`, `kiosk/` and `web/` directories, the `ac3hearth-kiosk` component, a configuration file, a service unit and a service user do not |
+| Tests | Partly. `tests/hearth` compiles into `ac3tests` on every leg, tagged `[hearth]`. There are no `[hearth-net]` or `[hearth-device]` tags and no `hearth_platform_probe.cpp` |
+| CI | Replaced. Hearth builds by default on every leg rather than under a `hearth: true` flag, and the packaging legs check the `hearth` component. Since 2026-09-29 pull requests run `pr-gate.yml` ([CI for many agents](../docs/ci-agentic.md)), so the leg table and the docs-only rule below describe the earlier CI |
+| Packaging and release identity | Partly. The `hearth` component, its archives and the `ac3forge-hearth` DEB and RPM exist. There is no kiosk component and no SD-card image, and no tag has carried a Hearth package |
+| The docs | Replaced. `docs/hearth/` has an overview, the sink guides, the firmware pages and a design record, not the page set proposed here |
+| Localisation and accessibility | The web-page approach was dropped. The window has six Qt catalogues and no `xx` pseudo-locale |
+| Identity assets | The mDNS service `_ac3hearth._tcp` was not used: discovery is Sendspin's `_sendspin._tcp`. The window has a Linux desktop entry and an AppStream file, which the plan said a service would not |
+| Third-party notices, licensing | The reasoning holds. `apps/hearth/notices` exists, and cpp-httplib, mbedTLS, libFLAC, Opus and mdns are the dependencies, behind the `hearth` vcpkg feature |
+| Signing and install | Unchanged: DR6 still blocks the Windows and macOS signatures |
+| Phases | Not followed. Phase 1's gaps are above. Phases 2 and 3 became A3 to A6 of the reference player plan, Phase 3b (the HLS client) was not built, and Phases 4 to 7 (the appliance shape, packaging, docs and the image) were replaced or not built |
 
 ## What Hearth is, in one paragraph
 
@@ -52,7 +78,7 @@ PCM. That path has been run against a real Atmos-capable receiver: a Raspberry P
 every stream shape locking correctly at zero underruns, including signed Atmos with four height
 channels ([Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver),
 2026-08-20). The GUI has a player too — `StreamPlayerController`
-(`apps/gui/hearth_sink_controller.hpp`) — with transport, seeking, metering and export, but
+(`apps/gui/stream_player_controller.hpp`) — with transport, seeking, metering and export, but
 it decodes to PCM and plays through a shared-mode `MonitorSink`, and it lives inside a window on
 a workstation.
 
@@ -223,7 +249,7 @@ this list is revised.
 |---|---|---|
 | `apps/cli/commands/audio_io.cpp:721-849` (`run_play`) | The whole passthrough decision and submit loop, proven on real hardware | Reads the entire file into memory (`read_elementary_stream`), splits every unit up front, then blocks in one loop until done. No transport, no queue, no cancellation, no re-follow. A five-minute Atmos programme is fine; an appliance left running is not. |
 | `apps/cli/commands/audio_io.cpp:682-720` (`play_via_ac3_transcode`) | UX9's transcode-to-passthrough leg, metadata carried across | Goes through a **temp file**: the whole stream is transcoded to disk before a note is heard. On an SD-card appliance that is a write-amplification and latency problem both. Needs to become a streaming transcode. |
-| `apps/gui/hearth_sink_controller.{cpp,hpp}` | Transport, seek, position reporting, level publication, the worker-thread and shared-result ownership pattern (see its own header comment on why `result_` is a `shared_ptr`) | Decodes the whole file to memory and plays PCM through `MonitorSink`. It is a *monitor*, not a passthrough player, and it is Qt. The transport *state machine* is what transfers; none of the code does. |
+| `apps/gui/stream_player_controller.{cpp,hpp}` | Transport, seek, position reporting, level publication, the worker-thread and shared-result ownership pattern (see its own header comment on why `result_` is a `shared_ptr`) | Decodes the whole file to memory and plays PCM through `MonitorSink`. It is a *monitor*, not a passthrough player, and it is Qt. The transport *state machine* is what transfers; none of the code does. |
 | `src/audio/include/ac3/audio/passthrough.hpp` | `PassthroughSink`, `enumerate_render_devices()`, the live AC-3/E-AC-3/exclusive-PCM probe | Nothing missing; this is the load-bearing piece and it works. |
 | `src/audio/include/ac3/audio/sink_capabilities.hpp` + `src/backend/*/sink_capabilities.cpp` | UX9's EDID/ELD read | Real on **ALSA only** (84 lines, reading `/proc/asound/<card>/eld#*`). PipeWire, WASAPI, CoreAudio and posix each return `kNoBackend`, by name. See [What UX9 needs](#what-ux9-needs-before-it-can-carry-this). |
 | `src/audio/include/ac3/audio/device_watcher.hpp` | Endpoint added / removed / state-changed / default-changed, on Windows, PipeWire and CoreAudio | **Nothing calls it from `play`.** It was written for Crucible (UX11). ALSA has no such API — that is udev's job — which matters, because ALSA is one of the appliance's two Linux backends. |
