@@ -1,0 +1,33 @@
+{
+ "fast": {
+  "gate_exit": 0,
+  "gate_output": [
+   "[ok]       x86_64-sse2/fast/ac3 = 87ba1e86951e7f0224d67e5a8325b058b8092f08f1f15f4841214bf3f8eeadf8",
+   "[ok]       x86_64-sse2/fast/eac3 = b2bcffd0696789765be7872feb493c8a349d8b143f1083acca2199f011a27603",
+   "[ok]       x86_64-sse2/fast/eac3_cpl = 7b829f0c55faa75e26b86af2bc7e9982e2cd1874b71219cbc719e1fb77457bdf"
+  ],
+  "streams": {
+   "gold.ac3": "87ba1e86951e7f0224d67e5a8325b058b8092f08f1f15f4841214bf3f8eeadf8",
+   "gold.ec3": "b2bcffd0696789765be7872feb493c8a349d8b143f1083acca2199f011a27603",
+   "gold_cpl.ec3": "7b829f0c55faa75e26b86af2bc7e9982e2cd1874b71219cbc719e1fb77457bdf"
+  }
+ },
+ "kind": "hashes",
+ "label": "msvc",
+ "measured_at": "90cba5b0ea967a79e92b7c8bd3af91020859546a",
+ "pins_blob": "b5236ed3fe1c5bd5d2be48b631800861cb9d5ee5",
+ "reference": {
+  "gate_exit": 0,
+  "gate_output": [
+   "[ok]       x86_64-sse2/reference/ac3 = 87ba1e86951e7f0224d67e5a8325b058b8092f08f1f15f4841214bf3f8eeadf8",
+   "[ok]       x86_64-sse2/reference/eac3 = b2bcffd0696789765be7872feb493c8a349d8b143f1083acca2199f011a27603",
+   "[ok]       x86_64-sse2/reference/eac3_cpl = 7b829f0c55faa75e26b86af2bc7e9982e2cd1874b71219cbc719e1fb77457bdf"
+  ],
+  "streams": {
+   "gold.ac3": "87ba1e86951e7f0224d67e5a8325b058b8092f08f1f15f4841214bf3f8eeadf8",
+   "gold.ec3": "b2bcffd0696789765be7872feb493c8a349d8b143f1083acca2199f011a27603",
+   "gold_cpl.ec3": "7b829f0c55faa75e26b86af2bc7e9982e2cd1874b71219cbc719e1fb77457bdf"
+  }
+ },
+ "schema": 1
+}

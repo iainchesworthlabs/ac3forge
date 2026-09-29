@@ -240,6 +240,14 @@ class PathLiterals(unittest.TestCase):
         report = check_doc_paths.check_tree(self.root)
         self.assertEqual(report.problems, [])
 
+    def test_an_unchecked_tree_is_skipped_with_its_reason_and_the_rest_still_fails(self) -> None:
+        _write(self.root, "tools/n1b/rules.py", 'X = "src/not-yet/anywhere.hpp"\n')
+        _write(self.root, "tools/ci/script.py", 'Y = "docs/missing.md"\n')
+        report = check_doc_paths.check_tree(self.root)
+        self.assertEqual(len(report.problems), 1)
+        self.assertIn("tools/ci/script.py:1:", report.problems[0])
+        self.assertTrue(any(line.startswith("tools/n1b/ (") for line in report.skipped))
+
 
 class BraceExpansion(unittest.TestCase):
     """`a/{b,c}` is a set of sibling paths, not a placeholder: each side is checked."""
