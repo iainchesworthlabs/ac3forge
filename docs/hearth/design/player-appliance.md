@@ -6,6 +6,12 @@ repository's `planning/` directory and are deliberately not republished onto thi
 for why: a proposal read alongside reference documentation is too easily read as a shipped
 feature.
 
+!!! note "Status as of 2026-09-30: built, with the user guide and the hardware exits open"
+    The plan decided on 2026-09-15 is built apart from the items its own status names: a user
+    guide and screenshots of the running app, and the exits that need a DAC wired to a board, a
+    multichannel endpoint or Music Assistant itself. The appliance plan of 2026-09-07, which it
+    replaced, was not built in that form.
+
 ## What's decided
 
 Decided on 2026-09-15. Hearth has two forms that talk to each other:
@@ -54,7 +60,8 @@ Detail: [Hearth overview](../index.md).
 - **ESP32-C6.** Decode probe timed on a board. `hearth_sink`'s Sendspin player runs on this board,
   stereo only: a ten-minute group run with an ESP32-S3 had no underruns on either board. Setup:
   [README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6).
-  CI builds the Sendspin player for this part; nothing shorter than a board runs it.
+  CI builds the Sendspin player for this part, for the 4 MB and the 16 MB flash layouts, and does
+  not run it: ESP-IDF's RISC-V QEMU emulates the ESP32-C3 and no other part.
 
 ## The full record
 
