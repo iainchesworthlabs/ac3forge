@@ -1,4 +1,0 @@
-# C4: joc::Domain leaves oba/joc.hpp for oba/joc_domain.hpp
-# planning/layout.md, stage S1. The change that makes this cut deletes this file.
-
-src/forge/include/ac3/render/render.hpp ac3/oba/joc.hpp

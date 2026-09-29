@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "ac3/core/layout.hpp"
-#include "ac3/oba/joc.hpp"
+#include "ac3/oba/joc_domain.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/render/float_biquad.hpp"
 #include "ac3/render/layout.hpp"
