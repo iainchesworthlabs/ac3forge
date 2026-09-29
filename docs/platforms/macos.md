@@ -33,6 +33,7 @@
 |---|---|
 | What runs here | The library, `ac3cli` and `ac3gui`. Hearth's window builds, and Crucible's macOS half compiles and its suites run |
 | Build | Two CI legs, Apple Silicon after each merge and native Intel nightly; neither is experimental |
+| Minimum OS | macOS 13.3 (Ventura): the deployment target `cmake/toolchains/macos.llvm.toolchain.cmake` sets for C++23 libc++ features, which the Homebrew cask also requires. The Core Audio process tap needs 14.2 |
 | Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project, and no hosted runner has an audio device, a desktop session, or a way to grant a consent prompt |
 | Core Audio process tap | Written, compiled, **never created at runtime** |
 | Crucible | Compiles and is exercised by the CI suites; the application has never been launched on a Mac |
@@ -352,11 +353,19 @@ macOS package — see [Universal binaries (DR8)](#universal-binaries-dr8) above 
 [docs/releasing.md](../releasing.md#what-gets-published). That path has been exercised for real on
 the arm64 half: nine beta releases, v0.2.0-beta.1 through v0.9.0-beta.1, shipped a macOS package
 through the tag-triggered workflow before the universal merge existed, and v0.10.0-beta.1 shipped
-the first universal `.dmg`. `cmake/Packaging.cmake`
-needed no change for `ac3gui` to join either leg's own `.dmg`: which targets end up in a package
-is decided entirely by which `install()` rules ran, and `ac3gui`'s already runs whenever
-`AC3FORGE_BUILD_GUI` is `ON` — the DragNDrop generator itself is unconditional on `APPLE`, GUI or
-not. No stable (non-beta) release has been tagged yet. See [Packaging](../building.md#packaging).
+the first universal `.dmg`. `cmake/Packaging.cmake` needed no change for `ac3gui` to join either
+leg's own `.dmg`: which targets end up in a package is decided entirely by which `install()`
+rules ran, and `ac3gui`'s already runs whenever `AC3FORGE_BUILD_GUI` is `ON` — the DragNDrop
+generator itself is unconditional on `APPLE`, GUI or not. No stable (non-beta) release has been
+tagged yet. See [Packaging](../building.md#packaging).
+
+Through Homebrew, the personal tap `iainchesworthlabs/ac3forge` (the `homebrew-ac3forge`
+repository, [staged here](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/homebrew))
+carries the source formula `ac3forge` for the CLI and the cask `ac3gui` for the GUI:
+`brew tap iainchesworthlabs/ac3forge`, then `brew install ac3forge` or `brew install --cask
+ac3gui`. The app is neither code-signed nor notarized, so Gatekeeper refuses it on first launch
+until it is opened from Finder's context menu or `xattr -dr com.apple.quarantine` is run on it.
+Neither route has been run end to end on a Mac.
 
 `ac3hearth.app` declares `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for `.ac3` and
 `.ec3` — a custom `Info.plist.in` (`apps/hearth/ui/`) rather than CMake's default template, since

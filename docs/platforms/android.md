@@ -662,12 +662,13 @@ receiver into an on-screen accusation.
     all.
 
     **A view's default visibility has to match its state variable's own default, or the first
-    "no change" transition never applies either.** The waiting overlay started `GONE` while
-    `receiverReady` started `false` (Kotlin's own default); since `setReceiverReady()` only
-    touches the view on an actual *change*, a receiver absent from the very first check left the
+    "no change" transition never applies either.** The waiting overlay started `GONE` while the
+    ready flag (`receiverReady` then, `receiverState` since the three-state change above, which
+    starts at `WAITING`) started `false` (Kotlin's own default); since `setReceiverReady()` only
+    touched the view on an actual *change*, a receiver absent from the very first check left the
     overlay hidden and the full (empty, zeroed) dashboard showing instead — confirmed on a real
-    device screenshot. Fixed by defaulting the overlay to `VISIBLE`, matching `receiverReady`'s
-    own `false` default.
+    device screenshot. Fixed by defaulting the overlay to `VISIBLE`, matching the flag's own
+    default.
 
 ## Object signing
 

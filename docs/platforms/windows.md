@@ -360,8 +360,9 @@ The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointi
 `shell\open\command` at the installed `ac3hearth.exe` (`ac3gui.exe` in a build with no Hearth)
 and nudging Explorer to pick up the change with `SHChangeNotify`, and reverses both keys on
 uninstall — `CPACK_NSIS_EXTRA_INSTALL_COMMANDS`/`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`.
-Nothing registers `.ac4`. CI builds and verifies the installer itself in every run that
-packages Windows; running it and double-clicking a `.ac3` file to confirm the file association
+Nothing registers `.ac4`. The installer and every binary in it are unsigned (Authenticode signing
+waits on a certificate), so SmartScreen may warn on install. CI builds and verifies the installer
+itself in every run that packages Windows; running it and double-clicking a `.ac3` file to confirm the file association
 end to end is still a manual, unautomated check.
 
 ## Windows Firewall

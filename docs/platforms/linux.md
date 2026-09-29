@@ -129,10 +129,10 @@ stream; that is tested on synthetic carriers, and no capture device or receiver 
 
 ### What has and has not been verified
 
-!!! note "ALSA is hardware-confirmed via Raspberry Pi; PipeWire is not, anywhere"
-    The development loop itself — WSL2 Ubuntu 26.04 with GCC 16 and Clang 22.1 — is still
-    headless: ALSA with libasound present and absent and under ASan+UBSan with leak detection;
-    PipeWire (libpipewire-0.3 1.6.2) with the selection forced via `-DAC3FORGE_WITH_ALSA=OFF
+!!! note "ALSA and PipeWire are each hardware-confirmed once, on one Raspberry Pi"
+    The development loop itself — WSL2 Ubuntu 26.04 with GCC 16 and Clang 22.1 — is headless:
+    ALSA with libasound present and absent and under ASan+UBSan with leak detection; PipeWire
+    (libpipewire-0.3 1.6.2) with the selection forced via `-DAC3FORGE_WITH_ALSA=OFF
     -DAC3FORGE_WITH_PIPEWIRE=ON`, since WSL2's image has both sets of headers and ALSA wins by
     default. The full test suite passes in every configuration tried. ALSA's device-independent
     halves (device-name construction, channel-status derivation, negotiation, the render/capture
@@ -143,19 +143,18 @@ stream; that is tested on synthetic carriers, and no capture device or receiver 
     seen "no session" (`pw_context_connect()` failing fast, not a real graph with real nodes)
     rather than a real node to negotiate a compressed format against.
 
-    That gap is now closed for ALSA specifically, on real hardware elsewhere: see
-    [Raspberry Pi → Live HDMI passthrough to a real
-    receiver](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) for a Pi 4B bitstreaming
-    every AC-3/E-AC-3/Atmos shape tried to a real Atmos-capable AVR over HDMI, correctly
-    identified every time. PipeWire has now met real hardware once, on the same Pi, on 2026-09-05: the backend
-    enumerated the receiver's HDMI sink with its compressed codecs set by WirePlumber from the
-    EDID, and streamed E-AC-3 bursts to it. The receiver's own front panel was read the same
-    evening: "5.1 DD+" from a pre-encoded fixture, and "Atmos/DD+" at 7.1 from Crucible's live
-    engine with a placed object, so this is confirmed rather than merely delivered. The rest of
-    this note is what that run found and fixed. Whether a given output accepts a bitstream is per-device anyway; `ac3cli
-    outputs` probes each one and reports what it finds, and since that run it reports a bitstream
-    format only on a sink whose `iec958.codecs` lists it, because the connect alone said yes on a
-    headphone jack.
+    Both backends have met real hardware elsewhere, on one Pi 4B and one receiver. ALSA, on
+    2026-08-20: see [Raspberry Pi → Live HDMI passthrough to a real
+    receiver](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) for every
+    AC-3/E-AC-3/Atmos shape tried, bitstreamed to a real Atmos-capable AVR over HDMI and correctly
+    identified every time. PipeWire, on 2026-09-05: the backend enumerated the receiver's HDMI sink
+    with its compressed codecs set by WirePlumber from the EDID, and streamed E-AC-3 bursts to it.
+    The receiver's own front panel was read the same evening: "5.1 DD+" from a pre-encoded
+    fixture, and "Atmos/DD+" at 7.1 from Crucible's live engine with a placed object, so this is
+    confirmed rather than merely delivered. Whether a given output accepts a bitstream is
+    per-device anyway; `ac3cli outputs` probes each one and reports what it finds, and since the
+    PipeWire run it reports a bitstream format only on a sink whose `iec958.codecs` lists it,
+    because the connect alone said yes on a headphone jack. No other Linux hardware has been tried.
 
 ## Crucible requires PipeWire
 
@@ -163,8 +162,9 @@ The library's ALSA and PipeWire backends are used by `ac3cli` and `ac3gui`
 ([Forge](../forge/index.md)). [Crucible](../crucible/index.md) requires PipeWire for
 per-application capture. Its build rejects ALSA configurations.
 
-That trade is uncomfortable: forcing PipeWire gives up the passthrough path confirmed against a
-real receiver (ALSA `iec958`, on the Pi) for the one that is not. See
+That trade has a cost: forcing PipeWire gives up ALSA's `iec958` route, which works whenever
+compatible hardware exists, for PipeWire's, which needs the session manager to have populated
+`iec958.codecs` (see above) and has met a real receiver once, on the Pi. See
 [the plan](../crucible/design/promotion.md#alsa-or-pipewire).
 
 ## Reading a sink's own EDID/ELD
