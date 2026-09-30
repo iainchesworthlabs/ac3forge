@@ -4,13 +4,13 @@
 
 mod common;
 
+use common::{rms, tone};
 use iclforge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
 use iclforge::eac3::{Eac3Decoder, Eac3Encoder, Eac3FrameConfig, StreamType};
 use iclforge::meter::{dialnorm_from_lkfs, LoudnessMeter};
 use iclforge::stream::{self, StreamKind};
 use iclforge::types::{Acmod, DecoderConfig, SampleRate};
 use iclforge::{Error, SAMPLES_PER_FRAME};
-use common::{rms, tone};
 
 // --- Atmos ------------------------------------------------------------------------------------
 

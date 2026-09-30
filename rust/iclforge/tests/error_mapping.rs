@@ -4,13 +4,13 @@
 
 mod common;
 
+use common::tone;
 use iclforge::ac3;
 use iclforge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
 use iclforge::eac3;
 use iclforge::stream;
 use iclforge::types::{Acmod, DecoderConfig};
 use iclforge::Error;
-use common::tone;
 
 /// Every named variant paired with the exact string `src/capi/src/common.cpp` gives its raw
 /// code. A mismatch here means `Error::raw()` sends the wrong discriminant across the boundary.

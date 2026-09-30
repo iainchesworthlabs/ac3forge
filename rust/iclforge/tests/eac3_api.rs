@@ -5,13 +5,13 @@
 
 mod common;
 
+use common::{best_lag, rms, snr_db, tone};
 use iclforge::eac3::{
     AccessUnitEncoder, DecodedSubstream, Eac3Decoder, Eac3Encoder, Eac3FrameConfig,
     Eac3FrameMetadata, StreamType,
 };
 use iclforge::types::{Acmod, DecoderConfig, SampleRate};
 use iclforge::{Error, SAMPLES_PER_FRAME};
-use common::{best_lag, rms, snr_db, tone};
 
 fn stereo(bitrate_kbps: u32) -> Eac3FrameConfig {
     Eac3FrameConfig {

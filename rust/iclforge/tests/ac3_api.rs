@@ -5,13 +5,13 @@
 
 mod common;
 
+use common::{best_lag, rms, snr_db, tone};
 use iclforge::ac3::{Decoder, Encoder, EncoderConfig};
 use iclforge::types::{
     Acmod, CentreMixLevel, DecoderConfig, DrcProfile, HeavyConfig, Latency, SampleRate,
     SurroundMixLevel,
 };
 use iclforge::{Error, SAMPLES_PER_FRAME};
-use common::{best_lag, rms, snr_db, tone};
 
 const ALL_ACMODS: [Acmod; 8] = [
     Acmod::DualMono,
