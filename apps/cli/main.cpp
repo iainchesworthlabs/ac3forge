@@ -33,8 +33,8 @@ namespace {
 
 namespace plan = iclforge::plan;
 
-using namespace ac3cli;
-using namespace ac3cli::commands;
+using namespace forge_cli;
+using namespace forge_cli::commands;
 
 // ---------------------------------------------------------------------------
 // The command table. Every command is one row: its name, how many positional
@@ -137,7 +137,7 @@ struct Args {
 // kAdm ('atmos-adm', ADM BWF reader phase 3): unlike the three audio ones, this is not a hardware
 // question - it is whether iclforge::adm/iclforge::admbridge were linked into this build at all
 // (ICLFORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own option()). Answered the
-// same way regardless: adm/atmos_adm.hpp's ac3cli::adm_capability(), backed by exactly one of
+// same way regardless: adm/atmos_adm.hpp's forge_cli::adm_capability(), backed by exactly one of
 // adm/enabled/atmos_adm.cpp or adm/disabled/atmos_adm.cpp (see run_atmos_adm's own comment for
 // why a CMake-selected file, not a preprocessor conditional, decides this).
 enum class Needs : std::uint8_t { kNothing, kCapture, kPassthrough, kMonitor, kSpatial, kAdm };
@@ -162,7 +162,7 @@ const iclforge::audio::Capability* unmet(Needs needs) {
         case Needs::kMonitor: return backend.monitor.available ? nullptr : &backend.monitor;
         case Needs::kSpatial: return backend.spatial.available ? nullptr : &backend.spatial;
         case Needs::kAdm: {
-            const auto& adm = ac3cli::adm_capability();
+            const auto& adm = forge_cli::adm_capability();
             return adm.available ? nullptr : &adm;
         }
     }
@@ -176,7 +176,7 @@ struct Command {
     std::string_view note;
     // Which usage.hpp grammar sections this command's own arguments and
     // options actually reach - the column that turns the old "print all ~130
-    // lines of prose on any argument error" into `ac3cli help <command>`
+    // lines of prose on any argument error" into `forge help <command>`
     // printing just this row and just those paragraphs. Stated beside the
     // command it describes, for the same reason min_args and needs are.
     std::uint32_t topics;
@@ -555,7 +555,7 @@ const Command* find_command(std::string_view name) {
     return nullptr;
 }
 
-// `ac3cli help`, `ac3cli help <command>`, `ac3cli help exit-codes`.
+// `forge help`, `forge help <command>`, `forge help exit-codes`.
 int run_help(const Args& x) {
     const auto topic_name = x.str(1);
     if (topic_name.empty()) {
@@ -651,7 +651,7 @@ int run_main(int argc, char** argv) {
     // --help/-h are neither: they carry no '=' and are not option words, so
     // they would otherwise land among the positionals and be read as a file
     // name. They are lifted out here instead and answered before anything
-    // else runs, so `ac3cli encode --help` works whether or not the rest of
+    // else runs, so `forge encode --help` works whether or not the rest of
     // the command line would have satisfied `encode`.
     std::vector<char*> args{};      // args[0] is the command
     std::vector<char*> options{};
@@ -714,7 +714,7 @@ int run_main(int argc, char** argv) {
             // burying it under ~130 lines of prose about every other command
             // is what made the old behaviour worth replacing.
             fmt::println(stderr, "error: {} needs {}", c->name, c->spec);
-            fmt::println(stderr, "  see 'ac3cli help {}'", c->name);
+            fmt::println(stderr, "  see 'forge help {}'", c->name);
             return kExitUsage;
         }
         // Refuse before the handler runs, so a command that cannot work here
@@ -728,7 +728,7 @@ int run_main(int argc, char** argv) {
                 // The one live-audio capability with a portable substitute:
                 // same bursts, written to a file instead of an endpoint.
                 fmt::println(stderr,
-                             "  'ac3cli spdif <in.ac3> <out.wav>' wraps the same IEC 61937 "
+                             "  'forge spdif <in.ac3> <out.wav>' wraps the same IEC 61937 "
                              "bursts into a WAV that any player will pass through untouched.");
             }
             return kExitUnavailable;

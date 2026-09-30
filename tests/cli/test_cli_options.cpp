@@ -21,7 +21,7 @@
 #include "iclforge/ac3/meta/mixing.hpp"
 
 // parse_options (apps/cli/support.cpp) at the level a user meets it: the real
-// ac3cli binary, run as a subprocess, and what it says about a key=value
+// forge binary, run as a subprocess, and what it says about a key=value
 // token it was handed.
 //
 // Every command parses its whole option tail BEFORE it opens a single file,
@@ -58,7 +58,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -548,7 +548,7 @@ TEST_CASE("ac4-encode's substreamN and presentationN options are refused with th
         {"substream2-emdf=1:e", "emdf is <id>:<hex bytes>, the id from 1"},
         {"substream2-emdf=e606", "emdf is <id>:<hex bytes>, the id from 1"},
         {"substream2-dialogue-method=hybrid", "dialogue-method is independent, mid or cross"},
-        {"substream2-colour=red", "unknown substreamN option; see ac3cli help ac4-encode"},
+        {"substream2-colour=red", "unknown substreamN option; see forge help ac4-encode"},
         {"presentation1=0",
          "presentationN= lists the substreams it plays, from 1, comma-separated"},
         {"presentation1=1,,2",
@@ -573,7 +573,7 @@ TEST_CASE("ac4-encode's substreamN and presentationN options are refused with th
          "the main audio's scaling beside associated audio is dB"},
         {"presentation1-associated-pan=360", "associated-pan is mono associated audio's direction"},
         {"presentation1-emdf=0:00", "emdf is <id>:<hex bytes>, the id from 1"},
-        {"presentation1-colour=red", "unknown presentationN option; see ac3cli help ac4-encode"},
+        {"presentation1-colour=red", "unknown presentationN option; see forge help ac4-encode"},
         // N runs to 32 substreams and 64 presentations, without a leading 0.
         {"substream33=a.wav", "unknown option 'substream33=a.wav'"},
         {"substream02=a.wav", "unknown option 'substream02=a.wav'"},

@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The support file the window offers under Preferences > Diagnostics.
 //
@@ -38,7 +38,7 @@ TestCase {
     function test_theReportCarriesEverySectionEvenWithNothingLoaded() {
         const report = EncoderController.diagnosticsReport();
         verify(report.length > 0);
-        verify(report.indexOf("AC3Forge ac3gui diagnostics") === 0, report.substring(0, 60));
+        verify(report.indexOf("ICL Forge forge-gui diagnostics") === 0, report.substring(0, 60));
         for (const heading of ["# version", "# platform", "# signing", "# sources", "# plan",
                                "# settings", "# runs", "# last errors", "# recent messages"]) {
             verify(report.indexOf(heading) >= 0, "no " + heading + " section");
@@ -100,7 +100,7 @@ TestCase {
     function test_theSuggestedFileIsATextFileUnderAWritableFolder() {
         const suggestion = EncoderController.suggestedDiagnosticsFile();
         verify(suggestion.indexOf("file:") === 0, suggestion);
-        verify(suggestion.indexOf("ac3gui-diagnostics-") > 0, suggestion);
+        verify(suggestion.indexOf("forge-gui-diagnostics-") > 0, suggestion);
         verify(suggestion.lastIndexOf(".txt") === suggestion.length - 4, suggestion);
     }
 
@@ -110,7 +110,7 @@ TestCase {
         // The message is what Preferences shows under its button, so an
         // export that went nowhere is never mistaken for one that landed.
         compare(EncoderController.exportDiagnostics(
-                    "file:///no-such-folder-for-ac3gui/diagnostics.txt"), false);
+                    "file:///no-such-folder-for-forge-gui/diagnostics.txt"), false);
         verify(EncoderController.diagnosticsMessage.length > 0);
         verify(EncoderController.diagnosticsMessage.indexOf("diagnostics.txt") > 0,
                EncoderController.diagnosticsMessage);

@@ -69,7 +69,7 @@ struct RawResult {
     // QVariantList property.
     std::vector<std::vector<float>> object_audio = {};
     // AC-4: what iclforge::ac4::Decoder reports, read-only - the table of contents'
-    // presentations by their labels (ac3gui::ac4_presentation_label), the one
+    // presentations by their labels (forge_gui::ac4_presentation_label), the one
     // decoded, its bed and dynamic objects, and the frames decoded. `frames`
     // holds a frame's objects where the presentation has any, a bed object
     // labelled with its speaker.
@@ -202,5 +202,5 @@ class ObjectDecodeController : public QObject {
     // Where the decode and the audition loop run. ~ObjectDecodeController()
     // stops the loop and waits for both before any member above is destroyed;
     // declared last, so ~BackgroundJobs() would wait ahead of them too.
-    ac3gui::BackgroundJobs jobs_;
+    forge_gui::BackgroundJobs jobs_;
 };

@@ -1,8 +1,8 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeHearth
-import Ac3ForgeHearthTest
+import Hearth
+import HearthTest
 
 import "HearthTestHelpers.js" as H
 
@@ -94,7 +94,7 @@ TestCase {
         // The version line is built from HearthController.versionDetails,
         // which is never empty (ac3::version_details()).
         verify(HearthController.versionDetails.length > 0);
-        verify(H.textItem(about.contentItem, "AC3Forge Hearth") !== null);
+        verify(H.textItem(about.contentItem, "Hearth") !== null);
         verify(H.textItem(about.contentItem, about.compactVersion(HearthController.versionDetails)) !== null,
                "About does not show the version");
 

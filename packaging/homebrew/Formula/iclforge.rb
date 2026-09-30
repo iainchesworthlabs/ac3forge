@@ -1,13 +1,13 @@
-# Homebrew formula for ac3cli, iclforge's command-line encoder/decoder.
+# Homebrew formula for forge, iclforge's command-line encoder/decoder.
 #
 # Builds the CLI only (ICLFORGE_BUILD_CLI=ON, everything else the library
 # doesn't need for that off) - same reasoning as the vcpkg port
 # (packaging/vcpkg-port/iclforge/) staying library-only, just the other way
 # round: Homebrew formulae are for end-user tools, so this ships the tool
 # vcpkg deliberately does not, and skips find_package(iclforge) dev files
-# vcpkg already covers. The Qt6 GUI (ac3gui) is not packaged here - a Homebrew
+# vcpkg already covers. The Qt6 GUI (forge-gui) is not packaged here - a Homebrew
 # Cask, not a Formula, is the right shape for a bundled .app. That cask
-# (../Casks/iclforge.rb) installs the prebuilt ac3gui.app from each release's
+# (../Casks/iclforge.rb) installs the prebuilt forge-gui.app from each release's
 # .dmg.
 #
 # Staged here (packaging/homebrew/Formula/iclforge.rb) for local
@@ -49,27 +49,27 @@ class Iclforge < Formula
 
     # `cmake --install` already placed the generated man page and the four
     # shell completion scripts (roadmap IO8 - see apps/cli/CMakeLists.txt,
-    # which generates them by running the freshly built ac3cli) under
+    # which generates them by running the freshly built forge) under
     # #{prefix}/share. Homebrew links share/man/man1 and
     # share/zsh/site-functions itself, so those two need nothing here. bash
     # and fish are the two it expects a formula to place through its own
     # helpers, so those move into place. The PowerShell script stays where
     # CMake put it, under share/iclforge/completions: it has no
-    # convention-driven search path to be linked into, and `ac3cli
+    # convention-driven search path to be linked into, and `forge
     # completions powershell` says so itself.
-    bash_completion.install share/"bash-completion/completions/ac3cli"
-    fish_completion.install share/"fish/vendor_completions.d/ac3cli.fish"
+    bash_completion.install share/"bash-completion/completions/forge"
+    fish_completion.install share/"fish/vendor_completions.d/forge.fish"
   end
 
   test do
-    assert_match "iclforge #{version}", shell_output("#{bin}/ac3cli --version")
+    assert_match "iclforge #{version}", shell_output("#{bin}/forge --version")
     # The generated artefacts, checked as installed files: a formula that
     # silently stops shipping them is the failure worth catching here.
-    assert_path_exists man1/"ac3cli.1"
-    assert_match "_ac3cli", (bash_completion/"ac3cli").read
+    assert_path_exists man1/"forge.1"
+    assert_match "_forge", (bash_completion/"forge").read
     # Per-command help, and the documented exit-code scheme (roadmap IO8):
     # a usage error is 1, not an undifferentiated non-zero.
-    assert_match "ac3cli encode", shell_output("#{bin}/ac3cli help encode")
-    shell_output("#{bin}/ac3cli encode 2>&1", 1)
+    assert_match "forge encode", shell_output("#{bin}/forge help encode")
+    shell_output("#{bin}/forge encode 2>&1", 1)
   end
 end

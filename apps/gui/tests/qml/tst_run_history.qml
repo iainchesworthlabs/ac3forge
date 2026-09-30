@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 TestCase {
     id: testCase
@@ -45,7 +45,7 @@ TestCase {
         EncoderController.codecIndex = 1;  // E-AC-3 - this run's own eac3 reads true
         EncoderController.atmosEnabled = false;
 
-        EncoderController.setPendingCliLine("ac3cli eac3-encode snapshot-test.wav out.ec3 448 51");
+        EncoderController.setPendingCliLine("forge eac3-encode snapshot-test.wav out.ec3 448 51");
         EncoderController.setPendingPlayDevice(2);
         EncoderController.encodeTo(outputUrl);
         tryCompare(EncoderController, "busy", false, 10000);
@@ -53,7 +53,7 @@ TestCase {
         // Newest first (runs' own doc comment) - this run is index 0.
         const run = EncoderController.runs[0];
         compare(run.status, "done");
-        compare(run.cliLine, "ac3cli eac3-encode snapshot-test.wav out.ec3 448 51");
+        compare(run.cliLine, "forge eac3-encode snapshot-test.wav out.ec3 448 51");
         compare(run.eac3, true);
         compare(run.playDeviceIndex, 2);
 
@@ -106,7 +106,7 @@ TestCase {
         EncoderController.loadSourceFile(fixtureUrl);
         tryCompare(EncoderController, "sourceReady", true);
         EncoderController.setPendingCliLine(
-            "ac3cli encode details-popover-test.wav out.ac3 448 51");
+            "forge encode details-popover-test.wav out.ac3 448 51");
         EncoderController.encodeTo(outputUrl);
         tryCompare(EncoderController, "busy", false, 10000);
         // The run strip's Repeater needs a layout pass to actually size and
@@ -117,7 +117,7 @@ TestCase {
         wait(100);
 
         const run = EncoderController.runs[0];
-        compare(run.cliLine, "ac3cli encode details-popover-test.wav out.ac3 448 51");
+        compare(run.cliLine, "forge encode details-popover-test.wav out.ac3 448 51");
         const chipSummary = findChild(win.contentItem, "runChipSummary-" + run.id);
         verify(chipSummary !== null);
         mouseClick(chipSummary);
@@ -152,7 +152,7 @@ TestCase {
         // finish a 1-second encode.
         EncoderController.loadSourceFile(fixtureUrl);
         tryCompare(EncoderController, "sourceReady", true);
-        EncoderController.setPendingCliLine("ac3cli encode failure-test.wav out.ac3 448 51");
+        EncoderController.setPendingCliLine("forge encode failure-test.wav out.ac3 448 51");
         const badUrl = Qt.resolvedUrl("_test_output/does-not-exist/unreachable.ac3");
         EncoderController.encodeTo(badUrl);
         tryCompare(EncoderController, "busy", false, 10000);
@@ -164,7 +164,7 @@ TestCase {
         const run = EncoderController.runs[0];
         compare(run.status, "failed");
         verify(run.detail.length > 0);
-        compare(run.cliLine, "ac3cli encode failure-test.wav out.ac3 448 51");
+        compare(run.cliLine, "forge encode failure-test.wav out.ac3 448 51");
 
         const chipSummary = findChild(win.contentItem, "runChipSummary-" + run.id);
         verify(chipSummary !== null);
@@ -191,7 +191,7 @@ TestCase {
             { id: 999901, filename: "tst-restore-done.ec3", path: "", bitrateKbps: 448,
               durationText: "0:05", status: "done", sizeText: "12 KB", detail: "",
               framesText: "", rateText: "448 kbps",
-              cliLine: "ac3cli encode saved.wav out.ec3 448 51",
+              cliLine: "forge encode saved.wav out.ec3 448 51",
               eac3: true, playDeviceIndex: -1 },
             { id: 999902, filename: "tst-restore-still-encoding.ec3", path: "",
               bitrateKbps: 448, durationText: "0:05", status: "encoding", sizeText: "",
@@ -211,7 +211,7 @@ TestCase {
         }
         verify(found !== null);
         compare(found.status, "done");
-        compare(found.cliLine, "ac3cli encode saved.wav out.ec3 448 51");
+        compare(found.cliLine, "forge encode saved.wav out.ec3 448 51");
         for (const run of EncoderController.runs) {
             verify(run.filename !== "tst-restore-still-encoding.ec3");
         }

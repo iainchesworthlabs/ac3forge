@@ -1,4 +1,4 @@
-package com.ac3forge.shield
+package com.iclforge.shield
 
 import android.app.Activity
 import android.content.BroadcastReceiver
@@ -605,7 +605,7 @@ class MainActivity : Activity() {
         if (settings.isOpen) settings.refresh()
     }
 
-    // Shown instead of the dashboard when ac3forge_jni did not load at all.
+    // Shown instead of the dashboard when iclforge_jni did not load at all.
     // Everything this app does is on the other side of that library, so the
     // honest failure is a screen saying so - not a dashboard of zeroes that
     // looks like a receiver problem.
@@ -614,7 +614,7 @@ class MainActivity : Activity() {
         gravity = Gravity.CENTER
         setBackgroundColor(Theme.colorBackground)
         addView(TextView(this@MainActivity).apply {
-            text = "ac3forge — Shield Atmos Demo"
+            text = "ICL Forge — Shield Atmos Demo"
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Theme.colorTextSecondary)
@@ -629,7 +629,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
         })
         addView(TextView(this@MainActivity).apply {
-            text = "libac3forge_jni.so could not be loaded on this device.\n" +
+            text = "libiclforge_jni.so could not be loaded on this device.\n" +
                 "Check that the APK's ABI matches (release builds are arm64-v8a only) " +
                 "and see logcat, tag $TAG, for the loader's own error."
             textSize = 16f
@@ -648,7 +648,7 @@ class MainActivity : Activity() {
         gravity = Gravity.CENTER
         setBackgroundColor(Theme.colorBackground)
         addView(TextView(this@MainActivity).apply {
-            text = "ac3forge — Shield Atmos Demo"
+            text = "ICL Forge — Shield Atmos Demo"
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Theme.colorTextSecondary)
@@ -851,7 +851,7 @@ class MainActivity : Activity() {
         orientation = LinearLayout.VERTICAL
         setBackgroundColor(Theme.colorSurface)
         addView(TextView(this@MainActivity).apply {
-            text = "ac3forge — Shield Atmos Demo"
+            text = "ICL Forge — Shield Atmos Demo"
             textSize = 24f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Theme.colorTextPrimary)
@@ -1080,7 +1080,7 @@ class MainActivity : Activity() {
     private fun startFileReplay(path: String) {
         val status = TextView(this).apply {
             text = "Diagnostic file replay\n\n$path\n\nstreaming… (see logcat " +
-                "tag ac3forge.shield.file_replay)"
+                "tag iclforge.shield.file_replay)"
             textSize = 20f
             gravity = Gravity.CENTER
             setTextColor(Theme.colorTextPrimary)

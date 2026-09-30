@@ -16,7 +16,7 @@
 
 // The raw measurement, in the units the library reports them - kept OUTSIDE
 // QcController itself so the measurement helpers in qc_controller.cpp (an
-// anonymous namespace mirroring ac3cli's own measure_qc_ac3/measure_qc_eac3,
+// anonymous namespace mirroring forge's own measure_qc_ac3/measure_qc_eac3,
 // see that file's header comment) can build one without needing member
 // access. Presentation (formatting, delta-against-a-preset) happens only in
 // QcController::programmes() itself - the same "store the fact, compute the
@@ -41,7 +41,7 @@ struct RawProgramme {
     std::optional<std::uint8_t> compr = std::nullopt;
     // AC-4 (ETSI TS 103 190-1 clause 4.3.12): its dialnorm, 0 to -31.75 dBFS
     // in steps of 0.25, in place of `dialnorm` and `compr`, and the integrated
-    // loudness the stream states where it sends one - what `ac3cli qc` reports
+    // loudness the stream states where it sends one - what `forge qc` reports
     // for AC-4.
     bool ac4 = false;
     std::optional<double> ac4_dialnorm_dbfs = std::nullopt;
@@ -57,7 +57,7 @@ struct RawResult {
     double seconds = 0.0;
     std::vector<RawProgramme> programmes = {};
     // AC-4: the table of contents' presentations, each by the label
-    // ac3gui::ac4_presentation_label gives it, and the one measured.
+    // forge_gui::ac4_presentation_label gives it, and the one measured.
     bool ac4 = false;
     QStringList presentations = {};
     std::size_t presentation = 0;
@@ -76,9 +76,9 @@ struct RawResult {
 // mean every one of its 700-odd lines of encode-workflow state carries a
 // second, unrelated "what does this arbitrary file already contain" concern
 // alongside it - see encoder_controller.hpp's own header comment on why
-// nothing here should disagree with what ac3cli would say, which is exactly
+// nothing here should disagree with what forge would say, which is exactly
 // the property a bolted-on second concern risks breaking first. QcController
-// mirrors `ac3cli qc` (apps/cli/main.cpp's run_qc/measure_qc_ac3/
+// mirrors `forge qc` (apps/cli/main.cpp's run_qc/measure_qc_ac3/
 // measure_qc_eac3) instead: reads a file, decodes it with the same
 // iclforge::FrameDecoder/iclforge::Eac3Decoder EncoderController's own monitor path
 // already uses, measures it with iclforge::meta::LoudnessMeter (the same meter
@@ -115,7 +115,7 @@ class QcController : public QObject {
     // {id, name, source, targetLkfs, toleranceLu, loudnessIsCeiling,
     //  maxTruePeakDbtp, loudnessDelta, loudnessPass, truePeakMargin,
     //  truePeakPass, pass} - every preset when presetIndex is 0 ("All
-    // presets"), exactly one otherwise - mirroring ac3cli qc's own
+    // presets"), exactly one otherwise - mirroring forge qc's own
     // preset=<name>|all split, see presetIndex's own comment.
     Q_PROPERTY(QVariantList programmes READ programmes NOTIFY resultChanged)
     // "All presets", then every named delivery gate in
@@ -125,7 +125,7 @@ class QcController : public QObject {
     Q_PROPERTY(QStringList presetNames READ presetNames CONSTANT)
     Q_PROPERTY(int presetIndex READ presetIndex WRITE setPresetIndex NOTIFY presetChanged)
     // AC-4: whether the file measured is AC-4, its presentations, and which
-    // one to measure - `ac3cli qc presentation=<n>`'s n, or -1 for the one the
+    // one to measure - `forge qc presentation=<n>`'s n, or -1 for the one the
     // decoder chooses with no preference, which is qc's default. Setting it
     // measures the file again.
     Q_PROPERTY(bool isAc4 READ isAc4 NOTIFY resultChanged)
@@ -189,5 +189,5 @@ class QcController : public QObject {
     // Where the measurement runs. ~QcController() waits for it before any
     // member above is destroyed; declared last, so ~BackgroundJobs() would
     // wait ahead of them too.
-    ac3gui::BackgroundJobs jobs_;
+    forge_gui::BackgroundJobs jobs_;
 };

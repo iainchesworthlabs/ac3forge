@@ -7,7 +7,7 @@ import QtQuick.Layouts
 // Our own module: brings in the Theme singleton and the EncoderController
 // singleton registered from C++ (QML_ELEMENT + QML_SINGLETON). The implicit
 // same-directory import covers the QML-defined types but not the C++ ones.
-import Ac3Forge
+import ForgeGui
 
 // The two-pane workbench of the design handoff: the SIGNAL on a permanent
 // left rail (input, levels, soundfield — never scrolled away by
@@ -45,7 +45,7 @@ ApplicationWindow {
                                            : (EncoderController.sourcePath.length > 0
                                               ? window.baseName(EncoderController.sourcePath)
                                               : qsTr("no source"))
-    title: qsTr("ac3forge — %1").arg(sourceLabel)
+    title: qsTr("Forge — %1").arg(sourceLabel)
 
     // Fusion draws every standard control - Button, CheckBox, Switch,
     // Slider, ProgressBar, ComboBox, SpinBox - from these palette roles,
@@ -658,8 +658,8 @@ ApplicationWindow {
         return parts.join(" · ");
     }
 
-    // ac3cli's actual grammar — real, pasteable syntax, not the handoff's
-    // "--bed/--extras" sketch (which does not match ac3cli's positional
+    // forge's actual grammar — real, pasteable syntax, not the handoff's
+    // "--bed/--extras" sketch (which does not match forge's positional
     // subcommands). Everything the positionals cannot say rides as trailing
     // tokens: extra sources (src=), the assignment (map=), the metadata, and
     // AC-3's bare `couple`. A live source renders the `live` subcommand, and
@@ -670,15 +670,15 @@ ApplicationWindow {
     // file encode's Matroska container is still honestly TWO commands,
     // because pasting one would write a raw elementary stream into a file
     // named .mkv — S/PDIF, MP4, fMP4/CMAF and MPEG-TS are the same shape
-    // there, one more ac3cli subcommand (spdif/mp4/fmp4/ts) over the same
+    // there, one more forge subcommand (spdif/mp4/fmp4/ts) over the same
     // stream. Only Matroska and fMP4/CMAF get a live container= token: they
     // are the two with an INCREMENTAL writer behind them (matroska::Writer
     // and mp4::FragmentWriter — see
     // EncoderController::openLiveOutputWriters's own comment), and the two
-    // ac3cli's own `live` accepts. A live session with MP4 selected falls
+    // forge's own `live` accepts. A live session with MP4 selected falls
     // through to a plain elementary stream below, exactly like S/PDIF and
     // MPEG-TS do — the GUI records those two in their own containers, but
-    // `ac3cli live` has no token for them, so the command bar cannot claim
+    // `forge live` has no token for them, so the command bar cannot claim
     // one it would refuse.
     readonly property string cliLine: {
         // Object mode is E-AC-3's, or AC-4's where that is the codec.
@@ -693,7 +693,7 @@ ApplicationWindow {
             const liveOut = liveMkv ? "out.mkv"
                           : liveFmp4 ? "out_dir"
                           : "out." + (eac3Stream ? "ec3" : "ac3");
-            const liveCmd = ["ac3cli", "live", liveOut,
+            const liveCmd = ["forge", "live", liveOut,
                              String(Math.max(window.liveMasterCaptureIndex, 0)), "10",
                              String(EncoderController.bitrateKbps),
                              liveMonitorCheck.checked ? "-1" : "-2",
@@ -701,7 +701,7 @@ ApplicationWindow {
                                  ? String(liveReceiverBox.currentIndex - 1) : "-2",
                              EncoderController.atmosEnabled ? "atmos" : "channels"];
             // The rail's second device, when one is selected - the same
-            // capture2= token ac3cli's own `live` command takes, so the
+            // capture2= token forge's own `live` command takes, so the
             // command bar stays honest about a two-device session.
             if (EncoderController.captureDeviceRows.length > 1) {
                 liveCmd.push("capture2=" + EncoderController.captureDeviceRows[1].deviceIndex);
@@ -730,7 +730,7 @@ ApplicationWindow {
         if (EncoderController.ac4Objects) {
             const routed = EncoderController.sourceModel.length > 1
                            || EncoderController.mapToken.length > 0;
-            const objectParts = ["ac3cli", "atmos-encode", source, mp4 ? "out.mp4" : "out.ac4", rate,
+            const objectParts = ["forge", "atmos-encode", source, mp4 ? "out.mp4" : "out.ac4", rate,
                                  // [objects] counts the channels of one file with no map=;
                                  // src= and map= state them themselves.
                                  routed ? "0" : String(EncoderController.objectCount),
@@ -757,7 +757,7 @@ ApplicationWindow {
         // AC-4 is one command: ac4-encode writes the MP4 file itself when the
         // output is named .mp4, and takes one WAV file in its own layout.
         if (window.ac4Selected) {
-            const ac4Parts = ["ac3cli", "ac4-encode", source, mp4 ? "out.mp4" : "out.ac4", rate];
+            const ac4Parts = ["forge", "ac4-encode", source, mp4 ? "out.mp4" : "out.ac4", rate];
             if (EncoderController.ac4Tokens.length > 0) {
                 ac4Parts.push(EncoderController.ac4Tokens);
             }
@@ -789,7 +789,7 @@ ApplicationWindow {
             // its own object; there is no multi-file concept to route) - it
             // takes the object count, an optional exported keyframes file,
             // and honours the loudness tokens.
-            const parts = ["ac3cli", "atmos-encode", source, streamOut, rate];
+            const parts = ["forge", "atmos-encode", source, streamOut, rate];
             if (EncoderController.objectCount > 0) {
                 parts.push(String(EncoderController.objectCount));
                 if (window.exportedPathsPath.length > 0) {
@@ -803,7 +803,7 @@ ApplicationWindow {
             }
             line = parts.join(" ");
         } else if (EncoderController.codecIndex === 0) {
-            const parts = ["ac3cli", "encode", source, streamOut, rate,
+            const parts = ["forge", "encode", source, streamOut, rate,
                            EncoderController.channelLocationsText];
             if (EncoderController.coupling) {
                 parts.push("couple");
@@ -813,7 +813,7 @@ ApplicationWindow {
                 line += " " + meta;
             }
         } else {
-            const parts = ["ac3cli", "eac3-encode", source, streamOut, rate,
+            const parts = ["forge", "eac3-encode", source, streamOut, rate,
                            EncoderController.toolsToken.length > 0
                                ? EncoderController.toolsToken : "none",
                            EncoderController.channelLocationsText];
@@ -826,15 +826,15 @@ ApplicationWindow {
             }
         }
         if (mkv) {
-            line += " && ac3cli mkv " + streamOut + " out.mkv";
+            line += " && forge mkv " + streamOut + " out.mkv";
         } else if (spdif) {
-            line += " && ac3cli spdif " + streamOut + " out.wav";
+            line += " && forge spdif " + streamOut + " out.wav";
         } else if (mp4) {
-            line += " && ac3cli mp4 " + streamOut + " out.mp4";
+            line += " && forge mp4 " + streamOut + " out.mp4";
         } else if (fmp4) {
-            line += " && ac3cli fmp4 " + streamOut + " out_dir";
+            line += " && forge fmp4 " + streamOut + " out_dir";
         } else if (mpegTs) {
-            line += " && ac3cli ts " + streamOut + " out.ts";
+            line += " && forge ts " + streamOut + " out.ts";
         }
         return line;
     }
@@ -930,14 +930,14 @@ ApplicationWindow {
     }
 
     // The Objects tab's "Export paths…" - writes every dynamic object's
-    // authored motion (or static position) to a file ac3cli's
+    // authored motion (or static position) to a file forge's
     // atmos-path/atmos-encode reads, so the exact line the command bar shows
     // (see window.cliLine) is honestly reproducible.
     //
     // Two forms, chosen by the name the user saves under: ".json" writes the
     // ac3::oba::ObjectScene form (named objects, per-segment interpolation, an
     // orientation) and anything else the keyframe columns this dialog has
-    // always written. ac3cli tells them apart by their first character, not by
+    // always written. forge tells them apart by their first character, not by
     // suffix, so either file works wherever the other does.
     FileDialog {
         id: exportPathsDialog
@@ -1054,7 +1054,7 @@ ApplicationWindow {
     }
 
     // GUI AppStream packaging's single entry point for "a file arrived from outside the
-    // app" - the rail's own DropArea (below) and `ac3gui <file...>`
+    // app" - the rail's own DropArea (below) and `forge-gui <file...>`
     // (main.cpp, via QMetaObject::invokeMethod on this window) both funnel
     // through here, so there is exactly one place that decides what a
     // dropped/opened file means rather than two copies of the same suffix
@@ -1256,7 +1256,7 @@ ApplicationWindow {
         id: objectInspectorDialog
     }
 
-    // GUI stream player - the GUI twin of `ac3cli monitor`/`ac3cli decode`, the
+    // GUI stream player - the GUI twin of `forge monitor`/`forge decode`, the
     // third of this header's "distinct surface, reachable from the header"
     // dialogs alongside the two above - see StreamPlayerDialog.qml's own
     // header comment.
@@ -1323,7 +1323,7 @@ ApplicationWindow {
 
     // Item 33: a run chip's own details popover - id, status, rate/duration/
     // size/frames, the failure text when it failed or was cancelled with
-    // something to say, and the ac3cli command line SNAPSHOTTED when that
+    // something to say, and the forge command line SNAPSHOTTED when that
     // run started (never window.cliLine's live value - see runs' own doc
     // comment).
     Dialog {
@@ -1539,7 +1539,7 @@ ApplicationWindow {
             spacing: Theme.space2
 
             Text {
-                text: qsTr("ac3forge")
+                text: qsTr("Forge")
                 font.pixelSize: Theme.fontTitle
                 font.family: Theme.headingFamily
                 font.weight: Font.ExtraBold
@@ -3952,7 +3952,7 @@ ApplicationWindow {
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: qsTr("ac3cli tools token:  %1").arg(EncoderController.toolsToken)
+                                    text: qsTr("forge tools token:  %1").arg(EncoderController.toolsToken)
                                     color: Theme.textMuted
                                     font.pixelSize: Theme.fontSmall
                                     font.family: Theme.monoFamily
@@ -7342,7 +7342,7 @@ ApplicationWindow {
                                         // Item 33: clicking a run chip opens its own
                                         // details popover - id, status, rate/duration/
                                         // size/frames, the failure text if it failed, and
-                                        // the ac3cli command line SNAPSHOTTED when this
+                                        // the forge command line SNAPSHOTTED when this
                                         // run started (runDetailsDialog reads modelData.
                                         // cliLine, never window.cliLine's live value).
                                         MouseArea {
@@ -7462,7 +7462,7 @@ ApplicationWindow {
                                             MenuItem {
                                                 objectName: "runMoreInspect-" + modelData.id
                                                 text: qsTr("Inspect objects")
-                                                // Same gate `ac3cli decode`'s own objects_dir has:
+                                                // Same gate `forge decode`'s own objects_dir has:
                                                 // object audio is an E-AC-3/Annex E tool only, so a
                                                 // plain AC-3 run has nothing this dialog can show.
                                                 visible: modelData.eac3 === true
@@ -7498,7 +7498,7 @@ ApplicationWindow {
 
                 // ---- command bar -------------------------------------------
                 // The Encode button runs the encoder in-process, so the full
-                // ac3cli line is reference material, not the primary act: a
+                // forge line is reference material, not the primary act: a
                 // compact chip opens it in a popover (wrapped, with Copy)
                 // instead of spending a whole lane of the window on a line
                 // that mostly ends elided anyway. The showCli preference
@@ -7521,7 +7521,7 @@ ApplicationWindow {
                                ? Theme.neutral200 : Theme.neutral100
 
                         Accessible.role: Accessible.Button
-                        Accessible.name: qsTr("ac3cli command line")
+                        Accessible.name: qsTr("forge command line")
                         Accessible.description: qsTr("Opens the command line that reproduces this encode, with a Copy button.")
                         Accessible.onPressAction: cliPopup.opened ? cliPopup.close() : cliPopup.open()
 
@@ -7552,7 +7552,7 @@ ApplicationWindow {
                             spacing: 8
 
                             Text {
-                                text: qsTr("ac3cli")
+                                text: qsTr("forge")
                                 font.family: Theme.monoFamily
                                 font.pixelSize: Theme.fontSmall
                                 font.weight: Font.DemiBold
@@ -7619,7 +7619,7 @@ ApplicationWindow {
 
                                     Text {
                                         Layout.fillWidth: true
-                                        text: qsTr("Encode runs the encoder in-process — this is the exact ac3cli equivalent, quoting and all.")
+                                        text: qsTr("Encode runs the encoder in-process — this is the exact forge equivalent, quoting and all.")
                                         wrapMode: Text.WordWrap
                                         font.pixelSize: Theme.fontMono
                                         color: Theme.textMuted
@@ -7682,7 +7682,7 @@ ApplicationWindow {
     // drop lands the same way whether or not a source has ever been chosen
     // yet (the first-run screen above, or the rail once everHadSource is
     // true, both sit under this). openDroppedFile() owns the actual
-    // WAV-vs-.ac3/.ec3 routing, shared with `ac3gui <file...>`'s own
+    // WAV-vs-.ac3/.ec3 routing, shared with `forge-gui <file...>`'s own
     // launch-time handling (main.cpp) - this handler's only job is turning a
     // drop event into that same call, once per file.
     DropArea {

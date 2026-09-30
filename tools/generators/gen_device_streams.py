@@ -3,7 +3,7 @@
 and streams.json, which says what each one is and what a 7.1.4 output should
 receive from it.
 
-    python tools/generators/gen_device_streams.py --ac3cli <path to ac3cli>
+    python tools/generators/gen_device_streams.py --forge <path to forge>
 
 writes esp-idf/iclforge/examples/hearth_sink/www/. The set covers the
 output layouts the player renders onto, both codecs, dependent substreams,
@@ -12,7 +12,7 @@ frames, VBR, DRC metadata, other encoders' streams and object audio. Most of
 it is made here, by this repository's encoder, from signals this script
 synthesises; the rest is copied from streams already in the tree.
 
-The levels in streams.json are the host's: each stream decoded by ac3cli as
+The levels in streams.json are the host's: each stream decoded by forge as
 coded - no dialnorm normalisation and no DRC, which is the player's
 CONFIG_ICLFORGE_EXAMPLE_DRC_MODE=2 - with each decoded channel's RMS x 1e6
 placed on the slot of the same location in the 7.1.4 layout, in the
@@ -74,7 +74,7 @@ MAP_20 = mapping(["L", "R"])
 
 
 def write_wav(path, x, rate=RATE):
-    """Plain float32 WAV (format tag 3), which is what ac3cli's reader takes."""
+    """Plain float32 WAV (format tag 3), which is what forge's reader takes."""
     x = np.asarray(x, dtype="<f4")
     _, channels = x.shape
     data = x.tobytes()
@@ -160,7 +160,7 @@ def make_sources(work):
 
 # --- the set ---------------------------------------------------------------------
 #
-# Each entry: the file, one line on what it is, and either the ac3cli command
+# Each entry: the file, one line on what it is, and either the forge command
 # that makes it ({name} is a source above, {out} the output) or the file in
 # the tree it is a copy of. "psram" marks a stream measured to need more
 # internal RAM than the http shape has without PSRAM (planning/esp32-stream-set.md,
@@ -428,7 +428,7 @@ def read_wav(path):
     return np.frombuffer(samples, dtype="<f4").astype(np.float64).reshape(-1, channels)
 
 
-# ac3cli writes its WAV in WAV channel order and names it on the summary line
+# forge writes its WAV in WAV channel order and names it on the summary line
 # for E-AC-3 ("12 channels, 48000 Hz: L R C LFE Lrs Rrs Ls Rs Vhl Vhr Lts
 # Rts"). Its AC-3 summary names no order; AC-3's is the same WAV order over
 # Table 5.8's channels. Dual mono's two programmes are Ch1 and Ch2, which the
@@ -444,7 +444,7 @@ def decode_names(cli, stream, wav, extra, probe):
     )
     if run.returncode != 0:
         raise SystemExit(
-            f"{stream.name}: ac3cli decode exited {run.returncode}: {run.stderr.strip()[-400:]}"
+            f"{stream.name}: forge decode exited {run.returncode}: {run.stderr.strip()[-400:]}"
         )
     said = run.stdout + run.stderr
     line = re.search(r"\d+ channels, \d+ Hz: ([A-Za-z0-9 ]+?)\s*(?:\(|$)", said, re.M)
@@ -510,7 +510,7 @@ def describe(cli, stream, work):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--ac3cli", required=True)
+    ap.add_argument("--forge", required=True)
     ap.add_argument("--out", type=pathlib.Path, default=OUT)
     ap.add_argument(
         "--repo", type=pathlib.Path, default=REPO, help="the checkout the copies come from"
@@ -526,13 +526,13 @@ def main():
             if "copy" in entry:
                 shutil.copyfile(args.repo / entry["copy"], out)
             else:
-                cmd = [args.ac3cli, *(a.format(out=out, **src) for a in entry["make"])]
+                cmd = [args.forge, *(a.format(out=out, **src) for a in entry["make"])]
                 run = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 if run.returncode != 0:
                     raise SystemExit(
                         f"{entry['file']}: {' '.join(cmd[1:])}\n{run.stdout}{run.stderr}"
                     )
-            facts = describe(args.ac3cli, out, work)
+            facts = describe(args.forge, out, work)
             if entry.get("refused"):
                 facts.update(levels_714=None, units=None)
             manifest["streams"].append(

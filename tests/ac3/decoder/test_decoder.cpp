@@ -157,7 +157,7 @@ double dominant_freq_hz(const std::vector<float>& x, double rate) {
 // sine-fit SNR the FFmpeg oracle reports (88 dB on the same encode). The
 // decoder's correctness anchor is PCM parity with FFmpeg's decoder on
 // identical streams: measured max diff 7.9e-6 (~-102 dBFS), float32
-// precision agreement (ac3cli decode vs ffmpeg -c:a pcm_f32le).
+// precision agreement (forge decode vs ffmpeg -c:a pcm_f32le).
 TEST_CASE("stereo round trip through the in-repo decoder is near-transparent", "[decoder]") {
     const auto rt = round_trip({.bitrate_kbps = 192}, {1000.0, 1000.0}, 4);
     for (std::size_t ch = 0; ch < 2; ++ch) {

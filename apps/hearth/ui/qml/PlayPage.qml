@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The Play page (planning/hearth-design.md, "The main window, playing"): the
 // queue and now playing, built over the real engine, plus the monitor beside

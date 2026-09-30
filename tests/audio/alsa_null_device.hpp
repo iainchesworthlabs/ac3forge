@@ -53,10 +53,10 @@
 // for its lifetime - alsa-lib re-reads the variable on every snd_config_update
 // (which every snd_pcm_open makes), so setting it before the first open is
 // enough and restoring it afterwards leaves the next case where it found it.
-// For ac3cli run as a subprocess, env_prefix() is the same assignment spelled
+// For forge run as a subprocess, env_prefix() is the same assignment spelled
 // for the front of a POSIX shell command.
 
-namespace ac3test::alsa_null {
+namespace iclforge_test::alsa_null {
 
 namespace fs = std::filesystem;
 
@@ -169,4 +169,4 @@ private:
     std::optional<std::string> previous_;
 };
 
-}  // namespace ac3test::alsa_null
+}  // namespace iclforge_test::alsa_null

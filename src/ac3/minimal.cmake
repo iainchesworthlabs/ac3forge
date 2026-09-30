@@ -134,7 +134,7 @@ target_sources(iclforge_ac3_minimal
         # --- and placing them -----------------------------------------------
         # Reconstructed objects are mono signals with a position each; a part
         # driving loudspeakers has to pan them onto its layout, and this is
-        # the panner ac3cli's `qc objects=` and the encoder's own bed render
+        # the panner forge's `qc objects=` and the encoder's own bed render
         # use: pan_targets/pan_direction/position_direction, height-aware,
         # for any Table E2.5 layout. Pure arithmetic over <vector> and <cmath>
         # - no fmt, no exceptions - which is why it can be here. The probe's

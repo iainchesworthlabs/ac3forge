@@ -3,9 +3,9 @@
 What it must do: a pinned (kernel, mode, stream) whose hash changed is a hard
 failure; an unpinned key is reported, not failed; a missing stream (the gold
 reference step did not run) is a failure; and the key is built from the
-kernel `ac3cli --version` reports plus the transform-mode suffix.
+kernel `forge --version` reports plus the transform-mode suffix.
 
-ac3cli is not run: subprocess.run is patched to answer --version.
+forge is not run: subprocess.run is patched to answer --version.
 
 Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'
 """
@@ -44,8 +44,8 @@ class CrossPlatformHash(unittest.TestCase):
     def digest(self, label):
         return hashlib.sha256((self.work / cph.STREAMS[label]).read_bytes()).hexdigest()
 
-    def run_main(self, *extra, version="ac3cli 1.0\n  kernels: avx2\n"):
-        argv = ["x", "--cli", "ac3cli", "--workdir", str(self.work), "--pins", str(self.pins),
+    def run_main(self, *extra, version="forge 1.0\n  kernels: avx2\n"):
+        argv = ["x", "--cli", "forge", "--workdir", str(self.work), "--pins", str(self.pins),
                 *extra]
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(sys, "argv", argv), \
@@ -84,7 +84,7 @@ class CrossPlatformHash(unittest.TestCase):
 
     def test_version_without_kernels_line_raises(self):
         with self.assertRaisesRegex(RuntimeError, "no 'kernels:' line"):
-            self.run_main(version="ac3cli 1.0\n")
+            self.run_main(version="forge 1.0\n")
 
 
 if __name__ == "__main__":

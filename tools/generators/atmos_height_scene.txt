@@ -6,7 +6,7 @@
 # targets and on the elevation crossfade between the two rings. Object 1 keeps
 # atmos-encode's default placement on the listener plane.
 #
-# Columns, as ac3cli's atmos-path/atmos-encode keyframe form has them:
+# Columns, as forge's atmos-path/atmos-encode keyframe form has them:
 #   object_index time_s x y z gain lfe_send
 # x runs 0 (left wall) to 1 (right), y 0 (front wall) to 1 (back), z -1 (floor)
 # to 1 (ceiling); one keyframe at 0 s is a fixed position.

@@ -1431,7 +1431,7 @@ class WormholeShimmer {
 
 // ---------------------------------------------------------------------------
 // The scene: ten named objects in one iclforge::oba::ObjectScene, each with its own
-// authored automation - the same type ac3cli's atmos-path reads from a file and
+// authored automation - the same type forge's atmos-path reads from a file and
 // the GUI's timeline edits, so this cue sheet could equally have been loaded
 // from JSON rather than written here. Positions are
 // room-anchored per §4.2.1 (x 0 left wall to 1 right, y 0 front to 1 back,
@@ -1779,7 +1779,7 @@ int main(int argc, char** argv) {
         }
 
         // Both metadata layers interpolate to the END of the frame, so
-        // placements are evaluated there - same convention as ac3cli.
+        // placements are evaluated there - same convention as forge.
         scene.evaluate_into(t_end, placement);
 
         for (const std::size_t obj :

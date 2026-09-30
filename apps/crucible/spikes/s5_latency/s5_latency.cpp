@@ -1,11 +1,11 @@
-// Spike S5: end-to-end latency of the AC3Forge Crucible, tap to speaker
+// Spike S5: end-to-end latency of the Crucible, tap to speaker
 // (docs/platforms/windows-demo.md, "End-to-end latency, measured").
 //
 //   s5_latency <runner-pid> [null-sink-substring] [seconds]
 //
 // This process is an "application": it renders short tone bursts into the
 // null sink at known times, the way any game or player would. The demo's
-// runner (ac3crucible-run, the given pid) taps it, encodes, and plays its output
+// runner (crucible-run, the given pid) taps it, encodes, and plays its output
 // on a real endpoint. A process-loopback tap on the RUNNER captures what it
 // rendered, at the mix, with the QPC timestamp WASAPI attaches to every
 // capture packet. Both sides are on the same QPC clock: the render side

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The selected Hearth sink's own decoder settings (network-sink-decoder.png):
 // the extension's DecoderSettings, the sink's own subset of DecoderEac3.qml's

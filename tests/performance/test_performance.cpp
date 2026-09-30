@@ -43,7 +43,7 @@
 // cheaper one, and in particular why it never exercises the block-switched
 // transform at all).
 //
-// Kept in a separate ac3perf binary/target, not folded into ac3tests: a
+// Kept in a separate iclforge-perf binary/target, not folded into iclforge-tests: a
 // throughput assertion is a different kind of check from the rest of the
 // suite (environment-sensitive, meant to be read as a number as much as a
 // pass/fail, and not something a correctness-only run should have to carry).
@@ -55,7 +55,7 @@
 // test-linux-llvm-asan-ubsan preset, which excludes that label outright.
 //
 // The threshold is 2x real time, not 1x: real time is the actual functional
-// requirement (a live/streaming caller - ac3cli's `live` command, or the
+// requirement (a live/streaming caller - forge's `live` command, or the
 // Shield app's encode loop - cannot keep up otherwise), and 2x leaves
 // headroom for a CI runner that is simply slower than a dev machine, without
 // giving up on catching the class of regression this guards against - the

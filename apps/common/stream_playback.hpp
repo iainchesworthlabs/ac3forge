@@ -11,8 +11,8 @@
 // Two things a player that decodes a whole elementary stream has to get right
 // besides calling the decoders: which decoder reads the stream, and what
 // becomes of the audio the E-AC-3 one is still holding when the stream ends.
-// ac3cli's 'monitor' and 'spatial' use both. Compiled straight into ac3cli
-// and ac3tests, the way container_input.cpp beside it is (see
+// forge's 'monitor' and 'spatial' use both. Compiled straight into forge
+// and iclforge-tests, the way container_input.cpp beside it is (see
 // recording_sink.hpp for why apps/common has no library target), and kept
 // out of apps/cli so a test can hold both without a render device - neither
 // command gets past opening one on a headless CI leg.
@@ -25,7 +25,7 @@ namespace iclforge::apps {
 // stream_bsid() check reports that). bsid alone does not decide it: A/52
 // §E2.3.1.2's legacy-core delivery opens with an AC-3 syncframe and carries
 // Annex E dependents behind it, and FrameDecoder refuses the first dependent
-// it reaches. 'ac3cli decode' makes the same test; see
+// it reaches. 'forge decode' makes the same test; see
 // iclforge::has_eac3_extension_substreams.
 [[nodiscard]] bool reads_as_access_units(std::span<const std::byte> stream);
 

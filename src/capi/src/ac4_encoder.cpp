@@ -121,7 +121,7 @@ std::expected<iclforge::ac4::EncoderConfig, iclforge_status_t> encoder_config_to
         // With substreams set, the substreams' own codec_mode is the one in
         // force (iclforge::ac4::EncoderConfig::substreams), and the object substream is
         // the stream's only one: the codec mode given is its, and the
-        // stream's own stays at kAuto, as ac3cli's ac4-encode objects= leaves it.
+        // stream's own stays at kAuto, as forge's ac4-encode objects= leaves it.
         iclforge::ac4::SubstreamConfig substream;
         substream.codec_mode = out.codec_mode;
         out.codec_mode = iclforge::ac4::CodecMode::kAuto;

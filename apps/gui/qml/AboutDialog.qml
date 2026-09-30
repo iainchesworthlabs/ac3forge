@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // About — reachable from Main.qml's control row, beside Preferences.
 // appVersionDetails is a context property main.cpp sets once at startup
@@ -21,7 +21,7 @@ Dialog {
     title: ""
 
     // The version as version_details() headlines it: the first line of
-    // appVersionDetails reads "ac3forge <version>", the same text the
+    // appVersionDetails reads "iclforge <version>", the same text the
     // VERSION block below prints in full, and the version is everything
     // after that line's first space - so the subtitle and the block can
     // never disagree. typeof guards the context property's absence (the
@@ -71,7 +71,7 @@ Dialog {
             spacing: Theme.space4
 
             Image {
-                source: "qrc:/icons/ac3forge-256.png"
+                source: "qrc:/icons/iclforge-256.png"
                 Layout.preferredWidth: 64
                 Layout.preferredHeight: 64
                 smooth: true
@@ -90,10 +90,10 @@ Dialog {
                 Text {
                     // The member's name above, the family and the version
                     // beneath it (docs/family/recasting.md, "The name"):
-                    // "AC3Forge" is the family in prose and "Forge" is the
-                    // ac3cli + ac3gui pair; "AC3Forge Forge" is never written.
+                    // "ICL Forge" is the family in prose and "Forge" is the
+                    // forge + forge-gui pair; "ICL Forge Forge" is never written.
                     Layout.fillWidth: true
-                    text: qsTr("the AC3Forge encoder tools, %1").arg(root.headlineVersion)
+                    text: qsTr("the ICL Forge encoder tools, %1").arg(root.headlineVersion)
                     font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap
                     color: Theme.neutral700
@@ -126,7 +126,7 @@ Dialog {
         AboutKicker { text: qsTr("LICENSE") }
         AboutBody {
             textFormat: Text.RichText
-            text: qsTr("AC3Forge is free software: you can redistribute it and/or modify it "
+            text: qsTr("ICL Forge is free software: you can redistribute it and/or modify it "
                         + "under the terms of the GNU General Public License as published by "
                         + "the Free Software Foundation, either version 3 of the License, or "
                         + "(at your option) any later version. It is distributed WITHOUT ANY "

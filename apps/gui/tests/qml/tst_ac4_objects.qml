@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // AC-4 objects on the encoder page (planning/ac4.md, I5b), each new control from the
 // keyboard: object mode under the AC-4 codec (the codec picker takes E-AC-3 and AC-4 in
@@ -226,7 +226,7 @@ TestCase {
         // Nothing chosen: the command is plain.
         compare(EncoderController.ac4Tokens, "");
         compare(win.cliLine,
-                "ac3cli atmos-encode roundtrip-stereo.wav out.ac4 192 2 roundtrip-stereo-paths.json "
+                "forge atmos-encode roundtrip-stereo.wav out.ac4 192 2 roundtrip-stereo-paths.json "
                 + "codec=ac4");
 
         keys(findByName(tab, "ac4ObjectCoding"), Qt.Key_Down, 1);        // direct-coded
@@ -239,7 +239,7 @@ TestCase {
         compare(EncoderController.ac4Crc, false);
         compare(EncoderController.ac4Tokens, "coding=direct dialnorm=27 crc=off");
         compare(win.cliLine,
-                "ac3cli atmos-encode roundtrip-stereo.wav out.ac4 192 2 roundtrip-stereo-paths.json "
+                "forge atmos-encode roundtrip-stereo.wav out.ac4 192 2 roundtrip-stereo-paths.json "
                 + "codec=ac4 coding=direct dialnorm=27 crc=off");
         // The tab's badge counts the tokens it adds.
         compare(win.visibleTabs.filter(t => t.key === "ac4")[0].badge, "3");

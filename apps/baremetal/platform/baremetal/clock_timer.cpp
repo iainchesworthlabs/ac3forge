@@ -1,4 +1,4 @@
-// ac3probe::now_us() for arm-none-eabi on QEMU's mps2-an385, read from the
+// iclforge_probe::now_us() for arm-none-eabi on QEMU's mps2-an385, read from the
 // board's CMSDK APB TIMER0 rather than from semihosting's std::clock().
 // Selected by ICLFORGE_BAREMETAL_CLOCK=timer (apps/baremetal/CMakeLists.txt);
 // clock.cpp beside this file is the default.
@@ -49,7 +49,7 @@ bool g_started = false;
 
 }  // namespace
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 std::uint64_t now_us() {
     if (!g_started) {
@@ -62,4 +62,4 @@ std::uint64_t now_us() {
     return (static_cast<std::uint64_t>(ticks) * 1000000ULL) / kClockHz;
 }
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

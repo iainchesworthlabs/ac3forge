@@ -1,8 +1,8 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleLanguage
+import Crucible
+import CrucibleLanguage
 
 // The shared LanguageManager under this app's translation basename: the
 // six languages plus English are offered, each loads (a translated string

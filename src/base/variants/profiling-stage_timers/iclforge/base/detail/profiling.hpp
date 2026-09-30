@@ -16,7 +16,7 @@
 // The library carries no clock, no table and no output of its own, because a
 // clock is exactly the thing that differs per platform (esp_timer on
 // ESP-IDF, semihosting under QEMU, std::chrono on a host) and the probe
-// already owns that seam as ac3probe::now_us().
+// already owns that seam as iclforge_probe::now_us().
 //
 // apps/baremetal/stage_timers.cpp is the one implementation today: a stack
 // of open zones and a per-name accumulator, reported per fixture as

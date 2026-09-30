@@ -11,7 +11,7 @@
 // authoring/live side) and StreamPlayerController (the decode-and-play side)
 // so the ring geometry agrees no matter which controller computed it -
 // previously defined once, privately, inside encoder_controller.cpp.
-namespace ac3gui {
+namespace forge_gui {
 
 // Where a Table E2.5 location sits on the soundfield plans. This is a GUI-
 // only convention - nothing about encoding or decoding reads it - extending
@@ -40,4 +40,4 @@ namespace ac3gui {
 [[nodiscard]] std::vector<iclforge::eac3::chanmap::Location> ac3_bed_locations(
     iclforge::Acmod acmod, bool lfe);
 
-}  // namespace ac3gui
+}  // namespace forge_gui

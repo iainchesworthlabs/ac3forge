@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Guided's step sequence (GuidedWizard.qml) — the handoff's five steps
 // (Audio · Speakers · Quality · Movement · Where it goes) — driven by real

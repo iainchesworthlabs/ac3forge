@@ -35,20 +35,20 @@ constexpr std::array<LanguageInfo, 7> kLanguages{{
 }};
 
 // The pseudo-locale QA fixture (tools/generators/gen_pseudo_locale.py,
-// apps/gui/translations/ac3gui_xx.ts) - reachable only through the
-// AC3GUI_LOCALE override below, never through availableLanguages()/
+// apps/gui/translations/forge_gui_xx.ts) - reachable only through the
+// ICLFORGE_GUI_LOCALE override below, never through availableLanguages()/
 // setLanguage(), since it exists to prove the pipeline and catch a qsTr()
 // bypass rather than to be user-selectable.
 constexpr auto kPseudoLocaleCode = "xx";
 
 constexpr auto kSettingsKey = "language/code";
-constexpr auto kLocaleEnvOverride = "AC3GUI_LOCALE";
+constexpr auto kLocaleEnvOverride = "ICLFORGE_GUI_LOCALE";
 
 // The handoff's default (main.cpp registers it as the application font
 // before the engine ever loads) and the two bundled faces with actual
 // Arabic/Hebrew glyph coverage Archivo lacks - Theme.qml's rtlFonts carries
 // the same pairing for anything that wants to read it directly, but this is
-// the map that actually takes effect: most of ac3gui's Text/Control
+// the map that actually takes effect: most of forge-gui's Text/Control
 // elements take their font from the QGuiApplication-wide default rather
 // than an explicit per-Text binding, so switching that default here is what
 // makes the whole window follow a language switch instead of only the
@@ -191,7 +191,7 @@ void LanguageManager::installTranslators(const QString& code) {
     // "xx" is not a real ISO 639 code, so QLocale("xx") does not resolve to
     // it - QTranslator::load(QLocale, ...) would then try filenames built
     // from whatever QLocale falls back to instead (observed: it silently
-    // finds nothing), never "ac3gui_xx". Loading the resource path directly
+    // finds nothing), never "forge_gui_xx". Loading the resource path directly
     // sidesteps QLocale matching entirely, which is fine here specifically
     // because the pseudo-locale is reached only through the exact resource
     // name this app itself generated (gen_pseudo_locale.py), never through

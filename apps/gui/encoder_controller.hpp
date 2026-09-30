@@ -46,7 +46,7 @@
 // and the workers that keep encoding off the GUI thread.
 //
 // Every choice a user makes here ends up in one iclforge::plan::Plan, which is the
-// same value ac3cli builds from its command line. Nothing about layouts,
+// same value forge builds from its command line. Nothing about layouts,
 // coding tools or metadata is decided in this file - if it were, the two front
 // ends could disagree about what "5.1.4" or "all" means and neither would be
 // wrong on its own terms.
@@ -101,7 +101,7 @@ class EncoderController : public QObject {
     // trim control's starting value; setAssignmentTrim is its write side.
     Q_PROPERTY(QVariantList assignmentRows READ assignmentRows NOTIFY sourceChanged)
     // plan::format_assignment() of the explicit assignment, prefixed "map=" -
-    // the exact token ac3cli's encode/eac3-encode take, so the command bar
+    // the exact token forge's encode/eac3-encode take, so the command bar
     // can append it verbatim and a GUI assignment is always reproducible on
     // the command line. Empty while automatic single-source routing applies:
     // there is no map= to print when nothing has been mapped.
@@ -154,7 +154,7 @@ class EncoderController : public QObject {
     // newest first. Each is {id, filename, path, bitrateKbps, rateText,
     // durationText, status ("encoding"|"done"|"failed"|"cancelled"),
     // sizeText, detail, framesText, cliLine, eac3, playDeviceIndex}. cliLine
-    // is the ac3cli command line SNAPSHOTTED when the run started (see
+    // is the forge command line SNAPSHOTTED when the run started (see
     // setPendingCliLine) - never recomputed later, so a popover opened long
     // after still shows what actually ran rather than whatever the command
     // bar currently reads. eac3 is whether THIS run's own output holds
@@ -180,7 +180,7 @@ class EncoderController : public QObject {
     // A quality target (with optional independent min/max kbps bounds)
     // replaces bitrate_kbps-driven CBR sizing - eac3-encode's own [vbr]
     // positional, in exactly plan::parse_vbr's grammar (kVbrSyntax), so the
-    // command bar's line is always something ac3cli would actually parse.
+    // command bar's line is always something forge would actually parse.
     // Not available for AC-3 (validate() rejects it, PlanError::
     // kVbrNeedsEac3), object mode (a fixed 5.1 bed with no [vbr] argument of
     // its own), or a live session (IEC 61937 passthrough bursts are
@@ -204,7 +204,7 @@ class EncoderController : public QObject {
     Q_PROPERTY(bool vbrMaxEnabled READ vbrMaxEnabled WRITE setVbrMaxEnabled NOTIFY planChanged)
     Q_PROPERTY(int vbrMaxKbps READ vbrMaxKbps WRITE setVbrMaxKbps NOTIFY planChanged)
     // plan::format_vbr() of the settings above - the exact [vbr] token
-    // ac3cli's eac3-encode takes, so the command bar can paste it verbatim.
+    // forge's eac3-encode takes, so the command bar can paste it verbatim.
     Q_PROPERTY(QString vbrToken READ vbrToken NOTIFY planChanged)
     Q_PROPERTY(QStringList captureDevices READ captureDevices NOTIFY captureDevicesChanged)
     Q_PROPERTY(bool captureSupported READ captureSupported NOTIFY captureDevicesChanged)
@@ -287,7 +287,7 @@ class EncoderController : public QObject {
 
     // ---- AC-4 ---------------------------------------------------------------
     // The AC-4 tab's choices (ac4_encode_settings.hpp), each an option of
-    // `ac3cli ac4-encode`. An AC-4 encode takes one source in its own layout,
+    // `forge ac4-encode`. An AC-4 encode takes one source in its own layout,
     // mono, stereo, 5.0 or 5.1, to a raw stream or an MP4 file. Each *Index
     // picks from its *Names list; where a list opens with "Off" or "Stream
     // default", index 0 sends nothing.
@@ -333,15 +333,15 @@ class EncoderController : public QObject {
     Q_PROPERTY(int ac4IframeInterval READ ac4IframeInterval WRITE setAc4IframeInterval NOTIFY
                    planChanged)
     Q_PROPERTY(bool ac4Crc READ ac4Crc WRITE setAc4Crc NOTIFY planChanged)
-    // The trailing tokens of the `ac3cli ac4-encode` line these choices echo,
+    // The trailing tokens of the `forge ac4-encode` line these choices echo,
     // space-joined; empty at every default. In AC-4 object mode, the trailing
-    // tokens of the `ac3cli atmos-encode ... codec=ac4` line instead (without
+    // tokens of the `forge atmos-encode ... codec=ac4` line instead (without
     // the codec=ac4): coding=direct, a dialnorm off 31, crc=off.
     Q_PROPERTY(QString ac4Tokens READ ac4Tokens NOTIFY planChanged)
 
     // ---- AC-4 objects -------------------------------------------------------
     // Object mode under the AC-4 codec: the objects the assignments make, written
-    // as AC-4 objects (ac3cli atmos-encode codec=ac4) in place of E-AC-3's JOC
+    // as AC-4 objects (forge atmos-encode codec=ac4) in place of E-AC-3's JOC
     // over a 5.1 bed. ac4Objects says that is the plan; the coding, A-JOC or
     // direct-coded, is the one choice it adds, and its dialnorm and CRC the
     // AC-4 tab's own. The stream is written at 2 048 samples a frame, one
@@ -416,9 +416,9 @@ class EncoderController : public QObject {
     Q_PROPERTY(int channelBudgetUsed READ channelBudgetUsed NOTIFY planChanged)
     Q_PROPERTY(int channelBudgetMax READ channelBudgetMax CONSTANT)
     // plan::format_channels() of the current bed+LFE+extras mask - the
-    // comma-separated Table E2.5 list ac3cli's own [layout] argument takes,
+    // comma-separated Table E2.5 list forge's own [layout] argument takes,
     // so the command bar can generate a line that actually runs rather than
-    // a friendly name ac3cli has no preset for.
+    // a friendly name forge has no preset for.
     Q_PROPERTY(QString channelLocationsText READ channelLocationsText NOTIFY planChanged)
 
     // ---- Annex E coding tools ---------------------------------------------
@@ -432,7 +432,7 @@ class EncoderController : public QObject {
     Q_PROPERTY(int spxBegf READ spxBegf WRITE setSpxBegf NOTIFY planChanged)
     Q_PROPERTY(int gaqMode READ gaqMode WRITE setGaqMode NOTIFY planChanged)
     Q_PROPERTY(bool spxAtten READ spxAtten WRITE setSpxAtten NOTIFY planChanged)
-    // The same selection written the way ac3cli takes it, so a setting found
+    // The same selection written the way forge takes it, so a setting found
     // here can be reproduced on the command line without translating it.
     Q_PROPERTY(QString toolsToken READ toolsToken NOTIFY planChanged)
 
@@ -503,7 +503,7 @@ class EncoderController : public QObject {
     // at all, so the toggle is offered only on AC-3.
     Q_PROPERTY(bool annexDAvailable READ annexDAvailable NOTIFY planChanged)
     Q_PROPERTY(bool annexD READ annexD WRITE setAnnexD NOTIFY planChanged)
-    // Every non-default metadata choice as ac3cli's own trailing tokens
+    // Every non-default metadata choice as forge's own trailing tokens
     // ("drc=film_standard dialnorm=auto heavy …"), space-joined and in
     // print_meta_usage()'s exact grammar; empty when everything is at its
     // default, so a plain encode's command line stays a plain line.
@@ -696,7 +696,7 @@ class EncoderController : public QObject {
     // A real live position source for the live room's objects instead of
     // manual placement - iclforge::audio::LivePositionSource drained into an
     // iclforge::oba::SceneCursor once per encode frame, the same seam
-    // 'ac3cli live mode=atmos positions=osc:<port>' lands on. Pre-flight
+    // 'forge live mode=atmos positions=osc:<port>' lands on. Pre-flight
     // only, same reasoning as liveWavSafetyCopy above: startLiveSession
     // reads these once, at session start, and they are fixed for that
     // session's lifetime - the toggle re-enables for the NEXT session.
@@ -704,7 +704,7 @@ class EncoderController : public QObject {
                    liveOscConfigChanged)
     Q_PROPERTY(int liveOscPort READ liveOscPort WRITE setLiveOscPort NOTIFY liveOscConfigChanged)
     // Off by default: the bind address is loopback (127.0.0.1) unless this
-    // is explicitly turned on, matching 'ac3cli live positions=osc:local:...'
+    // is explicitly turned on, matching 'forge live positions=osc:local:...'
     // vs '...osc:any:...' - see docs/threat-model.md.
     Q_PROPERTY(bool liveOscAnyInterface READ liveOscAnyInterface WRITE setLiveOscAnyInterface
                    NOTIFY liveOscConfigChanged)
@@ -742,7 +742,7 @@ public:
     // Qt Quick suite can read the text without writing a file.
     Q_INVOKABLE QString diagnosticsReport() const;
     // A file: URL under the person's Documents folder (Home when there is
-    // none), named ac3gui-diagnostics-<stamp>.txt - what the Save dialog
+    // none), named forge-gui-diagnostics-<stamp>.txt - what the Save dialog
     // opens with, the same shape and stem convention Crucible uses.
     Q_INVOKABLE QString suggestedDiagnosticsFile() const;
     // Writes the report as UTF-8 with LF endings, whatever the platform.
@@ -1122,7 +1122,7 @@ public:
     // Writes every dynamic object's authored path - or, for a path-less
     // object, its static position as a single time-0 keyframe, under the
     // same inverse-root gain/lfe_send law encodeObjects' own fallback uses
-    // - to `url` in parse_path_file's exact grammar (see ac3cli's main.cpp:
+    // - to `url` in parse_path_file's exact grammar (see forge's main.cpp:
     // "object_index time_s x y z gain lfe_send" per line), keyed by each
     // object's FLAT channel index - the numbering a plain `atmos-encode`
     // run (every source channel its own object, no assignment concept)
@@ -1134,7 +1134,7 @@ public:
     // The same objects as an iclforge::oba::ObjectScene in JSON (ac3/oba/scene.hpp)
     // rather than as keyframe columns: named, with per-segment interpolation
     // and an orientation the columns have nowhere to put, and reloadable
-    // without loss. ac3cli's atmos-path and atmos-encode read this form too,
+    // without loss. forge's atmos-path and atmos-encode read this form too,
     // told apart from the column form by its first character, so the command
     // bar's line works with either file. Where the column form SKIPS a
     // bed-pinned channel's index, this one has to fill it - JSON identifies an
@@ -1194,7 +1194,7 @@ public:
     Q_INVOKABLE void removeSource(int index);
     // destToken is whatever assignmentRows already printed for a row, or
     // any token plan::parse_destination accepts - the same vocabulary
-    // ac3cli's map= takes, so a GUI selection and a hand-typed command line
+    // forge's map= takes, so a GUI selection and a hand-typed command line
     // can never disagree about what a token means. Silently ignored if it
     // does not parse, same convention as toggleExtra/applyChannelPreset.
     Q_INVOKABLE void setAssignment(int sourceIndex, int channel, const QString& destToken);
@@ -1276,7 +1276,7 @@ public:
     // (same busy_/playing_ gate, same IEC 61937 bursting). A no-op, silently,
     // while anything is already playing or busy, or for an empty path.
     Q_INVOKABLE void playFileToReceiver(const QString& path, int deviceIndex);
-    // Snapshots the ac3cli command line QML's own window.cliLine computed
+    // Snapshots the forge command line QML's own window.cliLine computed
     // for the run about to start, read once by startRun() into that run's
     // "cliLine" field and cleared immediately after - see runs' own doc
     // comment on why this has to be a snapshot rather than something the
@@ -1437,7 +1437,7 @@ private:
     // tone, close enough up that programme material uses most of the bar.
     static constexpr double kMeterFloorDb = -60.0;
 
-    // Everything the user has chosen, as the one value ac3cli also builds.
+    // Everything the user has chosen, as the one value forge also builds.
     [[nodiscard]] iclforge::plan::Plan currentPlan() const;
     // The bed's own acmod/lfeon plus every selected extra's bits, OR'd
     // together - what a request to chanmap::allocate() looks like from here.
@@ -1446,7 +1446,7 @@ private:
     [[nodiscard]] std::uint16_t currentLocationMask() const;
     // currentPlan() resolved to its actual channels - what every display and
     // routing computation below should read. Assumes currentPlan() validates,
-    // the way ac3cli's own resolve() does.
+    // the way forge's own resolve() does.
     [[nodiscard]] iclforge::plan::ChannelPlan effectiveChannelPlan() const;
     // What the routing summary calls this plan: "5.1 bed" for object mode,
     // else the derived shape name (channelShapeName()).
@@ -1490,7 +1490,7 @@ private:
     // explicitly (byte-identical to what this controller has always done),
     // else the explicit Assignment - dual mono routed through
     // dual_mono_routing() rather than the general location-based route(),
-    // for the same reason ac3cli's own routing_for_sources() picks between
+    // for the same reason forge's own routing_for_sources() picks between
     // them (see main.cpp). Returns nullopt if nothing is loaded, if more
     // than one source is loaded with no explicit assignment (automatic
     // panning has no defined meaning there), or if the assignment/automatic
@@ -1514,7 +1514,7 @@ private:
     void encodeChannels(const QString& path, std::vector<std::vector<float>> planes,
                         const iclforge::plan::Routing& routing, std::uint32_t sample_rate);
     // AC-4: the source's own channels through iclforge::ac4::Encoder, the steps
-    // `ac3cli ac4-encode` takes (apps/common/ac4_encode_core.hpp), so the
+    // `forge ac4-encode` takes (apps/common/ac4_encode_core.hpp), so the
     // command line the page echoes writes these bytes.
     void encodeAc4(const QString& path, std::vector<std::vector<float>> planes,
                    std::uint32_t sample_rate);
@@ -1527,7 +1527,7 @@ private:
     void setAc4Choice(std::optional<std::size_t>& choice, int index, std::size_t size);
     // AC-4 object mode (ac4Objects()): what the assignments make of the loaded
     // channels as AC-4 objects, the scene that moves them, and the encode, all
-    // the steps `ac3cli atmos-encode ... codec=ac4` takes (apps/common/
+    // the steps `forge atmos-encode ... codec=ac4` takes (apps/common/
     // ac4_objects_core.hpp), so that the command line the page echoes writes
     // these bytes.
     //
@@ -1627,7 +1627,7 @@ private:
     [[nodiscard]] std::unique_ptr<LiveOutputWriters> openLiveOutputWriters(
         const QString& path, bool write_to_disk, const iclforge::audio::DeviceInfo& device);
     // The live session worker. One function for both channel and object mode
-    // (mirrors ac3cli's own `live` command, which combines them the same way)
+    // (mirrors forge's own `live` command, which combines them the same way)
     // rather than split like encodeChannels/encodeObjects: almost everything
     // here - capture, monitor, passthrough, the disk-write, the live counters
     // - is identical between the two, and only the "turn source samples into
@@ -1674,9 +1674,9 @@ private:
     void noteError(const QString& text);
     // The named facts the report is composed from - see gui_diagnostics.hpp for
     // why it is composed rather than dumped.
-    [[nodiscard]] ac3gui::ReportFacts buildReportFacts() const;
+    [[nodiscard]] forge_gui::ReportFacts buildReportFacts() const;
     // Every spelling of a value the report must not carry.
-    [[nodiscard]] ac3gui::Secrets diagnosticsSecrets() const;
+    [[nodiscard]] forge_gui::Secrets diagnosticsSecrets() const;
     void setBusy(bool busy);
     // Adds a new "encoding" entry to runs_ and remembers its id, so the
     // encodeFinished this run eventually emits (there are several call
@@ -1845,7 +1845,7 @@ private:
     std::uint32_t vbr_max_kbps_ = 640;
 
     iclforge::plan::Codec codec_ = iclforge::plan::Codec::kAc3;
-    ac3gui::Ac4EncodeSettings ac4_{};
+    forge_gui::Ac4EncodeSettings ac4_{};
     // Tier 1: the bed and its independent LFE. Defaults to stereo, matching
     // what a freshly opened window always used to call itself; loading a
     // source or picking a preset moves it.
@@ -1926,7 +1926,7 @@ private:
     // export. The ring is a reference to a leaked singleton (gui_diagnostics.hpp)
     // so a note written while this object is being destroyed cannot reach a
     // dead log.
-    ac3gui::MessageLog& log_;
+    forge_gui::MessageLog& log_;
     QString diagnostics_message_;
     // Bounded: a session that refuses the same thing repeatedly must not
     // push the first failure - usually the interesting one - out of a file
@@ -2183,5 +2183,5 @@ private:
     // Where every worker above runs. ~EncoderController() sets the flag each of
     // them polls and waits for all of them before any member is destroyed;
     // declared last, so ~BackgroundJobs() would wait ahead of them too.
-    ac3gui::BackgroundJobs jobs_;
+    forge_gui::BackgroundJobs jobs_;
 };

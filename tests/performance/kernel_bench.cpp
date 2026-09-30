@@ -1,13 +1,13 @@
 // Per-kernel micro-benchmarks: the observability slice's other half, beside
 // the Tracy zones threaded through the encoder for a real-time capture. Where
-// ac3bench (bench_encoder.cpp) times a whole frame end to end, this isolates
+// iclforge-bench (bench_encoder.cpp) times a whole frame end to end, this isolates
 // each hot kernel and answers which one actually costs what - without a
 // profiler attached, and cheap enough to run on every change locally.
 //
-// Not a Catch2 binary, same reasoning as ac3bench: nothing here asserts
+// Not a Catch2 binary, same reasoning as iclforge-bench: nothing here asserts
 // anything. It writes one JSON record per kernel, {name, iters, ns_per_call},
 // to --json-out, for tools/ci/append_kernel_history.py to append to the
-// per-kernel trend data (docs/performance-trend.md) the same way ac3bench's
+// per-kernel trend data (docs/performance-trend.md) the same way iclforge-bench's
 // output feeds append_performance_history.py - with one deliberate
 // difference: the kernel series never fails CI, at any threshold (see that
 // script's docstring for why).
@@ -139,7 +139,7 @@ std::array<std::uint8_t, 256> exps_from_coeffs(const std::array<double, 256>& co
 // enough to supply several consecutive real blocks (AHT's six-block window,
 // ecpl's prev/curr/next triple) without running off the end of the file.
 // The loading and its no-synthetic-fallback rule live in real_audio.hpp,
-// shared with ac3bench and ac3perf so the three benches cannot drift apart
+// shared with iclforge-bench and iclforge-perf so the three benches cannot drift apart
 // again on what a bench input is.
 struct RealAudio {
     iclforge::io::WavData wav;

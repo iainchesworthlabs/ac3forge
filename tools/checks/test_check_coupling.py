@@ -182,8 +182,8 @@ class CouplingLevel(unittest.TestCase):
         def failing(cmd, **kw):
             return subprocess.CompletedProcess(cmd, 2, "out", "err")
         with mock.patch.object(ccl.subprocess, "run", failing), \
-                self.assertRaisesRegex(SystemExit, "failed: ac3cli encode\nouterr"):
-            ccl.run(["ac3cli", "encode"])
+                self.assertRaisesRegex(SystemExit, "failed: forge encode\nouterr"):
+            ccl.run(["forge", "encode"])
 
 
 class WavIo(unittest.TestCase):

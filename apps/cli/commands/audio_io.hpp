@@ -11,14 +11,14 @@
 // passthrough) stay in main.cpp for a later step; run_live alone is ~800 lines and deserves its
 // own focused PR rather than being folded in here. Split out as part of the repo-structure
 // review's H4 monolith split - see support.hpp's own top comment for the overall plan.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 int run_devices();
 
 // Capture live audio and encode it straight to AC-3. The capture thread fills
 // a lock-free ring; this thread drains it a frame at a time.
 int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
-               int device_index, const ac3cli::Options& meta);
+               int device_index, const forge_cli::Options& meta);
 
 int run_outputs();
 
@@ -56,6 +56,6 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
 // back to decoded PCM (run_monitor). meta.follow_sink (follow=off) restores
 // the plain refusal 'play' always gave before this roadmap item, the same
 // on-by-default shape 'live's downmix_leg (downmix=off) already uses.
-int run_play(std::string_view in_path, int device_index, const ac3cli::Options& meta);
+int run_play(std::string_view in_path, int device_index, const forge_cli::Options& meta);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

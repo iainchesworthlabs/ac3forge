@@ -1,7 +1,7 @@
 // The probe's entry point and clock on ESP32-P4.
 //
 // ESP-IDF calls app_main() rather than main(), which is why apps/baremetal
-// exposes ac3probe::run() through probe.hpp instead of defining main() itself.
+// exposes iclforge_probe::run() through probe.hpp instead of defining main() itself.
 // Everything the probe checks - every fixture in fixture.hpp against its levels, the
 // allocation counts, the heap peak, the refusal of the direct-form transform -
 // is the same code the host and arm-none-eabi shapes run. Nothing about the
@@ -20,7 +20,7 @@
 
 #include "probe.hpp"
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 // esp_timer is a 64-bit microsecond counter driven by the systimer peripheral,
 // not by the CPU clock, so it does not stop or stretch when the CPU is
@@ -50,7 +50,7 @@ void report_internal_sram(const char* when) {
                 static_cast<unsigned long>(heap_caps_get_largest_free_block(kInternal8Bit)));
 }
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe
 
 namespace {
 
@@ -105,11 +105,11 @@ extern "C" void app_main() {
     std::printf("target=esp32p4 cpu_mhz=%lu\n",
                 static_cast<unsigned long>(measure_cpu_mhz()));
 
-    ac3probe::report_internal_sram("before");
+    iclforge_probe::report_internal_sram("before");
 
-    ac3probe::run();
+    iclforge_probe::run();
 
-    ac3probe::report_internal_sram("after");
+    iclforge_probe::report_internal_sram("after");
 
     // The decode runs on THIS task - see sdkconfig.defaults for the stack
     // size and why. uxTaskGetStackHighWaterMark() reports the minimum free

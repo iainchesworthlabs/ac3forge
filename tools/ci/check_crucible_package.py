@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Assert the AC3Forge Crucible's package carries a window that can start,
+"""Assert the Crucible's package carries a window that can start,
 and the notices for what it ships.
 
 The archive cpack produces for the `crucible` component (cmake/Packaging.cmake)
 is the demo's release asset. Its failure mode is not an empty file - it is a
-plausible-looking archive holding ac3crucible.exe with no Qt beside it, which
+plausible-looking archive holding crucible.exe with no Qt beside it, which
 installs and then does not start, because the Qt deploy script
 (apps/crucible/CMakeLists.txt) was filed under the wrong CPack component or
 did not run. That is what this checks, from CI (.github/workflows/_build.yml)
 and from a local `cpack --preset pack-windows-msvc` run just the same:
 
-    python tools/ci/check_crucible_package.py packages/ac3forge-crucible-*.zip
-    python tools/ci/check_crucible_package.py packages/ac3forge-crucible-*-Linux.tar.gz
-    python tools/ci/check_crucible_package.py packages/ac3forge-crucible-*-Darwin.zip
+    python tools/ci/check_crucible_package.py packages/iclforge-crucible-*.zip
+    python tools/ci/check_crucible_package.py packages/iclforge-crucible-*-Linux.tar.gz
+    python tools/ci/check_crucible_package.py packages/iclforge-crucible-*-Darwin.zip
 
 The layout it expects is the one qt_generate_deploy_qml_app_script() produces
 and the existing runtime archive already uses: on Windows, the binaries in
 bin/ beside a qt.conf whose `Prefix = ..` sends Qt to the sibling plugins/,
 qml/ and translations/ directories; on macOS, Qt deployed inside
-ac3crucible.app itself (Contents/Frameworks/, Contents/PlugIns/ and
-Contents/Resources/qml/), the same bundle layout ac3gui.app already uses.
+crucible.app itself (Contents/Frameworks/, Contents/PlugIns/ and
+Contents/Resources/qml/), the same bundle layout forge-gui.app already uses.
 
 The second thing it checks is the content of NOTICES.txt, the third-party
 notices apps/crucible/notices/ generates per platform at configure time. A
@@ -59,8 +59,8 @@ NOTICES_TXT = "NOTICES.txt"
 # without which Qt aborts on launch. Then the notices and the licence, at the
 # archive root beside bin/ (apps/crucible/CMakeLists.txt's install rules).
 REQUIRED = (
-    "bin/ac3crucible.exe",
-    "bin/ac3crucible-run.exe",
+    "bin/crucible.exe",
+    "bin/crucible-run.exe",
     "bin/driver/install.ps1",
     "bin/driver/remove.ps1",
     "bin/driver/NullSinkDevice.ps1",
@@ -99,7 +99,7 @@ FORBIDDEN_WINDOWS_SUFFIX = ".inf"
 # for the application, Qt runs that scanner over the application's whole source
 # directory, and apps/crucible/ui/tests/qml/tst_*.qml all `import QtTest` - so
 # qml/QtTest/ went into every zip, and windeployqt followed the plugin in it
-# with Qt6Test.dll and Qt6QuickTest.dll. Only ac3crucible_qmltests loads any of
+# with Qt6Test.dll and Qt6QuickTest.dll. Only crucible_qmltests loads any of
 # that, and it is never installed. cmake/StripQtTestDeployment.cmake deletes
 # the three at install time and carries the measurement behind them.
 #
@@ -131,27 +131,27 @@ REQUIRED_QML = ("qml/QtQuick/", "qml/QtQuick3D/")
 # scripts, which are Windows and would only ever confuse a reader of a .deb.
 # The .tar.gz mirrors the install tree the .deb and .rpm carry, and Python
 # can read it without any of dpkg.
-NOTICES_LINUX_MEMBER = "share/doc/ac3forge-crucible/NOTICES.txt"
+NOTICES_LINUX_MEMBER = "share/doc/iclforge-crucible/NOTICES.txt"
 REQUIRED_LINUX = (
-    "bin/ac3crucible",
-    "bin/ac3crucible-run",
-    "share/applications/ac3crucible.desktop",
-    "share/metainfo/ac3crucible.metainfo.xml",
-    "share/icons/hicolor/256x256/apps/ac3crucible.png",
-    "share/icons/hicolor/32x32/apps/ac3crucible.png",
+    "bin/crucible",
+    "bin/crucible-run",
+    "share/applications/crucible.desktop",
+    "share/metainfo/crucible.metainfo.xml",
+    "share/icons/hicolor/256x256/apps/crucible.png",
+    "share/icons/hicolor/32x32/apps/crucible.png",
     NOTICES_LINUX_MEMBER,
-    "share/doc/ac3forge-crucible/LICENSE.txt",
-    "share/doc/ac3forge-crucible/copyright",
+    "share/doc/iclforge-crucible/LICENSE.txt",
+    "share/doc/iclforge-crucible/copyright",
 )
 FORBIDDEN_LINUX = ("driver/install.ps1", "driver/remove.ps1", "driver/NullSinkDevice.ps1")
 
 # The macOS archive is a bundle rather than a folder of DLLs: no qt.conf, no
-# plugins/ beside bin/ - Qt is deployed inside ac3crucible.app itself
+# plugins/ beside bin/ - Qt is deployed inside crucible.app itself
 # (Contents/Frameworks/, Contents/PlugIns/ and Contents/Resources/qml/, the
-# same layout ac3gui.app already uses - see apps/notices/notices.cmake).
-# ac3crucible-run is not part of the bundle: it is a plain executable,
+# same layout forge-gui.app already uses - see apps/notices/notices.cmake).
+# crucible-run is not part of the bundle: it is a plain executable,
 # installed beside it at the archive root, the same "bin/" GNUInstallDirs
-# gives every platform and the same place ac3cli sits beside ac3gui.app in
+# gives every platform and the same place forge sits beside forge-gui.app in
 # the runtime archive. Confirmed against a real packages-macos-llvm CI
 # artifact's iclforge-<version>-Darwin.zip (the runtime component's own
 # archive, which goes through the identical qt_generate_deploy_qml_app_script()
@@ -159,14 +159,14 @@ FORBIDDEN_LINUX = ("driver/install.ps1", "driver/remove.ps1", "driver/NullSinkDe
 # itself did not exist yet to download directly - see check_macos()'s own
 # note on that.
 REQUIRED_MACOS = (
-    "ac3crucible.app/Contents/MacOS/ac3crucible",
-    "bin/ac3crucible-run",
-    "ac3crucible.app/Contents/PlugIns/platforms/libqcocoa.dylib",
+    "crucible.app/Contents/MacOS/crucible",
+    "bin/crucible-run",
+    "crucible.app/Contents/PlugIns/platforms/libqcocoa.dylib",
     NOTICES_TXT,
     "LICENSE.txt",
 )
-REQUIRED_QML_MACOS = ("ac3crucible.app/Contents/Resources/qml/QtQuick/",
-                      "ac3crucible.app/Contents/Resources/qml/QtQuick3D/")
+REQUIRED_QML_MACOS = ("crucible.app/Contents/Resources/qml/QtQuick/",
+                      "crucible.app/Contents/Resources/qml/QtQuick3D/")
 # Same rule and the same three scripts as FORBIDDEN_LINUX, and the same
 # reason: macOS needs no driver either - it silences at the tap instead
 # (engine/platform/macos/virtual_device.cpp) - so apps/crucible/CMakeLists.txt's
@@ -178,7 +178,7 @@ FORBIDDEN_MACOS = ("driver/install.ps1", "driver/remove.ps1", "driver/NullSinkDe
 # Windows zip (REQUIRED's own header above) and by the same root cause - Qt's
 # qmlimportscanner recurses into ui/tests/qml/tst_*.qml - but through two
 # different deploy mechanisms, so the shapes differ. Both are measured, not
-# guessed: ac3gui.app already carries all three in a real downloaded
+# guessed: forge-gui.app already carries all three in a real downloaded
 # packages-macos-llvm artifact, because apps/gui's own call to
 # cmake/StripQtTestDeployment.cmake stays WIN32-only (that script's own header
 # says why) while apps/crucible's now reaches macOS.
@@ -193,7 +193,7 @@ FORBIDDEN_MACOS = ("driver/install.ps1", "driver/remove.ps1", "driver/NullSinkDe
 #     downloaded archive (at least not past the Homebrew Qt6 Cellar-symlink
 #     bug it also carries), so checked for defensively rather than assumed
 #     absent.
-FORBIDDEN_MACOS_QT_TEST_QML = "ac3crucible.app/Contents/Resources/qml/QtTest/"
+FORBIDDEN_MACOS_QT_TEST_QML = "crucible.app/Contents/Resources/qml/QtTest/"
 FORBIDDEN_MACOS_QT_TEST_FILES = ("libquicktestplugin.dylib",)
 FORBIDDEN_MACOS_QT_TEST_FRAMEWORKS = ("QtTest.framework/", "QtQuickTest.framework/")
 
@@ -216,7 +216,7 @@ NOTICES_LINUX = ("libpipewire", "{fmt}", "SIL OPEN FONT LICENSE")
 NOTICES_NOT_LINUX = ("Microsoft Public License", "GNU LESSER GENERAL PUBLIC LICENSE")
 # macOS bundles Qt the same way Windows does (so the same LGPL heading and Qt
 # source URL apply - apps/crucible/notices/fragments/qt-bundled.txt is shared,
-# unchanged, between the two platforms' AC3CRUCIBLE_NOTICE_FRAGMENTS lists),
+# unchanged, between the two platforms' ICLFORGE_CRUCIBLE_NOTICE_FRAGMENTS lists),
 # but carries no driver and no PipeWire, the same two absences as
 # NOTICES_NOT_WINDOWS and NOTICES_NOT_LINUX put together
 # (apps/crucible/notices/platform/macos/components.cmake says why: no driver
@@ -270,8 +270,8 @@ def check_linux(path: str) -> int:
     # (CPACK_INCLUDE_TOPLEVEL_DIRECTORY; the component archives here do not).
     # Normalise to an install prefix either way: keep a name that already
     # starts at an install directory, and strip one leading segment from one
-    # that does not. Stripping unconditionally turned bin/ac3crucible-run into
-    # ac3crucible-run and reported everything missing on a correct archive.
+    # that does not. Stripping unconditionally turned bin/crucible-run into
+    # crucible-run and reported everything missing on a correct archive.
     # The notices member is looked up by the same normalised name, so the
     # toplevel-directory choice cannot move it out of reach.
     install_dirs = ("bin/", "share/", "lib/", "include/", "libexec/")
@@ -405,7 +405,7 @@ def main(argv: list[str]) -> int:
     if path.endswith((".tar.gz", ".tgz", ".tar.xz")):
         return check_linux(path)
     # Windows and macOS are both this shape - cmake/Packaging.cmake names them
-    # ac3forge-crucible-<version>-<system>.zip alike, CPACK_SYSTEM_NAME being
+    # iclforge-crucible-<version>-<system>.zip alike, CPACK_SYSTEM_NAME being
     # the only difference (win64/win-arm64/win32 vs Darwin) - so what tells
     # them apart is a top-level "*.app/" entry, the bundle only a macOS
     # archive carries, not the filename.

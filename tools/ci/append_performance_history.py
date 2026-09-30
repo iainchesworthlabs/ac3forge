@@ -8,12 +8,12 @@ after the push so a big regression is never silently un-recorded just
 because it also failed the run).
 
 This is the trend-tracking HALF of the performance suite, not the hard
-real-time gate - that is tests/performance/test_performance.cpp's ac3perf
+real-time gate - that is tests/performance/test_performance.cpp's iclforge-perf
 target, a separate CI-blocking ctest run on every push/PR. This script only
 ever runs on main pushes (mirrors persist_quality_trend's own gating),
-records numbers ac3perf's pass/fail already implicitly bounds, and
+records numbers iclforge-perf's pass/fail already implicitly bounds, and
 raises a softer, trend-relative signal on top: not "did this exceed the
-absolute real-time budget" (ac3perf's job) but "is this drifting slower over
+absolute real-time budget" (iclforge-perf's job) but "is this drifting slower over
 time even while still passing that gate".
 
 Reads one JSON file per leg - tests/performance/bench_encoder.cpp's
@@ -51,7 +51,7 @@ from append_quality_history import write_recent_window
 # reason (enough to smooth ordinary run-to-run noise without going stale).
 REGRESSION_TRAILING_WINDOW = 10
 # A run more than 20% slower than its own trailing mean is worth a table
-# annotation, even though it may still comfortably pass ac3perf's absolute
+# annotation, even though it may still comfortably pass iclforge-perf's absolute
 # real-time gate.
 REGRESSION_SLOWDOWN_FRACTION = 0.20
 # A run at least DOUBLE its trailing mean is worth failing the job over
@@ -68,7 +68,7 @@ def load_leg_results(results_dir: Path):
     bench_encoder.cpp's --json-out files.
 
     MULTIPLE files per leg are reduced to ONE record per (leg, config), not
-    appended as several. The workflow runs ac3bench more than once so this
+    appended as several. The workflow runs iclforge-bench more than once so this
     reduction has something to work on; one file still works and simply
     reduces to itself.
 
@@ -120,7 +120,7 @@ def load_leg_results(results_dir: Path):
                 "frames": best["frames"],
                 "total_ms": best["total_ms"],
                 "ms_per_frame": best["ms_per_frame"],
-                # .get(), not [...]: ac3bench only started emitting the
+                # .get(), not [...]: iclforge-bench only started emitting the
                 # per-frame distribution later than this script, so any JSON
                 # produced by an older binary - a rebuilt merge base, a re-run
                 # of an old artifact - simply has no tail to record. None is
@@ -138,7 +138,7 @@ def load_leg_results(results_dir: Path):
                 # one records empty strings.
                 "cpu_model": environment.get("cpu_model", ""),
                 "runner_image": environment.get("runner_image", ""),
-                # Per result where ac3bench wrote one: AC-4's frame is 2 048
+                # Per result where iclforge-bench wrote one: AC-4's frame is 2 048
                 # samples against A/52's 1 536, so one file-level budget cannot
                 # describe both codecs' rows.
                 "real_time_budget_ms_per_frame": best.get("real_time_budget_ms_per_frame", budget),
@@ -236,7 +236,7 @@ def main() -> int:
                   f"{rec['config']}: {rec['ms_per_frame']:.3f} ms/frame is "
                   f"{slowdown * 100:.0f}% slower than the trailing "
                   f"{REGRESSION_TRAILING_WINDOW}-run mean ({baseline:.3f} ms/frame) on "
-                  f"{args.branch}. This is a trend warning, not a failure - see ac3perf for "
+                  f"{args.branch}. This is a trend warning, not a failure - see iclforge-perf for "
                   "the absolute real-time gate.")
 
     args.history_dir.mkdir(parents=True, exist_ok=True)

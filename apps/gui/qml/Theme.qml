@@ -2,7 +2,7 @@ pragma Singleton
 
 import QtQuick
 
-import Ac3Forge
+import ForgeGui
 
 // Single source of truth for colour, spacing and type, so every page and
 // component stays visually consistent. Tokens follow the Modernist design
@@ -256,14 +256,14 @@ QtObject {
     // ---- type -----------------------------------------------------------
     // Every size in both windows comes from this scale, and the scale is
     // multiplied by fontScale, which each shell sets from its own setting -
-    // Crucible: Settings > Appearance > Text size; ac3gui: Preferences >
+    // Crucible: Settings > Appearance > Text size; forge-gui: Preferences >
     // Appearance > Text size - both reading "System" as the platform theme's
     // own point size. A literal pixelSize in a view is a size that cannot
     // follow the person's text-size setting.
     //
     // That sentence used to end "so there are none", which was close to true
-    // of Crucible's own views and had never been true of ac3gui. On 2026-09-06
-    // ac3gui's QML still held 377 literal type sizes - 376 font.pixelSize
+    // of Crucible's own views and had never been true of forge-gui. On 2026-09-06
+    // forge-gui's QML still held 377 literal type sizes - 376 font.pixelSize
     // values and one SegmentedControl.fontSize - and had no text-size setting
     // at all, so fontScale sat at 1.0 for the life of that process. Two of
     // those 377 were in RailBlock.qml, which Crucible's build copies into its
@@ -280,7 +280,7 @@ QtObject {
     // following the person's setting.
     //
     // Type size is only half of it: a control whose HEIGHT is a literal grows
-    // its label inside a box that does not. ac3gui's bed and low-frequency
+    // its label inside a box that does not. forge-gui's bed and low-frequency
     // chips, its command-line chip and its Encode button take their heights
     // from their own labels, the way Crucible's controls do; the tab bar and
     // the runs strip are fixed lanes by design (the runs lane's cap is what
@@ -319,7 +319,7 @@ QtObject {
     // a face with actual glyph coverage - Archivo has none. Named here as a
     // single source of truth (and for parity with CountdownSolver's own
     // Theme.qml, which threads the equivalent map through every Text's
-    // font.family), but unlike that app ac3gui's controls mostly take their
+    // font.family), but unlike that app forge-gui's controls mostly take their
     // font from the QGuiApplication-wide default rather than an explicit
     // per-Text binding - LanguageManager::installTranslators() swaps that
     // application-wide default font's family directly on every language

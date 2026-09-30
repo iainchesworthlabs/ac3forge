@@ -23,7 +23,7 @@
 // quote the file's path - is scrubbed of that item's folder before it is
 // noted, while the item is still in the queue to say what its path is.
 //
-// No Qt and no platform header: the engine's thread writes here, and ac3tests
+// No Qt and no platform header: the engine's thread writes here, and iclforge-tests
 // holds the rule on every CI leg.
 
 namespace iclforge::hearth {
@@ -64,7 +64,7 @@ public:
     // below); building removal for a subscriber shorter-lived than the
     // process is a future extension, not something either of today's two
     // callers (native_log_sink.hpp's install_native_log_sink(), and
-    // ac3tests) needs. An observer must not call back into this log (note(),
+    // iclforge-tests) needs. An observer must not call back into this log (note(),
     // lines(), dropped() or add_observer() itself) and must do nothing that
     // could block - the same rule note() already holds itself to.
     void add_observer(std::function<void(std::string_view)> observer);

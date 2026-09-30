@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The Decoder tab (planning/hearth-design.md, "Speakers and decoder"): a
 // sub-switch between the AC-3/E-AC-3 decoder and the AC-4 decoder

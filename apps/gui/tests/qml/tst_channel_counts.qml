@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Pins codedChannelCount/renderedChannelCount for every surviving Format-tab
 // preset against the real EncoderController/chanmap::allocate() path - see

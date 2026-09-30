@@ -1,6 +1,6 @@
 #pragma once
 
-// The exit codes every ac3cli command returns, and the only place their
+// The exit codes every forge command returns, and the only place their
 // numbers are chosen.
 //
 // This CLI is positioned as a pipeline tool - "-" for stdin/stdout, `qc` as a
@@ -52,9 +52,9 @@
 // nothing else from a shared header - and because misc-include-cleaner (a CI
 // gate) wants the file that uses a name to include the file that declares it.
 //
-// Documented for users in docs/forge/cli/commands.md#exit-codes; `ac3cli help
+// Documented for users in docs/forge/cli/commands.md#exit-codes; `forge help
 // exit-codes` prints the same table.
-namespace ac3cli {
+namespace forge_cli {
 
 inline constexpr int kExitOk = 0;
 inline constexpr int kExitUsage = 1;
@@ -65,4 +65,4 @@ inline constexpr int kExitRuntime = 5;
 inline constexpr int kExitQcGate = 6;
 inline constexpr int kExitInternal = 7;
 
-}  // namespace ac3cli
+}  // namespace forge_cli

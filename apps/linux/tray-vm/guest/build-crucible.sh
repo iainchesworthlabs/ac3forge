@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds ac3crucible inside the guest from the tree Sync-Source.ps1 pushed
+# Builds crucible inside the guest from the tree Sync-Source.ps1 pushed
 # to ~/src, optionally with one of the two edits this VM exists to measure.
 #
 #   crucible-build                 the window as it ships
@@ -100,9 +100,9 @@ cmake --preset config-linux-gcc -B "$builddir" -S "$SRC" \
     -DICLFORGE_WITH_ALSA=OFF \
     -DICLFORGE_WITH_PIPEWIRE=ON \
     "${flags[@]}"
-cmake --build "$builddir" --target ac3crucible -- -j"$(nproc)"
+cmake --build "$builddir" --target crucible -- -j"$(nproc)"
 
 cp "$qml.pristine" "$qml"
-binary=$(find "$builddir" -name ac3crucible -type f -perm -u+x | head -1)
+binary=$(find "$builddir" -name crucible -type f -perm -u+x | head -1)
 echo "built: $binary"
 echo "$binary" > "$builddir/.binary"

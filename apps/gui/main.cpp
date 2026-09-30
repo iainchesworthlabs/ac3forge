@@ -29,10 +29,10 @@
 // report what the meters did: a clean build proves the app links, and only
 // this proves the display is wired to the audio.
 //
-//   ac3gui --smoke        <in.wav> <out.ac3>                [shot.png] [prop=value ...]
-//   ac3gui --smoke-record <deviceIndex> <seconds> <out.ac3> [shot.png] [prop=value ...]
-//   ac3gui --smoke-live   <deviceIndex> <seconds> <out.ac3> [shot.png] [prop=value ...]
-//   ac3gui --smoke-shot   <shot.png>              [in.wav]  [prop=value ...]
+//   forge-gui --smoke        <in.wav> <out.ac3>                [shot.png] [prop=value ...]
+//   forge-gui --smoke-record <deviceIndex> <seconds> <out.ac3> [shot.png] [prop=value ...]
+//   forge-gui --smoke-live   <deviceIndex> <seconds> <out.ac3> [shot.png] [prop=value ...]
+//   forge-gui --smoke-shot   <shot.png>              [in.wav]  [prop=value ...]
 //
 // The trailing prop=value tokens are set through Qt's property system, which
 // is the same path a QML binding writes through - so a smoke run exercises the
@@ -254,7 +254,7 @@ EncoderController* smoke_controller(QQmlApplicationEngine& engine) {
         return nullptr;
     }
     auto* controller =
-        engine.singletonInstance<EncoderController*>("Ac3Forge", "EncoderController");
+        engine.singletonInstance<EncoderController*>("ForgeGui", "EncoderController");
     if (controller == nullptr) {
         fmt::println(stderr, "smoke: EncoderController singleton is not registered");
     }
@@ -522,8 +522,8 @@ int run_smoke_shot(QQmlApplicationEngine& engine, const QString& shot_path,
 
 int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName(QStringLiteral("ac3forge"));
-    QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
+    QGuiApplication::setApplicationName(QStringLiteral("forge-gui"));
+    QGuiApplication::setOrganizationName(QStringLiteral("iclforge"));
     QGuiApplication::setApplicationVersion(
         QString::fromUtf8(iclforge::version_string.data(), static_cast<qsizetype>(iclforge::version_string.size())));
 
@@ -532,8 +532,8 @@ int main(int argc, char* argv[]) {
     // effect once the binary is actually installed/bundled. Two sizes so
     // Qt picks the closer match rather than scaling a single one both ways.
     QIcon appIcon;
-    appIcon.addFile(QStringLiteral(":/icons/ac3forge-32.png"));
-    appIcon.addFile(QStringLiteral(":/icons/ac3forge-256.png"));
+    appIcon.addFile(QStringLiteral(":/icons/iclforge-32.png"));
+    appIcon.addFile(QStringLiteral(":/icons/iclforge-256.png"));
     QGuiApplication::setWindowIcon(appIcon);
 
     // A smoke run must neither INHERIT the user's saved session (session
@@ -598,7 +598,7 @@ int main(int argc, char* argv[]) {
     language_manager.applyInitialLanguage();
     engine.rootContext()->setContextProperty(QStringLiteral("languageManager"), &language_manager);
 
-    engine.loadFromModule("Ac3Forge", "Main");
+    engine.loadFromModule("ForgeGui", "Main");
     if (!engine.rootObjects().isEmpty()) {
         if (auto* root_window = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
             mark_frames_for_tracy(root_window);
@@ -653,7 +653,7 @@ int main(int argc, char* argv[]) {
         // .ac3/.ec3 opens the stream player - so there is exactly one place
         // that decides what a file argument means. Every positional here is
         // treated as a file (none of the flag-prefixed modes above reach
-        // this branch), which is what makes `ac3gui *.wav` usable from a
+        // this branch), which is what makes `forge-gui *.wav` usable from a
         // shell glob.
         if (!engine.rootObjects().isEmpty()) {
             auto* root = engine.rootObjects().first();

@@ -9,7 +9,7 @@
 // multi-source (src=/map=) sibling. Confirmed still physically contiguous (all four, plus the
 // E-AC-3-specific tools_or_error/vbr_or_error option helpers) after 7 prior extraction rounds.
 // Split out of main.cpp as part of the repo-structure review's H4 monolith split.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 // Real program material through the E-AC-3 path, for a possibly multi-source
 // run (src=/map= given). dialnorm=auto/dialnorm2=auto measure the RENDERED
@@ -19,20 +19,20 @@ namespace ac3cli::commands {
 int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
                           std::uint32_t bitrate, std::string_view tools,
                           std::string_view layout, std::string_view vbr,
-                          const ac3cli::Options& meta);
+                          const forge_cli::Options& meta);
 
 int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                     std::uint32_t bitrate, std::string_view tools, std::string_view layout,
-                    std::string_view vbr, const ac3cli::Options& meta,
+                    std::string_view vbr, const forge_cli::Options& meta,
                     std::string_view in2_path = {});
 
 // The same encode as run_encode below, but for a possibly multi-source run
 // (src=/map= given).
 int run_encode_multi(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
-                     bool couple, std::string_view layout, const ac3cli::Options& meta);
+                     bool couple, std::string_view layout, const forge_cli::Options& meta);
 
 int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
-               bool couple, std::string_view layout, const ac3cli::Options& meta,
+               bool couple, std::string_view layout, const forge_cli::Options& meta,
                std::string_view in2_path = {});
 
 // ac4-encode, in ac4_encode.cpp: mono or stereo to AC-4 through iclforge::ac4::Encoder.
@@ -40,8 +40,8 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
 // ac4-encode with objects=: the WAV file's channels as objects, and the scene
 // file's configuration and metadata (commands/ac4_encode_objects.cpp).
 int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
-                           std::uint32_t bitrate, const ac3cli::Options& meta);
+                           std::uint32_t bitrate, const forge_cli::Options& meta);
 int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
-                   const ac3cli::Options& meta);
+                   const forge_cli::Options& meta);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

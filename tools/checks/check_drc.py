@@ -25,7 +25,7 @@ dead metadata passes a bit-level check and fails these.
            no oracle here and the script says so rather than pretending.
 
 Run from the repo root, after building:
-    python tools/checks/check_drc.py [--cli build/dev/bin/ac3cli.exe]
+    python tools/checks/check_drc.py [--cli build/dev/bin/forge.exe]
 """
 
 import argparse
@@ -395,13 +395,13 @@ def check_eac3(cli: str, tmp: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cli", default="build/dev/bin/ac3cli.exe")
+    parser.add_argument("--cli", default="build/dev/bin/forge.exe")
     parser.add_argument("--keep", action="store_true", help="keep the temporary files")
     args = parser.parse_args()
 
     cli = str((REPO / args.cli).resolve() if not Path(args.cli).is_absolute() else args.cli)
     if not Path(cli).exists():
-        raise SystemExit(f"ac3cli not found at {cli} - build first, or pass --cli")
+        raise SystemExit(f"forge not found at {cli} - build first, or pass --cli")
     if shutil.which("ffmpeg") is None:
         raise SystemExit("ffmpeg not on PATH; it is the oracle for every check here")
 

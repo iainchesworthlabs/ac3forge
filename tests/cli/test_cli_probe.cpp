@@ -16,7 +16,7 @@
 #include "iclforge/ac3/decoder/decoder.hpp"
 #include "iclforge/ac3/io/metadata_edit.hpp"
 
-// `ac3cli probe` (probe command), at the level its consumers actually use it:
+// `forge probe` (probe command), at the level its consumers actually use it:
 // the real binary, run as a subprocess, and the text it puts on stdout.
 //
 // tests/ac3/io/test_probe.cpp already holds the library's own contract - what the
@@ -36,7 +36,7 @@
 // not a format - and the "describes a stream it cannot decode" claim is only
 // testable against a stream that really does not decode.
 //
-// AC3CLI_EXE and ICLFORGE_EXTERNAL_BASELINE_DIR come from tests/CMakeLists.txt;
+// ICLFORGE_CLI_EXE and ICLFORGE_EXTERNAL_BASELINE_DIR come from tests/CMakeLists.txt;
 // run_cli below is a trimmed copy of test_cli.cpp's helper of the same name,
 // duplicated per this project's own per-file test-helper convention (see
 // test_cli_atmos_adm.cpp, which does the same), including its Windows
@@ -59,7 +59,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -141,7 +141,7 @@ fs::path baseline(std::string_view leg, std::string_view file) {
     return fs::path{ICLFORGE_EXTERNAL_BASELINE_DIR} / leg / file;
 }
 
-// A short stream from ac3cli itself, so a test that only needs "some valid
+// A short stream from forge itself, so a test that only needs "some valid
 // AC-3" does not depend on a committed fixture.
 fs::path make_ac3(const std::string& name, const std::string& args) {
     const auto out = scratch_dir() / name;

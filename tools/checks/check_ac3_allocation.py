@@ -128,7 +128,7 @@ def main() -> None:
 
     cli = args.cli
     if not Path(cli).exists():
-        raise SystemExit(f"ac3cli not found at {cli} - build first, or pass --cli")
+        raise SystemExit(f"forge not found at {cli} - build first, or pass --cli")
 
     build = qr.BUILD
     build.mkdir(parents=True, exist_ok=True)
@@ -140,7 +140,7 @@ def main() -> None:
     ours_pcm = decode_ours(cli, ours, build / f"alloc_ours_{args.rate}.wav")
     theirs_pcm = decode_ours(cli, theirs, build / f"alloc_ff_{args.rate}.wav")
 
-    print(f"AC-3 5.1 @ {args.rate} kbps, {SOURCE.name}, both decoded by ac3cli\n")
+    print(f"AC-3 5.1 @ {args.rate} kbps, {SOURCE.name}, both decoded by forge\n")
 
     ours_ch, theirs_ch = per_channel_snr(original, ours_pcm), per_channel_snr(original, theirs_pcm)
     print(f"{'channel':<9}{'ours':>9}{'ffmpeg':>9}{'deficit':>9}")

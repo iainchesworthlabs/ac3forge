@@ -25,7 +25,7 @@ codec matrix's byte-identical checks) works the same way for the same
 reason: a silent change to a number nobody is watching is worse than a loud,
 possibly-still-mysterious one.
 
-Usage: check_cross_platform_hash.py --cli <ac3cli> --workdir <dir>
+Usage: check_cross_platform_hash.py --cli <forge> --workdir <dir>
            [--label-suffix <suffix>] [--pins <path>]
 Exit 0 if every kernel/mode key present in the pin file matches (and prints
 any unpinned key found this run); exit 1 on a real mismatch.
@@ -71,7 +71,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--cli", required=True, type=Path, help="ac3cli binary this run used")
+    parser.add_argument("--cli", required=True, type=Path, help="forge binary this run used")
     parser.add_argument("--workdir", required=True, type=Path, help="gate script's own workdir")
     parser.add_argument("--label-suffix", default="", help="TRANSFORM_MODE suffix, e.g. _reference")
     parser.add_argument("--pins", default=DEFAULT_PINS, type=Path, help="pinned-hash JSON file")

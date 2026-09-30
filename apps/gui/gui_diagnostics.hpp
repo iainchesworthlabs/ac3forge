@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-// ac3gui's diagnostics file (docs/forge/gui/accessibility.md, "Saving a diagnostics
+// forge-gui's diagnostics file (docs/forge/gui/accessibility.md, "Saving a diagnostics
 // file"): a bounded ring of one-line notes the controller writes to, and a
 // renderer that turns named facts and that ring into plain text.
 //
@@ -44,22 +44,22 @@
 //
 // This is a second copy of the Crucible's ring and scrub rather than a shared
 // one, because that header's ReportFacts is welded to the Crucible engine's
-// own types (EngineStatus, RenderEndpoint, SilentDeviceState) and ac3gui has
+// own types (EngineStatus, RenderEndpoint, SilentDeviceState) and forge-gui has
 // none of them. Lifting the ring and scrub into apps/common/ and leaving each
 // window its own ReportFacts would remove the duplication; that is a change
 // to a module the Crucible's tests already hold, and is worth doing on its
 // own rather than inside an accessibility pass.
 //
 // No Qt here, deliberately, for the same reason the Crucible's is Qt-free:
-// tests/gui/test_gui_diagnostics.cpp compiles this file straight into ac3tests,
+// tests/gui/test_gui_diagnostics.cpp compiles this file straight into iclforge-tests,
 // so the rule is checked on every CI leg including the ones that build no
 // window at all. That is also why the file carries a gui_ prefix inside a
-// directory already called gui: ac3tests compiles this module and the
+// directory already called gui: iclforge-tests compiles this module and the
 // Crucible's into one target with both directories on its include path, and
 // two headers named diagnostics.hpp would have a test resolve to whichever
 // -I came first.
 
-namespace ac3gui {
+namespace forge_gui {
 
 // A bounded ring of recent one-line notes: what was loaded, what a run did,
 // what refused, never anything per frame or per meter tick. Written from the
@@ -162,4 +162,4 @@ struct Secrets {
 [[nodiscard]] std::string render_report(const ReportFacts& facts, const MessageLog& log,
                                         const Secrets& secrets);
 
-}  // namespace ac3gui
+}  // namespace forge_gui

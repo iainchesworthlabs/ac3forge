@@ -9,9 +9,9 @@
 // number below is the 7.1/48 kHz/16-bit format the driver offers: 768,000
 // bytes per second, 16-byte blocks.
 
-using ac3nullsink::kHnsPerSecond;
-using ac3nullsink::PositionClock;
-using ac3nullsink::u64;
+using iclforge_nullsink::kHnsPerSecond;
+using iclforge_nullsink::PositionClock;
+using iclforge_nullsink::u64;
 
 namespace {
 

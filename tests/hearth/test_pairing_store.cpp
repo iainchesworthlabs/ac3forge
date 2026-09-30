@@ -228,10 +228,10 @@ TEST_CASE("pairing store: a client's name reaches its record", "[hearth][pairing
     CHECK(store.records()[0].name == "hearth-s3-lounge");
     CHECK(settings.synced().at("pairing/1/name") == "hearth-s3-lounge");
     // A name heard before the pairing completes waits for it.
-    store.set_client_name(key(2), "ac3hearth-testsink-1");
+    store.set_client_name(key(2), "hearth-testsink-1");
     CHECK(store.records().size() == 1);
     REQUIRE(store.store_record(key(2), key(102)));
-    CHECK(store.records()[1].name == "ac3hearth-testsink-1");
+    CHECK(store.records()[1].name == "hearth-testsink-1");
 }
 
 TEST_CASE("pairing store: sessions look keys up while the window pairs and forgets",

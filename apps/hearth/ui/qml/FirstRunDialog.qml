@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // "Before you play anything" (planning/hearth-design.md; docs/hearth/design/
 // screenshots/first-run.png): shown once, over the Play page, before the

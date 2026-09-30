@@ -13,7 +13,7 @@
 #include "iclforge/ac4dec/decoder.hpp"
 #include "iclforge/ac4enc/encoder.hpp"
 
-// What ac3cli's `ac4-encode` and ac3gui's AC-4 encode share, so that the
+// What forge's `ac4-encode` and forge-gui's AC-4 encode share, so that the
 // command line the GUI echoes writes the same bytes the GUI does: the encoder's
 // input channels for a WAV file's channel count, the programme's BS.1770
 // measurements behind dialnorm=auto and loudness=, and the sync frames or the
@@ -82,7 +82,7 @@ struct Ac4Packaged {
 struct Ac4PackageError {
     std::string message;
     // Whether the configuration asked for something the container cannot
-    // describe (ac3cli's usage error), rather than a failure writing it.
+    // describe (forge's usage error), rather than a failure writing it.
     bool usage = false;
 };
 
@@ -91,7 +91,7 @@ struct Ac4PackageError {
     bool crc);
 
 // Whether an output path names an MP4 file, as `remux` matches them: by the
-// path's extension, case kept, .mp4, .m4a or .mov. What ac3cli's ac4-encode and
+// path's extension, case kept, .mp4, .m4a or .mov. What forge's ac4-encode and
 // atmos-encode write an MP4 file for; the page writes one for its MP4
 // container.
 [[nodiscard]] bool ac4_output_names_mp4(std::string_view out_path);

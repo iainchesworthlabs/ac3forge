@@ -28,7 +28,7 @@
 #    consumer's link line, where it beats a libiclforge_ac3.so listed after it
 #    (iclforge_capi_objects, below);
 #  - libiclforge_c.so exports the C API and nothing else (the end of this file).
-# Without them ac3tests in the BUILD_SHARED_LIBS=ON pass bound none of its
+# Without them iclforge-tests in the BUILD_SHARED_LIBS=ON pass bound none of its
 # ac3:: symbols to libiclforge_ac3.so; tools/checks/check_shared_forge_binding.sh
 # checks that it does.
 # ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ target_compile_features(iclforge_capi_objects PUBLIC cxx_std_23)
 # behind, so the dependency lands in its INTERFACE_LINK_LIBRARIES, and both
 # libraries below link iclforge_capi_objects PUBLIC for its include path. Linked
 # PRIVATE here, iclforge::ac3_static reached every consumer of
-# iclforge::c_shared, and ac3tests' link line carried libiclforge_ac3_static.a
+# iclforge::c_shared, and iclforge-tests' link line carried libiclforge_ac3_static.a
 # ahead of libiclforge_ac3.so, so the archive supplied the symbols the tests call.
 # The two libraries link it themselves instead, where PRIVATE means what it
 # says: a shared library keeps it to itself, and a static one passes it on to

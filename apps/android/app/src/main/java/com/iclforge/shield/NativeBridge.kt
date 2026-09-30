@@ -1,14 +1,14 @@
-package com.ac3forge.shield
+package com.iclforge.shield
 
 /**
- * The JNI surface `ac3forge_jni.so` exposes to Kotlin, and the registration
+ * The JNI surface `iclforge_jni.so` exposes to Kotlin, and the registration
  * call that goes the other way.
  *
  * `registerPassthroughBridge` is declared here now (implemented in
  * src/audio/src/backend/android/passthrough.cpp) even though
  * [PassthroughBridge] itself does not exist yet - the native symbol name is
  * part of the JNI contract fixed by mangling
- * (`Java_com_ac3forge_shield_NativeBridge_registerPassthroughBridge`), so the
+ * (`Java_com_iclforge_shield_NativeBridge_registerPassthroughBridge`), so the
  * Kotlin-side declaration and the native `extern "C"` definition have to
  * agree on the package/class name from the start, not be introduced
  * together later.
@@ -19,7 +19,7 @@ object NativeBridge {
     const val RECORD_PLAYING = 2
 
     /**
-     * Whether `ac3forge_jni` actually loaded. Callers must check this before
+     * Whether `iclforge_jni` actually loaded. Callers must check this before
      * any `native*` call below; every one of them throws
      * [UnsatisfiedLinkError] when it is false.
      *
@@ -40,10 +40,10 @@ object NativeBridge {
      */
     @JvmStatic
     val available: Boolean = try {
-        System.loadLibrary("ac3forge_jni")
+        System.loadLibrary("iclforge_jni")
         true
     } catch (t: Throwable) {
-        android.util.Log.e("ShieldAtmosDemo", "System.loadLibrary(ac3forge_jni) failed", t)
+        android.util.Log.e("ShieldAtmosDemo", "System.loadLibrary(iclforge_jni) failed", t)
         false
     }
 
@@ -266,7 +266,7 @@ object NativeBridge {
      * [nativeStartLiveCursor] - does not touch LiveCursorState. Requires
      * [registerPassthroughBridge] to have run first, same as the live
      * cursor. Returns false on read/parse/sink-start failure (see logcat
-     * tag ac3forge.shield.file_replay for why).
+     * tag iclforge.shield.file_replay for why).
      */
     external fun nativePlayEac3File(path: String): Boolean
 

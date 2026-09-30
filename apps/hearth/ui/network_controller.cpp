@@ -554,7 +554,7 @@ NetworkController::NetworkController(QObject* parent)
       // says, which would let a QML test suite - or a --shot capture - read
       // and write the developer's own settings. hearth_controller.cpp's own
       // constructor carries the identical comment for the identical reason.
-      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
+      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("iclforge"),
                 QStringLiteral("Hearth")),
       settings_store_(std::make_unique<iclforge::hearth::ui::QSettingsStore>(settings_)),
       pairing_store_(shared_pairing_store()) {

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // Keyboard shortcuts reference, opened from the header's "?" button and F1
 // (issue #830). The same Dialog shape as Crucible's AboutDialog.qml, on

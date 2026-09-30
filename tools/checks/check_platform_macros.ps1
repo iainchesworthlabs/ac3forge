@@ -73,7 +73,7 @@ if (-not (Test-Path $srcRoot)) {
     exit 2
 }
 
-# apps/ (the runnable-application tree - ac3cli, ac3gui, the Android and WASM
+# apps/ (the runnable-application tree - forge, forge-gui, the Android and WASM
 # demos) carries the same rule and is scanned alongside src/ once it exists.
 # Optional rather than required: a repo state mid-way through the src/->apps/
 # consolidation (or a checkout of an older tag, before apps/ existed at all)

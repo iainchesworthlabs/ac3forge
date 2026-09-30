@@ -442,7 +442,7 @@ runs:
         #    running them side by side safe. A failing case is retried once and
         #    the retry is reported, so a collision that slipped through shows up
         #    as a warning instead of an unexplained red.
-        # 2. The Qt Quick suites (ac3gui_, ac3hearth_ and ac3crucible_qml_tests_*),
+        # 2. The Qt Quick suites (forge_gui_, hearth_ and crucible_qml_tests_*),
         #    in a phase of their own, at ctest-qml-jobs at a time (default one).
         #    They drive a software-rendered window with mouse clicks and 5 to 10
         #    second tryVerify windows, and a suite's own comments say a click
@@ -509,7 +509,7 @@ runs:
         rc=0
         run_phase "$jobs" retry -LE Performance -E '_qml_tests_' || rc=$?
         # --no-tests=ignore on the other two, since a preset may build no Qt
-        # (the sanitizer legs) or no ac3perf target.
+        # (the sanitizer legs) or no iclforge-perf target.
         run_phase "$qml_jobs" retry -R '_qml_tests_' --no-tests=ignore || rc=$?
         run_phase 1 once -L Performance --no-tests=ignore || rc=$?
         retried="$(grep -c '\*\*\*Failed' "$log" || true)"

@@ -1,4 +1,4 @@
-package com.ac3forge.shield
+package com.iclforge.shield
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry

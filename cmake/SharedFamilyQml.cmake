@@ -1,7 +1,7 @@
 # Copies the family's shared QML components (apps/gui/qml/*.qml: Theme, Card,
 # SectionHeader, StatTile, AppButton, AppCheckBox, IconButton, AppSlider, AppTextField, AppComboBox, RailBlock,
 # SegmentedControl, FocusRing) into a Qt
-# application's own qml/shared/ directory, rewriting `import Ac3Forge` to that
+# application's own qml/shared/ directory, rewriting `import ForgeGui` to that
 # application's own module URI - generated INTO the source tree (ignored by
 # git) rather than the
 # build tree, because the QML ahead-of-time compiler names its cache files
@@ -34,7 +34,7 @@
 # reconfiguration when the file changes) is project-wide regardless of which
 # directory's scope it was registered from.
 #
-# module_uri:    this application's `import <uri>` replacement, e.g. Ac3ForgeCrucible
+# module_uri:    this application's `import <uri>` replacement, e.g. Crucible
 # out_dir:       where the rewritten copies are written, e.g. .../ui/qml/shared
 # out_files_var: name of a variable (in the caller's scope) to receive the
 #                list of generated file paths
@@ -48,7 +48,7 @@ function(iclforge_stage_shared_qml module_uri out_dir out_files_var)
         set(src "${CMAKE_SOURCE_DIR}/apps/gui/qml/${name}")
         set(dst "${out_dir}/${name}")
         file(READ "${src}" contents)
-        string(REPLACE "import Ac3Forge\n" "import ${module_uri}\n" contents "${contents}")
+        string(REPLACE "import ForgeGui\n" "import ${module_uri}\n" contents "${contents}")
         file(WRITE "${dst}" "${contents}")
         if(NOT "${src}" IN_LIST tracked)
             # Re-run configure when the GUI's file changes, so the rewrite

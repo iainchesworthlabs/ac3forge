@@ -303,7 +303,7 @@ jobs:
       #
       # Deliberately NOT required: the macOS `iclforge-dev-*` archive, which
       # package-macos-universal documents as best-effort; and the Linux
-      # AC3Forge Crucible package, whose leg skips itself whole on a runner
+      # Crucible package, whose leg skips itself whole on a runner
       # with too old a Qt (see _build.yml's own comment on that upload).
       # Both are absences a maintainer is told to expect.
       - name: Verify every documented package was built
@@ -316,7 +316,7 @@ jobs:
           # meant: cmake/Packaging.cmake's CPACK_PACKAGE_FILE_NAME is
           # iclforge-<M>.<m>.<p>-<system>, so a digit follows the hyphen, and
           # the looser glob would also match iclforge-dev-* and
-          # ac3forge-crucible-* - letting one of those stand in for a runtime
+          # iclforge-crucible-* - letting one of those stand in for a runtime
           # package that never got built, which is the failure this whole step
           # exists to catch.
           expected=(
@@ -334,7 +334,7 @@ jobs:
             "release-artifacts/iclforge-[0-9]*-Linux-aarch64-runtime.rpm|Linux aarch64 .rpm (linux-gcc-arm64)"
             "release-artifacts/iclforge-dev-*-Linux-aarch64.tar.gz|Linux aarch64 library archive (linux-gcc-arm64)"
             "release-artifacts/iclforge-[0-9]*-Darwin.dmg|macOS universal disk image (package-macos-universal)"
-            "release-artifacts/ac3gui-*.AppImage|Linux AppImage (linux-appimage)"
+            "release-artifacts/forge-gui-*.AppImage|Linux AppImage (linux-appimage)"
             "release-artifacts/*.apk|Android APK (build-android)"
             # The sink firmware (package-esp32-firmware, planning/esp32-ota.md O8):
             # each image's factory file stands for its set, which

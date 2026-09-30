@@ -1,9 +1,9 @@
-AC3Forge {{VERSION}} - third-party notices, {{PLATFORM}} build
+ICL Forge {{VERSION}} - third-party notices, {{PLATFORM}} build
 ========================================================================
 
 This file is installed as {{LOCATION}}, and covers {{PROGRAMS}}.
 
-AC3Forge, and the ac3forge library its applications are built from, are
+ICL Forge, and the iclforge library its applications are built from, are
 free software under the GNU General Public License, version 3 or later;
 the full text is LICENSE.txt beside this file. The source is at
 https://github.com/iainchesworthlabs/ac3forge

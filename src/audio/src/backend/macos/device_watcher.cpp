@@ -51,7 +51,7 @@
 //
 // Nothing here writes kAudioHardwarePropertyRunLoop, and that is a decision
 // rather than an oversight. The HAL's older listener API delivered on the
-// process's MAIN run loop, so a program that never runs one - ac3cli, a test
+// process's MAIN run loop, so a program that never runs one - forge, a test
 // binary - would register and then never hear anything, and setting that
 // property to a null CFRunLoopRef is the lever that asks for a dedicated
 // notification thread instead. Three reasons it is not pulled here. It is

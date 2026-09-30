@@ -80,7 +80,7 @@ constexpr int kBsidBitOffset = 40;
 // bsid/bsmod are captured rather than skipped because multiple separate
 // consumers need them off the wire: build_codec_config_box()
 // (ac3/io/dec3.hpp) fills in AC3SpecificBox's own bsid/bsmod fields from them
-// (ETSI TS 102 366 Annex F §F.4), `ac3cli probe` reports them directly, and
+// (ETSI TS 102 366 Annex F §F.4), `forge probe` reports them directly, and
 // the MPEG-TS PMT descriptors (iclforge::mpegts::ServiceInfo) need bsmod/dsurmod for
 // their own service-type/surround-mode fields. bsmod_present is always true
 // here - §5.4.2.2 puts bsmod in every AC-3 syncframe unconditionally, unlike
@@ -192,12 +192,12 @@ std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byt
 // --- E-AC-3 ----------------------------------------------------------------
 
 // Table E1.2's fields land straight in the public FrameHeader (see
-// elementary.hpp) rather than in a scan-private struct: `ac3cli probe` reports
+// elementary.hpp) rather than in a scan-private struct: `forge probe` reports
 // every one of them per frame, and scan() below keeps only the first
 // programme's own units - two consumers of one walk, not two walks.
 // bsmod_present, dsurmod and mix_metadata ride along the same way, for the
 // MPEG-TS PMT descriptors (iclforge::mpegts::ServiceInfo) that need them one level
-// further out still, and dmixmod for probe's report and ac3cli's
+// further out still, and dmixmod for probe's report and forge's
 // downmix=auto.
 //
 // Table E1.2's mixing-metadata payload, walked (not interpreted) purely to
@@ -678,7 +678,7 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
                 // (a size, to step to the next one); the core's first frame
                 // additionally sets the stream-level fields, and for those
                 // read_ac3_header is the one parse that fills the whole
-                // public FrameHeader - the same one `ac3cli probe` reports.
+                // public FrameHeader - the same one `forge probe` reports.
                 const auto header = read_ac3_header(stream.subspan(offset));
                 if (!header.has_value()) {
                     return std::unexpected(header.error());

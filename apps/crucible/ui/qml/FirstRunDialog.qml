@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // What Crucible is about to do to the sound settings, said once, before it
 // does it (docs/crucible/design/promotion.md, Phase 6). Every sentence that names

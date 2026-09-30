@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 # fuzz/generate-seeds.sh - grow a fuzzing corpus from iclforge's own valid
-# output, by running ac3cli across the layout/codec/tool matrix this project
+# output, by running forge across the layout/codec/tool matrix this project
 # already supports. Cheaper and more representative than hand-written corpus
 # files: every seed here is a real, self-consistent stream this project can
 # actually produce, so a fuzzer's mutations start from "almost valid" rather
 # than from nothing.
 #
-# Needs a built ac3cli. Any working configuration will do: this generates
+# Needs a built forge. Any working configuration will do: this generates
 # plain valid streams, not instrumented ones, so it needs neither Clang nor
 # sanitizers. The Windows MSVC leg is what gets used in practice, for no
 # better reason than that it is the one already built on the development
 # host - every other leg builds clean too.
 #
-#   AC3CLI_BIN=build/config-windows-msvc-debug/bin/ac3cli.exe fuzz/generate-seeds.sh
+#   ICLFORGE_CLI_BIN=build/config-windows-msvc-debug/bin/forge.exe fuzz/generate-seeds.sh
 #
 # Usage: fuzz/generate-seeds.sh [output-dir]   (default: fuzz/seeds)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-AC3CLI="${AC3CLI_BIN:-}"
+ICLFORGE_CLI="${ICLFORGE_CLI_BIN:-}"
 OUT="${1:-$REPO_ROOT/fuzz/seeds}"
 
-if [ -z "$AC3CLI" ] || [ ! -f "$AC3CLI" ]; then
-    echo "error: set AC3CLI_BIN to a built ac3cli (see this script's header)" >&2
+if [ -z "$ICLFORGE_CLI" ] || [ ! -f "$ICLFORGE_CLI" ]; then
+    echo "error: set ICLFORGE_CLI_BIN to a built forge (see this script's header)" >&2
     exit 1
 fi
 
@@ -34,7 +34,7 @@ mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/f
          "$OUT/fuzz_signing_verify" "$OUT/fuzz_iec61937_unwrap" \
          "$OUT/fuzz_ac4_parse" "$OUT/fuzz_iab_parse"
 
-run() { "$AC3CLI" "$@" >/dev/null; }
+run() { "$ICLFORGE_CLI" "$@" >/dev/null; }
 
 # add_seed <comma-separated dest names under $OUT> <file>
 add_seed() {
@@ -55,7 +55,7 @@ add_seed "fuzz_ac4_parse" "$REPO_ROOT/tests/golden/external-baseline/ac4-stereo-
 
 # The IAB seed comes from examples/encode_iab.cpp's own --write-fixture mode,
 # the one tools/ci/run_codec_matrix.sh drives, so it needs that example built -
-# which this script's AC3CLI_BIN contract does not cover. It is committed
+# which this script's ICLFORGE_CLI_BIN contract does not cover. It is committed
 # instead; regenerate with:
 #
 #     encode_iab --write-fixture fuzz/seeds/fuzz_iab_parse/iab-bed-object.iab
@@ -211,7 +211,7 @@ python3 "$SCRIPT_DIR/metadata-seeds.py" extract "$OUT" \
     "$WORK/atmos-objects.ec3" "$WORK/atmos-encode.ec3" "$WORK/atmos-bed51.ec3"
 
 echo "==> ADM: BW64/RF64 fixtures for fuzz_adm_parse - synthesised rather than"
-echo "    encoded, since nothing ac3cli produces is an ADM file"
+echo "    encoded, since nothing forge produces is an ADM file"
 python3 "$SCRIPT_DIR/metadata-seeds.py" adm "$OUT"
 
 echo "==> IEC 61937 carriers, for the burst de-framer (IEC 61937 de-framing)"
@@ -240,7 +240,7 @@ add_seed "fuzz_iec61937_unwrap,fuzz_wav_read" "$WORK/spdif-eac3-51.wav"
 head -c 131072 "$WORK/roundtrip-stereo.wav" > "$WORK/carrier-not.wav"
 add_seed "fuzz_iec61937_unwrap" "$WORK/carrier-not.wav"
 # AC-4 (IEC 61937-14): the Dolby Encoding Engine's stereo stream, whose bursts
-# are as long as its frames. 'ac3cli spdif' does not pack AC-4 yet
+# are as long as its frames. 'forge spdif' does not pack AC-4 yet
 # (planning/ac4.md, I1), so the seed script packs its first four frames.
 python3 "$SCRIPT_DIR/metadata-seeds.py" ac4-carrier "$OUT" \
     "$REPO_ROOT/tests/golden/external-baseline/ac4-stereo-64/dee.ac4"

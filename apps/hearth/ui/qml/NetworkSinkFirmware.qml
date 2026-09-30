@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // A Hearth sink's firmware (planning/esp32-ota.md, O5): what it runs, what it
 // would go back to, how its last update and its last crash went, and what the

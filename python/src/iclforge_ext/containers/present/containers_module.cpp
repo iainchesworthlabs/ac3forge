@@ -33,7 +33,7 @@ void register_containers(py::module_& m) {
     // as the boundary, not silently missing.
     auto containers = m.def_submodule(
         "containers",
-        "Matroska/MP4/MPEG-TS carriage for encoded frames - the library twins of `ac3cli "
+        "Matroska/MP4/MPEG-TS carriage for encoded frames - the library twins of `forge "
         "mkv`/`mp4`/`ts`/`demux`.");
 
     const auto frames_to_views = [](const std::vector<py::bytes>& frames,

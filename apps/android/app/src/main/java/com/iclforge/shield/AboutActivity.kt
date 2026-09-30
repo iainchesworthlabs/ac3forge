@@ -1,4 +1,4 @@
-package com.ac3forge.shield
+package com.iclforge.shield
 
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -57,7 +57,7 @@ class AboutActivity : Activity() {
             )
 
             addView(TextView(this@AboutActivity).apply {
-                text = "ac3forge — Shield Atmos Demo"
+                text = "ICL Forge — Shield Atmos Demo"
                 textSize = 24f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Theme.colorTextPrimary)
@@ -73,7 +73,7 @@ class AboutActivity : Activity() {
 
             addView(kicker("LICENSE"))
             addView(body(
-                "ac3forge is free software: you can redistribute it and/or modify it " +
+                "ICL Forge is free software: you can redistribute it and/or modify it " +
                     "under the terms of the GNU General Public License as published by " +
                     "the Free Software Foundation, either version 3 of the License, or " +
                     "(at your option) any later version. It is distributed WITHOUT ANY " +

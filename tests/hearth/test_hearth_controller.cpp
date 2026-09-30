@@ -41,19 +41,19 @@
 // namespace too.
 //
 // tests/CMakeLists.txt deliberately does NOT add hearth_controller.cpp to
-// ac3tests's own source list for this: ac3tests is Qt-free by design (see
+// iclforge-tests's own source list for this: iclforge-tests is Qt-free by design (see
 // its own comments on gui_diagnostics.cpp and the Crucible engine sources -
 // "exactly so its... contract can be held here... without a QML engine in
 // the room"), and hearth_controller.cpp needs QVariantMap/QString (Qt Core)
 // plus a QObject-derived HearthController class that also touches Qt Gui
 // (QGuiApplication, diagnosticsReport()) and Qt Qml (QML_ELEMENT/
 // QML_SINGLETON). This file instead builds into its own small binary,
-// ac3hearth_controller_tests, gated on Qt6 Core+Gui+Qml being found - never
+// hearth_controller_tests, gated on Qt6 Core+Gui+Qml being found - never
 // Quick, QuickControls2 or Widgets, and never a live QGuiApplication
 // instance: nothing here opens a window, loads a QML file or runs an event
 // loop. HearthController's own class methods compile as part of this
 // translation unit too (the .cpp is included whole), which is why this
-// target also links ac3hearth_engine, item_loader.cpp and
+// target also links hearth_engine, item_loader.cpp and
 // apps/common/container_input.cpp - what HearthController::start()/
 // addFolder() reference has to resolve at link time even though no test
 // here calls them.

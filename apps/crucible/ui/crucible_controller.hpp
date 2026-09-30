@@ -275,7 +275,7 @@ public:
     [[nodiscard]] QString silentDeviceAdvice() const;
     [[nodiscard]] bool silentDeviceFromPackage() const;
     [[nodiscard]] bool silentDeviceCanCreate() const;
-    [[nodiscard]] static bool has3D() { return AC3DESK_QUICK3D != 0; }
+    [[nodiscard]] static bool has3D() { return ICLFORGE_CRUCIBLE_QUICK3D != 0; }
     [[nodiscard]] static bool spatialAvailable();
     [[nodiscard]] static QString spatialAbsentReason();
     [[nodiscard]] static bool trayAvailable();

@@ -51,7 +51,7 @@ namespace {
 // channels, so a surround-rendering application's tap arrives as eight
 // channels the way the Windows driver's 7.1 advertisement makes it - see
 // EngineConfig::tap_channels.
-constexpr const char* kNodeName = "ac3forge_crucible_sink";
+constexpr const char* kNodeName = "iclforge_crucible_sink";
 
 // The node lives on a context that has to stay alive for as long as it does,
 // so this owns a thread loop of its own rather than a scoped round trip like
@@ -97,7 +97,7 @@ public:
         }
         iclforge::pipewire::ensure_initialized();
 
-        loop_ = iclforge::pipewire::ThreadLoop{pw_thread_loop_new("ac3crucible-sink", nullptr)};
+        loop_ = iclforge::pipewire::ThreadLoop{pw_thread_loop_new("crucible-sink", nullptr)};
         if (!loop_) {
             return fail("could not create a PipeWire loop for the silent device");
         }

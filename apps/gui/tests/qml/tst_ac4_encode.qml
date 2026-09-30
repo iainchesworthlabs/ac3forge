@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The AC-4 tab's controls that tst_e2e_ac4.qml does not drive, each from the
 // keyboard: the dialogue enhancement's centre, Mid and largest boost, and the
@@ -173,7 +173,7 @@ TestCase {
         compare(EncoderController.ac4SurroundIndex, 6);
         keys(findByName(tab, "ac4PreferredDownmix"), Qt.Key_Down, 2); // Lt/Rt
         compare(EncoderController.ac4PreferredDownmixIndex, 2);
-        const echoed = "ac3cli ac4-encode roundtrip-51.wav out.ac4 192 cmixlev=+3 surmixlev=off "
+        const echoed = "forge ac4-encode roundtrip-51.wav out.ac4 192 cmixlev=+3 surmixlev=off "
                        + "dmixmod=ltrt";
         compare(win.cliLine, echoed);
 
@@ -182,7 +182,7 @@ TestCase {
         compare(run.status, "done", run.detail);
         verify(EncoderController.status.indexOf("5.1 AC-4 frames") > 0, EncoderController.status);
         if (!cliRunner.available()) {
-            skip("this build has no ac3cli to run the echoed line through");
+            skip("this build has no forge to run the echoed line through");
         }
         verify(cliRunner.prepare(cliFolderUrl, surroundUrl));
         compare(cliRunner.run(run.cliLine, cliFolderUrl), 0, run.cliLine);

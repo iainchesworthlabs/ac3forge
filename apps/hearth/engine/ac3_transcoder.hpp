@@ -27,7 +27,7 @@
 // settings (transcode_settings()), whose slots are already in the order an
 // AC-3 encoder takes them - L C R Ls Rs, then the LFE. This gathers those
 // blocks into six-block frames and encodes each as 3/2 with LFE at 448 kbit/s,
-// the rate `ac3cli transcode` uses.
+// the rate `forge transcode` uses.
 //
 // What the source says about itself goes with it, frame by frame, from the
 // reports of the units the frame was encoded from:
@@ -93,7 +93,7 @@ public:
 
     // The levels a transcode of the stream `unit` starts would write: its own
     // where it is AC-3, else its E-AC-3 Lo/Ro pair - or its Lt/Rt pair where
-    // it prefers that fold - taken to the nearest AC-3 level, as `ac3cli
+    // it prefers that fold - taken to the nearest AC-3 level, as `forge
     // transcode` takes them. The defaults where it says nothing.
     [[nodiscard]] static FoldLevels fold_levels(std::span<const std::byte> unit);
 

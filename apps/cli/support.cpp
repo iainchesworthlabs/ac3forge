@@ -57,7 +57,7 @@
 #include "recording_sink.hpp"
 #include "usage.hpp"
 
-namespace ac3cli {
+namespace forge_cli {
 
 namespace plan = iclforge::plan;
 
@@ -1154,14 +1154,14 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
         const auto parsed =
             parse_ac4_substream_option(numbered->first, numbered->second, value, options, refuse);
         return parsed == MetadataOptionResult::kNotMetadata
-                   ? refuse("unknown substreamN option; see ac3cli help ac4-encode")
+                   ? refuse("unknown substreamN option; see forge help ac4-encode")
                    : parsed;
     }
     if (const auto numbered = match_numbered(key, "presentation", 64)) {
         const auto parsed = parse_ac4_presentation_option(numbered->first, numbered->second, value,
                                                           options, refuse);
         return parsed == MetadataOptionResult::kNotMetadata
-                   ? refuse("unknown presentationN option; see ac3cli help ac4-encode")
+                   ? refuse("unknown presentationN option; see forge help ac4-encode")
                    : parsed;
     }
     if (key == "crc") {
@@ -3254,7 +3254,7 @@ namespace {
 // The first dmixmod a programme's independent substream sends, and the acmod
 // it rode in on - iclforge::automatic_stereo_target() needs both, since Table
 // D2.2's own note leaves dmixmod's meaning reserved below acmod 3/0 (see that
-// function's comment). Same value `ac3cli probe` reports for the lead
+// function's comment). Same value `forge probe` reports for the lead
 // programme. Headers only, and it stops at the first answer, which is the
 // stream's first syncframe for ordinary content. An unset `programme` follows
 // choose_programme(): the first programme the stream carries. Dependents are
@@ -4529,4 +4529,4 @@ void print_object_summary(FILE* status,
     }
 }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

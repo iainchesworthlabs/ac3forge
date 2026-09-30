@@ -19,7 +19,7 @@
 //
 // cmake --preset config-linux-gcc-minimal-encoder
 // cmake --build --preset build-linux-gcc-minimal-encoder
-// ./build/config-linux-gcc-minimal-encoder/bin/ac3probe
+// ./build/config-linux-gcc-minimal-encoder/bin/iclforge-probe
 //
 // Since 2026-09-10 the profile's encoders run their analysis front end -
 // transient detection, the block gather, the analysis window and the forward
@@ -37,7 +37,7 @@
 // there is something to compare against. This is a REGRESSION reference, the
 // same standing fixture.hpp has on the decode side.
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 inline constexpr int kEncodeFrames = 6;
 
@@ -112,7 +112,7 @@ inline constexpr std::uint64_t kEac3StereoHash = 18016255318094015214ULL;
 // the encoder drops coupling and the frame is spx+aht - the same bytes as
 // asking for those two alone. cplbegf 0 (coupling from coefficient 37) and
 // spxbegf 7 (synthesis from the highest start code) leave a coupling region
-// between them, and `ac3cli probe` on the frame reports coupling in 6 of 6
+// between them, and `forge probe` on the frame reports coupling in 6 of 6
 // blocks, spx in 6 of 6 and AHT in the syncframe. 768 bytes an access unit,
 // 4,608 for six.
 inline constexpr std::size_t kEac3ToolsBytes = 4608;
@@ -129,4 +129,4 @@ inline constexpr std::uint64_t kEac3ToolsHash = 1673449135140366971ULL;
 inline constexpr std::size_t kEac3SevenOneBytes = 16128;
 inline constexpr std::uint64_t kEac3SevenOneHash = 0xbe1aad39df30dc74ULL;
 
-} // namespace ac3probe
+} // namespace iclforge_probe

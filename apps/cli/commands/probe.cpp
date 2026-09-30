@@ -35,7 +35,7 @@
 #include "container_input.hpp"
 #include "probe_json.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 namespace {
 
@@ -791,8 +791,8 @@ int run_probe(std::string_view in_path, const Options& meta) {
     // A stream that fails its own CRCs, or that this decoder cannot parse, is
     // still fully described above - but the exit code says so, the same way
     // 'qc' reports a measurement and gates on it separately. A CI step can
-    // therefore use `ac3cli probe` as a check without reading its output.
+    // therefore use `forge probe` as a check without reading its output.
     return report.crc_failures > 0 || report.parse_failures > 0 ? 1 : 0;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

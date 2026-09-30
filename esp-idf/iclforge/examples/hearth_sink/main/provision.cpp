@@ -161,7 +161,7 @@ void answer(const improv::Rpc& rpc) {
                                  : chip.model == CHIP_ESP32P4 ? "ESP32-P4"
                                                               : "ESP32";
             const std::array<std::string_view, 4> strings{
-                "AC3Forge Hearth sink",
+                "Hearth sink",
                 app != nullptr ? app->version : "unknown",
                 family,
                 settings().name.data(),

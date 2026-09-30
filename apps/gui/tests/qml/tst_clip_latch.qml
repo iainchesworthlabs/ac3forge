@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The meters' CLIP box used to reflect only the newest snapshot; now the
 // controller latches it: once a channel clips, it stays lit until the user

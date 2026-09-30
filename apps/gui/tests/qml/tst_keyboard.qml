@@ -1,14 +1,14 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The window without a mouse, and the window at a larger text size.
 //
 // Both used to be claimed rather than true: Theme.qml said every size came
 // from its scale and that "a literal pixelSize in a view is a size that
 // cannot follow the person's text-size setting, so there are none", while
-// ac3gui held 377 of them and offered no text-size setting at all; and the
+// forge-gui held 377 of them and offered no text-size setting at all; and the
 // chips a person has to press to choose a bed, a low-frequency count or a
 // tab were Rectangles with a MouseArea over them and no way in from the
 // keyboard. This suite is what stops either drifting back.

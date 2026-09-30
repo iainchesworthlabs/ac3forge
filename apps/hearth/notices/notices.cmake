@@ -9,29 +9,29 @@
 #
 # Written to ${CMAKE_BINARY_DIR}/notices/hearth/NOTICES.txt. The `hearth` package component (A7,
 # apps/hearth/ui/CMakeLists.txt's install() rules) installs it at the package root on Windows and
-# macOS and under share/doc/ac3forge-hearth/ on Linux; the test sink, unpackaged, does not.
+# macOS and under share/doc/iclforge-hearth/ on Linux; the test sink, unpackaged, does not.
 #
 # include()d from apps/hearth/CMakeLists.txt for a full Sendspin build only, AFTER that file's
 # add_subdirectory(ui) - this file's Qt section needs ui/'s own PARENT_SCOPE exports
-# (AC3HEARTH_UI_QT_FOUND, AC3HEARTH_UI_QT_VERSION), which only exist once ui/ has run. A
+# (ICLFORGE_HEARTH_UI_QT_FOUND, ICLFORGE_HEARTH_UI_QT_VERSION), which only exist once ui/ has run. A
 # core-only build (ICLFORGE_SENDSPIN_CORE_ONLY) skips ui/ along with this file entirely, so
 # neither var is ever read there.
 # ---------------------------------------------------------------------------
 include(Notices)
 
-set(AC3HEARTH_NOTICES_DIR "${CMAKE_CURRENT_LIST_DIR}")
-set(AC3HEARTH_VCPKG_SHARE "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share")
-if(NOT VCPKG_INSTALLED_DIR OR NOT VCPKG_TARGET_TRIPLET OR NOT IS_DIRECTORY "${AC3HEARTH_VCPKG_SHARE}")
+set(ICLFORGE_HEARTH_NOTICES_DIR "${CMAKE_CURRENT_LIST_DIR}")
+set(ICLFORGE_HEARTH_VCPKG_SHARE "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share")
+if(NOT VCPKG_INSTALLED_DIR OR NOT VCPKG_TARGET_TRIPLET OR NOT IS_DIRECTORY "${ICLFORGE_HEARTH_VCPKG_SHARE}")
     message(FATAL_ERROR
         "notices: Hearth's notices read each dependency's version and licence from vcpkg's installed "
-        "tree, and '${AC3HEARTH_VCPKG_SHARE}' is not one. Build Hearth through vcpkg's \"hearth\" "
+        "tree, and '${ICLFORGE_HEARTH_VCPKG_SHARE}' is not one. Build Hearth through vcpkg's \"hearth\" "
         "feature (-DVCPKG_MANIFEST_FEATURES=hearth).")
 endif()
 
 # A port's version as vcpkg recorded it in the port's SPDX document, without vcpkg's own
 # port-version suffix ("#1"), which is not the library's.
-function(ac3hearth_port_version port out)
-    set(spdx "${AC3HEARTH_VCPKG_SHARE}/${port}/vcpkg.spdx.json")
+function(hearth_port_version port out)
+    set(spdx "${ICLFORGE_HEARTH_VCPKG_SHARE}/${port}/vcpkg.spdx.json")
     if(NOT EXISTS "${spdx}")
         message(FATAL_ERROR "notices: ${spdx} does not exist, so the ${port} section would name no version")
     endif()
@@ -42,27 +42,27 @@ function(ac3hearth_port_version port out)
     set(${out} "${version}" PARENT_SCOPE)
 endfunction()
 
-set(AC3HEARTH_NOTICE_FRAGMENTS header cpp-httplib mbedtls mdns libflac)
+set(ICLFORGE_HEARTH_NOTICE_FRAGMENTS header cpp-httplib mbedtls mdns libflac)
 
-# Qt, bundled into the package on Windows (beside ac3hearth.exe) and inside
-# ac3hearth.app on macOS - apps/hearth/ui/CMakeLists.txt's windeployqt /
+# Qt, bundled into the package on Windows (beside hearth.exe) and inside
+# hearth.app on macOS - apps/hearth/ui/CMakeLists.txt's windeployqt /
 # qt_generate_deploy_qml_app_script install rules (A7). Linux links the
 # system Qt and ships none, the same split
 # apps/crucible/notices/platform/<os>/components.cmake makes per platform for
-# Crucible. AC3HEARTH_UI_QT_FOUND/AC3HEARTH_UI_QT_VERSION are that ui/
+# Crucible. ICLFORGE_HEARTH_UI_QT_FOUND/ICLFORGE_HEARTH_UI_QT_VERSION are that ui/
 # directory's own PARENT_SCOPE exports (see its comment); reaching this file
 # at all depends on apps/hearth/CMakeLists.txt add_subdirectory()'ing ui/
 # first, which the "not defined" branch below is guarding against regressing.
-if((WIN32 OR APPLE OR LINUX) AND NOT DEFINED AC3HEARTH_UI_QT_FOUND)
+if((WIN32 OR APPLE OR LINUX) AND NOT DEFINED ICLFORGE_HEARTH_UI_QT_FOUND)
     message(FATAL_ERROR
-        "notices: AC3HEARTH_UI_QT_FOUND is not defined. apps/hearth/CMakeLists.txt must "
+        "notices: ICLFORGE_HEARTH_UI_QT_FOUND is not defined. apps/hearth/CMakeLists.txt must "
         "add_subdirectory(ui) before include()ing notices/notices.cmake, or this file "
         "cannot tell whether the hearth package bundles Qt.")
 endif()
 
-set(AC3HEARTH_QT_PAYLOAD "")
-set(AC3HEARTH_QT_LOOKUP "")
-if(AC3HEARTH_UI_QT_FOUND AND (WIN32 OR APPLE))
+set(ICLFORGE_HEARTH_QT_PAYLOAD "")
+set(ICLFORGE_HEARTH_QT_LOOKUP "")
+if(ICLFORGE_HEARTH_UI_QT_FOUND AND (WIN32 OR APPLE))
     # Found and bundled but blank would mean the version export above broke
     # loose from the find_package it travels with - the same failure
     # apps/notices/notices.cmake guards against for apps/gui, and for the
@@ -70,24 +70,24 @@ if(AC3HEARTH_UI_QT_FOUND AND (WIN32 OR APPLE))
     # ac3_generate_notices's leftover check (a token is substituted with
     # nothing, not left as a marker), so a shipped "Qt " with an empty
     # source URL would otherwise pass silently.
-    if(NOT AC3HEARTH_UI_QT_VERSION)
+    if(NOT ICLFORGE_HEARTH_UI_QT_VERSION)
         message(FATAL_ERROR
-            "notices: Qt6 was found for ac3hearth and this platform bundles it into the "
-            "hearth package, but AC3HEARTH_UI_QT_VERSION is empty, so the Qt section "
+            "notices: Qt6 was found for hearth and this platform bundles it into the "
+            "hearth package, but ICLFORGE_HEARTH_UI_QT_VERSION is empty, so the Qt section "
             "would name no version and its source URL would point nowhere. "
             "apps/hearth/ui/CMakeLists.txt exports it with set(... PARENT_SCOPE) beside "
             "its find_package(Qt6).")
     endif()
-    list(INSERT AC3HEARTH_NOTICE_FRAGMENTS 1 qt-bundled)
+    list(INSERT ICLFORGE_HEARTH_NOTICE_FRAGMENTS 1 qt-bundled)
     if(WIN32)
-        set(AC3HEARTH_QT_PAYLOAD
-            "ac3hearth.exe loads (bin/Qt6*.dll, plugins/, qml/\nand translations/)")
-        set(AC3HEARTH_QT_LOOKUP
+        set(ICLFORGE_HEARTH_QT_PAYLOAD
+            "hearth.exe loads (bin/Qt6*.dll, plugins/, qml/\nand translations/)")
+        set(ICLFORGE_HEARTH_QT_LOOKUP
             "they are looked up by name from the directories\nbin/qt.conf points at.")
     elseif(APPLE)
-        set(AC3HEARTH_QT_PAYLOAD
-            "ac3hearth loads from inside its application bundle\n(Contents/Frameworks/, Contents/PlugIns/ and\nContents/Resources/)")
-        set(AC3HEARTH_QT_LOOKUP
+        set(ICLFORGE_HEARTH_QT_PAYLOAD
+            "hearth loads from inside its application bundle\n(Contents/Frameworks/, Contents/PlugIns/ and\nContents/Resources/)")
+        set(ICLFORGE_HEARTH_QT_LOOKUP
             "they are loaded from inside the\napplication bundle, by the install names each Mach-O file records.")
     endif()
 endif()
@@ -95,59 +95,59 @@ endif()
 # (cmake/Fmt.cmake) - the same fmt_VERSION/ICLFORGE_FMT_VERSION choice
 # apps/crucible/notices/notices.cmake makes for the identical shared fragment.
 if(fmt_VERSION)
-    set(AC3HEARTH_FMT_VERSION "${fmt_VERSION}")
+    set(ICLFORGE_HEARTH_FMT_VERSION "${fmt_VERSION}")
 else()
-    set(AC3HEARTH_FMT_VERSION "${ICLFORGE_FMT_VERSION}")
+    set(ICLFORGE_HEARTH_FMT_VERSION "${ICLFORGE_FMT_VERSION}")
 endif()
 # Tracy's version, from its package - the same Tracy_VERSION/"not reported" choice
 # apps/crucible/notices/notices.cmake makes for the identical shared fragment (see the
 # ICLFORGE_ENABLE_TRACY block below for why this is computed unconditionally).
 if(Tracy_VERSION)
-    set(AC3HEARTH_TRACY_VERSION "${Tracy_VERSION}")
+    set(ICLFORGE_HEARTH_TRACY_VERSION "${Tracy_VERSION}")
 else()
-    set(AC3HEARTH_TRACY_VERSION "(version not reported by the Tracy package)")
+    set(ICLFORGE_HEARTH_TRACY_VERSION "(version not reported by the Tracy package)")
 endif()
-string(REGEX MATCH "^[0-9]+\\.[0-9]+" AC3HEARTH_QT_SERIES "${AC3HEARTH_UI_QT_VERSION}")
+string(REGEX MATCH "^[0-9]+\\.[0-9]+" ICLFORGE_HEARTH_QT_SERIES "${ICLFORGE_HEARTH_UI_QT_VERSION}")
 
-set(AC3HEARTH_NOTICE_TOKENS "VERSION=${PROJECT_VERSION_FULL}")
-set(AC3HEARTH_NOTICE_FILES
+set(ICLFORGE_HEARTH_NOTICE_TOKENS "VERSION=${PROJECT_VERSION_FULL}")
+set(ICLFORGE_HEARTH_NOTICE_FILES
     "TIME_FILTER_APACHE=${CMAKE_SOURCE_DIR}/src/sendspin/third_party/time-filter/LICENSE")
 foreach(port cpp-httplib mbedtls mdns libflac opus)
-    ac3hearth_port_version(${port} version)
+    hearth_port_version(${port} version)
     string(TOUPPER "${port}" key)
     string(REPLACE "-" "_" key "${key}")
-    list(APPEND AC3HEARTH_NOTICE_TOKENS "${key}_VERSION=${version}")
-    list(APPEND AC3HEARTH_NOTICE_FILES "${key}_COPYRIGHT=${AC3HEARTH_VCPKG_SHARE}/${port}/copyright")
+    list(APPEND ICLFORGE_HEARTH_NOTICE_TOKENS "${key}_VERSION=${version}")
+    list(APPEND ICLFORGE_HEARTH_NOTICE_FILES "${key}_COPYRIGHT=${ICLFORGE_HEARTH_VCPKG_SHARE}/${port}/copyright")
 endforeach()
 # libFLAC's port brings libogg with it, for Ogg FLAC.
-if(EXISTS "${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
-    ac3hearth_port_version(libogg version)
-    list(APPEND AC3HEARTH_NOTICE_FRAGMENTS libogg)
-    list(APPEND AC3HEARTH_NOTICE_TOKENS "LIBOGG_VERSION=${version}")
-    list(APPEND AC3HEARTH_NOTICE_FILES "LIBOGG_COPYRIGHT=${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
+if(EXISTS "${ICLFORGE_HEARTH_VCPKG_SHARE}/libogg/copyright")
+    hearth_port_version(libogg version)
+    list(APPEND ICLFORGE_HEARTH_NOTICE_FRAGMENTS libogg)
+    list(APPEND ICLFORGE_HEARTH_NOTICE_TOKENS "LIBOGG_VERSION=${version}")
+    list(APPEND ICLFORGE_HEARTH_NOTICE_FILES "LIBOGG_COPYRIGHT=${ICLFORGE_HEARTH_VCPKG_SHARE}/libogg/copyright")
 endif()
-list(APPEND AC3HEARTH_NOTICE_FRAGMENTS opus time-filter fmt fonts material-symbols trademarks)
-# Tracy's client library: ac3hearth_engine (engine/CMakeLists.txt) links iclforge::tracy
+list(APPEND ICLFORGE_HEARTH_NOTICE_FRAGMENTS opus time-filter fmt fonts material-symbols trademarks)
+# Tracy's client library: hearth_engine (engine/CMakeLists.txt) links iclforge::tracy
 # unconditionally, which only pulls in Tracy::TracyClient - and so is only worth
 # disclosing - when ICLFORGE_ENABLE_TRACY is on (cmake/Tracy.cmake). Same fact,
 # same fragment (found via the apps/crucible/notices/fragments FRAGMENT_DIR entry
 # below, not copied) and same conditional as apps/crucible/notices/notices.cmake's
 # own tracy section.
 if(ICLFORGE_ENABLE_TRACY)
-    list(APPEND AC3HEARTH_NOTICE_FRAGMENTS tracy)
+    list(APPEND ICLFORGE_HEARTH_NOTICE_FRAGMENTS tracy)
 endif()
-list(APPEND AC3HEARTH_NOTICE_TOKENS
-    "QT_VERSION=${AC3HEARTH_UI_QT_VERSION}"
-    "QT_SERIES=${AC3HEARTH_QT_SERIES}"
-    "QT_PAYLOAD=${AC3HEARTH_QT_PAYLOAD}"
-    "QT_LOOKUP=${AC3HEARTH_QT_LOOKUP}"
+list(APPEND ICLFORGE_HEARTH_NOTICE_TOKENS
+    "QT_VERSION=${ICLFORGE_HEARTH_UI_QT_VERSION}"
+    "QT_SERIES=${ICLFORGE_HEARTH_QT_SERIES}"
+    "QT_PAYLOAD=${ICLFORGE_HEARTH_QT_PAYLOAD}"
+    "QT_LOOKUP=${ICLFORGE_HEARTH_QT_LOOKUP}"
     # fmt, fonts and tracy are apps/crucible/notices/fragments/ fragments shared
     # verbatim across applications (like qt-bundled above) - these are Hearth's own
     # values for the tokens they each leave for the including app to fill.
-    "FMT_VERSION=${AC3HEARTH_FMT_VERSION}"
+    "FMT_VERSION=${ICLFORGE_HEARTH_FMT_VERSION}"
     "FMT_USERS=Hearth's programs"
     "FONT_USER=Hearth"
-    "TRACY_VERSION=${AC3HEARTH_TRACY_VERSION}"
+    "TRACY_VERSION=${ICLFORGE_HEARTH_TRACY_VERSION}"
     "TRACY_USERS=Hearth's programs")
 # LGPL3 is read only when qt-bundled is actually in the fragment list above; FMT_MIT
 # and OFL are read by the unconditional fmt/fonts fragments just added; MATERIAL_SYMBOLS_
@@ -155,27 +155,27 @@ list(APPEND AC3HEARTH_NOTICE_TOKENS
 # ICLFORGE_ENABLE_TRACY added tracy above. ac3_generate_notices ignores a {{FILE:...}}
 # marker no fragment mentions, so passing all five here unconditionally is safe
 # regardless of platform, Qt-bundling or ICLFORGE_ENABLE_TRACY.
-list(APPEND AC3HEARTH_NOTICE_FILES
+list(APPEND ICLFORGE_HEARTH_NOTICE_FILES
     "LGPL3=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/LGPL-3.0.txt"
     "FMT_MIT=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/MIT-fmt.txt"
     "OFL=${CMAKE_SOURCE_DIR}/apps/gui/fonts/OFL.txt"
     "MATERIAL_SYMBOLS_LICENSE=${CMAKE_SOURCE_DIR}/apps/gui/fonts/MaterialSymbolsSharp-Apache-2.0.txt"
     "TRACY_BSD=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/BSD-3-Clause-Tracy.txt")
 
-if(NOT AC3HEARTH_NOTICES_FILE)
+if(NOT ICLFORGE_HEARTH_NOTICES_FILE)
     message(FATAL_ERROR
-        "notices: AC3HEARTH_NOTICES_FILE is not set. apps/hearth/CMakeLists.txt sets it before "
+        "notices: ICLFORGE_HEARTH_NOTICES_FILE is not set. apps/hearth/CMakeLists.txt sets it before "
         "add_subdirectory(ui) and include()ing this file, precisely so ui/'s own install() "
         "rules and this generator agree on the same path without either having to run first.")
 endif()
-ac3_generate_notices("${AC3HEARTH_NOTICES_FILE}"
+ac3_generate_notices("${ICLFORGE_HEARTH_NOTICES_FILE}"
     # This directory first, then Crucible's, whose trademark paragraph and Qt section (bundled
     # verbatim, tokenised - cmake/Notices.cmake's header says why it is shared rather than
     # copied) are the same text for every application that includes them.
     FRAGMENT_DIR
-        "${AC3HEARTH_NOTICES_DIR}/fragments"
+        "${ICLFORGE_HEARTH_NOTICES_DIR}/fragments"
         "${CMAKE_SOURCE_DIR}/apps/crucible/notices/fragments"
-    FRAGMENTS ${AC3HEARTH_NOTICE_FRAGMENTS}
-    TOKENS ${AC3HEARTH_NOTICE_TOKENS}
-    FILES ${AC3HEARTH_NOTICE_FILES})
-message(STATUS "Hearth notices : sections: ${AC3HEARTH_NOTICE_FRAGMENTS}")
+    FRAGMENTS ${ICLFORGE_HEARTH_NOTICE_FRAGMENTS}
+    TOKENS ${ICLFORGE_HEARTH_NOTICE_TOKENS}
+    FILES ${ICLFORGE_HEARTH_NOTICE_FILES})
+message(STATUS "Hearth notices : sections: ${ICLFORGE_HEARTH_NOTICE_FRAGMENTS}")

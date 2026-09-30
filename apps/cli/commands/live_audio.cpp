@@ -51,7 +51,7 @@
 #include "sink_wait.hpp"
 #include "stream_playback.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 using iclforge::apps::ac4_order;
 using iclforge::apps::ac4_wav_rank;
@@ -80,7 +80,7 @@ std::expected<MonitorTarget, int> monitor_target(int device_index) {
             return std::unexpected(kExitUnavailable);
         }
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
-            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
+            fmt::println(stderr, "error: device index {} out of range (see 'forge outputs')",
                          device_index);
             return std::unexpected(kExitUsage);
         }
@@ -367,7 +367,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                                      out.object_audio.empty()
                                          ? " (JOC audio not reconstructed)"
                                          : ", JOC audio reconstructed (not played here; see "
-                                           "'ac3cli decode' with objects_dir to export it)");
+                                           "'forge decode' with objects_dir to export it)");
             }
             if (!play(interleave_reordered(out.channels, order))) {
                 return kExitRuntime;
@@ -539,7 +539,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     if (!iclforge::apps::reads_as_access_units(stream)) {
         fmt::println(stderr,
                      "error: spatial rendering needs the object layer, which only E-AC-3 "
-                     "carries - 'ac3cli monitor' plays a plain AC-3 bed");
+                     "carries - 'forge monitor' plays a plain AC-3 bed");
         return kExitInput;
     }
 
@@ -552,7 +552,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
             return kExitUnavailable;
         }
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
-            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
+            fmt::println(stderr, "error: device index {} out of range (see 'forge outputs')",
                          device_index);
             return kExitUsage;
         }
@@ -824,7 +824,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         return kExitUnavailable;
     }
     if (capture_device < 0 || static_cast<std::size_t>(capture_device) >= devices->size()) {
-        fmt::println(stderr, "error: capture device index {} out of range (see 'ac3cli devices')",
+        fmt::println(stderr, "error: capture device index {} out of range (see 'forge devices')",
                      capture_device);
         return kExitUsage;
     }
@@ -836,7 +836,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     if (meta.capture2 && (*meta.capture2 < 0 ||
                           static_cast<std::size_t>(*meta.capture2) >= devices->size())) {
         fmt::println(stderr,
-                     "error: capture2 device index {} out of range (see 'ac3cli devices')",
+                     "error: capture2 device index {} out of range (see 'forge devices')",
                      *meta.capture2);
         return kExitUsage;
     }
@@ -1153,7 +1153,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // (plan::route's own guarantee, and TS 103 420's for an object bed), so
     // there is no separate 7.8 fold to compute here. Built only when the leg
     // is actually running, unlike the GUI's (whose receiver can be hot-swapped
-    // mid-session; ac3cli's cannot).
+    // mid-session; forge's cannot).
     std::unique_ptr<iclforge::FrameEncoder> downmix_encoder;
     if (downmix_leg) {
         downmix_encoder = std::make_unique<iclforge::FrameEncoder>(
@@ -1297,8 +1297,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              : *type == iclforge::iec61937::BurstDataType::kAc3 ? "Dolby Digital"
                                                                                 : "AC-4");
                 fmt::println(stderr,
-                             "  'ac3cli record <out.ec3> <seconds> 0 {}' records the elementary "
-                             "stream instead, and 'ac3cli unspdif' recovers one from a capture "
+                             "  'forge record <out.ec3> <seconds> 0 {}' records the elementary "
+                             "stream instead, and 'forge unspdif' recovers one from a capture "
                              "already saved as a WAV.",
                              capture_device);
                 return kExitInput;
@@ -1677,4 +1677,4 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     return monitor_lost_at.has_value() || passthrough_lost_at.has_value() ? kExitRuntime : kExitOk;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

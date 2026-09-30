@@ -169,7 +169,7 @@ endif()
 # The definitions go in their own inline namespace, fmt::ac3_private, through FMT_BEGIN_NAMESPACE
 # and FMT_END_NAMESPACE, the hooks {fmt} provides for embedding it in a library. Without that the
 # archive holds weak definitions of fmt::v12::vprint and vformat, and a weak definition in an
-# archive member satisfies every other object's reference to the same name: ac3tests, which
+# archive member satisfies every other object's reference to the same name: iclforge-tests, which
 # compiles cpu_features.cpp a second time, had the archive's cpu_features.cpp.o pulled in for
 # fmt::v12::vprint and stopped at a duplicate ac3::internal::cpu::has_avx2, in the static build and
 # in the BUILD_SHARED_LIBS=ON pass alike. A member pulled in without a clash would put a copy of

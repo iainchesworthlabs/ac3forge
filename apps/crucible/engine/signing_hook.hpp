@@ -12,7 +12,7 @@
 
 // The Shield app's rule, on the desktop (docs/platforms/windows-demo.md,
 // "Object signing"): the key is resolved at runtime from a path the user
-// gave, or the environment variables ac3cli reads, never from beside the
+// gave, or the environment variables forge reads, never from beside the
 // executable; with no key the encoder is told to emit no object container at
 // all, because an unsigned-but-present container is a hard refusal on a
 // validating decoder rather than a graceful fallback.

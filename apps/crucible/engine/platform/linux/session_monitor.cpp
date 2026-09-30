@@ -121,7 +121,7 @@ public:
             if (stream.pid == self) {
                 // Crucible's own streams - the output probes, the sinks - are
                 // PipeWire streams like any other and were listed as an
-                // application called "ac3forge probe" on the first Linux
+                // application called "iclforge probe" on the first Linux
                 // screenshot. Windows never lists another instance of this
                 // program; the same rule, by pid.
                 continue;

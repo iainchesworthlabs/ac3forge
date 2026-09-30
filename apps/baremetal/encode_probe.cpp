@@ -228,7 +228,7 @@ struct EncodeResult {
 constexpr std::uint64_t kFrameDurationUs = 32000;
 
 void report_timing(const char* codec, const EncodeResult& r) {
-    constexpr auto kFrames = static_cast<std::uint64_t>(ac3probe::kEncodeFrames);
+    constexpr auto kFrames = static_cast<std::uint64_t>(iclforge_probe::kEncodeFrames);
     const std::uint64_t per_frame = r.encode_us / kFrames;
     const std::uint64_t permille = (r.encode_us * 1000) / (kFrameDurationUs * kFrames);
     std::printf("%s.encode_us=%lu %s.us_per_frame=%lu %s.realtime_permille=%lu\n", codec,
@@ -239,7 +239,7 @@ void report_timing(const char* codec, const EncodeResult& r) {
 
 void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes,
             std::uint64_t expected_hash) {
-    const std::size_t steady_frames = ac3probe::kEncodeFrames - 1;
+    const std::size_t steady_frames = iclforge_probe::kEncodeFrames - 1;
     std::printf("%s.bytes=%lu %s.hash=%08lx%08lx %s.first_frame_allocs=%lu "
                 "%s.steady_allocs_per_frame=%lu\n",
                 codec, static_cast<unsigned long>(r.bytes), codec,
@@ -252,7 +252,7 @@ void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes
     report_timing(codec, r);
     // Where the time above went, when the library was built to say
     // (ICLFORGE_STAGE_TIMERS); silent otherwise. probe.cpp's own note applies.
-    ac3probe::report_stages(codec, ac3probe::kEncodeFrames);
+    iclforge_probe::report_stages(codec, iclforge_probe::kEncodeFrames);
     if (r.bytes != expected_bytes) {
         fail("bytes", r.bytes, expected_bytes);
     }
@@ -300,13 +300,13 @@ EncodeResult encode_all(Encoder& encoder,
     // member nothing references is never pulled in - which left the
     // library's zone_enter/zone_leave undefined the first time this probe
     // was built with ICLFORGE_STAGE_TIMERS.
-    ac3probe::reset_stages();
+    iclforge_probe::reset_stages();
     std::size_t before = g_alloc_calls;
-    for (int frame = 0; frame < ac3probe::kEncodeFrames; ++frame) {
+    for (int frame = 0; frame < iclforge_probe::kEncodeFrames; ++frame) {
         fill_signal(pcm, frame);
-        const std::uint64_t started = ac3probe::now_us();
+        const std::uint64_t started = iclforge_probe::now_us();
         const auto encoded = encode_one(encoder, views);
-        result.encode_us += ac3probe::now_us() - started;
+        result.encode_us += iclforge_probe::now_us() - started;
         if (!encoded) {
             std::printf("check=encode status=fail frame=%d error=%d\n", frame,
                         static_cast<int>(encoded.error()));
@@ -329,7 +329,7 @@ EncodeResult encode_all(Encoder& encoder,
 
 }  // namespace
 
-int ac3probe::run() {
+int iclforge_probe::run() {
     std::printf("profile=minimal-encoder\n");
     std::printf("static.pcm_bytes=%lu static.frame_encoder_bytes=%lu "
                 "static.eac3_frame_encoder_bytes=%lu\n",
@@ -344,7 +344,7 @@ int ac3probe::run() {
     // Measured before any row, as the decode probe does, so the stage lines
     // that follow can be read against what the timing itself costs.
     std::printf("stage.pair_cost_ns=%lu\n",
-                static_cast<unsigned long>(ac3probe::stage_pair_cost_ns()));
+                static_cast<unsigned long>(iclforge_probe::stage_pair_cost_ns()));
 
     // Scoped so each encoder is destroyed before the next is built. That is not
     // tidiness - it is the shape this profile exists to prove. Holding both at
@@ -355,7 +355,7 @@ int ac3probe::run() {
         iclforge::FrameEncoder encoder{
             {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
         const auto r = encode_all(encoder, g_pcm, g_views);
-        report("ac3", r, ac3probe::kAc3Bytes, ac3probe::kAc3Hash);
+        report("ac3", r, iclforge_probe::kAc3Bytes, iclforge_probe::kAc3Hash);
     }
     const std::size_t peak_after_ac3 = g_peak_bytes;
 
@@ -365,20 +365,20 @@ int ac3probe::run() {
     {
         iclforge::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
         const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
-        report("ac3_stereo", r, ac3probe::kAc3StereoBytes, ac3probe::kAc3StereoHash);
+        report("ac3_stereo", r, iclforge_probe::kAc3StereoBytes, iclforge_probe::kAc3StereoHash);
     }
 
     {
         iclforge::eac3::FrameEncoder encoder{
             {.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
         const auto r = encode_all(encoder, g_pcm, g_views);
-        report("eac3", r, ac3probe::kEac3Bytes, ac3probe::kEac3Hash);
+        report("eac3", r, iclforge_probe::kEac3Bytes, iclforge_probe::kEac3Hash);
     }
 
     {
         iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}};
         const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
-        report("eac3_stereo", r, ac3probe::kEac3StereoBytes, ac3probe::kEac3StereoHash);
+        report("eac3_stereo", r, iclforge_probe::kEac3StereoBytes, iclforge_probe::kEac3StereoHash);
     }
 
     // The 5.1 row above encodes with no tool at all - that is the default -
@@ -395,7 +395,7 @@ int ac3probe::run() {
                                          .spxbegf = 7,
                                          .aht = true}};
         const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
-        report("eac3_tools", r, ac3probe::kEac3ToolsBytes, ac3probe::kEac3ToolsHash);
+        report("eac3_tools", r, iclforge_probe::kEac3ToolsBytes, iclforge_probe::kEac3ToolsHash);
     }
 
     // §E3.5 enhanced coupling, which nothing else here reaches. `coupling` and
@@ -413,7 +413,7 @@ int ac3probe::run() {
                                          .coupling = true,
                                          .enhanced = true}};
         const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
-        report("eac3_ecpl", r, ac3probe::kEac3EcplBytes, ac3probe::kEac3EcplHash);
+        report("eac3_ecpl", r, iclforge_probe::kEac3EcplBytes, iclforge_probe::kEac3EcplHash);
     }
     // 7.1 as an ACCESS UNIT: an independent 5.1 substream and a dependent
     // carrying Ls, Rs, Lrs and Rrs (chanmap k71Rear), which is how Annex E
@@ -446,7 +446,7 @@ int ac3probe::run() {
             g_views[0], g_views[1], g_views[2], g_views[3], g_views[4], g_views[5],
             g_views[3], g_views[4], g_views[0], g_views[1]};
         const auto r = encode_all(encoder, g_pcm, views);
-        report("eac3_71", r, ac3probe::kEac3SevenOneBytes, ac3probe::kEac3SevenOneHash);
+        report("eac3_71", r, iclforge_probe::kEac3SevenOneBytes, iclforge_probe::kEac3SevenOneHash);
     }
 
     // Hand back what enhanced coupling cached, exactly as probe.cpp does after
@@ -463,7 +463,7 @@ int ac3probe::run() {
 
     // Whether this build's library called the stage timers at all; a plain
     // build says "off" and prints no stage lines.
-    std::printf("stage_timers=%s\n", ac3probe::stages_active() ? "on" : "off");
+    std::printf("stage_timers=%s\n", iclforge_probe::stages_active() ? "on" : "off");
 
     std::printf("heap.peak_bytes=%lu heap.peak_after_ac3_bytes=%lu heap.allocs=%lu "
                 "heap.frees=%lu heap.retained_bytes=%lu\n",

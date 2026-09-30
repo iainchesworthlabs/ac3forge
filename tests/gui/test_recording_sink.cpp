@@ -664,7 +664,7 @@ const Ac4Frames& ac4_frames() {
     return take;
 }
 
-// What ac3cli's take_sink_config says of the stream, built the same way.
+// What forge's take_sink_config says of the stream, built the same way.
 RecordingSink::Ac4Carriage carriage_of(const Ac4Frames& take) {
     RecordingSink::Ac4Carriage carriage;
     carriage.samples_per_frame = 2048;

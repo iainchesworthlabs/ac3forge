@@ -8,14 +8,14 @@
 #include "iclforge/ac4/ac4.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-// What the AC-4 pages show of a stream's presentations, Qt-free so ac3tests
+// What the AC-4 pages show of a stream's presentations, Qt-free so iclforge-tests
 // holds it: each presentation of the table of contents, by its position,
-// which is what `ac3cli ... presentation=` takes, and a label made of what the
+// which is what `forge ... presentation=` takes, and a label made of what the
 // decoder reports of it (its channels as coded, its language and its
 // presentation_id), in the stream's own terms rather than words the page would
 // have to translate.
 
-namespace ac3gui {
+namespace forge_gui {
 
 struct Ac4PresentationRow {
     std::size_t index = 0;
@@ -32,8 +32,8 @@ struct Ac4PresentationRow {
 [[nodiscard]] std::vector<Ac4PresentationRow> ac4_presentation_rows(
     std::span<const iclforge::ac4::SyncFrame> frames);
 
-// The channel names ac3gui shows for AC-4 speakers (A/52 Table E2.5's short
+// The channel names forge-gui shows for AC-4 speakers (A/52 Table E2.5's short
 // names, as the player's meters name them).
 [[nodiscard]] std::string ac4_speaker_names(std::span<const iclforge::ac4::Speaker> speakers);
 
-}  // namespace ac3gui
+}  // namespace forge_gui

@@ -1,9 +1,9 @@
-"""Score ac3cli's AC-4 decoding of DEE's streams against the sources they were encoded from.
+"""Score forge's AC-4 decoding of DEE's streams against the sources they were encoded from.
 
 For each leg the decoder turns into PCM - SIMPLE and ASPX mono, stereo and 5.1, 5.1 in ASPX_ACPL_2
 and ASPX_ACPL_3, and DEE's immersive stereo (IMS), at frame_rate_index 13, and IMS at 23.976, 24,
 25 and 29.97 fps through the sample rate converter (see
-src/ac4dec/include/iclforge/ac4dec/decoder.hpp) - this decodes the stream with `ac3cli decode`,
+src/ac4dec/include/iclforge/ac4dec/decoder.hpp) - this decodes the stream with `forge decode`,
 aligns the output with its reference by cross-correlation, fits a least-squares gain per channel,
 and checks (planning/ac4.md, the decoder's ladder, item 3):
 
@@ -60,7 +60,7 @@ ASPX_ACPL_1, whose downmixes are ASPX_ACPL_2's, and the channel pair's A-CPL, wh
 
 The crossovers and the subband groups come from the leg's first aspx_config() and the
 aspx_xover_subband_offset of each aspx_data element in that frame, a channel's being the element
-Part 1 Table 213 gives it, read from `ac3cli decode ... syntax-trace=`, through Part 1
+Part 1 Table 213 gives it, read from `forge decode ... syntax-trace=`, through Part 1
 Pseudocodes 67 to 69.
 
 The committed legs (tests/golden/external-baseline/) made with loudness measured only are scored
@@ -72,8 +72,8 @@ runs in CI.
 --measure prints what every leg measures, as the PINS lines to pin it with, and checks nothing.
 
 Usage:
-    python tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
-    python tools/checks/score_ac4_decode.py --cli ac3cli.exe --gold D:/ac3bld/ac4-gold
+    python tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/forge
+    python tools/checks/score_ac4_decode.py --cli forge.exe --gold D:/ac3bld/ac4-gold
 """
 
 import argparse
@@ -741,13 +741,13 @@ def tile_error(ref, out, groups, rate=None):
 
 
 def decode(cli, stream, out_wav, trace=None, options=()):
-    """ac3cli's decode of `stream`, with its syntax trace written to `trace` when one is given."""
+    """forge's decode of `stream`, with its syntax trace written to `trace` when one is given."""
     command = [str(cli), "decode", str(stream), str(out_wav), *options]
     if trace is not None:
         command.append(f"syntax-trace={trace}")
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise SystemExit(f"{stream}: ac3cli decode failed ({result.returncode}):\n"
+        raise SystemExit(f"{stream}: forge decode failed ({result.returncode}):\n"
                          f"{result.stdout}{result.stderr}")
     return read_wav(out_wav)
 
@@ -1140,7 +1140,7 @@ def pin_text(name, snrs, lsd, tiles, mos):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cli", required=True, type=Path, help="the ac3cli to decode with")
+    parser.add_argument("--cli", required=True, type=Path, help="the forge to decode with")
     parser.add_argument("--gold", type=Path, help="score G0's local gold set in this directory")
     parser.add_argument("--g1", action="store_true",
                         help="with --gold, score the G1 legs G1_LEGS names as well")

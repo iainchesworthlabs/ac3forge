@@ -4,7 +4,7 @@ the deltas as a GitHub job summary.
 The memory counterpart to compare_performance.py, closing the same hole one
 resource over. tools/ci/append_memory_history.py gates allocs/frame and
 bytes/frame against a trailing mean, but the only job that builds or runs
-ac3membench is persist-performance-trend, which is gated to pushes on main
+iclforge-membench is persist-performance-trend, which is gated to pushes on main
 (see .github/workflows/ci.yml). So a heap-churn regression is caught after it
 has merged, on a commit where a red check blocks nothing and belongs to
 whoever pushes next.
@@ -24,7 +24,7 @@ WHY THIS IS A CHEAPER PRE-MERGE GATE THAN THE SPEED ONE. compare_performance.py
 needs PERF_RUNS repetitions per side, an interleaved run order and a
 minimum-of-N reduction, all of it to see a signal through a shared runner's
 timing noise. Allocation counts have no such noise: for a fixed workload and a
-fixed binary ac3membench counts the same allocations every time. One run per
+fixed binary iclforge-membench counts the same allocations every time. One run per
 side is the whole measurement, so this job runs its benchmarks once each and
 spends its budget on the two builds.
 
@@ -111,7 +111,7 @@ def load_side(directory: Path):
     """{(leg, config): record} for one side of the comparison.
 
     Reuses append_memory_history.load_leg_results rather than reading
-    ac3membench's JSON again here, so the pre-merge and post-merge gates cannot
+    iclforge-membench's JSON again here, so the pre-merge and post-merge gates cannot
     drift on either the results-tree layout (one memory-<leg> subdirectory per
     leg) or the benchmark's schema. A missing directory is an empty side rather
     than a crash - main() reports that as a skip.
@@ -177,7 +177,7 @@ def classify_leak(base: int, head: int):
 
 def churn_table(base_side, head_side, metric: str, label: str, floor: float):
     """One markdown table for one churn metric, plus the annotations it earned."""
-    lines = [f"### {label[0].upper()}{label[1:]} (ac3membench)", "",
+    lines = [f"### {label[0].upper()}{label[1:]} (iclforge-membench)", "",
              "| workload | base | head | delta | |",
              "| --- | ---: | ---: | ---: | --- |"]
     annotations = []
@@ -280,10 +280,10 @@ def main() -> int:
     head_side = load_side(args.head_dir)
 
     if not base_side or not head_side:
-        # Not a failure: a PR whose merge base predates ac3membench, or a
+        # Not a failure: a PR whose merge base predates iclforge-membench, or a
         # runner that could not build one side, should say so rather than fail
         # a job this script deliberately never fails.
-        print("::warning title=Memory comparison skipped::no ac3membench results on one side "
+        print("::warning title=Memory comparison skipped::no iclforge-membench results on one side "
               f"(base={len(base_side)} workload(s), head={len(head_side)}).")
         # Explicitly false rather than merely absent, so a skipped comparison
         # reads as "nothing to block on" instead of leaving the gate job to
@@ -292,7 +292,7 @@ def main() -> int:
         return 0
 
     out = [f"## Memory vs {args.base_ref}", "",
-           "One ac3membench run per side, same runner, same job. Lower is better. Allocation "
+           "One iclforge-membench run per side, same runner, same job. Lower is better. Allocation "
            "counts are deterministic for a fixed workload, so one run is the whole measurement "
            "and every delta below is a change in what the code allocates. A `regression` row "
            f"(at least {REGRESSION_GROWTH_FRACTION * 100:.0f}% more) is advisory. A "

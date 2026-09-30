@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // "06 Objects" (main-play.png / play-minimum-size.png), pulled out of
 // PlayPage.qml so it can be placed in either of two spots depending on

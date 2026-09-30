@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""Assert the AC3Forge Hearth package carries a window that can start,
+"""Assert the Hearth package carries a window that can start,
 and the notices for what it ships.
 
 The archive cpack produces for the `hearth` component (cmake/Packaging.cmake)
 is Hearth's release asset - the desktop reference player
 (planning/hearth-reference-player.md, phase A7). Its failure mode is not an
-empty file - it is a plausible-looking archive holding ac3hearth.exe with no
+empty file - it is a plausible-looking archive holding hearth.exe with no
 Qt beside it, which installs and then does not start, because the Qt deploy
 script (apps/hearth/ui/CMakeLists.txt) was filed under the wrong CPack
 component or did not run. That is what this checks, from CI
 (.github/workflows/_ci-windows.yml, _ci-macos.yml, _ci-linux.yml) and from a
 local `cpack --preset pack-windows-msvc` run just the same:
 
-    python tools/ci/check_hearth_package.py packages/ac3forge-hearth-*.zip
-    python tools/ci/check_hearth_package.py packages/ac3forge-hearth-*-Linux-*.tar.gz
-    python tools/ci/check_hearth_package.py packages/ac3forge-hearth-*-Darwin.zip
+    python tools/ci/check_hearth_package.py packages/iclforge-hearth-*.zip
+    python tools/ci/check_hearth_package.py packages/iclforge-hearth-*-Linux-*.tar.gz
+    python tools/ci/check_hearth_package.py packages/iclforge-hearth-*-Darwin.zip
 
 The layout it expects is the one qt_generate_deploy_qml_app_script()
 produces - the same mechanism apps/crucible uses and
 tools/ci/check_crucible_package.py already checks: on Windows, the binary in
 bin/ beside a qt.conf whose `Prefix = ..` sends Qt to the sibling plugins/,
 qml/ and translations/ directories; on macOS, Qt deployed inside
-ac3hearth.app itself (Contents/Frameworks/, Contents/PlugIns/ and
+hearth.app itself (Contents/Frameworks/, Contents/PlugIns/ and
 Contents/Resources/qml/).
 
 The second thing it checks is the content of NOTICES.txt
@@ -37,7 +37,7 @@ returned nothing.
 
 The third is a negative, forward-looking rather than presently exercised:
 apps/hearth/ui/CMakeLists.txt runs no StripQtTestDeployment pass yet, because
-there is no ac3hearth_qmltests target for Qt's qmlimportscanner to pull
+there is no hearth_qmltests target for Qt's qmlimportscanner to pull
 QtTest in for (see that file's own comment). apps/crucible/CMakeLists.txt hit
 exactly this leak once qmlimportscanner had a tst_*.qml to find, and
 cmake/StripQtTestDeployment.cmake is what removes it there - see
@@ -64,7 +64,7 @@ NOTICES_TXT = "NOTICES.txt"
 # the archive root beside bin/ (apps/hearth/ui/CMakeLists.txt's install
 # rules) - no driver, no console runner: Hearth has neither.
 REQUIRED = (
-    "bin/ac3hearth.exe",
+    "bin/hearth.exe",
     "bin/qt.conf",
     "plugins/platforms/qwindows.dll",
     NOTICES_TXT,
@@ -91,31 +91,31 @@ FORBIDDEN_WINDOWS_QT_TEST_DLLS = ("qt6test.dll", "qt6testd.dll",
 # CPack's DEB generator never writes. The .tar.gz mirrors the install tree
 # the .deb and .rpm carry, the same reason check_crucible_package.py reads
 # it rather than either of those.
-NOTICES_LINUX_MEMBER = "share/doc/ac3forge-hearth/NOTICES.txt"
+NOTICES_LINUX_MEMBER = "share/doc/iclforge-hearth/NOTICES.txt"
 REQUIRED_LINUX = (
-    "bin/ac3hearth",
-    "share/applications/ac3hearth.desktop",
-    "share/metainfo/ac3hearth.metainfo.xml",
-    "share/icons/hicolor/256x256/apps/ac3hearth.png",
-    "share/icons/hicolor/32x32/apps/ac3hearth.png",
+    "bin/hearth",
+    "share/applications/hearth.desktop",
+    "share/metainfo/hearth.metainfo.xml",
+    "share/icons/hicolor/256x256/apps/hearth.png",
+    "share/icons/hicolor/32x32/apps/hearth.png",
     NOTICES_LINUX_MEMBER,
-    "share/doc/ac3forge-hearth/LICENSE.txt",
-    "share/doc/ac3forge-hearth/copyright",
+    "share/doc/iclforge-hearth/LICENSE.txt",
+    "share/doc/iclforge-hearth/copyright",
 )
 
 # The macOS archive is a bundle rather than a folder of DLLs: no qt.conf, no
-# plugins/ beside bin/ - Qt is deployed inside ac3hearth.app itself
+# plugins/ beside bin/ - Qt is deployed inside hearth.app itself
 # (Contents/Frameworks/, Contents/PlugIns/ and Contents/Resources/qml/, the
-# same layout ac3crucible.app uses - see check_crucible_package.py's own
+# same layout crucible.app uses - see check_crucible_package.py's own
 # REQUIRED_MACOS). QtCore.framework stands in for "Qt was actually deployed
 # into Frameworks/": every Qt6 application links Core, so its absence means
 # the deploy step did not run - the same role libqcocoa.dylib plays for
 # PlugIns/.
 REQUIRED_MACOS = (
-    "ac3hearth.app/Contents/MacOS/ac3hearth",
-    "ac3hearth.app/Contents/Info.plist",
-    "ac3hearth.app/Contents/PlugIns/platforms/libqcocoa.dylib",
-    "ac3hearth.app/Contents/Frameworks/QtCore.framework/QtCore",
+    "hearth.app/Contents/MacOS/hearth",
+    "hearth.app/Contents/Info.plist",
+    "hearth.app/Contents/PlugIns/platforms/libqcocoa.dylib",
+    "hearth.app/Contents/Frameworks/QtCore.framework/QtCore",
     NOTICES_TXT,
     "LICENSE.txt",
 )
@@ -124,7 +124,7 @@ REQUIRED_MACOS = (
 # rule as FORBIDDEN_WINDOWS_QT_TEST_QML above and by the same reasoning; see
 # check_crucible_package.py's own comment on FORBIDDEN_MACOS_QT_TEST_QML for
 # the three shapes this can take.
-FORBIDDEN_MACOS_QT_TEST_QML = "ac3hearth.app/Contents/Resources/qml/QtTest/"
+FORBIDDEN_MACOS_QT_TEST_QML = "hearth.app/Contents/Resources/qml/QtTest/"
 FORBIDDEN_MACOS_QT_TEST_FILES = ("libquicktestplugin.dylib",)
 FORBIDDEN_MACOS_QT_TEST_FRAMEWORKS = ("QtTest.framework/", "QtQuickTest.framework/")
 
@@ -204,7 +204,7 @@ def check_linux(path: str) -> int:
     # (CPACK_INCLUDE_TOPLEVEL_DIRECTORY; the component archives here do
     # not). Normalise to an install prefix either way - the same fix
     # check_crucible_package.py's own check_linux() carries, and the same
-    # reason: stripping unconditionally turned bin/ac3hearth into ac3hearth
+    # reason: stripping unconditionally turned bin/hearth into hearth
     # and reported everything missing on a correct archive.
     install_dirs = ("bin/", "share/", "lib/", "include/", "libexec/")
     with tarfile.open(path) as archive:
@@ -244,7 +244,7 @@ def check_windows(path: str) -> int:
     problems = [f"missing {name}" for name in REQUIRED if name not in names]
     problems += [
         f"the package carries Qt's test module ({name}): nothing a user runs loads it - "
-        "apps/hearth/ui/CMakeLists.txt has no ac3hearth_qmltests target yet, so nothing should "
+        "apps/hearth/ui/CMakeLists.txt has no hearth_qmltests target yet, so nothing should "
         "have pulled this in (see this script's own header for what to check once one lands)"
         for name in names
         if name.startswith(FORBIDDEN_WINDOWS_QT_TEST_QML)
@@ -279,7 +279,7 @@ def check_macos(path: str) -> int:
     problems = [f"missing {name}" for name in REQUIRED_MACOS if name not in names]
     problems += [
         f"the package carries Qt's test module ({name}): nothing a user runs loads it - "
-        "apps/hearth/ui/CMakeLists.txt has no ac3hearth_qmltests target yet, so nothing should "
+        "apps/hearth/ui/CMakeLists.txt has no hearth_qmltests target yet, so nothing should "
         "have pulled this in (see this script's own header for what to check once one lands)"
         for name in names
         if name.startswith(FORBIDDEN_MACOS_QT_TEST_QML)
@@ -305,7 +305,7 @@ def main(argv: list[str]) -> int:
     if path.endswith((".tar.gz", ".tgz", ".tar.xz")):
         return check_linux(path)
     # Windows and macOS are both this shape - cmake/Packaging.cmake names
-    # them ac3forge-hearth-<version>-<system>.zip alike, CPACK_SYSTEM_NAME
+    # them iclforge-hearth-<version>-<system>.zip alike, CPACK_SYSTEM_NAME
     # being the only difference (win64/win-arm64/win32 vs Darwin) - so what
     # tells them apart is a top-level "*.app/" entry, the bundle only a
     # macOS archive carries, not the filename.

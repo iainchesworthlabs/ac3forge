@@ -12,11 +12,11 @@
 // links neither iclforge::adm nor iclforge::admbridge and includes neither of their headers - it
 // cannot, since in this build neither target was ever add_subdirectory()'d at all.
 
-namespace ac3cli {
+namespace forge_cli {
 
 std::expected<void, std::string> write_adm_atmos_master(std::string_view /*path*/,
                                                           const AdmMasterInput& /*input*/) {
-    // Unreachable in practice: decode.cpp checks ac3cli::adm_capability() (the same capability
+    // Unreachable in practice: decode.cpp checks forge_cli::adm_capability() (the same capability
     // atmos_adm.hpp declares and run_atmos_adm's own dispatch gate already uses) before ever
     // calling this function - see decode.cpp's own comment. Still a real, defined function
     // rather than an abort() or an unreachable() marker, matching atmos_adm.hpp's own disabled
@@ -24,4 +24,4 @@ std::expected<void, std::string> write_adm_atmos_master(std::string_view /*path*
     return std::unexpected(std::string(adm_capability().reason));
 }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

@@ -6,7 +6,7 @@ reference Python player plays one programme" - read against A4's own exit and Ve
 doc), which always means a real aiosendspin process by that phrase, never a second in-process test
 double (aiosendspin_exit.py's own docstring is the A4 case this mirrors).
 
-Starts the scripted player in aiosendspin_player.py on a loopback port, runs ac3tests's hidden
+Starts the scripted player in aiosendspin_player.py on a loopback port, runs iclforge-tests's hidden
 [aiosendspin-group] case (tests/hearth/test_aiosendspin_group.cpp) with the player's URL, token and
 a directory, and checks what the player took against programme.wav, the case's own local decode and
 render of the programme, carried through the same full-scale-to-16-bit rescale
@@ -18,7 +18,7 @@ complete stream decoded without error - is checked alongside it; codec correctne
 (AC-3/E-AC-3 decoding, as opposed to this group's own rescale) is exhaustively covered elsewhere in
 this suite.
 
-Usage: python tools/sendspin/aiosendspin_group_exit.py --ac3tests PATH [--out DIR] [--verbose]
+Usage: python tools/sendspin/aiosendspin_group_exit.py --iclforge-tests PATH [--out DIR] [--verbose]
 
 Needs Python 3.12 or later and tools/sendspin/requirements.txt.
 """
@@ -80,7 +80,7 @@ def check(directory: Path, received: Received) -> tuple[list[str], str]:
     return problems, summary
 
 
-async def exercise(ac3tests: Path, directory: Path) -> list[str]:
+async def exercise(iclforge_tests: Path, directory: Path) -> list[str]:
     """Runs the host case against a fresh player; the problems found."""
     player = ScriptedPlayer(AudioCodec.PCM, HOST, free_port(HOST), "aiosendspin group")
     await player.start()
@@ -91,7 +91,7 @@ async def exercise(ac3tests: Path, directory: Path) -> list[str]:
         ICLFORGE_AIOSENDSPIN_OUT=str(directory),
     )
     process = await asyncio.create_subprocess_exec(
-        str(ac3tests),
+        str(iclforge_tests),
         "[aiosendspin-group]",
         env=environment,
         stdout=asyncio.subprocess.PIPE,
@@ -103,7 +103,7 @@ async def exercise(ac3tests: Path, directory: Path) -> list[str]:
         process.kill()
         await process.wait()
         await player.stop()
-        return ["ac3tests did not finish within 240 s"]
+        return ["iclforge-tests did not finish within 240 s"]
     with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(player.closed.wait(), timeout=10)
     await player.stop()
@@ -118,8 +118,8 @@ async def exercise(ac3tests: Path, directory: Path) -> list[str]:
     return problems
 
 
-async def run(ac3tests: Path, out: Path) -> int:
-    problems = await exercise(ac3tests, out)
+async def run(iclforge_tests: Path, out: Path) -> int:
+    problems = await exercise(iclforge_tests, out)
     for problem in problems:
         print(problem, file=sys.stderr)
     return 1 if problems else 0
@@ -127,7 +127,7 @@ async def run(ac3tests: Path, out: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--ac3tests", required=True, type=Path, help="the ac3tests binary")
+    parser.add_argument("--iclforge-tests", required=True, type=Path, help="the iclforge-tests binary")
     parser.add_argument(
         "--out", type=Path, help="where the run's files go; a temporary directory otherwise"
     )
@@ -135,9 +135,9 @@ def main() -> int:
     arguments = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.WARNING)
     if arguments.out is not None:
-        return asyncio.run(run(arguments.ac3tests, arguments.out))
+        return asyncio.run(run(arguments.iclforge_tests, arguments.out))
     with tempfile.TemporaryDirectory(prefix="aiosendspin-group-exit-") as scratch:
-        return asyncio.run(run(arguments.ac3tests, Path(scratch)))
+        return asyncio.run(run(arguments.iclforge_tests, Path(scratch)))
 
 
 if __name__ == "__main__":

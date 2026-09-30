@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // "Inspect objects" — the decode-side counterpart to the Objects tab's
 // authoring room view (Main.qml). Eac3Decoder now genuinely parses OAMD

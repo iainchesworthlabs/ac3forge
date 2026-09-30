@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-namespace ac3cli {
+namespace forge_cli {
 
 namespace {
 
@@ -163,4 +163,4 @@ void JsonWriter::value_null() {
 
 void JsonWriter::finish() { fmt::print(out_, "\n"); }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

@@ -5,8 +5,8 @@ import QtTest
 // answer to a different question from the seam's (see below).
 import Qt.labs.platform as Platform
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleLanguage
+import Crucible
+import CrucibleLanguage
 
 // The platform seams the window itself reads, asserted on the platform that
 // answers them - which is the only place they can be. The Catch2 suite links

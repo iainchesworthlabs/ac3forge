@@ -11,7 +11,7 @@
 // SpatialObjectSink against a real spatial-capable output
 // (src/audio/src/backend/*/spatial.cpp).
 //
-// Hidden: the tag starts with a dot, so `ac3tests` does not run this. Real
+// Hidden: the tag starts with a dot, so `iclforge-tests` does not run this. Real
 // device loss can't be simulated - it needs an endpoint with a spatial sound
 // format already enabled (Windows Sonic for Headphones or Dolby Atmos for
 // Home Theater/Headphones) and a person to take it away mid-session, the
@@ -21,7 +21,7 @@
 // capability-agreement checks cover that half), so start() there always
 // refuses with kNoBackend and this case WARNs and returns.
 //
-// Run it deliberately:  ac3tests "[spatial-unplug]"
+// Run it deliberately:  iclforge-tests "[spatial-unplug]"
 
 namespace {
 
@@ -36,7 +36,7 @@ constexpr std::size_t kChunkFrames = 480;
 // it deliberately, on an endpoint with a spatial sound format already
 // enabled, and follow the prompt.
 //
-//   ac3tests "[spatial-unplug]"
+//   iclforge-tests "[spatial-unplug]"
 //
 // Within 30 seconds of the prompt, take the default output away: unplug a USB
 // or HDMI spatial-capable device, or disable it in Settings > System > Sound.

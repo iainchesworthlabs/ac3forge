@@ -10,8 +10,8 @@
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="60"/>
-        <source>AC3Forge Crucible</source>
-        <translation>AC3Forge Crucible</translation>
+        <source>Crucible</source>
+        <translation>Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="61"/>
@@ -25,8 +25,8 @@
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="66"/>
-        <source>Every application with sound becomes an object in a Dolby Atmos scene. Place it in the room; the result goes to your receiver as E-AC-3 JOC over HDMI, to a PCM or spatial endpoint, or to headphones. An ac3forge demonstration: the encoder, the object layer and the taps are the library&apos;s; this window is the room.</source>
-        <translation>יעדע אַפּליקאַציע מיט קלאַנג ווערט אַן אָביעקט אין אַ Dolby Atmos סצענע. שטעלט זי אין צימער; דער רעזולטאַט גייט צום רעסיווער ווי E-AC-3 JOC איבער HDMI, צו אַ PCM אָדער ספּייַשל ענדפּוינט, אָדער צו קאָפּהערער. אַ ac3forge דעמאָנסטראַציע: דער ענקאָדער, די אָביעקט שיכט און די אָפּנעמערס זענען פֿון דער ביבליאָטעק; דאָס פֿענצטער איז דער צימער.</translation>
+        <source>Every application with sound becomes an object in a Dolby Atmos scene. Place it in the room; the result goes to your receiver as E-AC-3 JOC over HDMI, to a PCM or spatial endpoint, or to headphones. An ICL Forge demonstration: the encoder, the object layer and the taps are the library&apos;s; this window is the room.</source>
+        <translation>יעדע אַפּליקאַציע מיט קלאַנג ווערט אַן אָביעקט אין אַ Dolby Atmos סצענע. שטעלט זי אין צימער; דער רעזולטאַט גייט צום רעסיווער ווי E-AC-3 JOC איבער HDMI, צו אַ PCM אָדער ספּייַשל ענדפּוינט, אָדער צו קאָפּהערער. אַ ICL Forge דעמאָנסטראַציע: דער ענקאָדער, די אָביעקט שיכט און די אָפּנעמערס זענען פֿון דער ביבליאָטעק; דאָס פֿענצטער איז דער צימער.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="68"/>
@@ -40,8 +40,8 @@
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="75"/>
-        <source>AC3Forge Crucible and the ac3forge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.</source>
-        <translation>AC3Forge Crucible און די ביבליאָטעק ac3forge זײַנען פֿרײַע סאָפֿטווער אונטער דער GNU General Public License, ווערסיע 3 אָדער שפּעטער; דער פֿולער טעקסט איז LICENSE.txt אין דעם פּעקל. Dolby, Dolby Atmos און Dolby Digital Plus זײַנען האַנדלס־מאַרקן פֿון Dolby Laboratories; דאָס איז אַ ריין־צימער־אימפּלעמענטאַציע פֿון פּובליקירטע סטאַנדאַרטן און איז נישט פֿאַרבונדן מיט Dolby.</translation>
+        <source>Crucible and the iclforge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.</source>
+        <translation>Crucible און די ביבליאָטעק iclforge זײַנען פֿרײַע סאָפֿטווער אונטער דער GNU General Public License, ווערסיע 3 אָדער שפּעטער; דער פֿולער טעקסט איז LICENSE.txt אין דעם פּעקל. Dolby, Dolby Atmos און Dolby Digital Plus זײַנען האַנדלס־מאַרקן פֿון Dolby Laboratories; דאָס איז אַ ריין־צימער־אימפּלעמענטאַציע פֿון פּובליקירטע סטאַנדאַרטן און איז נישט פֿאַרבונדן מיט Dolby.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="81"/>

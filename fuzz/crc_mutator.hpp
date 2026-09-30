@@ -46,7 +46,7 @@
 extern "C" std::size_t LLVMFuzzerMutate(std::uint8_t* data, std::size_t size,
                                         std::size_t max_size);
 
-namespace ac3fuzz {
+namespace iclforge_fuzz {
 
 // Walks `stream` as a concatenation of syncframes the way iclforge::split_frames
 // does - same bsid-at-bit-40 test, same two size derivations - and rewrites
@@ -143,4 +143,4 @@ inline std::size_t crc_repairing_mutate(std::uint8_t* data, std::size_t size,
     return mutated;
 }
 
-}  // namespace ac3fuzz
+}  // namespace iclforge_fuzz

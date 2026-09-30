@@ -32,7 +32,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # No source in this tree is a C++20 module, but CMake 3.28+ scans every C++20-or-later target
 # for them under Ninja and the Visual Studio generators. The scan is not free: each changed file
 # re-collates its target's module map, and a re-collated map marks every object in the target
-# dirty, so editing one test file recompiled all of ac3tests (measured: 224 objects, 3m17s on
+# dirty, so editing one test file recompiled all of iclforge-tests (measured: 224 objects, 3m17s on
 # 4 cores, instead of one object and a link). Turn it back on here if a module is ever added.
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
@@ -138,9 +138,9 @@ add_compile_options("${AC3_FP_CONTRACT_FLAG}")
 # ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
-option(ICLFORGE_BUILD_CLI "Build the ac3cli command-line application" ON)
+option(ICLFORGE_BUILD_CLI "Build the forge command-line application" ON)
 option(ICLFORGE_BUILD_GUI "Build the Qt6 Quick GUI application" ON)
-option(ICLFORGE_BUILD_CRUCIBLE "Build AC3Forge Crucible (Windows, Linux and macOS)" OFF)
+option(ICLFORGE_BUILD_CRUCIBLE "Build Crucible (Windows, Linux and macOS)" OFF)
 option(ICLFORGE_BUILD_TESTS "Build the unit test suite" ON)
 # Catch2 is the only build-time dependency. Turn this off to insist it comes
 # from a package manager instead of the network (see tests/CMakeLists.txt).
@@ -420,7 +420,7 @@ option(ICLFORGE_BUILD_HEARTH "Build Hearth: src/sendspin and apps/hearth - see v
 # enable_testing() has to run before ANY add_subdirectory() that might contain
 # an add_test() call, not merely before tests/ itself - CTest silently drops
 # an add_test() registered from a directory processed earlier in the same
-# configure pass (confirmed the hard way: apps/gui/tests/'s ac3gui_qml_tests_*
+# configure pass (confirmed the hard way: apps/gui/tests/'s forge_gui_qml_tests_*
 # entries were invisible to `ctest -N` until this moved here). Calling it unconditionally
 # is harmless when ICLFORGE_BUILD_TESTS is OFF - nothing calls add_test() then.
 if(ICLFORGE_BUILD_TESTS)
@@ -474,7 +474,7 @@ endif()
 # only secret - the key - is supplied by the operator at runtime, never
 # embedded, so unlike the old quarantine overlay this is committed and built by
 # default. After src/ac3 so it can reuse the codec's parsing primitives; before
-# apps/cli so ac3cli can link it.
+# apps/cli so forge can link it.
 # Not under ICLFORGE_MINIMAL_DECODER: object SIGNING is a production-side
 # concern, and verification is opt-in even in a full build - neither is on a
 # decode path a set-top box has to run.
@@ -631,7 +631,7 @@ if(ICLFORGE_BUILD_HEARTH AND NOT ICLFORGE_SENDSPIN_PLAYER_ONLY)
     add_subdirectory(apps/hearth)
 endif()
 
-# AC3Forge Crucible (docs/crucible/design/promotion.md).
+# Crucible (docs/crucible/design/promotion.md).
 # In-tree like the GUI rather than wrapping the root the way the Android app
 # does, because it shares this toolchain. All three desktop platforms now have
 # a half under apps/crucible/engine/platform/ and apps/crucible/ui/platform/,

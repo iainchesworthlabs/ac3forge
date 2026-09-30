@@ -207,7 +207,7 @@ TEST_CASE("diagnostics: the file has every section, from an idle engine", "[hear
         REQUIRE(at != std::string::npos);
         last = at;
     }
-    CHECK(report.starts_with("AC3Forge Hearth diagnostics\n"));
+    CHECK(report.starts_with("Hearth diagnostics\n"));
     CHECK(has(report, "chosen: (none)\n"));
     CHECK(has(report, "open: no\n"));
     CHECK(has(report, "times opened: 0\n"));
@@ -261,7 +261,7 @@ TEST_CASE("diagnostics: the file says what played and what could not, and never 
 
     ReportFacts facts;
     facts.written_at = "2026-09-16T12:00:00Z";
-    facts.version = "ac3forge 1.2.3";
+    facts.version = "iclforge 1.2.3";
     facts.platform.emplace_back("os", "Windows 11");
     facts.output_name = "Speakers\n(USB)";
     facts.output_reason = "the default device";
@@ -283,7 +283,7 @@ TEST_CASE("diagnostics: the file says what played and what could not, and never 
     CHECK_FALSE(has(report, "00112233"));
 
     CHECK(has(report, "written: 2026-09-16T12:00:00Z\n"));
-    CHECK(has(report, "\n# version\nac3forge 1.2.3\n"));
+    CHECK(has(report, "\n# version\niclforge 1.2.3\n"));
     CHECK(has(report, "os: Windows 11\n"));
     CHECK(has(report, "settings: <withheld>\\hearth.ini\n"));
     CHECK(has(report, "chosen: \"Speakers (USB)\"\n"));

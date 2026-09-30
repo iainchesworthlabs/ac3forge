@@ -157,7 +157,7 @@ void set_objects(iclforge::ac4::EncoderConfig& config,
 // The configuration the encoder is given: with an object substream, the config's
 // codec_mode is that substream's - the stream's own stays kAuto, where the
 // substreams' codec_mode is the one in force (iclforge::ac4::EncoderConfig::substreams;
-// ac3cli's ac4-encode objects= leaves it so).
+// forge's ac4-encode objects= leaves it so).
 [[nodiscard]] iclforge::ac4::EncoderConfig effective(const iclforge::ac4::EncoderConfig& config) {
     iclforge::ac4::EncoderConfig out = config;
     if (out.substreams.size() == 1 && out.substreams.front().objects) {

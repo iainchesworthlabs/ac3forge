@@ -46,7 +46,7 @@ AUDIO = REPO_ROOT / "tests" / "golden" / "audio"
 class Stream:
     label: str
     source: str          # under tests/golden/audio
-    command: str         # ac3cli subcommand
+    command: str         # forge subcommand
     args: tuple[str, ...]  # after <in> <out>
     suffix: str
 

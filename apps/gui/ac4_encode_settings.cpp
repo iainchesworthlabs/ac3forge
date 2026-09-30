@@ -6,12 +6,12 @@
 
 #include "ac4_encode_core.hpp"
 
-namespace ac3gui {
+namespace forge_gui {
 
 namespace {
 
 // Part 1 Tables 149 and 149a in dB, in the order of kAc4CentreLevels and
-// kAc4SurroundLevels; "off" is -infinity, as ac3cli reads it.
+// kAc4SurroundLevels; "off" is -infinity, as forge reads it.
 constexpr double kOff = -std::numeric_limits<double>::infinity();
 constexpr std::array<double, 8> kCentreDb{3.0, 1.5, 0.0, -1.5, -3.0, -4.5, -6.0, kOff};
 constexpr std::array<double, 6> kSurroundDb{0.0, -1.5, -3.0, -4.5, -6.0, kOff};
@@ -255,4 +255,4 @@ iclforge::ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& s, int 
     return config;
 }
 
-}  // namespace ac3gui
+}  // namespace forge_gui

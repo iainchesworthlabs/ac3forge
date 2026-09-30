@@ -1,9 +1,9 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleLanguage
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleLanguage
+import CrucibleTest
 
 // The window itself: it comes up, switches pages, applies the persisted
 // theme, and closing it hides rather than quits while "keep running in the

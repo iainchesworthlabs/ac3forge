@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates every ac3forge app-icon asset from one procedural mark.
+"""Generates every iclforge app-icon asset from one procedural mark.
 
 Single source of truth: the mark is drawn by draw_badge()/draw_bars()
 below, not edited by hand in any of the .ico/.icns/.png/mipmap files this
@@ -13,7 +13,7 @@ Pillow only (confirmed available: 12.3+, including native ICO and ICNS
 write support - no Inkscape/rsvg-convert/ImageMagick/iconutil needed,
 none of which are installed in this environment). The one place a raster
 doesn't fit - the WASM favicon wants to stay crisp at arbitrary sizes -
-is covered instead by the hand-authored assets/icon/ac3forge-icon.svg,
+is covered instead by the hand-authored assets/icon/iclforge-icon.svg,
 drawn to match this script's output rather than generated from it.
 """
 
@@ -110,7 +110,7 @@ def render_foreground(size: int, *, content_frac: float = 0.46) -> Image.Image:
 def render_banner(width: int = 320, height: int = 180) -> Image.Image:
     """The Android-TV/Leanback launcher-row banner: the mark centered on
     a wordmark-free flat background. A mark-plus-text lockup was tried
-    first, but "ac3forge" set in the GUI's own Archivo typeface does not
+    first, but "iclforge" set in the GUI's own Archivo typeface does not
     fit this banner's tight 320x180 aspect ratio without truncating -
     the mark alone is what every reference Leanback banner example uses
     for exactly this reason. Without a banner at all, Shield's TV
@@ -156,10 +156,10 @@ def main() -> None:
     icons_dir = REPO_ROOT / "apps" / "gui" / "icons"
     icons_dir.mkdir(parents=True, exist_ok=True)
 
-    write_ico(icons_dir / "ac3forge.ico")
-    write_icns(icons_dir / "ac3forge.icns")
-    render_badge(32).save(icons_dir / "ac3forge-32.png")
-    render_badge(256).save(icons_dir / "ac3forge-256.png")
+    write_ico(icons_dir / "iclforge.ico")
+    write_icns(icons_dir / "iclforge.icns")
+    render_badge(32).save(icons_dir / "iclforge-32.png")
+    render_badge(256).save(icons_dir / "iclforge-256.png")
     print(f"wrote {icons_dir}/iclforge.{{ico,icns}}, iclforge-{{32,256}}.png")
 
     res_dir = REPO_ROOT / "apps" / "android" / "app" / "src" / "main" / "res"

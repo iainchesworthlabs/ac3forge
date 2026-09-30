@@ -1,7 +1,7 @@
 // The encode loop: this app's first real "live cursor" - the first place in
-// the whole ac3forge project that drives AtmosEncoder::encode_frame() from a
+// the whole iclforge project that drives AtmosEncoder::encode_frame() from a
 // live, externally-set position every frame rather than from an authored
-// KeyframePath/OrbitPath or a file. Modeled directly on ac3cli's run_live
+// KeyframePath/OrbitPath or a file. Modeled directly on forge's run_live
 // (apps/cli/main.cpp) - same per-frame shape (build placement, encode_frame,
 // IEC61937-wrap, PassthroughSink::submit with retry+sleep) - but self-paced
 // by wall clock instead of run_live's "block on the capture ring buffer"
@@ -24,7 +24,7 @@
 // cannot reconstruct the object as a separate height-rendered source. The
 // object signer (a per-frame pass keyed on the bundled signing.key asset) is
 // what closes that gap; see run_loop()'s emit_objects
-// (ac3shield::signing_available()) for what an unsigned build does instead.
+// (shield::signing_available()) for what an unsigned build does instead.
 //
 // Real-time viability history: this was briefly a pre-encode-then-loop-a-
 // buffer diagnostic, because AtmosEncoder::encode_frame() measured at
@@ -72,7 +72,7 @@
 
 namespace {
 
-constexpr char kLogTag[] = "ac3forge.shield.live_cursor";
+constexpr char kLogTag[] = "iclforge.shield.live_cursor";
 constexpr int kInteractiveObjects = 1;
 constexpr int kAmbientObjects = 2;
 constexpr int kObjects = kInteractiveObjects + kAmbientObjects;
@@ -965,12 +965,12 @@ void run_loop() {
     // voice uses is already set by now (MainActivity.onCreate registers it
     // before nativeStartLiveCursor). A build without the key asset leaves
     // signing unavailable - see shield_signing_hook.hpp.
-    ac3shield::init_signing(g_asset_manager.load(std::memory_order_relaxed));
+    shield::init_signing(g_asset_manager.load(std::memory_order_relaxed));
     // Without a key, an emitted-but-unsigned container would be the hard-refusal
     // case AtmosConfig::emit_object_metadata's own comment warns about, not a
     // graceful 5.1 fallback - omit it entirely instead. Only a build carrying
     // the signing key asset ever sets this true.
-    const bool emit_objects = ac3shield::signing_available();
+    const bool emit_objects = shield::signing_available();
     stream_stats().signed_stream.store(emit_objects, std::memory_order_relaxed);
     iclforge::oba::AtmosEncoder encoder({.bitrate_kbps = 448, .emit_object_metadata = emit_objects},
                                    kObjects);
@@ -1272,7 +1272,7 @@ void run_loop() {
         // "objects panned into the bed, audible but not reconstructable" and
         // "a real Dolby-licensed decoder actually unlocks the objects" - see
         // [[joc-decoder-auth-gate]].
-        (void)ac3shield::maybe_sign_atmos_unit(unit->bytes);
+        (void)shield::maybe_sign_atmos_unit(unit->bytes);
 
         // push() returns expected<optional<vector<byte>>, WrapError>: the
         // outer expected is a hard wrap error (should not happen with our
@@ -1464,7 +1464,7 @@ void run_loop() {
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeStartLiveCursor(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeStartLiveCursor(JNIEnv* /*env*/, jclass /*clazz*/) {
     if (g_running.load(std::memory_order_acquire)) {
         return JNI_TRUE;
     }
@@ -1480,7 +1480,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeStartLiveCursor(JNIEnv* /*env*/, jcl
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeStopLiveCursor(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeStopLiveCursor(JNIEnv* /*env*/, jclass /*clazz*/) {
     g_stop_requested.store(true, std::memory_order_release);
     if (g_worker.joinable()) {
         g_worker.join();
@@ -1499,7 +1499,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeStopLiveCursor(JNIEnv* /*env*/, jcla
 // force-restart the app once their AVR is actually on - see MainActivity's
 // own reconcileReceiverState().
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeIsLiveCursorRunning(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeIsLiveCursorRunning(JNIEnv* /*env*/, jclass /*clazz*/) {
     return g_running.load(std::memory_order_acquire) ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -1513,7 +1513,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeIsLiveCursorRunning(JNIEnv* /*env*/,
 // underrun count while running is a safe, purely-numeric signal instead -
 // see MainActivity's own comment for how it's used.
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetUnderrunCount(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetUnderrunCount(JNIEnv* /*env*/, jclass /*clazz*/) {
     return static_cast<jlong>(stream_stats().underruns.load(std::memory_order_relaxed));
 }
 
@@ -1523,7 +1523,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetUnderrunCount(JNIEnv* /*env*/, jc
 // its own Context.getAssets() result, which lives for the whole process, so
 // no GlobalRef/cleanup is needed here.
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeSetAssetManager(JNIEnv* env, jclass /*clazz*/,
+Java_com_iclforge_shield_NativeBridge_nativeSetAssetManager(JNIEnv* env, jclass /*clazz*/,
                                                               jobject asset_manager) {
     g_asset_manager.store(AAssetManager_fromJava(env, asset_manager), std::memory_order_relaxed);
 }
@@ -1538,14 +1538,14 @@ Java_com_ac3forge_shield_NativeBridge_nativeSetAssetManager(JNIEnv* env, jclass 
 // trajectory throughout; this only biases it off that course, and the bias
 // decays back to zero on its own once input stops (LiveCursorState::advance).
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeDeflectSelectedObject(JNIEnv* /*env*/,
+Java_com_iclforge_shield_NativeBridge_nativeDeflectSelectedObject(JNIEnv* /*env*/,
                                                                    jclass /*clazz*/, jfloat dx,
                                                                    jfloat dy, jfloat dz) {
     live_cursor_state().deflect_selected(dx, dy, dz);
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeCycleSelectedObject(JNIEnv* /*env*/,
+Java_com_iclforge_shield_NativeBridge_nativeCycleSelectedObject(JNIEnv* /*env*/,
                                                                  jclass /*clazz*/) {
     return live_cursor_state().cycle_selected();
 }
@@ -1553,7 +1553,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeCycleSelectedObject(JNIEnv* /*env*/,
 // Called from InputController.kt's long-press handling. See
 // LiveCursorState::snap_selected's own comment.
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeSnapSelectedToCourse(JNIEnv* /*env*/,
+Java_com_iclforge_shield_NativeBridge_nativeSnapSelectedToCourse(JNIEnv* /*env*/,
                                                                   jclass /*clazz*/) {
     live_cursor_state().snap_selected();
 }
@@ -1561,7 +1561,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeSnapSelectedToCourse(JNIEnv* /*env*/
 // For the room visualization (a later pass): one flat array, 4 floats per
 // object (x, y, z, 1.0-if-selected-else-0.0), kObjects*4 long.
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetObjectState(JNIEnv* env, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetObjectState(JNIEnv* env, jclass /*clazz*/) {
     const auto placement = live_cursor_state().snapshot();
     const int selected = live_cursor_state().selected();
 
@@ -1587,7 +1587,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetObjectState(JNIEnv* env, jclass /
 // StreamStats::ambient_muted's own comment for what this actually does
 // (mutes the ambient objects' audio, not their motion).
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeSetAmbientMuted(JNIEnv* /*env*/, jclass /*clazz*/,
+Java_com_iclforge_shield_NativeBridge_nativeSetAmbientMuted(JNIEnv* /*env*/, jclass /*clazz*/,
                                                               jboolean muted) {
     stream_stats().ambient_muted.store(muted != JNI_FALSE, std::memory_order_relaxed);
 }
@@ -1604,7 +1604,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeSetAmbientMuted(JNIEnv* /*env*/, jcl
 // g_start_time_ns to translate "now" into the same elapsed-seconds time
 // base run_loop() itself uses.
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
+Java_com_iclforge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
                                                                      jclass /*clazz*/,
                                                                      jfloat seconds_ahead,
                                                                      jint sample_count) {
@@ -1649,7 +1649,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetFutureLeadTrajectory(JNIEnv* env,
 // z, decoded z, and 1/0 for whether a decoder found any objects in that
 // frame's bytes at all. Empty until the monitor has parsed something.
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetWireTrace(JNIEnv* env, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetWireTrace(JNIEnv* env, jclass /*clazz*/) {
     auto& history = trace_history();
     std::vector<jfloat> flat;
     {
@@ -1679,7 +1679,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetWireTrace(JNIEnv* env, jclass /*c
 // One line about the trace, for the panel header: how many objects a decoder
 // actually finds on the wire, and what one parse-only decode costs.
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetWireTraceText(JNIEnv* env, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetWireTraceText(JNIEnv* env, jclass /*clazz*/) {
     auto& s = stream_stats();
     const int objects = s.decoded_objects.load(std::memory_order_relaxed);
     if (objects < 0) {
@@ -1703,7 +1703,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetWireTraceText(JNIEnv* env, jclass
 // panel and the phone remote - and a mirror of this in Kotlin would drift the
 // moment any two of them were used in one session.
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetAmbientMuted(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetAmbientMuted(JNIEnv* /*env*/, jclass /*clazz*/) {
     return stream_stats().ambient_muted.load(std::memory_order_relaxed) ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -1712,7 +1712,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetAmbientMuted(JNIEnv* /*env*/, jcl
 // timestamps a recording, so this needs the loop to be running; with it
 // stopped this is a no-op that stays idle.
 extern "C" JNIEXPORT jint JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeToggleRecording(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeToggleRecording(JNIEnv* /*env*/, jclass /*clazz*/) {
     const auto start_ns = g_start_time_ns.load(std::memory_order_relaxed);
     if (start_ns == 0) {
         return static_cast<jint>(RecordState::kIdle);
@@ -1725,14 +1725,14 @@ Java_com_ac3forge_shield_NativeBridge_nativeToggleRecording(JNIEnv* /*env*/, jcl
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetRecordState(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetRecordState(JNIEnv* /*env*/, jclass /*clazz*/) {
     return static_cast<jint>(live_cursor_state().record_state());
 }
 
 // Scene selection. See kScenes - the demo used to have one path through the
 // room and nothing else to show.
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeSetScene(JNIEnv* /*env*/, jclass /*clazz*/,
+Java_com_iclforge_shield_NativeBridge_nativeSetScene(JNIEnv* /*env*/, jclass /*clazz*/,
                                                        jint scene) {
     // Wrapped rather than clamped: this is reached by "next"/"previous" keys
     // and by the guided tour, and all three want to come round again.
@@ -1741,19 +1741,19 @@ Java_com_ac3forge_shield_NativeBridge_nativeSetScene(JNIEnv* /*env*/, jclass /*c
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetScene(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetScene(JNIEnv* /*env*/, jclass /*clazz*/) {
     return g_scene.load(std::memory_order_relaxed);
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetSceneCount(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetSceneCount(JNIEnv* /*env*/, jclass /*clazz*/) {
     return kSceneCount;
 }
 
 // name and hint for one scene, tab-separated - one call rather than two, and
 // they are only ever wanted together (the overlay shows both).
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetSceneText(JNIEnv* env, jclass /*clazz*/,
+Java_com_iclforge_shield_NativeBridge_nativeGetSceneText(JNIEnv* env, jclass /*clazz*/,
                                                            jint scene) {
     const int wrapped = ((scene % kSceneCount) + kSceneCount) % kSceneCount;
     const auto& s = kScenes[static_cast<std::size_t>(wrapped)];
@@ -1765,13 +1765,13 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetSceneText(JNIEnv* env, jclass /*c
 
 // OBJECTS OFF, from the remote/controller. See the strip block in run_loop().
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeSetObjectsOff(JNIEnv* /*env*/, jclass /*clazz*/,
+Java_com_iclforge_shield_NativeBridge_nativeSetObjectsOff(JNIEnv* /*env*/, jclass /*clazz*/,
                                                             jboolean off) {
     stream_stats().objects_off.store(off == JNI_TRUE, std::memory_order_relaxed);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetObjectsOff(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetObjectsOff(JNIEnv* /*env*/, jclass /*clazz*/) {
     return stream_stats().objects_off.load(std::memory_order_relaxed) ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -1779,7 +1779,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetObjectsOff(JNIEnv* /*env*/, jclas
 // front, and its magnitude in [0,1]. For the top-down panel's soundfield
 // arrow - see StreamStats::energy_azimuth_deg.
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetSoundfieldVector(JNIEnv* env, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetSoundfieldVector(JNIEnv* env, jclass /*clazz*/) {
     auto& s = stream_stats();
     const std::array<jfloat, 2> flat{s.energy_azimuth_deg.load(std::memory_order_relaxed),
                                      s.energy_magnitude.load(std::memory_order_relaxed)};
@@ -1794,7 +1794,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetSoundfieldVector(JNIEnv* env, jcl
 // The measured BS.1770 loudness of the bed, and the dialnorm it implies.
 // Empty until the meter's first gated 400ms block has passed.
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetLoudnessText(JNIEnv* env, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetLoudnessText(JNIEnv* env, jclass /*clazz*/) {
     auto& s = stream_stats();
     if (!s.loudness_valid.load(std::memory_order_relaxed)) {
         return env->NewStringUTF("");
@@ -1811,7 +1811,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetLoudnessText(JNIEnv* env, jclass 
 // building the string here avoids Kotlin needing its own copy of the same
 // formatting logic.
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jclass /*clazz*/) {
     auto& s = stream_stats();
     // Frame count dropped and "lost" only appended when actually nonzero -
     // the 3D track card that hosts this text got considerably narrower once
@@ -1872,7 +1872,7 @@ Java_com_ac3forge_shield_NativeBridge_nativeGetStreamStatsText(JNIEnv* env, jcla
 // meter view) - 6 floats, AC-3 coded order (L, C, R, Ls, Rs, LFE), see
 // StreamStats::channel_levels's own comment for what they represent.
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeGetChannelLevels(JNIEnv* env, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeGetChannelLevels(JNIEnv* env, jclass /*clazz*/) {
     jfloatArray result = env->NewFloatArray(6);
     if (result == nullptr) {
         return nullptr;

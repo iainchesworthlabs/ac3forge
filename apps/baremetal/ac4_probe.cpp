@@ -272,8 +272,8 @@ struct Fixture {
 
 // The decoder's frame at frame_rate_index 13: 2048 samples at 48 kHz, 42.666 ms.
 constexpr std::uint64_t kFrameDurationUs =
-    static_cast<std::uint64_t>(ac3probe::kAc4SamplesPerFrame) * 1000000ULL /
-    static_cast<std::uint64_t>(ac3probe::kAc4SampleRateHz);
+    static_cast<std::uint64_t>(iclforge_probe::kAc4SamplesPerFrame) * 1000000ULL /
+    static_cast<std::uint64_t>(iclforge_probe::kAc4SampleRateHz);
 
 struct Measured {
     std::size_t first_frame_allocs = 0;
@@ -316,7 +316,7 @@ int decode_fixture(const Fixture& fixture) {
     {
         iclforge::ac4::Decoder decoder;
         const auto sink = [&](const iclforge::ac4::PcmBlock& block) {
-            const std::uint64_t t0 = ac3probe::now_us();
+            const std::uint64_t t0 = iclforge_probe::now_us();
             sink_channels = block.channels.size();
             for (std::size_t channel = 0; channel < block.channels.size() && channel < kMaxChannels;
                  ++channel) {
@@ -324,7 +324,7 @@ int decode_fixture(const Fixture& fixture) {
                 hash.add(block.channels[channel]);
             }
             delivered += block.samples;
-            measured.sink_us += ac3probe::now_us() - t0;
+            measured.sink_us += iclforge_probe::now_us() - t0;
         };
 
         // Nothing that prints between here and read_stack() below.
@@ -334,9 +334,9 @@ int decode_fixture(const Fixture& fixture) {
             const std::size_t allocs_before = g_alloc_calls;
             const std::size_t bytes_before = g_alloc_bytes_total;
             const std::uint64_t sink_before = measured.sink_us;
-            const std::uint64_t t0 = ac3probe::now_us();
+            const std::uint64_t t0 = iclforge_probe::now_us();
             const auto decoded = decoder.decode_by_block(frame.raw_ac4_frame, sink);
-            const std::uint64_t t1 = ac3probe::now_us();
+            const std::uint64_t t1 = iclforge_probe::now_us();
             measured.decode_us += (t1 - t0) - (measured.sink_us - sink_before);
             const std::size_t allocs = g_alloc_calls - allocs_before;
             const std::size_t allocated = g_alloc_bytes_total - bytes_before;
@@ -348,17 +348,17 @@ int decode_fixture(const Fixture& fixture) {
                 measured.steady_bytes += allocated;
             }
             if (!decoded.has_value() || !decoded->has_value() ||
-                (*decoded)->samples != static_cast<std::size_t>(ac3probe::kAc4SamplesPerFrame) ||
-                (*decoded)->sample_rate_hz != ac3probe::kAc4SampleRateHz ||
+                (*decoded)->samples != static_cast<std::size_t>(iclforge_probe::kAc4SamplesPerFrame) ||
+                (*decoded)->sample_rate_hz != iclforge_probe::kAc4SampleRateHz ||
                 (*decoded)->speakers.size() != fixture.rms.size()) {
                 frames_ok = false;
             }
             ++index;
         }
-        const std::uint64_t t0 = ac3probe::now_us();
+        const std::uint64_t t0 = iclforge_probe::now_us();
         const std::uint64_t sink_before = measured.sink_us;
         (void)decoder.flush(sink);
-        measured.decode_us += (ac3probe::now_us() - t0) - (measured.sink_us - sink_before);
+        measured.decode_us += (iclforge_probe::now_us() - t0) - (measured.sink_us - sink_before);
         measured.stack = read_stack();
     }
 
@@ -370,7 +370,7 @@ int decode_fixture(const Fixture& fixture) {
              static_cast<long>(fixture.rms.size()));
     }
     const std::size_t expected_samples = static_cast<std::size_t>(fixture.frames) *
-                                         static_cast<std::size_t>(ac3probe::kAc4SamplesPerFrame);
+                                         static_cast<std::size_t>(iclforge_probe::kAc4SamplesPerFrame);
     // `delivered` counts each block once, not once a channel.
     if (delivered != expected_samples) {
         fail(fixture.name, "samples", static_cast<long>(delivered),
@@ -424,18 +424,18 @@ int decode_fixture(const Fixture& fixture) {
 // Every fixture ac4_fixture.hpp carries. peak_bytes is what the fixture is measured to reach
 // (its own <fixture>.peak_bytes line), for a part whose budget it may exceed.
 constexpr std::array kFixtures = {
-    Fixture{"ac4_20_music", ac3probe::kAc420MusicStream, ac3probe::kAc420MusicFrames,
-            ac3probe::kAc420MusicRms, 0},
-    Fixture{"ac4_20_acpl", ac3probe::kAc420AcplStream, ac3probe::kAc420AcplFrames,
-            ac3probe::kAc420AcplRms, 0},
-    Fixture{"ac4_51_music", ac3probe::kAc451MusicStream, ac3probe::kAc451MusicFrames,
-            ac3probe::kAc451MusicRms, 0},
-    Fixture{"ac4_51_acpl", ac3probe::kAc451AcplStream, ac3probe::kAc451AcplFrames,
-            ac3probe::kAc451AcplRms, 0},
-    Fixture{"ac4_514_tones", ac3probe::kAc4514TonesStream, ac3probe::kAc4514TonesFrames,
-            ac3probe::kAc4514TonesRms, 0},
-    Fixture{"ac4_20_companding", ac3probe::kAc420CompandingStream, ac3probe::kAc420CompandingFrames,
-            ac3probe::kAc420CompandingRms, 0},
+    Fixture{"ac4_20_music", iclforge_probe::kAc420MusicStream, iclforge_probe::kAc420MusicFrames,
+            iclforge_probe::kAc420MusicRms, 0},
+    Fixture{"ac4_20_acpl", iclforge_probe::kAc420AcplStream, iclforge_probe::kAc420AcplFrames,
+            iclforge_probe::kAc420AcplRms, 0},
+    Fixture{"ac4_51_music", iclforge_probe::kAc451MusicStream, iclforge_probe::kAc451MusicFrames,
+            iclforge_probe::kAc451MusicRms, 0},
+    Fixture{"ac4_51_acpl", iclforge_probe::kAc451AcplStream, iclforge_probe::kAc451AcplFrames,
+            iclforge_probe::kAc451AcplRms, 0},
+    Fixture{"ac4_514_tones", iclforge_probe::kAc4514TonesStream, iclforge_probe::kAc4514TonesFrames,
+            iclforge_probe::kAc4514TonesRms, 0},
+    Fixture{"ac4_20_companding", iclforge_probe::kAc420CompandingStream, iclforge_probe::kAc420CompandingFrames,
+            iclforge_probe::kAc420CompandingRms, 0},
 };
 
 bool over_budget(const Fixture& fixture) {
@@ -450,7 +450,7 @@ bool over_budget(const Fixture& fixture) {
 
 }  // namespace
 
-int ac3probe::run() {
+int iclforge_probe::run() {
     std::printf("profile=ac4-decoder\n");
     std::printf("static.decoder_bytes=%lu stack.window_bytes=%lu\n",
                 static_cast<unsigned long>(sizeof(iclforge::ac4::Decoder)),

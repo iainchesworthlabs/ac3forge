@@ -1,7 +1,7 @@
 // The probe's entry point and clock on ESP32-S3.
 //
 // ESP-IDF calls app_main() rather than main(), which is why apps/baremetal
-// exposes ac3probe::run() through probe.hpp instead of defining main() itself.
+// exposes iclforge_probe::run() through probe.hpp instead of defining main() itself.
 // Everything the probe checks - every fixture in fixture.hpp against its levels, the
 // allocation counts, the heap peak, the refusal of the direct-form transform -
 // is the same code the host and arm-none-eabi shapes run. Nothing about the
@@ -20,7 +20,7 @@
 
 #include "probe.hpp"
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 // esp_timer is a 64-bit microsecond counter driven by the systimer peripheral,
 // not by the CPU clock, so it does not stop or stretch when the CPU is
@@ -63,7 +63,7 @@ void report_internal_sram(const char* when) {
                 when, static_cast<unsigned long>(any - byte_addressable));
 }
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe
 
 namespace {
 
@@ -127,16 +127,16 @@ extern "C" void app_main() {
     // run of free memory, not a total - so free_bytes alone cannot say whether an
     // allocation of a given size will succeed, and the two diverge as the heap
     // fragments.
-    ac3probe::report_internal_sram("before");
+    iclforge_probe::report_internal_sram("before");
 
-    ac3probe::run();
+    iclforge_probe::run();
 
     // Again afterwards. The difference is what the decode did not give back -
     // the thread_local enhanced-coupling scratch the probe reports as
     // heap.retained_bytes, seen from the system side rather than from inside the
     // allocator hooks - plus whatever fragmentation the run left behind, which
     // shows up in the largest block rather than in the total.
-    ac3probe::report_internal_sram("after");
+    iclforge_probe::report_internal_sram("after");
 
     // The decode runs on THIS task, and sdkconfig.defaults sets its stack to
     // 32,768 bytes with, in its own words, "no attempt to trim it" - after an

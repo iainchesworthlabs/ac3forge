@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // A real simulated click on the live tier control, not a property poke -
 // the actual point of Qt Quick Test over the existing --smoke harness's

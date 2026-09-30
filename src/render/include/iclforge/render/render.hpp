@@ -36,7 +36,7 @@
 //   THE OBJECTS, when a unit carries them and the player asked for them. Each
 //   object's own reconstructed audio is summed into the speakers by its OAMD
 //   position, at its own gain - the render apps/baremetal/probe.cpp's
-//   eac3_atmos_render row performs and ac3cli's `qc objects=` meters, in the
+//   eac3_atmos_render row performs and forge's `qc objects=` meters, in the
 //   same arithmetic and the same order, so a level measured here agrees with
 //   the probe's reference to the digit. The bed's other channels are NOT added
 //   on top: for a JOC programme the bed IS the objects' 5.1 fold, and adding it

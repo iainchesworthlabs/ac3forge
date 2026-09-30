@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeHearth
+import Hearth
 
 // A Hearth sink's own settings pages (issue #875, network-sink-{speakers,
 // decoder}.png): NetworkSinkSpeakers.qml/NetworkSinkDecoder.qml/

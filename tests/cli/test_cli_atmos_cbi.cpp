@@ -20,7 +20,7 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/objects/oamd.hpp"
 
-// ac3cli's 'atmos-cbi' command (apps/cli/commands/atmos.cpp's run_atmos_cbi): a channel-based-
+// forge's 'atmos-cbi' command (apps/cli/commands/atmos.cpp's run_atmos_cbi): a channel-based-
 // immersive bed WAV straight to DD+ JOC E-AC-3 with program.bed != 0 and 0 dynamic objects. Same
 // subprocess-integration shape as tests/cli/test_cli.cpp's own atmos-encode coverage - see that
 // file's own top comment for why (main.cpp compiles everything into one anonymous-namespace
@@ -39,12 +39,12 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// Runs `ac3cli <args>` with both streams redirected to `log`. The platform
+// Runs `forge <args>` with both streams redirected to `log`. The platform
 // differences - cmd.exe's quoting and std::system()'s two return-value
 // shapes - live in tests/platform/process.hpp's run_shell, not here.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 

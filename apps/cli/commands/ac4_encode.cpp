@@ -34,11 +34,11 @@
 // substreamN= and presentationN=, several substreams, each an input of its
 // own or a hybrid dialogue enhancement's waveform, and the presentations of
 // Part 2 Table 53 made of them. Each WAV file's channels are taken in the
-// order `decode` writes them (apps/common/ac4_channels.hpp). The steps ac3gui's
+// order `decode` writes them (apps/common/ac4_channels.hpp). The steps forge-gui's
 // AC-4 encode shares, so that the two write the same bytes, are in
 // apps/common/ac4_encode_core.hpp.
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 namespace {
 
 // The codec mode as Part 1 Table 95 names it, or Part 2 Table 73 the
@@ -228,7 +228,7 @@ struct Input {
 }  // namespace
 
 int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
-                   const ac3cli::Options& meta) {
+                   const forge_cli::Options& meta) {
     if (!meta.ac4_objects_path.empty()) {
         return run_ac4_encode_objects(in_path, out_path, bitrate, meta);
     }
@@ -240,7 +240,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         fmt::println(stderr,
                      "error: heavy, heavy2, drc2=, dialnorm2=, infomdat, annexd and E-AC-3's "
                      "mixing metadata have no AC-4 counterpart; ac4-encode takes AC-4's own "
-                     "(ac3cli help ac4-encode)");
+                     "(forge help ac4-encode)");
         return kExitUsage;
     }
     const bool drc_named =
@@ -551,7 +551,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     // with loudness values in place: they cost the same bits whatever they
     // are.
     const auto refuse_config = [](const iclforge::ac4::EncoderConfig& refused) {
-        fmt::println(stderr, "error: the encoder refuses {} (ac3cli help ac4-encode)",
+        fmt::println(stderr, "error: the encoder refuses {} (forge help ac4-encode)",
                      iclforge::ac4::Encoder::refusal_reason(refused));
         return kExitUsage;
     };
@@ -712,4 +712,4 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     return kExitOk;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

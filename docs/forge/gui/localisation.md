@@ -121,7 +121,7 @@ area of a large `.ts` file.
 
 ## The pseudo-locale QA fixture
 
-`apps/gui/translations/ac3gui_xx.ts` is not a language — "xx" is not an ISO 639 code, and it
+`apps/gui/translations/forge_gui_xx.ts` is not a language — "xx" is not an ISO 639 code, and it
 never appears in `LanguageManager::availableLanguages()` or Preferences' picker. It exists to prove
 the extraction → compile → load pipeline works end to end without depending on any one language's
 catalogue, and to catch a string that bypasses `qsTr()` entirely.

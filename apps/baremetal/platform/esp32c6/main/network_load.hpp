@@ -9,7 +9,7 @@
 // and main.cpp calls these without knowing which, the seam probe.hpp describes
 // for the probe's own entry point.
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 // Brings the load up and returns once it is running. False when it could not,
 // after printing a `result=fail reason=...` line; the probe does not run then.
@@ -18,4 +18,4 @@ bool network_start();
 // What the load did while the probe ran, as key=value lines.
 void network_report();
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

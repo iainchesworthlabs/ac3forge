@@ -3,7 +3,7 @@
 # Linkage policy: dynamic CRT, static dependency libraries - see
 # x64-windows-msvc.cmake for the reasoning, which is the same here. iclforge
 # takes only test/tooling packages from vcpkg (Catch2), so linking them
-# statically keeps ac3tests.exe self-contained; the CRT stays dynamic because
+# statically keeps iclforge-tests.exe self-contained; the CRT stays dynamic because
 # the prebuilt Qt kits the GUI links against (where one is available) are
 # built that way.
 set(VCPKG_TARGET_ARCHITECTURE arm64)

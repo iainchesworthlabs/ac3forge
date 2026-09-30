@@ -2,7 +2,7 @@
 // encode loop: streams a real, already-encoded AC-3/E-AC-3 file (e.g. an
 // audio track pulled straight out of a commercial Dolby Atmos demo trailer's
 // MKV, no re-encoding at all) through the exact same PassthroughSink this
-// app's own encoder output goes through. Mirrors ac3cli's run_play
+// app's own encoder output goes through. Mirrors forge's run_play
 // (apps/cli/main.cpp) almost exactly - same split_access_units/BurstPacker/
 // submit-with-retry shape - just triggered over JNI instead of a CLI arg.
 //
@@ -32,7 +32,7 @@
 
 namespace {
 
-constexpr char kLogTag[] = "ac3forge.shield.file_replay";
+constexpr char kLogTag[] = "iclforge.shield.file_replay";
 
 // Set by nativeStopFileReplay, cleared when play_file returns. Both wait
 // loops below used to be `while (!condition) sleep();` with no exit but
@@ -124,7 +124,7 @@ bool play_file(const std::string& path) {
         return false;
     }
 
-    // Always E-AC-3, unlike ac3cli's run_play (which also handles plain
+    // Always E-AC-3, unlike forge's run_play (which also handles plain
     // .ac3): this diagnostic exists specifically to play real commercial
     // Dolby Atmos/DD+ content (see file header). group_by_bsid, not
     // iclforge::split_access_units - see that function's own comment for why.
@@ -229,7 +229,7 @@ bool play_file(const std::string& path) {
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativePlayEac3File(JNIEnv* env, jclass /*clazz*/,
+Java_com_iclforge_shield_NativeBridge_nativePlayEac3File(JNIEnv* env, jclass /*clazz*/,
                                                           jstring jpath) {
     const char* raw = env->GetStringUTFChars(jpath, nullptr);
     const std::string path(raw != nullptr ? raw : "");
@@ -245,6 +245,6 @@ Java_com_ac3forge_shield_NativeBridge_nativePlayEac3File(JNIEnv* env, jclass /*c
 // safe to call from the main thread - it never blocks on the replay thread,
 // which is the whole reason this is a flag rather than a join.
 extern "C" JNIEXPORT void JNICALL
-Java_com_ac3forge_shield_NativeBridge_nativeStopFileReplay(JNIEnv* /*env*/, jclass /*clazz*/) {
+Java_com_iclforge_shield_NativeBridge_nativeStopFileReplay(JNIEnv* /*env*/, jclass /*clazz*/) {
     g_replay_stop.store(true, std::memory_order_relaxed);
 }

@@ -60,7 +60,7 @@ struct RawResult {
     // QVariantList property the way the bed's channels are.
     std::vector<std::vector<float>> object_audio;
     // AC-4: the table of contents' presentations by their labels
-    // (ac3gui::ac4_presentation_label), and the one decoded.
+    // (forge_gui::ac4_presentation_label), and the one decoded.
     bool ac4 = false;
     QStringList presentations;
     std::size_t presentation = 0;
@@ -68,7 +68,7 @@ struct RawResult {
 
 }  // namespace splayer_detail
 
-// The GUI twin of `ac3cli monitor` plus `ac3cli decode [objects_dir]`: opens
+// The GUI twin of `forge monitor` plus `forge decode [objects_dir]`: opens
 // an already-encoded .ac3/.ec3 file, plays its decoded bed through an
 // ordinary shared-mode output with real transport (play/pause/seek), and can
 // export the decode to a WAV (and, for an Atmos stream, one WAV per
@@ -131,7 +131,7 @@ class StreamPlayerController : public QObject {
     Q_PROPERTY(bool exporting READ exporting NOTIFY exportingChanged)
     Q_PROPERTY(QString exportError READ exportError NOTIFY exportFinished)
 
-    // AC-4, decoded through iclforge::ac4::Decoder as `ac3cli play` and Hearth's engine
+    // AC-4, decoded through iclforge::ac4::Decoder as `forge play` and Hearth's engine
     // decode it: whether the open file is AC-4, its presentations, and which
     // one plays - `presentation=<n>`'s n, or -1 for the decoder's own choice.
     // Setting it decodes the file again.
@@ -196,11 +196,11 @@ class StreamPlayerController : public QObject {
     Q_INVOKABLE void clearClipLatch(int channel);
 
     // Writes the whole decoded bed to `url` as a float32 WAV
-    // (iclforge::io::write_wav_f32) - the GUI twin of `ac3cli decode`'s primary
+    // (iclforge::io::write_wav_f32) - the GUI twin of `forge decode`'s primary
     // output, from data already resident rather than a second decode pass.
     Q_INVOKABLE void exportDecodedWav(const QUrl& url);
     // Writes one object_NN.wav per JOC-reconstructed object into the
-    // directory `url` names, the same naming `ac3cli decode`'s own
+    // directory `url` names, the same naming `forge decode`'s own
     // objects_dir writes - a no-op (with exportError set) when hasObjects()
     // is false.
     Q_INVOKABLE void exportObjects(const QUrl& url);
@@ -252,5 +252,5 @@ class StreamPlayerController : public QObject {
     // ~StreamPlayerController() stops the loop and waits for all of them before
     // any member above is destroyed; declared last, so ~BackgroundJobs() would
     // wait ahead of them too.
-    ac3gui::BackgroundJobs jobs_;
+    forge_gui::BackgroundJobs jobs_;
 };

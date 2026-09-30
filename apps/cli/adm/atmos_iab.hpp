@@ -26,10 +26,10 @@
 // is identical either way.
 //
 // apps/cli/CMakeLists.txt adds exactly one of adm/enabled/atmos_iab.cpp or
-// adm/disabled/atmos_iab.cpp to the ac3cli target; main.cpp calls load_iab_atmos_source below
+// adm/disabled/atmos_iab.cpp to the forge target; main.cpp calls load_iab_atmos_source below
 // completely unconditionally either way, the same pattern atmos_adm.hpp's own
 // load_adm_atmos_source already establishes.
-namespace ac3cli {
+namespace forge_cli {
 
 // Everything run_atmos_iab (apps/cli/commands/atmos.cpp) needs from one parsed-and-bridged IAB
 // source, expressed purely in iclforge::oba terms - the same shape AdmAtmosSource (atmos_adm.hpp)
@@ -57,4 +57,4 @@ struct IabAtmosSource {
 // IabError's and BridgeError's own describe() - so main.cpp never needs either error enum's type.
 [[nodiscard]] std::expected<IabAtmosSource, std::string> load_iab_atmos_source(std::string_view path);
 
-}  // namespace ac3cli
+}  // namespace forge_cli

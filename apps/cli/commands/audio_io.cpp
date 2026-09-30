@@ -48,7 +48,7 @@
 #include "sink_wait.hpp"
 #include "stream_tools.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 namespace plan = iclforge::plan;
 
@@ -115,7 +115,7 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
                        "container={} does not apply to a passthrough capture: writing the bare",
                        name);
         status_println(status,
-                       "elementary stream, which 'ac3cli {}' will wrap if you want a container.",
+                       "elementary stream, which 'forge {}' will wrap if you want a container.",
                        name);
     }
 
@@ -239,7 +239,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         return kExitUnavailable;
     }
     if (device_index < 0 || static_cast<std::size_t>(device_index) >= devices->size()) {
-        fmt::println(stderr, "error: device index {} out of range (see 'ac3cli devices')",
+        fmt::println(stderr, "error: device index {} out of range (see 'forge devices')",
                      device_index);
         return kExitUsage;
     }
@@ -598,7 +598,7 @@ int run_outputs() {
         // own header comment.
         if (const auto spatial = iclforge::audio::probe_spatial_capability(d.id); spatial) {
             if (spatial->max_dynamic_objects > 0) {
-                fmt::println("       spatial: {} dynamic objects (ac3cli spatial, Windows spatial object renderer)",
+                fmt::println("       spatial: {} dynamic objects (forge spatial, Windows spatial object renderer)",
                              spatial->max_dynamic_objects);
             } else {
                 fmt::println("       spatial: {}", spatial->reason);
@@ -642,7 +642,7 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
     }
     if (devices.has_value() && device_index >= 0 &&
         static_cast<std::size_t>(device_index) >= devices->size()) {
-        fmt::println(stderr, "error: no render endpoint with index {} ('ac3cli outputs' lists them)",
+        fmt::println(stderr, "error: no render endpoint with index {} ('forge outputs' lists them)",
                      device_index);
         return kExitInput;
     }
@@ -910,7 +910,7 @@ int submit_units_to_sink(iclforge::audio::PassthroughSink& sink,
 }
 
 // Exclusively creates an empty file at a make_temp_ac3_path() result before run_transcode below
-// ever opens it. run_transcode writes through the same output-sink code ac3cli's own
+// ever opens it. run_transcode writes through the same output-sink code forge's own
 // caller-chosen 'transcode' output path uses, so that path can't itself refuse to replace an
 // existing file; this closes the shared-temp-dir symlink/TOCTOU race up front instead, the same
 // pattern examples/encode_iab.cpp's claim_temp_path uses for the same reason.
@@ -1042,7 +1042,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     const iclforge::audio::RenderDeviceInfo* chosen = nullptr;
     if (device_index >= 0) {
         if (static_cast<std::size_t>(device_index) >= devices->size()) {
-            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
+            fmt::println(stderr, "error: device index {} out of range (see 'forge outputs')",
                          device_index);
             return kExitUsage;
         }
@@ -1095,7 +1095,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
             return run_monitor(in_path, device_index, meta);
         }
         fmt::println(stderr,
-                     "error: \"{}\" does not accept {} over IEC 61937 (see 'ac3cli outputs'){}",
+                     "error: \"{}\" does not accept {} over IEC 61937 (see 'forge outputs'){}",
                      chosen->name, eac3 ? "E-AC-3" : "AC-3",
                      !meta.follow_sink && (takes_ac3 || takes_pcm)
                          ? " (drop follow=off to let play fall back instead of refusing)"
@@ -1123,4 +1123,4 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     return result;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

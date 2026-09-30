@@ -10,7 +10,7 @@ moved?) and not an independent oracle; the oracles are in tools/checks and
 docs/verification.md. Re-running this script on an unchanged tree reproduces the
 header byte for byte.
 
-    python tools/generators/gen_baremetal_ac4_fixture.py --ac3cli build/.../bin/ac3cli
+    python tools/generators/gen_baremetal_ac4_fixture.py --forge build/.../bin/forge
 
 The streams are the table STREAMS below. What each is for:
 
@@ -29,7 +29,7 @@ The streams are the table STREAMS below. What each is for:
     is what holds decision 26 for the streams with companding (planning/ac4.md,
     D14a4).
 
-The levels are the WAV that `ac3cli decode` writes, read back per channel and put
+The levels are the WAV that `forge decode` writes, read back per channel and put
 in the order the decoder hands its channels over in (the speakers of
 ac4::DecodedFrame). For the three layouts here that is the file's own order (a
 WAV's channel mask puts L R C LFE, the surround pair and the four heights in it),
@@ -149,11 +149,11 @@ def to_coded_order(layout: Layout, wav_values: list[float]) -> list[float]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ac3cli", required=True, help="path to a built ac3cli")
+    parser.add_argument("--forge", required=True, help="path to a built forge")
     args = parser.parse_args()
-    ac3cli = pathlib.Path(args.ac3cli).resolve()
-    if not ac3cli.exists():
-        raise SystemExit(f"no such file: {ac3cli}")
+    forge = pathlib.Path(args.forge).resolve()
+    if not forge.exists():
+        raise SystemExit(f"no such file: {forge}")
 
     rows = []
     with tempfile.TemporaryDirectory(prefix="ac4-baremetal-") as work:
@@ -162,7 +162,7 @@ def main() -> int:
             data = source.read_bytes()
             frames = count_sync_frames(data)
             decoded = pathlib.Path(work) / f"{stream.key}.wav"
-            run([str(ac3cli), "decode", str(source), str(decoded)])
+            run([str(forge), "decode", str(source), str(decoded)])
             per_channel = wav_samples_per_channel(decoded)
             if per_channel != frames * SAMPLES_PER_FRAME:
                 raise SystemExit(f"{stream.key}: {per_channel} samples a channel for {frames} "
@@ -189,7 +189,7 @@ def main() -> int:
         "// floating-point support unless -u _printf_float is linked in, and a probe whose subject",
         "// is footprint should not drag that in just to report a number.",
         "",
-        "namespace ac3probe {",
+        "namespace iclforge_probe {",
         "",
         f"inline constexpr int kAc4SampleRateHz = {SAMPLE_RATE_HZ};",
         f"inline constexpr int kAc4SamplesPerFrame = {SAMPLES_PER_FRAME};",
@@ -210,7 +210,7 @@ def main() -> int:
             "}};",
             "",
         ]
-    body += ["}  // namespace ac3probe", ""]
+    body += ["}  // namespace iclforge_probe", ""]
     OUTPUT.write_text("\n".join(body), encoding="utf-8", newline="\n")
     print(f"wrote {OUTPUT.relative_to(REPO)} ({sum(len(row[1]) for row in rows)} bitstream bytes)")
     return 0

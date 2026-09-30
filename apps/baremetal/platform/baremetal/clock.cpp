@@ -1,4 +1,4 @@
-// ac3probe::now_us() for arm-none-eabi on QEMU's mps2-an385.
+// iclforge_probe::now_us() for arm-none-eabi on QEMU's mps2-an385.
 //
 // std::clock() is what newlib gives here, and under the rdimon specs the
 // toolchain links (see cmake/toolchains/arm-none-eabi.toolchain.cmake) it is
@@ -27,7 +27,7 @@
 
 #include "probe.hpp"
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 std::uint64_t now_us() {
     const std::clock_t ticks = std::clock();
@@ -38,4 +38,4 @@ std::uint64_t now_us() {
            static_cast<std::uint64_t>(CLOCKS_PER_SEC);
 }
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

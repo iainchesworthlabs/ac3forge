@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // One measured value drawn against an optional delivery gate — a target
 // tolerance band (the loudness gates) or a one-sided ceiling (true peak) —

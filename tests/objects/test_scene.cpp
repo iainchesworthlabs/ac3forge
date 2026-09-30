@@ -22,7 +22,7 @@ namespace {
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 
-// The keyframe file ac3cli has always read, with everything the grammar
+// The keyframe file forge has always read, with everything the grammar
 // allows in it: comments to end of line, a comment-only line, a blank line,
 // leading whitespace, and an object index the file never mentions (1) sitting
 // between two it does.

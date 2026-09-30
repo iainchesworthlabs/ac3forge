@@ -1,7 +1,7 @@
 """Unit tests for fuzz_eac3_encoder_space.py, the E-AC-3 / atmos-encode
 input-space fuzzer.
 
-ac3cli, ffmpeg and ffprobe are never run: _run() is replaced by a fake that
+forge, ffmpeg and ffprobe are never run: _run() is replaced by a fake that
 writes real E-AC-3 syncframe headers (so the independent framing walk has
 something true or deliberately false to read) and answers ffprobe in its JSON
 shape. What is tested is the harness logic that decides whether a defect is
@@ -158,7 +158,7 @@ class Drawing(unittest.TestCase):
         atmos = small_case(command="atmos-encode", layout="", objects=4)
         self.assertIn("objects=4", fe3.describe(atmos))
         self.assertNotIn("tools=", fe3.describe(atmos))
-        self.assertIn("ac3cli atmos-encode in.wav out.ec3 384 4", fe3.repro(atmos))
+        self.assertIn("forge atmos-encode in.wav out.ec3 384 4", fe3.repro(atmos))
 
 
 class OracleModel(unittest.TestCase):
@@ -263,7 +263,7 @@ class RunCase(unittest.TestCase):
 
     def run_case(self, fake, case=None, ffmpeg="ffmpeg", ffprobe="ffprobe"):
         with mock.patch.object(fe3, "_run", fake):
-            return fe3.run_case("ac3cli", ffmpeg, ffprobe, case or small_case(), self.work,
+            return fe3.run_case("forge", ffmpeg, ffprobe, case or small_case(), self.work,
                                 self.art)
 
     def test_full_oracle_clean(self):
@@ -340,7 +340,7 @@ class Envelope(unittest.TestCase):
         with mock.patch.object(fe3, "_run", fake), \
                 mock.patch.object(fe3.ac3space, "generate_pcm", light_pcm), \
                 contextlib.redirect_stdout(buf):
-            rc = fe3.check_envelope("ac3cli", 4)
+            rc = fe3.check_envelope("forge", 4)
         return rc, buf.getvalue()
 
     def test_matching_envelope_passes(self):
@@ -395,7 +395,7 @@ class Oracles(unittest.TestCase):
         with mock.patch.object(fe3, "_run", fake), \
                 mock.patch.object(fe3.ac3space, "generate_pcm", light_pcm), \
                 contextlib.redirect_stdout(buf):
-            rc = fe3.check_oracles("ac3cli", "ffmpeg", "ffprobe")
+            rc = fe3.check_oracles("forge", "ffmpeg", "ffprobe")
         return rc, buf.getvalue()
 
     def test_model_matches(self):
@@ -422,7 +422,7 @@ class Main(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
-        self.cli = self.tmp / "ac3cli"
+        self.cli = self.tmp / "forge"
         self.cli.write_text("")
 
     def tearDown(self):
@@ -462,7 +462,7 @@ class Main(unittest.TestCase):
         code, _ = self.run_main("--no-ffmpeg", "--check-oracles")
         self.assertIn("cannot run with --no-ffmpeg", str(code))
         self.cli.unlink()
-        self.assertIn("ac3cli not found", str(self.run_main()[0]))
+        self.assertIn("forge not found", str(self.run_main()[0]))
 
     def test_routes(self):
         with mock.patch.object(fe3, "check_envelope", lambda cli, jobs: 0):

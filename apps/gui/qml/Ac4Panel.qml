@@ -2,14 +2,14 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
-// The AC-4 tab: the options of `ac3cli ac4-encode` the page can express, each
+// The AC-4 tab: the options of `forge ac4-encode` the page can express, each
 // read from and written to EncoderController's AC-4 block. What it leaves to
 // the command line (substreams, presentations, dialogue stems and the rest)
 // is named at the foot of the tab and in ac4_encode_settings.hpp.
 //
-// In object mode (EncoderController.ac4Objects) the tab is `ac3cli atmos-encode
+// In object mode (EncoderController.ac4Objects) the tab is `forge atmos-encode
 // ... codec=ac4`'s instead: the coding of the objects, a dialnorm in whole dB
 // and a raw stream's CRC. The frame rate is fixed at the native one, the rate is
 // constant, and the loudness values, DRC, downmix and dialogue enhancement
@@ -29,8 +29,8 @@ ColumnLayout {
         Layout.rightMargin: 24
         Layout.topMargin: Theme.space4
         text: panel.objects
-              ? qsTr("AC-4 objects take the coding, the dialnorm in whole dB and a raw stream's CRC, as “ac3cli atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.")
-              : qsTr("AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “ac3cli ac4-encode” does.")
+              ? qsTr("AC-4 objects take the coding, the dialnorm in whole dB and a raw stream's CRC, as “forge atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.")
+              : qsTr("AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “forge ac4-encode” does.")
         color: Theme.textMuted
         font.pixelSize: Theme.fontSmall
         wrapMode: Text.WordWrap
@@ -402,7 +402,7 @@ ColumnLayout {
         Layout.leftMargin: 24
         Layout.rightMargin: 24
         visible: !panel.objects
-        text: qsTr("Left to “ac3cli ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.")
+        text: qsTr("Left to “forge ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.")
         color: Theme.textMuted
         font.pixelSize: Theme.fontSmall
         wrapMode: Text.WordWrap

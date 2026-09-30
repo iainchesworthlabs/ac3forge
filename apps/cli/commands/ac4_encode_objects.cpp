@@ -39,7 +39,7 @@
 // Channels count from 0; one not named is a dynamic object at the room's
 // centre. The stream is written raw, as sync frames.
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 namespace {
 
 [[nodiscard]] std::optional<double> number(std::string_view token) {
@@ -192,7 +192,7 @@ struct Scene {
             }
         }
         if (!ok) {
-            fmt::println(stderr, "error: {}:{}: not a scene directive (ac3cli help ac4-encode)",
+            fmt::println(stderr, "error: {}:{}: not a scene directive (forge help ac4-encode)",
                          path, number_of_line);
             return std::nullopt;
         }
@@ -203,7 +203,7 @@ struct Scene {
 }  // namespace
 
 int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
-                           std::uint32_t bitrate, const ac3cli::Options& meta) {
+                           std::uint32_t bitrate, const forge_cli::Options& meta) {
     const Options::Ac4Encode& opts = meta.ac4enc;
     auto wav = read_wav_arg(in_path);
     if (!wav.has_value()) {
@@ -257,7 +257,7 @@ int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
     }
     auto encoder = iclforge::ac4::Encoder::create(config);
     if (!encoder.has_value()) {
-        fmt::println(stderr, "error: the encoder refuses {} (ac3cli help ac4-encode)",
+        fmt::println(stderr, "error: the encoder refuses {} (forge help ac4-encode)",
                      iclforge::ac4::Encoder::refusal_reason(config));
         return kExitUsage;
     }
@@ -295,4 +295,4 @@ int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
     return kExitOk;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

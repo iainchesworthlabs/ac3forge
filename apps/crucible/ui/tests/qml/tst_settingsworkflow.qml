@@ -1,9 +1,9 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleLanguage
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleLanguage
+import CrucibleTest
 
 // The Settings page, pressed rather than written to: each case clicks the
 // page's own segment, check, combo box or field, then reads the choice back

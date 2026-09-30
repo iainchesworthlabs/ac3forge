@@ -7,7 +7,7 @@ script's exit code - is what _compare.yml's performance-gate job fails on. A 20%
 slowdown must only warn, noise must read as unchanged, and a missing side
 must read as an explicit hard_regression=false rather than an unset output.
 
-stdlib unittest only; ac3bench/ac3kernelbench JSON is synthesised in a temp
+stdlib unittest only; iclforge-bench/iclforge-kernelbench JSON is synthesised in a temp
 dir in the two (different) schemas the real producers write.
 
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
@@ -135,7 +135,7 @@ class Main(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(verdict, "hard_regression=true\n")
         self.assertIn("## Performance vs abc123", out)
-        self.assertIn("Per-kernel (ac3kernelbench)", out)
+        self.assertIn("Per-kernel (iclforge-kernelbench)", out)
 
     def test_soft_regression_warns_without_blocking(self):
         write_bench(self.base, 1, {"w": 1.0})

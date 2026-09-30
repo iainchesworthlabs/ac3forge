@@ -1,4 +1,4 @@
-// ac3hearth-testsink: a Sendspin player for Hearth's tests and contributors
+// hearth-testsink: a Sendspin player for Hearth's tests and contributors
 // (planning/hearth-reference-player.md, The test sink).
 
 #include <chrono>
@@ -25,7 +25,7 @@ namespace testsink = iclforge::hearth::testsink;
 namespace controller = iclforge::sendspin::controller;
 using namespace std::chrono_literals;
 
-constexpr std::string_view kUsage = R"(usage: ac3hearth-testsink [options]
+constexpr std::string_view kUsage = R"(usage: hearth-testsink [options]
 
 A Sendspin player that writes each stream it plays to a WAV file: PCM, FLAC or
 Opus over player@v1, and AC-3 or E-AC-3 over _iclforge_player@v1, rendered to
@@ -254,7 +254,7 @@ int main(int argc, char** argv) {
     ConsoleLog log;
     auto sink = testsink::Sink::start(options, log);
     if (!sink) {
-        std::cerr << "ac3hearth-testsink: " << sink.error() << "\n";
+        std::cerr << "hearth-testsink: " << sink.error() << "\n";
         return EXIT_FAILURE;
     }
     log.line("listening on " + options.address + ":" + std::to_string((*sink)->port()) + " as \"" + options.name + "\"");

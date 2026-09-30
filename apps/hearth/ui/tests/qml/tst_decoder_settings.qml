@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeHearth
+import Hearth
 
 // DecoderPage.qml's settings round trip (issue #886): every control writes
 // through DecoderEac3.qml/DecoderAc4.qml straight into

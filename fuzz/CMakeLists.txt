@@ -237,12 +237,12 @@ if(ICLFORGE_BUILD_AC4)
     iclforge_add_fuzzer(fuzz_ac4_parse iclforge::ac4)
 endif()
 
-# split_frames + FrameDecoder::decode_frame, driven the way ac3cli's 'decode'
+# split_frames + FrameDecoder::decode_frame, driven the way forge's 'decode'
 # drives them (src/ac3/src/decoder/decoder.cpp).
 iclforge_add_fuzzer(fuzz_ac3_decode)
 
 # split_access_units + Eac3Decoder::decode_access_unit (which calls
-# decode_substream internally), driven the way ac3cli's 'decode' drives them
+# decode_substream internally), driven the way forge's 'decode' drives them
 # for E-AC-3 (src/ac3/src/decoder/eac3_decoder.cpp).
 iclforge_add_fuzzer(fuzz_eac3_decode)
 
@@ -252,7 +252,7 @@ iclforge_add_fuzzer(fuzz_eac3_decode)
 iclforge_add_fuzzer(fuzz_wav_read)
 
 # ac3::iec61937::BurstReader: IEC 61937 burst de-framing, driven the way
-# ac3cli's 'unspdif' drives it (src/iec61937/src/iec61937.cpp). The one
+# forge's 'unspdif' drives it (src/iec61937/src/iec61937.cpp). The one
 # entry point here whose input is by definition off a wire - an S/PDIF or
 # HDMI capture - and whose Pd word is an attacker-chosen length.
 iclforge_add_fuzzer(fuzz_iec61937_unwrap)
@@ -353,7 +353,7 @@ endif()
 
 # --- Sendspin (planning/hearth-reference-player.md, A4) ----------------------
 # iclforge::sendspin's parsers are the first code a network peer's bytes reach, on
-# ac3hearth's server and on a sink. Gated on ICLFORGE_BUILD_HEARTH like the
+# hearth's server and on a sink. Gated on ICLFORGE_BUILD_HEARTH like the
 # library; fuzz/run.sh turns it on with ICLFORGE_SENDSPIN_CORE_ONLY, which
 # builds the library's dependency-free core and keeps this build free of vcpkg.
 if(TARGET iclforge_sendspin)

@@ -43,7 +43,7 @@
 #include "../adm/atmos_adm.hpp"
 #include "../adm/atmos_iab.hpp"
 
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 namespace plan = iclforge::plan;
 
@@ -201,7 +201,7 @@ constexpr std::array<CbiLayout, 3> kCbiLayouts{{
 // (ac4enc/encoder.hpp, SubstreamConfig::objects), so metadata updates land on that fixed
 // 2048-sample grid: one update per object per frame, ramped over the whole frame from the previous
 // one, evaluated at the frame's END time - the convention every Atmos-encode command in this file
-// uses. The steps themselves are apps/common/ac4_objects_core.cpp's, which ac3gui's AC-4 objects
+// uses. The steps themselves are apps/common/ac4_objects_core.cpp's, which forge-gui's AC-4 objects
 // take too.
 int run_atmos_objects_to_ac4(std::string_view source_kind, std::uint32_t sample_rate,
                              const std::vector<bool>& is_bed,
@@ -785,7 +785,7 @@ namespace {
 // there and one mapped to an LFE the LFE object - iclforge::apps::ac4_object_slots), and an
 // authored scene file moves the dynamic objects, in that order; without one each keeps
 // atmos-encode's default placement. The steps from there are apps/common/ac4_objects_core.cpp's and
-// ac4_encode_core.cpp's, which ac3gui's AC-4 objects take too, so the line the GUI echoes writes
+// ac4_encode_core.cpp's, which forge-gui's AC-4 objects take too, so the line the GUI echoes writes
 // the bytes the GUI does.
 int run_atmos_encode_ac4(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                          std::uint32_t objects, const Options& meta, std::string_view paths_path) {
@@ -1191,7 +1191,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
         return kExitUsage;
     }
 
-    auto source = ac3cli::load_adm_atmos_source(in_path, programme_id);
+    auto source = forge_cli::load_adm_atmos_source(in_path, programme_id);
     if (!source.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, source.error());
         return kExitInput;
@@ -1319,7 +1319,7 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
         return kExitUsage;
     }
 
-    auto source = ac3cli::load_iab_atmos_source(in_path);
+    auto source = forge_cli::load_iab_atmos_source(in_path);
     if (!source.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, source.error());
         return kExitInput;
@@ -1606,7 +1606,7 @@ int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint
 }
 
 int run_strip_objects(std::string_view in_path, std::string_view out_path,
-                      const ac3cli::Options& meta) {
+                      const forge_cli::Options& meta) {
     const auto raw = read_all(in_path);
     if (raw.empty()) {
         fmt::println(stderr, "error: cannot open {}", in_path);
@@ -1660,4 +1660,4 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
     return kExitOk;
 }
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

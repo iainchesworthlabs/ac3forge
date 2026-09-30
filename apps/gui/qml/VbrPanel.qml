@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // Variable bit rate: E-AC-3, file output only (see EncoderController::
 // vbrAvailable()'s own comment on why object mode and a live session are
@@ -159,7 +159,7 @@ ColumnLayout {
 
         Text {
             Layout.fillWidth: true
-            text: qsTr("ac3cli vbr token:  %1").arg(EncoderController.vbrToken)
+            text: qsTr("forge vbr token:  %1").arg(EncoderController.vbrToken)
             color: Theme.textMuted
             font.pixelSize: Theme.fontSmall
         }

@@ -14,7 +14,7 @@
 
 // Signal analysis for the front ends: what each channel is carrying, in the
 // units a meter needs. This is presentation-side work, not codec work, but it
-// belongs in the library because ac3cli and ac3gui must report the same
+// belongs in the library because forge and forge-gui must report the same
 // numbers from the same ballistics rather than each inventing its own.
 
 namespace iclforge::analysis {

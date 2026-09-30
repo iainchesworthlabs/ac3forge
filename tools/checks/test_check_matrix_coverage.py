@@ -8,7 +8,7 @@ particular the 2026-08-17 false pass, where the `auto` tool set read as covered
 only because `dialnorm=auto` appeared elsewhere in the script. Tokens that
 appear only in `#` comments must not count either.
 
-ac3cli is never run: check_matrix_coverage.run is patched with a fake that
+forge is never run: check_matrix_coverage.run is patched with a fake that
 answers the three introspection probes (usage table, unknown layout, unknown
 tool set) the way the real binary does.
 
@@ -29,12 +29,12 @@ import check_matrix_coverage as cmc
 
 USAGE = """\
 usage:
-  ac3cli encode <in.wav> <out.ac3> [kbps]
-  ac3cli sine <out> <s> <kbps> <hz> <pct> [layout]
-  ac3cli eac3-sine <out> <s> <kbps> <hz> <pct> [layout]
-  ac3cli eac3-encode <in.wav> <out> <kbps> [tools] [layout] [vbr]
-  ac3cli play <in>
-  ac3cli --version
+  forge encode <in.wav> <out.ac3> [kbps]
+  forge sine <out> <s> <kbps> <hz> <pct> [layout]
+  forge eac3-sine <out> <s> <kbps> <hz> <pct> [layout]
+  forge eac3-encode <in.wav> <out> <kbps> [tools] [layout] [vbr]
+  forge play <in>
+  forge --version
 vbr    off | q:0..1[,min:kbps][,max:kbps] | avg:kbps[,win:frames]
 """
 
@@ -42,9 +42,9 @@ vbr    off | q:0..1[,min:kbps][,max:kbps] | avg:kbps[,win:frames]
 # A build whose commands read and write AC-4: monitor needs a device, so the
 # AC-4 check leaves it out as the commands check does.
 USAGE_AC4 = USAGE + """\
-  ac3cli ac4-encode <in.wav> <out.ac4|out.mp4> [kbps]
-  ac3cli decode <in.ac3|in.ec3|in.ac4> <out.wav>
-  ac3cli monitor <in.ac3|in.ac4> [device]
+  forge ac4-encode <in.wav> <out.ac4|out.mp4> [kbps]
+  forge decode <in.ac3|in.ec3|in.ac4> <out.wav>
+  forge monitor <in.ac3|in.ac4> [device]
 """
 
 
@@ -147,7 +147,7 @@ class Main(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
-        self.cli = self.tmp / "ac3cli"
+        self.cli = self.tmp / "forge"
         self.cli.write_text("")
         self.matrix = self.tmp / "matrix.sh"
 
@@ -220,7 +220,7 @@ class Main(unittest.TestCase):
                 cmc.main()
 
     def test_missing_cli_is_fatal(self):
-        with self.assertRaisesRegex(SystemExit, "ac3cli not found"):
+        with self.assertRaisesRegex(SystemExit, "forge not found"):
             argv = ["x", "--cli", str(self.tmp / "nope"), "--matrix", str(self.matrix)]
             with mock.patch.object(sys, "argv", argv):
                 cmc.main()

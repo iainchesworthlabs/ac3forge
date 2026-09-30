@@ -769,7 +769,7 @@ constexpr int kPollMs = 60;
 
 // Ac4Settings::immersive_layout (planning/ac4.md, I5): unset (the source's own
 // coded layout) as "asCoded", and the five layouts Part 2's renderer folds an
-// immersive element to otherwise - the same names ac3cli decode's own
+// immersive element to otherwise - the same names forge decode's own
 // speakers= takes. The stereo/mono targets DownmixTarget also has are not
 // reachable here: those are DecoderSettings::stereo_fold's own job.
 [[nodiscard]] QString ac4_immersive_layout_name(
@@ -1130,7 +1130,7 @@ void sync_store(iclforge::hearth::SettingsStore& store, iclforge::hearth::Diagno
 HearthController::HearthController(QObject* parent)
     : QObject(parent),
       log_(iclforge::hearth::process_diagnostics()),
-      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
+      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("iclforge"),
                QStringLiteral("Hearth")),
       store_(std::make_unique<QSettingsStore>(settings_)),
       pairing_(shared_pairing_store()) {
@@ -1162,7 +1162,7 @@ QString HearthController::versionDetails() const {
 
 QString HearthController::licenceNotices() const {
     // The same file the package installs, embedded by
-    // apps/hearth/notices/notices.cmake once ac3hearth exists for it to
+    // apps/hearth/notices/notices.cmake once hearth exists for it to
     // embed into, so the dialog cannot say something the package does not.
     // A binary built without the embedding gets a sentence that says so
     // rather than an empty view - the same fallback

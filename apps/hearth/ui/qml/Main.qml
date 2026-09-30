@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The window (planning/hearth-reference-player.md, A5): a header with the
 // six-page switch, one page at a time in the body, and the transport bar
@@ -79,7 +79,7 @@ ApplicationWindow {
     // applyTextScale() keeps: Theme has no idea what a shell's settings look
     // like, only what the resolved scale means to the tokens it hands out.
     // "system" takes the point size the platform theme reports and counts
-    // 9 pt as 100%, the same reading Crucible's and ac3gui's Settings pages
+    // 9 pt as 100%, the same reading Crucible's and forge-gui's Settings pages
     // give it.
     function applyTextScale() {
         const choice = HearthController.textScale;

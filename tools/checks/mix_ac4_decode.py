@@ -1,11 +1,11 @@
-"""Check the mixes of ac3cli's AC-4 presentations against Part 1's and Part 2's formulas.
+"""Check the mixes of forge's AC-4 presentations against Part 1's and Part 2's formulas.
 
 For each presentation of several substreams in the multiplexed streams under
 tests/golden/ac4dec/presentations/ (planning/ac4.md, phase D7; tests/ac4dec/ac4dec_mux.hpp builds
 them from DEE's tone legs and the encoder's tone streams), this decodes the presentation with
-`ac3cli decode presentation-id=`, and each of its substreams alone through the single-group
+`forge decode presentation-id=`, and each of its substreams alone through the single-group
 presentations the streams also carry, and holds the mix to the matrix the texts give. The
-stream's own values come from `ac3cli decode ... syntax-trace=` and its table of contents from the
+stream's own values come from `forge decode ... syntax-trace=` and its table of contents from the
 Python reference parser (tools/references/ac4_parse.py, ac4_presentations.py):
 
   mix      ETSI TS 103 190-2 clauses 4.8.3.15 to 4.8.4 and TS 103 190-1 clause 6.2.16: the main
@@ -43,7 +43,7 @@ g_dialog and g_assoc of 0 dB, at -6 and -10 dB, and at +9 dB, which g_dialog_max
 and at 0 dB at the output level, against the substreams alone at the same level.
 
 Usage:
-    python tools/checks/mix_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
+    python tools/checks/mix_ac4_decode.py --cli build/config-linux-llvm/bin/forge
 """
 
 import argparse
@@ -73,7 +73,7 @@ SKIP = 5 * 2048
 SETTINGS = ((0.0, 0.0), (-6.0, -10.0), (9.0, 0.0))  # dialogue-gain, associated-gain
 DE_GAIN_DB = 6.0
 LEVEL = -31.0  # output-level=, with drcmode=off
-# ac3cli's WAV channel order for each channel count the streams decode to.
+# forge's WAV channel order for each channel count the streams decode to.
 WAV_ORDER = {1: ("C",), 2: ("L", "R"), 3: ("L", "R", "C"), 5: ("L", "R", "C", "Ls", "Rs"),
              6: ("L", "R", "C", "LFE", "Ls", "Rs")}
 # Where each channel sits for panning, clockwise from the front (5.X surrounds).
@@ -120,7 +120,7 @@ def decode(cli, stream, out_wav, *options):
     command = [str(cli), "decode", str(stream), str(out_wav), *options]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise SystemExit(f"{stream.name}: ac3cli decode {' '.join(options)} failed "
+        raise SystemExit(f"{stream.name}: forge decode {' '.join(options)} failed "
                          f"({result.returncode}):\n{result.stdout}{result.stderr}")
     samples, _ = read_wav(out_wav)
     return samples
@@ -468,7 +468,7 @@ def check_stream(cli, stream, work):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cli", required=True, type=Path, help="the ac3cli to decode with")
+    parser.add_argument("--cli", required=True, type=Path, help="the forge to decode with")
     parser.add_argument("--work", type=Path, help="scratch directory (default: a temporary one)")
     args = parser.parse_args()
     failures = []

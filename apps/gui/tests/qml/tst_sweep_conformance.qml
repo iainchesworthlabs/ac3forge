@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // The mockup-conformance sweep's behavioural contracts: honest run history,
 // CLI-line parity tokens, the E-AC-3 rate rung, the object-mode rate floor,
@@ -151,7 +151,7 @@ TestCase {
         verify(win.cliLine.indexOf("src=") >= 0);
         verify(win.cliLine.indexOf("map=") >= 0);
 
-        // A non-default metadata choice appears in ac3cli's own grammar.
+        // A non-default metadata choice appears in forge's own grammar.
         EncoderController.drcIndex = 1;
         verify(win.cliLine.indexOf("drc=") >= 0);
         EncoderController.drcIndex = 0;
@@ -168,9 +168,9 @@ TestCase {
         win.inputMode = "file";
 
         EncoderController.containerIndex = 1;
-        verify(win.cliLine.indexOf("&& ac3cli mkv") >= 0);
+        verify(win.cliLine.indexOf("&& forge mkv") >= 0);
         EncoderController.containerIndex = 0;
-        verify(win.cliLine.indexOf("&& ac3cli mkv") < 0);
+        verify(win.cliLine.indexOf("&& forge mkv") < 0);
     }
 
     function test_spdifIsHonestlyTwoCommandsToo() {
@@ -186,13 +186,13 @@ TestCase {
         compare(EncoderController.containerNames[2], "S/PDIF (.wav)");
 
         EncoderController.containerIndex = 2;
-        verify(win.cliLine.indexOf("&& ac3cli spdif out.ac3 out.wav") >= 0);
+        verify(win.cliLine.indexOf("&& forge spdif out.ac3 out.wav") >= 0);
         compare(EncoderController.outputSuffix(), "wav");
         // mkv and spdif are mutually exclusive container choices - never both
         // in the same command line.
-        verify(win.cliLine.indexOf("&& ac3cli mkv") < 0);
+        verify(win.cliLine.indexOf("&& forge mkv") < 0);
         EncoderController.containerIndex = 0;
-        verify(win.cliLine.indexOf("&& ac3cli spdif") < 0);
+        verify(win.cliLine.indexOf("&& forge spdif") < 0);
     }
 
     function test_mp4IsHonestlyTwoCommands() {
@@ -207,17 +207,17 @@ TestCase {
         compare(EncoderController.containerNames[3], "MP4 (.mp4)");
 
         EncoderController.containerIndex = 3;
-        verify(win.cliLine.indexOf("&& ac3cli mp4 out.ac3 out.mp4") >= 0);
+        verify(win.cliLine.indexOf("&& forge mp4 out.ac3 out.mp4") >= 0);
         compare(EncoderController.outputSuffix(), "mp4");
         verify(!EncoderController.outputIsFolder());
         // mkv, spdif, fmp4 and ts are mutually exclusive container choices -
         // never more than one in the same command line.
-        verify(win.cliLine.indexOf("&& ac3cli mkv") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli spdif") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli fmp4") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli ts") < 0);
+        verify(win.cliLine.indexOf("&& forge mkv") < 0);
+        verify(win.cliLine.indexOf("&& forge spdif") < 0);
+        verify(win.cliLine.indexOf("&& forge fmp4") < 0);
+        verify(win.cliLine.indexOf("&& forge ts") < 0);
         EncoderController.containerIndex = 0;
-        verify(win.cliLine.indexOf("&& ac3cli mp4") < 0);
+        verify(win.cliLine.indexOf("&& forge mp4") < 0);
     }
 
     function test_fmp4IsHonestlyTwoCommandsAndNeedsAFolder() {
@@ -232,18 +232,18 @@ TestCase {
         compare(EncoderController.containerNames[4], "Fragmented MP4/CMAF (folder)");
 
         EncoderController.containerIndex = 4;
-        verify(win.cliLine.indexOf("&& ac3cli fmp4 out.ac3 out_dir") >= 0);
+        verify(win.cliLine.indexOf("&& forge fmp4 out.ac3 out_dir") >= 0);
         // fMP4/CMAF writes a FOLDER of files, not one file with a single
         // extension - outputSuffix() is empty and outputIsFolder() is true,
         // the signal the save dialog and the Encode button both act on.
         compare(EncoderController.outputSuffix(), "");
         verify(EncoderController.outputIsFolder());
-        verify(win.cliLine.indexOf("&& ac3cli mkv") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli spdif") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli mp4 ") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli ts") < 0);
+        verify(win.cliLine.indexOf("&& forge mkv") < 0);
+        verify(win.cliLine.indexOf("&& forge spdif") < 0);
+        verify(win.cliLine.indexOf("&& forge mp4 ") < 0);
+        verify(win.cliLine.indexOf("&& forge ts") < 0);
         EncoderController.containerIndex = 0;
-        verify(win.cliLine.indexOf("&& ac3cli fmp4") < 0);
+        verify(win.cliLine.indexOf("&& forge fmp4") < 0);
         verify(!EncoderController.outputIsFolder());
     }
 
@@ -259,15 +259,15 @@ TestCase {
         compare(EncoderController.containerNames[5], "MPEG-TS (.ts)");
 
         EncoderController.containerIndex = 5;
-        verify(win.cliLine.indexOf("&& ac3cli ts out.ac3 out.ts") >= 0);
+        verify(win.cliLine.indexOf("&& forge ts out.ac3 out.ts") >= 0);
         compare(EncoderController.outputSuffix(), "ts");
         verify(!EncoderController.outputIsFolder());
-        verify(win.cliLine.indexOf("&& ac3cli mkv") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli spdif") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli mp4 ") < 0);
-        verify(win.cliLine.indexOf("&& ac3cli fmp4") < 0);
+        verify(win.cliLine.indexOf("&& forge mkv") < 0);
+        verify(win.cliLine.indexOf("&& forge spdif") < 0);
+        verify(win.cliLine.indexOf("&& forge mp4 ") < 0);
+        verify(win.cliLine.indexOf("&& forge fmp4") < 0);
         EncoderController.containerIndex = 0;
-        verify(win.cliLine.indexOf("&& ac3cli ts") < 0);
+        verify(win.cliLine.indexOf("&& forge ts") < 0);
     }
 
     function test_bitrateFloorAdvisoryTracksCodedChannelsAndFloor() {

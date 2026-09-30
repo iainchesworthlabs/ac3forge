@@ -20,7 +20,7 @@
 // each, because they do not actually differ: the split here is "a C runtime
 // calls main" against "an RTOS calls app_main", which is two cases, not three.
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 // Decodes both fixtures, checks every channel's level, reports footprint and
 // timing as key=value lines, and returns 0 on pass / 1 on fail - the exit code
@@ -41,4 +41,4 @@ int run();
 // truth. The number this profile actually cares about comes from real silicon.
 std::uint64_t now_us();
 
-} // namespace ac3probe
+} // namespace iclforge_probe

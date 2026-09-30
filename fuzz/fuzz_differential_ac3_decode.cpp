@@ -64,7 +64,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         return 0;
     }
 
-    // Same channel-order convention ac3cli's own `decode` writes a WAV with
+    // Same channel-order convention forge's own `decode` writes a WAV with
     // (apps/cli/main.cpp: run_decode) - see iclforge::io::wav_channel_order's own
     // doc comment.
     const auto map = iclforge::io::wav_channel_order(acmod, lfe);

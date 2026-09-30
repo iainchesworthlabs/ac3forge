@@ -11,7 +11,7 @@ million (esp-idf/iclforge/src/burst_player.cpp):
   sendspin.rms[1]=106234
 
 A test sink that played the same stream in the same group, rendered to the same
-layout (ac3hearth-testserver's --sink), wrote what it decoded to a WAV file.
+layout (hearth-testserver's --sink), wrote what it decoded to a WAV file.
 This reads both and fails when
 
   - the capture has no closing line for a stream of bursts, or its counters

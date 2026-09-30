@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The third-party notices this build carries, as the text of the NOTICES.txt
 // the package installs: CrucibleController.licenceNotices reads the copy

@@ -8,7 +8,7 @@
 
 #include "sink_wait.hpp"
 
-// apps/common/sink_wait.hpp: how ac3cli's play, monitor, identify and live
+// apps/common/sink_wait.hpp: how forge's play, monitor, identify and live
 // wait on a sink. None of those commands reaches its wait without a render
 // device, and a device cannot be pulled on a CI runner, so these cases hold
 // the waits against sinks that refuse and stop on cue. That a real sink stops

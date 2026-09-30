@@ -4,7 +4,7 @@ import QtTest
 // deployed beside the window wherever the window is; QtCore's would not be.
 import Qt.labs.platform as Platform
 
-import Ac3ForgeCrucible
+import Crucible
 
 // Every persisted setting round-trips through the real CrucibleController into
 // the isolated QSettings store the harness points it at, and the driver

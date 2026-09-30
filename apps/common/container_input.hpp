@@ -9,8 +9,8 @@
 #include <vector>
 
 // Turning a container file into the elementary stream iclforge::ac3 actually
-// decodes (container readers (mkv/mp4/ts)) - shared by ac3cli (decode/qc/levels/play/monitor)
-// and ac3gui (the QC/Inspect pickers), compiled straight into both the same
+// decodes (container readers (mkv/mp4/ts)) - shared by forge (decode/qc/levels/play/monitor)
+// and forge-gui (the QC/Inspect pickers), compiled straight into both the same
 // way RecordingSink/Fmp4FolderWriter beside this file are: apps/common has no
 // library target of its own (see recording_sink.hpp's own comment), and this
 // is smaller than either.
@@ -151,7 +151,7 @@ struct StreamTrim {
 
 // `file`'s elementary stream: `file` itself, unchanged, if it does not sniff
 // as one of the three containers this build reads, or the first AC-3/E-AC-3
-// track demuxed out of one - the same three readers `ac3cli demux` already
+// track demuxed out of one - the same three readers `forge demux` already
 // streams through, run here in their batch/zero-copy form since every caller
 // already holds the whole file in memory.
 struct ElementaryStreamResult {
@@ -166,7 +166,7 @@ struct ElementaryStreamResult {
     // From an MP4 track's edit list, when it has the shape an audio encoder
     // writes: any empty edits (a delay before the track, which is not audio),
     // then one edit at normal speed. Decoding does not apply it; a player
-    // does. Only the player does so far - ac3cli and the GUI still decode
+    // does. Only the player does so far - forge and the GUI still decode
     // every sample.
     StreamTrim trim{};
     // Set, with `trim` left at its default, when the file has an edit list

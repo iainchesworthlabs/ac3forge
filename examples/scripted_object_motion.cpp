@@ -6,7 +6,7 @@
 // traversed (hold, linear, smooth), evaluated once per frame into the
 // ObjectPlacement span AtmosEncoder::encode_frame wants. A scene also has a
 // text form - see the to_json() call at the end - so the same motion can be
-// saved, edited by hand and fed back to `ac3cli atmos-path`.
+// saved, edited by hand and fed back to `forge atmos-path`.
 
 #include <array>
 #include <cmath>
@@ -94,7 +94,7 @@ int main() {
     fmt::printf("%zu bytes of DD+ with %d scripted objects over a 5.1 bed\n", stream.size(),
                 encoder.dynamic_object_count());
 
-    // The same scene as text. Save this next to the stream and `ac3cli
+    // The same scene as text. Save this next to the stream and `forge
     // atmos-path out.ec3 scene.json` reproduces the motion from the file -
     // and so does the keyframe grammar, which that command still reads.
     const auto text = iclforge::oba::to_json(scene);

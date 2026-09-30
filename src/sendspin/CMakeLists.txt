@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # iclforge::sendspin - the Sendspin protocol for Hearth (planning/hearth-reference-player.md,
-# A4): the server half ac3hearth's engine uses, and the player half the test sink and
+# A4): the server half hearth's engine uses, and the player half the test sink and
 # the ESP32 sinks use, with the _iclforge_player@v1 role on both
 # (planning/hearth-sendspin-extension.md).
 #

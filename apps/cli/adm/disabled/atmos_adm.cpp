@@ -10,7 +10,7 @@
 // neither iclforge::adm nor iclforge::admbridge and includes neither of their headers - it cannot,
 // since in this build neither target was ever add_subdirectory()'d at all.
 
-namespace ac3cli {
+namespace forge_cli {
 
 const iclforge::audio::Capability& adm_capability() {
     static constexpr iclforge::audio::Capability kUnavailable{
@@ -31,4 +31,4 @@ std::expected<AdmAtmosSource, std::string> load_adm_atmos_source(std::string_vie
     return std::unexpected(std::string(adm_capability().reason));
 }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

@@ -24,7 +24,7 @@ endif()
 # nothing the `none` load runs: nothing it compiles calls into them.
 #
 #   iclforge       the decoder under test
-#   esp_timer      esp_timer_get_time(), ac3probe::now_us()'s source
+#   esp_timer      esp_timer_get_time(), iclforge_probe::now_us()'s source
 #   esp_hw_support esp_cpu.h, for esp_cpu_get_cycle_count()
 #   esp_rom        esp_rom_sys.h, for the busy-wait esp_rom_delay_us()
 #   freertos       vTaskDelay() and the task app_main runs in

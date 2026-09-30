@@ -1,8 +1,8 @@
-"""Readers outside this project against ac3cli's AC-4 encoder: MediaInfo and DEE's muxer.
+"""Readers outside this project against forge's AC-4 encoder: MediaInfo and DEE's muxer.
 
 planning/ac4.md, the encoder's ladder, item 3, as phases E1 to E6 need it. For each configuration
 below, mono to 5.1, the A-CPL modes, the experimental options of 5.X and 7.X and of A-CPL, and
-phase E5's frame rates, rate modes, I-frames and metadata, `ac3cli ac4-encode` writes a raw stream
+phase E5's frame rates, rate modes, I-frames and metadata, `forge ac4-encode` writes a raw stream
 and an MP4 file, and:
 
   MediaInfo  its frame-by-frame trace (`--Details=1`) of the raw stream holds the values the encoder
@@ -51,7 +51,7 @@ MediaInfo and DEE's muxer come from DEE's install, so this runs locally, never i
 (tools/generators/gen_ac4_baseline.py's DEE_DIR).
 
 Usage:
-    python tools/checks/check_ac4_encode_readers.py --cli ac3cli.exe [--dee-dir DIR] [--work DIR]
+    python tools/checks/check_ac4_encode_readers.py --cli forge.exe [--dee-dir DIR] [--work DIR]
         [--only presentations|objects]
 """
 

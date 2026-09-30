@@ -1,4 +1,4 @@
-// ac3cli ac4-encode's options (planning/ac4.md, phase E7), each run against the
+// forge ac4-encode's options (planning/ac4.md, phase E7), each run against the
 // real binary and checked in what it writes: the stream's sync frames and
 // table of contents, and the syntax trace (syntax-trace=) of the elements the
 // option sets. The stream options first (crc=, the codec mode, the frame and
@@ -47,7 +47,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 

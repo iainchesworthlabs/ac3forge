@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The sound's path, as the three stations it passes through, so the two
 // devices this app depends on read as two stages of one thing rather than

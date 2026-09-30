@@ -49,7 +49,7 @@
 // the repo-structure review's H4 monolith split - see that review for why, and main.cpp's own
 // command-table comment for the design these helpers serve.
 //
-// Everything here has external linkage (namespace ac3cli, not main.cpp's old anonymous namespace)
+// Everything here has external linkage (namespace forge_cli, not main.cpp's old anonymous namespace)
 // because it is now called from a different translation unit. A few helpers that are genuinely
 // private to one function's own implementation (parse_double, to_bytes, write_wav_f32_arg) stay
 // out of this header entirely and live in an anonymous namespace inside support.cpp instead,
@@ -59,7 +59,7 @@
 // cannot mean something different by "514" or by "all" than this does. What is here is argument
 // shape, validation and printing - Options carries plan::Metadata verbatim rather than a second,
 // CLI-specific copy of the same fields.
-namespace ac3cli {
+namespace forge_cli {
 
 std::uint32_t parse_u32_or(std::string_view text, std::uint32_t fallback);
 
@@ -340,7 +340,7 @@ struct Options {
     // 'qc' only: which delivery gate(s) to check the measurement against -
     // one of iclforge::meta::kQcPresetNames, or "all" to check every preset.
     // Unset (measure-only, no gate) is the default - a plain
-    // 'ac3cli qc <file>' just reports the numbers, no pass/fail verdict.
+    // 'forge qc <file>' just reports the numbers, no pass/fail verdict.
     std::optional<std::string> qc_preset;
     iclforge::plan::Metadata p{};
     // Atmos object signing (atmos/atmos-path/atmos-encode). Off unless the
@@ -537,7 +537,7 @@ struct Options {
     // answer it, in either codec.
     int fgaincod = -1;
     // 'probe' only: emit the JSON document (schema iclforge.probe/1) instead
-    // of the human-readable table. Off by default - a bare `ac3cli probe
+    // of the human-readable table. Off by default - a bare `forge probe
     // <file>` is meant to be read by a person, and every other command here
     // prints for one too.
     bool json = false;
@@ -724,7 +724,7 @@ bool prepare_dual_mono_source(iclforge::io::WavData& wav, std::string_view layou
 // The conventional Unix "-" file argument: a lone dash means stdin for an
 // input path or stdout for an output path, the same convention ffmpeg, sox
 // and most other Unix tools use for pipe-based workflows (e.g.
-// `ac3cli encode - - 448 couple < in.wav > out.ac3`). Checked by exact
+// `forge encode - - 448 couple < in.wav > out.ac3`). Checked by exact
 // string match only - a path that merely starts with '-' is an ordinary
 // (if oddly named) filename, not this convention.
 bool is_stdio_path(std::string_view path);
@@ -926,7 +926,7 @@ std::vector<std::byte> read_all(std::string_view path);
 // already one, or (container readers (mkv/mp4/ts)) the first AC-3/E-AC-3 track demuxed out of a
 // recognised Matroska/MP4/MPEG-TS container, via apps/common/
 // container_input.hpp's iclforge::apps::elementary_stream_from_bytes - the same
-// three readers `ac3cli demux` already streams through, run here in their
+// three readers `forge demux` already streams through, run here in their
 // batch/zero-copy form since every caller has the file resident anyway.
 // `decode`, `qc`, `levels`, `play` and `monitor` all used to call
 // read_all(path) directly and now call this instead, so all five accept a
@@ -1293,4 +1293,4 @@ void print_object_summary(FILE* status,
                           const std::optional<iclforge::oba::DecodedProgram>& metadata,
                           std::string_view joc_note);
 
-}  // namespace ac3cli
+}  // namespace forge_cli

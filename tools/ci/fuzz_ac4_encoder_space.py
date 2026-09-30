@@ -47,7 +47,7 @@ Each case is held to:
            packets as the encoder wrote frames, each the size of its raw frame;
            the MP4 output's track is one AC-4 stream FFmpeg's mov demuxer reads
            with that many samples - item 3's FFmpeg half;
-  decode   `ac3cli decode` reads it to PCM: every frame, at the input's
+  decode   `forge decode` reads it to PCM: every frame, at the input's
            channel count and sample rate, the frames' lengths adding up to
            what the frame rate gives that many frames (Part 2 clause 5.11),
            and the output covering the input delayed by the lag ac4-encode
@@ -65,7 +65,7 @@ failure; --replay reruns it, and REGRESSION_SEEDS holds the seeds that ever
 failed, replayed by --regressions.
 
 Usage (repo root, after building):
-  python tools/ci/fuzz_ac4_encoder_space.py --cli build/dev/bin/ac3cli.exe --cases 50
+  python tools/ci/fuzz_ac4_encoder_space.py --cli build/dev/bin/forge.exe --cases 50
   python tools/ci/fuzz_ac4_encoder_space.py --seconds 120        # bounded, for CI
   python tools/ci/fuzz_ac4_encoder_space.py --check-envelope     # the accepted rates
   python tools/ci/fuzz_ac4_encoder_space.py --replay 1234567890  # one exact case
@@ -191,8 +191,8 @@ NAMES = ["Deutsch", "Commentary", "Director", "Stadium", "Home team"]
 # this size encodes.
 FRAME_BYTES_CAP = 400
 
-# Refusals a case may end in, by the text ac3cli prints for each: the encoder's reasons
-# (ac4::Encoder::refusal_reason()) and ac3cli's own.
+# Refusals a case may end in, by the text forge prints for each: the encoder's reasons
+# (ac4::Encoder::refusal_reason()) and forge's own.
 REFUSALS = {
     "rate out of range": "a rate outside 8 to 3 000 kbps",
     # A rate whose frames cannot hold the least frame of a substream, or the presentation and EMDF
@@ -206,7 +206,7 @@ REFUSALS = {
 
 # Case seeds that ever failed, with why; --regressions replays them.
 REGRESSION_SEEDS = {
-    5756050987806798014: "an out-of-range rate at 44.1 kHz with another frame rate: ac3cli names "
+    5756050987806798014: "an out-of-range rate at 44.1 kHz with another frame rate: forge names "
     "the frame rate first, and the harness took only the rate's refusal",
     10507227253340255992: "8 kbps stereo with dialnorm=auto over input BS.1770's gates leave "
     "nothing of: refused for the rate, then at the retry's rate for the loudness, which the "
@@ -245,7 +245,7 @@ class Case:
     stem: bool = False
     # The substreams after the input's, substream 2 on: each one's channel count, 0 for a dialogue
     # enhancement substream, which takes no input. Their options and the presentations' are in
-    # `options`; ac3cli is given each input as substreamN=.
+    # `options`; forge is given each input as substreamN=.
     substreams: list = field(default_factory=list)
     # An object case: the scene file's lines, the input's channels its objects.
     scene: list = field(default_factory=list)
@@ -560,7 +560,7 @@ def draw_presentations(rng, channels, options, tools, stem):
     presentation plays substream 1 as its main or music and effects audio, and the others' channels
     are ones it has, or a mono one."""
     template = rng.choice(TEMPLATES)
-    # dialnorm=auto and loudness= measure one programme, and ac3cli refuses them with several.
+    # dialnorm=auto and loudness= measure one programme, and forge refuses them with several.
     measured = [o for o in options if o == "dialnorm=auto" or o.startswith("loudness=")]
     for option in measured:
         options.remove(option)
@@ -811,7 +811,7 @@ def run_case(cli, ffprobe, case, workdir):
 
 
 def at_rate(options, kbps):
-    """The options as ac3cli takes them at a rate of `kbps`: each substreamN-bitrate-share=, the
+    """The options as forge takes them at a rate of `kbps`: each substreamN-bitrate-share=, the
     harness's own spelling of a substream's share of the rate, as substreamN-bitrate= in kbps."""
     out = []
     for option in options:
@@ -1130,8 +1130,8 @@ def main():
     )
     parser.add_argument(
         "--cli",
-        default=os.environ.get("AC3CLI", "build/dev/bin/ac3cli.exe"),
-        help="path to ac3cli (or set AC3CLI)",
+        default=os.environ.get("ICLFORGE_CLI", "build/dev/bin/forge.exe"),
+        help="path to forge (or set ICLFORGE_CLI)",
     )
     parser.add_argument("--ffprobe", default="ffprobe", help="path to ffprobe")
     parser.add_argument("--no-ffmpeg", action="store_true", help="skip FFmpeg's framing checks")
@@ -1157,7 +1157,7 @@ def main():
 
     cli = args.cli if Path(args.cli).is_absolute() else str((REPO / args.cli).resolve())
     if not Path(cli).exists():
-        raise SystemExit(f"ac3cli not found at {cli} - build first, or pass --cli")
+        raise SystemExit(f"forge not found at {cli} - build first, or pass --cli")
     if args.check_envelope:
         print("acceptance envelope - the rates ac4-encode takes")
         sys.exit(check_envelope(cli))

@@ -10,9 +10,9 @@
 // -mavx2 - see src/ac3/CMakeLists.txt's forge_simd_avx2 object library
 // and tests/CMakeLists.txt's matching per-source flag on the SAME file
 // compiled a second time directly into the test binary) TWICE: once into
-// the library proper, once into ac3tests, so the AVX2 codegen path is
+// the library proper, once into iclforge-tests, so the AVX2 codegen path is
 // exercised - proven to compile, link and execute correctly - on both,
-// independent of whether ICLFORGE's own consumer (ac3tests) links the
+// independent of whether ICLFORGE's own consumer (iclforge-tests) links the
 // static or the shared library (see the config-linux-llvm-shared CI leg).
 // Only the compiled-in TEST copy needs to be directly callable without
 // crossing a possible DLL export boundary, which is exactly why it is

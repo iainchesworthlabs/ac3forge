@@ -1721,7 +1721,7 @@ PYBIND11_MODULE(_iclforge, m) {
              "the meter could not measure.");
 
     // The codec-config box a container's sample entry wants (dac3/dec3),
-    // built straight off the stream the same way `ac3cli mp4` does - never
+    // built straight off the stream the same way `forge mp4` does - never
     // off whatever a source container declared. One call from bytes, since
     // the Python-side ScannedStream is a value snapshot rather than a handle
     // the C++ builder could read.

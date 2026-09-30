@@ -15,7 +15,7 @@
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="91"/>
-        <source>AC3Forge Hearth</source>
+        <source>Hearth</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -25,7 +25,7 @@
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="101"/>
-        <source>Plays AC-3, E-AC-3 and E-AC-3 JOC to a device on this computer, as a bitstream to a receiver, or to Hearth sinks and Sendspin players on the network, and shows what the decoder did with each stream. Part of the ac3forge project: the decoder, the renderer and the Sendspin implementation are the library&apos;s.</source>
+        <source>Plays AC-3, E-AC-3 and E-AC-3 JOC to a device on this computer, as a bitstream to a receiver, or to Hearth sinks and Sendspin players on the network, and shows what the decoder did with each stream. Part of the ICL Forge project: the decoder, the renderer and the Sendspin implementation are the library&apos;s.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -40,7 +40,7 @@
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="116"/>
-        <source>AC3Forge Hearth and the ac3forge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.</source>
+        <source>Hearth and the iclforge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

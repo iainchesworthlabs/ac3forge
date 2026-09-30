@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Cross-tier flows: the promises that hold BETWEEN Guided, Advanced and
 // Expert rather than inside any one of them, plus the preference-driven

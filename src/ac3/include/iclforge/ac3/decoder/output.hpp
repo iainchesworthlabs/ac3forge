@@ -190,7 +190,7 @@ struct MixLevels {
 // that as no preference rather than act on a code the standard does not
 // define there.
 //
-// ac3cli's downmix=auto is this function applied to the dmixmod and acmod of
+// forge's downmix=auto is this function applied to the dmixmod and acmod of
 // the first syncframe of the programme it decodes.
 [[nodiscard]] constexpr DownmixTarget automatic_stereo_target(Acmod acmod,
                                                                meta::DownmixMode preferred) {

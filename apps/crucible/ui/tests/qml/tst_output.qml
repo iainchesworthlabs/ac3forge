@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The Output page: the mode pin and the codec bypass reach the controller,
 // and the page renders the controller's endpoint table whatever the

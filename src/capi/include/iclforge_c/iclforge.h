@@ -225,7 +225,7 @@ typedef enum iclforge_surround_mix_level {
 } iclforge_surround_mix_level_t;
 
 /* The five conventional Dolby DRC curves (iclforge::meta::ProfileId) — the same
- * named presets ac3cli's own --drc flag accepts. The full custom
+ * named presets forge's own --drc flag accepts. The full custom
  * iclforge::meta::Profile curve (attack/release timing, boost ratios, ...) is an
  * internal tuning knob, not part of this minimal stable surface. */
 typedef enum iclforge_drc_profile {

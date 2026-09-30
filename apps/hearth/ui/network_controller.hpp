@@ -44,7 +44,7 @@ struct NetworkStatus;
 // forgets from too - a record made here outlives the process. This computer's
 // server identity, which every record is bound to (server_identity.hpp), and
 // the network settings are read through this class's own QSettings, under the
-// same "ac3forge"/"Hearth" identity HearthController's own settings file uses.
+// same "iclforge"/"Hearth" identity HearthController's own settings file uses.
 
 namespace iclforge::hearth::ui {
 
@@ -155,7 +155,7 @@ public:
     // sinks_for_test() itself - left on, every suite that opens Main.qml
     // would find and dial the real sinks on whatever network it runs on.
     // Off, there is no mDNS socket either, so no firewall exception is asked
-    // for: ac3hearth_qmltests has no main() of its own to finish the elevated
+    // for: hearth_qmltests has no main() of its own to finish the elevated
     // relaunch that request makes.
     static void set_network_discovery(bool discovery);
 

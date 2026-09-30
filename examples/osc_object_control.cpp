@@ -2,7 +2,7 @@
 //
 // iclforge::audio::LivePositionSource (src/audio, not part of this distributed
 // library - see docs/library/index.md) owns the actual UDP listener behind
-// `ac3cli live mode=atmos positions=osc:<port>` and the GUI's live room.
+// `forge live mode=atmos positions=osc:<port>` and the GUI's live room.
 // Everything it does with a datagram once it has one, though, is these three
 // calls: parse_osc_packet turns the bytes into per-field-optional updates,
 // apply() merges one onto an object's current placement without disturbing

@@ -26,7 +26,7 @@
 #include "iclforge/iec61937/iec61937.hpp"
 #include "audio/alsa_null_device.hpp"
 
-// The device-facing ac3cli commands against software ALSA devices
+// The device-facing forge commands against software ALSA devices
 // (audio/alsa_null_device.hpp), run as the real binary with its own
 // ALSA_CONFIG_PATH. Where cli/test_cli_live.cpp asserts only what holds with
 // or without a device - "it ran, or it said why not" - every case here has a
@@ -51,7 +51,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-namespace alsa_null = ac3test::alsa_null;
+namespace alsa_null = iclforge_test::alsa_null;
 
 constexpr int kExitInput = 2;
 constexpr int kExitOutput = 3;
@@ -86,7 +86,7 @@ int exit_code(int status) {
 }
 
 int run_cli(const fs::path& config, const std::string& args, const fs::path& log) {
-    const std::string command = alsa_null::env_prefix(config) + "\"" + std::string(AC3CLI_EXE) +
+    const std::string command = alsa_null::env_prefix(config) + "\"" + std::string(ICLFORGE_CLI_EXE) +
                                 "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return exit_code(std::system(command.c_str()));
 }
@@ -99,7 +99,7 @@ constexpr int kTimedOut = 124;
 int run_cli_bounded(const fs::path& config, const std::string& args, const fs::path& log,
                     int seconds) {
     const std::string command = alsa_null::env_prefix(config) + "timeout " +
-                                std::to_string(seconds) + " \"" + std::string(AC3CLI_EXE) +
+                                std::to_string(seconds) + " \"" + std::string(ICLFORGE_CLI_EXE) +
                                 "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return exit_code(std::system(command.c_str()));
 }
@@ -124,7 +124,7 @@ bool contains(const std::string& text, std::string_view needle) {
     return text.find(needle) != std::string::npos;
 }
 
-// The sanitizer legs instrument ac3cli too; a report there would otherwise
+// The sanitizer legs instrument forge too; a report there would otherwise
 // read as an ordinary failure line.
 void check_clean(const std::string& output) {
     CHECK_FALSE(contains(output, "ThreadSanitizer"));
@@ -550,7 +550,7 @@ TEST_CASE("live stops rather than encoding a bitstreaming capture as audio",
     const auto out = read_text(log);
     check_clean(out);
     CHECK(contains(out, "is bitstreaming Dolby Digital over IEC 61937"));
-    CHECK(contains(out, "'ac3cli record <out.ec3> <seconds> 0 0'"));
+    CHECK(contains(out, "'forge record <out.ec3> <seconds> 0 0'"));
 }
 
 TEST_CASE("live carries on when its monitor output goes away, and says when it went",

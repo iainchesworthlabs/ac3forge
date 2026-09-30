@@ -1,8 +1,8 @@
-"""Music Assistant's Sendspin server, scripted on aiosendspin 9.1.1, playing to ac3hearth-testsink.
+"""Music Assistant's Sendspin server, scripted on aiosendspin 9.1.1, playing to hearth-testsink.
 
 A rehearsal of A4's exit with Music Assistant (planning/hearth-reference-player.md, A4's exit):
 Music Assistant's Sendspin provider runs aiosendspin 9.1.1's SendspinServer, and this script drives
-one the way the provider does. For each codec it starts ac3hearth-testsink on a loopback port,
+one the way the provider does. For each codec it starts hearth-testsink on a loopback port,
 offering only that codec and player@v1, dials it, pairs by the sink's SP:0 token or by the dynamic
 code the sink shows, and plays it three seconds of two tones. It then stops the sink and checks the
 WAV file the sink wrote against the programme: PCM and FLAC sample for sample, Opus within 20 dB.
@@ -90,7 +90,7 @@ def read_float_wav(path: Path) -> tuple[int, array]:
 
 
 class TestSink:
-    """ac3hearth-testsink as a child process, with what it has logged."""
+    """hearth-testsink as a child process, with what it has logged."""
 
     def __init__(
         self, binary: Path, directory: Path, codec: str, pair: str, extension: bool
@@ -381,7 +381,7 @@ async def run(testsink: Path, codecs: list[str], pair: str, out: Path, extension
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--testsink", required=True, type=Path, help="ac3hearth-testsink's binary")
+    parser.add_argument("--testsink", required=True, type=Path, help="hearth-testsink's binary")
     parser.add_argument("--pair", choices=["token", "code"], default="token")
     parser.add_argument("--codecs", default="pcm,flac,opus")
     parser.add_argument(

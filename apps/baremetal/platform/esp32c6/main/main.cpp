@@ -2,7 +2,7 @@
 //
 // The same shape as the esp32c3 sibling's main.cpp, which points at the
 // esp32s3 one for the arguments all three share: why the entry point is
-// ac3probe::run(), why the clock is measured, why the heap figures are asked of
+// iclforge_probe::run(), why the clock is measured, why the heap figures are asked of
 // the allocator, and why there is a pause before the first line. What differs
 // is the part, and the network load (network_load.hpp) the decode may share it
 // with.
@@ -21,7 +21,7 @@
 #include "network_load.hpp"
 #include "probe.hpp"
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 std::uint64_t now_us() { return static_cast<std::uint64_t>(esp_timer_get_time()); }
 
@@ -42,7 +42,7 @@ void report_internal_sram(const char* when) {
                 static_cast<unsigned long>(heap_caps_get_minimum_free_size(kInternal8Bit)));
 }
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe
 
 namespace {
 
@@ -72,19 +72,19 @@ extern "C" void app_main() {
     std::printf("target=esp32c6 cpu_mhz=%lu\n",
                 static_cast<unsigned long>(measure_cpu_mhz()));
 
-    ac3probe::report_internal_sram("boot");
+    iclforge_probe::report_internal_sram("boot");
 
-    if (!ac3probe::network_start()) {
+    if (!iclforge_probe::network_start()) {
         return;
     }
 
-    ac3probe::report_internal_sram("before");
+    iclforge_probe::report_internal_sram("before");
 
-    ac3probe::run();
+    iclforge_probe::run();
 
-    ac3probe::report_internal_sram("after");
+    iclforge_probe::report_internal_sram("after");
 
-    ac3probe::network_report();
+    iclforge_probe::network_report();
 
     std::printf("esp32c6.main_task_stack_free_bytes=%lu\n",
                 static_cast<unsigned long>(uxTaskGetStackHighWaterMark(nullptr)));

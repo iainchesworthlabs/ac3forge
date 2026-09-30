@@ -112,7 +112,7 @@ class ScriptedPlayer:
             pairing_store=store,
             device_info=DeviceInfo(
                 product_name="aiosendspin scripted player",
-                manufacturer="AC3Forge",
+                manufacturer="ICL Forge",
                 software_version="aiosendspin 9.1.1",
             ),
             player_support=ClientHelloPlayerSupport(

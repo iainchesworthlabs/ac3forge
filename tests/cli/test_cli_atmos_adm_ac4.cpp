@@ -34,7 +34,7 @@
 // tests/cli/test_cli_atmos_adm.cpp and test_cli_decode_adm.cpp use, and for the same reason (their
 // own top comments: main.cpp compiles run_atmos_adm/run_decode_ac4 into one anonymous-namespace
 // binary this test binary cannot link directly). Separate file, same two-part
-// ICLFORGE_BUILD_ADM-and-ac3cli gate as those two files (tests/CMakeLists.txt); the fixture below
+// ICLFORGE_BUILD_ADM-and-forge gate as those two files (tests/CMakeLists.txt); the fixture below
 // is a byte-identical copy of test_cli_atmos_adm.cpp's own (bed L/R at +-30 degrees, one object
 // held at azimuth -110 (SR) for 0.096s then jumping to dead ahead) - "the committed fixtures the
 // E-AC-3 object tests use", per the exit criterion's own wording, rather than a new one.
@@ -64,7 +64,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -349,7 +349,7 @@ std::optional<int> lag_samples_from_log(const std::string& log) {
 }  // namespace
 
 TEST_CASE(
-    "ac3cli atmos-adm codec=ac4, decoded with objects_dir/adm_out, matches the ADM master's own "
+    "forge atmos-adm codec=ac4, decoded with objects_dir/adm_out, matches the ADM master's own "
     "positions, gains and timing",
     "[cli][atmos-adm][ac4]") {
     const auto dir = scratch_dir();

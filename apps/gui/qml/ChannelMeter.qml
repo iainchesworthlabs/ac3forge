@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // One channel's level, in the handoff's meter-row grid: name (56) · track ·
 // dB readout (50) · CLIP box (30). The numbers and their positions on the bar

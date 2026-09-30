@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // One application in the bed tray: icon, name, and a lock when it is
 // full-screen. Dragged into a room view to place it.

@@ -1,5 +1,5 @@
 // Memory-trend data producer: the heap half of the performance suite,
-// alongside bench_encoder.cpp's wall-clock numbers. Where ac3bench answers
+// alongside bench_encoder.cpp's wall-clock numbers. Where iclforge-bench answers
 // "how fast is a frame", this answers "how many heap allocations and bytes
 // does a frame cost, and how much memory does a stream hold live" - churn
 // and footprint, not time. Unlike ms/frame, these numbers are
@@ -475,7 +475,7 @@ Result bench_eac3_decode(std::string name, std::span<const std::byte> stream) {
 
 // AC-4 reads the real-audio fixture through ac4_bench.hpp rather than
 // signal_frame(), so its counts describe the same material as the AC-4 time
-// series in ac3bench. One encode() call is one frame of input; the first
+// series in iclforge-bench. One encode() call is one frame of input; the first
 // returns no frame while the encoder's delay fills, and is counted as the
 // first frame all the same.
 Result bench_ac4_encode(std::string name, perf::ac4_bench::FrameSource& source,

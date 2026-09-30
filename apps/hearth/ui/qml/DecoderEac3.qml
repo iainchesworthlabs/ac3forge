@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The AC-3 and E-AC-3 decoder page (planning/hearth-design.md): every
 // control DecoderSettings holds, read from and written straight back to

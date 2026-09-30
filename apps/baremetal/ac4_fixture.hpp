@@ -16,7 +16,7 @@
 // floating-point support unless -u _printf_float is linked in, and a probe whose subject
 // is footprint should not drag that in just to report a number.
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 inline constexpr int kAc4SampleRateHz = 48000;
 inline constexpr int kAc4SamplesPerFrame = 2048;
@@ -1821,4 +1821,4 @@ inline constexpr std::array<std::int32_t, 2> kAc420CompandingRms{{
     13377, 18267
 }};
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

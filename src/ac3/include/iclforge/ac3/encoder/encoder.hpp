@@ -160,7 +160,7 @@ struct EncoderConfig {
     // material with rematrixing active those margins are landing on the
     // wrong side of external metrics. This project does not turn a decision
     // knob on without the numbers to justify it, and right now only
-    // kDistortion at the higher rates has them. `ac3cli encode search=...`
+    // kDistortion at the higher rates has them. `forge encode search=...`
     // sets it.
     quality::Criterion search = quality::Criterion::kNone;
 

@@ -7,7 +7,7 @@
 
 #include "iclforge/iec61937/iec61937.hpp"
 
-// iclforge::iec61937::BurstReader, driven the way ac3cli's 'unspdif' drives it
+// iclforge::iec61937::BurstReader, driven the way forge's 'unspdif' drives it
 // (src/iec61937/src/iec61937.cpp).
 //
 // This is the one entry point in the project whose input is, by definition,

@@ -10,13 +10,13 @@
   them - see apps/gui/CMakeLists.txt's APPLE branch for where each is set.
 
   .ac3/.ec3 no longer appear here (Hearth phase A7,
-  planning/hearth-reference-player.md): ac3hearth is the reference player
+  planning/hearth-reference-player.md): hearth is the reference player
   and now owns both UTIs in apps/hearth/ui/Info.plist.in, the same
   CFBundleDocumentTypes/UTExportedTypeDeclarations shape this file used to
   carry. A UTI with two LSHandlerRank Owner claims is undefined which
   application Launch Services picks, so only one bundle may declare it.
   Everything else below is CMake's own default template's own fields,
-  kept here rather than dropping this file, since ac3gui still needs a
+  kept here rather than dropping this file, since forge-gui still needs a
   custom template for no other reason than historical inertia - removing
   it is a separate change, not part of this one.
 -->

@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Variable bit rate: an E-AC-3 + file-output-only "Rate mode" surface (see
 // EncoderController::vbrAvailable()'s own comment on why AC-3, object mode

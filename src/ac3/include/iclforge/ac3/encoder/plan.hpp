@@ -23,7 +23,7 @@
 // hands to the encoders, in one place.
 //
 // This exists because there are two front ends. Every name here was previously
-// spelled out inside ac3cli: the layout table, the Annex E tool token, the
+// spelled out inside forge: the layout table, the Annex E tool token, the
 // widening of AC-3's coarse downmix levels into E-AC-3's finer ones. A GUI that
 // re-derived any of them would be free to disagree with the command line about
 // what "5.1.4" means or which tools "all" turns on, and nothing would catch it.

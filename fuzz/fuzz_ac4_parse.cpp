@@ -33,11 +33,11 @@
 //                    directly so the TOC parser is pressed without a
 //                    well-formed syncframe having to be guessed first
 //   build_dac4       and dac4_refusal, cmaf_refusal and the codec string, on
-//                    every table of contents that reads: what `ac3cli mp4`
+//                    every table of contents that reads: what `forge mp4`
 //                    writes for a stream it is given
 //   signalled_presentation and the rest of what a manifest says of a track
 //                    (TS 103 190-2 Annex G), and Annex H.1.2.4's
-//                    configuration_difference: what `ac3cli fmp4` and a
+//                    configuration_difference: what `forge fmp4` and a
 //                    record or live take's CMAF folder write
 //
 // That last call is the point of the harness. Requiring the fuzzer to produce

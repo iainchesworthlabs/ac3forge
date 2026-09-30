@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Window
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleTest
 
 // The window without a mouse: every control that can be pressed can be
 // reached by Tab and pressed by Space or Return, the room's keys move the

@@ -211,7 +211,7 @@ TEST_CASE("a PCM with no marker of its own falls back to the card's name") {
     // vc4-hdmi (Raspberry Pi's HDMI output) names every PCM identically -
     // "MAI PCM i2s-hifi-0" - regardless of which HDMI port it is; "hdmi" only
     // ever shows up in the card's own id ("vc4hdmi0") and name ("vc4-hdmi-0").
-    // Found live: a real receiver connected and ELD-populated, and 'ac3cli
+    // Found live: a real receiver connected and ELD-populated, and 'forge
     // outputs' still reported no render endpoints until this fallback existed.
     CHECK(classify_digital_output("MAI PCM i2s-hifi-0", "vc4hdmi0", "vc4-hdmi-0") ==
           DigitalOutput::kHdmi);

@@ -2,12 +2,12 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // About: what this is, the version and build it came from, the licences it
 // carries. Reached from ShortcutsDialog's own About… button ("? -> Shortcuts
 // -> About -> Licences" - Main.qml's own comment says why there is no
-// second header control for this). The same shape as AC3Forge Crucible's
+// second header control for this). The same shape as Crucible's
 // About (apps/crucible/ui/qml/AboutDialog.qml), on Hearth's own theme, for
 // Hearth's own notices.
 Dialog {
@@ -82,13 +82,13 @@ Dialog {
         RowLayout {
             spacing: Theme.space3
             Image {
-                source: "qrc:/icons/ac3forge-256.png"
+                source: "qrc:/icons/iclforge-256.png"
                 sourceSize: Qt.size(40, 40)
                 Layout.preferredWidth: 40
                 Layout.preferredHeight: 40
             }
             Text {
-                text: qsTr("AC3Forge Hearth")
+                text: qsTr("Hearth")
                 color: Theme.text
                 font.family: Theme.headingFamily
                 font.pixelSize: Theme.fontTitle
@@ -101,7 +101,7 @@ Dialog {
             text: qsTr("Plays AC-3, E-AC-3 and E-AC-3 JOC to a device on this computer, as a "
                         + "bitstream to a receiver, or to Hearth sinks and Sendspin players on the "
                         + "network, and shows what the decoder did with each stream. Part of the "
-                        + "ac3forge project: the decoder, the renderer and the Sendspin "
+                        + "ICL Forge project: the decoder, the renderer and the Sendspin "
                         + "implementation are the library's.")
         }
 
@@ -113,7 +113,7 @@ Dialog {
 
         Kicker { text: qsTr("LICENCES") }
         Body {
-            text: qsTr("AC3Forge Hearth and the ac3forge library are free software under the GNU "
+            text: qsTr("Hearth and the iclforge library are free software under the GNU "
                         + "General Public License, version 3 or later; the full text is LICENSE.txt "
                         + "in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks "
                         + "of Dolby Laboratories; this is a clean-room implementation of published "

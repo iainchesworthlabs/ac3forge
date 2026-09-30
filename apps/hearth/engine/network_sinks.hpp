@@ -113,7 +113,7 @@ struct NetworkSinksOptions {
     // own comment says why) - true for a real window that needs other
     // machines' replies to actually arrive; false for a binary with no main()
     // of its own to finish the elevated relaunch the request makes, such as
-    // ac3tests' live test. With browse off there is no socket to ask for.
+    // iclforge-tests' live test. With browse off there is no socket to ask for.
     bool request_firewall_exception = true;
 };
 

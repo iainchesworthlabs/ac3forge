@@ -23,7 +23,7 @@
 #include "ac4_objects_core.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-// ac3cli atmos-encode with codec=ac4 (planning/ac4.md, I5b): the source's channels
+// forge atmos-encode with codec=ac4 (planning/ac4.md, I5b): the source's channels
 // as AC-4 objects, run against the real binary and held to the steps the page takes
 // (apps/common/ac4_objects_core.hpp, ac4_encode_core.hpp): the file the command
 // writes is the file those steps write for the same sources, assignment and scene.
@@ -54,7 +54,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 

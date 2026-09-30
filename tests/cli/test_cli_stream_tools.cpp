@@ -29,7 +29,7 @@
 #include "iclforge/ac3/meta/drc.hpp"
 
 // The DC9 stream tools, driven the same way tests/cli/test_cli.cpp drives
-// every other command: the real built ac3cli.exe as a subprocess, inspecting
+// every other command: the real built forge.exe as a subprocess, inspecting
 // what it actually wrote.
 //
 // What each of these is really checking is a claim the CLI makes about NOT
@@ -59,12 +59,12 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// Runs `ac3cli <args>` with both streams redirected to `log`. The platform
+// Runs `forge <args>` with both streams redirected to `log`. The platform
 // differences - cmd.exe's quoting and std::system()'s two return-value
 // shapes - live in tests/platform/process.hpp's run_shell, not here.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 

@@ -18,7 +18,7 @@
 // apps/cli/CMakeLists.txt) - see ../atmos_iab.hpp's own top comment for why this file, rather than
 // a preprocessor conditional inside main.cpp, is the mechanism.
 
-namespace ac3cli {
+namespace forge_cli {
 
 namespace {
 
@@ -86,4 +86,4 @@ std::expected<IabAtmosSource, std::string> load_iab_atmos_source(std::string_vie
     return out;
 }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

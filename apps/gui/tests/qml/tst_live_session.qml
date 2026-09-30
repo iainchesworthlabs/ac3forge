@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Live session itself needs a real capture device to drive - startRecording/
 // startLiveSession have never had Quick Test coverage for that reason (there

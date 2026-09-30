@@ -37,11 +37,11 @@
 // server holding a sink (Music Assistant) is displaced by the pairing, and takes it back afterwards
 // if it wants it.
 //
-//   AC3HEARTH_LIVE_SINKS    the sinks' mDNS instance names, separated by commas (hearth-47b39c,...);
+//   ICLFORGE_HEARTH_LIVE_SINKS    the sinks' mDNS instance names, separated by commas (hearth-47b39c,...);
 //                           the case is skipped without it
-//   AC3HEARTH_LIVE_SECONDS  how long the programme plays (default 10)
+//   ICLFORGE_HEARTH_LIVE_SECONDS  how long the programme plays (default 10)
 //
-// ac3tests has no firewall exception of its own: it asks mDNS for nothing a Windows firewall stops
+// iclforge-tests has no firewall exception of its own: it asks mDNS for nothing a Windows firewall stops
 // (NetworkSinks' browser's replies come back as replies to its own queries).
 
 namespace {
@@ -201,13 +201,13 @@ class Unpair {
 
 TEST_CASE("network sinks live: the sinks on this network are found, paired, played to as one group, and unpaired",
           "[.][hearth-network-live]") {
-    const std::optional<std::string> named = environment("AC3HEARTH_LIVE_SINKS");
+    const std::optional<std::string> named = environment("ICLFORGE_HEARTH_LIVE_SINKS");
     if (!named) {
-        SKIP("AC3HEARTH_LIVE_SINKS names no sinks");
+        SKIP("ICLFORGE_HEARTH_LIVE_SINKS names no sinks");
     }
     const std::vector<std::string> wanted = split(*named);
     REQUIRE_FALSE(wanted.empty());
-    const int seconds = environment("AC3HEARTH_LIVE_SECONDS") ? std::atoi(environment("AC3HEARTH_LIVE_SECONDS")->c_str()) : 10;
+    const int seconds = environment("ICLFORGE_HEARTH_LIVE_SECONDS") ? std::atoi(environment("ICLFORGE_HEARTH_LIVE_SECONDS")->c_str()) : 10;
     REQUIRE(seconds > 0);
 
     iclforge::hearth::MemorySettingsStore settings;

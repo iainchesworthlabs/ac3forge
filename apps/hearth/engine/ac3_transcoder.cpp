@@ -24,7 +24,7 @@ namespace {
     }
 }
 
-// The code whose level is nearest `level`, as `ac3cli transcode` maps E-AC-3's
+// The code whose level is nearest `level`, as `forge transcode` maps E-AC-3's
 // finer levels onto AC-3's three.
 template <typename Code, std::size_t N>
 [[nodiscard]] Code nearest(double level, const std::array<std::pair<Code, double>, N>& codes) {

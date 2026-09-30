@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Exercises ac3cli across the layout/tool/metadata matrix it documents in its
+# Exercises forge across the layout/tool/metadata matrix it documents in its
 # own --help text, so a sanitizer build's "make it fail loudly" only works if
 # something actually walks these code paths. ctest's 200+ cases cover a lot of
 # encoder/decoder logic in isolation; this script covers the combinations a
@@ -37,7 +37,7 @@
 #     which neither of this script's two CI callers' presets turn on - see
 #     each command's own block below for the detection and the reasoning.
 #
-# Usage: run_codec_matrix.sh <path-to-ac3cli> [workdir]
+# Usage: run_codec_matrix.sh <path-to-forge> [workdir]
 # Exits non-zero on the first command that fails (a sanitizer violation exits
 # non-zero on its own via -fno-sanitize-recover=all; this also catches a
 # plain crash, a refused command that should have succeeded, or an FFmpeg
@@ -57,9 +57,9 @@
 # run.
 set -euo pipefail
 
-CLI="${1:?usage: run_codec_matrix.sh <path-to-ac3cli> [workdir]}"
+CLI="${1:?usage: run_codec_matrix.sh <path-to-forge> [workdir]}"
 # Resolve to an absolute path before the `cd "$WORKDIR"` below: CI passes a
-# path relative to the repo root (e.g. "build/.../bin/ac3cli"), which stops
+# path relative to the repo root (e.g. "build/.../bin/forge"), which stops
 # resolving the moment the working directory changes.
 case "$CLI" in
     /*) ;;
@@ -77,7 +77,7 @@ if [[ "${ICLFORGE_CROSS_TIER_CHECK:-0}" = "1" ]]; then
     echo "cross-tier: pass 1/2, ICLFORGE_SIMD_TIER=sse2"
     ICLFORGE_SIMD_TIER=sse2 ICLFORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$sse2_dir"
 
-    # ac3cli does not itself expose cpu::has_avx2() (Phase 2 wires the
+    # forge does not itself expose cpu::has_avx2() (Phase 2 wires the
     # dispatch mechanism, not yet any real kernel - see the roadmap plan),
     # so there is no CLI invocation whose exit code would tell us whether
     # this host can run AVX2. /proc/cpuinfo is the direct answer instead;
@@ -735,7 +735,7 @@ run_ffmpeg_check atmos_path.ec3
 # (ICLFORGE_BUILD_ADM, default off - see the root CMakeLists.txt's own option()), and it needs
 # Boost plus a dedicated vcpkg feature neither of this script's two CI callers (the ASan+UBSan
 # leg, the FFmpeg-oracle leg this file's own header describes) pulls in - both build the plain
-# default preset. Detected the same way ac3cli's own usage listing already answers this
+# default preset. Detected the same way forge's own usage listing already answers this
 # (main.cpp's Needs::kAdm/unmet(): a build without the flag lists the row as "UNAVAILABLE HERE"
 # rather than omitting it), not guessed from a preset name, so this stays correct automatically
 # if that ever changes (e.g. ADM BWF reader's own adm-validate CI job, which DOES build with the flag
@@ -749,13 +749,13 @@ run_ffmpeg_check atmos_path.ec3
 #
 # Same directory as $CLI itself, not an "examples/" subfolder under it: the root CMakeLists.txt
 # sets one project-wide CMAKE_RUNTIME_OUTPUT_DIRECTORY ("${CMAKE_BINARY_DIR}/bin"), so every
-# executable target - ac3cli, ac3tests, and every examples/ program alike - lands in that same
+# executable target - forge, iclforge-tests, and every examples/ program alike - lands in that same
 # flat bin/ directory regardless of which source subdirectory built it.
 ADM_FIXTURE_TOOL="$(dirname "$CLI")/encode_adm"
-if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-adm[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
-    echo "    [skip] atmos-adm: this ac3cli build has no -DICLFORGE_BUILD_ADM=ON (apps/cli/adm/atmos_adm.hpp) - covered instead by the adm-validate CI job and tests/cli/test_cli_atmos_adm.cpp, which do build with it"
+if "$CLI" 2>&1 | grep -E '^  forge atmos-adm[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
+    echo "    [skip] atmos-adm: this forge build has no -DICLFORGE_BUILD_ADM=ON (apps/cli/adm/atmos_adm.hpp) - covered instead by the adm-validate CI job and tests/cli/test_cli_atmos_adm.cpp, which do build with it"
 elif [[ ! -x "$ADM_FIXTURE_TOOL" ]]; then
-    echo "    [skip] atmos-adm: examples/encode_adm was not built alongside this ac3cli (ICLFORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real ADM file"
+    echo "    [skip] atmos-adm: examples/encode_adm was not built alongside this forge (ICLFORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real ADM file"
 else
     "$ADM_FIXTURE_TOOL" --write-fixture atmos_adm_fixture.wav
     run atmos-adm atmos_adm_fixture.wav atmos_adm.ec3 256
@@ -781,10 +781,10 @@ fi
 # real file the same way every other command in this matrix is. Same flat bin/ directory as $CLI
 # itself - see ADM_FIXTURE_TOOL's own comment above for why.
 IAB_FIXTURE_TOOL="$(dirname "$CLI")/encode_iab"
-if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-iab[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
-    echo "    [skip] atmos-iab: this ac3cli build has no -DICLFORGE_BUILD_ADM=ON (apps/cli/adm/atmos_iab.hpp) - covered instead by tests/cli/test_cli_atmos_iab.cpp, which does build with it"
+if "$CLI" 2>&1 | grep -E '^  forge atmos-iab[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
+    echo "    [skip] atmos-iab: this forge build has no -DICLFORGE_BUILD_ADM=ON (apps/cli/adm/atmos_iab.hpp) - covered instead by tests/cli/test_cli_atmos_iab.cpp, which does build with it"
 elif [[ ! -x "$IAB_FIXTURE_TOOL" ]]; then
-    echo "    [skip] atmos-iab: examples/encode_iab was not built alongside this ac3cli (ICLFORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real IAB file"
+    echo "    [skip] atmos-iab: examples/encode_iab was not built alongside this forge (ICLFORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real IAB file"
 else
     "$IAB_FIXTURE_TOOL" --write-fixture atmos_iab_fixture.iab
     run atmos-iab atmos_iab_fixture.iab atmos_iab.ec3 256
@@ -1154,18 +1154,18 @@ run_ffmpeg_check remux_atmos.ec3
 
 # --- AC-4 (planning/ac4.md, phases E1 to E5) ----------------------------------
 # FFmpeg has no AC-4 decoder, so its part here is framing: its raw AC-4 and mov
-# demuxers must find as many frames as ac3cli's own decoder decodes from what
+# demuxers must find as many frames as forge's own decoder decodes from what
 # ac4-encode wrote. The audio itself is scored by tools/checks/score_ac4_encode.py
 # and read three ways by tools/ci/fuzz_ac4_encoder_space.py.
 run_ac4_frames_check() {
     count=$((count + 1))
-    echo "[$count] AC-4 frames: ac3cli decode and ffprobe agree on $1"
+    echo "[$count] AC-4 frames: forge decode and ffprobe agree on $1"
     local decoded packets
     decoded=$("$CLI" decode "$1" "$1.wav" | sed -n 's/^decoded \([0-9]*\) AC-4 frames.*/\1/p')
     packets=$(ffprobe -v error "${@:2}" -count_packets -show_entries stream=nb_read_packets \
         -of csv=p=0 "$1")
     if [ -z "$decoded" ] || [ "$decoded" != "$packets" ]; then
-        echo "ac3cli decoded '$decoded' AC-4 frames from $1 and ffprobe read '$packets'" >&2
+        echo "forge decoded '$decoded' AC-4 frames from $1 and ffprobe read '$packets'" >&2
         exit 1
     fi
 }
@@ -1237,7 +1237,7 @@ run ac4-encode "$FIXTURES/reference_51.wav" ac4_51_25.mp4 256 frame-rate=25 loro
     drc=music-standard drc-portable-headphones=speech
 run_ac4_frames_check ac4_51_25.mp4
 
-# --- AC-4 through the rest of ac3cli (planning/ac4.md, phase I1) ---------------
+# --- AC-4 through the rest of forge (planning/ac4.md, phase I1) ---------------
 # Every other command that reads or writes AC-4, on the streams ac4-encode
 # wrote above; tools/checks/check_matrix_coverage.py holds each one to a leg
 # here. FFmpeg checks what it can read: the AC-3 and E-AC-3 a transcode writes

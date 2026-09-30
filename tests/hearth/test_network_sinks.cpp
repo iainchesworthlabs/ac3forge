@@ -28,7 +28,7 @@
 // runs on - as rows the checks below do not expect, and as dials, reaching
 // whoever's sinks share that network (CI's self-hosted runners sit on
 // someone's home network). With no browse socket, nothing asks Windows for a
-// firewall exception either, which plain ac3tests.exe could not finish
+// firewall exception either, which plain iclforge-tests.exe could not finish
 // adding (iclforge::sendspin::discovery::mdns::Options::
 // request_firewall_exception's own comment).
 

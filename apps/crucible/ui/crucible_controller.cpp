@@ -148,7 +148,7 @@ CrucibleController::CrucibleController(QObject* parent)
     : QObject(parent),
       default_device_(iclforge::crucible::platform_default_device()),
       virtual_device_(iclforge::crucible::platform_virtual_device()),
-      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"), QStringLiteral("Crucible")),
+      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("iclforge"), QStringLiteral("Crucible")),
       log_(iclforge::crucible::process_diagnostics()),
       foreground_(iclforge::crucible::platform_foreground()),
       sessions_(iclforge::crucible::platform_session_monitor()) {
@@ -984,7 +984,7 @@ QString CrucibleController::driverDir() const {
     if (QFileInfo::exists(QDir(beside).filePath(QStringLiteral("install.ps1")))) {
         return QDir::toNativeSeparators(beside);
     }
-    return QDir::toNativeSeparators(QStringLiteral(AC3DESK_DRIVER_SOURCE_DIR));
+    return QDir::toNativeSeparators(QStringLiteral(ICLFORGE_CRUCIBLE_DRIVER_SOURCE_DIR));
 }
 
 void CrucibleController::setDriverDir(const QString& dir) {

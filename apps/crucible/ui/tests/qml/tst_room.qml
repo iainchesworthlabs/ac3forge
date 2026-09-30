@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
+import Crucible
 
 // The room: the session list the controller publishes, the placed/bed
 // counts that go with it, and position/unposition commands. With the

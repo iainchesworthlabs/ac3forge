@@ -19,7 +19,7 @@
 #   --qemu           qemu-system-xtensa
 #   --image          the directory holding the build's qemu_flash.bin and
 #                    qemu_efuse.bin
-#   --server         ac3hearth-testserver
+#   --server         hearth-testserver
 #   --out            where the console, the report and the test sink's WAV go
 #                    (default ./sendspin-qemu-run)
 #   --board-trim-db  trims for the board that the test sink does not have, as

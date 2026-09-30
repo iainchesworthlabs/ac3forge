@@ -15,7 +15,7 @@
 // library's include path, which is the property that keeps the two builds'
 // decode arithmetic identical and their timings comparable.
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 // Zero every accumulator. Called before each fixture's decode loop so the
 // report that follows describes that fixture alone.
@@ -39,4 +39,4 @@ void report_stages(const char* codec, int frames);
 // parent's figure.
 [[nodiscard]] std::uint64_t stage_pair_cost_ns();
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

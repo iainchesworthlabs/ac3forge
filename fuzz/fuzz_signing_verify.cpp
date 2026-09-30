@@ -11,7 +11,7 @@
 // emdf_atmos_signer.cpp).
 //
 // Verification is the one signing operation that runs on input the operator
-// did NOT produce: `ac3cli decode ... verify-objects` points it at whatever
+// did NOT produce: `forge decode ... verify-objects` points it at whatever
 // stream arrived, and both entry points walk the E-AC-3 bitstream themselves
 // - frmsiz-delimited framing, the whole bsi/audblk field walk that locates
 // the EMDF container's bit offset, then the container's own header - with no

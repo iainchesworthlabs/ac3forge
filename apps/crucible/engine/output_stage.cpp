@@ -41,7 +41,7 @@ std::string lower(std::string s) {
 }
 
 // TS 103 420 §4.2.1's room cube to ISpatialAudioObject's listener-relative
-// metres: +x right, +y up, +z behind. Same mapping as ac3cli spatial.
+// metres: +x right, +y up, +z behind. Same mapping as forge spatial.
 struct SpatialXyz {
     float x, y, z;
 };
@@ -62,7 +62,7 @@ SpatialXyz to_windows_spatial(const iclforge::oba::Position& p) {
 // Submitted to the spatial sink as soon as each unit decodes, the LFE would
 // reach the room that far ahead of the objects beside it, so it goes through
 // a delay line of that length first. Same class, same reasoning, as
-// ac3cli's identical run_spatial - see live_audio.cpp's own LfeDelayLine.
+// forge's identical run_spatial - see live_audio.cpp's own LfeDelayLine.
 class LfeDelayLine {
 public:
     explicit LfeDelayLine(std::size_t delay_samples) : pending_(delay_samples, 0.0F) {}

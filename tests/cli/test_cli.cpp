@@ -32,16 +32,16 @@
 #include "iclforge/ac3/meta/qc.hpp"
 #include "iclforge/objects/scene.hpp"
 
-// apps/cli/main.cpp compiles directly into the ac3cli executable, everything
+// apps/cli/main.cpp compiles directly into the forge executable, everything
 // in an anonymous namespace - there is no library surface parse_options,
 // gather_frame or run_atmos_encode's own logic could be linked into this
 // binary and called directly. So these are integration tests: they run the
-// real, built ac3cli.exe as a subprocess (the same binary a build/verify
+// real, built forge.exe as a subprocess (the same binary a build/verify
 // step produces) and inspect what it actually wrote, rather than
 // re-implementing its argument parsing against a copy of the source.
 //
-// AC3CLI_EXE (see tests/CMakeLists.txt) is the absolute path to that binary,
-// supplied by CMake via $<TARGET_FILE:ac3cli> - these tests do not run at
+// ICLFORGE_CLI_EXE (see tests/CMakeLists.txt) is the absolute path to that binary,
+// supplied by CMake via $<TARGET_FILE:forge> - these tests do not run at
 // all if ICLFORGE_BUILD_CLI is OFF, the same way the alsa/android platform
 // tests above do not run outside their own backend.
 
@@ -57,7 +57,7 @@ namespace {
 // leaf name differs between the copies.
 //
 // The leaf also carries this process's own PID. ICLFORGE_TEST_SCRATCH_DIR is
-// rooted in the build tree, not per process, so two ac3tests/ac3cli processes
+// rooted in the build tree, not per process, so two iclforge-tests/forge processes
 // pointed at the same build tree at once (a concurrent re-run, or two sessions
 // sharing one tree) would otherwise race on this exact directory - one's
 // fs::remove_all/create_directories/file-open colliding with the other's
@@ -71,14 +71,14 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// Runs `ac3cli <args>`, both streams redirected to `log` so a failing
-// assertion can print exactly what the binary said. Returns ac3cli's own
+// Runs `forge <args>`, both streams redirected to `log` so a failing
+// assertion can print exactly what the binary said. Returns forge's own
 // exit code (apps/cli/exit_codes.hpp), portable across std::system()'s
 // platform-specific return-value shape and quoting rules - see
 // tests/platform/process.hpp's run_shell, which owns both.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -87,7 +87,7 @@ std::string read_log(const fs::path& log) {
     return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
 }
 
-// Runs `ac3cli <args>` with stdin redirected from `in_file` and stdout
+// Runs `forge <args>` with stdin redirected from `in_file` and stdout
 // redirected to `out_file`, for exercising the "-" stdin/stdout convention
 // (main.cpp's is_stdio_path()) the same way a real shell pipeline would.
 // stderr goes to `log`, same diagnostic convention as run_cli above but kept
@@ -95,7 +95,7 @@ std::string read_log(const fs::path& log) {
 // somewhere to also stash messages.
 int run_cli_stdio(const std::string& args, const fs::path& in_file, const fs::path& out_file,
                   const fs::path& log) {
-    const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + " < \"" +
+    const std::string command = "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " < \"" +
                                 in_file.string() + "\" > \"" + out_file.string() + "\" 2> \"" +
                                 log.string() + "\"";
     return iclforge::test::platform::run_shell(command);
@@ -108,7 +108,7 @@ int run_cli_stdio(const std::string& args, const fs::path& in_file, const fs::pa
 // inherited one. stderr still goes to its own `log`, kept separate from
 // `out_file` for the same reason run_cli_stdio's does.
 int run_cli_stdout(const std::string& args, const fs::path& out_file, const fs::path& log) {
-    const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" +
+    const std::string command = "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" +
                                 out_file.string() + "\" 2> \"" + log.string() + "\"";
     return iclforge::test::platform::run_shell(command);
 }
@@ -190,7 +190,7 @@ std::optional<int> reported_value(const std::string& log, std::string_view field
 
 // Finds `label` in `log` and parses the (possibly signed, possibly
 // fractional) number immediately following it, skipping whitespace in
-// between - `ac3cli qc`'s own report lines are "label<spaces>value...", laid
+// between - `forge qc`'s own report lines are "label<spaces>value...", laid
 // out with std::format field widths this deliberately does not need to know:
 // skipping runs of whitespace instead of a fixed offset means a column-width
 // tweak in main.cpp can never silently break these tests the way a
@@ -1411,7 +1411,7 @@ TEST_CASE("verify-objects checks a decode against the signer's own tag",
 // config (bitrate, tools, channel count, dialnorm...), never per-frame
 // audio content, so for a GIVEN invocation either every frame fails
 // (nothing to keep - frames stays empty) or none do; there is no reachable
-// "some frames succeeded, then a later one failed" case through ac3cli's
+// "some frames succeeded, then a later one failed" case through forge's
 // own command line today. These tests cover exactly what IS reachable: the
 // token parses and is inert on a run that succeeds, and produces no
 // spurious partial file on a run that fails with nothing yet encoded -
@@ -1635,7 +1635,7 @@ TEST_CASE("bare heavy2 token turns on Ch2 heavy compression on a 1+1 encode",
     CHECK(heavy2_log.find("compr2 present") != std::string::npos);
 }
 
-// The "-" stdin/stdout convention (CLI stdin/stdout streaming): 'ac3cli encode - -'
+// The "-" stdin/stdout convention (CLI stdin/stdout streaming): 'forge encode - -'
 // reads the WAV from stdin and writes AC-3 to stdout instead of opening
 // files by those literal names, and 'decode - -' the same in reverse - see
 // is_stdio_path() in main.cpp. This is also the binary-safety proof
@@ -2141,7 +2141,7 @@ TEST_CASE("dialnorm=auto for 1+1 dual mono measures each programme's own channel
     }
 }
 
-// bitstream-aware loudness QC: `ac3cli qc` - decode a stream, measure it with the real
+// bitstream-aware loudness QC: `forge qc` - decode a stream, measure it with the real
 // BS.1770-4 meter, and compare against the embedded dialnorm/compr and,
 // optionally, a named delivery-spec gate. See main.cpp's run_qc/
 // report_qc_programme and ac3/meta/qc.hpp for the implementation these tests
@@ -2412,7 +2412,7 @@ TEST_CASE(
     CHECK((rc == 0) == expect_success);
 }
 
-// legacy item IO10: `ac3cli qc layout=rendered`. The bed pass measures only the
+// legacy item IO10: `forge qc layout=rendered`. The bed pass measures only the
 // independent substream's Table 5.8 channels, so on a 7.1.4 stream it never
 // sees the two dependents' rear and height channels at all; the rendered pass
 // measures the assembled program through BS.1770-5 Annex 3's extended
@@ -2496,7 +2496,7 @@ TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed 
     CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(1.0));
 }
 
-// legacy item IO12: `ac3cli qc objects=<layout>`. layout=bed's Annex 1 pass sees
+// legacy item IO12: `forge qc objects=<layout>`. layout=bed's Annex 1 pass sees
 // only the flat 5.1 VBAP fold every dynamic object was panned into at encode
 // time - spatial.hpp's own "a raised object folds onto the ring... at full
 // level" - so an object authored at the ceiling measures no differently from
@@ -3309,7 +3309,7 @@ TEST_CASE("help prints one command's own row, not the whole manual", "[cli][help
     const auto one = read_log(log);
 
     // The row itself, and the grammars encode actually uses.
-    CHECK(one.find("ac3cli encode") != std::string::npos);
+    CHECK(one.find("forge encode") != std::string::npos);
     CHECK(one.find("layout:") != std::string::npos);
     CHECK(one.find("metadata options") != std::string::npos);
     // Not the ones it does not: encode has no Annex E tool set and no VBR.
@@ -3336,7 +3336,7 @@ TEST_CASE("help prints one command's own row, not the whole manual", "[cli][help
     }
 
     SECTION("--help wins over an otherwise-unsatisfied argument list") {
-        // `ac3cli encode` alone is a usage error; `ac3cli encode --help` is
+        // `forge encode` alone is a usage error; `forge encode --help` is
         // not, which is the whole point of lifting the flag out first.
         CHECK(run_cli("encode --help", log) == 0);
     }
@@ -3351,7 +3351,7 @@ TEST_CASE("help prints one command's own row, not the whole manual", "[cli][help
     SECTION("an argument error names the command and points at its help") {
         CHECK(run_cli("encode", log) != 0);
         const auto text = read_log(log);
-        CHECK(text.find("ac3cli help encode") != std::string::npos);
+        CHECK(text.find("forge help encode") != std::string::npos);
         // The whole manual is what it must NOT print any more.
         CHECK(text.find("metadata options") == std::string::npos);
         CHECK(text.size() < full.size());
@@ -3548,13 +3548,13 @@ TEST_CASE("man and completions are generated from the command table", "[cli][man
     SECTION("the man page is a section-1 groff page naming every command") {
         REQUIRE(run_cli("man", log) == 0);
         const auto page = read_log(log);
-        CHECK(page.find(".TH AC3CLI 1") != std::string::npos);
+        CHECK(page.find(".TH FORGE 1") != std::string::npos);
         CHECK(page.find(".SH COMMANDS") != std::string::npos);
         CHECK(page.find(".SH EXIT STATUS") != std::string::npos);
         // A command from each end of the table, so a truncated render fails.
-        CHECK(page.find("ac3cli silence") != std::string::npos);
-        CHECK(page.find("ac3cli monitor") != std::string::npos);
-        CHECK(page.find("ac3cli completions") != std::string::npos);
+        CHECK(page.find("forge silence") != std::string::npos);
+        CHECK(page.find("forge monitor") != std::string::npos);
+        CHECK(page.find("forge completions") != std::string::npos);
     }
 
     SECTION("each shell gets its own script, and an unknown shell is refused") {
@@ -3562,9 +3562,9 @@ TEST_CASE("man and completions are generated from the command table", "[cli][man
             const char* shell;
             const char* marker;
         };
-        for (const auto& c : {Case{"bash", "complete -F _ac3cli ac3cli"},
-                              Case{"zsh", "#compdef ac3cli"},
-                              Case{"fish", "complete -c ac3cli"},
+        for (const auto& c : {Case{"bash", "complete -F _forge forge"},
+                              Case{"zsh", "#compdef forge"},
+                              Case{"fish", "complete -c forge"},
                               Case{"powershell", "Register-ArgumentCompleter"}}) {
             INFO(c.shell);
             REQUIRE(run_cli(std::string{"completions "} + c.shell, log) == 0);

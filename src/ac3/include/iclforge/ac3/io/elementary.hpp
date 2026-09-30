@@ -157,7 +157,7 @@ struct ScannedProgramme {
 // at the first audio block. Everything here is a transmitted field or an
 // immediate consequence of one - nothing is derived from the audio, and
 // nothing needs the frame to decode, so a frame whose audio a decoder would
-// refuse still reports its header truthfully. `ac3cli probe` is built on
+// refuse still reports its header truthfully. `forge probe` is built on
 // exactly that property; scan() below is the same walk with only the first
 // programme's answers kept.
 struct FrameHeader {

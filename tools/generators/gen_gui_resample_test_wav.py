@@ -2,7 +2,7 @@
 
 Produces fuzz/seeds/fuzz_wav_read/resample-44100.wav: a small, checked-in
 stereo PCM16 WAV at 44100 Hz - deliberately a rate that does NOT match
-roundtrip-stereo.wav/roundtrip-51.wav's 48000 Hz, since ac3gui's own
+roundtrip-stereo.wav/roundtrip-51.wav's 48000 Hz, since forge-gui's own
 addSourceFile() only resamples a second source onto the primary's rate when
 the two actually differ. tst_source_loading.qml loads this as the SECOND
 source (after one of the 48kHz fixtures as primary) to exercise that path

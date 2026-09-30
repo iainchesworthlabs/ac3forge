@@ -1,8 +1,8 @@
 import QtQuick
 import QtTest
 
-import Ac3ForgeCrucible
-import Ac3ForgeCrucibleTest
+import Crucible
+import CrucibleTest
 
 // What a screen reader is told: a role, a name and a description for every
 // part of the window a person acts on, all of it composed from the same live

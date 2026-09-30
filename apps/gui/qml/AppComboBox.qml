@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls as QQC
 
-import Ac3Forge
+import ForgeGui
 
 // A combo box drawn to the design system (components.png, "FIELDS AND
 // LISTS"): the same 30 px neutral100 box AppTextField draws, with a text

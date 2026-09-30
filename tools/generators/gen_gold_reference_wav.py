@@ -5,8 +5,8 @@ WAV, independent of iclforge's own encoder/decoder (it is built here from
 first principles - sin()/pseudo-random noise/simple FIR smoothing - not
 bootstrapped by decoding one of our own encodes the way
 tools/ci/run_codec_matrix.sh's "bootstrap_51.wav" is). tools/checks/verify_gold_
-reference.sh encodes this file with ac3cli, strict-decodes the result with
-FFmpeg, and compares that against ac3cli's own decode - so a codec bug that
+reference.sh encodes this file with forge, strict-decodes the result with
+FFmpeg, and compares that against forge's own decode - so a codec bug that
 happens to round-trip cleanly against itself still gets caught here.
 
 Deliberately not silence, not a single tone, and several seconds long (see

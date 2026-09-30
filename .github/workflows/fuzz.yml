@@ -64,7 +64,7 @@
 #                      pre-noise or fscod2 audio, and holds those cells
 #                      against ffprobe's syncframe walk instead.
 #                      Not a libFuzzer target and not part of fuzz/run.sh - it
-#                      drives the real ac3cli, so it builds the CLI the way
+#                      drives the real forge, so it builds the CLI the way
 #                      _ci-core.yml's ffmpeg-validate job (called from
 #                      ci.yml) does rather than the
 #                      sanitizer/libFuzzer toolchain the other four need. The
@@ -509,7 +509,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     env:
-      AC3CLI: build/config-linux-llvm/bin/ac3cli
+      ICLFORGE_CLI: build/config-linux-llvm/bin/forge
       ENCODER_SPACE_SECONDS: ${{ github.event.inputs.encoder_space_seconds || 900 }}
       EAC3_ENCODER_SPACE_SECONDS: ${{ github.event.inputs.eac3_encoder_space_seconds || 900 }}
       AC4_ENCODER_SPACE_SECONDS: ${{ github.event.inputs.ac4_encoder_space_seconds || 900 }}
@@ -548,8 +548,8 @@ jobs:
       - name: Configure
         run: cmake --preset config-linux-llvm
 
-      - name: Build ac3cli
-        run: cmake --build --preset build-linux-llvm --target ac3cli -- -k 0
+      - name: Build forge
+        run: cmake --build --preset build-linux-llvm --target forge -- -k 0
 
       # First, because a run that draws configurations the encoder was never
       # going to accept would come back green having encoded almost nothing.

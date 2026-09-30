@@ -12,13 +12,13 @@
 // MonitorSink's playback position, pause and flush against a real output
 // device (src/audio/src/backend/*/monitor.cpp).
 //
-// Hidden: the tag starts with a dot, so `ac3tests` does not run this - it
+// Hidden: the tag starts with a dot, so `iclforge-tests` does not run this - it
 // needs a sound card, plays about a second of quiet tone through the default
 // output, and is the only way to exercise what each platform's own clock
 // reports. The portable half of the same arithmetic is checked without
 // hardware in test_playback_counter.cpp, which does run everywhere.
 //
-// Run it deliberately:  ac3tests "[monitor-live]"
+// Run it deliberately:  iclforge-tests "[monitor-live]"
 //   Windows: WASAPI shared mode. Linux: ALSA or PipeWire, whichever the build
 //   selected. macOS: Core Audio. Each reads its position from a different
 //   platform call, and this case is the same check over all of them.
@@ -181,7 +181,7 @@ TEST_CASE("monitor live: a rate the output is not running at still opens and pla
 // Hidden, under a tag of its own so that "[monitor-live]" never waits for
 // one: run it deliberately and follow the prompt.
 //
-//   ac3tests "[monitor-unplug]"
+//   iclforge-tests "[monitor-unplug]"
 //
 // Within 30 seconds of the prompt, take the default output away: unplug a USB
 // or HDMI audio device, or disable it in the system's sound settings. A

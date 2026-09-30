@@ -19,13 +19,13 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/adm/ac3adm.hpp"
 
-// ac3cli's 'decode ... adm_out=' path (legacy item IM2's write direction - apps/cli/commands/decode.cpp's
+// forge's 'decode ... adm_out=' path (legacy item IM2's write direction - apps/cli/commands/decode.cpp's
 // accumulate_adm/run_decode_eac3). Real, subprocess-level integration test: the same "run the actual
 // built binary, inspect what it wrote" shape tests/cli/test_cli_atmos_adm.cpp (IM2's read direction)
 // and tests/cli/test_cli.cpp's own atmos-encode tests use, and for the same reason - see
 // test_cli_atmos_adm.cpp's own top comment on why decode.cpp's own logic cannot be linked into this
 // test binary and called directly. A separate file for the same two-part reason as that file's own top
-// comment: this only makes sense with ICLFORGE_BUILD_ADM AND ac3cli both on - see tests/CMakeLists.txt's
+// comment: this only makes sense with ICLFORGE_BUILD_ADM AND forge both on - see tests/CMakeLists.txt's
 // own gating comment on the block this file's source is added to.
 //
 // What this proves: a JOC-reconstructed object comes out of decode_access_unit
@@ -56,12 +56,12 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// Runs `ac3cli <args>` with both streams redirected to `log`. The platform
+// Runs `forge <args>` with both streams redirected to `log`. The platform
 // differences - cmd.exe's quoting and std::system()'s two return-value
 // shapes - live in tests/platform/process.hpp's run_shell, not here.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -72,7 +72,7 @@ std::string read_log(const fs::path& log) {
 
 std::string quoted(const fs::path& path) { return "\"" + path.string() + "\""; }
 
-// Makes `path` with one ac3cli run - `command` and `path`, then `rest` -
+// Makes `path` with one forge run - `command` and `path`, then `rest` -
 // once per test process. Same trimmed copy as test_cli_inspect_edges.cpp's own.
 fs::path generated(const fs::path& path, std::string_view command, std::string_view rest) {
     if (!fs::exists(path)) {
@@ -252,7 +252,7 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
 }
 
 // Moved from tests/cli/test_cli_inspect_edges.cpp - see that file's own comment on its sibling,
-// plain-AC-3 case. decode.cpp's run_decode_eac3 checks ac3cli::adm_capability() up front, before it
+// plain-AC-3 case. decode.cpp's run_decode_eac3 checks forge_cli::adm_capability() up front, before it
 // can tell whether this specific programme has an object layer, so an E-AC-3 stream only reaches
 // these two warnings (rather than exiting 2 with "this build was not configured with
 // -DICLFORGE_BUILD_ADM=ON") when ADM support was actually built - which is exactly this file's own

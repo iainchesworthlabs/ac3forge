@@ -7,11 +7,11 @@ The probe runs on a target with no filesystem, so its input has to be linked
 in. Everything here is derived from committed inputs by committed tools:
 tests/golden/audio/reference_51.wav (real programme material, per
 CONTRIBUTING.md's own rule that silence and single tones make weak fixtures)
-encoded by this project's own ac3cli, then decoded by the same ac3cli to
+encoded by this project's own forge, then decoded by the same forge to
 produce the expected levels. Re-running this script on an unchanged tree
 reproduces the header byte for byte.
 
-    python tools/generators/gen_baremetal_fixture.py --ac3cli build/.../bin/ac3cli
+    python tools/generators/gen_baremetal_fixture.py --forge build/.../bin/forge
 
 The streams are declared in one table (STREAMS below), each naming a layout
 from another (LAYOUTS). Adding a configuration is a row in the first; adding a
@@ -72,7 +72,7 @@ SAMPLES_PER_FRAME = 1536
 FRAMES = 6
 
 # --- the fixture tables ------------------------------------------------------
-# ac3cli's decode writes a WAV, and a WAV interleaves 5.1 as FL FR FC LFE BL BR
+# forge's decode writes a WAV, and a WAV interleaves 5.1 as FL FR FC LFE BL BR
 # (WAVE_FORMAT_EXTENSIBLE) - not the order the DECODER hands its channels back
 # in, which is AC-3's own Table 5.8 order L C R Ls Rs LFE. The probe reads the
 # decoder's output directly, so the levels here have to be permuted into coded
@@ -90,7 +90,7 @@ FRAMES = 6
 
 
 class Layout(typing.NamedTuple):
-    cli_name: str  # what ac3cli's [layout] positional calls it
+    cli_name: str  # what forge's [layout] positional calls it
     source: str  # programme material under tests/golden/audio/
     wav_position: tuple[int, ...]
     coded_order: str  # the channel names in coded order, for the emitted comment
@@ -164,7 +164,7 @@ LAYOUTS = {
     #
     # The SOURCE is the stereo file: there is no mono programme under
     # tests/golden/audio/ and adding one would be a third reference file to keep
-    # in step for a single channel. ac3cli's encode folds a stereo source down
+    # in step for a single channel. forge's encode folds a stereo source down
     # to 1/0 itself (plan.cpp's mono_downmix), which is also the more honest
     # fixture - a mono stream that real material was folded into, rather than
     # one channel of something that was never anything else.
@@ -175,7 +175,7 @@ LAYOUTS = {
         coded_order="Table 5.8 acmod 1: C",
     ),
     # The decoder assembles a programme in Table E2.5 order - the bed, then each
-    # dependent's new locations, LFE last - and ac3cli writes its WAVs in
+    # dependent's new locations, LFE last - and forge writes its WAVs in
     # speaker order (FL FR FC LFE BL BR SL SR TFL TFR TBL TBR), so this is where
     # each coded channel sits in that file.
     "714": Layout(
@@ -194,9 +194,9 @@ class Stream(typing.NamedTuple):
     key: str  # what probe.cpp's output labels this stream's lines with
     label: str  # the emitted comment
     layout: str  # a key into LAYOUTS
-    encode: tuple[str, ...]  # ac3cli's argv after <in> <out>
+    encode: tuple[str, ...]  # forge's argv after <in> <out>
     # A decode VARIANT of a stream above: no bitstream of its own (the probe
-    # reuses k<reuse>Stream), only a levels array from `ac3cli decode` run with
+    # reuses k<reuse>Stream), only a levels array from `forge decode` run with
     # these extra arguments, in decoded_layout's channel order. This is how
     # the §7.8 output stage - a fold, a mode - gets a row without a second
     # copy of a bitstream in flash.
@@ -300,7 +300,7 @@ STREAMS = (
     ),
     # The §7.8 output stage, which a player folding 5.1 to a stereo DAC runs
     # every frame: the two 5.1 streams above decoded again through a Lo/Ro fold
-    # in line mode (dialnorm normalised), the same ac3cli options the ESP32-S3
+    # in line mode (dialnorm normalised), the same forge options the ESP32-S3
     # examples' CI comparison uses. No new bitstream; two stereo levels arrays.
     Stream(
         cxx="Ac3Fold",
@@ -381,7 +381,7 @@ def run(argv: list[str]) -> None:
 def channel_rms(path: pathlib.Path) -> list[float]:
     """Per-channel RMS of a WAV, in [0, 1).
 
-    Hand-rolled rather than through the `wave` module: ac3cli's decode writes
+    Hand-rolled rather than through the `wave` module: forge's decode writes
     IEEE float32 (format tag 3), which that module refuses outright. Handles
     both that and PCM16 so this keeps working if the CLI's output format
     changes.
@@ -448,12 +448,12 @@ def hex_array(data: bytes, indent: str = "    ") -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ac3cli", required=True, help="path to a built ac3cli")
+    parser.add_argument("--forge", required=True, help="path to a built forge")
     args = parser.parse_args()
 
-    ac3cli = pathlib.Path(args.ac3cli).resolve()
-    if not ac3cli.exists():
-        raise SystemExit(f"no such file: {ac3cli}")
+    forge = pathlib.Path(args.forge).resolve()
+    if not forge.exists():
+        raise SystemExit(f"no such file: {forge}")
     for layout in LAYOUTS.values():
         if not (AUDIO / layout.source).exists():
             raise SystemExit(f"missing fixture source: {AUDIO / layout.source}")
@@ -480,7 +480,7 @@ def main() -> int:
                     raise SystemExit(
                         f"{stream.key}: reuses {stream.reuse}, "
                         "which has not been encoded yet")
-                run([str(ac3cli), "decode", str(coded), str(decoded), *stream.decode])
+                run([str(forge), "decode", str(coded), str(decoded), *stream.decode])
                 layout = LAYOUTS[stream.decoded_layout or stream.layout]
                 streams.append((stream, None, to_coded_order(layout, channel_rms(decoded))))
                 continue
@@ -492,8 +492,8 @@ def main() -> int:
             tail = [str(REPO / arg) if (REPO / arg).is_file() else arg for arg in tail]
             suffix = "ac3" if command == "encode" else "ec3"
             coded = work / f"{stream.key}.{suffix}"
-            run([str(ac3cli), command, str(sources[stream.layout]), str(coded), *tail])
-            run([str(ac3cli), "decode", str(coded), str(decoded)])
+            run([str(forge), command, str(sources[stream.layout]), str(coded), *tail])
+            run([str(forge), "decode", str(coded), str(decoded)])
             streams.append(
                 (stream, coded.read_bytes(), to_coded_order(layout, channel_rms(decoded)))
             )
@@ -522,7 +522,7 @@ def main() -> int:
         "// no floating-point support unless -u _printf_float is linked in, and a probe whose",
         "// subject is footprint should not drag that in just to report a number.",
         "",
-        "namespace ac3probe {",
+        "namespace iclforge_probe {",
         "",
         f"inline constexpr int kFrames = {FRAMES};",
         "",
@@ -533,7 +533,7 @@ def main() -> int:
             layout = LAYOUTS[stream.decoded_layout or stream.layout]
             body += [
                 f"// {stream.label}: k{by_key_cxx(stream.reuse)}Stream decoded with",
-                f"// `ac3cli decode {' '.join(stream.decode)}`, {FRAMES} frames."
+                f"// `forge decode {' '.join(stream.decode)}`, {FRAMES} frames."
                 " No bitstream of its own.",
                 "// Per-channel RMS x 1e6, in the decoder's own output order",
                 f"// ({layout.coded_order}) - see LAYOUTS in the generator.",
@@ -559,7 +559,7 @@ def main() -> int:
         ]
 
     body += [
-        "}  // namespace ac3probe",
+        "}  // namespace iclforge_probe",
         "",
     ]
 

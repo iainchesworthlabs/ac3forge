@@ -12,7 +12,7 @@
             <translation>[Fõrgé ~~]</translation>
         </message>
         <message>
-            <source>the AC3Forge encoder tools, %1</source>
+            <source>the ICL Forge encoder tools, %1</source>
             <translation>[thé ÀC3Fõrgé éncõdér tõõls, %1 ~~~~~~~~~~~~]</translation>
         </message>
         <message>
@@ -28,7 +28,7 @@
             <translation>[LÎCÉNSÉ ~~~]</translation>
         </message>
         <message>
-            <source>AC3Forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNU General Public License&lt;/a&gt; for details.</source>
+            <source>ICL Forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNU General Public License&lt;/a&gt; for details.</source>
             <translation>[ÀC3Fõrgé îs fréé sõftwàré: yõû càn rédîstrîbûté ît ànd/õr mõdîfy ît ûndér thé térms õf thé GNÛ Généràl Pûblîc Lîcénsé às pûblîshéd by thé Fréé Sõftwàré Fõûndàtîõn, éîthér vérsîõn 3 õf thé Lîcénsé, õr (àt yõûr õptîõn) àny làtér vérsîõn. Ît îs dîstrîbûtéd WÎTHÕÛT ÀNY WÀRRÀNTY; séé thé &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNÛ Généràl Pûblîc Lîcénsé&lt;/a&gt; fõr détàîls. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
@@ -43,11 +43,11 @@
     <context>
         <name>Ac4Panel</name>
         <message>
-            <source>AC-4 objects take the coding, the dialnorm in whole dB and a raw stream's CRC, as “ac3cli atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.</source>
+            <source>AC-4 objects take the coding, the dialnorm in whole dB and a raw stream's CRC, as “forge atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.</source>
             <translation>[ÀC-4 õbjécts tàké thé cõdîng, thé dîàlnõrm în whõlé dB ànd à ràw stréàm's CRC, às “àc3clî àtmõs-éncõdé … cõdéc=àc4” dõés. Théy àré wrîttén àt thé nàtîvé fràmé ràté, 2 048 sàmplés, àt à cõnstànt ràté. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “ac3cli ac4-encode” does.</source>
+            <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “forge ac4-encode” does.</source>
             <translation>[ÀC-4 éncõdés thé sõûrcé în îts õwn làyõût (mõnõ, stéréõ, 5.0 õr 5.1) tõ à ràw stréàm õr àn MP4 fîlé, às “àc3clî àc4-éncõdé” dõés. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
@@ -135,7 +135,7 @@
             <translation>[Làrgést dîàlõgûé bõõst ~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>Left to “ac3cli ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.</source>
+            <source>Left to “forge ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.</source>
             <translation>[Léft tõ “àc3clî àc4-éncõdé”: sévéràl sûbstréàms ànd préséntàtîõns, dîàlõgûé stéms, à DRC prõfîlé pér décõdér mõdé, thé LFÉ mîx ànd thé õthér làyõûts. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
     </context>
@@ -347,7 +347,7 @@
             <translation>[Éncõdîng îs à rûn, nõt à mõmént ~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>Every encode lands in a run list with its settings, its result and the exact ac3cli line that reproduces it.</source>
+            <source>Every encode lands in a run list with its settings, its result and the exact forge line that reproduces it.</source>
             <translation>[Évéry éncõdé lànds în à rûn lîst wîth îts séttîngs, îts résûlt ànd thé éxàct àc3clî lîné thàt réprõdûcés ît. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
@@ -968,7 +968,7 @@
             <translation>[nõ sõûrcé ~~~~]</translation>
         </message>
         <message>
-            <source>ac3forge — %1</source>
+            <source>Forge — %1</source>
             <translation>[àc3fõrgé — %1 ~~~~~]</translation>
         </message>
         <message>
@@ -1192,7 +1192,7 @@
             <translation>[Clõsé ~~]</translation>
         </message>
         <message>
-            <source>ac3forge</source>
+            <source>Forge</source>
             <translation>[àc3fõrgé ~~~]</translation>
         </message>
         <message>
@@ -1736,7 +1736,7 @@
             <translation>[GÀQ mõdé 0 îs thé trànsfõrm wîth gàîn-àdàptîvé qûàntîsàtîõn swîtchéd õff, whîch îs hõw GÀQ's õwn cõntrîbûtîõn géts méàsûréd. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>ac3cli tools token:  %1</source>
+            <source>forge tools token:  %1</source>
             <translation>[àc3clî tõõls tõkén:  %1 ~~~~~~~~~]</translation>
         </message>
         <message>
@@ -2476,7 +2476,7 @@
             <translation>[Înspéct õbjécts ~~~~~~]</translation>
         </message>
         <message>
-            <source>ac3cli command line</source>
+            <source>forge command line</source>
             <translation>[àc3clî cõmmànd lîné ~~~~~~~~]</translation>
         </message>
         <message>
@@ -2484,7 +2484,7 @@
             <translation>[Õpéns thé cõmmànd lîné thàt réprõdûcés thîs éncõdé, wîth à Cõpy bûttõn. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>ac3cli</source>
+            <source>forge</source>
             <translation>[àc3clî ~~]</translation>
         </message>
         <message>
@@ -2496,7 +2496,7 @@
             <translation>[THÉ CÕMMÀND LÎNÉ — RÉPRÕDÛCÉS THÎS ÉNCÕDÉ ~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>Encode runs the encoder in-process — this is the exact ac3cli equivalent, quoting and all.</source>
+            <source>Encode runs the encoder in-process — this is the exact forge equivalent, quoting and all.</source>
             <translation>[Éncõdé rûns thé éncõdér în-prõcéss — thîs îs thé éxàct àc3clî éqûîvàlént, qûõtîng ànd àll. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
@@ -2814,7 +2814,7 @@
             <translation>[Thé cõdéc àlwàys fõllõws thé chànnéls éîthér wày — thé wàrnîng õnly màkés thé mõmént ît chàngés à délîbéràté õné. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>WHEN AC3FORGE OPENS</source>
+            <source>WHEN FORGE OPENS</source>
             <translation>[WHÉN ÀC3FÕRGÉ ÕPÉNS ~~~~~~~~]</translation>
         </message>
         <message>
@@ -2950,7 +2950,7 @@
             <translation>[CÕMMÀND LÎNÉ ~~~~~]</translation>
         </message>
         <message>
-            <source>Keep the ac3cli line visible</source>
+            <source>Keep the forge line visible</source>
             <translation>[Kéép thé àc3clî lîné vîsîblé ~~~~~~~~~~~]</translation>
         </message>
         <message>
@@ -3009,7 +3009,7 @@
             <translation>[Clõsé ~~]</translation>
         </message>
         <message>
-            <source>Decodes an already-encoded file and measures it the same way “ac3cli qc” does — the stream's own claims, checked against what is actually in it, not the source that made it.</source>
+            <source>Decodes an already-encoded file and measures it the same way “forge qc” does — the stream's own claims, checked against what is actually in it, not the source that made it.</source>
             <translation>[Décõdés àn àlréàdy-éncõdéd fîlé ànd méàsûrés ît thé sàmé wày “àc3clî qc” dõés — thé stréàm's õwn clàîms, chéckéd àgàînst whàt îs àctûàlly în ît, nõt thé sõûrcé thàt màdé ît. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
@@ -3393,7 +3393,7 @@
             <translation>[Qûàlîty îs éncõdér-rélàtîvé, nõt à fîxéd tàrgét — bît cõst rîsés stééply àbõvé rõûghly hàlf thé ràngé, sõ à hîgh qûàlîty wîth nõ màxîmûm wîll õftén réfûsé réàl prõgràmmé màtérîàl õûtrîght. Bît ràté àbõvé stîll fééds thé cõûplîng/spéctràl-éxténsîõn fréqûéncy défàûlts, nõt à tàrgét ràté. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>ac3cli vbr token:  %1</source>
+            <source>forge vbr token:  %1</source>
             <translation>[àc3clî vbr tõkén:  %1 ~~~~~~~~]</translation>
         </message>
     </context>

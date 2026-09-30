@@ -10,7 +10,7 @@
 // object), one ADM BWF reader (ADM BWF reader phase 3, the ac3adm/admbridge integration), and the
 // one that goes the other way - taking an object layer back out of a finished stream. Split
 // out of main.cpp as part of the repo-structure review's H4 monolith split.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 // Objects moving in three dimensions, out as one 5.1 E-AC-3 stream carrying
 // JOC and OAMD. Each object orbits at its own rate and sits at its own height,
@@ -19,7 +19,7 @@ namespace ac3cli::commands {
 // worth doing at all: a 5.1 bed cannot carry them, and the object metadata can.
 int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
              std::uint32_t objects, std::uint32_t orbit_seconds, std::string_view mode,
-             const ac3cli::Options& meta);
+             const forge_cli::Options& meta);
 
 // Objects driven by a hand-authored keyframe file rather than the built-in
 // orbit above - the CLI-side proof that iclforge::oba's path primitive works end
@@ -27,7 +27,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
 // An object index the file never mentions holds still at room centre, the
 // same fallback the GUI uses for an object with no authored path.
 int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::uint32_t seconds,
-                   std::uint32_t bitrate, std::uint32_t objects_arg, const ac3cli::Options& meta);
+                   std::uint32_t bitrate, std::uint32_t objects_arg, const forge_cli::Options& meta);
 
 // Every channel of a real file as its own object, over a 5.1 bed with JOC and
 // OAMD beside it. The synthetic 'atmos' above shows what the object layer can
@@ -36,7 +36,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
 // front ends can be compared on the same file.
 int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      std::uint32_t bitrate, std::uint32_t objects,
-                     const ac3cli::Options& meta, std::string_view paths_path = {});
+                     const forge_cli::Options& meta, std::string_view paths_path = {});
 
 // A channel-based-immersive (CBI) bed: a WAV already mixed into a fixed 5.1.4/7.1.4/9.1.6 speaker
 // layout (Dolby's own dee_ddpjoc_encoder --input-format cbi_wav shape), straight to DD+ JOC E-AC-3
@@ -46,7 +46,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
 // source channel into a free-floating dynamic object, and from bed51 (see run_atmos's own mode
 // argument), which omits the object container entirely - see docs/concepts/atmos-joc.md.
 int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
-                  std::string_view layout, const ac3cli::Options& meta);
+                  std::string_view layout, const forge_cli::Options& meta);
 
 // The inverse of the four encoders above (object-layer strip): takes the object layer OUT of a finished
 // DD+ JOC stream, leaving a plain DD+ 5.1 stream whose bed audio is bit-identical - not decoded,
@@ -54,7 +54,7 @@ int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint
 // re-derived around what is left. See ac3/io/object_strip.hpp for why that is lossless and why
 // the container is removed rather than emptied.
 int run_strip_objects(std::string_view in_path, std::string_view out_path,
-                      const ac3cli::Options& meta);
+                      const forge_cli::Options& meta);
 
 // ADM BWF reader phase 3 of 3 - a real ADM BWF master (BS.2076-2 ADM XML embedded in a BS.2088-1
 // BW64/RF64 container) straight to DD+ JOC E-AC-3, no WAV plus a hand-authored keyframe file the
@@ -63,7 +63,7 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
 // comment for why this function is unconditional (iclforge::adm/iclforge::admbridge
 // linked-or-not is a build-time FILE choice, never a preprocessor conditional).
 int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
-                  const ac3cli::Options& meta, std::string_view programme_id);
+                  const forge_cli::Options& meta, std::string_view programme_id);
 
 // IAB reader phase 3 of 3 - a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2's Immersive
 // Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike) straight to DD+ JOC
@@ -74,6 +74,6 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 // preprocessor conditional) and why it rides run_atmos_adm's own ICLFORGE_BUILD_ADM gate rather
 // than a new one.
 int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
-                  const ac3cli::Options& meta);
+                  const forge_cli::Options& meta);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

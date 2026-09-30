@@ -1,4 +1,4 @@
-import Ac3ForgeCrucible
+import Crucible
 
 // The family's flat bordered button, which this file used to carry its own
 // copy of. It now lives in apps/gui/qml/AppButton.qml and is staged into

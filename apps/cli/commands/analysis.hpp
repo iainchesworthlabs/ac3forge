@@ -16,7 +16,7 @@
 // adjacency rather than forced into a cleaner-sounding but artificial category, the same rationale
 // commands/containers.hpp gives for excluding spdif from itself.
 // Split out of main.cpp as part of the repo-structure review's H4 monolith split.
-namespace ac3cli::commands {
+namespace forge_cli::commands {
 
 // The BS.1770-4 integrated loudness of an already-encoded stream - the
 // measurement half of `qc`, without the report or the gate. `normalize`
@@ -73,4 +73,4 @@ int run_loudness(std::string_view in_path, const Options& meta);
 int run_spdif(std::string_view in_path, std::string_view out_path);
 int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_partial);
 
-}  // namespace ac3cli::commands
+}  // namespace forge_cli::commands

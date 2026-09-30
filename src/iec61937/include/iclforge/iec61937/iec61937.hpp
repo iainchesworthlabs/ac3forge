@@ -130,7 +130,7 @@ class ICLFORGE_IEC61937_EXPORT Eac3BurstPacker {
 // (iclforge::split_access_units's granularity), matching `eac3`. For a caller
 // that already has its frames/access units in hand - e.g. a GUI's freshly
 // encoded output - rather than a raw elementary-stream buffer it would
-// otherwise have to split itself first. ac3cli's own `spdif`/`play` commands
+// otherwise have to split itself first. forge's own `spdif`/`play` commands
 // split a raw buffer and wrap frame-by-frame instead (see main.cpp); both
 // paths bottom out in wrap_frame/Eac3BurstPacker above, so they cannot
 // disagree about how a unit becomes a burst.
@@ -405,7 +405,7 @@ class ICLFORGE_IEC61937_EXPORT BurstReader {
 // Batch form, mirroring wrap_stream: every burst in `carrier`, concatenated
 // into one elementary stream. For a caller that already holds the whole
 // carrier - a test, or a GUI with a file in hand - rather than one streaming
-// it. ac3cli's own `unspdif` uses BurstReader directly so that a two-hour
+// it. forge's own `unspdif` uses BurstReader directly so that a two-hour
 // capture costs the same as a two-second one.
 //
 // kNoSync means no burst was found at all, which separates "this is ordinary

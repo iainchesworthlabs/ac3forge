@@ -4,12 +4,12 @@
 #include <string_view>
 
 // Where a JSON document written token by token goes, for the writers two
-// applications share: ac3cli's probe streams its document to stdout through
+// applications share: forge's probe streams its document to stdout through
 // its own writer (apps/cli/json.hpp), and Hearth's media information builds a
 // string with iclforge::sendspin's. probe_json.hpp's functions write to either
 // through this.
 //
-// The calls are ac3cli's JsonWriter's, which came first. Commas, colons and
+// The calls are forge's JsonWriter's, which came first. Commas, colons and
 // layout are the implementation's business; the caller keeps keys and values
 // in order and closes what it opens.
 

@@ -7,7 +7,7 @@ decode or a missing stream must abort rather than pass. It parses
 compare_wav.py's "worst channel:" line instead of recomputing SNR, so one test
 runs the real compare_wav.py to pin that output contract.
 
-Decodes are faked by patching subprocess.run; no ac3cli is needed.
+Decodes are faked by patching subprocess.run; no forge is needed.
 
 Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'
 """

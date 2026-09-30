@@ -95,7 +95,7 @@
 // NSAudioCaptureUsageDescription Info.plist key, separate from microphone
 // access); that prompt is keyed to the requesting binary's code-signing
 // identity and, per every report surveyed while writing this, never fires at
-// all for an unsigned binary - and ac3cli/ac3gui/Crucible ship unsigned today
+// all for an unsigned binary - and forge/forge-gui/Crucible ship unsigned today
 // (macOS code signing, blocked on certificates). A denial and a prompt that never
 // appeared both arrive here as one refusal from AudioHardwareCreateProcessTap
 // and are reported as kComFailure, because the API offers nothing to tell

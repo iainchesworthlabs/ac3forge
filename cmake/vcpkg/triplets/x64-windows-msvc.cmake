@@ -2,7 +2,7 @@
 #
 # Linkage policy: dynamic CRT, static dependency libraries. iclforge takes only
 # test/tooling packages from vcpkg (Catch2), so linking them statically keeps
-# ac3tests.exe self-contained and removes a whole class of "DLL not found"
+# iclforge-tests.exe self-contained and removes a whole class of "DLL not found"
 # failures at test-discovery time. The CRT stays dynamic (/MD) because the
 # prebuilt Qt kits the GUI links against are built that way.
 set(VCPKG_TARGET_ARCHITECTURE x64)

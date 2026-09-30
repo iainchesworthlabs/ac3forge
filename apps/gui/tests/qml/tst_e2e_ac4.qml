@@ -1,18 +1,18 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // AC-4 from the page, end to end: the codec picker and the AC-4 tab set up an
 // encode through the keyboard, the Encode button writes it, and the command
 // line the run recorded - the one the command bar echoed - is run through
-// this build's ac3cli in a folder holding a copy of the source. The two files
+// this build's forge in a folder holding a copy of the source. The two files
 // must be the same bytes, for a raw stream and for an MP4 file (planning/
 // ac4.md, I3's exit criterion). The page's file is then decoded by the
 // player, measured by QC and opened on the object page, each through its own
 // picker.
 //
-// The pickers are the only seam, as in tst_e2e_encode.qml; running ac3cli is
+// The pickers are the only seam, as in tst_e2e_encode.qml; running forge is
 // the second, through qml_test_main.cpp's cliRunner.
 TestCase {
     id: testCase
@@ -159,11 +159,11 @@ TestCase {
         return win;
     }
 
-    // The recorded line, run through ac3cli where the source's copy is, and
+    // The recorded line, run through forge where the source's copy is, and
     // what it wrote compared with what the page wrote.
     function runEchoedLineAndCompare(line, outName, pageUrl) {
         if (!cliRunner.available()) {
-            skip("this build has no ac3cli to run the echoed line through");
+            skip("this build has no forge to run the echoed line through");
         }
         verify(cliRunner.prepare(cliFolderUrl, wavUrl));
         compare(cliRunner.run(line, cliFolderUrl), 0, line);
@@ -193,7 +193,7 @@ TestCase {
         keys(findByName(tab, "ac4IframeInterval"), Qt.Key_Down, 1);  // 23
         keys(findByName(tab, "ac4Crc"), Qt.Key_Space, 1);
 
-        const echoed = "ac3cli ac4-encode roundtrip-stereo.wav out.ac4 192 frame-rate=25 "
+        const echoed = "forge ac4-encode roundtrip-stereo.wav out.ac4 192 frame-rate=25 "
                        + "rate-mode=average dialnorm=auto loudness=ebu-r128 drc=film-standard "
                        + "dialogue-channels=l,r iframe-interval=23 crc=off";
         compare(win.cliLine, echoed);
@@ -275,7 +275,7 @@ TestCase {
         // An MP4 sample carries no CRC, so the control is off the table.
         compare(findByName(tab, "ac4Crc").enabled, false);
 
-        const echoed = "ac3cli ac4-encode roundtrip-stereo.wav out.mp4 192 rate-mode=variable "
+        const echoed = "forge ac4-encode roundtrip-stereo.wav out.mp4 192 rate-mode=variable "
                        + "codec-mode=aspx dialnorm=30";
         compare(win.cliLine, echoed);
 

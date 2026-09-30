@@ -8,7 +8,7 @@
 #include "iclforge/ac3/export.hpp"
 
 // Named loudness/true-peak delivery gates a decoded stream's measurement can
-// be checked against - roadmap items C2 (`ac3cli qc`) and IO11. Each preset
+// be checked against - roadmap items C2 (`forge qc`) and IO11. Each preset
 // states a target integrated loudness, how that target is enforced, a true
 // peak ceiling, and the document/clause/date it was read out of - see
 // qc_preset()'s own comment on each case for the exact wording cited; every
@@ -17,7 +17,7 @@
 // Deliberately the same shape iclforge::meta::Profile/ProfileId (drc.hpp) uses for
 // the §7.7.1 DRC profile table: a small enum naming the presets, a constexpr
 // accessor returning the numbers, and a name<->id parser - so a caller
-// (ac3cli qc, and the GUI's own QC panel) reads one table instead of
+// (forge qc, and the GUI's own QC panel) reads one table instead of
 // hand-copying the same magic numbers more than once.
 //
 // Three specifications considered for this table are deliberately NOT in it,
@@ -40,7 +40,7 @@
 //     the kNetflix row below. What it adds is scope, not numbers: "Loudness
 //     and peaks should be measured via a 5.1 rerender." That is a choice of
 //     what to meter rather than what to compare against, so it belongs to
-//     `ac3cli qc`'s own layout= switch, not to a preset.
+//     `forge qc`'s own layout= switch, not to a preset.
 //
 //   * Amazon. Figures for Prime Video delivery are widely repeated at
 //     -24 LKFS/-2 dBTP, but every source found for them is a third-party
@@ -211,7 +211,7 @@ inline constexpr std::string_view kQcPresetNames =
 [[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_qc_preset(std::string_view name, QcPresetId& out);
 
 // Every preset, in declaration order - for a caller that wants to check a
-// measurement against all of them (ac3cli qc's own preset=all).
+// measurement against all of them (forge qc's own preset=all).
 inline constexpr std::array<QcPresetId, 5> kQcPresetIds{
     QcPresetId::kEbuR128S2, QcPresetId::kAtscA85, QcPresetId::kAtscA85Streaming,
     QcPresetId::kNetflix, QcPresetId::kAppleMusicAtmos};

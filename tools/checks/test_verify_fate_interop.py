@@ -5,7 +5,7 @@ The network and the decoders are faked. What is tested is the harness's own
 decision logic: a pinned SHA-256 that still mismatches after a fresh download
 is a hard error (a corrupt cached file is re-fetched once); truncated samples
 are trimmed to complete_bytes; FFmpeg's strict decode failing (non-zero OR any
-stderr) aborts; an ac3cli decode failure or a compare_wav.py disagreement is
+stderr) aborts; a forge decode failure or a compare_wav.py disagreement is
 collected and fails the run; compare=False samples skip the diff; and the
 compare_wav.py command carries --max-lag-samples 0 and the right floors.
 
@@ -69,7 +69,7 @@ class Harness(unittest.TestCase):
         self.cache.mkdir()
         for name, data in DATA.items():
             (self.cache / name).write_bytes(data)
-        self.cli = self.tmp / "ac3cli"
+        self.cli = self.tmp / "forge"
         self.cli.write_text("")
 
     def tearDown(self):
@@ -112,7 +112,7 @@ class Harness(unittest.TestCase):
         rc, out = self.run_main(FakeRun(decode_fail={"b.eac3"}, compare_fail={"a.ac3"}),
                                 env={"FATE_CACHE_DIR": str(self.cache)})
         self.assertEqual(rc, 1)
-        self.assertIn("::error::b.eac3: ac3cli decode failed: bad frame", out)
+        self.assertIn("::error::b.eac3: forge decode failed: bad frame", out)
         self.assertIn("::error::a.ac3: decoded audio disagrees with FFmpeg's", out)
 
     def test_ffmpeg_stderr_is_a_strict_failure(self):
@@ -164,7 +164,7 @@ class Harness(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "ffmpeg not on PATH"):
             self.run_main(FakeRun(), which=None)
         self.cli.unlink()
-        with self.assertRaisesRegex(SystemExit, "set AC3CLI"):
+        with self.assertRaisesRegex(SystemExit, "set ICLFORGE_CLI"):
             self.run_main(FakeRun())
 
     def test_pinned_corpus_is_well_formed(self):

@@ -1,4 +1,4 @@
-// The AC-4 object renderer of apps/common/ac4_object_render.hpp - ac3cli's,
+// The AC-4 object renderer of apps/common/ac4_object_render.hpp - forge's,
 // through the layout renderer Hearth plays E-AC-3's objects with - on the
 // constructed object streams of ac4dec_objects.hpp, whose object 0 moves from
 // the left wall to the right one over the stream. Each speaker's output is
@@ -7,7 +7,7 @@
 // of the objects' components at their gains.
 //
 // With AC4DEC_WRITE_LISTENING set to a directory, this writes the moving
-// cases ten seconds long there, to decode with ac3cli and listen to.
+// cases ten seconds long there, to decode with forge and listen to.
 
 #include <algorithm>
 #include <cmath>
@@ -216,7 +216,7 @@ TEST_CASE(
 
 TEST_CASE("the moving object streams for listening are written where AC4DEC_WRITE_LISTENING says",
           "[ac4dec][objects]") {
-    // Ten seconds of each moving case, for ac3cli decode and the ear: object
+    // Ten seconds of each moving case, for forge decode and the ear: object
     // 0's tone crosses the front from the left wall to the right one.
     const char* dir = std::getenv("AC4DEC_WRITE_LISTENING");
     if (dir == nullptr) {

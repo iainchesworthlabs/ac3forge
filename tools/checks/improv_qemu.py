@@ -727,7 +727,7 @@ def unprovisioned(run: Run) -> None:
         "device_info",
     )[1]
     # The firmware, its version, the chip and the board's name.
-    wanted = ("AC3Forge Hearth sink", "ESP32-S3", NAME)
+    wanted = ("Hearth sink", "ESP32-S3", NAME)
     if len(info.strings) != 4 or (info.strings[0], *info.strings[2:]) != wanted:
         raise Failed(f"device_info answered {info.strings}")
     run.say(f"device_info: {', '.join(info.strings)}")

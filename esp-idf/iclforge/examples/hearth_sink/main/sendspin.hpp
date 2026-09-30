@@ -17,7 +17,7 @@
 //   sendspin/none/    everything else, where each of these does nothing.
 //
 // A server connects to the board, pairs with it and plays to it: bursts over
-// _iclforge_player@v1 from ac3hearth, PCM over player@v1 from Music
+// _iclforge_player@v1 from hearth, PCM over player@v1 from Music
 // Assistant. The player owns the sink while a stream plays; a play from the
 // control surface (POST /play, kept for debugging) owns it otherwise, and the
 // two never run at once.

@@ -15,8 +15,8 @@
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="96"/>
-        <source>the AC3Forge encoder tools, %1</source>
-        <translation>les outils d&apos;encodage AC3Forge, %1</translation>
+        <source>the ICL Forge encoder tools, %1</source>
+        <translation>les outils d&apos;encodage ICL Forge, %1</translation>
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="103"/>
@@ -35,8 +35,8 @@
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="129"/>
-        <source>AC3Forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href=&quot;https://www.gnu.org/licenses/gpl-3.0.html&quot;&gt;GNU General Public License&lt;/a&gt; for details.</source>
-        <translation>AC3Forge est un logiciel libre : vous pouvez le redistribuer et/ou le modifier selon les termes de la GNU General Public License telle que publiée par la Free Software Foundation, soit la version 3 de la licence, soit (à votre choix) toute version ultérieure. Il est distribué SANS AUCUNE GARANTIE ; voir la &lt;a href=&quot;https://www.gnu.org/licenses/gpl-3.0.html&quot;&gt;GNU General Public License&lt;/a&gt; pour plus de détails.</translation>
+        <source>ICL Forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href=&quot;https://www.gnu.org/licenses/gpl-3.0.html&quot;&gt;GNU General Public License&lt;/a&gt; for details.</source>
+        <translation>ICL Forge est un logiciel libre : vous pouvez le redistribuer et/ou le modifier selon les termes de la GNU General Public License telle que publiée par la Free Software Foundation, soit la version 3 de la licence, soit (à votre choix) toute version ultérieure. Il est distribué SANS AUCUNE GARANTIE ; voir la &lt;a href=&quot;https://www.gnu.org/licenses/gpl-3.0.html&quot;&gt;GNU General Public License&lt;/a&gt; pour plus de détails.</translation>
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="141"/>
@@ -53,13 +53,13 @@
     <name>Ac4Panel</name>
     <message>
         <location filename="../qml/Ac4Panel.qml" line="32"/>
-        <source>AC-4 objects take the coding, the dialnorm in whole dB and a raw stream&apos;s CRC, as “ac3cli atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.</source>
-        <translation>Les objets AC-4 prennent le codage, le dialnorm en dB entiers et le CRC d&apos;un flux brut, comme le fait « ac3cli atmos-encode … codec=ac4 ». Ils sont écrits à la fréquence de trames native, 2 048 échantillons, à débit constant.</translation>
+        <source>AC-4 objects take the coding, the dialnorm in whole dB and a raw stream&apos;s CRC, as “forge atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.</source>
+        <translation>Les objets AC-4 prennent le codage, le dialnorm en dB entiers et le CRC d&apos;un flux brut, comme le fait « forge atmos-encode … codec=ac4 ». Ils sont écrits à la fréquence de trames native, 2 048 échantillons, à débit constant.</translation>
     </message>
     <message>
         <location filename="../qml/Ac4Panel.qml" line="33"/>
-        <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “ac3cli ac4-encode” does.</source>
-        <translation>AC-4 encode la source dans sa propre disposition (mono, stéréo, 5.0 ou 5.1) vers un flux brut ou un fichier MP4, comme le fait « ac3cli ac4-encode ».</translation>
+        <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “forge ac4-encode” does.</source>
+        <translation>AC-4 encode la source dans sa propre disposition (mono, stéréo, 5.0 ou 5.1) vers un flux brut ou un fichier MP4, comme le fait « forge ac4-encode ».</translation>
     </message>
     <message>
         <location filename="../qml/Ac4Panel.qml" line="68"/>
@@ -170,8 +170,8 @@
     </message>
     <message>
         <location filename="../qml/Ac4Panel.qml" line="405"/>
-        <source>Left to “ac3cli ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.</source>
-        <translation>Laissés à « ac3cli ac4-encode » : plusieurs sous-flux et présentations, les pistes de dialogue séparées, un profil DRC par mode de décodeur, le mixage du LFE et les autres dispositions.</translation>
+        <source>Left to “forge ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.</source>
+        <translation>Laissés à « forge ac4-encode » : plusieurs sous-flux et présentations, les pistes de dialogue séparées, un profil DRC par mode de décodeur, le mixage du LFE et les autres dispositions.</translation>
     </message>
 </context>
 <context>
@@ -432,8 +432,8 @@
     </message>
     <message>
         <location filename="../qml/FirstRunScreen.qml" line="128"/>
-        <source>Every encode lands in a run list with its settings, its result and the exact ac3cli line that reproduces it.</source>
-        <translation>Chaque encodage arrive dans une liste d&apos;exécutions avec ses réglages, son résultat et la ligne ac3cli exacte qui le reproduit.</translation>
+        <source>Every encode lands in a run list with its settings, its result and the exact forge line that reproduces it.</source>
+        <translation>Chaque encodage arrive dans une liste d&apos;exécutions avec ses réglages, son résultat et la ligne forge exacte qui le reproduit.</translation>
     </message>
     <message>
         <location filename="../qml/FirstRunScreen.qml" line="174"/>
@@ -1227,8 +1227,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="48"/>
-        <source>ac3forge — %1</source>
-        <translation>ac3forge — %1</translation>
+        <source>Forge — %1</source>
+        <translation>Forge — %1</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="455"/>
@@ -1524,8 +1524,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="1542"/>
-        <source>ac3forge</source>
-        <translation>ac3forge</translation>
+        <source>Forge</source>
+        <translation>Forge</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="1551"/>
@@ -2230,8 +2230,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="3955"/>
-        <source>ac3cli tools token:  %1</source>
-        <translation>jeton d&apos;outils ac3cli :  %1</translation>
+        <source>forge tools token:  %1</source>
+        <translation>jeton d&apos;outils forge :  %1</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="3981"/>
@@ -3189,8 +3189,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7524"/>
-        <source>ac3cli command line</source>
-        <translation>ligne de commande ac3cli</translation>
+        <source>forge command line</source>
+        <translation>ligne de commande forge</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7525"/>
@@ -3199,8 +3199,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7555"/>
-        <source>ac3cli</source>
-        <translation>ac3cli</translation>
+        <source>forge</source>
+        <translation>forge</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7562"/>
@@ -3214,8 +3214,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7622"/>
-        <source>Encode runs the encoder in-process — this is the exact ac3cli equivalent, quoting and all.</source>
-        <translation>Encoder exécute l&apos;encodeur dans le processus — voici l&apos;équivalent ac3cli exact, guillemets compris.</translation>
+        <source>Encode runs the encoder in-process — this is the exact forge equivalent, quoting and all.</source>
+        <translation>Encoder exécute l&apos;encodeur dans le processus — voici l&apos;équivalent forge exact, guillemets compris.</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7629"/>
@@ -3621,8 +3621,8 @@
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="313"/>
-        <source>WHEN AC3FORGE OPENS</source>
-        <translation>AU DÉMARRAGE D&apos;AC3FORGE</translation>
+        <source>WHEN FORGE OPENS</source>
+        <translation>AU DÉMARRAGE D&apos;FORGE</translation>
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="315"/>
@@ -3799,8 +3799,8 @@
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="519"/>
-        <source>Keep the ac3cli line visible</source>
-        <translation>Garder la ligne ac3cli visible</translation>
+        <source>Keep the forge line visible</source>
+        <translation>Garder la ligne forge visible</translation>
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="530"/>
@@ -3873,8 +3873,8 @@
     </message>
     <message>
         <location filename="../qml/QcDialog.qml" line="81"/>
-        <source>Decodes an already-encoded file and measures it the same way “ac3cli qc” does — the stream&apos;s own claims, checked against what is actually in it, not the source that made it.</source>
-        <translation>Décode un fichier déjà encodé et le mesure de la même façon que « ac3cli qc » — les affirmations du flux lui-même, confrontées à ce qu&apos;il contient réellement, pas à la source qui l&apos;a produit.</translation>
+        <source>Decodes an already-encoded file and measures it the same way “forge qc” does — the stream&apos;s own claims, checked against what is actually in it, not the source that made it.</source>
+        <translation>Décode un fichier déjà encodé et le mesure de la même façon que « forge qc » — les affirmations du flux lui-même, confrontées à ce qu&apos;il contient réellement, pas à la source qui l&apos;a produit.</translation>
     </message>
     <message>
         <location filename="../qml/QcDialog.qml" line="92"/>
@@ -4362,8 +4362,8 @@
     </message>
     <message>
         <location filename="../qml/VbrPanel.qml" line="162"/>
-        <source>ac3cli vbr token:  %1</source>
-        <translation>jeton vbr ac3cli :  %1</translation>
+        <source>forge vbr token:  %1</source>
+        <translation>jeton vbr forge :  %1</translation>
     </message>
 </context>
 </TS>

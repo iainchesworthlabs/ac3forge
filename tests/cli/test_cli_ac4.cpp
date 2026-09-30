@@ -1,4 +1,4 @@
-// AC-4 in the rest of ac3cli (planning/ac4.md, phase I1), each run against the
+// AC-4 in the rest of forge (planning/ac4.md, phase I1), each run against the
 // real binary: transcode between AC-4 and AC-3 or E-AC-3 in both directions
 // with the metadata that carries, the presentation it takes and what it
 // refuses; qc, levels and loudness of an AC-4 presentation; fmp4, mkv, probe
@@ -44,7 +44,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -129,7 +129,7 @@ fs::path tones_wav(const std::string& name, std::size_t count, int rate = 48000)
     return path;
 }
 
-// Makes `name` in the scratch directory with one ac3cli run, `args` naming
+// Makes `name` in the scratch directory with one forge run, `args` naming
 // its input and options after the output: "<command> <input> OUT <rest>".
 fs::path made(const std::string& name, const std::string& command, const fs::path& input,
               const std::string& rest) {

@@ -1,6 +1,6 @@
 import QtQuick
 
-import Ac3ForgeHearth
+import Hearth
 
 // Stands in for a page this slice has not built yet (planning/hearth-design.md
 // has the approved artboard). Kept as its own file, rather than inlined six

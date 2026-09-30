@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-import Ac3Forge
+import ForgeGui
 
 // Object mode addresses an object by a flat index into the concatenated
 // source list - the same addressing plan::Assignment uses for the regular

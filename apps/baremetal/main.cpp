@@ -12,4 +12,4 @@
 
 #include "probe.hpp"
 
-int main() { return ac3probe::run(); }
+int main() { return iclforge_probe::run(); }

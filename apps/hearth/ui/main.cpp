@@ -1,4 +1,4 @@
-// ac3hearth: the desktop reference player's window
+// hearth: the desktop reference player's window
 // (planning/hearth-reference-player.md, A5). Everything that is not the
 // window lives in ../engine and hearth_controller.hpp; this file stands the
 // QML up and offers Crucible's own debugging aid: `--shot <path.png>` grabs
@@ -25,8 +25,8 @@
 //
 // Translations run through the family's own LanguageManager
 // (apps/gui/language_manager.cpp, shared rather than copied), pointed at
-// this app's own ac3hearth_<code>.qm catalogues under :/i18n/. The six
-// languages are the same set ac3gui and Crucible ship. The catalogues carry
+// this app's own hearth_<code>.qm catalogues under :/i18n/. The six
+// languages are the same set forge-gui and Crucible ship. The catalogues carry
 // every source string and no translations yet, so what a language change
 // visibly does today is switch the layout direction and the typeface;
 // filling them is a translator's task, not a build one.
@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
     iclforge::sendspin::firewall::maybe_run_as_firewall_helper_and_exit(argc, argv);
 
     // Once, for the process's whole life - never from HearthController's
-    // constructor, so ac3tests and the Qt Quick test binary (each their own
+    // constructor, so iclforge-tests and the Qt Quick test binary (each their own
     // main(), never this one) don't register it (native_log_sink.hpp's own
     // comment says why that matters).
     iclforge::hearth::install_native_log_sink();
@@ -97,12 +97,12 @@ int main(int argc, char** argv) {
     }
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("Hearth"));
-    QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
+    QGuiApplication::setOrganizationName(QStringLiteral("iclforge"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Hearth"));
 
     QIcon app_icon;
-    app_icon.addFile(QStringLiteral(":/icons/ac3forge-32.png"));
-    app_icon.addFile(QStringLiteral(":/icons/ac3forge-256.png"));
+    app_icon.addFile(QStringLiteral(":/icons/iclforge-32.png"));
+    app_icon.addFile(QStringLiteral(":/icons/iclforge-256.png"));
     QGuiApplication::setWindowIcon(app_icon);
 
     // The family's own faces (apps/gui/fonts), registered before the engine
@@ -164,20 +164,20 @@ int main(int argc, char** argv) {
     // chosen one (docs/forge/gui/localisation.md). Constructed and applied
     // BEFORE the QML loads, so the first frame is already translated and
     // already mirrored where the language is written right to left.
-    LanguageManager language_manager(app, engine, QStringLiteral("ac3hearth"));
+    LanguageManager language_manager(app, engine, QStringLiteral("hearth"));
     language_manager.applyInitialLanguage();
     // A singleton instance rather than a context property, and under its own
-    // URI rather than this module's: registering a type into Ac3ForgeHearth
+    // URI rather than this module's: registering a type into Hearth
     // by hand marks that module registered, and its own types
     // (HearthController, NetworkController) then never register at load.
     // apps/crucible/ui/main.cpp carries the identical comment for the
     // identical reason.
-    qmlRegisterSingletonInstance("Ac3ForgeHearthLanguage", 1, 0, "LanguageManager",
+    qmlRegisterSingletonInstance("HearthLanguage", 1, 0, "LanguageManager",
                                  &language_manager);
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
-    engine.loadFromModule("Ac3ForgeHearth", "Main");
+    engine.loadFromModule("Hearth", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }

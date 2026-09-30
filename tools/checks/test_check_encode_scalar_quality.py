@@ -8,7 +8,7 @@ unparseable compare_wav.py output must abort; an optional ffmpeg decode adds a
 column and never changes the verdict. A real compare_wav.py run pins the
 per-channel line format it parses.
 
-ac3cli/ffmpeg are faked by patching subprocess.run and shutil.which.
+forge/ffmpeg are faked by patching subprocess.run and shutil.which.
 
 Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'
 """

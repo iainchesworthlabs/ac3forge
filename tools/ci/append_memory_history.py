@@ -6,7 +6,7 @@ hard_regression so the caller can fail the job *after* still committing and
 pushing the data - the same never-silently-un-recorded reasoning).
 
 This is the memory half of the trend machinery (docs/performance-trend.md's
-"Memory trend" section): tests/performance/bench_memory.cpp's ac3membench
+"Memory trend" section): tests/performance/bench_memory.cpp's iclforge-membench
 counts every heap allocation the codec makes per frame, per workload, and
 this script keeps the series. Mirrors append_performance_history.py by
 design (same JSONL-on-quality-history mechanics, same trailing window, same
@@ -93,7 +93,7 @@ CHURN_METRICS = (
 def load_leg_results(results_dir: Path):
     """results_dir holds one subdirectory per leg (memory-<preset>), each
     holding bench_memory.cpp's --json-out file - the same layout contract as
-    append_performance_history.py's, over ac3membench's schema."""
+    append_performance_history.py's, over iclforge-membench's schema."""
     for leg_dir in sorted(results_dir.iterdir()):
         if not leg_dir.is_dir():
             continue

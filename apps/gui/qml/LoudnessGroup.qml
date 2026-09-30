@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3Forge
+import ForgeGui
 
 // DRC profile, dialnorm and the measure checkbox - "Loudness" in the
 // handoff's own naming, and the one group of metadata controls that

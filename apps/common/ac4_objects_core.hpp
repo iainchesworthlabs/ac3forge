@@ -18,8 +18,8 @@
 #include "iclforge/ac4/ac4.hpp"
 #include "iclforge/ac4enc/encoder.hpp"
 
-// What ac3cli's `atmos-encode codec=ac4` and `atmos-adm`/`atmos-iab` with
-// codec=ac4 and ac3gui's AC-4 objects share, so that the command line the GUI
+// What forge's `atmos-encode codec=ac4` and `atmos-adm`/`atmos-iab` with
+// codec=ac4 and forge-gui's AC-4 objects share, so that the command line the GUI
 // echoes writes the same bytes the GUI does: which channels become which
 // objects, where a channel pinned to a speaker sits, the audio each object
 // carries, the metadata updates one a frame, and the call into E9's writer.
@@ -169,7 +169,7 @@ struct Ac4ObjectsParams {
 
 struct Ac4ObjectsError {
     enum class Kind : std::uint8_t {
-        // The configuration is one the encoder refuses (ac3cli's usage error).
+        // The configuration is one the encoder refuses (forge's usage error).
         kRefused,
         // encode() or flush() failed on its input.
         kEncode,

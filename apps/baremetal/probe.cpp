@@ -462,7 +462,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     Churn churn;
     churn.frames = static_cast<int>(frames->size());
     g_fixture_peak_bytes = g_live_bytes;
-    ac3probe::reset_stages();
+    iclforge_probe::reset_stages();
     std::size_t before = g_alloc_calls;
     int index = 0;
     int channels = 0;
@@ -475,17 +475,17 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
         std::uint64_t sink_us = 0;
         int delivered = 0;
         const auto sink = [&](const iclforge::PcmBlock& block) {
-            const std::uint64_t entered_us = ac3probe::now_us();
+            const std::uint64_t entered_us = iclforge_probe::now_us();
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 levels.add(ch, block.channels[ch]);
                 hash.add(block.channels[ch]);
             }
             delivered = static_cast<int>(block.channels.size());
-            sink_us += ac3probe::now_us() - entered_us;
+            sink_us += iclforge_probe::now_us() - entered_us;
         };
-        const std::uint64_t started_us = ac3probe::now_us();
+        const std::uint64_t started_us = iclforge_probe::now_us();
         const auto decoded = decoder.decode_frame_by_block(frame, sink);
-        const std::uint64_t elapsed_us = ac3probe::now_us() - started_us;
+        const std::uint64_t elapsed_us = iclforge_probe::now_us() - started_us;
         churn.decode_us += elapsed_us > sink_us ? elapsed_us - sink_us : 0;
         if (!decoded) {
             std::printf("check=%s.decode status=fail frame=%d error=%d\n", codec, index,
@@ -504,8 +504,8 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
         ++index;
     }
 
-    if (churn.frames != ac3probe::kFrames) {
-        fail(codec, "frames", churn.frames, ac3probe::kFrames);
+    if (churn.frames != iclforge_probe::kFrames) {
+        fail(codec, "frames", churn.frames, iclforge_probe::kFrames);
     }
     if (channels != static_cast<int>(expected.size())) {
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
@@ -517,7 +517,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     report_timing(codec, churn);
     // Where the time above went, when the library was built to say
     // (ICLFORGE_STAGE_TIMERS); silent otherwise.
-    ac3probe::report_stages(codec, churn.frames);
+    iclforge_probe::report_stages(codec, churn.frames);
     return 0;
 }
 
@@ -551,7 +551,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     Churn churn;
     churn.frames = static_cast<int>(units->size());
     g_fixture_peak_bytes = g_live_bytes;
-    ac3probe::reset_stages();
+    iclforge_probe::reset_stages();
     std::size_t before = g_alloc_calls;
     int index = 0;
     int channels = 0;
@@ -561,17 +561,17 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         std::uint64_t sink_us = 0;
         int delivered = 0;
         const auto sink = [&](const iclforge::PcmBlock& block) {
-            const std::uint64_t entered_us = ac3probe::now_us();
+            const std::uint64_t entered_us = iclforge_probe::now_us();
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 levels.add(ch, block.channels[ch]);
                 hash.add(block.channels[ch]);
             }
             delivered = static_cast<int>(block.channels.size());
-            sink_us += ac3probe::now_us() - entered_us;
+            sink_us += iclforge_probe::now_us() - entered_us;
         };
-        const std::uint64_t started_us = ac3probe::now_us();
+        const std::uint64_t started_us = iclforge_probe::now_us();
         const auto decoded = decoder.decode_access_unit_by_block(unit, sink);
-        const std::uint64_t elapsed_us = ac3probe::now_us() - started_us;
+        const std::uint64_t elapsed_us = iclforge_probe::now_us() - started_us;
         churn.decode_us += elapsed_us > sink_us ? elapsed_us - sink_us : 0;
         if (!decoded) {
             std::printf("check=%s.decode status=fail unit=%d error=%d\n", codec, index,
@@ -597,8 +597,8 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         ++index;
     }
 
-    if (churn.frames != ac3probe::kFrames) {
-        fail(codec, "frames", churn.frames, ac3probe::kFrames);
+    if (churn.frames != iclforge_probe::kFrames) {
+        fail(codec, "frames", churn.frames, iclforge_probe::kFrames);
     }
     if (channels != static_cast<int>(expected.size())) {
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
@@ -610,7 +610,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     report_timing(codec, churn);
     // Where the time above went, when the library was built to say
     // (ICLFORGE_STAGE_TIMERS); silent otherwise.
-    ac3probe::report_stages(codec, churn.frames);
+    iclforge_probe::report_stages(codec, churn.frames);
     return 0;
 }
 
@@ -618,7 +618,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
 // The objects row proves the objects come back; this proves they can be
 // PLACED, on the target, which is what a part driving a 7.1.4 DAC has to do
 // with them. The layout is 7.1.4 - the twelve the eac3_714 fixture decodes
-// for - and the render is the one ac3cli's `qc objects=714` performs: every
+// for - and the render is the one forge's `qc objects=714` performs: every
 // full-bandwidth target starts silent and each object's own recovered audio
 // is summed into it by the object's own OAMD position, through
 // iclforge::spatial::pan_direction, the same height-aware geometry the encoder
@@ -694,7 +694,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     Churn churn;
     churn.frames = static_cast<int>(units->size());
     g_fixture_peak_bytes = g_live_bytes;
-    ac3probe::reset_stages();
+    iclforge_probe::reset_stages();
     std::size_t before = g_alloc_calls;
     std::uint64_t render_us = 0;
     int index = 0;
@@ -706,7 +706,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         std::uint64_t levels_us = 0;
         bool delivered = false;
         const auto sink = [&](const iclforge::PcmBlock& block) {
-            const std::uint64_t entered_us = ac3probe::now_us();
+            const std::uint64_t entered_us = iclforge_probe::now_us();
             if (block.index == 0) {
                 // Each object's gains onto the panned targets, once per unit.
                 const auto objects = block.object_metadata != nullptr
@@ -753,7 +753,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
             // The probe's own level sums are double arithmetic - software on
             // the part - and no part of the render; taken back out of both
             // times, as the sinks' time is in the rows above.
-            const std::uint64_t levels_started_us = ac3probe::now_us();
+            const std::uint64_t levels_started_us = iclforge_probe::now_us();
             for (std::size_t t = 0; t < panned; ++t) {
                 levels.add(t, std::span<const float>(g_render_block[t].data(), n));
                 hash.add(std::span<const float>(g_render_block[t].data(), n));
@@ -761,12 +761,12 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 bed_levels.add(ch, block.channels[ch]);
             }
-            levels_us += ac3probe::now_us() - levels_started_us;
-            sink_us += ac3probe::now_us() - entered_us;
+            levels_us += iclforge_probe::now_us() - levels_started_us;
+            sink_us += iclforge_probe::now_us() - entered_us;
         };
-        const std::uint64_t started_us = ac3probe::now_us();
+        const std::uint64_t started_us = iclforge_probe::now_us();
         const auto decoded = decoder.decode_access_unit_by_block(unit, sink);
-        const std::uint64_t elapsed_us = ac3probe::now_us() - started_us;
+        const std::uint64_t elapsed_us = iclforge_probe::now_us() - started_us;
         if (!decoded) {
             std::printf("check=%s.decode status=fail unit=%d error=%d\n", codec, index,
                         static_cast<int>(decoded.error()));
@@ -799,8 +799,8 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         levels.counts[panned] = bed_levels.counts[static_cast<std::size_t>(lfe)];
     }
 
-    if (churn.frames != ac3probe::kFrames) {
-        fail(codec, "frames", churn.frames, ac3probe::kFrames);
+    if (churn.frames != iclforge_probe::kFrames) {
+        fail(codec, "frames", churn.frames, iclforge_probe::kFrames);
     }
     if (channels != static_cast<int>(expected.size())) {
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
@@ -814,7 +814,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     std::printf("%s.render_us=%lu %s.render_us_per_frame=%lu\n", codec,
                 static_cast<unsigned long>(render_us), codec,
                 static_cast<unsigned long>(render_us / frames));
-    ac3probe::report_stages(codec, churn.frames);
+    iclforge_probe::report_stages(codec, churn.frames);
     return 0;
 }
 
@@ -844,25 +844,25 @@ struct Ac3Fixture {
 };
 
 constexpr std::array<Ac3Fixture, 4> kAc3Fixtures{{
-    {"ac3", ac3probe::kAc3Stream, ac3probe::kAc3Rms, 56685},
+    {"ac3", iclforge_probe::kAc3Stream, iclforge_probe::kAc3Rms, 56685},
     // The same stream folded to Lo/Ro in line mode (§7.8.1 with §5.4.2.8's
     // dialnorm normalisation): what i2s_player does to every frame on the
     // way to a stereo DAC, and the output stage's first row on any target.
-    // Levels are ac3cli's for the same options (tools/generators/
+    // Levels are forge's for the same options (tools/generators/
     // gen_baremetal_fixture.py's decode-variant rows), two channels.
-    {"ac3_fold", ac3probe::kAc3Stream, ac3probe::kAc3FoldRms, 58733,
+    {"ac3_fold", iclforge_probe::kAc3Stream, iclforge_probe::kAc3FoldRms, 58733,
      {.target = iclforge::DownmixTarget::kLoRo, .mode = iclforge::OperatingMode::kLine}},
     // 2/0. §7.5.4 rematrixing lives in this layout alone, and it is a different
     // code path from the eac3_stereo row's - Annex E carries its own
     // rematrixing syntax - so that fixture does not stand in for this one.
     // Also the first AC-3 fixture whose channel count is not six.
-    {"ac3_stereo", ac3probe::kAc3StereoStream, ac3probe::kAc3StereoRms, 49328},
+    {"ac3_stereo", iclforge_probe::kAc3StereoStream, iclforge_probe::kAc3StereoRms, 49328},
     // 1/0. The narrowest programme the syntax has: one full-bandwidth channel,
     // no LFE, no coupling possible (§7.4 needs two channels to share a band
     // between) and no downmix to apply. Every per-channel loop in the decoder
     // runs exactly once here, which is the value 6 cannot catch an off-by-one
     // in.
-    {"ac3_mono", ac3probe::kAc3MonoStream, ac3probe::kAc3MonoRms, 47608},
+    {"ac3_mono", iclforge_probe::kAc3MonoStream, iclforge_probe::kAc3MonoRms, 47608},
 }};
 
 // The E-AC-3 fixtures, in the order the probe decodes them. Adding one is a
@@ -891,22 +891,22 @@ struct Eac3Fixture {
 };
 
 constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{{
-    {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms, 175674},
+    {"eac3", iclforge_probe::kEac3Stream, iclforge_probe::kEac3Rms, 175674},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
     // ecpl_channel_spectrum - and the 512-point DFT
     // src/dsp/src/fft.cpp is in the minimal source list for - are
     // linked into every build of this profile and executed by none of them.
-    {"eac3_ecpl", ac3probe::kEac3EcplStream, ac3probe::kEac3EcplRms, 159141},
+    {"eac3_ecpl", iclforge_probe::kEac3EcplStream, iclforge_probe::kEac3EcplRms, 159141},
     // An Atmos stream decoded for its BED. §6 object reconstruction allocates
     // an oba::joc::ReconstructionState - 147,504 bytes in one block, plus a
     // QmfState and its filterbanks - which is more than the largest free run
     // this decode leaves on an ESP32-S3, so a full decode of this stream dies
     // in operator new partway through. The bed does not: it is ordinary
     // E-AC-3, and this row is what proves that on the target rather than in a
-    // paragraph. Levels are the bed's, which is what ac3cli decode writes for
+    // paragraph. Levels are the bed's, which is what forge decode writes for
     // an Atmos stream too, so the host reference needed no special case.
-    {"eac3_atmos_bed", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms, 125383,
+    {"eac3_atmos_bed", iclforge_probe::kEac3AtmosBedStream, iclforge_probe::kEac3AtmosBedRms, 125383,
      true},
     // The Atmos bitstream again, this time reconstructing its objects. Two
     // rows off one stream: it is already linked in, so the second path costs
@@ -924,13 +924,13 @@ constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{{
     // never exits, and object reconstruction then had nowhere to go. release_ecpl_scratch() below is what makes the
     // order stop mattering, so this row sits where it would naturally rather
     // than where it happens to pass.
-    {"eac3_atmos_objects", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms, 211851,
+    {"eac3_atmos_objects", iclforge_probe::kEac3AtmosBedStream, iclforge_probe::kEac3AtmosBedRms, 211851,
      false, iclforge::oba::joc::Domain::kMdctBand},
     // 2/0, and Annex E's own rematrixing syntax - the E-AC-3 half of what the
     // ac3_stereo row covers for AC-3. Also the first E-AC-3 fixture whose
     // channel count is not six, so the layout-driven half of the level check is
     // exercised rather than merely written.
-    {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms, 144278},
+    {"eac3_stereo", iclforge_probe::kEac3StereoStream, iclforge_probe::kEac3StereoRms, 144278},
     // 7.1.4: a 5.1 bed and two dependent substreams (k71Rear and kTopQuad),
     // the widest programme the encoder makes and the first fixture with more
     // channels than one substream can carry. The access unit's assembly -
@@ -938,10 +938,10 @@ constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{{
     // the bed's - runs here and nowhere else in this table, and twelve
     // channels of output is what a part driving a 7.1.4 DAC over TDM pays
     // for, in this probe's own PCM block as on the part.
-    {"eac3_714", ac3probe::kEac3714Stream, ac3probe::kEac3714Rms, 238094},
+    {"eac3_714", iclforge_probe::kEac3714Stream, iclforge_probe::kEac3714Rms, 238094},
     // The 5.1 stream folded to Lo/Ro in line mode - the E-AC-3 half of the
     // ac3_fold row, through the access-unit form's own output path.
-    {"eac3_fold", ac3probe::kEac3Stream, ac3probe::kEac3FoldRms, 182030, false,
+    {"eac3_fold", iclforge_probe::kEac3Stream, iclforge_probe::kEac3FoldRms, 182030, false,
      iclforge::oba::joc::Domain::kQmf,
      {.target = iclforge::DownmixTarget::kLoRo, .mode = iclforge::OperatingMode::kLine}},
     // The 7.1.4 stream folded the same way: a stereo player's frame at the
@@ -949,7 +949,7 @@ constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{{
     // at its widest - twelve locations seated into §7.8's six before the fold
     // runs. The stream carries no dynrng words and dialnorm -31, so line mode
     // adds no per-sample work here and the row times the fold itself.
-    {"eac3_714_fold", ac3probe::kEac3714Stream, ac3probe::kEac3714FoldRms, 244502, false,
+    {"eac3_714_fold", iclforge_probe::kEac3714Stream, iclforge_probe::kEac3714FoldRms, 244502, false,
      iclforge::oba::joc::Domain::kQmf,
      {.target = iclforge::DownmixTarget::kLoRo, .mode = iclforge::OperatingMode::kLine}},
     // Line mode's own work, apart from any fold: a 5.1 stream encoded with
@@ -957,7 +957,7 @@ constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{{
     // gain on every channel's coefficients each block and §5.4.2.8's
     // normalisation on every sample, the two things the fold rows' streams
     // give line mode no reason to do.
-    {"eac3_line", ac3probe::kEac3DrcStream, ac3probe::kEac3LineRms, 175750, false,
+    {"eac3_line", iclforge_probe::kEac3DrcStream, iclforge_probe::kEac3LineRms, 175750, false,
      iclforge::oba::joc::Domain::kQmf, {.mode = iclforge::OperatingMode::kLine}},
     // Objects reconstructed (kMdctBand, as the objects row) and then PLACED
     // onto 7.1.4 by their own positions - see render_eac3, and
@@ -966,7 +966,7 @@ constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{{
     // and one half way (tools/generators/atmos_height_scene.txt), because the
     // Atmos rows' objects all sit on the listener plane and a render of them
     // would leave the four height targets silent and untested.
-    {"eac3_atmos_render", ac3probe::kEac3AtmosHeightStream, ac3probe::kEac3AtmosRenderRms,
+    {"eac3_atmos_render", iclforge_probe::kEac3AtmosHeightStream, iclforge_probe::kEac3AtmosRenderRms,
      212221, false, iclforge::oba::joc::Domain::kMdctBand, {}, true},
 }};
 
@@ -1001,8 +1001,8 @@ static_assert(every_fixture_fits(),
 // served by the fast path.
 void check_reference_transform_refused() {
     const std::span<const std::byte> stream{
-        reinterpret_cast<const std::byte*>(ac3probe::kAc3Stream.data()),
-        ac3probe::kAc3Stream.size()};
+        reinterpret_cast<const std::byte*>(iclforge_probe::kAc3Stream.data()),
+        iclforge_probe::kAc3Stream.size()};
     const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         fail("reference.setup", 0, 1);
@@ -1022,7 +1022,7 @@ void check_reference_transform_refused() {
 
 }  // namespace
 
-int ac3probe::run() {
+int iclforge_probe::run() {
     // Nothing here reads ac3/internal/profile.hpp, deliberately: that header
     // states what the build INTENDED, and a probe reporting its own intentions
     // back would prove nothing. Every claim below is observed - the levels
@@ -1043,7 +1043,7 @@ int ac3probe::run() {
     // stage[...] lines that follow are missing because nothing was timed or
     // because the build could not time anything.
     std::printf("stage.pair_cost_ns=%lu\n",
-                static_cast<unsigned long>(ac3probe::stage_pair_cost_ns()));
+                static_cast<unsigned long>(iclforge_probe::stage_pair_cost_ns()));
 
     for (const auto& fixture : kAc3Fixtures) {
         if (over_budget(fixture.codec, fixture.peak_bytes)) {
@@ -1085,7 +1085,7 @@ int ac3probe::run() {
     // Whether this build's library called the stage timers at all - see
     // stage_timers.hpp. A plain build says "off" here and prints no stage
     // lines; it is not an error, it is the ordinary footprint measurement.
-    std::printf("stage_timers=%s\n", ac3probe::stages_active() ? "on" : "off");
+    std::printf("stage_timers=%s\n", iclforge_probe::stages_active() ? "on" : "off");
 
     // Every decoder this run made is out of scope by now, so whatever is still
     // live is held by something with process lifetime inside the library rather

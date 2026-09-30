@@ -570,7 +570,7 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
     CHECK((*au)->layout.count == 0);
     REQUIRE((*au)->channels.size() == 2);
 
-    // Every monitor/playback caller (ac3gui's runLiveSession, ac3cli's
+    // Every monitor/playback caller (forge-gui's runLiveSession, forge's
     // run_live/run_monitor) reorders decode_access_unit's `channels` for
     // interleaving by feeding `layout` through plan::monitor_order first.
     // layout.count == 0 above means a naive plan::wav_order call would see
@@ -581,7 +581,7 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
     // falling back to the identity order over `channel_count` in that case,
     // asserted here directly against the real decoded access unit, since
     // decode_access_unit is the one fact both callers' own tests cannot
-    // otherwise pin (ac3gui's live session and ac3cli's run_live both need a
+    // otherwise pin (forge-gui's live session and forge's run_live both need a
     // real audio device Quick Test's offscreen CI has none of).
     const auto order = iclforge::plan::monitor_order(
         std::span{(*au)->layout.items}.first(static_cast<std::size_t>((*au)->layout.count)),

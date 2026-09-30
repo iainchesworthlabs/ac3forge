@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The AC-4 decoder page (planning/hearth-design.md; planning/ac4.md, I2):
 // every control DecoderSettings::ac4 holds, and the ones AC-4 shares with

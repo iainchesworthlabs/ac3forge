@@ -9,7 +9,7 @@
 # fuzz build nor ICLFORGE_SENDSPIN_CORE_ONLY has ever meant to reach), so an
 # ICLFORGE_SENDSPIN_CORE_ONLY build (fuzz/run.sh, the only thing that sets it)
 # leaves all three out, along with the notices for what they link, and
-# ac3hearth-render with them: it needs only the engine, but it is a tool for
+# hearth-render with them: it needs only the engine, but it is a tool for
 # the checks, which a fuzz build does not run.
 add_subdirectory(engine)
 
@@ -18,9 +18,9 @@ if(NOT ICLFORGE_SENDSPIN_CORE_ONLY)
     # so ui/'s own install() rules (below) can reference it before that
     # file's content is actually generated. This breaks what would otherwise
     # be a real cycle: ui/CMakeLists.txt's install(FILES
-    # "${AC3HEARTH_NOTICES_FILE}" ...) rules need this path, while
+    # "${ICLFORGE_HEARTH_NOTICES_FILE}" ...) rules need this path, while
     # notices.cmake's Qt section needs ui/'s own PARENT_SCOPE exports
-    # (AC3HEARTH_UI_QT_FOUND, AC3HEARTH_UI_QT_VERSION, set right after its
+    # (ICLFORGE_HEARTH_UI_QT_FOUND, ICLFORGE_HEARTH_UI_QT_VERSION, set right after its
     # find_package(Qt6 ...)) - so notices.cmake has to include() AFTER
     # add_subdirectory(ui), but the path string itself depends on neither and
     # can be settled first. install() only needs the path at configure time;
@@ -29,10 +29,10 @@ if(NOT ICLFORGE_SENDSPIN_CORE_ONLY)
     # (below, via notices.cmake) writes it with plain file(WRITE), and every
     # add_subdirectory()/include() here runs as one configure regardless of
     # order.
-    set(AC3HEARTH_NOTICES_FILE "${CMAKE_BINARY_DIR}/notices/hearth/NOTICES.txt")
+    set(ICLFORGE_HEARTH_NOTICES_FILE "${CMAKE_BINARY_DIR}/notices/hearth/NOTICES.txt")
     # A placeholder, so the file exists (file(WRITE) creates its parent
     # directories too) before ui/'s own qt_add_resources() call embeds it
-    # below - Qt's target finalization for ac3hearth runs at the end of
+    # below - Qt's target finalization for hearth runs at the end of
     # add_subdirectory(ui)'s own scope, before notices.cmake ever runs in
     # this (the parent) scope, so a resource added from notices.cmake after
     # that finalization has already happened is silently left out of the
@@ -40,7 +40,7 @@ if(NOT ICLFORGE_SENDSPIN_CORE_ONLY)
     # its "no embedded notices file" text. ac3_generate_notices overwrites
     # this with the real content later in this same configure, still well
     # before ninja's rcc step reads it at build time.
-    file(WRITE "${AC3HEARTH_NOTICES_FILE}" "")
+    file(WRITE "${ICLFORGE_HEARTH_NOTICES_FILE}" "")
 
     # The window (A5) before notices.cmake, for the Qt-export reason above.
     # Same three platforms as apps/crucible, and for the same reason:

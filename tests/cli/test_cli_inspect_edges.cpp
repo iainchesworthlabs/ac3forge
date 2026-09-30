@@ -26,7 +26,7 @@
 // fields. test_cli_probe.cpp holds probe's documented schema; this file
 // holds its edges and decode's.
 //
-// Every stream is made by ac3cli itself, a second or less long; the only
+// Every stream is made by forge itself, a second or less long; the only
 // fixture is one committed AC-4 file.
 //
 // run_cli and the helpers below are trimmed copies of test_cli.cpp's own,
@@ -51,7 +51,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -72,7 +72,7 @@ void write_raw(const fs::path& path, const std::vector<char>& bytes) {
 
 std::string quoted(const fs::path& path) { return "\"" + path.string() + "\""; }
 
-// Makes `path` with one ac3cli run - `command` and `path`, then `rest` -
+// Makes `path` with one forge run - `command` and `path`, then `rest` -
 // once per test process.
 fs::path generated(const fs::path& path, std::string_view command, std::string_view rest) {
     if (!fs::exists(path)) {
@@ -380,7 +380,7 @@ TEST_CASE("decode refuses an output, census or object directory it cannot write"
 
 // E-AC-3's own version of this same warning (adm_out= against a programme with no object layer)
 // lives in tests/cli/test_cli_decode_adm.cpp, not here: decode.cpp's run_decode_eac3 checks
-// ac3cli::adm_capability() before it can even tell whether the programme has an object layer, so
+// forge_cli::adm_capability() before it can even tell whether the programme has an object layer, so
 // that path only reaches these warnings (rather than exiting 2 with "this build was not configured
 // with -DICLFORGE_BUILD_ADM=ON") when ADM support was actually built. Plain AC-3 has no such
 // check - it cannot have an object layer at all, on any build - so it stays here.

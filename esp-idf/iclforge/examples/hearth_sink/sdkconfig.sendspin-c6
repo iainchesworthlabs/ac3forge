@@ -4,7 +4,7 @@
 #
 # The part has no PSRAM, so every buffer the player keeps is internal RAM, and WiFi's
 # receive buffers come out of what is left. Each setting here is what a board needed:
-# a C6 playing an AC-3 2.0 stream from ac3hearth-testserver over WiFi, 2026-09-17.
+# a C6 playing an AC-3 2.0 stream from hearth-testserver over WiFi, 2026-09-17.
 
 # The player's buffers. The S3's defaults (a 256 KB ring, 25 KB chunks, 20 ms delay
 # lines for 16 outputs) are about 426 KB here, more than the part has. Playing AC-3 2.0

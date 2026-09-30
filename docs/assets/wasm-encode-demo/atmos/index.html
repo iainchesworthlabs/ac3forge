@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ac3forge - WASM Atmos authoring demo</title>
+<title>ICL Forge - WASM Atmos authoring demo</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" href="favicon-32.png">
 <style>
@@ -85,14 +85,14 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>ac3forge - WASM Atmos authoring demo</h1>
+  <h1>ICL Forge - WASM Atmos authoring demo</h1>
   <p class="lede">
     Author a real Dolby Atmos (E-AC-3 + JOC) stream in this tab: drag audio objects around a
     top-down room while the page encodes, and every drag becomes OAMD position metadata in the
     stream - one placement per frame, so the motion you draw <em>is</em> the pan a decoder
     renders. Objects are synthesised tones (this is an authoring demo for the metadata path, not
     a mixing console); the encoder underneath is <code>ac3::oba::AtmosEncoder</code>, the same
-    class <code>ac3cli atmos-encode</code> uses.
+    class <code>forge atmos-encode</code> uses.
   </p>
 
   <div class="panel">
@@ -139,12 +139,12 @@
       The preview decodes the stream this page just authored through the same WASM decode module
       the decode demo uses - the objects you panned, reconstructed from the E-AC-3 + JOC bytes.
       The downloaded <code>.ec3</code> also plays in the
-      <a href="../../wasm-demo/">decode demo</a> and in <code>ac3cli decode</code>.
+      <a href="../../wasm-demo/">decode demo</a> and in <code>forge decode</code>.
     </p>
   </div>
 
   <footer>
-    Part of <a href="https://github.com/iainchesworthlabs/ac3forge">ac3forge</a>, roadmap item UX6.
+    Part of <a href="https://github.com/iainchesworthlabs/ac3forge">ICL Forge</a>, roadmap item UX6.
     Source: <code>apps/wasm/atmos/</code>. Sibling to the
     <a href="../">encode demo</a>.
     Licensed under <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE">GPLv3</a>.

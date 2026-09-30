@@ -2,11 +2,11 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeCrucible
+import Crucible
 
 // About: what this is, the version and build it came from, the licences it
 // carries. Reached from the header's "?" and the tray menu. The same shape
-// as the ac3forge GUI's About, on this app's own theme.
+// as the Forge GUI's About, on this app's own theme.
 Dialog {
     id: root
     objectName: "aboutDialog"
@@ -50,20 +50,20 @@ Dialog {
         RowLayout {
             spacing: Theme.space3
             Image {
-                source: "qrc:/icons/ac3forge-256.png"
+                source: "qrc:/icons/iclforge-256.png"
                 sourceSize: Qt.size(40, 40)
                 Layout.preferredWidth: 40
                 Layout.preferredHeight: 40
             }
             ColumnLayout {
                 spacing: 2
-                Text { text: qsTr("AC3Forge Crucible"); color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: Theme.fontTitle; font.weight: Font.Bold }
+                Text { text: qsTr("Crucible"); color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: Theme.fontTitle; font.weight: Font.Bold }
                 Text { text: qsTr("your applications, placed in the room"); color: Theme.textMuted; font.pixelSize: Theme.fontBody }
             }
         }
         Kicker { text: qsTr("WHAT IT DOES") }
         Body {
-            text: qsTr("Every application with sound becomes an object in a Dolby Atmos scene. Place it in the room; the result goes to your receiver as E-AC-3 JOC over HDMI, to a PCM or spatial endpoint, or to headphones. An ac3forge demonstration: the encoder, the object layer and the taps are the library's; this window is the room.")
+            text: qsTr("Every application with sound becomes an object in a Dolby Atmos scene. Place it in the room; the result goes to your receiver as E-AC-3 JOC over HDMI, to a PCM or spatial endpoint, or to headphones. An ICL Forge demonstration: the encoder, the object layer and the taps are the library's; this window is the room.")
         }
         Kicker { text: qsTr("VERSION") }
         Body {
@@ -72,7 +72,7 @@ Dialog {
         }
         Kicker { text: qsTr("LICENCES") }
         Body {
-            text: qsTr("AC3Forge Crucible and the ac3forge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.")
+            text: qsTr("Crucible and the iclforge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.")
         }
         // No component is named here: what this build carries from others
         // differs by platform and by build, and the notices file generated

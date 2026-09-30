@@ -1,4 +1,4 @@
-// ac3probe::now_us() for the host build.
+// iclforge_probe::now_us() for the host build.
 //
 // std::chrono::steady_clock is the right answer wherever there is one: it is
 // monotonic by definition, so a clock adjustment mid-run cannot make a decode
@@ -14,7 +14,7 @@
 
 #include "probe.hpp"
 
-namespace ac3probe {
+namespace iclforge_probe {
 
 std::uint64_t now_us() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -22,4 +22,4 @@ std::uint64_t now_us() {
         std::chrono::duration_cast<std::chrono::microseconds>(now).count());
 }
 
-}  // namespace ac3probe
+}  // namespace iclforge_probe

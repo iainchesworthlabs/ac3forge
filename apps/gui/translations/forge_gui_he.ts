@@ -15,8 +15,8 @@
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="96"/>
-        <source>the AC3Forge encoder tools, %1</source>
-        <translation>כלי הקידוד של AC3Forge, %1</translation>
+        <source>the ICL Forge encoder tools, %1</source>
+        <translation>כלי הקידוד של ICL Forge, %1</translation>
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="103"/>
@@ -35,8 +35,8 @@
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="129"/>
-        <source>AC3Forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href=&quot;https://www.gnu.org/licenses/gpl-3.0.html&quot;&gt;GNU General Public License&lt;/a&gt; for details.</source>
-        <translation>AC3Forge היא תוכנה חופשית: מותר להפיץ אותה מחדש ו/או לשנות אותה בתנאי הרישיון הציבורי הכללי של GNU כפי שפורסם על ידי Free Software Foundation, בגרסה 3 של הרישיון או, לפי בחירתכם, בכל גרסה מאוחרת יותר. היא מופצת ללא כל אחריות; לפרטים ראו את &lt;a href=&quot;https://www.gnu.org/licenses/gpl-3.0.html&quot;&gt;GNU General Public License&lt;/a&gt;.</translation>
+        <source>ICL Forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href=&quot;https://www.gnu.org/licenses/gpl-3.0.html&quot;&gt;GNU General Public License&lt;/a&gt; for details.</source>
+        <translation>ICL Forge היא תוכנה חופשית: מותר להפיץ אותה מחדש ו/או לשנות אותה בתנאי הרישיון הציבורי הכללי של GNU כפי שפורסם על ידי Free Software Foundation, בגרסה 3 של הרישיון או, לפי בחירתכם, בכל גרסה מאוחרת יותר. היא מופצת ללא כל אחריות; לפרטים ראו את &lt;a href=&quot;https://www.gnu.org/licenses/gpl-3.0.html&quot;&gt;GNU General Public License&lt;/a&gt;.</translation>
     </message>
     <message>
         <location filename="../qml/AboutDialog.qml" line="141"/>
@@ -53,13 +53,13 @@
     <name>Ac4Panel</name>
     <message>
         <location filename="../qml/Ac4Panel.qml" line="32"/>
-        <source>AC-4 objects take the coding, the dialnorm in whole dB and a raw stream&apos;s CRC, as “ac3cli atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.</source>
-        <translation>אובייקטי AC-4 לוקחים את הקידוד, את ה-dialnorm בדציבלים שלמים ואת ה-CRC של זרם גולמי, כפי ש-„ac3cli atmos-encode … codec=ac4” עושה. הם נכתבים בקצב המסגרות המקורי, 2,048 דגימות, בקצב קבוע.</translation>
+        <source>AC-4 objects take the coding, the dialnorm in whole dB and a raw stream&apos;s CRC, as “forge atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.</source>
+        <translation>אובייקטי AC-4 לוקחים את הקידוד, את ה-dialnorm בדציבלים שלמים ואת ה-CRC של זרם גולמי, כפי ש-„forge atmos-encode … codec=ac4” עושה. הם נכתבים בקצב המסגרות המקורי, 2,048 דגימות, בקצב קבוע.</translation>
     </message>
     <message>
         <location filename="../qml/Ac4Panel.qml" line="33"/>
-        <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “ac3cli ac4-encode” does.</source>
-        <translation>AC-4 מקודד את המקור בפריסה שלו עצמו (מונו, סטריאו, 5.0 או 5.1) לזרם גולמי או לקובץ MP4, כפי ש-„ac3cli ac4-encode” עושה.</translation>
+        <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “forge ac4-encode” does.</source>
+        <translation>AC-4 מקודד את המקור בפריסה שלו עצמו (מונו, סטריאו, 5.0 או 5.1) לזרם גולמי או לקובץ MP4, כפי ש-„forge ac4-encode” עושה.</translation>
     </message>
     <message>
         <location filename="../qml/Ac4Panel.qml" line="68"/>
@@ -170,8 +170,8 @@
     </message>
     <message>
         <location filename="../qml/Ac4Panel.qml" line="405"/>
-        <source>Left to “ac3cli ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.</source>
-        <translation>נותרים ל-„ac3cli ac4-encode”: כמה תת-זרמים ומצגות, ערוצי דיאלוג נפרדים, פרופיל DRC לכל מצב מפענח, מיקס ה-LFE ושאר הפריסות.</translation>
+        <source>Left to “forge ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.</source>
+        <translation>נותרים ל-„forge ac4-encode”: כמה תת-זרמים ומצגות, ערוצי דיאלוג נפרדים, פרופיל DRC לכל מצב מפענח, מיקס ה-LFE ושאר הפריסות.</translation>
     </message>
 </context>
 <context>
@@ -432,8 +432,8 @@
     </message>
     <message>
         <location filename="../qml/FirstRunScreen.qml" line="128"/>
-        <source>Every encode lands in a run list with its settings, its result and the exact ac3cli line that reproduces it.</source>
-        <translation>כל קידוד נוחת ברשימת ההרצות עם ההגדרות שלו, התוצאה שלו ושורת ac3cli המדויקת שמשחזרת אותו.</translation>
+        <source>Every encode lands in a run list with its settings, its result and the exact forge line that reproduces it.</source>
+        <translation>כל קידוד נוחת ברשימת ההרצות עם ההגדרות שלו, התוצאה שלו ושורת forge המדויקת שמשחזרת אותו.</translation>
     </message>
     <message>
         <location filename="../qml/FirstRunScreen.qml" line="174"/>
@@ -1227,8 +1227,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="48"/>
-        <source>ac3forge — %1</source>
-        <translation>ac3forge — %1</translation>
+        <source>Forge — %1</source>
+        <translation>Forge — %1</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="455"/>
@@ -1524,8 +1524,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="1542"/>
-        <source>ac3forge</source>
-        <translation>ac3forge</translation>
+        <source>Forge</source>
+        <translation>Forge</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="1551"/>
@@ -2230,8 +2230,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="3955"/>
-        <source>ac3cli tools token:  %1</source>
-        <translation>אסימון הכלים של ac3cli:  %1</translation>
+        <source>forge tools token:  %1</source>
+        <translation>אסימון הכלים של forge:  %1</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="3981"/>
@@ -3189,8 +3189,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7524"/>
-        <source>ac3cli command line</source>
-        <translation>שורת הפקודה של ac3cli</translation>
+        <source>forge command line</source>
+        <translation>שורת הפקודה של forge</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7525"/>
@@ -3199,8 +3199,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7555"/>
-        <source>ac3cli</source>
-        <translation>ac3cli</translation>
+        <source>forge</source>
+        <translation>forge</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7562"/>
@@ -3214,8 +3214,8 @@
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7622"/>
-        <source>Encode runs the encoder in-process — this is the exact ac3cli equivalent, quoting and all.</source>
-        <translation>&apos;קידוד&apos; מריץ את המקודד בתוך התהליך — זו המקבילה המדויקת ב-ac3cli, כולל המרכאות.</translation>
+        <source>Encode runs the encoder in-process — this is the exact forge equivalent, quoting and all.</source>
+        <translation>&apos;קידוד&apos; מריץ את המקודד בתוך התהליך — זו המקבילה המדויקת ב-forge, כולל המרכאות.</translation>
     </message>
     <message>
         <location filename="../qml/Main.qml" line="7629"/>
@@ -3621,8 +3621,8 @@
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="313"/>
-        <source>WHEN AC3FORGE OPENS</source>
-        <translation>בעת פתיחת AC3FORGE</translation>
+        <source>WHEN FORGE OPENS</source>
+        <translation>בעת פתיחת FORGE</translation>
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="315"/>
@@ -3799,8 +3799,8 @@
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="519"/>
-        <source>Keep the ac3cli line visible</source>
-        <translation>השארת שורת ac3cli גלויה</translation>
+        <source>Keep the forge line visible</source>
+        <translation>השארת שורת forge גלויה</translation>
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="530"/>
@@ -3873,8 +3873,8 @@
     </message>
     <message>
         <location filename="../qml/QcDialog.qml" line="81"/>
-        <source>Decodes an already-encoded file and measures it the same way “ac3cli qc” does — the stream&apos;s own claims, checked against what is actually in it, not the source that made it.</source>
-        <translation>מפענח קובץ שכבר קודד ומודד אותו באותה דרך ש-“ac3cli qc” עושה — הטענות של הזרם עצמו, נבדקות מול מה שבאמת יש בו, לא מול המקור שיצר אותו.</translation>
+        <source>Decodes an already-encoded file and measures it the same way “forge qc” does — the stream&apos;s own claims, checked against what is actually in it, not the source that made it.</source>
+        <translation>מפענח קובץ שכבר קודד ומודד אותו באותה דרך ש-“forge qc” עושה — הטענות של הזרם עצמו, נבדקות מול מה שבאמת יש בו, לא מול המקור שיצר אותו.</translation>
     </message>
     <message>
         <location filename="../qml/QcDialog.qml" line="92"/>
@@ -4362,8 +4362,8 @@
     </message>
     <message>
         <location filename="../qml/VbrPanel.qml" line="162"/>
-        <source>ac3cli vbr token:  %1</source>
-        <translation>אסימון ה-vbr של ac3cli:  %1</translation>
+        <source>forge vbr token:  %1</source>
+        <translation>אסימון ה-vbr של forge:  %1</translation>
     </message>
 </context>
 </TS>

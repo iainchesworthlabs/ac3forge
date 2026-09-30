@@ -170,7 +170,7 @@ struct DecoderConfig {
     // stream agreement 214.9 dB SNR (AC-3) / 284.7 dB (E-AC-3), decodes
     // 4.5-4.7x faster. false selects the pseudocode's own direct evaluation
     // - the REFERENCE form, and the oracle the fast path's tests validate
-    // against; ac3cli exposes the pair as mode=performance|reference for
+    // against; forge exposes the pair as mode=performance|reference for
     // exactly the runs where bit-for-bit agreement with the spec's stated
     // arithmetic matters more than speed.
     bool fast_imdct = true;
@@ -208,7 +208,7 @@ struct DecoderConfig {
     // direct form over three objects (tests/ac3/oba/test_atmos.cpp), and the
     // bed analysis' own kernel cost (isolated from object synthesis, which
     // this does not touch) measured 11.0x - 238 to 2628 microseconds per
-    // block-of-5-channels, a release build's ac3kernelbench
+    // block-of-5-channels, a release build's iclforge-kernelbench
     // joc_reconstruct_mdct_4obj[_direct] - a fixed ~2.4 ms saved per frame
     // regardless of object count, ~2.2 s over a 30 s kMdctBand decode (see
     // ROADMAP.md PF8). false selects the direct §8.2.3.2 form -
@@ -289,7 +289,7 @@ struct DecoderConfig {
     // jobs with very different costs. Everything a reader wants to know about
     // a frame (its metadata, its tool usage, its object layer) is settled by
     // the parse; the transform is the expensive part and answers none of it.
-    // `ac3cli probe` runs the whole of a file this way. Note what it does NOT
+    // `forge probe` runs the whole of a file this way. Note what it does NOT
     // skip: the mantissas are still read, because the bit position of every
     // subsequent field depends on them - a "parse" that skipped those would
     // not be parsing the same stream.

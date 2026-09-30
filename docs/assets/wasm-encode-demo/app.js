@@ -8,7 +8,7 @@
 // browser's own Web Audio API, encoded frame-by-frame by the actual AC-3/
 // E-AC-3 encoder (ac3::FrameEncoder/ac3::eac3::FrameEncoder, compiled to
 // WASM), measured by the actual BS.1770 loudness meter
-// (ac3::meta::LoudnessMeter) used for `ac3cli qc`, and the "round-trip
+// (ac3::meta::LoudnessMeter) used for `forge qc`, and the "round-trip
 // preview" plays back the actual encoded bytes through the actual decoder -
 // not the source audio replayed directly.
 

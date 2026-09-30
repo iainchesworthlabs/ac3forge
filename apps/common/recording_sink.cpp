@@ -85,7 +85,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
     if (config.container == Container::kSpdif) {
         if (config.ac4.has_value()) {
             // IEC 61937-14's link, as the caller chose it for the stream's
-            // rate: ac3cli's own run_spdif makes the same choice for a
+            // rate: forge's own run_spdif makes the same choice for a
             // finished stream.
             if (config.ac4->carrier_rate_hz == 0) {
                 return kNoAc4Burst;
@@ -98,7 +98,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
             return {};
         }
         // The carrier runs at 4x the content rate for E-AC-3 - see
-        // ac3cli's own run_spdif (apps/cli/main.cpp) for the citation.
+        // forge's own run_spdif (apps/cli/main.cpp) for the citation.
         const auto carrier_rate =
             config.eac3 ? config.sample_rate * 4 : config.sample_rate;
         if (!wav_.open(path, carrier_rate, 2)) {
@@ -141,7 +141,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
         matroska_.emplace(std::move(*writer));
     } else if (config.container == Container::kMpegts) {
         // An AC-4 track's PMT says no more than its codec (the presentation
-        // detail lives in the table of contents), as 'ac3cli ts' writes it.
+        // detail lives in the table of contents), as 'forge ts' writes it.
         const bool ac4 = config.ac4.has_value();
         auto writer = iclforge::mpegts::Writer::create(iclforge::mpegts::AudioTrack{
             .codec = ac4           ? iclforge::mpegts::AudioCodec::kAc4

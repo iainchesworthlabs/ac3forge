@@ -7,7 +7,7 @@
 
 # 1. Every `external fun` on NativeBridge is a JNI entry point resolved by
 #    the JVM's own mangled-symbol convention
-#    (Java_com_ac3forge_shield_NativeBridge_<method> - see
+#    (Java_com_iclforge_shield_NativeBridge_<method> - see
 #    passthrough.cpp's header comment and jni_entry.cpp/live_cursor.cpp/
 #    file_replay.cpp, which define exactly those symbols). Renaming the
 #    class or any native method breaks that resolution with an
@@ -17,7 +17,7 @@
 #    native <methods>; }`), but this app's entire native round trip depends
 #    on that one line continuing to exist upstream, so it is pinned
 #    explicitly here too rather than left solely to a template default.
--keepclasseswithmembernames class com.ac3forge.shield.NativeBridge {
+-keepclasseswithmembernames class com.iclforge.shield.NativeBridge {
     native <methods>;
 }
 
@@ -53,7 +53,7 @@
 #    and carries on without it. So a rule that missed one would not stop the
 #    bridge registering: that sink's position, pause or flush would simply
 #    never work in a release build.
--keep class com.ac3forge.shield.PassthroughBridge {
+-keep class com.iclforge.shield.PassthroughBridge {
     boolean isDirectPlaybackSupported(int, boolean);
     boolean isPcmSupported(int);
     boolean open(int, boolean);

@@ -197,7 +197,7 @@ bool g_board_changed = false;
     config.name = settings().name.data();
     const esp_app_desc_t* app = esp_app_get_description();
     config.device_info = m::DeviceInfo{.product_name = "Hearth sink",
-                                       .manufacturer = "AC3Forge",
+                                       .manufacturer = "ICL Forge",
                                        .software_version = app != nullptr ? app->version : "",
                                        .mac_address = mac_text()};
     config.supported_roles = {std::string(ac::kRole)};

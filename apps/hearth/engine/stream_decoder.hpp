@@ -60,7 +60,7 @@
 // Eac3Decoder::flush() as raw substreams rather than an assembled unit, so
 // finish() assembles them and runs them through a §7.8 output stage of its
 // own before rendering - without that, the last frame of every stream that
-// used the tool is silently lost (which `ac3cli monitor` does today). The
+// used the tool is silently lost (which `forge monitor` does today). The
 // stage is a fresh one, so the two parts of the output stage that carry state
 // between frames - the Lt/Rt phase shift's filter tail and RF mode's
 // protection gain - restart for that one frame; everything else, dialnorm

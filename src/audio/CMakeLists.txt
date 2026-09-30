@@ -11,7 +11,7 @@
 # decode AC-3/E-AC-3/Atmos streams needs no WASAPI or ALSA dependency at all,
 # and a third party targeting a platform with neither can still use the codec
 # without this library existing for their platform yet. iclforge::audio is what
-# ac3cli/ac3gui link for their live-capture/monitor/passthrough commands
+# forge/forge-gui link for their live-capture/monitor/passthrough commands
 # (record, live, devices, outputs, play, monitor) and for `live`'s
 # `positions=osc:<port>` - it is not part of the distributed iclforge-dev
 # package (see docs/library/index.md).
@@ -253,7 +253,7 @@ if(LINUX)
     # the session manager first (see src/backend/pipewire/passthrough.cpp's
     # header comment) - so preferring PipeWire by default on every machine
     # that merely has both sets of headers installed would silently regress
-    # 'ac3cli outputs'/'play' on the common case where nobody has touched
+    # 'forge outputs'/'play' on the common case where nobody has touched
     # that setting, even though the very ALSA device those commands want is
     # sitting right there, underneath the PipeWire daemon that's running.
     # Capture and monitor playback are equally real on both, so passthrough
@@ -361,8 +361,8 @@ if(APPLE)
     # Read the CMake documentation for enable_language() before moving this,
     # because it asks for something slightly wider than that: the highest
     # directory common to every target using the language "directly for
-    # compiling sources or indirectly through link dependencies". ac3cli,
-    # ac3gui, ac3crucible and ac3tests all link iclforge_audio from sibling
+    # compiling sources or indirectly through link dependencies". forge,
+    # forge-gui, crucible and iclforge-tests all link iclforge_audio from sibling
     # directories, so by that reading the call belongs at the top level under
     # if(APPLE). It is here instead because the language registration itself
     # is global to the generator and this directory's only OBJCXX compile is
@@ -529,7 +529,7 @@ else()
 endif()
 
 # Published the same way ICLFORGE_AUDIO_BACKEND_DIR is (see above):
-# tests/CMakeLists.txt puts this on ac3tests' own include path so
+# tests/CMakeLists.txt puts this on iclforge-tests' own include path so
 # tests/audio/test_live_positions.cpp can open a second, independent
 # UdpSocket to send itself test datagrams over real loopback - reusing the
 # exact class LivePositionSource is built on rather than hand-rolling a

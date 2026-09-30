@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import Ac3ForgeHearth
+import Hearth
 
 // The Speakers page (planning/hearth-design.md, "Speaker setup"): routing,
 // trim, delay, the bass-management crossover, the identify tone, the plan

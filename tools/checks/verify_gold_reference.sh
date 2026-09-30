@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# The gold-reference correctness gate: proves ac3cli's own decoder agrees
+# The gold-reference correctness gate: proves forge's own decoder agrees
 # with an independent decoder (FFmpeg) on the same encoded bitstream, using a
 # fixed, checked-in 5.1 WAV (tests/golden/audio/reference_51.wav - see
 # tools/generators/gen_gold_reference_wav.py) as the input material. This is
@@ -12,12 +12,12 @@
 # crashing"; this is the complementary "is the audio actually right" check that
 # script deliberately does not attempt.
 #
-# Usage: verify_gold_reference.sh <path-to-ac3cli> [workdir]
+# Usage: verify_gold_reference.sh <path-to-forge> [workdir]
 # Requires ffmpeg and python3 (or python) on PATH. Exits non-zero on the
 # first check that fails.
 set -euo pipefail
 
-CLI="${1:?usage: verify_gold_reference.sh <path-to-ac3cli> [workdir]}"
+CLI="${1:?usage: verify_gold_reference.sh <path-to-forge> [workdir]}"
 WORKDIR="${2:-$(mktemp -d)}"
 mkdir -p "$WORKDIR"
 
@@ -28,13 +28,13 @@ GOLD_WAV="$REPO_ROOT/tests/golden/audio/reference_51.wav"
 COMPARE="$REPO_ROOT/tools/checks/compare_wav.py"
 
 # Pin drc_scale to 0 on both sides so a dynamic-range-compression default
-# mismatch between FFmpeg and ac3cli's own decoder (which also defaults
+# mismatch between FFmpeg and forge's own decoder (which also defaults
 # drc_scale to 0 - see apps/cli/support.hpp's Options, and the drc_scale row
 # of docs/library/decoding.md for why) can never masquerade as a fidelity
 # loss.
 #
 # 55, not some more conservative-looking round number: this gate compares two
-# decodes of the *same* bitstream (FFmpeg vs. ac3cli's own decoder), so absent
+# decodes of the *same* bitstream (FFmpeg vs. forge's own decoder), so absent
 # a real bug it should sit near the floating-point noise floor forever, not
 # vary the way a lossy-vs-original comparison (see tools/ci/quality_race.py's
 # very different, much lower floors) legitimately does. Every real run
@@ -126,7 +126,7 @@ EAC3_CPL_GOLD_FLOORS="80,80,73,81,60,65"
 # which behaves exactly as before this existed.
 RESULTS_JSON_DIR="${RESULTS_JSON_DIR:-}"
 
-# Optional (reference-mode end-to-end gate): "reference" makes every ac3cli encode and decode
+# Optional (reference-mode end-to-end gate): "reference" makes every forge encode and decode
 # below take mode=reference, so the whole gate runs on the spec's own direct
 # transform evaluations - the §8.2.3.2 forward MDCT and §7.9.4's step-3
 # inverse - instead of the fast paths that have been the default since 0.9.0.
@@ -167,7 +167,7 @@ if [[ -n "$EXTRA_LABEL_SUFFIX" ]]; then
     LABEL_SUFFIX="${LABEL_SUFFIX}${EXTRA_LABEL_SUFFIX}"
 fi
 
-# Every ac3cli invocation goes through here so the mode token is applied in
+# Every forge invocation goes through here so the mode token is applied in
 # exactly one place. The length test rather than a bare "${CLI_MODE_ARGS[@]}"
 # guards the macOS bash 3.2 `set -u` behaviour where expanding a zero-element
 # array is an unbound-variable error - see compare_and_gate's own note, which
@@ -257,8 +257,8 @@ compare_and_gate() {
     "$PYTHON" "$COMPARE" "$reference" "$actual" "${compare_args[@]}"
 }
 
-# One (encode, decode-with-ac3cli, decode-with-ffmpeg, compare) round for a
-# given codec. $1: human label. $2: the file ac3cli just produced. $3: codec
+# One (encode, decode-with-forge, decode-with-ffmpeg, compare) round for a
+# given codec. $1: human label. $2: the file forge just produced. $3: codec
 # label for --json-out. $4: nominal bitrate in kbps for --json-out. $5:
 # min-snr-db override (default MIN_SNR_DB) - separate from the global default
 # because that default is calibrated for streams THIS PROJECT's own encoder
@@ -283,7 +283,7 @@ check_one() {
     ffmpeg_strict_decode "$encoded" "$ffmpeg_wav"
 
     count=$((count + 1))
-    echo "[$count] $label: ac3cli decode"
+    echo "[$count] $label: forge decode"
     run_cli decode "$encoded" "$our_wav" >/dev/null
 
     count=$((count + 1))
@@ -317,7 +317,7 @@ check_against_source() {
     local our_wav="$WORKDIR/${label}_ours.wav"
 
     count=$((count + 1))
-    echo "[$count] $label: ac3cli decode (scored against the source WAV - see this check's own comment)"
+    echo "[$count] $label: forge decode (scored against the source WAV - see this check's own comment)"
     run_cli decode "$encoded" "$our_wav" >/dev/null
 
     count=$((count + 1))
@@ -399,7 +399,7 @@ check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256 "$MIN_SNR_DB" "$EAC3_CPL
 # for the first time: it refused cplbndstrce == 0 outright (kUnsupported).
 # gold.ec3 above (this project's own encoder) cannot stand in for that, so
 # this checks a real FFmpeg-encoded fixture directly instead of an
-# ac3cli-produced one:
+# forge-produced one:
 #   tests/golden/audio/reference_51_eac3_448k_cplbndstrce0.ec3
 #     ffmpeg -y -i tests/golden/audio/reference_51.wav -c:a eac3 -b:a 448k \
 #         tests/golden/audio/reference_51_eac3_448k_cplbndstrce0.ec3
@@ -409,7 +409,7 @@ check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256 "$MIN_SNR_DB" "$EAC3_CPL
 # on a stream where cplbegf happens to be 0, so this fixture is deliberately
 # NOT one of those.
 # Measured (ffmpeg 8.0.1, this fixture) at 25.42 dB worst-channel agreement
-# between ac3cli's decode and FFmpeg's own - lower than gold.ac3/gold.ec3's
+# between forge's decode and FFmpeg's own - lower than gold.ac3/gold.ec3's
 # 55 dB floor above because those compare two decodes of a stream THIS
 # PROJECT's own encoder produced, while this compares two decodes of a real
 # third-party bitstream neither side controls. 15 dB stays well clear of
@@ -538,12 +538,12 @@ done
 # blocks 1-4 rather than dropping it. Under this script's strict flags that
 # one frame is a hard failure outright, and even without them the concealment
 # is whole-file damage: FFmpeg's decode of this fixture scores 14.30 dB
-# against the source WAV, where ac3cli's scores 33.72 dB on the same
+# against the source WAV, where forge's scores 33.72 dB on the same
 # alignment. So there is no usable FFmpeg oracle here, the same situation
 # run_codec_matrix.sh already handles by skipping the FFmpeg check rather
 # than tolerating its failure. The reference used instead is the WAV DEE was
 # handed, which this repository has: 33.72 dB measured, and comparable to the
-# 33.1 dB ac3cli's decoder gets on FFmpeg's own encode of the same source at
+# 33.1 dB forge's decoder gets on FFmpeg's own encode of the same source at
 # the same rate - two encoders' output landing within 0.6 dB of each other
 # through one decoder is what says this decode is right and FFmpeg's is not.
 # Floor 25 on the same measured-minus-8 basis as above, superseded in practice

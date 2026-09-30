@@ -48,7 +48,7 @@ fs::path scratch_dir() {
 
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+        "\"" + std::string(ICLFORGE_CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     return iclforge::test::platform::run_shell(command);
 }
 
@@ -142,7 +142,7 @@ TEST_CASE("levels refuses a WAV wider than 5.1 and an input it cannot read",
 }
 
 // apps/common/container_input's own regression: sniff_container ran its
-// MPEG-TS packet-grid test on a WAV, and a valid float WAV `ac3cli decode`
+// MPEG-TS packet-grid test on a WAV, and a valid float WAV `forge decode`
 // wrote from a 1 kHz `sine` had five 0x47 bytes exactly 192 bytes apart, so
 // levels (and every command that sniffs its input) refused it as "a
 // Transport Stream this build cannot demux". This plants both grids the

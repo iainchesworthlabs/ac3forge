@@ -12,12 +12,12 @@ way the matrix itself can - and checks each token appears somewhere in
 tools/ci/run_codec_matrix.sh. Three of the four checks below ask the binary
 directly, via the same error-message path real bad input hits:
 
-  commands   ac3cli with no args prints its own usage table.
-  layouts    ac3cli sine/eac3-sine reject a bogus layout with
+  commands   forge with no args prints its own usage table.
+  layouts    forge sine/eac3-sine reject a bogus layout with
              "unknown layout 'X' (mono | stereo | ...)" - built from
              ac3::plan::layout_names(codec), the same function 'sine' and
              'eac3-sine' validate a real layout against.
-  tools      ac3cli eac3-encode rejects a bogus tool set with
+  tools      forge eac3-encode rejects a bogus tool set with
              "unknown tool set 'X' (none | cpl | ...)" - built from
              ac3::plan::kToolsSyntax. This one IS a hand-maintained string
              (see plan.hpp), not derived from parse_tools()'s own token
@@ -129,11 +129,11 @@ def usage_commands(cli: str) -> set[str]:
     _, out, _ = run(cli)
     names = set()
     for line in out.splitlines():
-        m = re.match(r"\s*ac3cli\s+(\S+)", line)
+        m = re.match(r"\s*forge\s+(\S+)", line)
         if m:
             names.add(m.group(1))
     if not names:
-        raise SystemExit("could not parse any commands from `ac3cli`'s usage output")
+        raise SystemExit("could not parse any commands from `forge`'s usage output")
     return names
 
 
@@ -145,7 +145,7 @@ def ac4_commands(cli: str) -> set[str]:
     _, out, _ = run(cli)
     names = set()
     for line in out.splitlines():
-        m = re.match(r"\s*ac3cli\s+(\S+)\s+(.*)$", line)
+        m = re.match(r"\s*forge\s+(\S+)\s+(.*)$", line)
         if m and re.search(r"\b(?:in|out)\.ac4\b", m.group(2)):
             names.add(m.group(1))
     return names
@@ -157,7 +157,7 @@ def vbr_supported(cli: str) -> bool:
     something that would not even parse."""
     _, out, _ = run(cli)
     for line in out.splitlines():
-        if re.match(r"\s*ac3cli\s+eac3-encode\b", line) and "[vbr]" in line:
+        if re.match(r"\s*forge\s+eac3-encode\b", line) and "[vbr]" in line:
             return True
     return False
 
@@ -319,13 +319,13 @@ def check(name: str, canonical: set[str], missing: set[str]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--cli", default="build/dev/bin/ac3cli.exe")
+    parser.add_argument("--cli", default="build/dev/bin/forge.exe")
     parser.add_argument("--matrix", default="tools/ci/run_codec_matrix.sh")
     args = parser.parse_args()
 
     cli = str((REPO / args.cli).resolve() if not Path(args.cli).is_absolute() else args.cli)
     if not Path(cli).exists():
-        raise SystemExit(f"ac3cli not found at {cli} - build first, or pass --cli")
+        raise SystemExit(f"forge not found at {cli} - build first, or pass --cli")
     matrix_path = REPO / args.matrix if not Path(args.matrix).is_absolute() else Path(args.matrix)
     # Prose is not coverage: every check below sees the script without its
     # comments, including the whole-file presence test the other four use.
@@ -334,7 +334,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="ac3matrixcov_") as tmp_str:
         tmp = Path(tmp_str)
 
-        print("commands - every stream-producing ac3cli command the matrix should invoke")
+        print("commands - every stream-producing forge command the matrix should invoke")
         canonical_commands = usage_commands(cli) - EXCLUDED_COMMANDS
         invoked = commands_invoked(matrix_text)
         check("commands", canonical_commands, canonical_commands - invoked)
@@ -344,19 +344,19 @@ def main() -> None:
         if canonical_ac4:
             check("ac4-commands", canonical_ac4, canonical_ac4 - ac4_invocations(matrix_text))
         else:
-            print("  SKIP  ac4-commands: this ac3cli build's usage names no AC-4 file")
+            print("  SKIP  ac4-commands: this forge build's usage names no AC-4 file")
 
-        print("AC-3 layouts - ac3cli sine's own accepted set")
+        print("AC-3 layouts - forge sine's own accepted set")
         ac3_layouts = layout_names(cli, tmp, "sine")
         missing = {t for t in ac3_layouts if not covered(matrix_text, t)}
         check("ac3-layouts", ac3_layouts, missing)
 
-        print("E-AC-3 layouts - ac3cli eac3-sine's own accepted set")
+        print("E-AC-3 layouts - forge eac3-sine's own accepted set")
         eac3_layouts = layout_names(cli, tmp, "eac3-sine")
         missing = {t for t in eac3_layouts if not covered(matrix_text, t)}
         check("eac3-layouts", eac3_layouts, missing)
 
-        print("Annex E tools - ac3cli eac3-encode's own accepted set (minus 'none'),"
+        print("Annex E tools - forge eac3-encode's own accepted set (minus 'none'),"
               " matched against the tool sets the matrix encodes with")
         tools = tool_names(cli, tmp) - {"none"}
         encoded_with = matrix_tool_tokens(matrix_text)
@@ -380,9 +380,9 @@ def main() -> None:
                 has_abr = re.search(r"\bavg:[0-9]", matrix_text) is not None
                 check("eac3-abr", {"avg:<kbps>"}, set() if has_abr else {"avg:<kbps>"})
             else:
-                print("  SKIP  eac3-abr: this ac3cli build's [vbr] grammar has no avg:")
+                print("  SKIP  eac3-abr: this forge build's [vbr] grammar has no avg:")
         else:
-            print("  SKIP  eac3-vbr: this ac3cli build has no [vbr] argument")
+            print("  SKIP  eac3-vbr: this forge build has no [vbr] argument")
 
     print()
     if FAILURES:

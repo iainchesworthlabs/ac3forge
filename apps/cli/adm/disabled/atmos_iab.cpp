@@ -8,7 +8,7 @@
 // file, rather than a preprocessor conditional inside main.cpp, is the mechanism. This translation
 // unit links neither iclforge::admbridge nor its IAB mapping and includes neither of their headers.
 
-namespace ac3cli {
+namespace forge_cli {
 
 std::expected<IabAtmosSource, std::string> load_iab_atmos_source(std::string_view /*path*/) {
     // Unreachable in practice: main.cpp's dispatch loop checks adm_capability() (kCommands' same
@@ -23,4 +23,4 @@ std::expected<IabAtmosSource, std::string> load_iab_atmos_source(std::string_vie
         "(iclforge::iab's IAB mapping / iclforge::admbridge were not linked in)"));
 }
 
-}  // namespace ac3cli
+}  // namespace forge_cli

@@ -324,7 +324,7 @@ std::unique_ptr<Listener> Listener::start(ListenerOptions options, Handler handl
     if (shared.options.address != "127.0.0.1" && shared.options.port != 0) {
         // "Listener", not "Server": this class is shared by both directions (this header's own
         // comment above) - a server's clients-that-dial-in port, and equally a player's own
-        // listener for servers that dial it, which is what ac3hearth-testsink binds.
+        // listener for servers that dial it, which is what hearth-testsink binds.
         firewall::ensure_inbound_rule(
             {.name = "Sendspin Listener", .protocol = firewall::Protocol::kTcp, .port = shared.options.port});
     }

@@ -19,9 +19,9 @@
 #include "json_sink.hpp"
 
 // The `stream` object of the iclforge.probe/1 document (docs/forge/cli/
-// commands.md), for ac3cli probe and for Hearth's media information, which
+// commands.md), for forge probe and for Hearth's media information, which
 // carries the same object so one stream is never described two ways. Also the
-// fixed names both of ac3cli probe's forms use, and the AC-4 walk.
+// fixed names both of forge probe's forms use, and the AC-4 walk.
 //
 // Compiled into each application that uses it, like the rest of apps/common:
 // it needs iclforge::ac3, iclforge::ac4 and iclforge::ac4dec, which both applications

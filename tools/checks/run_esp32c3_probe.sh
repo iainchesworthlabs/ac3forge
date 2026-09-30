@@ -89,7 +89,7 @@ idf.py -DICLFORGE_DECODE_SCALAR="$SCALAR" -DICLFORGE_STAGE_TIMERS="$STAGE_TIMERS
 mkdir -p build && printf '%s' "$SCALAR" > "$STAMP"
 
 echo
-echo "== running ac3probe on qemu-system-riscv32 (esp32c3) =="
+echo "== running iclforge-probe on qemu-system-riscv32 (esp32c3) =="
 # No semihosting exit, as on the S3 leg: an ESP-IDF application returns from
 # app_main into a FreeRTOS task that is then deleted, and QEMU keeps running,
 # so something else has to end it. TIMEOUT_SECS is still the ultimate ceiling

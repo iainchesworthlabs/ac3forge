@@ -16,7 +16,7 @@
 #include "output_policy.hpp"
 #include "slots.hpp"
 
-// AC3Forge Crucible's engine: everything except the window
+// Crucible's engine: everything except the window
 // (docs/platforms/windows-demo.md). One thread runs the frame loop - refresh
 // the session list, tap every application, fold each into its slot, encode,
 // sign, hand the unit to the output stage - and the UI talks to it through

@@ -8,7 +8,7 @@
 
 #include "gui_diagnostics.hpp"
 
-// ac3gui's diagnostics module (apps/gui/gui_diagnostics.hpp): the ring keeps
+// forge-gui's diagnostics module (apps/gui/gui_diagnostics.hpp): the ring keeps
 // the newest lines in order and counts what it dropped, a note is one line no
 // longer than the cap, and the report never carries the signing key, the path
 // to a key file, or one byte of a loaded source - the rule
@@ -19,11 +19,11 @@
 // window. The Qt Quick suite covers the other half - that the controller fills
 // these fields from what the window is actually showing.
 
-using ac3gui::MessageLog;
-using ac3gui::ReportFacts;
-using ac3gui::RunFacts;
-using ac3gui::Secrets;
-using ac3gui::SourceFacts;
+using forge_gui::MessageLog;
+using forge_gui::ReportFacts;
+using forge_gui::RunFacts;
+using forge_gui::Secrets;
+using forge_gui::SourceFacts;
 
 namespace {
 
@@ -108,7 +108,7 @@ TEST_CASE("the gui report carries the named facts and no signing value",
     ReportFacts facts;
     facts.written_at = "2026-09-06T12:00:00.000";
     facts.log_started_at = "2026-09-06T11:59:00.000";
-    facts.version = "ac3forge 0.7.0";
+    facts.version = "iclforge 0.7.0";
     facts.platform.emplace_back("os", "Windows 11");
     facts.env_key_file_set = true;
     facts.env_key_inline_set = false;
@@ -140,11 +140,11 @@ TEST_CASE("the gui report carries the named facts and no signing value",
     Secrets secrets;
     secrets.strings.emplace_back("D:/keys/private.pem");
 
-    const std::string report = ac3gui::render_report(facts, log, secrets);
+    const std::string report = forge_gui::render_report(facts, log, secrets);
 
     // The named facts are all there.
-    REQUIRE(has(report, "AC3Forge ac3gui diagnostics"));
-    REQUIRE(has(report, "ac3forge 0.7.0"));
+    REQUIRE(has(report, "ICL Forge forge-gui diagnostics"));
+    REQUIRE(has(report, "iclforge 0.7.0"));
     REQUIRE(has(report, "os: Windows 11"));
     REQUIRE(has(report, "\"stems.wav\"  6 ch  48000 Hz"));
     REQUIRE(has(report, "offset 0.25 s"));
@@ -167,7 +167,7 @@ TEST_CASE("the gui report carries the named facts and no signing value",
 TEST_CASE("the gui report says so when there is nothing to report", "[gui][diagnostics]") {
     const MessageLog log(4);
     const ReportFacts facts;
-    const std::string report = ac3gui::render_report(facts, log, Secrets{});
+    const std::string report = forge_gui::render_report(facts, log, Secrets{});
     // Empty sections read as empty rather than as a missing heading, which is
     // the difference between "nothing was loaded" and "the report is broken".
     REQUIRE(has(report, "# sources"));
@@ -184,12 +184,12 @@ TEST_CASE("the gui scrub replaces every spelling and never eats its own marker",
     // Matched case-insensitively, twice in one line, and the marker it leaves
     // behind is not itself re-matched into a growing chain.
     const std::string text = "read d:/keys/private.pem then D:/KEYS/PRIVATE.PEM again";
-    const std::string out = ac3gui::scrub(text, secrets);
+    const std::string out = forge_gui::scrub(text, secrets);
     REQUIRE(out == "read <withheld> then <withheld> again");
 
     // An empty secret matches everywhere and is ignored rather than obliterating
     // the report.
     Secrets empty;
     empty.strings.emplace_back("");
-    REQUIRE(ac3gui::scrub("untouched", empty) == "untouched");
+    REQUIRE(forge_gui::scrub("untouched", empty) == "untouched");
 }

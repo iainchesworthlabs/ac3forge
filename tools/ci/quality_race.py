@@ -76,7 +76,7 @@ programme fixtures - see MATERIALS near main() for why that matters and why
 those two modes decline it.
 
 Usage (repo root, after building):  python tools/ci/quality_race.py [mode]
-Set AC3CLI to override the ac3cli binary (see CLI below); CI always does.
+Set ICLFORGE_CLI to override the forge binary (see CLI below); CI always does.
 """
 
 import itertools
@@ -94,12 +94,12 @@ REPO = Path(__file__).resolve().parent.parent.parent
 BUILD = REPO / "build"
 # The synthetic 5.1 material race_eac3() writes for the "eac3-51" mode.
 RACE_SRC51_WAV = BUILD / "race_src51.wav"
-# AC3CLI overrides the binary: the "dev" preset this default assumes does not
+# ICLFORGE_CLI overrides the binary: the "dev" preset this default assumes does not
 # exist (see CMakePresets.json - there is no such preset, only per-platform
-# config-<leg> ones), and there is no ac3cli.exe on Linux at all. CI sets
-# AC3CLI to the leg's real build/config-<preset>/bin/ac3cli; the hardcoded
+# config-<leg> ones), and there is no forge.exe on Linux at all. CI sets
+# ICLFORGE_CLI to the leg's real build/config-<preset>/bin/forge; the hardcoded
 # default is left as-is for whatever local workflow it used to match.
-CLI = Path(os.environ.get("AC3CLI", str(BUILD / "dev" / "bin" / "ac3cli.exe")))
+CLI = Path(os.environ.get("ICLFORGE_CLI", str(BUILD / "dev" / "bin" / "forge.exe")))
 # FFmpeg's own -err_detect flags for a strict decode: -xerror (elsewhere)
 # turns any of these into a failing process rather than a concealed frame.
 FFMPEG_ERR_DETECT = "crccheck+bitstream+buffer+explode"
@@ -661,7 +661,7 @@ TOOLSET_CPL_SPX = "cpl+spx"
 TOOLSET_ECPL_TPN = "ecpl+tpn"
 
 # One column per E-AC-3 variant: the label, and the tool token handed to
-# `ac3cli eac3-encode`. "none" is the tool-free coding path the Annex E tools
+# `forge eac3-encode`. "none" is the tool-free coding path the Annex E tools
 # have to beat to earn their place.
 EAC3_VARIANTS = [("none", None), ("auto", "auto"), ("cpl", "cpl"), ("spx", "spx"),
                  ("aht", "aht"), (TOOLSET_CPL_SPX, TOOLSET_CPL_SPX), ("all", "all")]
@@ -1489,7 +1489,7 @@ AUDIO_DIR = REPO / "tests" / "golden" / "audio"
 # The programme fixtures ship as FLAC (tools/generators/gen_programme_fixtures.py's
 # own docstring says why: 3.1 MB against 5.8 MB of WAV each, under a standing
 # repo constraint on fixture bytes). Nothing else in this file, and nothing in
-# ac3cli, reads FLAC - so every fixture path goes through this one function,
+# forge, reads FLAC - so every fixture path goes through this one function,
 # which hands back a WAV path either way and only ever shells out for the FLAC
 # case. ffmpeg is already a hard dependency of every mode here.
 #
