@@ -1097,7 +1097,7 @@ struct BlockQueue {
 // Nested in an exported class, Impl takes its visibility, so each member
 // function defined out of line below would be exported from libac4dec.so with
 // it. AC4DEC_NO_EXPORT on each keeps them to the library, and the exported set
-// to the header's (tools/ci/abi-allowlist/libac4dec.so.txt). Hiding Impl
+// to the header's (tools/ci/abi-allowlist/libiclforge_ac4dec.so.txt). Hiding Impl
 // itself would make GCC warn that Decoder is more visible than its impl_.
 struct Decoder::Impl {
     DecoderConfig config{};

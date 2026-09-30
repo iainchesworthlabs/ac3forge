@@ -43,7 +43,7 @@ DirectDft direct_dft512(const std::array<double, 512>& x_re, const std::array<do
     return out;
 }
 
-// Peak-normalised worst error, the same measure tests/core/test_mdct_fast.cpp
+// Peak-normalised worst error, the same measure tests/ac3/core/test_mdct_fast.cpp
 // uses and for the same reason: a per-bin denominator blows up on the
 // near-zero bins any real spectrum is mostly made of.
 double max_rel_error(const std::array<double, 512>& fast_re, const std::array<double, 512>& fast_im,
@@ -166,7 +166,7 @@ TEST_CASE("dft512 is linear", "[fft]") {
 
 TEST_CASE("dft512 agrees with the direct-form summation on real audio", "[fft]") {
     // The bound every other fast transform in this library is held to
-    // (tests/core/test_mdct_fast.cpp's kFastTolerance): the fast structure is
+    // (tests/ac3/core/test_mdct_fast.cpp's kFastTolerance): the fast structure is
     // an implementation of the sum fft.hpp states, and has to reproduce it.
     // Six consecutive blocks - three-plus frames' worth - rather than one, on
     // this project's own "silence and frame 0 give false passes" rule.

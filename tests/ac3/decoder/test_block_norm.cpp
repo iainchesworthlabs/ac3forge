@@ -1,4 +1,4 @@
-// The fixed-point tier's block exponent (src/forge/src/decoder/block_norm.hpp):
+// The fixed-point tier's block exponent (src/ac3/src/decoder/block_norm.hpp):
 // the exponent a stream is stored under, the bounds the tools lower it by,
 // the exact AHT exponent, the on-demand renormalisation, and the overlap-add
 // that aligns two exponents and applies the result exactly.

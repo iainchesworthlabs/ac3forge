@@ -249,7 +249,7 @@ The first macOS CI attempt at any of it never reached a compiler: it stopped dur
 an `install(TARGETS ac3crucible)` rule that named no `BUNDLE DESTINATION` for a target with
 `MACOSX_BUNDLE` on. With that fixed, both legs compiled `process_tap.mm` and linked it into
 `ac3audio`. Their `ctest` runs cover the version gate
-(`tests/backend/macos/test_macos_support.cpp`, the one place the `__builtin_available` lowering
+(`tests/audio/backend/macos/test_macos_support.cpp`, the one place the `__builtin_available` lowering
 is executed rather than merely compiled), the agreement between the capability report and
 `process_loopback_available()` and their shared refusal sentence, and — since the Crucible Qt
 Quick suites run there — the engine driving the platform seams and being told no by the tap.

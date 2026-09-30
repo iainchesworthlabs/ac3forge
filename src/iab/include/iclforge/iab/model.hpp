@@ -13,7 +13,7 @@
 // and ac3iab.hpp/src/*.cpp refer to that document.
 //
 // This header is deliberately just data, the same "plain aggregate, no behaviour" shape
-// src/ac3adm/include/ac3adm/model.hpp uses for the Audio Definition Model: every type here
+// src/adm/include/iclforge/adm/model.hpp uses for the Audio Definition Model: every type here
 // mirrors one bitstream element or one field group, with prefix/escape codes already resolved
 // into their final linear/physical values (gains, positions, spreads) rather than left as the
 // raw bitstream code - matching how ac3adm::AudioBlockFormat::gain is always linear regardless

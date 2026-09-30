@@ -104,7 +104,7 @@ template <typename Scalar>
 // The two halves of decode_coordinate_as, for a store that keeps a
 // coordinate's power of two apart from its mantissa - the fixed-point
 // decoder's, whose coefficients carry a block exponent
-// (src/forge/src/decoder/block_norm.hpp). The mantissa is in [0, 1) in either
+// (src/ac3/src/decoder/block_norm.hpp). The mantissa is in [0, 1) in either
 // form of the coordinate; the exponent is what exponent_scale would be given.
 template <typename Scalar>
 [[nodiscard]] constexpr Scalar coordinate_mantissa_as(Coordinate coordinate,

@@ -340,7 +340,7 @@ TEST_CASE("ac3cli atmos-adm parses, bridges and encodes a real ADM BWF master en
         REQUIRE(decoded->has_value());
 
         // Check the last frame of each 3-frame hold, the same "settled, not mid-transition"
-        // convention tests/admbridge/test_adm_bridge.cpp's own flagship test (and tests/oba/test_atmos_motion.cpp's before
+        // convention tests/admbridge/test_adm_bridge.cpp's own flagship test (and tests/ac3/oba/test_atmos_motion.cpp's before
         // it) use.
         if (f != 2 && f != 5) {
             continue;

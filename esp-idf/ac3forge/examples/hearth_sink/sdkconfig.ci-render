@@ -9,7 +9,7 @@
 # slots at exactly the levels the probe's eac3_atmos_render row records in
 # apps/baremetal/render_fixture.hpp: the same objects, the same panner, the same
 # arithmetic in the same order. CI checks that it does, slot by slot. That the
-# levels are RIGHT is tests/spatial/'s business on the host; what this
+# levels are RIGHT is tests/render/'s business on the host; what this
 # establishes is that the player places the objects exactly as the probe does,
 # on the target.
 CONFIG_AC3FORGE_EXAMPLE_SOURCE_FATFS=y

@@ -85,7 +85,7 @@ std::vector<std::byte> eac3_stream(int frames) {
 // the shape the accumulator exists for, and the one a syncframe-at-a-time
 // reader would break by handing the decoder a dependent with nothing to extend.
 //
-// Built the way tests/decoder/test_eac3_decoder.cpp builds its 7.1 case: a 5.1
+// Built the way tests/ac3/decoder/test_eac3_decoder.cpp builds its 7.1 case: a 5.1
 // independent substream followed by a 2/2 dependent whose chanmap adds the rear
 // pair. Each access unit is therefore two syncframes, which is what makes this
 // different from every other stream in this file.

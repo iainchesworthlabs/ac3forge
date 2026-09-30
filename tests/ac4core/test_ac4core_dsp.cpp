@@ -1,4 +1,4 @@
-// The AC-4 shared core's transforms (src/ac4core/src/dsp), each against a
+// The AC-4 shared core's transforms (src/ac4core/include/iclforge/ac4core/dsp), each against a
 // direct evaluation of the formula it computes: the FFT against the DFT, the
 // inverse MDCT against a verbatim transcription of ETSI TS 103 190-1 V1.4.1
 // Pseudocodes 60 to 63 and against the cosine sum they come to, the forward

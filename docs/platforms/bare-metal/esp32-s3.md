@@ -78,7 +78,7 @@ set(AC3FORGE_ESP_PROFILE "decoder")   # or "encoder"
 
 The component pre-seeds the root's `option()`s and `add_subdirectory()`s the repo root, the same
 shape `apps/android/app/src/main/cpp/CMakeLists.txt` uses. Re-listing
-`src/forge/minimal.cmake`'s sources in an `idf_component_register(SRCS ...)` was rejected: two
+`src/ac3/minimal.cmake`'s sources in an `idf_component_register(SRCS ...)` was rejected: two
 copies of a source list drift, and the drift surfaces as a link error rather than a diff.
 
 The decode arithmetic follows the part unless the project chooses: `float` where ESP-IDF's
@@ -156,7 +156,7 @@ neither a partition nor I2S:
 
 Chosen under *ac3forge hearth sink* in `idf.py menuconfig`, along with the output layout — a
 name such as `5.1.4` or a speaker list — that the player renders every stream onto
-(`src/forge/include/ac3/render/layout.hpp`, `render.hpp`). The `i2s` sink chooses standard or TDM
+(`src/render/include/iclforge/render/layout.hpp`, `render.hpp`). The `i2s` sink chooses standard or TDM
 mode from the layout in force (`ac3forge/sink_plan.hpp`) and reconfigures between plays, so
 `PUT /layout` needs no rebuild. One S3 line carries four 32-bit or eight 16-bit slots and a second
 line doubles that, to sixteen 16-bit slots ([Slot widths](../../hearth/sink-esp32-s3.md#slot-widths)).
@@ -207,13 +207,13 @@ Another step, *Build every sink and source combination*, builds `i2s`, `sd`, `ht
 one build each, and runs none of them. The `i2s` sink drives the I2S peripheral and `sd` the SDMMC
 host, and `http` is built with WiFi (`main/net/wifi/`); QEMU emulates none of the
 three. The conversion the `i2s` sink hands the peripheral is the one the capture sink checks, and it
-is unit-tested on the host (`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing
+is unit-tested on the host (`tests/ac3/io/test_interleave.cpp`), because planar-to-interleaved indexing
 with slot padding is where the bugs are; so is the arithmetic that picks standard or TDM mode and
-the slot count from the layout (`tests/io/test_sink_plan.cpp`). A 5.1 programme on an 8-slot bus leaves two
+the slot count from the layout (`tests/ac3/io/test_sink_plan.cpp`). A 5.1 programme on an 8-slot bus leaves two
 slots that must be written as zeros rather than skipped: the DMA buffer is reused, so whatever the
 previous block left is what the DAC clocks out. The queue model the `i2s` sink keeps for its
 `sink.*` line (`esp-idf/ac3forge/include/ac3forge/dac_queue_model.hpp`) is unit-tested on the host
-as well (`tests/io/test_dac_queue_model.cpp`), against a simulated DMA. The sink itself has run on
+as well (`tests/ac3/io/test_dac_queue_model.cpp`), against a simulated DMA. The sink itself has run on
 two S3 boards, in standard mode and in TDM on eight 16-bit slots, with no DAC on the pins
 ([On two boards](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards)).
 
@@ -253,7 +253,7 @@ Wi-Fi ([the Hearth plan](https://github.com/iainchesworthlabs/ac3forge/blob/main
 
 The player schedules each block against the I2S channel's end-of-frame interrupts. It works from a
 model of ESP-IDF v6.1's DMA ring (`esp-idf/ac3forge/include/ac3forge/playout.hpp`), which
-`tests/io/test_playout.cpp` tests on the host against a simulated ring. It corrects its error in
+`tests/ac3/io/test_playout.cpp` tests on the host against a simulated ring. It corrects its error in
 the decoded PCM, by dropping or repeating one frame in 256.
 
 On 2026-09-16 two ESP32-S3-DevKitC-1-N16R8 boards on the same Wi-Fi, with no DAC wired, played the
@@ -416,7 +416,7 @@ made about it were wrong. So before changing anything the decoder was
 profiled on the board, through the `AC3_ZONE_SCOPED_N()` markers it already
 carries for Tracy: `-DAC3FORGE_STAGE_TIMERS=ON` routes them to an accumulator
 in the probe (`apps/baremetal/stage_timers.cpp`, the application half of
-`src/forge/src/internal/profiling/stage_timers/`) and each fixture then prints a
+`src/base/variants/profiling-stage_timers/`) and each fixture then prints a
 `<fixture>.stage[<zone>]` line per stage with its inclusive and self time per
 frame. A pair of markers costs 2.4 us on this part, and a frame passes through
 at most 99 of them, so the breakdown carries under 0.25 ms of its own weight -
@@ -520,7 +520,7 @@ every coupled channel, each a software routine of a thousand cycles or so on
 this FPU. The §3.5.5 routines now exist in both scalars, the double forms
 being the encoder's and the exported ones as before; the float forms run the
 float inverses and a float `dft512`, take their sine and cosine from a short
-series held to libm at float precision (`tests/encoder/test_enhanced_coupling.cpp`
+series held to libm at float precision (`tests/ac3/encoder/test_enhanced_coupling.cpp`
 pins every float form against its double one), and write into the decoder's
 store directly instead of round-tripping 512 conversions per channel per
 block. Stage-timed, the spectrum is 6.9 ms a frame and the reconstruction
@@ -914,7 +914,7 @@ template, `to_fixed25_block`, `accumulate_peak_exponents`,
 `choose_delta_segments` and `PerceptualModel::analyse` take either scalar,
 `DitherBallot` is the `double` instantiation of `BasicDitherBallot<Scalar>`),
 and the float path has its own `log2` and `exp`
-(`src/arithmetic/include/ac3/internal/scalar_math.hpp`) rather than libm's: this profile's
+(`src/arithmetic/include/iclforge/arithmetic/scalar_math.hpp`) rather than libm's: this profile's
 fixture hashes are checked on the x86 host, the Cortex-M3 leg and this part,
 and three C libraries' `logf` do not agree in their last bit. The `double`
 overloads are libm's, called as before, so the ordinary build is unchanged.
@@ -999,11 +999,11 @@ and gated by the hashes not moving. The exponent-run planner scores both of
 Annex E's frame forms in one pass, skips a run whose exponent set alone
 already costs more than the best plan found for its end block, walks only the
 bins allocated any precision, and extends a run's waste by one block's row
-when its minimum did not move (`tests/encoder/test_exp_strategy.cpp` holds
+when its minimum did not move (`tests/ac3/encoder/test_exp_strategy.cpp` holds
 the pass to a transcription of the old one over 400 random inputs). The
 masking curve is computed once per run per search and only §7.2.2.7's offset
 is applied per probe (`compute_masking_curve` / `allocate_from_curve`, held
-to `compute_bit_allocation` over 1,800 offsets in `tests/core/test_bitalloc.cpp`).
+to `compute_bit_allocation` over 1,800 offsets in `tests/ac3/core/test_bitalloc.cpp`).
 And blocks read by the same run of every stream are counted once.
 
 Measured on the board on 2026-09-10, plain build, 240 MHz, every hash the
@@ -1149,7 +1149,7 @@ nothing under QEMU, which has no such device. Give each shape its own
 
 ## Objects
 
-`joc.cpp` and `oamd.cpp` are in `src/forge/minimal.cmake`'s source list and link into every build
+`joc.cpp` and `oamd.cpp` are in `src/ac3/minimal.cmake`'s source list and link into every build
 of this profile, so object decode always compiled here. For a long time it did not fit: an
 `atmos-encode` fixture (six objects, JOC over a 5.1 downmix, 448 kbit/s) peaked at 449,826 bytes
 against 280,792 free, and `ReconstructionState` was a single 147,504-byte allocation — larger
@@ -1187,7 +1187,7 @@ stack array and the scratch took its float form, 23,552 bytes.
 
 **The bed does not need any of this.** An Atmos bed is ordinary E-AC-3 5.1 and the objects are
 side data, so `DecoderConfig::skip_object_reconstruction` decodes the bed without allocating
-`ReconstructionState` at all — 20 allocations per frame against 31. `tests/oba/test_atmos.cpp`
+`ReconstructionState` at all — 20 allocations per frame against 31. `tests/ac3/oba/test_atmos.cpp`
 asserts the rendered channels are bit-for-bit what a full decode produces. `object_metadata`
 still arrives, parsed out of a block's skip field.
 
@@ -1208,7 +1208,7 @@ sit on the listener plane and a render of them would leave the four height targe
 Every one of its twelve levels is the host's to the digit on both emulated legs, which is what
 the row can say: no `ac3cli` path writes a rendered layout to a WAV for the generator to
 measure, so `render_fixture.hpp` is the host shape's own numbers and the row is a regression
-reference, the standing the encode fixtures already have; `tests/spatial/` is what says the
+reference, the standing the encode fixtures already have; `tests/render/` is what says the
 panner is right. What it costs, on the Cortex-M3 leg's count on 2026-09-29: 28,945,000
 instructions a frame for decode and render together, the render itself 5%
 of that; 195,025 bytes of peak - the objects row's plus the panner's target
@@ -1291,7 +1291,7 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
   assumed: `EE.LDF.128.IP` writes a consecutive quad of `f` registers, which GCC's Xtensa port
   cannot model as one value, so it spills every asm block's outputs (68 instructions scalar
   against 73 with 22 spills). Capturing it needs a hand-written assembly kernel tier, like
-  `src/forge/src/internal/avx2/`, which would also need `madd.s` — a fused multiply-add of exactly
+  `src/ac3/src/internal/avx2/`, which would also need `madd.s` — a fused multiply-add of exactly
   the kind `-ffp-contract=off` forbids project-wide — and so its own bit-exactness argument.
 - **The encoders' search is integer, and it is what is left.** The encoders run in the
   profile's scalar end to end since 2026-09-10 (AC-3 2/0 at 0.38x, E-AC-3 2/0 and AC-3 5.1 at

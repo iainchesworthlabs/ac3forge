@@ -44,7 +44,7 @@ constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "
 
 // RIFF/WAVE's magic: "RIFF", or RF64/BW64's 64-bit-size ids (EBU Tech 3306,
 // ITU-R BS.2088), at offset 0 and "WAVE" at offset 8 - the same test
-// src/forge/src/io/wav_format.cpp's is_riff_wave makes, repeated here because
+// src/ac3/src/io/wav_format.cpp's is_riff_wave makes, repeated here because
 // that header is private to forge. A WAV is not a container this reads, but
 // it must be recognised positively BEFORE the packet grid below: PCM of a
 // steady tone repeats bytes at a fixed period, and a 1 kHz sine at 48 kHz

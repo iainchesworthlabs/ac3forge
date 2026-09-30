@@ -6,7 +6,7 @@
 // decoded bed, so a reconstructed object comes out
 // oba::joc::reconstruction_delay() samples after the bed it was pulled from -
 // 576 under Domain::kQmf, 256 under Domain::kMdctBand (docs/library/decoding.md,
-// "Atmos objects lag the bed"; tests/decoder/test_latency.cpp measures both
+// "Atmos objects lag the bed"; tests/ac3/decoder/test_latency.cpp measures both
 // halves against the encoder's input). LayoutRenderer::render() places the
 // objects and passes the bed's LFE through beside them, so the LFE has to wait
 // for them.
@@ -56,7 +56,7 @@ constexpr std::uint16_t k71 =
     static_cast<std::uint16_t>(k51 | ac3::eac3::chanmap::k71Rear);
 
 constexpr int kFrames = 8;
-// Frame 3, as tests/decoder/test_latency.cpp places its marker: past every
+// Frame 3, as tests/ac3/decoder/test_latency.cpp places its marker: past every
 // encoder's and decoder's priming, and early enough that the longest delay
 // here still leaves the pulse well inside the stream.
 constexpr int kPulseAt = 3 * ac3::kSamplesPerFrame + 512;

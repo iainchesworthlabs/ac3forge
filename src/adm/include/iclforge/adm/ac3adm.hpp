@@ -21,7 +21,7 @@
 // separate, later task (phase 2); a worked end-to-end example is phase 3.
 //
 // Implemented on top of two vendored third-party libraries rather than a
-// hand-rolled parser (see src/ac3adm/CMakeLists.txt for how they're
+// hand-rolled parser (see src/adm/CMakeLists.txt for how they're
 // fetched): libbw64 (github.com/ebu/libbw64, Apache-2.0, header-only) for
 // the container layer, and libadm (github.com/ebu/libadm, Apache-2.0) for
 // the ADM XML object model. Both are maintained by the same BBC/IRT team
@@ -31,7 +31,7 @@
 // would otherwise cause is the main reason).
 //
 // Primary sources these two libraries themselves implement, and that this
-// module's own translation code (src/ac3adm/src/adm_model.cpp) cites where
+// module's own translation code (src/adm/src/adm_model.cpp) cites where
 // it makes a choice beyond "trust the library"):
 //   - Recommendation ITU-R BS.2088-1 (10/2019), Annex 1: the BW64 container
 //     - <ds64>, <fmt>, <data>, <chna>, <axml> chunk layouts.
@@ -87,7 +87,7 @@ enum class AdmError : std::uint8_t {
 
 // Roadmap item IM2 ("JOC -> ADM BWF writer"): the write-side counterpart of parse_bw64, using the
 // same two vendored libraries in the other direction - libadm's document-builder API
-// (adm::AudioObject::create() and friends, see src/ac3adm/src/adm_model.cpp) to turn an AdmModel
+// (adm::AudioObject::create() and friends, see src/adm/src/adm_model.cpp) to turn an AdmModel
 // into a libadm adm::Document, adm::writeXml() to serialize it, and libbw64's Bw64Writer
 // (bw64::writeFile()) to write the BW64 container (<fmt >, <chna>, <axml>, <data>).
 enum class AdmWriteError : std::uint8_t {

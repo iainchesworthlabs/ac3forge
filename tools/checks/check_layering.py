@@ -15,8 +15,8 @@ _static.yml's static job and runnable the same way locally:
 
 What counts as a library is the second component of a path under src/, with two adjustments the
 table's "layout" section describes, both there because the tree is in the middle of a
-re-layout (planning/layout.md): a directory that holds several libraries (src/forge) is split
-by path rules, first match wins, and a directory renamed for the library it holds (src/ac3adm
+re-layout (planning/layout.md): a directory that holds several libraries (src/ac3) is split
+by path rules, first match wins, and a directory renamed for the library it holds (src/adm
 is `adm`) is renamed. When the re-layout is done both sections are empty and the rule is the
 plain one: src/<library>/.
 

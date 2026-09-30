@@ -454,7 +454,7 @@ check_one "eac3_cplbndstrce0" "$CPLBNDSTRCE0_EC3" "eac3" 448 \
 # five separate Annex E decoder defects, all of them syntax this project's own
 # encoder and FFmpeg's both happen never to produce and DEE's routinely does
 # (each one is documented at its own site in
-# src/forge/src/decoder/eac3_decoder.cpp):
+# src/ac3/src/decoder/eac3_decoder.cpp):
 #   - cplahtinu/chahtinu[ch]/lfeahtinu read unconditionally, when §E2.2.3
 #     transmits each only where that stream's exponents are sent exactly once
 #     in the frame;
@@ -579,7 +579,7 @@ check_against_source "ext_eac3_stereo_192_dee" "$DEE_STEREO_EC3" "$STEREO_WAV" "
 # scored: noise bursts whose top band spectral extension synthesises keep every
 # decoder within a few dB of it - 2.27 and 2.03 dB here, 2.46 and 2.25 through
 # FFmpeg - so these floors, 1 dB, catch a lost channel or a shifted or dropped
-# frame; where the corrections land is tests/decoder/
+# frame; where the corrections land is tests/ac3/decoder/
 # test_eac3_transient_prenoise.cpp's to check. And against FFmpeg's strict
 # decode, which reads the stream cleanly but does not apply the tool: 4.38 and
 # 4.65 dB, the spectral-extension noise each decoder synthesises for itself,

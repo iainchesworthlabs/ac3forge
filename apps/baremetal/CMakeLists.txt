@@ -50,7 +50,7 @@ endif()
 
 if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "esp32s3")
     # ESP-IDF builds the application from platform/esp32s3/main/, linking
-    # ac3::forge_minimal through its own component. There is nothing for this
+    # iclforge::ac3_minimal through its own component. There is nothing for this
     # file to add, and an add_executable() here would produce a second binary
     # IDF has no way to flash.
     message(STATUS "  Footprint probe: ESP-IDF owns the application "
@@ -64,7 +64,7 @@ endif()
 # One probe of three, never more than one: the profiles are mutually exclusive
 # at the root (no two of decode / AC-3 encode / E-AC-3 encode fit in an
 # ESP32-S3's internal SRAM at once), and the AC-4 decoder is a third shape of the
-# decode profile, with its own probe, since AC-4 shares nothing with ac3::forge
+# decode profile, with its own probe, since AC-4 shares nothing with iclforge::ac3
 # (planning/ac4.md, D14a). All three define ac3probe::run() rather than main(),
 # so main.cpp and the ESP-IDF application run whichever was built without
 # knowing which it is.
@@ -122,13 +122,13 @@ set(AC3FORGE_PROBE_HEAP_BUDGET_BYTES "0" CACHE STRING
 target_compile_definitions(ac3probe PRIVATE
     AC3FORGE_PROBE_HEAP_BUDGET_BYTES=${AC3FORGE_PROBE_HEAP_BUDGET_BYTES})
 
-# What the AC-4 probe decodes with is ac4::decoder, whose archives bring the inspector
-# and the core; it links nothing of ac3::forge, and has no use for its decoders.
+# What the AC-4 probe decodes with is iclforge::ac4dec, whose archives bring the inspector
+# and the core; it links nothing of iclforge::ac3, and has no use for its decoders.
 if(AC3FORGE_MINIMAL_AC4)
-    target_link_libraries(ac3probe PRIVATE ac4::decoder_static ac3::minimal_profile
+    target_link_libraries(ac3probe PRIVATE iclforge::ac4dec_static ac3::minimal_profile
                                            ac3::warnings)
 else()
-    target_link_libraries(ac3probe PRIVATE ac3::forge_minimal ac3::warnings)
+    target_link_libraries(ac3probe PRIVATE iclforge::ac3_minimal ac3::warnings)
 endif()
 
 # How much stack the AC-4 probe paints before a decode, to read the stack the decode

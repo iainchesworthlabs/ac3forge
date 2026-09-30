@@ -8,7 +8,7 @@
 
 // ac3::internal::BitReservoir is the accounting behind E-AC-3's average-rate
 // mode: what one frame does not spend is what the next one may. The encoder
-// tests (tests/encoder/test_eac3.cpp's [abr] cases) prove the rate it
+// tests (tests/ac3/encoder/test_eac3.cpp's [abr] cases) prove the rate it
 // delivers on real frames; these prove the arithmetic underneath, where the
 // awkward cases - an exhausted window, an overspend, a window of one - are
 // reachable directly instead of having to be provoked through content.

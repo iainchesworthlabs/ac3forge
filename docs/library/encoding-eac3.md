@@ -368,7 +368,7 @@ which at a fixed bit rate comes straight out of the mantissas, plus the Table E1
 512, 768 or 1536 — so `latency_samples()` on a one-block configuration is 512 (256 of frame and
 256 of transform), and 768, 1024 and 1792 for two, three and six blocks. The hold-back does not
 shrink with the syncframe: it is 1536 samples whatever the length, six one-block syncframes where
-a six-block configuration holds one (`tests/decoder/test_latency.cpp` pins both).
+a six-block configuration holds one (`tests/ac3/decoder/test_latency.cpp` pins both).
 
 ## More than one programme
 

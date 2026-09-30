@@ -250,8 +250,8 @@ void register_ac4(py::module_& m) {
     auto ac4_module = m.def_submodule(
         "ac4",
         "AC-4 decode/encode (ETSI TS 103 190-1 V1.4.1, TS 103 190-2 V1.3.1) - ac4::Decoder/"
-        "ac4::Encoder bound directly. See src/ac4dec/include/ac4dec/decoder.hpp and "
-        "src/ac4enc/include/ac4enc/encoder.hpp for the full scope statement and what each "
+        "ac4::Encoder bound directly. See src/ac4dec/include/iclforge/ac4dec/decoder.hpp and "
+        "src/ac4enc/include/iclforge/ac4enc/encoder.hpp for the full scope statement and what each "
         "refuses; this binding covers a subset of both - see this file's own header comment.");
 
     // --- enums ---------------------------------------------------------------

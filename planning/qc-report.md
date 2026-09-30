@@ -13,7 +13,7 @@
     missing](#what-is-missing) item 3 objects to. The conformance checks and the schema below say
     nothing about AC-4, and that gap would have to close before a report is built. The line
     numbers and counts are from 2026-09-07: `ac3cli` has 44 commands, not forty-one, the
-    coverage floors are now `src/forge 90 82` and `apps/cli 80 71`, and the CI is the one
+    coverage floors are now `src/ac3 90 82` and `apps/cli 80 71`, and the CI is the one
     described in [CI for many agents](../docs/ci-agentic.md).
 
     This page plans a **delivery-shaped QC report** — the artefact someone attaches when handing
@@ -322,9 +322,9 @@ delivery operator's position both are "this file is not what was ordered".
 
 | Path | What is taken |
 |---|---|
-| `src/forge/include/ac3/meta/qc.hpp` | the five presets, `QcLoudnessLimit`, `evaluate_qc_gate()`, `QcVerdict`, `parse_qc_preset()` — unchanged |
-| `src/forge/include/ac3/meta/loudness.hpp` | `LoudnessMeter` (both constructors), `position_weight()`, `dialnorm_from_lkfs()` — unchanged |
-| `src/forge/include/ac3/encoder/plan.hpp:64-73` | `LayoutId` and `LayoutInfo` as the layout vocabulary the conformance check compares against |
+| `src/ac3/include/iclforge/ac3/meta/qc.hpp` | the five presets, `QcLoudnessLimit`, `evaluate_qc_gate()`, `QcVerdict`, `parse_qc_preset()` — unchanged |
+| `src/ac3/include/iclforge/ac3/meta/loudness.hpp` | `LoudnessMeter` (both constructors), `position_weight()`, `dialnorm_from_lkfs()` — unchanged |
+| `src/ac3/include/iclforge/ac3/encoder/plan.hpp:64-73` | `LayoutId` and `LayoutInfo` as the layout vocabulary the conformance check compares against |
 | `apps/cli/commands/analysis.cpp:54-89` | `QcResult`/`QcProgrammeResult`, **promoted** into the library |
 | `apps/cli/commands/analysis.cpp:109,244,408,539` | `measure_qc_ac3`, `measure_qc_eac3_bed`, `measure_qc_eac3_rendered`, `measure_qc_eac3_objects`, **promoted** |
 | `apps/cli/commands/analysis.cpp:680-781` | `report_qc_programme()`, **split** into a model pass and a text renderer |
@@ -429,7 +429,7 @@ target, option, component or namespace.
 
 | | Value | Convention followed |
 |---|---|---|
-| Library headers | `ac3/meta/qc_report.hpp`, `src/forge/src/meta/qc_report.cpp` | beside `qc.hpp`/`qc.cpp`, in the existing `src/forge` target and its `meta` group |
+| Library headers | `ac3/meta/qc_report.hpp`, `src/forge/src/meta/qc_report.cpp` | beside `qc.hpp`/`qc.cpp`, in the existing `src/ac3` target and its `meta` group |
 | Namespace | `ac3::meta` | the namespace `qc.hpp`, `loudness.hpp` and `drc.hpp` already share |
 | Export macro | `AC3FORGE_EXPORT` on every out-of-line entry point | `qc.hpp`'s own `evaluate_qc_gate` |
 | CLI sources | `apps/cli/commands/qc_report_json.cpp`, `qc_report_html.cpp` | one file per renderer, beside `commands/analysis.cpp` |
@@ -448,20 +448,20 @@ If decision 1 takes option C instead, the identity becomes: target `ac3assay`, n
 
 `ac3tests` is one binary (`tests/CMakeLists.txt:617`,
 `catch_discover_tests(ac3tests ADD_TAGS_AS_LABELS)`), so ctest labels come from Catch2 tags rather
-than from CMake. The existing QC tags are `[qc]` (`tests/meta/test_meta_qc.cpp`) and `[cli][qc]`
+than from CMake. The existing QC tags are `[qc]` (`tests/ac3/meta/test_meta_qc.cpp`) and `[cli][qc]`
 (`tests/cli/test_cli.cpp:2008`).
 
 | Suite | File | Tags / label | What it pins |
 |---|---|---|---|
-| Library | `tests/meta/test_meta_qc.cpp` (extended) | `[qc]` | `QcExpectations` and `evaluate_qc_conformance()`: every mismatch fails, every match passes, and an expectation left unset gates nothing |
+| Library | `tests/ac3/meta/test_meta_qc.cpp` (extended) | `[qc]` | `QcExpectations` and `evaluate_qc_conformance()`: every mismatch fails, every match passes, and an expectation left unset gates nothing |
 | Library | `tests/meta/test_qc_report.cpp` (new) | `[qc]` | `QcReport` round-trips every field the two renderers read; a report with no measurable loudness carries `std::nullopt` rather than a sentinel |
 | CLI | `tests/cli/test_cli.cpp` (extended) | `[cli][qc]` | `json=1` emits a document that parses, carries `schema == "ac3forge.qc/1"`, and has **every** documented member present — including the null ones, which is the contract's own rule and the thing a renderer regression breaks first |
 | CLI | `tests/cli/test_cli.cpp` | `[cli][qc]` | determinism: two runs with `SOURCE_DATE_EPOCH` pinned are byte-identical |
 | CLI | `tests/cli/test_cli.cpp` | `[cli][qc]` | the exit code stays `kExitQcGate` for a failed conformance check, and `kExitInput` for an unreadable file |
 | GUI | `apps/gui/tests/qml/tst_qc_panel.qml` (extended) | `gui` | **Save report…** writes both files to a temporary path, and the dialog reports the failure when the path is unwritable |
 
-**Coverage.** `tools/checks/coverage_report.sh:118-127` holds `src/forge 88 78` and
-`apps/cli 40 34` (line, branch). The library additions sit inside `src/forge` and must clear
+**Coverage.** `tools/checks/coverage_report.sh:118-127` holds `src/ac3 88 78` and
+`apps/cli 40 34` (line, branch). The library additions sit inside `src/ac3` and must clear
 88/78 like everything else there — a report model and two pure evaluation functions are
 straightforwardly testable from a fixture, so this is a floor to meet rather than to move.
 
@@ -490,7 +490,7 @@ matrix leg can be added without editing the rule. Nothing here needs that.
 | coverage | the two floors above | unchanged |
 | abi-gate | the C API additions, **Phase 5 only** | an allowlist refresh with that phase |
 
-**Cost in matrix time: none added.** Every leg already builds `src/forge` and `ac3cli`; this adds
+**Cost in matrix time: none added.** Every leg already builds `src/ac3` and `ac3cli`; this adds
 source files to targets that are already compiled everywhere. What it does cost is the docs-only
 fast path: `ci.yml:314` classifies a PR as docs-only by a regex over `docs/`, `*.md`, `mkdocs.yml`
 and `docs.yml`, so **this page** rides the fast path and every subsequent phase pays for all
@@ -791,7 +791,7 @@ roadmap row would move under that product name — still without a numeric ID.
 | The HTML report renders correctly in the mail clients and browsers a broadcaster uses | **no** | no access to those environments; the mitigation is the no-external-resource rule, which removes the largest class of difference |
 | Print-to-PDF paginates acceptably on every browser | partly — one browser per platform, by hand | headless CI has no print pipeline; the `@media print` rules are checked by inspection and one manual pass per platform per release |
 | A broadcaster or platform would accept this document as a QC record | **no** | no delivery relationship exists to test it against; the presets are cited from primary documents, and whether a recipient accepts the *format* is a commercial question |
-| The five preset numbers still match their sources | yes, by re-reading each document | `tests/meta/test_meta_qc.cpp:24` pins the numbers against the citations, but a specification revision is outside the tree — this is how IO11 found the 2026-07 A/85 revision |
+| The five preset numbers still match their sources | yes, by re-reading each document | `tests/ac3/meta/test_meta_qc.cpp:24` pins the numbers against the citations, but a specification revision is outside the tree — this is how IO11 found the 2026-07 A/85 revision |
 | The loudness figures agree with another meter | yes, on 5.1 | IO10 established the ffmpeg `ebur128` cross-check and recorded that it disagrees by design on 7.1 rear surrounds, because ffmpeg generalises Annex 1's Table 3 by channel name while BS.1770-5 Annex 3 weights by position. So ffmpeg is an oracle for the bed path and not for the rendered one |
 | The dialogue-gated presets read correctly on dialogue-led material | **no** | `LoudnessMeter` has no dialogue gate; the report states the conservatism rather than correcting it |
 | The winget Moniker is free | weakly | a GitHub code search indexes rather than enumerates; the identifier that must be unique is `iainchesworthlabs.<name>`, in a namespace this project owns |
@@ -801,7 +801,7 @@ roadmap row would move under that product name — still without a numeric ID.
 
 **Open pull requests.** `gh pr list` on 2026-09-07 shows five open, four of them Crucible engine
 and threading fixes (#532, #534, #535, #536) and one Dependabot Actions bump (#531). None touches
-`apps/cli`, `src/forge/*/meta`, `apps/gui/qc_controller.*` or `docs/`, so Phase 1 collides with
+`apps/cli`, `src/ac3/*/meta`, `apps/gui/qc_controller.*` or `docs/`, so Phase 1 collides with
 nothing. Phase 2 edits `apps/gui`, so it should re-check the queue first.
 
 **The GUI and the CLI in one change.** Phase 2 deletes a struct from each and is one PR rather than
@@ -876,7 +876,7 @@ The open questions. Each carries a recommendation and the cost of taking it.
    catalogues, with citations left untranslated. **Recommend (a).** Cost: an operator working in
    Arabic or Hebrew reads an English report; the GUI chrome around it is translated either way.
 
-5. **The coverage floors.** (a) leave `src/forge 88 78` and `apps/cli 40 34` untouched through
+5. **The coverage floors.** (a) leave `src/ac3 88 78` and `apps/cli 40 34` untouched through
    Phase 4 and re-measure before Phase 5; (b) raise `apps/cli` on the strength of the new renderers.
    **Recommend (a).** Cost: the floor understates the achieved number for a release. Raising it on
    one PR's additions is how a floor becomes unmeetable later.

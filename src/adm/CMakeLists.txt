@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3adm::ac3adm - a standalone BW64/RF64 + Audio Definition Model (ADM)
+# iclforge::adm - a standalone BW64/RF64 + Audio Definition Model (ADM)
 # parser, built on top of two vendored third-party libraries: libbw64 (the
 # BW64/RF64 container layer) and libadm (the ADM XML object model). Both are
 # Apache-2.0. libadm is github.com/ebu/libadm itself, maintained by the same
@@ -43,15 +43,15 @@
 # the Android app has no use for at all either.
 #
 # Installed/exported via find_package(ac3forge) (cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
-# block) as ac3adm::ac3adm_shared ONLY - never ac3adm::ac3adm_static, regardless of
+# block) as iclforge::adm_shared ONLY - never iclforge::adm_static, regardless of
 # AC3FORGE_INSTALL_BOTH_LINKAGES. bw64/adm are third-party FetchContent targets this project
 # doesn't install or export in their own right (re-exporting libbw64/libadm as first-class
 # packages of their own - including libadm's Boost header dependency - was judged out of scope
 # for this module). A STATIC ac3adm still has genuinely unresolved symbol references into adm's
 # object code that only a downstream consumer's own final link step would resolve, which would
 # require shipping libadm/libbw64 too; a SHARED ac3adm.so is self-contained instead, since adm is
-# forced STATIC and embedded into it at ac3adm_shared's own build step (see the
-# FetchContent_MakeAvailable(libadm) comment above). See target_link_libraries(ac3adm_objects...)
+# forced STATIC and embedded into it at iclforge_adm_shared's own build step (see the
+# FetchContent_MakeAvailable(libadm) comment above). See target_link_libraries(iclforge_adm_objects...)
 # below for how bw64/adm are kept out of the exported package's Targets.cmake entirely.
 # ---------------------------------------------------------------------------
 
@@ -112,7 +112,7 @@ include(FetchContent)
 # 64-bit WAVE_FORMAT_IEEE_FLOAT <fmt > outright even though this fork's own decode/encode already
 # handle 64-bit float correctly. The undefined behaviour an earlier libbw64 pin needed patching
 # for (an empty std::vector<char> passed to &buffer[0], which blocked instrumenting
-# ac3adm_objects for fuzzing - see fuzz/CMakeLists.txt) is already fixed here, upstream of this
+# iclforge_adm_objects for fuzzing - see fuzz/CMakeLists.txt) is already fixed here, upstream of this
 # fork too - that is not a third patch. The script runs in libbw64's own source directory (where
 # the patch step puts it), edits tokens rather than lines so a CRLF checkout patches the same
 # way, does nothing to an already-patched tree, and stops the configure if it finds a tree
@@ -152,13 +152,13 @@ FetchContent_Declare(libadm
 # Populates the target `adm` (STATIC or SHARED, following BUILD_SHARED_LIBS like every other
 # target in this build) - see its own src/CMakeLists.txt for why that is the exact name, not
 # `libadm`. Forced STATIC here regardless of this project's own ambient BUILD_SHARED_LIBS
-# (save/restore around just this one call): ac3adm_shared (below) is the only installed/exported
+# (save/restore around just this one call): iclforge_adm_shared (below) is the only installed/exported
 # variant of this module (see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM block), and it has
 # to be self-contained - a downstream consumer of the installed package never gets a libadm.so of
 # its own to link against (this project never install()s adm/bw64, see the target_link_libraries
-# comment below). If adm followed BUILD_SHARED_LIBS=ON here, ac3adm_shared would gain a genuine
+# comment below). If adm followed BUILD_SHARED_LIBS=ON here, iclforge_adm_shared would gain a genuine
 # runtime dependency on a libadm.so this package doesn't ship - broken for any consumer, not just
-# an inconvenience. Forcing it static means ac3adm_shared always embeds it, regardless of how the
+# an inconvenience. Forcing it static means iclforge_adm_shared always embeds it, regardless of how the
 # rest of this project was configured.
 #
 # A CACHE FORCE, not a plain set(BUILD_SHARED_LIBS OFF) normal-variable override - confirmed by
@@ -179,39 +179,39 @@ unset(_ac3adm_saved_build_shared_libs)
 # ---------------------------------------------------------------------------
 # ac3adm's own targets - built and installed as both a static and a shared
 # library, same OBJECT-library-plus-two-thin-wrappers shape as every other
-# component here; see src/forge/CMakeLists.txt's ac3::forge for the full
+# component here; see src/ac3/CMakeLists.txt's iclforge::ac3 for the full
 # explanation of why.
 # ---------------------------------------------------------------------------
-add_library(ac3adm_objects OBJECT)
-add_library(ac3adm_static STATIC)
-add_library(ac3adm_shared SHARED)
+add_library(iclforge_adm_objects OBJECT)
+add_library(iclforge_adm_static STATIC)
+add_library(iclforge_adm_shared SHARED)
 
-target_link_libraries(ac3adm_static PUBLIC ac3adm_objects)
-target_link_libraries(ac3adm_shared PUBLIC ac3adm_objects)
+target_link_libraries(iclforge_adm_static PUBLIC iclforge_adm_objects)
+target_link_libraries(iclforge_adm_shared PUBLIC iclforge_adm_objects)
 
-add_library(ac3adm::ac3adm_static ALIAS ac3adm_static)
-add_library(ac3adm::ac3adm_shared ALIAS ac3adm_shared)
+add_library(iclforge::adm_static ALIAS iclforge_adm_static)
+add_library(iclforge::adm_shared ALIAS iclforge_adm_shared)
 if(BUILD_SHARED_LIBS)
-    add_library(ac3adm::ac3adm ALIAS ac3adm_shared)
+    add_library(iclforge::adm ALIAS iclforge_adm_shared)
 else()
-    add_library(ac3adm::ac3adm ALIAS ac3adm_static)
+    add_library(iclforge::adm ALIAS iclforge_adm_static)
 endif()
 
-target_sources(ac3adm_objects
+target_sources(iclforge_adm_objects
     PRIVATE
         src/adm_model.cpp
         src/adm.cpp)
 
-target_include_directories(ac3adm_objects
+target_include_directories(iclforge_adm_objects
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
         "$<INSTALL_INTERFACE:include>")
 
-target_compile_features(ac3adm_objects PUBLIC cxx_std_23)
+target_compile_features(iclforge_adm_objects PUBLIC cxx_std_23)
 
-# $<BUILD_INTERFACE:...> wrapping ac3::warnings - see src/forge/CMakeLists.txt's identical
-# forge_objects treatment for why a plain PRIVATE link isn't enough for an OBJECT
+# $<BUILD_INTERFACE:...> wrapping ac3::warnings - see src/ac3/CMakeLists.txt's identical
+# iclforge_ac3_objects treatment for why a plain PRIVATE link isn't enough for an OBJECT
 # library that's part of an install(EXPORT) set. bw64/adm are PRIVATE too: neither
 # library's types cross ac3adm's own public API (see this file's header comment), so
 # nothing downstream needs to link them transitively.
@@ -230,7 +230,7 @@ target_compile_features(ac3adm_objects PUBLIC cxx_std_23)
 # hit it on GCC 15, so silencing it everywhere would risk hiding a genuine one elsewhere.
 #
 # A separate INTERFACE library linked AFTER ac3::warnings, not a plain target_compile_options()
-# call on ac3adm_objects itself - confirmed by inspecting the generated compile_commands.json that
+# call on iclforge_adm_objects itself - confirmed by inspecting the generated compile_commands.json that
 # a target's own COMPILE_OPTIONS always land BEFORE the INTERFACE_COMPILE_OPTIONS propagated from
 # its linked libraries on the actual command line, regardless of which order the CMakeLists.txt
 # calls target_compile_options()/target_link_libraries() in - so a plain target_compile_options()
@@ -242,19 +242,19 @@ target_compile_options(ac3adm_suppress_gcc15_null_deref INTERFACE
     "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
 # bw64/adm/ac3adm_suppress_gcc15_null_deref are all wrapped in $<BUILD_INTERFACE:...>, not just
-# ac3::warnings/ac3::coverage: ac3adm_objects is an OBJECT library, which has no link step of its
+# ac3::warnings/ac3::coverage: iclforge_adm_objects is an OBJECT library, which has no link step of its
 # own to hide a PRIVATE dependency behind - a PRIVATE link on an OBJECT library still leaks into
-# that library's own INTERFACE_LINK_LIBRARIES (see src/capi/CMakeLists.txt's forge_c_objects/
-# ac3::forge_static for the same leak forcing a real export-set fix there). Since ac3adm_objects
+# that library's own INTERFACE_LINK_LIBRARIES (see src/capi/CMakeLists.txt's iclforge_capi_objects/
+# iclforge::ac3_static for the same leak forcing a real export-set fix there). Since iclforge_adm_objects
 # is itself part of the admTargets export set (cmake/InstallLibrary.cmake), an unwrapped bw64/adm
 # would make install(EXPORT admTargets) fail outright ("requires target ... that is not in any
 # export set") - neither is installed/exported by this project (see this file's header comment).
 # BUILD_INTERFACE keeps them resolved for the in-tree build (this generator expression still
 # evaluates true there) while stripping them from what gets written into the exported
 # admTargets.cmake - which is safe here specifically because the only installed variant,
-# ac3adm_shared, already has adm's (forced-STATIC, see above) object code embedded by the time
+# iclforge_adm_shared, already has adm's (forced-STATIC, see above) object code embedded by the time
 # it's built; a downstream consumer never needs bw64/adm on their own link line.
-target_link_libraries(ac3adm_objects
+target_link_libraries(iclforge_adm_objects
     PRIVATE
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>"
@@ -262,35 +262,35 @@ target_link_libraries(ac3adm_objects
         "$<BUILD_INTERFACE:adm>"
         "$<BUILD_INTERFACE:ac3adm_suppress_gcc15_null_deref>")
 
-set_target_properties(ac3adm_objects PROPERTIES
+set_target_properties(iclforge_adm_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
-set_target_properties(ac3adm_shared PROPERTIES DEFINE_SYMBOL "AC3ADM_BUILDING_SHARED")
-generate_export_header(ac3adm_shared
+set_target_properties(iclforge_adm_shared PROPERTIES DEFINE_SYMBOL "AC3ADM_BUILDING_SHARED")
+generate_export_header(iclforge_adm_shared
     BASE_NAME AC3ADM
     EXPORT_MACRO_NAME AC3ADM_EXPORT
-    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3adm/export.hpp"
+    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/adm/export.hpp"
     DEFINE_NO_DEPRECATED
     STATIC_DEFINE AC3ADM_STATIC_DEFINE)
-target_compile_definitions(ac3adm_objects PRIVATE AC3ADM_BUILDING_SHARED)
-target_compile_definitions(ac3adm_static PUBLIC AC3ADM_STATIC_DEFINE)
+target_compile_definitions(iclforge_adm_objects PRIVATE AC3ADM_BUILDING_SHARED)
+target_compile_definitions(iclforge_adm_static PUBLIC AC3ADM_STATIC_DEFINE)
 
-set_target_properties(ac3adm_shared PROPERTIES
+set_target_properties(iclforge_adm_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"
     SOVERSION "${PROJECT_VERSION}")
 
-set_target_properties(ac3adm_shared PROPERTIES OUTPUT_NAME "ac3adm")
-set_target_properties(ac3adm_static PROPERTIES OUTPUT_NAME "ac3adm_static")
+set_target_properties(iclforge_adm_shared PROPERTIES OUTPUT_NAME "iclforge_adm")
+set_target_properties(iclforge_adm_static PROPERTIES OUTPUT_NAME "iclforge_adm_static")
 
 # --exclude-libs,ALL: confirmed empirically necessary, not a defensive guess - without this,
-# ac3adm_shared's dynamic symbol table carries ~16,800 exported symbols (a real linux-llvm-shared
+# iclforge_adm_shared's dynamic symbol table carries ~16,800 exported symbols (a real linux-llvm-shared
 # build measured it), nearly all adm::/boost:: template instantiations (VTTs, boost::optional<
 # adm::X>::operator=, adm::xml::detail::toString<...>, ...) reachable from ac3adm's own .cpp
 # files including adm.hpp/model.hpp. CXX_VISIBILITY_PRESET hidden + VISIBILITY_INLINES_HIDDEN
-# (set on ac3adm_objects above) do NOT suppress these: libadm's own class declarations carry an
+# (set on iclforge_adm_objects above) do NOT suppress these: libadm's own class declarations carry an
 # explicit default-visibility attribute of their own (for libadm's own shared-library builds),
 # which - being on the class declaration itself - wins over this project's -fvisibility=hidden
 # default for every instantiation of that class anywhere, including ones compiled into OUR
@@ -302,12 +302,12 @@ set_target_properties(ac3adm_static PROPERTIES OUTPUT_NAME "ac3adm_static")
 # CXX_VISIBILITY_PRESET default. GNU ld/gold/lld all support it; MSVC's link.exe (and clang-cl's
 # lld-link, which parses MSVC-style arguments) do not - guarded the same way this project's other
 # frontend-variant-sensitive flags are (see the root CMakeLists.txt's AC3_FP_CONTRACT_FLAG). Not
-# needed on admbridge_shared: it never statically embeds adm/bw64 itself (see this file's header
-# comment - it links ac3adm_shared, a real shared-library dependency, not an archive), and its own
+# needed on iclforge_admbridge_shared: it never statically embeds adm/bw64 itself (see this file's header
+# comment - it links iclforge_adm_shared, a real shared-library dependency, not an archive), and its own
 # leaked symbol count is in the same small ballpark (~130) every other library here already
-# carries as baseline libstdc++ template noise (tools/ci/abi-allowlist/libac3forge.so.txt has
+# carries as baseline libstdc++ template noise (tools/ci/abi-allowlist/libiclforge_ac3.so.txt has
 # ~220 of the same shape).
 if(NOT MSVC AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
                       CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
-    target_link_options(ac3adm_shared PRIVATE "LINKER:--exclude-libs,ALL")
+    target_link_options(iclforge_adm_shared PRIVATE "LINKER:--exclude-libs,ALL")
 endif()

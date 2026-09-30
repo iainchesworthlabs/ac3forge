@@ -35,7 +35,7 @@ HOST=0
 DIRECTION=decoder
 # --ac4: the third profile, the AC-4 decoder (planning/ac4.md, D14a) in float, with its own
 # probe (apps/baremetal/ac4_probe.cpp) and its own presets, since AC-4 shares nothing with
-# ac3::forge and an image carries one probe.
+# iclforge::ac3 and an image carries one probe.
 # --stage-timers: build the library with AC3FORGE_STAGE_TIMERS, so the probe
 # prints where each fixture's decode time goes stage by stage. On this leg
 # that is shape only - QEMU's clock describes the host, and the host shape's
@@ -182,9 +182,9 @@ declare -A PEAK_CEILING_AC4=(
 # AC3FORGE_MAX_IMAGE_BYTES was re-based from 400,000 to 465,000 after PF7's own
 # feature branch (bare-metal probe harness/PF7, PR #351) picked up several mid-flight merges
 # from `develop` - most significantly DC10's QMF-domain JOC reconstruction,
-# which the decode path now needs (src/forge/src/dsp/qmf.cpp and
-# src/forge/src/verify/eac3_mirror.cpp, both correctly added to
-# src/forge/minimal.cmake's source list) - between when 354,060/400,000 were
+# which the decode path now needs (src/dsp/src/qmf.cpp and
+# src/ac3/src/verify/eac3_mirror.cpp, both correctly added to
+# src/ac3/minimal.cmake's source list) - between when 354,060/400,000 were
 # first measured and when the PR actually merged. The image had already
 # reached 412,516 bytes at that point; nobody re-measured before merging.
 # See docs/performance-trend.md's footprint table for the current breakdown.

@@ -612,7 +612,7 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence",
     // Baseline: dithflag == 0 must still decode to literal zero throughout -
     // confirms the "off" half of §7.3.4 still holds after adding the "on"
     // half. The flags are cleared by hand rather than taken on trust from the
-    // encoder: it decides them from content now (src/forge/src/encoder/
+    // encoder: it decides them from content now (src/ac3/src/encoder/
     // dither.hpp), and this test is about the DECODER, so both sides of the
     // comparison have to be stated here.
     auto cleared = *frame;

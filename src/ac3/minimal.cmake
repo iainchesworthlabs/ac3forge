@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3::forge_minimal - the whole of src/forge under the minimum-footprint
+# iclforge::ac3_minimal - the whole of src/ac3 under the minimum-footprint
 # profile (AC3FORGE_MINIMAL_DECODER, or AC3FORGE_MINIMAL_ENCODER for the
 # encode-only archive). Included and returned from by CMakeLists.txt in this
 # directory, so the ordinary static+shared build below it cannot be perturbed
@@ -12,7 +12,7 @@
 #
 #   - STATIC only. A shared library needs a dynamic loader; this profile's
 #     targets are bare metal (see cmake/toolchains/arm-none-eabi.toolchain.cmake).
-#     Declaring forge_shared at all fails outright for arm-none-eabi.
+#     Declaring iclforge_ac3_shared at all fails outright for arm-none-eabi.
 #
 #   - Decode-only sources. See the list below for what each one is for; the
 #     encoder, the WAV/container I/O, the analysis and QC layers and the
@@ -32,8 +32,8 @@
 #     share or the two disagree about whether a call can throw.
 # ---------------------------------------------------------------------------
 
-add_library(forge_minimal STATIC)
-add_library(ac3::forge_minimal ALIAS forge_minimal)
+add_library(iclforge_ac3_minimal STATIC)
+add_library(iclforge::ac3_minimal ALIAS iclforge_ac3_minimal)
 
 # Which "ac3/internal/profiling.hpp" the profile's sources see. Off, the
 # markers expand to nothing (tracy_disabled/); with AC3FORGE_STAGE_TIMERS they
@@ -51,7 +51,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled")
 endif()
 
-target_sources(forge_minimal
+target_sources(iclforge_ac3_minimal
     PRIVATE
         # --- bitstream and shared coding tools ---------------------------
         src/core/bitalloc.cpp        # §7.2 bit allocation, both generations
@@ -98,7 +98,7 @@ target_sources(forge_minimal
 # these shapes fit in internal SRAM at once (233,546 / 201,770 / 243,770 peak
 # against 277,400 free).
 if(AC3FORGE_MINIMAL_DECODER)
-target_sources(forge_minimal
+target_sources(iclforge_ac3_minimal
     PRIVATE
         # --- decode ------------------------------------------------------
         src/decoder/decoder.cpp             # AC-3, plus split_frames/split_access_units
@@ -140,7 +140,7 @@ target_sources(forge_minimal
         src/spatial/spatial.cpp
 )
 else()
-target_sources(forge_minimal
+target_sources(iclforge_ac3_minimal
     PRIVATE
         # --- encode ------------------------------------------------------
         src/encoder/encoder.cpp     # AC-3
@@ -179,7 +179,7 @@ else()
     set(_ac3_minimal_scalar_dir "float32")
 endif()
 
-target_include_directories(forge_minimal
+target_include_directories(iclforge_ac3_minimal
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
@@ -200,7 +200,7 @@ target_include_directories(forge_minimal
         # clock and the table, the library only calls in.
         "${_ac3_minimal_profiling_dir}"
         # The SIMD arch seam is resolved by src/arithmetic/CMakeLists.txt and comes
-        # with ac3::arithmetic, linked below: mdct.cpp/bitalloc.cpp/exponents.cpp
+        # with iclforge::arithmetic, linked below: mdct.cpp/bitalloc.cpp/exponents.cpp
         # include ac3/internal/arch/simd.hpp unconditionally, so this profile needs
         # a directory the same way the ordinary build does.
         #
@@ -212,7 +212,7 @@ target_include_directories(forge_minimal
         # here; a minimum-footprint build for aarch64 takes the NEON directory, whose
         # float32 decode path holds four lanes.
         # The runtime-AVX2 seam's three directories, resolved exactly as
-        # src/forge/CMakeLists.txt resolves them for the full library and for
+        # src/ac3/CMakeLists.txt resolves them for the full library and for
         # the same reason - the include SPELLING must not depend on which
         # directory answers it. This profile always takes probe/none: an
         # arm-none-eabi Cortex-M3 has no AVX2 to detect, so has_avx2() is a
@@ -223,7 +223,7 @@ target_include_directories(forge_minimal
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/none"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2")
 
-target_compile_features(forge_minimal PUBLIC cxx_std_23)
+target_compile_features(iclforge_ac3_minimal PUBLIC cxx_std_23)
 
 # The decode-critical translation units at -O2 under an otherwise
 # size-optimised build. Off by default: this profile's subject is size, and
@@ -260,9 +260,9 @@ if(AC3FORGE_MINIMAL_HOT_O2)
     message(STATUS "Minimum-footprint profile: decode-critical sources at -O2")
 endif()
 
-target_link_libraries(forge_minimal
+target_link_libraries(iclforge_ac3_minimal
     PUBLIC ac3::minimal_profile
-    PRIVATE "$<BUILD_INTERFACE:ac3::warnings>" "$<BUILD_INTERFACE:ac3::arithmetic>")
+    PRIVATE "$<BUILD_INTERFACE:ac3::warnings>" "$<BUILD_INTERFACE:iclforge::arithmetic>")
 
 # ac3/export.hpp is generated, and every annotated header includes it. This
 # profile is static-only, so the generated header is asked for the no-op
@@ -270,13 +270,13 @@ target_link_libraries(forge_minimal
 # dllexport/dllimport pair the ordinary build needs - there is no DLL here to
 # export from or import into.
 include(GenerateExportHeader)
-generate_export_header(forge_minimal
+generate_export_header(iclforge_ac3_minimal
     BASE_NAME AC3FORGE
     CUSTOM_CONTENT_FROM_VARIABLE _ac3_export_custom_content
     EXPORT_MACRO_NAME AC3FORGE_EXPORT
-    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3/export.hpp"
+    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac3/export.hpp"
     DEFINE_NO_DEPRECATED
     STATIC_DEFINE AC3FORGE_STATIC_DEFINE)
-target_compile_definitions(forge_minimal PUBLIC AC3FORGE_STATIC_DEFINE)
+target_compile_definitions(iclforge_ac3_minimal PUBLIC AC3FORGE_STATIC_DEFINE)
 
-set_target_properties(forge_minimal PROPERTIES OUTPUT_NAME "ac3forge_minimal")
+set_target_properties(iclforge_ac3_minimal PROPERTIES OUTPUT_NAME "iclforge_ac3_minimal")

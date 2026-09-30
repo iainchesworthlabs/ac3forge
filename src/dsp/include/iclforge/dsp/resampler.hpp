@@ -8,7 +8,7 @@
 
 // Offline, whole-buffer sample-rate conversion for a loaded file - NOT the
 // live capture drift-correction resampler (ac3::audio::DriftResampler,
-// src/audio/include/ac3/audio/resampler.hpp). That one runs once per
+// src/audio/include/iclforge/audio/resampler.hpp). That one runs once per
 // audio-thread callback, correcting tens-of-ppm clock drift between two
 // devices, so it deliberately spends nothing on kernel quality: linear
 // interpolation is accurate enough at those drift magnitudes and keeps the

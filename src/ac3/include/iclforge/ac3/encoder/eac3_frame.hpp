@@ -258,7 +258,7 @@ struct FrameConfig {
     // metadata is - unlike -drc_scale, which honours dynrng here as it does in
     // AC-3. What holds it up instead: the word format and the generator are
     // shared with the AC-3 path, which ffmpeg does verify, and the field's
-    // placement is checked bit by bit (tests/meta/test_drc.cpp, tools/references/eac3_parse.py).
+    // placement is checked bit by bit (tests/ac3/meta/test_drc.cpp, tools/references/eac3_parse.py).
     std::optional<meta::HeavyConfig> heavy = std::nullopt;
     // Ch2's own drc/heavy, meaningful only under kDualMono - no fallback to
     // drc/heavy when unset. See ac3::EncoderConfig::drc2 (the AC-3 sibling of
@@ -379,7 +379,7 @@ struct FrameConfig {
     // by default since the owner accepted its quality evidence (verified max
     // relative error ~3e-12 against the direct form on random data and real
     // audio, 331 dB direct-vs-fast end-to-end SNR, 0.000 dB delta against an
-    // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
+    // independent oracle at 192-448 kbps; see tests/ac3/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
     // validated against. All three forward transforms accelerate - the long
@@ -439,7 +439,7 @@ struct FrameConfig {
     quality::Criterion search = quality::Criterion::kNone;
 
     // §7.3.4 dithflag, decided per channel per block from content (see
-    // src/forge/src/encoder/dither.hpp) - on by default, matching every other
+    // src/ac3/src/encoder/dither.hpp) - on by default, matching every other
     // config field here, except a frame using spectral extension, which
     // always dithers off (see the note where step 8a decides it). false pins
     // dithflag at 0 unconditionally in every frame, the deterministic

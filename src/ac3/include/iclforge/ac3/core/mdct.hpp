@@ -14,7 +14,7 @@
 // statement of the transform and the oracle every fast-path test validates
 // against. `fast` selects the §7.9.4 fast N/4-FFT structure behind this same
 // interface: verified max relative error ~3e-12 against the direct form on
-// random data and real audio (tests/core/test_mdct_fast.cpp), and since the owner
+// random data and real audio (tests/ac3/core/test_mdct_fast.cpp), and since the owner
 // accepted that evidence it is what every encoder config defaults to
 // (EncoderConfig::fast_mdct / eac3::FrameConfig::fast_mdct default true and
 // are what an encoder actually reads to decide - a caller of THIS function
@@ -97,7 +97,7 @@ ICLFORGE_AC3_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
 // available too". Always takes the fast N/4-FFT fold, the only form worth
 // batching; produces bit-identical results to four separate
 // `imdct512_windowed(coeffsN, xN, /*fast=*/true)` calls with the same
-// inputs either way (tests/core/test_simd_kernels.cpp's `[avx2]` case
+// inputs either way (tests/ac3/core/test_simd_kernels.cpp's `[avx2]` case
 // checks exactly that against the AVX2 path specifically).
 ICLFORGE_AC3_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
                                               std::span<const double, 256> coeffs1,
@@ -116,7 +116,7 @@ ICLFORGE_AC3_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> c
 // (internally checks ac3::internal::cpu::has_avx2() and falls back to
 // four ordinary fast calls), always the fast fold, bit-identical to four
 // separate `mdct512_forward(wN, cN, /*fast=*/true)` calls with the same
-// inputs (tests/core/test_simd_kernels.cpp's `[avx2]` case checks that
+// inputs (tests/ac3/core/test_simd_kernels.cpp's `[avx2]` case checks that
 // against the AVX2 path specifically).
 ICLFORGE_AC3_EXPORT void mdct512_forward_batch4(std::span<const double, 512> w0,
                                             std::span<const double, 512> w1,
@@ -156,7 +156,7 @@ ICLFORGE_AC3_EXPORT void imdct512_windowed_batch4(
 // sine-kernel sum that reaches the shared DCT-IV core through the DST-IV
 // reversal identity). Each fold is verified against its own direct-form
 // table to the same 1e-10 bound as the long transform's -
-// tests/core/test_mdct_fast.cpp. `fast = false` remains the spec's own
+// tests/ac3/core/test_mdct_fast.cpp. `fast = false` remains the spec's own
 // direct-form evaluation on all three.
 ICLFORGE_AC3_EXPORT void mdct256_forward_first(std::span<const double, 256> windowed,
                                            std::span<double, 128> coeffs, bool fast = false);

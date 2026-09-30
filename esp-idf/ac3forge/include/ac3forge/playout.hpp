@@ -14,7 +14,7 @@
 // planning/hearth-sendspin-extension.md, Timing and row R9).
 //
 // Three parts, free of ESP-IDF like dac_queue_model.hpp beside them, so that
-// the arithmetic runs on the host (tests/io/test_playout.cpp):
+// the arithmetic runs on the host (tests/ac3/io/test_playout.cpp):
 //
 //   DmaRing and DmaClock, which say when a buffer written to an ESP32 I2S
 //   channel plays, from the channel's own end-of-frame interrupts;

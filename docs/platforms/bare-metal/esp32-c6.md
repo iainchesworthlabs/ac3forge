@@ -139,8 +139,8 @@ added a 64-bit division (`__divdi3`) for each AHT mantissa and about six (`__udi
 square root of a spectral extension band.
 
 Each change below leaves the fixed-point tier's PCM identical on every fixture: the pinned hashes
-(`tests/golden/fixed-probe-pcm-hashes.json`) do not move, and `tests/core/test_fixed32.cpp`,
-`tests/core/test_mdct_fixed.cpp` and `tests/decoder/test_block_norm.cpp` hold each new form to
+(`tests/golden/fixed-probe-pcm-hashes.json`) do not move, and `tests/ac3/core/test_fixed32.cpp`,
+`tests/ac3/core/test_mdct_fixed.cpp` and `tests/ac3/decoder/test_block_norm.cpp` hold each new form to
 the arithmetic it replaces. Microseconds per frame, no network, two runs of each build, which
 agreed within 3 microseconds; each row includes the ones above it:
 

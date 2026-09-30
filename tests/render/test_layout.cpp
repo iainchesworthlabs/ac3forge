@@ -3,7 +3,7 @@
 //
 // Both headers came from the ESP-IDF component's player and moved into the
 // library with these tests; the boards, the desktop player and the test sink
-// all render through them. The panner's geometry is tests/spatial/'s business;
+// all render through them. The panner's geometry is tests/render/'s business;
 // what is checked here is the indexing between coded channels, objects and
 // slots, where a swapped subscript puts the centre channel in the subwoofer
 // and nothing complains.

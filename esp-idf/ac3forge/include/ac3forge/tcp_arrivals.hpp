@@ -18,7 +18,7 @@
 // watched port from that hook, and the reader, counting the bytes it has
 // read, asks when the last byte of a message came.
 //
-// ArrivalLog is free of ESP-IDF, so tests/io/test_tcp_arrivals.cpp builds it
+// ArrivalLog is free of ESP-IDF, so tests/ac3/io/test_tcp_arrivals.cpp builds it
 // on the host. The functions after it are the board's.
 //
 // Offsets count a stream's bytes from its first, as its reader counts them.

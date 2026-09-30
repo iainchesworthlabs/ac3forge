@@ -212,7 +212,7 @@ TEST_CASE("compute_bit_allocation refuses a region outside its own contract", "[
 }
 
 // The float form (the float encode path's), on the same shapes as the double
-// cases above. Its log2 is the project's own (src/forge/src/core/
+// cases above. Its log2 is the project's own (src/ac3/src/core/
 // scalar_math.hpp), exact at powers of two, so the +6 dB boost lands on the
 // same psd unit and the same Table 5.17 code.
 TEST_CASE("choose_delta_segments' float form finds the same divergence", "[bitalloc]") {

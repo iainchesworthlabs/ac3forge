@@ -16,7 +16,7 @@
 import { decodeFile, DownmixTarget, Ac3ForgeDecoderNode, scanStream } from './package/index.js';
 
 // Ear-level ring: ac3::spatial's kSpeakerAzimuthDeg
-// (src/forge/include/ac3/spatial/spatial.hpp), ITU-R BS.775, degrees CCW from
+// (src/render/include/iclforge/render/spatial.hpp), ITU-R BS.775, degrees CCW from
 // front, left positive. Ceiling ring: the same azimuth convention extended to
 // Table E2.5's height locations, matching apps/gui/qml/SoundfieldView.qml's own
 // extension (its location_azimuth_deg()) - a second, smaller, dashed ring for

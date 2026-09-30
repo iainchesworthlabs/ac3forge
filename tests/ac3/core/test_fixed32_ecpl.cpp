@@ -1,4 +1,4 @@
-// The fixed-point tier's enhanced-coupling functions (src/forge/src/core/
+// The fixed-point tier's enhanced-coupling functions (src/ac3/src/core/
 // eac3_tools_fixed.hpp): ecpl_amplitudes_fixed, ecpl_angles_fixed,
 // ecpl_channel_coefficients_fixed and ecpl_channel_spectrum_fixed.
 //

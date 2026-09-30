@@ -169,7 +169,7 @@ endif()
 # loses provenance across a chain of optimizer-introduced moves and flags a
 # path that never actually executes uninitialized. Eac3Decoder::
 # decode_substream's transient pre-noise hold-back path
-# (src/forge/src/decoder/eac3_decoder.cpp,
+# (src/ac3/src/decoder/eac3_decoder.cpp,
 # `DecodedSubstream ready = std::move(*pending_slot);`) move-constructs a
 # DecodedSubstream - which nests a std::optional<oba::DecodedProgram>
 # holding a std::vector<oba::DynamicObject> - from an already-engaged

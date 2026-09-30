@@ -412,12 +412,12 @@ runs:
           echo "${hits} hits, ${misses} misses of ${total} cacheable compiles (${rate}% hit rate)."
         } >> "$GITHUB_STEP_SUMMARY"
 
-    # AC3FORGE_REQUIRE_AVX2 turns tests/core/test_simd_kernels.cpp's [avx2]
+    # AC3FORGE_REQUIRE_AVX2 turns tests/ac3/core/test_simd_kernels.cpp's [avx2]
     # probe case from a loud skip into a hard failure - only safe to set on
     # a leg pinned to `runner: '["ubuntu-latest"]'` in _build.yml's matrix
     # rather than the dynamic self-hosted/GitHub-hosted `matrix.runner` most
     # legs use, since self-hosted CPU features aren't documented anywhere in
-    # this repo (see src/forge/src/internal/cpu/cpu_features.hpp) but
+    # this repo (see src/base/include/iclforge/base/detail/cpu_features.hpp) but
     # GitHub's own hosted Linux runners are AVX2-capable. This guarantees at
     # least one leg per PR where "the AVX2 path actually ran and passed" is
     # asserted, not just possible.

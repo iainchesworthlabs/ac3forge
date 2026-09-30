@@ -1,9 +1,9 @@
-# vcpkg port for ac3forge - installs the library only (ac3::forge, plus matroska::matroska,
-# mp4::mp4, mpegts::mpegts, ac3::forge_c, the AC-4 libraries, ac3iab::ac3iab and iamf::iamf as
+# vcpkg port for ac3forge - installs the library only (iclforge::ac3, plus iclforge::matroska,
+# iclforge::mp4, iclforge::mpegts, iclforge::c, the AC-4 libraries, iclforge::iab and iclforge::iamf as
 # opt-in features, off unless asked for, since each adds public targets), never the CLI, GUI,
 # Hearth, tests, examples or fuzz harnesses - upstream's own AC3FORGE_BUILD_CLI/GUI/HEARTH/TESTS/
-# EXAMPLES/FUZZERS options make that a plain OFF each, no patching needed. ac3adm::ac3adm (the
-# ADM/BW64 reader) and ac3::admbridge have no feature here: ac3adm needs Boost and, even though
+# EXAMPLES/FUZZERS options make that a plain OFF each, no patching needed. iclforge::adm (the
+# ADM/BW64 reader) and iclforge::admbridge have no feature here: ac3adm needs Boost and, even though
 # both are now installed/exported by upstream (shared-only - see cmake/InstallLibrary.cmake's
 # AC3FORGE_BUILD_ADM block upstream), this port keeps AC3FORGE_BUILD_ADM=OFF below rather than
 # adding an "adm" feature - out of scope for this port until there's a real need for it.
@@ -42,7 +42,7 @@ vcpkg_check_features(
 # explicitly so a future default change upstream can't silently pull an undeclared dependency
 # into this port. AC3FORGE_WITH_ALSA/AC3FORGE_WITH_PIPEWIRE default to AUTO upstream and would
 # otherwise probe the build machine's ambient ALSA/PipeWire installs even though this
-# library-only build never builds, links or installs ac3::audio at all.
+# library-only build never builds, links or installs iclforge::audio at all.
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS

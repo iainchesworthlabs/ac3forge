@@ -8,7 +8,7 @@
 // Header only, free of ESP-IDF and of this project's own audio types, for the
 // same reason ac3forge/interleave.hpp and ac3forge/sink_plan.hpp are: the
 // arithmetic is exactly the kind a host test can hold to a byte, and the
-// peripheral around it is not. tests/io/test_improv.cpp builds it on the host.
+// peripheral around it is not. tests/ac3/io/test_improv.cpp builds it on the host.
 //
 // A packet is
 //

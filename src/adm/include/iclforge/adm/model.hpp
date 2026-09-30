@@ -28,13 +28,13 @@
 //
 // NOTE on the "ac3adm" name: this module is implemented internally on top
 // of the vendored third-party libraries libbw64 and libadm (see
-// src/ac3adm/CMakeLists.txt) - and libadm's own public C++ namespace is
+// src/adm/CMakeLists.txt) - and libadm's own public C++ namespace is
 // `adm`. This project's namespace here is deliberately "ac3adm", not "adm",
 // specifically to avoid colliding with that dependency: `adm::AudioObject`
 // (libadm's parsed-XML class) and this header's own AudioObject would
 // otherwise be the same fully-qualified name for two different types.
 // ac3adm's own types are independent of and not derived from libadm's -
-// src/ac3adm/src/adm_model.cpp is the only place both namespaces meet, and
+// src/adm/src/adm_model.cpp is the only place both namespaces meet, and
 // it stays entirely inside this module's implementation, never in a public
 // header.
 

@@ -42,18 +42,18 @@
 
 | Layer | State | Evidence |
 |---|---|---|
-| Data model | Complete | `ac3::meta::MixMetadata`/`MixingParameters`/`ExternalScales`/`SpeechEnhancement`/`PanInfo` (`src/forge/include/ac3/meta/mixing.hpp:254-320`) model every field Table E1.2 defines. |
+| Data model | Complete | `ac3::meta::MixMetadata`/`MixingParameters`/`ExternalScales`/`SpeechEnhancement`/`PanInfo` (`src/ac3/include/iclforge/ac3/meta/mixing.hpp:254-320`) model every field Table E1.2 defines. |
 | Encoder | Complete; one bug found and fixed during Phase 2 | `eac3_frame.cpp:1267-1600` writes every field/variant, including the `strmtyp` gate (`!dependent`, i.e. `kIndependent` **or** `kConvertible` — deliberately, not `kDependent` alone; see below). Writing the Phase 2 `blkmixcfginfo`×`numblkscod==0x0` test (below) surfaced one: the encoder always wrote `blkmixcfginfo`'s six-block wire form regardless of `numblkscod`, while the decoder (and the independent Python reference parser, `tools/references/eac3_parse.py`) already correctly implemented §E2.3.1.60's one-block special case — so the two went out of sync whenever a caller combined `numblkscod=0` with `blkmixcfginfo`, and the encoder's own stream failed its own decoder. Fixed in the same phase; see the Phase 2 write-up. |
 | Decoder | Complete, correct | `eac3_decoder.cpp:128-286` (`read_mixing_parameters`/`read_mixing_metadata`) reads the full group symmetrically, including `mixdef==3`'s length-prefixed skip-forward for sub-fields this build doesn't otherwise need. |
 | CLI authoring (primary programme) | Complete, under-documented | `apps/cli/support.cpp:1136-1267` implements `pgmscl=`/`pgmscl2=`/`extpgmscl=`/`mixdef=`/`premixcmp=`/`mixdata=`/`extmix=`/`auxmix=`/`speechmix=`/`paninfo=`/`paninfo2=`/`blkmixcfg=` in full, documented in `docs/forge/cli/metadata-options.md:68-85,210-235` — but absent from `ac3cli --help` (`apps/cli/usage.cpp`). |
-| Round-trip tests | Real, but incomplete | `tests/meta/test_bsi.cpp`'s "DC4" section (lines 435-767) round-trips most of the struct through real encode→decode. Specific gaps below. |
+| Round-trip tests | Real, but incomplete | `tests/ac3/meta/test_bsi.cpp`'s "DC4" section (lines 435-767) round-trips most of the struct through real encode→decode. Specific gaps below. |
 | Docs (C++ API) | Accurate | `docs/library/metadata.md:116-160` describes the full struct correctly, with a working example. |
 
 **A correctness question worth recording as answered, not open**: the encoder writes the
 programme-scaling/mixdef/pan/blkmixcfginfo group whenever `strmtyp != kDependent`, which includes
 both `kIndependent` (0) and `kConvertible` (2, "independent, and previously coded as AC-3").
 Several comments in the codebase shorthand this as "Table E1.2's `strmtyp == 0x0` gate," which
-reads like it excludes `kConvertible`. It does not — `src/forge/src/emdf/frame_layout.cpp:158-163`
+reads like it excludes `kConvertible`. It does not — `src/ac3/src/emdf/frame_layout.cpp:158-163`
 spells out why a third, independent bit-walker treats the two identically, and encoder/decoder
 agree with it. No bug; the loose phrasing in other comments is the only imprecision.
 
@@ -73,10 +73,10 @@ strikethrough says.*
 | Hearth JSON stops earlier | `apps/hearth/engine/media_info.cpp:355-394` (`write_mix`) | Reports `dmixmod`, the four fold levels, `lfemixlevcod`, `pgmscl`/`pgmscl2`/`extpgmscl`. `mixdef`, `pan`/`pan2`, `blkmixcfginfo` are absent entirely. |
 | `ac3cli probe` structurally cannot report most of it | `ac3/io/probe.hpp:153-229`, `ac3/io/elementary.hpp:163-198` | `ProbeReport`/`FrameHeader` carry exactly one mixing field, `dmixmod`. This is a missing-struct-member gap, not a missing-print-statement gap. |
 | GUI exposes 3 of ~30 fields | `apps/gui/encoder_controller.hpp:380-384`, `qml/Main.qml:4112-4167` | `mixmeta` toggle, `dmixIndex`, `lfeMix`. Zero references anywhere in `apps/gui/` to `mixdepth`/`pgmscl`/`mixdef`/`paninfo`/`blkmixcfg`. |
-| C API: no surface at all | `src/capi/include/ac3forge_c/ac3forge.h:427-437` | Self-documented: *"Not mirrored here: the `mixmdate`/`infomdat` metadata groups... see docs/library/c-api.md's 'What is deliberately out of scope'."* Confirmed in `docs/library/c-api.md:312-324`. |
+| C API: no surface at all | `src/capi/include/iclforge_c/iclforge.h:427-437` | Self-documented: *"Not mirrored here: the `mixmdate`/`infomdat` metadata groups... see docs/library/c-api.md's 'What is deliberately out of scope'."* Confirmed in `docs/library/c-api.md:312-324`. |
 | Python bindings: no surface at all | `python/src/ac3forge_ext/bindings.cpp:1487-1490` | Self-documented as *"a real gap, not a stable design decision."* |
-| Test coverage holes | `tests/meta/test_bsi.cpp` | `mixdef==kNone` has no dedicated round-trip assertion; the `addche` auxiliary pair is tested only as one-set-one-absent, never both-set or fully cleared; `SpeechEnhancement`'s two shallower legal nesting states are untested (only the fully-nested case is); `blkmixcfginfo` is never tested under `numblkscod==0x0` (§E2.3.1.60's one-block-inferred case — no test sets `numblkscod` at all); `valid_mix_metadata()` is exercised for exactly one branch (`dmixmod` reserved). `tests/meta/test_mixing.cpp` tests none of this despite its name — it covers only §7.8 downmix math. `tests/encoder/test_eac3.cpp`/`test_plan.cpp` have zero references to any of this. |
-| Nothing *uses* the decoded values | `src/forge/src/decoder/output.cpp:566-583` (`mix_levels`) | Reads only the 4 fold levels + `dmixmod` + `lfemixlevcod`. `pgmscl`/`pgmscl2`/`extpgmscl`, all of `mixdef`, `pan`/`pan2`, `blkmixcfginfo` have zero effect on decoded audio anywhere in the codebase (confirmed also in `stream_tools.cpp`'s transcode path and `metadata_edit.cpp`, both of which explicitly skip these fields by design). |
+| Test coverage holes | `tests/ac3/meta/test_bsi.cpp` | `mixdef==kNone` has no dedicated round-trip assertion; the `addche` auxiliary pair is tested only as one-set-one-absent, never both-set or fully cleared; `SpeechEnhancement`'s two shallower legal nesting states are untested (only the fully-nested case is); `blkmixcfginfo` is never tested under `numblkscod==0x0` (§E2.3.1.60's one-block-inferred case — no test sets `numblkscod` at all); `valid_mix_metadata()` is exercised for exactly one branch (`dmixmod` reserved). `tests/ac3/meta/test_mixing.cpp` tests none of this despite its name — it covers only §7.8 downmix math. `tests/ac3/encoder/test_eac3.cpp`/`test_plan.cpp` have zero references to any of this. |
+| Nothing *uses* the decoded values | `src/ac3/src/decoder/output.cpp:566-583` (`mix_levels`) | Reads only the 4 fold levels + `dmixmod` + `lfemixlevcod`. `pgmscl`/`pgmscl2`/`extpgmscl`, all of `mixdef`, `pan`/`pan2`, `blkmixcfginfo` have zero effect on decoded audio anywhere in the codebase (confirmed also in `stream_tools.cpp`'s transcode path and `metadata_edit.cpp`, both of which explicitly skip these fields by design). |
 ~~`programme2=` can't set its own mixing metadata~~ | ~~`apps/cli/commands/encode.cpp:197-200`~~ | **Resolved outside this plan, 2026-09-22.** Was self-documented: *"a second programme's DRC profile, mix metadata and downmix levels are its own, and this first cut does not offer a way to say what they are."* "EAC3 multi-program authoring implementation" generalized this to `programmeN=`/`programmeN-<field>=` for N=2..8 with full per-programme metadata parity (incl. `dialnorm=auto` measurement), verified live via an 8-programme CLI round-trip. Kept here as a resolved record, not a current gap. |
 
 ## Phases
@@ -113,10 +113,10 @@ report both show every value that was set, not just presence.
 ### Phase 2 — Test coverage completion
 
 **Status: built** (#797), and extended by a459d5c5f on 2026-09-24, which added the `numblkscod` 1 and 2 cases the
-first fix missed. The five gaps are in `tests/meta/test_bsi.cpp`; #797 did not touch `tests/encoder/test_eac3.cpp`,
-`test_plan.cpp` or `tests/decoder/test_eac3_decoder.cpp`, the baseline cases the phase also asked for.
+first fix missed. The five gaps are in `tests/ac3/meta/test_bsi.cpp`; #797 did not touch `tests/ac3/encoder/test_eac3.cpp`,
+`test_plan.cpp` or `tests/ac3/decoder/test_eac3_decoder.cpp`, the baseline cases the phase also asked for.
 
-Close the five named holes in `tests/meta/test_bsi.cpp`'s DC4 section:
+Close the five named holes in `tests/ac3/meta/test_bsi.cpp`'s DC4 section:
 
 1. An explicit `mixdef==kNone` round-trip (confirms `mixdefe`... no, confirms no mixdef bits ride
    the wire beyond the 2-bit selector, and that the struct's default state round-trips cleanly).
@@ -129,8 +129,8 @@ Close the five named holes in `tests/meta/test_bsi.cpp`'s DC4 section:
 5. Direct `valid_mix_metadata()` coverage for `mixdef`/`pan`/`blkmixcfginfo` range violations, not
    only `dmixmod`.
 
-Add baseline unit coverage to `tests/encoder/test_eac3.cpp`/`test_plan.cpp` and
-`tests/decoder/test_eac3_decoder.cpp`, which currently have none. Leave `test_mixing.cpp`'s name
+Add baseline unit coverage to `tests/ac3/encoder/test_eac3.cpp`/`test_plan.cpp` and
+`tests/ac3/decoder/test_eac3_decoder.cpp`, which currently have none. Leave `test_mixing.cpp`'s name
 as-is but note the mismatch isn't this plan's to fix (it tests real, correctly-scoped §7.8 downmix
 math — Phase 5 adds its own new pure-function tests there, see below).
 
@@ -154,8 +154,8 @@ records an earlier, different bug in that same reference parser, found the same 
 per-block emission wrote six `blkmixcfginfo` flags at every `numblkscod`, and the syntax has one per block of
 the syncframe (`blocks_per_syncframe(numblkscod)`: one, two, three or six), so `numblkscod` 1 and 2 were
 misaligned from that field on as well: the decoder refused the frame, `io::scan` misread `bsmod`, and the EMDF
-walk lost the `addbsi` marker. The loop now runs once per block, and `tests/meta/test_bsi.cpp` and
-`tests/emdf/test_emdf.cpp` hold the two cases. The reading above, that the decoder implemented
+walk lost the `addbsi` marker. The loop now runs once per block, and `tests/ac3/meta/test_bsi.cpp` and
+`tests/ac3/emdf/test_emdf.cpp` hold the two cases. The reading above, that the decoder implemented
 a "one-block special case" the encoder lacked, described `numblkscod` 0 only.
 ### Phase 3 — C API and Python bindings
 
@@ -226,7 +226,7 @@ Key formulas (all cite existing spec sections already used elsewhere in this cod
 - **Premix compression** (mixdef 0x1, or 0x3's `mixdata2e` triple): selects `dynrng` or `compr`
   from whichever substream `drcsrc` names, raises that word's gain to the `premixcmpscl/6` power
   (Table E2.7's "0%..100% in sixths" — the existing partial-compression pattern in
-  `src/forge/src/decoder/gain.hpp:61-90`), applied as a ramp across each 256-sample block using the
+  `src/ac3/src/decoder/gain.hpp:61-90`), applied as a ramp across each 256-sample block using the
   same click-avoidance technique `output.cpp:462-508`'s RF-mode protection gain already uses.
 - **Pan**: reuses `eac3_seat_fold.hpp`'s seat grouping (five horizontal positions any layout
   reduces to) but excludes height locations outright rather than folding them; a standard

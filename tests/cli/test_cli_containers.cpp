@@ -86,7 +86,7 @@ void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
 }
 
 // A/52 §E2.3.1.2's legacy-core delivery, built the same way
-// tests/io/test_elementary.cpp's own legacy_core_stream() is: an AC-3
+// tests/ac3/io/test_elementary.cpp's own legacy_core_stream() is: an AC-3
 // syncframe carrying the 5.1 bed, with the DEPENDENT substream of an ordinary
 // E-AC-3 access unit riding immediately behind it. reject_legacy_core (see
 // containers.cpp) is the only place any of the three simple writers ever
@@ -123,7 +123,7 @@ std::vector<std::byte> legacy_core_stream() {
     return stream;
 }
 
-// A header-level fixture, same recipe as tests/io/test_elementary.cpp's "a
+// A header-level fixture, same recipe as tests/ac3/io/test_elementary.cpp's "a
 // stream whose access units differ in length has no uniform figure": two
 // six-block E-AC-3 access units with a three-block one spliced between them.
 // track_samples_per_frame (containers.cpp) refuses every stream like this -

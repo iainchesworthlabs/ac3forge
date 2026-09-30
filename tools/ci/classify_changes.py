@@ -63,7 +63,7 @@ LANE_PREFIXES: dict[str, tuple[str, ...]] = {
     "wasm": ("apps/wasm/", "js/"),
     # tools/packaging/ holds only pack_esp_component.py (the ESP-IDF
     # component/ESPHome workflow's own packaging step) - see docs/ci-lanes.md.
-    # src/forge/, src/arithmetic/ and cmake/ are the trees that script stages
+    # src/ac3/, src/arithmetic/ and cmake/ are the trees that script stages
     # into the component (its STAGED_TREES, and the root CMakeLists.txt in
     # ESP_ROOT_FILES below): the run after a merge leaves a core change to the
     # nightly run for every other satellite, and these are the exception,
@@ -73,7 +73,7 @@ LANE_PREFIXES: dict[str, tuple[str, ...]] = {
     # with the nightly run.
     "esp": (
         "esp-idf/", "esphome/", "apps/baremetal/", "tools/packaging/",
-        "src/forge/", "src/arithmetic/", "cmake/",
+        "src/ac3/", "src/arithmetic/", "cmake/",
     ),
     "rust": ("rust/",),
     # examples/python/ alongside python/ itself - the rest of examples/ is

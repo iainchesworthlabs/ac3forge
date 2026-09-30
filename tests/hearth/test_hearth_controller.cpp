@@ -261,7 +261,7 @@ TEST_CASE("media_bitstream_to_map: Lo/Ro mix levels and the preferred downmix la
 
 TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join the Lo/Ro pair",
           "[hearth][hearth-controller]") {
-    // ac3::MixLevels carries ltrt_clev/ltrt_slev (src/forge/include/ac3/decoder/output.hpp)
+    // ac3::MixLevels carries ltrt_clev/ltrt_slev (src/ac3/include/iclforge/ac3/decoder/output.hpp)
     // alongside loro_clev/loro_slev; media_bitstream_to_map() reads both pairs
     // into mixLevels, the Lo/Ro one unlabelled (centreDb/surroundDb, kept as
     // DecoderEac3.qml's own "This stream" card already reads it) and the

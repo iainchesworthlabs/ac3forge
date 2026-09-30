@@ -1,6 +1,6 @@
 // Where a frame's microseconds go, stage by stage - the application half of
 // the AC3FORGE_STAGE_TIMERS zone backend. See stage_timers.hpp for the
-// contract and src/forge/src/internal/profiling/stage_timers/ for the other
+// contract and src/base/variants/profiling-stage_timers/ for the other
 // half.
 //
 // The design is set by what the target can afford: a fixed table, no

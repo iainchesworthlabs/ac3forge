@@ -11,7 +11,7 @@
 
 #include "iclforge/iab/ac3iab.hpp"
 
-// These tests build IAB bitstream fixtures bit-by-bit, independently of src/ac3iab's own
+// These tests build IAB bitstream fixtures bit-by-bit, independently of src/iab's own
 // implementation (a fresh, from-scratch MSB-first BitWriter below, not src/bitreader.hpp's
 // reader run backwards) - the same "independent fixture" reasoning test_adm.cpp documents for
 // its own BW64 fixtures. Field values are chosen at the DistanceXY/DistanceZ/gain formulas'

@@ -83,7 +83,7 @@ the DACs do not.
   `GET /hardware` says so on such a board ([the device page's plan](esp32-device-ui.md#what-hardware-adds)).
 - **The ES9080 pair:** no PCB exists, no ES9080 is wired to any board, and no firmware programs
   one over I2C. What `SinkFrame::fixed` gives such a DAC, a fixed frame with the unused slots
-  zeroed, is tested on the host (`tests/io/test_sink_plan.cpp`) and not against a DAC.
+  zeroed, is tested on the host (`tests/ac3/io/test_sink_plan.cpp`) and not against a DAC.
 
 ### Why the wiring differs
 

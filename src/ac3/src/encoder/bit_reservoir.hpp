@@ -22,7 +22,7 @@
 // AbrController's job below, and it is deliberately NOT "search for the
 // offset that fills it" - see that class for why.
 //
-// Internal to src/forge/src/encoder/ for the same reason snr_search.hpp is:
+// Internal to src/ac3/src/encoder/ for the same reason snr_search.hpp is:
 // plumbing between the encoder's own translation units, not library surface.
 
 namespace ac3::internal {

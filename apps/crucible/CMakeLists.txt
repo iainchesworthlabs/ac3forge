@@ -14,7 +14,7 @@
 # the modules under engine/platform/<os>/ talk to that platform's session
 # enumeration, default device and silent device, and exactly one directory of
 # them is ever compiled. The rest of engine/ (taps, output stage, signing
-# hook, the frame loop) is written against ac3::audio and ac3::signing and
+# hook, the frame loop) is written against iclforge::audio and iclforge::signing and
 # would compile anywhere, but only makes sense here, so it rides the same
 # option.
 
@@ -36,7 +36,7 @@ target_compile_features(ac3crucible_engine PUBLIC cxx_std_23)
 # (config-windows-llvm-coverage); then this library, the window and its
 # tests are the instrumented set tools/checks/coverage_crucible.ps1 reports.
 target_link_libraries(ac3crucible_engine
-    PUBLIC ac3::forge ac3::audio ac3::signing ac3::tracy
+    PUBLIC iclforge::ac3 iclforge::audio iclforge::signing ac3::tracy
     PRIVATE ac3::warnings ac3::coverage)
 
 # The platform half, selected the way apps/cli/CMakeLists.txt selects its
@@ -45,7 +45,7 @@ target_link_libraries(ac3crucible_engine
 # Linux over PipeWire, macOS over the CoreAudio HAL and AppKit. The
 # application talks to each of those directly here for the same reason it
 # talks to COM directly on Windows: session enumeration, the default device
-# and the silent device are demo policy rather than audio I/O, and ac3::audio
+# and the silent device are demo policy rather than audio I/O, and iclforge::audio
 # deliberately does not carry them.
 #
 # The macOS arm compiles and has never run: both macOS CI legs built every
@@ -71,7 +71,7 @@ elseif(UNIX AND NOT APPLE)
     # Crucible needs a per-application tap, and on Linux only the PipeWire
     # backend has one - ALSA has no per-application concept at all, which is
     # why its process_loopback capability is a flat no rather than a gap.
-    # ac3audio compiles exactly one backend, and ALSA wins when both sets of
+    # iclforge_audio compiles exactly one backend, and ALSA wins when both sets of
     # headers are present (docs/building.md, "Why ALSA still comes first"), so
     # a machine with libasound2-dev installed - a Raspberry Pi, most desktops -
     # would otherwise configure a Crucible that can list applications and never
@@ -80,7 +80,7 @@ elseif(UNIX AND NOT APPLE)
     if(NOT AC3FORGE_AUDIO_BACKEND STREQUAL "pipewire")
         message(FATAL_ERROR
             "AC3FORGE_BUILD_CRUCIBLE=ON needs the PipeWire audio backend on Linux, but "
-            "ac3audio selected '${AC3FORGE_AUDIO_BACKEND}'. Crucible taps each application "
+            "iclforge_audio selected '${AC3FORGE_AUDIO_BACKEND}'. Crucible taps each application "
             "separately and only PipeWire can do that. Reconfigure with "
             "-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON, or turn the application "
             "off with -DAC3FORGE_BUILD_CRUCIBLE=OFF. Note that this trades away the "
@@ -144,7 +144,7 @@ elseif(APPLE)
     #
     # AudioDevices is deliberately NOT in this list. That seam is the one
     # platform service that is not per-platform: engine/library_devices.cpp
-    # forwards it to ac3::audio, whose macOS backend
+    # forwards it to iclforge::audio, whose macOS backend
     # (src/audio/src/backend/macos/) already answers for render devices, sinks
     # and the tap - so a macos/audio_devices.cpp would be a second definition
     # of platform_audio_devices() and a duplicate symbol at link, not a gap.
@@ -250,7 +250,7 @@ endif()
 # the Linux arm for a while after the second was added - which is how a
 # Windows build came to lose ac3/internal/profiling.hpp.
 target_include_directories(ac3crucible_engine PUBLIC
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
 
 # The console runner: Phase 2's exit criterion, and the thing the UI replaces.
 add_executable(ac3crucible-run runner/main.cpp)

@@ -631,7 +631,7 @@ TEST_CASE("fgaincod= pins section 7.2.2.4's fast gain on both codecs", "[cli][fg
 // capture device, the same way the offset= tests above do.
 TEST_CASE("the bit stream information tokens reach the wire and round trip",
           "[cli][bsi]") {
-    // The library-level round trips live in tests/meta/test_bsi.cpp; what is
+    // The library-level round trips live in tests/ac3/meta/test_bsi.cpp; what is
     // only reachable here is the GRAMMAR - whether a spelling a person would
     // actually type parses at all. That is a distinct failure: `extpgmscl=+3`
     // parsed everywhere except the command line, because std::from_chars does
@@ -781,7 +781,7 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
     // The encoder will not write '11', so a stream carrying it is made from
     // the '01' and '10' encodes of the same audio: ORed byte by byte, '01' |
     // '10' is '11' and every other bit meets an identical copy of itself, and
-    // each syncframe's CRCs are re-stamped afterwards. tests/meta/test_bsi.cpp
+    // each syncframe's CRCs are re-stamped afterwards. tests/ac3/meta/test_bsi.cpp
     // checks that this changes nothing but dmixmod.
     const auto make_reserved = [&](const fs::path& ltrt, const fs::path& loro,
                                    const fs::path& out) {
@@ -3027,7 +3027,7 @@ TEST_CASE(
 // stream_tools.cpp, tested separately below) now build the whole held-back
 // unit first via ac3::apps::held_back_unit - apps/common/stream_playback.hpp
 // - the same assembly decode_access_unit itself uses, and append it exactly
-// once per slot like any other unit. tests/decoder/test_stream_playback.cpp
+// once per slot like any other unit. tests/ac3/decoder/test_stream_playback.cpp
 // proves held_back_unit's own placement is correct; this proves decode.cpp
 // actually calls it and routes its output to the right WAV channels.
 TEST_CASE("decode plays a legacy core's held-back last unit without swapping the "
@@ -3051,7 +3051,7 @@ TEST_CASE("decode plays a legacy core's held-back last unit without swapping the
 
     // Silence until kOnsetSample of unit kOnsetUnit, then each channel's own
     // steady tone - a cosine, so the onset is a step clear of §8.2.2's
-    // silence gate, same construction as tests/decoder/test_stream_playback.cpp's
+    // silence gate, same construction as tests/ac3/decoder/test_stream_playback.cpp's
     // own unit_pcm.
     const auto unit_pcm = [&](std::span<const double> tones, int unit) {
         const auto onset = static_cast<std::size_t>(kOnsetUnit) * kFrame + kOnsetSample;
@@ -3142,7 +3142,7 @@ TEST_CASE("decode plays a legacy core's held-back last unit without swapping the
 
     // The power of one frequency in the LAST unit's window, whatever its
     // phase - same DFT-single-bin technique as
-    // tests/decoder/test_stream_playback.cpp's own tone_power.
+    // tests/ac3/decoder/test_stream_playback.cpp's own tone_power.
     const auto tone_power = [&](std::span<const float> x, double hz) {
         double re = 0.0;
         double im = 0.0;
@@ -3466,7 +3466,7 @@ TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][
         REQUIRE(run_cli("sine \"" + clean.string() + "\" 2 192 440 70 stereo", log) == 0);
         // One payload byte flipped in the middle of the fourth frame, sync
         // word and frame size left alone - the damage
-        // tests/decoder/test_concealment.cpp uses. 192 kbps at 48 kHz is a
+        // tests/ac3/decoder/test_concealment.cpp uses. 192 kbps at 48 kHz is a
         // 768-byte syncframe.
         constexpr std::size_t kFrameBytes = 768;
         auto bytes = read_log(clean);

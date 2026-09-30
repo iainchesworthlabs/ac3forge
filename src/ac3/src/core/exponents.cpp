@@ -44,7 +44,7 @@ std::int32_t clamp_fixed25(double scaled) {
 // arch::round_ties_away is contractually std::round - IEEE-754
 // roundToIntegralTiesAway - on every member of the seam, so each lane's
 // result is the same double the scalar path above computes, and the clamp is
-// then literally the same function. tests/core/test_simd_kernels.cpp checks
+// then literally the same function. tests/ac3/core/test_simd_kernels.cpp checks
 // the whole batch form against to_fixed25 element by element over real
 // coefficients and an adversarial value set, on every leg.
 //

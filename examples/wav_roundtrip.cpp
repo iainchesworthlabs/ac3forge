@@ -46,7 +46,7 @@ bool fail(const char* what, std::string_view detail) {
 // of this repo runs the examples under its own `ctest` (examples/CMakeLists.txt
 // registers each one as a test case), several checkouts commonly run at once on
 // one machine, and they all share a temp directory - on a fixed name, two runs
-// read and then delete each other's file. src/ac3adm/src/adm.cpp's
+// read and then delete each other's file. src/adm/src/adm.cpp's
 // make_temp_path builds its temp path from the same ingredients, for the same
 // reason: unique across concurrent processes without a platform-specific call.
 std::string scratch_path(std::string_view name) {

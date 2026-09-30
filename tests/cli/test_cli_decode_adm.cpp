@@ -31,7 +31,7 @@
 // What this proves: a JOC-reconstructed object comes out of decode_access_unit
 // oba::joc::reconstruction_delay(domain) samples (576 under Domain::kQmf, the DecoderConfig default)
 // behind the bed it was pulled from (docs/library/decoding.md, "Atmos objects lag the bed";
-// tests/decoder/test_latency.cpp measures it end to end). accumulate_adm appends each decoded unit's
+// tests/ac3/decoder/test_latency.cpp measures it end to end). accumulate_adm appends each decoded unit's
 // object_audio and the bed's LFE channel side by side, unit by unit, into the ADM master - carrying
 // that same 576-sample gap straight into the exported file unless something delays the LFE to match.
 //
@@ -97,7 +97,7 @@ bool contains(const std::string& text, std::string_view needle) {
 }
 
 constexpr int kFrames = 8;
-// Frame 3, as tests/decoder/test_latency.cpp and tests/render/test_object_lfe_timing.cpp (the header-
+// Frame 3, as tests/ac3/decoder/test_latency.cpp and tests/render/test_object_lfe_timing.cpp (the header-
 // only renderer's own regression test for this same class of bug) both place their own marker: past
 // every encoder's/decoder's own priming, early enough that reconstruction_delay(kQmf)'s 576 samples
 // still leave it well inside an 8-frame stream.
@@ -110,7 +110,7 @@ constexpr int kPulseAt = 3 * ac3::kSamplesPerFrame + 512;
 // correlation is trying to locate. Flat, low-level energy in every frame keeps the matrix settled -
 // tests/render/test_object_lfe_timing.cpp's own programme() makes the identical argument for the
 // header-only renderer's regression test. The burst itself, not a steady tone, for the reason
-// tests/decoder/test_latency.cpp's own burst() gives: a sinusoid correlates with itself a period away
+// tests/ac3/decoder/test_latency.cpp's own burst() gives: a sinusoid correlates with itself a period away
 // almost as well as at zero lag, which would make a lag search meaningless.
 std::vector<float> object_pulse_with_floor(int samples, int at) {
     std::vector<float> pcm(static_cast<std::size_t>(samples), 0.0F);
@@ -142,7 +142,7 @@ float peak(std::span<const float> pcm) {
 }
 
 // The lag (later[n + lag] against earlier[n]) maximising their correlation over a window around the
-// pulse - tests/decoder/test_latency.cpp's own best_lag, searched both directions since this test,
+// pulse - tests/ac3/decoder/test_latency.cpp's own best_lag, searched both directions since this test,
 // unlike that one, does not already know which of the two channels leads.
 int best_lag(std::span<const float> earlier, std::span<const float> later, int min_lag, int max_lag) {
     const int from = std::max(0, kPulseAt - 2048);

@@ -22,7 +22,7 @@
 // round trip is the ONLY check there is, and a round trip cannot see a
 // misreading of the spec that both sides share.
 //
-// Two kinds of test live here, the same split tests/verify/test_selfcheck.cpp
+// Two kinds of test live here, the same split tests/ac3/verify/test_selfcheck.cpp
 // makes. The compare() cases plant a divergence in a pair of hand-built
 // traces and check the right substream, block, stream and field come back out
 // - they are what proves the check can FAIL, without needing a broken encoder

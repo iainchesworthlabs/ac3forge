@@ -28,9 +28,9 @@
 // No real third-party stream exercises these configs: this project's own
 // AtmosEncoder only ever writes kDmxConfig5X (joc.hpp's own comment), and
 // the one real Dolby-Encoding-Engine fixture in this repo
-// (tests/oba/test_dee_joc_fixture.cpp) uses kDmxConfig5XPhaseShift even from
+// (tests/ac3/oba/test_dee_joc_fixture.cpp) uses kDmxConfig5XPhaseShift even from
 // a full 7.1.4 source. So this hand-builds a synthetic stream, the same
-// methodology tests/decoder/test_eac3_decoder.cpp's "an AC-3 core plus an
+// methodology tests/ac3/decoder/test_eac3_decoder.cpp's "an AC-3 core plus an
 // E-AC-3 dependent decodes to 7.1" and test_dee_joc_fixture.cpp each already
 // use for one piece of this: a distinguishable tone per physical channel,
 // and per-object dominant-tone identification after reconstruction.

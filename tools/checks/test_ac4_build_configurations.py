@@ -138,7 +138,7 @@ class Ac4BuildConfigurations(unittest.TestCase):
         text = BAREMETAL_CMAKE.read_text(encoding="utf-8")
         self.assertIn("ac4_probe.cpp", text)
         self.assertIn("elseif(AC3FORGE_MINIMAL_AC4)", text)
-        self.assertIn("ac4::decoder_static", text)
+        self.assertIn("iclforge::ac4dec_static", text)
         self.assertNotIn("ac4enc", text)
 
 

@@ -30,9 +30,9 @@
 // a machine that might not have libasound installed, what this file is pure
 // OF is a live HAL round-trip, not a library that might be missing:
 // CoreAudio.framework's headers ship with every macOS SDK, so there is no
-// "not installed" story here to design around. tests/backend/macos/
+// "not installed" story here to design around. tests/audio/backend/macos/
 // test_macos_support.cpp covers this file directly, on real macOS CI, the
-// same role tests/backend/alsa/test_alsa_device_names.cpp plays for
+// same role tests/audio/backend/alsa/test_alsa_device_names.cpp plays for
 // device_names.hpp.
 //
 // coreaudio_support.hpp next door is the impure half: property fetching,
@@ -160,7 +160,7 @@ namespace ac3::coreaudio {
 // is the refusal sentence, which has to read as English and so carries the
 // version as text. So the number appears in four places by necessity, and
 // what holds them together is a check rather than a definition:
-// tests/backend/macos/test_macos_support.cpp asserts that the refusal
+// tests/audio/backend/macos/test_macos_support.cpp asserts that the refusal
 // sentence names the version kSystemAudioTapMinimumOs does, and that the two
 // reports of the refusal are the same string. Neither of those can catch an
 // @available guard left behind at an older version - that one has to be moved
@@ -268,7 +268,7 @@ inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
 // Both reports of the refusal go through here - capture.cpp's
 // describe(kProcessLoopbackUnavailable) and audio_backend.cpp's
 // process_loopback reason - so they cannot say different things, which is the
-// property tests/backend/macos/test_macos_support.cpp holds.
+// property tests/audio/backend/macos/test_macos_support.cpp holds.
 [[nodiscard]] inline std::string_view system_audio_tap_refusal() {
     return system_audio_tap_api_available() ? kSystemAudioTapUnverifiedRefusal
                                             : kSystemAudioTapVersionRefusal;

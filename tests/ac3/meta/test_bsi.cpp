@@ -719,7 +719,7 @@ TEST_CASE("E-AC-3: blkmixcfginfo carries one flag per block the syncframe holds"
     // encoder that always wrote six flags left short syncframes with stray
     // bits ahead of infomdate: the decoder refused the frame, io::scan read
     // bsmod 0 instead of 5, and emdf::walk_frame lost the addbsi marker (see
-    // tests/emdf/test_emdf.cpp's frame-walker cases). Every numblkscod runs
+    // tests/ac3/emdf/test_emdf.cpp's frame-walker cases). Every numblkscod runs
     // here, each as an encode -> decode round trip and a scan of the same
     // bytes, so the field is checked at the width every reader expects.
     for (int numblkscod = 0; numblkscod <= 3; ++numblkscod) {

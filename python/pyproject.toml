@@ -46,7 +46,7 @@ build-dir = "build/{wheel_tag}"
 install.components = ["python"]
 
 [tool.scikit-build.cmake.define]
-# Only ac3::forge and this extension - everything else this tree can build is irrelevant to a
+# Only iclforge::ac3 and this extension - everything else this tree can build is irrelevant to a
 # Python wheel and would only cost build time (CLI/GUI need Qt; tests need Catch2; the container
 # writers/ADM parser are for muxing/ADM ingest, no part of the F2 binding surface).
 AC3FORGE_BUILD_PYTHON = "ON"
@@ -74,7 +74,7 @@ AC3FORGE_BUILD_MATROSKA = "ON"
 AC3FORGE_BUILD_MP4 = "ON"
 AC3FORGE_BUILD_MPEGTS = "ON"
 # One self-contained extension module in the wheel, no side-by-side ac3forge.dll/.so to
-# redistribute - see python/CMakeLists.txt's own comment on ac3::forge resolving to forge_static.
+# redistribute - see python/CMakeLists.txt's own comment on iclforge::ac3 resolving to iclforge_ac3_static.
 BUILD_SHARED_LIBS = "OFF"
 
 [tool.scikit-build.metadata.version]

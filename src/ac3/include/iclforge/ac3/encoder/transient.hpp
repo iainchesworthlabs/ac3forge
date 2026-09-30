@@ -94,7 +94,7 @@ class ICLFORGE_AC3_TEMPLATE_CLASS BasicTransientDetector {
 // (ICLFORGE_AC3_TEMPLATE_IMPORT) and exports the definitions in transient.cpp
 // (ICLFORGE_AC3_TEMPLATE_INSTANTIATE); GCC and Clang take the visibility on the
 // class template itself (ICLFORGE_AC3_TEMPLATE_CLASS, above) and nothing here.
-// src/forge/CMakeLists.txt has the details.
+// src/ac3/CMakeLists.txt has the details.
 extern template class ICLFORGE_AC3_TEMPLATE_IMPORT BasicTransientDetector<double>;
 extern template class ICLFORGE_AC3_TEMPLATE_IMPORT BasicTransientDetector<float>;
 

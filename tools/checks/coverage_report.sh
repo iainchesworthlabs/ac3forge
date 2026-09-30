@@ -5,10 +5,10 @@
 # One gcov extraction pass over an AC3FORGE_ENABLE_COVERAGE build (the
 # config-linux-gcc-coverage preset - see CMakePresets.json), then one cheap
 # gate pass per component off the shared JSON trace. Line and branch coverage
-# are gated PER COMPONENT rather than as one blended number: src/forge is an
+# are gated PER COMPONENT rather than as one blended number: src/ac3 is an
 # order of magnitude larger than any container writer, so a blend would let a
 # real regression in src/mpegts or src/capi hide inside ordinary drift in
-# src/forge - and "which module is thin" is exactly the question a
+# src/ac3 - and "which module is thin" is exactly the question a
 # per-component table exists to answer.
 #
 # apps/cli is gated here too (coverage floors), not just src/. It is about 6,500
@@ -43,7 +43,7 @@
 #
 # src/sendspin and apps/hearth (Hearth, planning/hearth-reference-player.md) ARE gated here,
 # unlike apps/crucible above: config-linux-gcc-coverage is the one coverage preset that turns
-# AC3FORGE_BUILD_HEARTH on (CMakePresets.json), and both ac3::sendspin and ac3hearth_engine link
+# AC3FORGE_BUILD_HEARTH on (CMakePresets.json), and both iclforge::sendspin and ac3hearth_engine link
 # ac3::coverage themselves for exactly the reason apps/cli's own link does - see their
 # CMakeLists.txt. apps/hearth/testsink joins the apps/hearth row (its sources link into ac3tests
 # too); apps/hearth/testserver does not, since nothing on this leg ever runs that executable, and
@@ -139,20 +139,20 @@ fi
 # apps/crucible/engine is the platform-free engine core ac3tests compiles in;
 # the rest of apps/crucible keeps its own floors in coverage_crucible.ps1.
 components="
-src/forge             90 82
+src/ac3             90 82
 src/audio             72 58
 src/signing           90 76
 src/matroska          88 85
 src/mp4               90 85
 src/mpegts            92 85
 src/capi              84 74
-src/ac3adm            82 75
+src/adm            82 75
 src/admbridge         88 78
 src/sendspin          85 74
 src/ac4               93 88
 src/ac4dec            88 80
 src/ac4core           88 80
-src/ac3iab            90 87
+src/iab            90 87
 src/iamf              91 90
 apps/cli              80 71
 apps/common           78 66
@@ -172,7 +172,7 @@ html="$build_dir/coverage.html"
 # artifact glob would have to chase), and prints the whole-library summary.
 #
 # --gcov-ignore-parse-errors=suspicious_hits.warn: mdct.cpp's
-# ForwardCosTable-driven hot loop (src/forge/src/core/mdct.cpp) trips a documented gcov
+# ForwardCosTable-driven hot loop (src/ac3/src/core/mdct.cpp) trips a documented gcov
 # bug (gcc.gnu.org/bugzilla#68080, a false "suspicious hit value" on a tight
 # accumulation loop) that otherwise aborts gcovr outright rather than just
 # under/over-reporting that one line's count - gcovr's own error message

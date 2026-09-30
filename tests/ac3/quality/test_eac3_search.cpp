@@ -17,7 +17,7 @@
 
 // EQ13's E-AC-3 half: eac3::FrameConfig::search, CBR only, dbpbcod-only - see
 // that field's own doc comment for the scope this mirrors AC-3's
-// tests/quality/test_search.cpp under, and why kPerceptual and VBR are not
+// tests/ac3/quality/test_search.cpp under, and why kPerceptual and VBR are not
 // covered here. The five cases below are that file's, adapted; a sixth
 // checks the CBR-only boundary itself.
 

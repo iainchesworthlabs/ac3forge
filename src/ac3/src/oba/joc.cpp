@@ -38,7 +38,7 @@ void put_code(BitWriter& w, const HuffCode& code) {
 
 // §6.6.3 Pseudocode 4, decoding by longest match rather than walking a tree:
 // a prefix code is uniquely determined by its (code, length) pairs, so this
-// is equivalent to the normative tree and was how tests/oba/test_oba.cpp
+// is equivalent to the normative tree and was how tests/ac3/oba/test_oba.cpp
 // originally validated the generated encode tables (kMtxCoarse/kMtxFine were
 // inverted FROM those trees, so agreeing with an independent forward walk of
 // them, not with build_payload's own logic, is what that test proved). This
@@ -359,7 +359,7 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
     }
 
     // At most a byte of padding_bits should remain (§6.2.1), same bound
-    // tests/oba/test_oba.cpp's own encode-side test holds build_payload to - a
+    // tests/ac3/oba/test_oba.cpp's own encode-side test holds build_payload to - a
     // corrupt object/band count that made this decode stop short leaves
     // more than that unaccounted for.
     if (r.overflowed() || payload.size() * 8 - r.bit_position() >= 8) {
@@ -375,7 +375,7 @@ namespace {
 // validated against, so it stays double (ac3/core/mdct.hpp).
 //
 // reconstruct() still offers fast_mdct/fast_imdct = false, and
-// tests/oba/test_atmos.cpp passes exactly that - it is how this reconstruction
+// tests/ac3/oba/test_atmos.cpp passes exactly that - it is how this reconstruction
 // is checked against the arithmetic the spec writes down. Dropping the option
 // when the state went float32 would have made that test unable to ask its
 // question, so the direct path widens into a local double buffer, transforms,

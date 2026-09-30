@@ -26,7 +26,7 @@ result.
 
 They exist because the object layer had none. Before this page, object
 reconstruction was measured exactly once anywhere in the tree — a single
-`snr_db > 10.0` assertion in `tests/oba/test_atmos.cpp` against 18–35 dB
+`snr_db > 10.0` assertion in `tests/ac3/oba/test_atmos.cpp` against 18–35 dB
 measured — while AC-3, E-AC-3 and every Annex E tool each had a per-commit
 series. A 15 dB JOC regression passed CI and appeared on no page.
 
@@ -52,7 +52,7 @@ is exactly what a parametric object coder has to keep apart.
 scene to probe one thing. The bed has no height channels, so elevation costs
 nothing in the downmix and two objects differing only in height are panned
 into the five bed channels identically — the limit
-[`ac3/oba/atmos.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/forge/include/ac3/oba/atmos.hpp)
+[`ac3/oba/atmos.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3/include/iclforge/ac3/oba/atmos.hpp)
 names in its own module comment. Direction is not the matrix's only axis
 though: JOC solves per *frequency band*, so a pair sharing a direction but
 not a spectrum is still separable, and these two score as well as the
@@ -538,7 +538,7 @@ Four metrics, and only SNR is regression-checked:
   default `Domain::kQmf`; `ac3::dsp::kQmfDelay` in `qmf.hpp`), not the
   older 256-sample MDCT round trip `Domain::kMdctBand` used before the
   filterbank existed. `ac3::joc::reconstruction_delay(domain)` is the single
-  place either figure is derived, and `tests/oba/test_atmos.cpp` calls it
+  place either figure is derived, and `tests/ac3/oba/test_atmos.cpp` calls it
   rather than hard-coding a number; its comment carries the full reasoning.
   It is fixed rather than found by cross-correlation on purpose — a
   correlation search would silently absorb a real timing regression as

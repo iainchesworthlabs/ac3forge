@@ -26,7 +26,7 @@
 #include "adm_model.hpp"
 
 // Every `bw64::`/`adm::` symbol below is a vendored third-party library
-// (libbw64/libadm respectively, see src/ac3adm/CMakeLists.txt); every
+// (libbw64/libadm respectively, see src/adm/CMakeLists.txt); every
 // `ac3adm::` symbol is this module's own. Both libraries report failure by
 // throwing std::runtime_error (or, for libadm's XML/schema errors, the
 // adm::error::AdmException hierarchy) - this project's own convention is

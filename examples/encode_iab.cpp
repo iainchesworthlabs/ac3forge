@@ -1,8 +1,8 @@
 // A real Immersive Audio Bitstream, all the way to a Dolby Atmos E-AC-3 (DD+ JOC) elementary
 // stream.
 //
-// Roadmap item IM1 phase 3 of 3 (the last piece - phase 1 is ac3iab::ac3iab, src/ac3iab; phase 2
-// is ac3iab::parse_mxf_iab, src/ac3iab/src/mxf_reader.cpp). This is a minimal, standalone
+// Roadmap item IM1 phase 3 of 3 (the last piece - phase 1 is ac3iab::ac3iab, src/iab; phase 2
+// is ac3iab::parse_mxf_iab, src/iab/src/mxf_reader.cpp). This is a minimal, standalone
 // illustration of the same pipeline ac3cli's 'atmos-iab' command drives for real:
 // ac3iab::parse_iabitstream() reads the frame sequence, ac3::admbridge::build_iab() maps it onto
 // ac3::oba::AtmosEncoder's flat object-list input shape (one bed channel pinned in place, one
@@ -70,8 +70,8 @@ bool claim_temp_path(const std::string& path) {
 }
 
 // A from-scratch MSB-first bit writer (SMPTE ST 2098-2:2022 §5.1), used only to build this
-// fixture - independent of src/ac3iab's own reader, the same "independent fixture" convention
-// tests/ac3iab/test_ac3iab.cpp and examples/read_iab.cpp already establish (a third copy is within
+// fixture - independent of src/iab's own reader, the same "independent fixture" convention
+// tests/iab/test_ac3iab.cpp and examples/read_iab.cpp already establish (a third copy is within
 // this project's own established limit - see encode_adm.cpp's identical note for its ADM fixture).
 class BitWriter {
    public:

@@ -1,4 +1,4 @@
-// The fixed-point tier's inverse transform pair (src/forge/src/core/
+// The fixed-point tier's inverse transform pair (src/ac3/src/core/
 // mdct_fixed.hpp) against the double one, on the inputs the header's own
 // precondition admits: random dense blocks, sparse tonal ones, and the
 // coherent worst case that takes the FFT to the top of the format.

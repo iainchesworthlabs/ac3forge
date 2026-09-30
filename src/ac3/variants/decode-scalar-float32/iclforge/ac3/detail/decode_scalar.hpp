@@ -17,7 +17,7 @@ namespace ac3::internal {
 // path moved to float32.
 //
 // Measured accuracy cost at the transform is 2.7e-7 peak-normalised
-// (tests/core/test_mdct_fast.cpp), about one LSB at 24 bits.
+// (tests/ac3/core/test_mdct_fast.cpp), about one LSB at 24 bits.
 //
 // Selectable independently of the profile now, which is what makes that claim
 // checkable: a full build - CLI, tests, gold references and all - can be

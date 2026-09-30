@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // has_avx2() in the MINIMUM-FOOTPRINT DECODER profile (AC3FORGE_MINIMAL_DECODER,
 // minimum-footprint decoder profile). Every ordinary build compiles ../cpu_features.cpp instead;
-// src/forge/minimal.cmake picks this one, so no source file asks which profile
+// src/ac3/minimal.cmake picks this one, so no source file asks which profile
 // it is in with a preprocessor conditional (tools/checks/check_platform_macros.ps1's
 // rule - the same directory-selection mechanism ac3/internal/profile.hpp and the
 // SIMD arch tree already use).

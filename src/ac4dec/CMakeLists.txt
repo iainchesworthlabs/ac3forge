@@ -1,37 +1,37 @@
 # ---------------------------------------------------------------------------
-# ac4::decoder - an AC-4 decoder, ETSI TS 103 190-1 V1.4.1 and TS 103 190-2
+# iclforge::ac4dec - an AC-4 decoder, ETSI TS 103 190-1 V1.4.1 and TS 103 190-2
 # V1.3.1, written from the published texts.
 #
-# A peer of src/ac4 (ac4::ac4, the bitstream inspector) and, like it,
+# A peer of src/ac4 (iclforge::ac4, the bitstream inspector) and, like it,
 # independent of ac3::forge: AC-4 shares no bitstream syntax with AC-3 or
-# E-AC-3, and a decoder that linked ac3::forge would bring the whole codec
-# into every AC-4 build. It links ac4::ac4 for the table of contents and the
+# E-AC-3, and a decoder that linked iclforge::ac3 would bring the whole codec
+# into every AC-4 build. It links iclforge::ac4 for the table of contents and the
 # presentation and substream group information, which the inspector already
 # reads, and adds everything below the substream index table.
 #
 # Same OBJECT + static + shared arrangement as src/ac4 - see
-# src/forge/CMakeLists.txt's ac3::forge for why an OBJECT library plus two
+# src/ac3/CMakeLists.txt's iclforge::ac3 for why an OBJECT library plus two
 # thin wrapper targets rather than one add_library(). Installed and exported
-# with the inspector and the core as ac4::decoder_static and
-# ac4::decoder_shared (cmake/InstallLibrary.cmake), the names these aliases
+# with the inspector and the core as iclforge::ac4dec_static and
+# iclforge::ac4dec_shared (cmake/InstallLibrary.cmake), the names these aliases
 # give the targets in the tree; EXPORT_NAME below makes the installed names
 # the same.
 # ---------------------------------------------------------------------------
-add_library(ac4dec_objects OBJECT)
+add_library(iclforge_ac4dec_objects OBJECT)
 # The profile's archive takes the objects as sources and passes on only the
 # OBJECT library's compile-time requirements, as src/ac4/CMakeLists.txt's does
 # and for its reason.
 if(AC3FORGE_MINIMAL_DECODER)
-    add_library(ac4dec_static STATIC $<TARGET_OBJECTS:ac4dec_objects>)
+    add_library(iclforge_ac4dec_static STATIC $<TARGET_OBJECTS:iclforge_ac4dec_objects>)
 else()
-    add_library(ac4dec_static STATIC)
+    add_library(iclforge_ac4dec_static STATIC)
 endif()
 # No shared library in the minimum-footprint profile (AC3FORGE_MINIMAL_AC4,
 # planning/ac4.md, D14b): a bare-metal build has no dynamic loader, and CMake
 # refuses add_library(SHARED) for a target that has none. The same test guards
-# each line below that names ac4dec_shared, as src/ac4/CMakeLists.txt's does.
+# each line below that names iclforge_ac4dec_shared, as src/ac4/CMakeLists.txt's does.
 if(NOT AC3FORGE_MINIMAL_DECODER)
-    add_library(ac4dec_shared SHARED)
+    add_library(iclforge_ac4dec_shared SHARED)
 endif()
 
 # Each library links the inspector of its own kind, PUBLIC, since the
@@ -44,25 +44,25 @@ endif()
 # its include path, so a dependency linked there reached every consumer of
 # either. Linked there, the core's archive was on the link line of everything
 # that linked libac4dec.so, and in a static build the inspector's archive was
-# too (src/capi/CMakeLists.txt found the same with ac3::forge_c).
+# too (src/capi/CMakeLists.txt found the same with iclforge::c).
 if(AC3FORGE_MINIMAL_DECODER)
-    target_link_libraries(ac4dec_static PUBLIC $<COMPILE_ONLY:ac4dec_objects> ac4::ac4_static PRIVATE ac4::core)
+    target_link_libraries(iclforge_ac4dec_static PUBLIC $<COMPILE_ONLY:iclforge_ac4dec_objects> iclforge::ac4_static PRIVATE iclforge::ac4core)
 else()
-    target_link_libraries(ac4dec_static PUBLIC ac4dec_objects ac4::ac4_static PRIVATE ac4::core)
+    target_link_libraries(iclforge_ac4dec_static PUBLIC iclforge_ac4dec_objects iclforge::ac4_static PRIVATE iclforge::ac4core)
 endif()
 
-add_library(ac4::decoder_static ALIAS ac4dec_static)
+add_library(iclforge::ac4dec_static ALIAS iclforge_ac4dec_static)
 if(NOT AC3FORGE_MINIMAL_DECODER)
-    target_link_libraries(ac4dec_shared PUBLIC ac4dec_objects ac4::ac4_shared PRIVATE ac4::core)
-    add_library(ac4::decoder_shared ALIAS ac4dec_shared)
+    target_link_libraries(iclforge_ac4dec_shared PUBLIC iclforge_ac4dec_objects iclforge::ac4_shared PRIVATE iclforge::ac4core)
+    add_library(iclforge::ac4dec_shared ALIAS iclforge_ac4dec_shared)
 endif()
 if(BUILD_SHARED_LIBS AND NOT AC3FORGE_MINIMAL_DECODER)
-    add_library(ac4::decoder ALIAS ac4dec_shared)
+    add_library(iclforge::ac4dec ALIAS iclforge_ac4dec_shared)
 else()
-    add_library(ac4::decoder ALIAS ac4dec_static)
+    add_library(iclforge::ac4dec ALIAS iclforge_ac4dec_static)
 endif()
 
-target_sources(ac4dec_objects
+target_sources(iclforge_ac4dec_objects
     PRIVATE
         src/decoder.cpp
         src/huffman.cpp
@@ -97,7 +97,7 @@ target_sources(ac4dec_objects
         src/syntax/presentation.cpp
         src/syntax/substream.cpp)
 
-target_include_directories(ac4dec_objects
+target_include_directories(iclforge_ac4dec_objects
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
@@ -105,25 +105,25 @@ target_include_directories(ac4dec_objects
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-target_compile_features(ac4dec_objects PUBLIC cxx_std_23)
+target_compile_features(iclforge_ac4dec_objects PUBLIC cxx_std_23)
 
 # The inspector's and the core's usage requirements, compiled with and not
-# linked: the libraries above link them (see there). ac4::ac4 is the one
-# BUILD_SHARED_LIBS picks, as ac3::signing's objects take ac3::forge.
+# linked: the libraries above link them (see there). iclforge::ac4 is the one
+# BUILD_SHARED_LIBS picks, as iclforge::signing's objects take iclforge::ac3.
 # $<BUILD_INTERFACE:...> on all five for the reason src/ac4/CMakeLists.txt
 # gives, and because nothing that uses the installed package compiles these
-# objects. ac3::arithmetic is the header-only target that carries
+# objects. iclforge::arithmetic is the header-only target that carries
 # ac3/internal/scalar_math.hpp, which src/ac4core's dsp/real_functions.hpp
 # includes: the float transcendentals that give the same float on every
 # platform, called by pcm/aspx.cpp and pcm/companding.cpp through that header
 # (src/ac4dec includes from src/ac4core and not from src/arithmetic,
 # tools/checks/layering.json; planning/ac4.md, D14a4). Compile-only, so the
 # include directory reaches these objects and nothing is linked.
-target_link_libraries(ac4dec_objects
+target_link_libraries(iclforge_ac4dec_objects
     PRIVATE
-        "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac4::ac4>>"
-        "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac4::core>>"
-        "$<BUILD_INTERFACE:ac3::arithmetic>"
+        "$<BUILD_INTERFACE:$<COMPILE_ONLY:iclforge::ac4>>"
+        "$<BUILD_INTERFACE:$<COMPILE_ONLY:iclforge::ac4core>>"
+        "$<BUILD_INTERFACE:iclforge::arithmetic>"
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")
 
@@ -131,52 +131,52 @@ target_link_libraries(ac4dec_objects
 # a section for each function and datum), PUBLIC for a consumer to share, and
 # code that is not position-independent - see src/ac4core/CMakeLists.txt.
 if(AC3FORGE_MINIMAL_DECODER)
-    target_link_libraries(ac4dec_objects PUBLIC ac3::minimal_profile)
+    target_link_libraries(iclforge_ac4dec_objects PUBLIC ac3::minimal_profile)
     set(_ac4dec_pic OFF)
 else()
     set(_ac4dec_pic ON)
 endif()
 
-set_target_properties(ac4dec_objects PROPERTIES
+set_target_properties(iclforge_ac4dec_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ${_ac4dec_pic}
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
 # MSVC's C4251 for the PRIVATE STL-typed members of exported classes - the
 # same suppression, for the same reason, as src/ac4/CMakeLists.txt.
-target_compile_options(ac4dec_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
+target_compile_options(iclforge_ac4dec_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
 if(NOT AC3FORGE_MINIMAL_DECODER)
-    set_target_properties(ac4dec_shared PROPERTIES DEFINE_SYMBOL "AC4DEC_BUILDING_SHARED")
-    set(_ac4dec_export_target ac4dec_shared)
+    set_target_properties(iclforge_ac4dec_shared PROPERTIES DEFINE_SYMBOL "AC4DEC_BUILDING_SHARED")
+    set(_ac4dec_export_target iclforge_ac4dec_shared)
 else()
     # The header is the same either way, as src/ac4/CMakeLists.txt's is.
-    set(_ac4dec_export_target ac4dec_static)
+    set(_ac4dec_export_target iclforge_ac4dec_static)
 endif()
 generate_export_header(${_ac4dec_export_target}
     BASE_NAME AC4DEC
     EXPORT_MACRO_NAME AC4DEC_EXPORT
-    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac4dec/export.hpp"
+    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac4dec/export.hpp"
     DEFINE_NO_DEPRECATED
     STATIC_DEFINE AC4DEC_STATIC_DEFINE)
-target_compile_definitions(ac4dec_objects PRIVATE AC4DEC_BUILDING_SHARED)
-target_compile_definitions(ac4dec_static PUBLIC AC4DEC_STATIC_DEFINE)
+target_compile_definitions(iclforge_ac4dec_objects PRIVATE AC4DEC_BUILDING_SHARED)
+target_compile_definitions(iclforge_ac4dec_static PUBLIC AC4DEC_STATIC_DEFINE)
 
 if(NOT AC3FORGE_MINIMAL_DECODER)
-    set_target_properties(ac4dec_shared PROPERTIES
+    set_target_properties(iclforge_ac4dec_shared PROPERTIES
         VERSION "${PROJECT_VERSION}"
         SOVERSION "${PROJECT_VERSION}")
 
-    set_target_properties(ac4dec_shared PROPERTIES OUTPUT_NAME "ac4dec")
+    set_target_properties(iclforge_ac4dec_shared PROPERTIES OUTPUT_NAME "iclforge_ac4dec")
 endif()
-set_target_properties(ac4dec_static PROPERTIES OUTPUT_NAME "ac4dec_static")
+set_target_properties(iclforge_ac4dec_static PROPERTIES OUTPUT_NAME "iclforge_ac4dec_static")
 
 # install(EXPORT ... NAMESPACE ac4::) prefixes the name a target is exported
 # under, which is its own name unless this says otherwise: ac4::ac4dec_static
-# where the tree says ac4::decoder_static.
-set_target_properties(ac4dec_objects PROPERTIES EXPORT_NAME "decoder_objects")
-set_target_properties(ac4dec_static PROPERTIES EXPORT_NAME "decoder_static")
+# where the tree says iclforge::ac4dec_static.
+set_target_properties(iclforge_ac4dec_objects PROPERTIES EXPORT_NAME "decoder_objects")
+set_target_properties(iclforge_ac4dec_static PROPERTIES EXPORT_NAME "decoder_static")
 if(NOT AC3FORGE_MINIMAL_DECODER)
-    set_target_properties(ac4dec_shared PROPERTIES EXPORT_NAME "decoder_shared")
+    set_target_properties(iclforge_ac4dec_shared PROPERTIES EXPORT_NAME "decoder_shared")
 endif()

@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------
-# ac3::forge_minimal as an ESP-IDF component - a THIN wrapper, not a second
+# iclforge::ac3_minimal as an ESP-IDF component - a THIN wrapper, not a second
 # copy of ac3forge's build graph, and deliberately the same shape as
 # apps/android/app/src/main/cpp/CMakeLists.txt: pre-seed the repo root's
 # option()s, then add_subdirectory() the root so the library is built from the
 # SAME source-of-truth target definitions every other platform uses. A change
-# to src/forge/minimal.cmake's source list is picked up here automatically,
+# to src/ac3/minimal.cmake's source list is picked up here automatically,
 # with nothing to keep in sync by hand.
 #
 # The alternative - re-listing minimal.cmake's 24 sources in an
@@ -30,7 +30,7 @@
 # ---------------------------------------------------------------------------
 
 # Two things are registered here, and the library is neither of them. The
-# codec's sources and include directories come from ac3::forge_minimal,
+# codec's sources and include directories come from iclforge::ac3_minimal,
 # propagated by the PUBLIC link at the bottom of this file (its own include
 # directories are PUBLIC, behind $<BUILD_INTERFACE>, which is exactly the
 # in-build case this is). What this component adds of its own is the layer
@@ -38,7 +38,7 @@
 # (include/ac3forge/player.hpp, src/player.cpp - a fetch task, a decode task and
 # the ring between them, over a source seam and a sink seam) and the
 # planar-to-interleaved conversion every sink shares (ac3forge/interleave.hpp,
-# tested on the host by tests/io/test_interleave.cpp, and on its way into the
+# tested on the host by tests/ac3/io/test_interleave.cpp, and on its way into the
 # library - see planning/esp32-player.md). freertos, esp_timer and heap are what
 # the player's own sources include.
 #
@@ -161,7 +161,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib/src/forge/CMakeLists.txt")
 else()
     get_filename_component(AC3FORGE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 endif()
-if(NOT EXISTS "${AC3FORGE_ROOT}/src/forge/CMakeLists.txt")
+if(NOT EXISTS "${AC3FORGE_ROOT}/src/ac3/CMakeLists.txt")
     message(FATAL_ERROR
         "ac3forge: no library sources at '${AC3FORGE_ROOT}'. In a checkout this component "
         "lives at esp-idf/ac3forge/; packed, it carries its own lib/ - see "
@@ -254,7 +254,7 @@ else()
     set(AC3FORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
 endif()
 
-# The decode-critical sources at -O2. src/forge/minimal.cmake lists them, with
+# The decode-critical sources at -O2. src/ac3/minimal.cmake lists them, with
 # what each one measured, and the probe under apps/baremetal/platform/esp32s3/
 # has always been built this way - so the timing docs/platforms/bare-metal/esp32-s3.md
 # quotes is this build, and a player built from this component without it
@@ -265,7 +265,7 @@ endif()
 #
 # or on the command line, `idf.py -DAC3FORGE_MINIMAL_HOT_O2=OFF build`.
 set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
-    "Decode-critical sources at -O2; see src/forge/minimal.cmake")
+    "Decode-critical sources at -O2; see src/ac3/minimal.cmake")
 
 # The player's own source with them, under the same switch: the render onto the
 # layout and the calls into the sink run there, six times a frame, and the
@@ -279,7 +279,7 @@ endif()
 # WHICH ARITHMETIC. idf_component.yml says the decode arithmetic follows the
 # part: single precision where there is a floating-point unit, the fixed-point
 # tier where there is not (planning/arithmetic-tiers.md). This is where a
-# project that has not chosen gets that. src/forge/minimal.cmake builds float32
+# project that has not chosen gets that. src/ac3/minimal.cmake builds float32
 # for every value except `fixed`, including no value at all, so without this a
 # project for a part with no FPU decodes in float, where every floating-point
 # operation is a compiled subroutine.
@@ -330,15 +330,15 @@ add_subdirectory("${AC3FORGE_ROOT}" ac3forge_build)
 
 # PUBLIC, not INTERFACE: the component now has sources of its own that include
 # the library's headers, and so does everything that includes the component's.
-target_link_libraries(${COMPONENT_LIB} PUBLIC ac3::forge_minimal)
+target_link_libraries(${COMPONENT_LIB} PUBLIC iclforge::ac3_minimal)
 if(CONFIG_AC3FORGE_SENDSPIN)
-    target_link_libraries(${COMPONENT_LIB} PUBLIC ac3::sendspin)
+    target_link_libraries(${COMPONENT_LIB} PUBLIC iclforge::sendspin)
 endif()
 # The decoder's static archive brings the inspector and the core with it (the
 # core as a link-only dependency, src/ac4dec/CMakeLists.txt), and its include
 # directories for src/ac4_bridge.cpp.
 if(CONFIG_AC3FORGE_AC4)
-    target_link_libraries(${COMPONENT_LIB} PUBLIC ac4::decoder_static)
+    target_link_libraries(${COMPONENT_LIB} PUBLIC iclforge::ac4dec_static)
 endif()
 
 # The burst player's source under the same switch as player.cpp: it renders,

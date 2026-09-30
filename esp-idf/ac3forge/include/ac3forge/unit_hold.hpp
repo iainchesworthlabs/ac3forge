@@ -26,7 +26,7 @@
 // what release() hands back, in the order it was offered, and then the
 // declined block.
 //
-// Free of ESP-IDF, so tests/io/test_unit_hold.cpp checks it on the host.
+// Free of ESP-IDF, so tests/ac3/io/test_unit_hold.cpp checks it on the host.
 
 namespace ac3forge {
 

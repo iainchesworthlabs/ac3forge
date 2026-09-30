@@ -129,7 +129,7 @@ pc() {
 # the C compiler that configured the tree, or empty for cc, $4 = its C++ compiler, or empty for c++.
 pkg_config_check() {
     local prefix="$1" work="$2" cc="${3:-${CC:-cc}}" cxx="${4:-${CXX:-c++}}"
-    local -a flags libs whole static=() ac4_static=()
+    local -a flags libs whole static=() iclforge_ac4_static=()
     local pc_file name flag libdir
 
     pc_file="$(find "$prefix" -name ac3forge_c.pc -print -quit)"
@@ -161,12 +161,12 @@ pkg_config_check() {
     # line brings ac4.pc, and a static-only install's Requires.private the core's archive.
     if [[ -f "$pc_dir/ac4dec.pc" ]]; then
         case " $(pc --libs-only-l ac4dec) " in
-            *" -lac4dec_static "*) ac4_static=(--static) ;;
+            *" -lac4dec_static "*) iclforge_ac4_static=(--static) ;;
             *) ;;
         esac
         libdir="$(pc --variable=libdir ac4dec)"
-        read -r -a flags <<< "$(pc ${ac4_static[@]+"${ac4_static[@]}"} --cflags --libs ac4dec)"
-        echo "--- $cxx consumer_ac4.cpp, flags from: pkg-config ${ac4_static[*]:+${ac4_static[*]} }--cflags --libs ac4dec"
+        read -r -a flags <<< "$(pc ${iclforge_ac4_static[@]+"${iclforge_ac4_static[@]}"} --cflags --libs ac4dec)"
+        echo "--- $cxx consumer_ac4.cpp, flags from: pkg-config ${iclforge_ac4_static[*]:+${iclforge_ac4_static[*]} }--cflags --libs ac4dec"
         echo "    ${flags[*]}"
         if ! "$cxx" -std=c++23 "$root/tools/checks/install_consumer/consumer_ac4.cpp" \
                 -o "$work/pc_consumer_ac4" -Wl,--as-needed -Wl,-rpath,"$libdir" "${flags[@]}"; then
@@ -179,14 +179,14 @@ pkg_config_check() {
     # The AC-4 encoder through ac4enc.pc, in the same way. The switch that installs the decoder
     # installs the encoder too.
     if [[ -f "$pc_dir/ac4enc.pc" ]]; then
-        ac4_static=()
+        iclforge_ac4_static=()
         case " $(pc --libs-only-l ac4enc) " in
-            *" -lac4enc_static "*) ac4_static=(--static) ;;
+            *" -lac4enc_static "*) iclforge_ac4_static=(--static) ;;
             *) ;;
         esac
         libdir="$(pc --variable=libdir ac4enc)"
-        read -r -a flags <<< "$(pc ${ac4_static[@]+"${ac4_static[@]}"} --cflags --libs ac4enc)"
-        echo "--- $cxx consumer_ac4enc.cpp, flags from: pkg-config ${ac4_static[*]:+${ac4_static[*]} }--cflags --libs ac4enc"
+        read -r -a flags <<< "$(pc ${iclforge_ac4_static[@]+"${iclforge_ac4_static[@]}"} --cflags --libs ac4enc)"
+        echo "--- $cxx consumer_ac4enc.cpp, flags from: pkg-config ${iclforge_ac4_static[*]:+${iclforge_ac4_static[*]} }--cflags --libs ac4enc"
         echo "    ${flags[*]}"
         if ! "$cxx" -std=c++23 "$root/tools/checks/install_consumer/consumer_ac4enc.cpp" \
                 -o "$work/pc_consumer_ac4enc" -Wl,--as-needed -Wl,-rpath,"$libdir" "${flags[@]}"; then

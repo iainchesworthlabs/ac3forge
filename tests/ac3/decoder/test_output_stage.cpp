@@ -43,7 +43,7 @@ std::vector<std::vector<float>> impulse_at(std::size_t channels, std::size_t cha
 
 // A distinct tone per channel over several frames, so a fold that drops or
 // swaps a channel is distinguishable from one that is merely scaled - the
-// same reasoning tests/decoder/test_live_downmix.cpp's own bed_frame uses.
+// same reasoning tests/ac3/decoder/test_live_downmix.cpp's own bed_frame uses.
 std::vector<std::vector<float>> tones(std::span<const double> hz, std::uint64_t start,
                                       int samples, double amplitude = 0.3) {
     std::vector<std::vector<float>> pcm(hz.size(),

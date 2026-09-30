@@ -108,7 +108,7 @@ Bytes stereo_eac3_stream(int frames) {
 }
 
 // A stream carrying TS 103 420 §8.3.1's addbsi object marker with no EMDF
-// container behind it - the shape src/forge/src/oba/atmos.cpp used to emit
+// container behind it - the shape src/ac3/src/oba/atmos.cpp used to emit
 // for a bed51 request before PR #344 closed that hole at the source (see
 // AtmosConfig::emit_object_metadata's own comment). AtmosEncoder can no
 // longer build this shape - that IS the fix - so strip_objects' "marker left

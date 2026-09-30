@@ -7,11 +7,11 @@
 #include "iclforge/dsp/detail/fft_kernel.hpp"
 
 // ---------------------------------------------------------------------------
-// AVX2 kernel bodies for src/forge/src/core/mdct.cpp, dispatched behind
+// AVX2 kernel bodies for src/ac3/src/core/mdct.cpp, dispatched behind
 // ac3::internal::cpu::has_avx2() at each call site in that file. Declared
 // here with PLAIN std::span/double signatures - no AVX2 type ever appears
 // outside mdct_avx2.cpp itself - so mdct.cpp (compiled without any AVX2
-// flag, see src/forge/CMakeLists.txt's forge_simd_avx2 target) can call
+// flag, see src/ac3/CMakeLists.txt's forge_simd_avx2 target) can call
 // these across the object-library boundary without ever seeing an
 // intrinsic. See simd_avx2.hpp for the f64x4 type these are built from and
 // docs/building.md's "Runtime AVX2 dispatch" section for the mechanism.

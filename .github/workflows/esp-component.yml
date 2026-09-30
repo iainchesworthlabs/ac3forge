@@ -24,7 +24,7 @@ on:
   push:
     paths:
       - "esp-idf/**"
-      - "src/forge/**"
+      - "src/ac3/**"
       - "cmake/**"
       - "CMakeLists.txt"
       - "tools/packaging/pack_esp_component.py"

@@ -118,8 +118,8 @@
 # gold_reference/sanitizer legs of .github/workflows/_build.yml already
 # install on Linux, and for the same reason (an independent decode oracle).
 # fuzz-adm-nightly additionally sets up vcpkg. The other three jobs have no
-# such dependency: their harnesses only ever call into ac3::forge,
-# ac3::signing, the three container libraries, ac3iab and ac4, all of which
+# such dependency: their harnesses only ever call into iclforge::ac3,
+# iclforge::signing, the three container libraries, ac3iab and ac4, all of which
 # are in-tree and take no third-party library but {fmt}, which cmake/Fmt.cmake
 # finds installed or builds from source.
 #

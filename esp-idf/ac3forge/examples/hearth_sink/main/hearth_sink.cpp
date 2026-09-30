@@ -16,7 +16,7 @@
 // (esp-idf/ac3forge/include/ac3forge/player.hpp), and so is the control surface
 // (control.hpp) that lets something on the network say what to play and onto
 // what; the layout and the renderer are the library's
-// (src/forge/include/ac3/render/layout.hpp, render.hpp). What is left here is
+// (src/render/include/iclforge/render/layout.hpp, render.hpp). What is left here is
 // what an integrator's own firmware would have to write too: the seams,
 // adapted; a level meter; a command queue between the HTTP server's task and
 // this one, which owns the player; and the reporting.

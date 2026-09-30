@@ -128,7 +128,7 @@ AC-3 and E-AC-3 have. What is built, and what is not:
 | Part | State |
 |---|---|
 | The scalar (D14a) | `src/ac4core`'s kernels and `src/ac4dec/src/pcm` are templated on `Real`, with a complex type of the project's own (`dsp::Complex<Real>`) in place of `std::complex`. `AC3FORGE_DECODE_SCALAR` selects `double` (the default) or `float` for AC-4 as it does for AC-3 and E-AC-3. `fixed` builds the AC-4 libraries in `double`, because no AC-4 kernel is instantiated at `Fixed32` yet. The `float` build of `src/ac4core` compiles with `-Wdouble-promotion` as an error. The whole suite passes at both scalars |
-| The shared target (D14a) | `src/arithmetic` (`ac3::arithmetic`) is header-only and holds `Fixed32` (`ac3/internal/fixed32.hpp`), the float scalar functions (`ac3/internal/scalar_math.hpp`) and the SIMD seam (`arch/generic`, `arch/x86_64`, `arch/aarch64`). `ac3::forge` and `src/ac4core` link it, so nothing is copied ([decision 31](ac4.md#decisions-of-2026-09-25)). Before D14a the first two lived in `src/forge` |
+| The shared target (D14a) | `src/arithmetic` (`ac3::arithmetic`) is header-only and holds `Fixed32` (`ac3/internal/fixed32.hpp`), the float scalar functions (`ac3/internal/scalar_math.hpp`) and the SIMD seam (`arch/generic`, `arch/x86_64`, `arch/aarch64`). `ac3::forge` and `src/ac4core` link it, so nothing is copied ([decision 31](ac4.md#decisions-of-2026-09-25)). Before D14a the first two lived in `src/ac3` |
 | The decoder's size (D14a) | `SubstreamPcm` fell from 299 KB to 10.9 KB at `double`, D14a removed every guarded function-local static from `src/ac4core`, `src/ac4dec` and `src/ac4`, the QMF banks run on split real and imaginary planes with vector kernels that equal their scalar loops bit for bit, and the bit reader and the Huffman decoder are cached and table-driven |
 | The probe's AC-4 rows (D14a) | `tools/checks/run_baremetal_probe.sh --ac4` decodes five committed streams (2.0 and 5.1 with and without A-CPL, and DEE's 5.1.4 tones) on the Cortex-M3 leg in `float`: 54.5 M to 205.8 M instructions a frame, a peak heap of 0.43 to 1.93 MB, a 486,192-byte image. The PCM equals the x86-64 host's, and the hashes are pinned in `tests/golden/ac4-probe-pcm-hashes.json` |
 | `float` against `double` (D14a's exit) | On the 67 committed streams (`tools/checks/check_ac4_decode_scalar_snr.py`), the worst channel is 109.4 to 136.0 dB from the `double` decode below the lowest A-SPX crossover, and 37.5 to 102.1 dB above the highest where a stream has A-SPX. The floors are pinned 3 dB under those figures in `tests/golden/ac4dec/scalar-agreement.json`. The cause of the high band's gap is open |
@@ -159,7 +159,7 @@ The decode path is templated on `decode_scalar_t` in the files the survey found
 
 ### The type
 
-`Fixed32` (`src/arithmetic/include/ac3/internal/fixed32.hpp`): a signed 32-bit integer in Q7.24 - seven bits of
+`Fixed32` (`src/arithmetic/include/iclforge/arithmetic/fixed32.hpp`): a signed 32-bit integer in Q7.24 - seven bits of
 headroom above unity, twenty-four below. Products go through 64 bits (`mul`/`mulh` on RV32IM,
 `smull` on Cortex-M3), round half up on the shift back and saturate; sums wrap; conversions
 from a wider type saturate. Constants - the twiddles, the window, a downmix coefficient - are
@@ -190,7 +190,7 @@ two hundred and fifty-six such errors; and standard coupling's factor of eight s
 eight. The information was on the wire and lost at dequantisation, because the store put every
 value at one absolute scale; a wider store would not have kept it.
 
-So the store is normalised (`src/forge/src/decoder/block_norm.hpp`): each stream's
+So the store is normalised (`src/ac3/src/decoder/block_norm.hpp`): each stream's
 coefficients are kept scaled up by 2^norm per block, with norm chosen so the largest sits just
 below one half, and every mantissa keeps all of its bits. The exponent travels with the block.
 A stream's own coded bins set it before any mantissa is read; a tool that can raise a channel
@@ -216,7 +216,7 @@ pass learned the first had already made room.
 ### The transform
 
 The FFT-based inverse is its own kernel beside the double and float ones
-(`src/forge/src/core/mdct_fixed.hpp`): the same pre-twiddle, N/4-point FFT, post-twiddle and
+(`src/ac3/src/core/mdct_fixed.hpp`): the same pre-twiddle, N/4-point FFT, post-twiddle and
 window as `mdct.cpp`'s fast branch, transcribed step for step in `Fixed32`, on the shared
 `fft_kernel.hpp` tables instantiated at that type. The plan had it scaling per stage - block
 floating point inside the transform. It does not, and the reason is the block exponent above:
@@ -226,7 +226,7 @@ input is below one half - which the store's exponent guarantees - cannot wrap on
 all, the coherent one no real stream produces included. Every rounding step inside is a raw
 unit of an intermediate up to two orders of magnitude larger than the output, so what sets the
 floor is the post-twiddle and the window, about a raw unit per output sample, relative to a
-block scaled up to the format. `tests/core/test_mdct_fixed.cpp` holds it to the double inverse
+block scaled up to the format. `tests/ac3/core/test_mdct_fixed.cpp` holds it to the double inverse
 above 120 dB on dense blocks, 110 on sparse ones, and without wrapping at the worst case.
 
 The §3.5.5 DFT, the six-block DCT and the spectral extension notch still run through `float`

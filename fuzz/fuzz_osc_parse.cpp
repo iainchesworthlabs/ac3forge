@@ -4,7 +4,7 @@
 
 #include "iclforge/objects/scene_osc.hpp"
 
-// ac3::oba::parse_osc_packet (src/forge/src/oba/scene_osc.cpp) - one UDP
+// ac3::oba::parse_osc_packet (src/objects/src/scene_osc.cpp) - one UDP
 // datagram's worth of OSC 1.0, as ac3::audio::LivePositionSource hands it
 // over the instant a byte arrives on the socket it opened for
 // `positions=osc:<port>`. No CRC, no container, no length field checked by

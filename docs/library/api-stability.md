@@ -10,7 +10,7 @@ starts being made, and tracks the mechanical pieces that exist versus the ones s
 
 `docs/library/header-map.md` lists the headers a caller normally reaches for, but stops short of
 saying which of them a `v1.0.0` compatibility promise actually covers. It doesn't cover all of
-them equally: a chunk of what's under `src/forge/include/ac3/` is bitstream/DSP machinery the
+them equally: a chunk of what's under `src/ac3/include/iclforge/ac3/` is bitstream/DSP machinery the
 encoder and decoder share internally, installed today because splitting the install set is more
 CMake complexity than the problem has earned so far, not because a caller is expected to include
 it directly. Four tiers, assigned per header below:
@@ -108,7 +108,7 @@ anything to deprecate *from*. The policy going forward:
 
 ## SOVERSION
 
-**Deferred**, not decided against. `src/forge/CMakeLists.txt` (and the other twelve libraries)
+**Deferred**, not decided against. `src/ac3/CMakeLists.txt` (and the other twelve libraries)
 pin `SOVERSION` to the full `PROJECT_VERSION` today, with the comment already explaining why:
 pre-1.0, no ABI-compatibility promise holds across any two releases, so there is no meaningful
 "compatible" range narrower than an exact match. Flipping every library's `SOVERSION` to just the

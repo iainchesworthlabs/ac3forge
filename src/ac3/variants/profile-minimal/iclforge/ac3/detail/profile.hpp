@@ -3,7 +3,7 @@
 // Build-profile facts, in the MINIMUM-FOOTPRINT DECODER variant
 // (AC3FORGE_MINIMAL_DECODER, minimum-footprint decoder profile). Every ordinary build compiles the
 // identically-pathed header under src/internal/profile/full/ instead;
-// src/forge/CMakeLists.txt picks the directory, so no source file here asks
+// src/ac3/CMakeLists.txt picks the directory, so no source file here asks
 // which profile it is in with a preprocessor conditional
 // (tools/checks/check_platform_macros.ps1's rule, the same mechanism
 // ac3/internal/profiling.hpp and src/audio's platform backends use).

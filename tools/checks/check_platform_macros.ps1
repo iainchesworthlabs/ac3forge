@@ -23,7 +23,7 @@
 # getpid() branch, eight of a cmd.exe quoting one, eleven AVX2 cases whose
 # bodies a non-x86_64 leg never even parsed, and an MSVC-only pair of ABI size
 # assertions. Each is now the same directory-selected shape the rest of the
-# tree uses -- tests/platform/<os>/, tests/core/avx2/{present,absent}/,
+# tree uses -- tests/platform/<os>/, tests/ac3/core/avx2/{present,absent}/,
 # tests/render/abi/{msvc,unknown}/ -- and python/ likewise
 # (python/src/ac3forge_ext/{signing,containers}/{present,absent}/), so every
 # tree here starts at zero rather than being grandfathered in with a waiver list.
@@ -39,7 +39,7 @@
 #
 # Include guards are not affected: the codebase uses #pragma once.
 #
-# One other narrow exception, added for src/capi/include/ac3forge_c/ac3forge.h
+# One other narrow exception, added for src/capi/include/iclforge_c/iclforge.h
 # (C API): `#ifdef __cplusplus` / `extern "C" {` / `#endif` is the
 # standard idiom that lets one header be included from both a C and a C++
 # translation unit, which a C-callable public header genuinely needs -

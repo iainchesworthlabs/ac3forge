@@ -13,7 +13,7 @@
 // size, the flash size and the partition table as the board has it.
 //
 // Plain values, which firmware.cpp fills in from ESP-IDF, rendered here so the
-// shape can be tested on a laptop (tests/io/test_firmware_status.cpp) and read
+// shape can be tested on a laptop (tests/ac3/io/test_firmware_status.cpp) and read
 // by tools/hearth/ota.py and the device page without either guessing at it.
 // Every key is always present; a part that does not apply is null.
 

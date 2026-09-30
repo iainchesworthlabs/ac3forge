@@ -278,7 +278,7 @@ TestCase {
 
     // ---- I5's round trip, on the page ---------------------------------------
 
-    // The ring positions ADM's polar coordinates give (tests/oba/test_atmos_motion.cpp's
+    // The ring positions ADM's polar coordinates give (tests/ac3/oba/test_atmos_motion.cpp's
     // kL and kSR, which ac3::admbridge is checked against), and dead ahead.
     readonly property var admLeft: ({ x: 0.25, y: 0.066987, z: 0.0 })
     readonly property var admRight: ({ x: 0.75, y: 0.066987, z: 0.0 })

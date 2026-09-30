@@ -1,15 +1,15 @@
 # ---------------------------------------------------------------------------
-# ac3::arithmetic - the scalar building blocks the decoder's arithmetic tiers
+# iclforge::arithmetic - the scalar building blocks the decoder's arithmetic tiers
 # share: Fixed32 (ac3/internal/fixed32.hpp, the Q7.24 fixed-point tier's
 # type) and the project's own cross-platform-identical float transcendentals
 # (ac3/internal/scalar_math.hpp). Header-only, so there is nothing to
 # compile here - just a target that carries the include path.
 #
-# Why this is its own target rather than living inside ac3::forge, where both
-# files used to be (src/forge/src/core/{fixed32,scalar_math}.hpp): src/ac4core
-# needs Fixed32 too, for the same reason ac3::forge does (a fixed-point tier
+# Why this is its own target rather than living inside iclforge::ac3, where both
+# files used to be (src/ac3/src/core/{fixed32,scalar_math}.hpp): src/ac4core
+# needs Fixed32 too, for the same reason iclforge::ac3 does (a fixed-point tier
 # with no floating-point unit, planning/ac4.md's D14), and a decoder that
-# linked ac3::forge to get it would bring the whole AC-3/E-AC-3 codec into
+# linked iclforge::ac3 to get it would bring the whole AC-3/E-AC-3 codec into
 # every AC-4 build (src/ac4dec/CMakeLists.txt's own header explains why AC-4
 # links none of it). Copying the two files into src/ac4core instead was the
 # other option and was rejected: planning/ac4.md's decision 31 is explicit
@@ -18,17 +18,17 @@
 # rather than a rule to remember.
 #
 # Not installed and not exported: like ac3::warnings and the other interface
-# targets forge_objects links $<BUILD_INTERFACE:...>-wrapped, this is
+# targets iclforge_ac3_objects links $<BUILD_INTERFACE:...>-wrapped, this is
 # in-tree build plumbing, not part of what a downstream consumer of the
 # installed package needs to reach.
 # ---------------------------------------------------------------------------
-add_library(ac3_arithmetic INTERFACE)
-add_library(ac3::arithmetic ALIAS ac3_arithmetic)
+add_library(iclforge_arithmetic INTERFACE)
+add_library(iclforge::arithmetic ALIAS iclforge_arithmetic)
 
-target_include_directories(ac3_arithmetic INTERFACE
+target_include_directories(iclforge_arithmetic INTERFACE
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
 
-target_compile_features(ac3_arithmetic INTERFACE cxx_std_23)
+target_compile_features(iclforge_arithmetic INTERFACE cxx_std_23)
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ endif()
 # conditionals in the kernels.
 #
 # The kernels themselves are NOT duplicated per directory. They live once,
-# in shared code (ac3::forge's src/core/mdct.cpp, bitalloc.cpp and exponents.cpp,
+# in shared code (iclforge::ac3's src/core/mdct.cpp, bitalloc.cpp and exponents.cpp,
 # src/ac4core's src/dsp/qmf_vector.hpp), written against the 128-bit vector types
 # the header defines; the directories carry the types and their operations. See
 # the generic header for why that is what makes the bit-exactness claim testable.
@@ -95,12 +95,12 @@ endif()
 # The directories were src/forge/src/internal/arch/ until src/ac4core's QMF
 # banks took vector kernels of their own (planning/ac4.md, D14a, and decision 31's
 # "the vector types" in a header-only target both consumers link): this target
-# carries the include path, so linking ac3::arithmetic is all a consumer does.
+# carries the include path, so linking iclforge::arithmetic is all a consumer does.
 #
 # AC3FORGE_SIMD forces a directory. `generic` in particular is what a
 # reproducibility comparison wants (is a difference between two machines the
 # vector kernels or something else?), and is the reference
-# tests/core/test_simd_kernels.cpp's scalar side is written to match.
+# tests/ac3/core/test_simd_kernels.cpp's scalar side is written to match.
 # ---------------------------------------------------------------------------
 set(AC3FORGE_SIMD "auto" CACHE STRING
     "SIMD kernel directory: auto (from the effective target architecture), generic, x86_64, or aarch64")
@@ -139,9 +139,9 @@ if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
         "the portable implementation and is a working starting point.")
 endif()
 
-# Every consumer of ac3::arithmetic (ac3::forge, forge_minimal, src/ac4core) gets the
+# Every consumer of iclforge::arithmetic (iclforge::ac3, iclforge_ac3_minimal, src/ac4core) gets the
 # one directory through the target.
-target_include_directories(ac3_arithmetic INTERFACE "$<BUILD_INTERFACE:${AC3FORGE_ARCH_INCLUDE_DIR}>")
+target_include_directories(iclforge_arithmetic INTERFACE "$<BUILD_INTERFACE:${AC3FORGE_ARCH_INCLUDE_DIR}>")
 
 # tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
 # simd.hpp the library was built with - the same white-box arrangement
@@ -151,6 +151,6 @@ set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
 # a minimum-footprint configure reaches too, so that summary names the
 # directory that build actually compiled rather than assuming generic.
 set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
-# For ac3::forge's version strings and its AVX2 tier, which keyed on the same answer
+# For iclforge::ac3's version strings and its AVX2 tier, which keyed on the same answer
 # before this file resolved it.
 set(AC3FORGE_BUILD_ARCH "${AC3FORGE_BUILD_ARCH}" PARENT_SCOPE)

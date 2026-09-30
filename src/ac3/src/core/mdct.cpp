@@ -131,7 +131,7 @@ const std::array<float, static_cast<std::size_t>(kN)>& analysis_window<float>() 
 // (the direct-form ground truth, now in
 // src/core/transform/reference/reference_transform.cpp) to max relative error ~3e-12
 // on both random data and real audio, the short folds 2026-08-15 the same
-// way; see tests/core/test_mdct_fast.cpp, which asserts a 1e-10 bound on all
+// way; see tests/ac3/core/test_mdct_fast.cpp, which asserts a 1e-10 bound on all
 // three.
 
 // Everything angle-dependent in the fold below, computed once per NLen -
@@ -152,7 +152,7 @@ const std::array<float, static_cast<std::size_t>(kN)>& analysis_window<float>() 
 //   The table stores std::cos/std::sin of each exact angle -2*pi*j/len
 //   instead - a (tiny) numerical change in the direction of MORE precision,
 //   re-verified against the direct form's ground truth by
-//   tests/core/test_mdct_fast.cpp's unchanged 1e-10 bound.
+//   tests/ac3/core/test_mdct_fast.cpp's unchanged 1e-10 bound.
 template <int NLen, typename Scalar = double>
 struct FastMdctTables {
     static constexpr std::size_t kM = static_cast<std::size_t>(NLen) / 2;
@@ -210,7 +210,7 @@ const FastMdctTables<NLen, Scalar>& fast_mdct_tables() {
 // is where the time is. Every lane performs the identical operations on the
 // identical values the scalar form did, so the coefficients are
 // bit-identical regardless of width; see fft_kernel.hpp's own header
-// comment for the algorithm this feeds and tests/core/test_simd_kernels.cpp
+// comment for the algorithm this feeds and tests/ac3/core/test_simd_kernels.cpp
 // for the bit-exactness check (both tiers).
 //
 // P is kM/2 - 128 for the long transform, 64 for the short pair - so it is
@@ -387,7 +387,7 @@ void mdct256_forward_first(std::span<const double, 256> windowed, std::span<doub
     // (cos(pi(2k+1) - phi) = -cos(phi)), so the upper half folds into the
     // lower with a minus sign and the transform is exactly the M-point
     // DCT-IV of v[n] = x[n] - x[255-n], scaled by -2/256. Verified against
-    // this file's direct-form table (tests/core/test_mdct_fast.cpp).
+    // this file's direct-form table (tests/ac3/core/test_mdct_fast.cpp).
     if (fast) {
         std::array<double, 128> v{};
         for (std::size_t n = 0; n < 128; ++n) {
@@ -410,7 +410,7 @@ void mdct256_forward_second(std::span<const double, 256> windowed, std::span<dou
     // (+2/256) * DCT4_128(w_R), w_R[n] = x[127-n] + x[128+n]. The "harder,
     // DST-IV-shaped" transform the phase-4 scoping deferred thus lands on
     // the SAME core as its siblings, one reversal away. Verified against
-    // this file's direct-form table (tests/core/test_mdct_fast.cpp).
+    // this file's direct-form table (tests/ac3/core/test_mdct_fast.cpp).
     if (fast) {
         std::array<double, 128> w_r{};
         for (std::size_t n = 0; n < 128; ++n) {
@@ -454,7 +454,7 @@ void mdct256_forward_second(std::span<const float, 256> windowed, std::span<floa
 // All three compute the same expressions in the same order, so each is
 // bit-exact against the scalar loop it replaced at its own precision; see the
 // arch seam's own header for that argument and
-// tests/core/test_simd_kernels.cpp for where it is checked.
+// tests/ac3/core/test_simd_kernels.cpp for where it is checked.
 //
 // `if constexpr` rather than a preprocessor conditional, so
 // tools/checks/check_platform_macros.ps1 stays satisfied. Note that it

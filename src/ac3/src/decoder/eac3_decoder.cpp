@@ -1027,7 +1027,7 @@ struct Eac3Decoder::Impl {
     // A member, reused by assign(), because the two sites that read it are
     // inside the block loop and each constructed a fresh std::vector - so a
     // 5.1 frame paid one allocation per (stream, block) that sent exponents,
-    // measured at 14 to 28 a frame. src/forge/src/decoder/decoder.cpp has done
+    // measured at 14 to 28 a frame. src/ac3/src/decoder/decoder.cpp has done
     // this for AC-3 all along (its own `groups` is declared once at frame scope
     // and assign()ed at both its use sites); this is the same shape, taken one
     // step further to a member so it survives the frame as well as the block.
@@ -2740,7 +2740,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // encoder and FFmpeg's, which both leave frmfgaincode at 0 so the
             // whole element is absent, and reached for the first time by a
             // Dolby Encoding Engine stream (frmfgaincode == 1,
-            // tests/oba/test_dee_joc_fixture.cpp).
+            // tests/ac3/oba/test_dee_joc_fixture.cpp).
             if (frm->cplinu[static_cast<std::size_t>(blk)]) {
                 fgaincod[static_cast<std::size_t>(kCplStream)] = static_cast<int>(r.read(3));
             }

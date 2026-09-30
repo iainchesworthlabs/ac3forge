@@ -11,7 +11,7 @@
 // (planning/arithmetic-tiers.md, Phase C), beside `eac3_tools.cpp`'s double
 // and float forms.
 //
-// Why here rather than there. `Fixed32` is internal to `src/forge/src/core/`
+// Why here rather than there. `Fixed32` is internal to `src/ac3/src/core/`
 // and `ac3/core/eac3_tools.hpp` is library surface, so the tier's forms cannot
 // be declared alongside the other two without making the type public. They are
 // header-only instead, exactly as `mdct_fixed.hpp` is, and the decoder picks

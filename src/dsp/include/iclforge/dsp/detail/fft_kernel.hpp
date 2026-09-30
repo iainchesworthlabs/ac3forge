@@ -47,7 +47,7 @@
 // stay the spec's own statement of each transform and the oracle every
 // fast-path test measures against.
 //
-// Internal to src/forge/src/core/ on purpose - transform plumbing between
+// Internal to src/ac3/src/core/ on purpose - transform plumbing between
 // translation units, not library surface.
 
 namespace ac3::internal {

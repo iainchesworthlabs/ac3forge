@@ -12,7 +12,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "exp_strategy.hpp"
 
-// The exponent-run planner (src/forge/src/encoder/exp_strategy.hpp), tested
+// The exponent-run planner (src/ac3/src/encoder/exp_strategy.hpp), tested
 // directly rather than through the encoder: what it decides is a cost
 // judgement, and a judgement is much easier to hold to account on inputs
 // chosen to make the right answer obvious than on real program material where

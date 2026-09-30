@@ -261,7 +261,7 @@ struct FrameEncoder::Impl {
     std::uint64_t rate_accumulator_ = 0;  // ideal-bits Bresenham state
     std::uint64_t words_emitted_ = 0;
     // The previous frame's converged SNR-offset composite, warm-starting the
-    // next frame's search (src/forge/src/encoder/snr_search.hpp). Negative
+    // next frame's search (src/ac3/src/encoder/snr_search.hpp). Negative
     // until a frame has been encoded. Two, one per predicate of the delta
     // race - eac3_frame.cpp's Impl says why, and why they are not purely
     // performance state.

@@ -198,7 +198,7 @@ fn atmos_access_unit_decode_and_scan() {
         let second = decoded.dynamic_object(1);
         assert!(first.x.abs() < 0.02 && first.y.abs() < 0.02);
         assert!((second.x - 1.0).abs() < 0.02 && (second.z - 1.0).abs() < 0.07);
-        // The placement gain is folded into the reconstructed essence (src/forge/src/oba/
+        // The placement gain is folded into the reconstructed essence (src/objects/src/
         // atmos.cpp, "object_gain can stay at 0 dB"), so OAMD always carries 0 dB...
         assert_eq!(first.gain_db, 0.0);
         assert_eq!(second.gain_db, 0.0);

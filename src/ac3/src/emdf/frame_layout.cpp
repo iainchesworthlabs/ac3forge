@@ -223,7 +223,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
             // Table E1.2's informational metadata, walked (not interpreted)
             // purely to reach addbsi at the right bit offset - field for
             // field the same walk read_eac3_substream already makes
-            // (src/forge/src/io/elementary.cpp). Only its POSITION is used:
+            // (src/ac3/src/io/elementary.cpp). Only its POSITION is used:
             // this walker holes the flag bit alone and then declines the
             // frame below, since which of these bytes a licensed decoder may
             // rewrite is not something this project has established. Walking
@@ -630,7 +630,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
         // dbaflde IS a real per-block field once set at the frame level:
         // every block sends its own deltbaie bit (§5.4.3.47-57), even a block
         // with nothing to say, and this encoder's delta bit allocation
-        // (src/forge/src/core/bitalloc.cpp) sets dbaflde whenever a channel's
+        // (src/ac3/src/core/bitalloc.cpp) sets dbaflde whenever a channel's
         // real spectral energy diverges enough from the default allocation
         // model to warrant a correction - ordinary, content-driven behaviour.
         // The cpldeltbae branch is never taken in this shape (no coupling),

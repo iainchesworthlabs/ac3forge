@@ -25,7 +25,7 @@
 // it does mean the streams an encoder produces depend on how it warm-starts,
 // which is why changing that re-pinned the golden hashes (2026-09-10).
 //
-// Internal to src/forge/src/encoder/ on purpose - this is plumbing between the
+// Internal to src/ac3/src/encoder/ on purpose - this is plumbing between the
 // two encoder translation units, not library surface.
 
 namespace ac3::internal {

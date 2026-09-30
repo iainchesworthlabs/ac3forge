@@ -19,9 +19,9 @@
 // spans end - and that is a judgement about cost rather than anything the
 // standard states, which is why it sits here in the encoder's own headers.
 //
-// Internal to src/forge/src/encoder/ on purpose, the same way snr_search.hpp
+// Internal to src/ac3/src/encoder/ on purpose, the same way snr_search.hpp
 // is: plumbing between the two encoder translation units, not library surface.
-// tests/encoder/test_exp_strategy.cpp includes it directly.
+// tests/ac3/encoder/test_exp_strategy.cpp includes it directly.
 
 namespace ac3::internal {
 

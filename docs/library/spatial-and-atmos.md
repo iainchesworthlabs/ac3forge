@@ -171,7 +171,7 @@ unpanned — it is not a JOC object either way (§6.3.2.2 bypasses it for a bed 
 it does for a dynamic-object one).
 
 Only the 5.1.4 channel order has been checked against a real DEE-produced stream
-(`tests/oba/test_dee_joc_fixture.cpp`); 7.1.4 and 9.1.6 extend it by Table 12's own channel order,
+(`tests/ac3/oba/test_dee_joc_fixture.cpp`); 7.1.4 and 9.1.6 extend it by Table 12's own channel order,
 unverified against DEE itself. `ac3cli atmos-cbi` is the CLI surface — see
 [CLI commands](../forge/cli/commands.md).
 
@@ -380,7 +380,7 @@ pushed has nothing safe to push yet — `apply()` returns `std::nullopt` in that
 update against the object and re-applying it once a position finally arrives.
 
 This header is pure, portable, zero-socket, zero-thread code — no I/O of any kind — and is
-fuzzed (`fuzz/fuzz_osc_parse.cpp`) and unit-tested (`tests/oba/test_scene_osc.cpp`) accordingly.
+fuzzed (`fuzz/fuzz_osc_parse.cpp`) and unit-tested (`tests/objects/test_scene_osc.cpp`) accordingly.
 The actual UDP listener, `ac3::audio::LivePositionSource`, is a separate, app-serving-only piece
 and is **not** part of this installed library, for the same reason the rest of `ac3::audio`
 isn't (see [Using ac3::forge](index.md)'s note on live audio); `ac3cli live mode=atmos

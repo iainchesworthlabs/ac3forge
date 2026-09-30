@@ -417,7 +417,7 @@ int ac3probe::run() {
     }
     // 7.1 as an ACCESS UNIT: an independent 5.1 substream and a dependent
     // carrying Ls, Rs, Lrs and Rrs (chanmap k71Rear), which is how Annex E
-    // codes a layout wider than 5.1 (E3.8.2) and the shape tests/encoder/
+    // codes a layout wider than 5.1 (E3.8.2) and the shape tests/ac3/encoder/
     // test_eac3.cpp's seven_one() builds. Two FrameEncoders live at once
     // inside the AccessUnitEncoder, and that is the finding: on the host this
     // fixture takes the run's peak from about 223,000 bytes to 435,263, and

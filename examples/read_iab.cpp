@@ -4,7 +4,7 @@
 // found to show the two agree - the point being that SMPTE ST 2067-201 clip-wraps the whole
 // IABitstream as a single Generic Container KLV Value, so an MXF Track File's essence really is
 // the identical byte sequence an elementary `.iab` file already has (see
-// src/ac3iab/src/mxf_reader.cpp's own header comment for the full citation trail).
+// src/iab/src/mxf_reader.cpp's own header comment for the full citation trail).
 //
 // ac3iab::ac3iab is codec-blind - this program does not either, it only proves both parsed graphs
 // are navigable and agree. A real IAB Track File is a production Dolby Atmos cinema/IMF master

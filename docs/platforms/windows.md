@@ -371,7 +371,7 @@ end to end is still a manual, unautomated check.
 `ac3hearth`'s mDNS browse for `_sendspin._tcp` players, and `ac3hearth-testsink`'s own Sendspin
 listener and mDNS advertisement. Rather than leave this to Windows' own "these features have been
 blocked" prompt, `ac3::sendspin::firewall::ensure_inbound_rule()`
-(`src/sendspin/include/ac3/sendspin/firewall.hpp`) adds the rule itself, through the same
+(`src/sendspin/include/iclforge/sendspin/firewall.hpp`) adds the rule itself, through the same
 `INetFwPolicy2` COM policy object the Settings app's firewall page edits, the first time it finds
 none already there for that executable and port.
 

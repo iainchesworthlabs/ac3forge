@@ -71,7 +71,7 @@
 // MDCT magnitude is modulated block to block by time-domain aliasing, and
 // an unsmoothed per-bin magnitude would call a held note unpredictable.
 // The published model is not being claimed here; a documented reduction of
-// it is. tests/quality/test_perceptual.cpp pins the behaviour that matters
+// it is. tests/ac3/quality/test_perceptual.cpp pins the behaviour that matters
 // - tones score tonal, noise and clicks do not.
 
 namespace ac3::quality {

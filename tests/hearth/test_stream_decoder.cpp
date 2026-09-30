@@ -587,7 +587,7 @@ TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely m
 
     // The setting must reach DecoderConfig::fast_imdct rather than the same
     // path running twice (decoder_settings.cpp's decoder_setup()) - but both
-    // remain a correct decode of the same signal: tests/decoder/test_decoder.cpp's
+    // remain a correct decode of the same signal: tests/ac3/decoder/test_decoder.cpp's
     // own fast_imdct test pins the two transform paths' agreement above 200 dB SNR.
     CHECK_FALSE(std::ranges::equal(fast, reference));
     double squared_diff = 0.0;

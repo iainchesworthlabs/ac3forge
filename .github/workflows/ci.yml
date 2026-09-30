@@ -37,7 +37,7 @@
 #                                     _build.yml. Also runs the codec-matrix
 #                                     script's full layout/tool/atmos sweep
 #   coverage                GREEN     per-component line/branch gates over all
-#                                     nine library components (src/forge 92.2%
+#                                     nine library components (src/ac3 92.2%
 #                                     line / 84.1% branch on the 2026-08-20
 #                                     WSL2 calibration run - no hosted run of
 #                                     the per-component gate recorded here
@@ -133,7 +133,7 @@
 # than adding a new one, and the existing `ctest --preset test-<leg>` step
 # picks it up with zero changes to this file or _build.yml.
 #
-# ALSA-conditional tests (tests/backend/alsa/, see tests/CMakeLists.txt)
+# ALSA-conditional tests (tests/audio/backend/alsa/, see tests/CMakeLists.txt)
 # register only when AC3FORGE_WITH_ALSA finds libasound, which is why a
 # no-ALSA fallback run reports fewer tests than the same leg's full run - a
 # configuration difference, not tests going missing.

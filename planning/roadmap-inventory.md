@@ -89,7 +89,7 @@ no AC-4 decode entry.
 |---|---|---|---|---|---|---|---|
 | **IM5** | TrueHD experimental module | No `AC3FORGE_BUILD_MLP` on `main`; work on `feature/truehd-atmos-support` branch per ROADMAP | Internal codec on branch | Rebase, gate as `ac3::mlp`, label output, merge to `main`; authenticity = Evolution frame HMAC (not EMDF) — see ROADMAP IM5 note / object-signing sibling | **In progress** (off main) | Accurate | Land TrueHD/MLP as an experimental, accurately labelled module from its long-lived branch. |
 | **VX9** | Listening test session | `tools/listening/`; `tools/listening/responses/README.md`: "No listening session has been run yet" | Blind stimulus generator, scorer, protocol on `docs/landscape.md` | Human MUSHRA/ABX session over real programme material | **Partial** | Accurate | Listening-test apparatus is merged; the session itself has not been run. |
-| **VX12** | Cross-toolchain bitstream reproducibility | ROADMAP self-labels PARTIAL; `tests/encoder/test_coupling.cpp` (`ilogb` fix); `tests/encoder/test_transient.cpp` all six rates | Audit complete; one libm fix landed; transient detector proven bit-identical on five toolchain legs | Fixed-point transient port; re-validation of coupling-fit/AHT/rematrix thresholds; cross-leg gold gate blocked on VX11 arm64 root cause | **Partial** | Accurate | Encoder bit-cost decisions are mostly audited; perceptual re-validation and a few FP comparisons remain open. |
+| **VX12** | Cross-toolchain bitstream reproducibility | ROADMAP self-labels PARTIAL; `tests/ac3/encoder/test_coupling.cpp` (`ilogb` fix); `tests/ac3/encoder/test_transient.cpp` all six rates | Audit complete; one libm fix landed; transient detector proven bit-identical on five toolchain legs | Fixed-point transient port; re-validation of coupling-fit/AHT/rematrix thresholds; cross-leg gold gate blocked on VX11 arm64 root cause | **Partial** | Accurate | Encoder bit-cost decisions are mostly audited; perceptual re-validation and a few FP comparisons remain open. |
 | **AP1** | API freeze → v1.0.0 | `docs/library/api-stability.md`; version macros in `ac3forge.h`; `.github/workflows/_ci-core.yml` `ABI_ENFORCE: 'false'`; `SOVERSION "${PROJECT_VERSION}"` in library CMake | Tiering doc, SemVer policy, release criteria, C version macros | Flip `SOVERSION` to major; `inline namespace v1`; make ABI gate **required** | **In progress** | Accurate | v1.0 policy is written; SOVERSION and a enforcing ABI gate wait for the v1.0.0 cut. |
 | **UX12** | Crucible promotion | `apps/crucible/`; CI `crucible: true` on Windows/Linux legs; `docs/crucible/index.md` | Rename; Windows + Linux verified on hardware (Pi); engine, window, packages on Linux; macOS platform code | macOS interactive run; native-speaker translation review (→ CR1); attestation-signed Windows driver | **Partial** | **Stale** in ROADMAP summary (see below) | Crucible ships on Windows and Linux; macOS compiles in CI but has never run with audio on a Mac. |
 | **UX7** | macOS process tap | `src/audio/src/backend/macos/process_tap.mm`; `audio_backend.cpp` refuses `process_loopback` unless `AC3FORGE_MACOS_PROCESS_TAP` | Tap code compiles; device watcher registers; opt-in env var | `AudioDeviceCreateIOProcID` hang; path disabled by default; no successful capture on Mac | **Partial** | Accurate (2026-09-06 update) | macOS process tap code exists but is refused by default until the HAL hang is resolved. |
@@ -128,7 +128,7 @@ as active roadmap rows; the new roadmap may mention them only in a legacy index 
 
 | Topic | ROADMAP | Code / docs truth | Inventory note |
 |---|---|---|---|
-| **AC-4 inspect** | IM4 Shipped | `src/ac4/include/ac4/ac4.hpp`: "INSPECTOR, not a decoder"; `capabilities.md` AC-4 row | Shipped scope = parse/inspect + carriage in MP4/TS |
+| **AC-4 inspect** | IM4 Shipped | `src/ac4/include/iclforge/ac4/ac4.hpp`: "INSPECTOR, not a decoder"; `capabilities.md` AC-4 row | Shipped scope = parse/inspect + carriage in MP4/TS |
 | **AC-4 decode** | *(absent)* | `src/ac4dec/`: syntax only | **Partial** — separate row in section A |
 | **IAMF** | IM3 Shipped (phase 1) | `iamf/iamf.hpp`: "phase 1 of 3"; phases 2–3 wait on IAMF v2.0 final | Shipped = channel-based writer; object elements **blocked** |
 | **IAB reader** | IM1 Shipped | `ac3iab`: full header parse; **AudioDataDLC** opaque bytes only | Shipped = reader; Annex B DLC decode is **follow-on**, not ID'd |
@@ -144,7 +144,7 @@ From `planning/hearth-reference-player.md` status block, verified against `main`
 | Chip | Planning claim | Tree check | Inventory status |
 |---|---|---|---|
 | **A0** | Design round published, awaits review | No standalone design doc in repo | **Proposed** — gate for A5 |
-| **A1** | Merged | `src/forge/include/ac3/render/*` (Experimental tier in api-stability) | **Shipped** |
+| **A1** | Merged | `src/render/include/iclforge/render/*` (Experimental tier in api-stability) | **Shipped** |
 | **A2** | Merged | `src/audio/` backends, routing, device watch | **Shipped** (hardware identify tone checks still open per plan) |
 | **A3** | Merged | `apps/hearth/engine/*`, 17 hearth test files | **Shipped** |
 | **A4** | Merged | Sendspin lib + testserver + tests; **engine lacks ServerHost** | **Partial** |
@@ -180,8 +180,8 @@ passthrough tests for A2/A3; TDM DAC boards for sinks; Music Assistant compatibi
 | `AC3FORGE_BUILD_HEARTH` | `src/sendspin`, `apps/hearth` | OFF | Hearth engine/tests when ON |
 | `AC3FORGE_BUILD_CRUCIBLE` | `apps/crucible` | OFF | UX12; CI sets ON on selected legs |
 | `AC3FORGE_BUILD_IAMF` | `src/iamf` | ON | IM3 phase 1 |
-| `AC3FORGE_BUILD_IAB` | `src/ac3iab` | ON | IM1 |
-| `AC3FORGE_BUILD_ADM` | `src/ac3adm`, `src/admbridge` | OFF | ADM/JOC bridge optional |
+| `AC3FORGE_BUILD_IAB` | `src/iab` | ON | IM1 |
+| `AC3FORGE_BUILD_ADM` | `src/adm`, `src/admbridge` | OFF | ADM/JOC bridge optional |
 | `hearth-esp32s3` CI job | `.github/workflows/_build.yml` | — | B-chip sink verification |
 | `ABI_ENFORCE` | `_ci-core.yml` | `false` | AP1 deferred gate |
 

@@ -57,12 +57,12 @@ on:
       - 'tools/checks/verify_fate_interop.py'
       - 'tools/checks/compare_wav.py'
       - '.github/workflows/interop.yml'
-      # The decode path this gate drives. src/forge/src/decoder/ carries the
+      # The decode path this gate drives. src/ac3/src/decoder/ carries the
       # framing (split_frames/split_access_units), the AC-3 FrameDecoder and
       # the Annex E substream reader alike, so one pattern covers every layer
       # the corpus reaches; decode.cpp is the entry point the script invokes.
-      - 'src/forge/src/decoder/**'
-      - 'src/forge/include/ac3/decoder/**'
+      - 'src/ac3/src/decoder/**'
+      - 'src/ac3/include/iclforge/ac3/decoder/**'
       - 'apps/cli/commands/decode.cpp'
   workflow_dispatch:
 

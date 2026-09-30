@@ -65,7 +65,7 @@ struct EncoderConfig {
     // by default since the owner accepted its quality evidence (verified max
     // relative error ~3e-12 against the direct form on random data and real
     // audio, 331 dB direct-vs-fast end-to-end SNR, 0.000 dB delta against an
-    // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
+    // independent oracle at 192-448 kbps; see tests/ac3/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
     // validated against. All three forward transforms accelerate - the long
@@ -74,7 +74,7 @@ struct EncoderConfig {
     bool fast_mdct = true;
 
     // §7.3.4 dithflag, decided per channel per block from content (see
-    // src/forge/src/encoder/dither.hpp) - on by default, matching every other
+    // src/ac3/src/encoder/dither.hpp) - on by default, matching every other
     // config field here. false pins dithflag at 0 unconditionally, the
     // deterministic behaviour from before this existed: real dither values
     // are decoder-defined (the spec's own "any reasonably random sequence"),
@@ -154,7 +154,7 @@ struct EncoderConfig {
     // bits away from dbpbcod's quiet-band floor buys back less SNR than it
     // costs in per-band spectral shape at that budget. kPerceptual
     // loses outright at every rate tested, despite its psychoacoustic model
-    // being independently validated (tests/quality/test_perceptual.cpp): its
+    // being independently validated (tests/ac3/quality/test_perceptual.cpp): its
     // objective correctly discounts already-masked headroom, which leaves it
     // much thinner decision margins than raw distortion, and on real stereo
     // material with rematrixing active those margins are landing on the

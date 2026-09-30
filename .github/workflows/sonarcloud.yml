@@ -204,7 +204,7 @@ jobs:
       # tools/checks/ac4_syntax_trace.cpp is deliberately not a CMake target
       # (see its own header) - a development tool, built here the same way its
       # header documents building it by hand, against the coverage build's own
-      # already-instrumented ac4dec_static/ac4core/ac4_static. gcov accumulates a
+      # already-instrumented iclforge_ac4dec_static/ac4core/ac4_static. gcov accumulates a
       # binary's hits into the same .gcda files across every process that
       # exercises those objects, the same way ctest's many separate test
       # binaries already do above, so this run's counts fold into Test's

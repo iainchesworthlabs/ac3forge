@@ -44,7 +44,7 @@
 // fft.cpp's dft512 normalisation, bitalloc.cpp's exponents_to_psd) are
 // composition, not new arithmetic, so they inherit that guarantee rather
 // than needing their own bit-exact unit test; their correctness is instead
-// covered end to end by tests/core/test_mdct_fast.cpp's existing tolerance
+// covered end to end by tests/ac3/core/test_mdct_fast.cpp's existing tolerance
 // check against the direct-form oracle and by the cross-build corpus check
 // below.
 //

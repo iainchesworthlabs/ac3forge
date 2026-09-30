@@ -7,7 +7,7 @@
 # EMSCRIPTEN there rather than needing a whole separate entry point.
 #
 # WASM browser demo: a browser demo that decodes a real E-AC-3/Atmos-in-DD+
-# elementary stream via ac3::forge compiled to WASM, plays the decoded bed
+# elementary stream via iclforge::ac3 compiled to WASM, plays the decoded bed
 # audio through the Web Audio API, and visualizes real per-channel energy in
 # time with playback. See docs/platforms/wasm.md.
 #
@@ -19,7 +19,7 @@
 # ---------------------------------------------------------------------------
 
 add_executable(ac3forge_wasm_decode decoder_bindings.cpp)
-target_link_libraries(ac3forge_wasm_decode PRIVATE ac3::forge ac3::warnings)
+target_link_libraries(ac3forge_wasm_decode PRIVATE iclforge::ac3 ac3::warnings)
 
 # --bind: Embind, the JS<->C++ binding generator decoder_bindings.cpp's
 # EMSCRIPTEN_BINDINGS macro uses. MODULARIZE+EXPORT_NAME: the loader becomes a
@@ -28,7 +28,7 @@ target_link_libraries(ac3forge_wasm_decode PRIVATE ac3::forge ac3::warnings)
 # import. ALLOW_MEMORY_GROWTH: an uploaded stream's decoded PCM size is not
 # known ahead of time, unlike the bundled demo fixture. ENVIRONMENT=web: this
 # is a browser page, not also a Node/worker target, so the smaller web-only
-# runtime is enough. -fexceptions (compile AND link): ac3::forge itself never
+# runtime is enough. -fexceptions (compile AND link): iclforge::ac3 itself never
 # throws (std::expected throughout, matching every other target in this
 # project), but transitively-called std library paths (bad_alloc, vector::at)
 # still can - and Emscripten's default of exceptions compiled out turns any
@@ -86,7 +86,7 @@ add_custom_command(TARGET ac3forge_wasm_decode POST_BUILD
 # ---------------------------------------------------------------------------
 
 add_executable(ac3forge_wasm_encode encoder_bindings.cpp)
-target_link_libraries(ac3forge_wasm_encode PRIVATE ac3::forge ac3::warnings)
+target_link_libraries(ac3forge_wasm_encode PRIVATE iclforge::ac3 ac3::warnings)
 
 # Same reasoning as ac3forge_wasm_decode's own comment on every flag below -
 # -fexceptions, MODULARIZE+EXPORT_NAME (a distinct name so this module and
@@ -168,7 +168,7 @@ add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
 
 if(AC3FORGE_BUILD_AC4)
     add_executable(ac3forge_wasm_ac4 ac4_bindings.cpp)
-    target_link_libraries(ac3forge_wasm_ac4 PRIVATE ac4::ac4 ac4::decoder ac4::encoder ac3::warnings)
+    target_link_libraries(ac3forge_wasm_ac4 PRIVATE iclforge::ac4 iclforge::ac4dec iclforge::ac4enc ac3::warnings)
 
     # Same reasoning as ac3forge_wasm_decode's own comment on every flag
     # below - -fexceptions, MODULARIZE+EXPORT_NAME (a third distinct name so

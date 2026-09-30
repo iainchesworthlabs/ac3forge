@@ -282,7 +282,7 @@ struct Program {
 // L, R, C, LFE, Ls, Rs), and a DD+ JOC stream from the Dolby Encoding Engine
 // confirms it - reconstructing its eleven JOC objects and identifying each by
 // the tone that went into that speaker recovers the descending order and not
-// the ascending one (tests/oba/test_dee_joc_fixture.cpp).
+// the ascending one (tests/ac3/oba/test_dee_joc_fixture.cpp).
 enum class BedLabel : std::uint8_t {
     kL, kR, kC, kLfe, kLs, kRs, kLb, kRb, kTfl, kTfr, kTsl, kTsr, kTbl, kTbr, kLw, kRw, kLfe2,
 };

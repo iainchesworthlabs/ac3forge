@@ -205,7 +205,7 @@ struct DecoderConfig {
     // rests on: worst transform-level relative error 1.3e-13 (the same
     // forward kernel mdct512_forward's own fast-path tests already pin),
     // full oba::joc::reconstruct output agreeing 321-325 dB SNR against the
-    // direct form over three objects (tests/oba/test_atmos.cpp), and the
+    // direct form over three objects (tests/ac3/oba/test_atmos.cpp), and the
     // bed analysis' own kernel cost (isolated from object synthesis, which
     // this does not touch) measured 11.0x - 238 to 2628 microseconds per
     // block-of-5-channels, a release build's ac3kernelbench

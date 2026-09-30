@@ -826,7 +826,7 @@ void ecpl_channel_spectrum_impl(std::span<const Scalar, 256> prev_mant,
 // Separate bodies rather than branches inside the templates above, for two
 // reasons. The arithmetic differs in kind: Q7.24 is an absolute format, so
 // every stage below carries an exponent the floating forms have no need of
-// (src/forge/src/decoder/block_norm.hpp says why the decoder's store does the
+// (src/ac3/src/decoder/block_norm.hpp says why the decoder's store does the
 // same). And leaving the templates untouched is what guarantees the double
 // and float paths are the functions they were - nothing here can change a bit
 // of either.

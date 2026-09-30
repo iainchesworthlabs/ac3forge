@@ -16,7 +16,7 @@
 # instrumentation of its own sources. A PRIVATE link of this target lands in
 # the library's INTERFACE_LINK_LIBRARIES as $<LINK_ONLY:ac3::coverage>, so
 # --coverage reaches every downstream LINK line automatically (ac3perf/ac3bench
-# link the instrumented ac3::forge with no ac3::coverage of their own and link
+# link the instrumented iclforge::ac3 with no ac3::coverage of their own and link
 # fine) - but --coverage is target-scoped at COMPILE time, so a consumer's own
 # .cpp files still compile without -fprofile-arcs and emit no .gcno. That is
 # why ac3cli has to link this explicitly (apps/cli/CMakeLists.txt) now that
@@ -27,7 +27,7 @@
 # build-time saving: examples/ is documentation that happens to compile, over
 # an API surface tests/ already covers, and each one is its own ctest process -
 # see CMakePresets.json. Vendored third-party code
-# (src/ac3adm's FetchContent'd libbw64/libadm) is deliberately NOT
+# (src/adm's FetchContent'd libbw64/libadm) is deliberately NOT
 # instrumented: these flags are target-scoped and nothing links ac3::coverage
 # into those targets, and tools/checks/coverage_report.sh's filters are
 # first-party-only anyway.

@@ -512,7 +512,7 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
 
     // Two stacked transform round trips carry two stacked algorithmic
     // delays: 256 samples from the real encode+decode of the bed itself
-    // (see tests/decoder/test_eac3_decoder.cpp's own snr_db helper), plus
+    // (see tests/ac3/decoder/test_eac3_decoder.cpp's own snr_db helper), plus
     // reconstruct()'s own independent pass over that decoded bed - which
     // depends on the domain it ran in, so it is asked rather than assumed
     // (see "reconstruct is a delayed identity..." above). Comparing sample

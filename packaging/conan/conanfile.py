@@ -1,11 +1,11 @@
-# Conan (2.x) recipe for ac3forge - installs the library only (ac3::forge,
-# matroska::matroska/mp4::mp4/mpegts::mpegts behind their own default-on options, and
-# ac3::forge_c, the AC-4 libraries, ac3iab::ac3iab and iamf::iamf behind default-off "capi",
+# Conan (2.x) recipe for ac3forge - installs the library only (iclforge::ac3,
+# iclforge::matroska/iclforge::mp4/iclforge::mpegts behind their own default-on options, and
+# iclforge::c, the AC-4 libraries, iclforge::iab and iclforge::iamf behind default-off "capi",
 # "ac4", "iab" and "iamf" options), never the CLI, GUI, Hearth, tests, examples or fuzz
 # harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/ac3forge/) - one Conan option
 # <-> one AC3FORGE_BUILD_<NAME> CMake option, same pattern that port's vcpkg_check_features()
 # call already establishes, and tools/checks/check_packaging_versions.sh holds the two recipes to
-# the same components and options. ac3adm::ac3adm/ac3::admbridge (the ADM/BW64
+# the same components and options. iclforge::adm/iclforge::admbridge (the ADM/BW64
 # reader and its Atmos bridge) are deliberately NOT options here even though upstream now
 # installs/exports both (shared-only - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
 # block): ac3adm needs Boost, and out-of-scope-for-now applies here the same way it does for the
@@ -64,8 +64,8 @@ class Ac3forgeConan(ConanFile):
         "mp4": True,
         "mpegts": True,
         # Off by default, same reasoning as the vcpkg port's own features of the same names: each
-        # adds whole new installed libraries and public targets (ac3::forge_c; ac4::ac4,
-        # ac4::decoder and ac4::encoder; ac3iab::ac3iab; iamf::iamf), not a behavior toggle on an
+        # adds whole new installed libraries and public targets (iclforge::c; iclforge::ac4,
+        # iclforge::ac4dec and iclforge::ac4enc; iclforge::iab; iclforge::iamf), not a behavior toggle on an
         # already-installed one - opt in explicitly with -o "&:ac4=True" and the like.
         "capi": False,
         "ac4": False,
@@ -167,8 +167,8 @@ class Ac3forgeConan(ConanFile):
         # of the way; builddirs puts the package's own installed config on
         # CMAKE_PREFIX_PATH so a consumer's plain
         # find_package(ac3forge CONFIG REQUIRED) resolves it directly -
-        # same find_package() call and ac3::forge/matroska::matroska/
-        # mp4::mp4/mpegts::mpegts targets as any other consumer in
+        # same find_package() call and iclforge::ac3/iclforge::matroska/
+        # iclforge::mp4/iclforge::mpegts targets as any other consumer in
         # docs/library/index.md, Conan or not.
         self.cpp_info.set_property("cmake_find_mode", "none")
         self.cpp_info.builddirs = [os.path.join("lib", "cmake", "ac3forge")]

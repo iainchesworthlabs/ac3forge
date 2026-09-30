@@ -21,7 +21,7 @@
 // read zero after the first 5/8 of the syncframe has been shifted through,
 // and explicitly says crc1 is not the CRC of that region. It is solved for,
 // through the GF(2) polynomial inverse ac3::solve_leading_crc implements -
-// the same call src/forge/src/encoder/encoder.cpp makes, including its
+// the same call src/ac3/src/encoder/encoder.cpp makes, including its
 // crc2 == kSyncWord avoidance step (a crc2 that happens to equal 0x0B77 would
 // make the frame's own tail look like the start of the next syncframe, so the
 // encoder flips crcrsv and recomputes; a mutator that skipped this would

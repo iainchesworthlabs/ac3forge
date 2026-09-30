@@ -4,7 +4,7 @@
 
 #include "iclforge/objects/emdf.hpp"
 
-// ac3::emdf::parse_container (src/forge/src/emdf/emdf.cpp) over raw bytes.
+// ac3::emdf::parse_container (src/objects/src/emdf.cpp) over raw bytes.
 //
 // This is the outermost of the three metadata parsers and the one the decoder
 // hands attacker-controlled bytes to first: eac3_decoder.cpp reads skipl (9

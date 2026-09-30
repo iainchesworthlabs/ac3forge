@@ -7,7 +7,7 @@
 // dynamic-dispatch follow-on).
 //
 // avx2_probe.cpp is compiled with an AVX2 target flag (/arch:AVX2 or
-// -mavx2 - see src/forge/CMakeLists.txt's forge_simd_avx2 object library
+// -mavx2 - see src/ac3/CMakeLists.txt's forge_simd_avx2 object library
 // and tests/CMakeLists.txt's matching per-source flag on the SAME file
 // compiled a second time directly into the test binary) TWICE: once into
 // the library proper, once into ac3tests, so the AVX2 codegen path is
@@ -20,7 +20,7 @@
 // forge_simd_avx2 object - the same white-box arrangement
 // tests/CMakeLists.txt already gives src/signing/src.
 //
-// Internal to src/forge/ on purpose - never installed, never part of the
+// Internal to src/ac3/ on purpose - never installed, never part of the
 // public ac3/ API, exactly like ac3/internal/profiling.hpp beside it.
 // ---------------------------------------------------------------------------
 

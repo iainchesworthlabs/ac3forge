@@ -107,7 +107,7 @@ std::vector<std::byte> encode_with(Encoder& encoder, int channels, int frames) {
 // A stream whose every syncframe sends Table D2.2's reserved dmixmod '11':
 // the same audio encoded with '01' and with '10', ORed byte by byte, then each
 // syncframe's CRCs re-stamped. The encoder will not write '11' itself - see
-// tests/meta/test_bsi.cpp's reserved_dmixmod_frame, which also checks that
+// tests/ac3/meta/test_bsi.cpp's reserved_dmixmod_frame, which also checks that
 // the OR changes nothing but dmixmod.
 std::vector<std::byte> reserved_dmixmod_stream(std::span<const std::byte> ltrt,
                                                std::span<const std::byte> loro) {

@@ -4,16 +4,16 @@
 
 // ---------------------------------------------------------------------------
 // The AVX2 tier's own tiny SIMD type, same shape as
-// src/arithmetic/arch/x86_64/ac3/internal/arch/simd.hpp's f64x2 -
+// src/arithmetic/variants/arch-x86_64/iclforge/arithmetic/detail/simd.hpp's f64x2 -
 // only ever included by a .cpp file compiled into forge_simd_avx2 (the one
-// AVX2-flagged object library, see src/forge/CMakeLists.txt), never by
+// AVX2-flagged object library, see src/ac3/CMakeLists.txt), never by
 // forge_objects. That split is why this lives in src/internal/avx2/ rather
 // than alongside f64x2 in the arch/ tree: arch/'s directory-selection
 // mechanism picks exactly one SIMD width for the WHOLE codec at compile
 // time, but AVX2 is a second, narrower, runtime-gated tier that coexists
 // with whichever arch/ tier is active - a kernel that dispatches to AVX2
 // still falls back to arch/'s own f64x2 (or scalar) on a CPU that can't run
-// this. See src/forge/src/internal/cpu/cpu_features.hpp for the dispatch
+// this. See src/base/include/iclforge/base/detail/cpu_features.hpp for the dispatch
 // contract and docs/building.md's "Runtime AVX2 dispatch" section.
 //
 // SAME bit-exactness argument as f64x2: every operation below is exactly

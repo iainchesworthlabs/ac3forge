@@ -123,7 +123,7 @@ installed or packaged.*
 - **Output**, one of: a local PCM device; a passthrough-capable device (IEC 61937 to HDMI or
   S/PDIF); a Sendspin group of sinks and players ([Groups](#groups)).
 - **Speaker layout**, in the renderer's grammar (`esp-idf/ac3forge/include/ac3forge/layout.hpp`
-  on 2026-09-15; A1 moved it to `src/forge/include/ac3/render/layout.hpp`): a named `F.L.H` layout
+  on 2026-09-15; A1 moved it to `src/render/include/iclforge/render/layout.hpp`): a named `F.L.H` layout
   of up to sixteen speakers or a per-speaker list of locations and
   angles, with `:small`, `:height`, `:top` and `:upfiring`. A coded channel whose location is in
   the layout goes to that speaker, other channels are panned, objects are panned by position, and
@@ -136,8 +136,8 @@ What the controls map to, and what each needs:
 
 | Control | In the library today | Work |
 |---|---|---|
-| Operating mode: line, RF, custom | `OperatingMode` (`src/forge/include/ac3/decoder/output.hpp:57`) and `rf_ceiling` | none |
-| DRC scale | `DecoderConfig::drc_scale`, one exponent for cut and boost | separate cut and boost scale factors, in `src/forge` |
+| Operating mode: line, RF, custom | `OperatingMode` (`src/ac3/include/iclforge/ac3/decoder/output.hpp:57`) and `rf_ceiling` | none |
+| DRC scale | `DecoderConfig::drc_scale`, one exponent for cut and boost | separate cut and boost scale factors, in `src/ac3` |
 | Heavy compression | `DecoderConfig::heavy_compression` (`decoder.hpp:168`) | none |
 | Dialogue normalisation | `OutputConfig::apply_dialnorm` (`output.hpp:76`), a fixed −31 target that only attenuates | none unless the design keeps a target control |
 | Stereo downmix | `DownmixTarget` as coded, Lo/Ro, Lt/Rt, mono (`output.hpp:46`), `ltrt_phase_shift`, `mix_lfe` | none |
@@ -157,7 +157,7 @@ presentation (from the table of contents: presentations, language, channel mode)
 associated with a mix level, dialogue enhancement level, DRC decoder mode and profile, and the
 downmix modes. Where an AC-4 control and an E-AC-3 control are the same idea, such as DRC mode
 or downmix target, the app shows one control. `src/ac4` is an inspector
-(`src/ac4/include/ac4/ac4.hpp:22`) and does not parse the dialogue enhancement or DRC payloads
+(`src/ac4/include/iclforge/ac4/ac4.hpp:22`) and does not parse the dialogue enhancement or DRC payloads
 yet, which is part of chip D. *As built, the decoder in `src/ac4dec` reads those payloads, and the
 controls are live on the Decoder page's AC-4 tab: presentation, language, dialogue enhancement,
 dynamic range, downmix, the immersive layout, full or core decoding and the output level.*
@@ -166,8 +166,8 @@ dynamic range, downmix, the immersive layout, full or core decoding and the outp
 
 - One meter per output channel, labelled with the speaker the routing put there: peak, hold, RMS
   and clip latch from `ac3::analysis::LevelMeter`
-  (`src/forge/include/ac3/analysis/levels.hpp`).
-- Loudness from `ac3::meta::LoudnessMeter` (`src/forge/include/ac3/meta/loudness.hpp`):
+  (`src/ac3/include/iclforge/ac3/analysis/levels.hpp`).
+- Loudness from `ac3::meta::LoudnessMeter` (`src/ac3/include/iclforge/ac3/meta/loudness.hpp`):
   momentary, short-term, integrated, loudness range and true peak. On 2026-09-15 only QC used it;
   the engine's `play_meters` now does too.
 - Meter snapshots are released at their play time. The GUI's player meters each chunk before it
@@ -189,7 +189,7 @@ dynamic range, downmix, the immersive layout, full or core decoding and the outp
 - **Per-output trim** in dB and **per-output delay** in milliseconds.
 - **Bass management**: small speakers crossed over into the LFE. The renderer takes a crossover
   frequency (`esp-idf/ac3forge/include/ac3forge/render.hpp:95-107`, now
-  `src/forge/include/ac3/render/render.hpp`) and the player passes the 80 Hz default; the app
+  `src/render/include/iclforge/render/render.hpp`) and the player passes the 80 Hz default; the app
   makes it a setting.
 - Saved per output device, and on each sink for that sink's own wiring.
 
@@ -253,7 +253,7 @@ design mockups. `docs/hearth/` holds the overview, the sink guides and a design 
 
 | Layer | Path | Target | Qt | Used by |
 |---|---|---|---|---|
-| Renderer and speaker management | `src/forge/include/ac3/render/` (moved from `esp-idf/ac3forge/include/ac3forge/{layout,render}.hpp`) | part of `ac3::forge` | no | engine, test sink, `hearth_sink` |
+| Renderer and speaker management | `src/render/include/iclforge/render/` (moved from `esp-idf/ac3forge/include/ac3forge/{layout,render}.hpp`) | part of `ac3::forge` | no | engine, test sink, `hearth_sink` |
 | Sendspin | `src/sendspin/` | a static library beside `mp4` and `mpegts` | no | engine (server half), test sink and `hearth_sink` (player half) |
 | Output devices | `src/audio/` | `ac3::audio` | no | engine, test sink |
 | Engine | `apps/hearth/engine/` | `ac3hearth_engine` | no | app, test sink |
@@ -276,7 +276,7 @@ measurable allocations (the S3 heap is regioned and the C6 has no PSRAM); socket
 and randomness behind seams, backed by cpp-httplib, mbedTLS and the OS on a computer and by
 `esp_http_server`, ESP-IDF's mbedTLS, `esp_timer` and the hardware RNG on a board. JSON is written
 in-tree: the only JSON reader in the tree is private to `ac3::oba`
-(`src/forge/src/oba/scene_json.cpp`).
+(`src/objects/src/scene_json.cpp`).
 
 **Dependencies**, behind a vcpkg manifest feature `hearth` so that a library-only build pulls
 none of them: cpp-httplib (MIT), mjansson's `mdns` (public domain), mbedTLS (Apache-2.0), libFLAC
@@ -461,10 +461,10 @@ package.*
 - Between queue items with the same sample rate and output layout, the output stays open and no
   silence is inserted. In a group, the Sendspin stream continues and its timestamps run on.
 - No container field about encoder delay or padding is read today. `mp4.hpp` says "No edit lists,
-  no multiple tracks" (`src/mp4/include/mp4/mp4.hpp:35`) and nothing reads `iTunSMPB`. A3 adds
+  no multiple tracks" (`src/mp4/include/iclforge/mp4/mp4.hpp:35`) and nothing reads `iTunSMPB`. A3 adds
   `elst` reading to `mp4::Reader` and trims what it states. A raw elementary stream carries no
   such field, so at each join up to a frame of padding remains, plus the transform delay, which
-  is 256 samples for this project's encoder (`src/forge/include/ac3/latency.hpp:29-37`).
+  is 256 samples for this project's encoder (`src/ac3/include/iclforge/ac3/latency.hpp:29-37`).
 - Each item gets a new decoder; neither decoder has a `reset()`. A continuous stream that has been
   split into files is not detected.
 - Where the sample rate or layout changes, the output reopens and the app says so.
@@ -506,12 +506,12 @@ At most two review rounds with the user, each round's feedback and changes recor
 
 ### A1: the renderer moves into the library
 
-**Status: built.** `src/forge/include/ac3/render/` holds the layout, the renderer, the routing
+**Status: built.** `src/render/include/iclforge/render/` holds the layout, the renderer, the routing
 patch, per-output trim and delay, the identify tone and the serving policy, in namespace
 `ac3::render`; the ESP-IDF component includes them from there.
 
 `layout.hpp` and `render.hpp` move from `esp-idf/ac3forge/include/ac3forge/` into the library
-(proposed `src/forge/include/ac3/render/`, namespace `ac3::render`), and the ESP-IDF component
+(proposed `src/render/include/iclforge/render/`, namespace `ac3::render`), and the ESP-IDF component
 includes them from there. Added beside them: a routing patch from rendered channel to output
 index with unassigned outputs allowed, per-output trim and delay, an identify-tone generator, and
 the crossover frequency as a setting. Their host tests move with them and grow.
@@ -567,7 +567,7 @@ transcodes through a temp file (see [Coordination](#coordination)).
 - A session per item: container input, access units, decoder, renderer, speaker management,
   output.
 - The decoder settings model over `DecoderConfig` and `OutputConfig`, with separate cut and boost
-  scale factors added in `src/forge`, mix-level overrides, and dual-mono selection in the engine.
+  scale factors added in `src/ac3`, mix-level overrides, and dual-mono selection in the engine.
 - Gapless playback, including `elst` in `mp4::Reader`.
 - Passthrough, reusing `PassthroughSink` and a pure output decision in the shape of Crucible's
   `output_policy` (a mode, an endpoint and a reason), with the six sink-following gaps checked and
@@ -580,7 +580,7 @@ threads tagged `[concurrency]`); the output decision's case table runs with no s
 queue of mixed containers plays to a fake device gaplessly, with the expected sample count at
 every join.
 
-**Verified by:** `ac3tests` on every leg; the gain tests in `src/forge` for the cut and boost
+**Verified by:** `ac3tests` on every leg; the gain tests in `src/ac3` for the cut and boost
 split.
 
 ### A4: Sendspin

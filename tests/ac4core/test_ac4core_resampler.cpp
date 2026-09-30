@@ -1,4 +1,4 @@
-// The AC-4 sample rate converter (src/ac4core/src/dsp/resampler.hpp): the
+// The AC-4 sample rate converter (src/ac4core/include/iclforge/ac4core/dsp/resampler.hpp): the
 // output sample count of every frame rate of ETSI TS 103 190-1 V1.4.1 Table 83,
 // the sequence ETSI TS 103 190-2 V1.3.1 Table 47 locks to sequence_counter, and
 // the filter's passband, stopband and delay, measured with tones, in the

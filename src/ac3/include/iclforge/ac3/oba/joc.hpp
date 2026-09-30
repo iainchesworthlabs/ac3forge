@@ -318,7 +318,7 @@ struct FrameParameters {
 // hardware has and all the arithmetic needs - plus two this type has and they
 // do not:
 //
-//   - ReconstructionState is INSTALLED. src/forge/include/ ships wholesale and
+//   - ReconstructionState is INSTALLED. src/ac3/include/ ships wholesale and
 //     joc::reconstruct is exported, so an external caller declares one of
 //     these. decode_scalar_t lives in a header deliberately never installed,
 //     being a fact about how the library was built rather than part of its API;
@@ -332,7 +332,7 @@ struct FrameParameters {
 //
 // reconstruct() takes and returns float on both sides already, so nothing about
 // the API boundary moves; only what happens behind it. The accuracy cost is
-// measured rather than assumed - tests/oba/test_atmos.cpp pins this
+// measured rather than assumed - tests/ac3/oba/test_atmos.cpp pins this
 // reconstruction against the direct form and against the objects that went in.
 using recon_scalar_t = float;
 
@@ -395,7 +395,7 @@ struct ReconstructionState {
     //
     // This half is allocated only under Domain::kQmf, which is the domain the
     // clause describes and the one a licensed decoder reconstructs in - what
-    // tests/oba/test_atmos.cpp pins at 321-325 dB against the direct form.
+    // tests/ac3/oba/test_atmos.cpp pins at 321-325 dB against the direct form.
     // Narrowing it would change the arithmetic of the REFERENCE path to save
     // memory on a target that does not use it: the configuration that makes
     // objects fit in internal SRAM is kMdctBand, under which `qmf` stays null
@@ -469,7 +469,7 @@ struct ReconstructionState {
 // pseudocode (Pseudocode 2 through 7) has no branch, flag or note keyed on
 // joc_dmx_config_idx anywhere - Pseudocode 7's reconstruction sum is the
 // identical linear combination for every configuration. Empirically
-// confirmed too, not just textually: tests/oba/test_dee_joc_fixture.cpp
+// confirmed too, not just textually: tests/ac3/oba/test_dee_joc_fixture.cpp
 // decodes a real Dolby-Encoding-Engine-produced stream using
 // kDmxConfig5XPhaseShift through exactly this code path and every
 // tone-identified object comes back correct.

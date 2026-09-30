@@ -37,7 +37,7 @@
 //                      is input sample k - transform_samples. This is the one
 //                      term that is a genuine sample-domain SHIFT rather than
 //                      a wait, and it is the one an impulse test locates -
-//                      see tests/decoder/test_latency.cpp.
+//                      see tests/ac3/decoder/test_latency.cpp.
 //
 //   lookahead_samples  Input the encoder must see BEYOND the frame it is
 //                      coding. Zero throughout this codebase, and not by

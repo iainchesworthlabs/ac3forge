@@ -70,10 +70,10 @@ set(EXTRA_COMPONENT_DIRS "${AC3FORGE_ESP_COMPONENTS}")
 set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
     "Which probe to build: decoder or encoder")
 
-# The decode-critical sources at -O2 (src/forge/minimal.cmake has the list
+# The decode-critical sources at -O2 (src/ac3/minimal.cmake has the list
 # and why each file is on it), the same default the S3 and C3 projects set.
 set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
-    "Decode-critical sources at -O2; see src/forge/minimal.cmake")
+    "Decode-critical sources at -O2; see src/ac3/minimal.cmake")
 
 # No AC3FORGE_DECODE_SCALAR override here, deliberately - unlike the C3 and C6
 # projects beside this one. The component

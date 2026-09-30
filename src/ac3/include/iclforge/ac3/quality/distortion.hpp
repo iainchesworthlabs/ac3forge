@@ -42,7 +42,7 @@
 // affordable inside the encoder's frame loop at all. That is a duplicated
 // arithmetic model of the kind this project has been bitten by before (see
 // ac3/verify/mirror.hpp), so it is pinned by an exhaustive equivalence test
-// rather than by inspection: tests/quality/test_distortion.cpp sweeps every
+// rather than by inspection: tests/ac3/quality/test_distortion.cpp sweeps every
 // bap against the real quantize/dequantize pair and requires bit-exact
 // agreement, over the full mantissa range, at every exponent.
 //

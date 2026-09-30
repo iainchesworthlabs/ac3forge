@@ -77,7 +77,7 @@ the **master**; the second, when present, the **slave**.
 single-device session. The slave is an independent capture, and there is no shared hardware
 clock between two WASAPI shared-mode endpoints, even nominally identical ones on the same PC:
 left alone, the slave's stream drifts against the master's a sample at a time. Two small,
-Qt-free, allocation-free library pieces (`src/audio/include/ac3/audio/resampler.hpp`) correct
+Qt-free, allocation-free library pieces (`src/audio/include/iclforge/audio/resampler.hpp`) correct
 that:
 
 - **`ac3::audio::DriftResampler`** — a streaming linear-interpolation fractional resampler.

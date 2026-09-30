@@ -17,7 +17,7 @@
 // 6.3.6.
 //
 // Syntax only: the Huffman indices as read. Differential decoding,
-// dequantisation and the reconstruction are src/ac4core/src/ajoc's and
+// dequantisation and the reconstruction are src/ac4core/include/iclforge/ac4core/ajoc's and
 // src/ac4dec/src/pcm/objects.cpp's.
 
 namespace ac4::detail {

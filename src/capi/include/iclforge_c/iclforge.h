@@ -194,7 +194,7 @@ typedef enum ac3forge_acmod {
  *                      supplies frame N. One frame period, or zero.
  *
  * See docs/library/encoding-ac3.md's Latency section for the measured
- * numbers and tests/decoder/test_latency.cpp for how they were measured. */
+ * numbers and tests/ac3/decoder/test_latency.cpp for how they were measured. */
 typedef struct ac3forge_latency {
     int frame_samples;
     int transform_samples;
@@ -1433,9 +1433,9 @@ AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
  * struct as its type allows.
  * ac3forge_c/version.h's AC3FORGE_HAS_AC4 (a plain #define, #cmakedefine'd
  * from that option) still tells a caller which behaviour to expect. Mirrors
- * ac4::Decoder (src/ac4dec/include/ac4dec/decoder.hpp) and ac4::Encoder
- * (src/ac4enc/include/ac4enc/encoder.hpp), plus the table-of-contents helpers
- * of src/ac4/include/ac4/ac4.hpp a container muxer needs beside the encoder.
+ * ac4::Decoder (src/ac4dec/include/iclforge/ac4dec/decoder.hpp) and ac4::Encoder
+ * (src/ac4enc/include/iclforge/ac4enc/encoder.hpp), plus the table-of-contents helpers
+ * of src/ac4/include/iclforge/ac4/ac4.hpp a container muxer needs beside the encoder.
  * AC-4's frame length varies by frame rate (Part 1 Tables 83/84), so unlike
  * the AC-3/E-AC-3 sections above there is no AC3FORGE_SAMPLES_PER_FRAME
  * equivalent - every accessor that needs a length reports it.

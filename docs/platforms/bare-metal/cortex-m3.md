@@ -71,12 +71,12 @@ changes and the gaps it has not closed. The measured figures are in
 
 ## What you give up
 
-The profile replaces what `src/forge` builds rather than adding to it, and configure fails with a
+The profile replaces what `src/ac3` builds rather than adding to it, and configure fails with a
 list if any component needing the full library is still switched on.
 
 | Not compiled | Consequence |
 |---|---|
-| Under `AC3FORGE_MINIMAL_DECODER`: the encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/forge/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. `AC3FORGE_MINIMAL_ENCODER` is the same profile pointed the other way. |
+| Under `AC3FORGE_MINIMAL_DECODER`: the encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/ac3/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. `AC3FORGE_MINIMAL_ENCODER` is the same profile pointed the other way. |
 | The direct-form transform tables | 1,900,544 bytes of `.bss` absent from the image rather than merely unused. `DecoderConfig::fast_imdct = false` returns `DecodeError::kNoReferenceTransform` here instead of being served quietly by the fast path. |
 
 ## The probe

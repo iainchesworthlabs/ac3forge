@@ -36,7 +36,7 @@
 // add/subtract/multiply (or a single exact integer operation) per lane, so
 // a kernel written against f64x2 performs exactly the operations, in
 // exactly the order, that the scalar loop it replaced performed -
-// tests/core/test_simd_kernels.cpp asserts that bit-for-bit for every
+// tests/ac3/core/test_simd_kernels.cpp asserts that bit-for-bit for every
 // primitive here, and the kernels built from them inherit the guarantee
 // rather than needing their own bit-exact unit test (see that file's own
 // header comment). fft_kernel.hpp's radix-4 FFT/DCT-IV core (FFT core follow-ups)
@@ -58,7 +58,7 @@ namespace ac3::internal::arch {
 
 // Reported by version_details() (`--version`) so a binary says which of the
 // three directories it was built from, and printed by
-// tests/core/test_simd_kernels.cpp so a CI log does too.
+// tests/ac3/core/test_simd_kernels.cpp so a CI log does too.
 inline constexpr const char* kSimdName = "generic";
 
 // Two IEEE-754 doubles. Deliberately an aggregate of two named scalars
@@ -113,7 +113,7 @@ struct f64x2 {
 // This type carries no round_ties_away. f64x2 has one because exponents.cpp's
 // to_fixed25_block calls it; nothing on the float32 decode path rounds.
 // Adding one means adding its own tie ladder to
-// tests/core/test_simd_kernels.cpp - the f64x2 ladder pivots on 2^52 and says
+// tests/ac3/core/test_simd_kernels.cpp - the f64x2 ladder pivots on 2^52 and says
 // nothing about a float's 2^23.
 struct f32x4 {
     float v0{};

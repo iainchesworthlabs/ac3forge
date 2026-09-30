@@ -31,7 +31,7 @@ Reads, from --spec-dir (default spec/ in the repo root):
   ts_10319002v010301p.txt                Part 2 Annex A.1.1's and A.1.2's
                                          codebook tables.
 
-Writes src/ac4core/src/tables/huffman_tables.hpp and .cpp (every Annex A
+Writes src/ac4core/include/iclforge/ac4core/tables/huffman_tables.hpp and .cpp (every Annex A
 codebook, its entries sorted by length and then codeword, as
 huffman_codebook.hpp's Codebook wants them for reading), huffman_codes.hpp and
 .cpp (the same codebooks in index order, the codeword and its length for each
@@ -100,7 +100,7 @@ from fractions import Fraction
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
-OUT_DIR = REPO / "src" / "ac4core" / "src" / "tables"
+OUT_DIR = REPO / "src" / "ac4core" / "include" / "iclforge" / "ac4core" / "tables"
 SPEC_TXT = "ts_10319001v010401p.txt"
 TABLES_C = Path("ts_10319001_attach") / "ts_103190_tables.c"
 SPEC2_TXT = "ts_10319002v010301p.txt"

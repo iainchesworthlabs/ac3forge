@@ -26,7 +26,7 @@
 // byte-level BW64 fixture and ac3adm::parse_bw64() end to end, then through a real
 // ac3::oba::AtmosEncoder::encode_frame()/Eac3Decoder round trip, per this project's own standard
 // for codec-adjacent behaviour (silence/frame-0 checks give false passes - see
-// tests/oba/test_atmos_motion.cpp's own flagship test for the established pattern this one follows).
+// tests/ac3/oba/test_atmos_motion.cpp's own flagship test for the established pattern this one follows).
 
 namespace {
 
@@ -111,7 +111,7 @@ TEST_CASE("adm_cartesian_to_room maps the unit cube onto ac3::oba::Position's ro
 
 TEST_CASE("polar positions at the 5.1 ring reproduce this project's own known room coordinates",
          "[admbridge][coordinates]") {
-    // Cross-check against tests/oba/test_atmos_motion.cpp's own kL/kR/kSR constants (that file's own
+    // Cross-check against tests/ac3/oba/test_atmos_motion.cpp's own kL/kR/kSR constants (that file's own
     // comment: "the 5.1 ring's L, SR and R azimuths... L +30 degrees, SR -110 degrees, R -30
     // degrees"), which are also exactly BS.2076-2 Annex A's own M+030/M-030/M-110 speaker-label
     // azimuths. Converting those same azimuths through this module's own coordinate functions
@@ -671,7 +671,7 @@ TEST_CASE("build() applies absolute time as object.start_s + block.rtime_s", "[a
 //
 // Byte-fixture helpers are duplicated from tests/adm/test_adm.cpp rather than shared, per this
 // project's own established per-file convention for test helpers (see tests/
-// tests/oba/test_atmos_motion.cpp's own comment on this - "the same helpers as tests/oba/test_atmos.cpp, duplicated
+// tests/ac3/oba/test_atmos_motion.cpp's own comment on this - "the same helpers as tests/ac3/oba/test_atmos.cpp, duplicated
 // here").
 // ---------------------------------------------------------------------------
 
@@ -939,7 +939,7 @@ TEST_CASE("a real ADM BWF master's bed and moving object survive admbridge into 
         REQUIRE(unit.has_value());
 
         // Check the last frame of each 3-frame hold, the same "settled, not mid-transition"
-        // convention tests/oba/test_atmos_motion.cpp's own flagship test uses.
+        // convention tests/ac3/oba/test_atmos_motion.cpp's own flagship test uses.
         if (f != 2 && f != 5) {
             continue;
         }

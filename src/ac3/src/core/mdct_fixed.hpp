@@ -40,7 +40,7 @@
 // roundings arrive at the output already small; the two products of the
 // post-twiddle and the one of the window are what set the floor, at about
 // one raw unit per output sample. The test beside this measures it:
-// tests/core/test_mdct_fixed.cpp holds the fixed inverse to the double one
+// tests/ac3/core/test_mdct_fixed.cpp holds the fixed inverse to the double one
 // on random, tonal and worst-case blocks.
 //
 // No saturation either, for the same reason. Every product in the pair is a

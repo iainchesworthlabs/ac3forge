@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // The "no AVX2 tier at all" member of the CPU-probe seam. Selected whenever
 // the target is not x86-64, or AC3FORGE_AVX2 is OFF (see
-// src/forge/CMakeLists.txt) - see cpu_features.hpp for what the seam is and
+// src/ac3/CMakeLists.txt) - see cpu_features.hpp for what the seam is and
 // why it exists.
 //
 // Unconditionally false: there is no AVX2-flagged code compiled into this

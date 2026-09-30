@@ -3,7 +3,7 @@
 // Zone macros, stage-timer variant - the third answer to
 // "ac3/internal/profiling.hpp", beside tracy_enabled/ and tracy_disabled/,
 // and selected the same way: CMake puts this directory on the include path
-// (src/forge/minimal.cmake, under AC3FORGE_STAGE_TIMERS) rather than any
+// (src/ac3/minimal.cmake, under AC3FORGE_STAGE_TIMERS) rather than any
 // source asking with an #ifdef.
 //
 // What it is for. Tracy needs a host with a socket and a build with the

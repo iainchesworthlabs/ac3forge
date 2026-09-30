@@ -194,7 +194,7 @@ channel-coded substream's HSF extension (#786). It refused, by name, the speech 
 immersive and 22.2 elements, object substreams, and the efficient high frame rate mode. Since then
 D2 to D10 made it decode all of them but the speech frontend, the 9.X.4 and 22.2 layouts and the
 efficient high frame rate mode, which it still refuses; the header
-`src/ac4dec/include/ac4dec/decoder.hpp` says what it decodes and what it refuses.
+`src/ac4dec/include/iclforge/ac4dec/decoder.hpp` says what it decodes and what it refuses.
 `src/ac4dec/ERRATA.md` records every reading taken where the text is ambiguous or defective, with
 its evidence.
 
@@ -213,7 +213,7 @@ stored a `SyntaxSink` that its comment gave a call-scoped lifetime, so a tempora
 once the decoder copied the configuration; an ASF Huffman miss reported `kInvalidStream` where
 A-SPX, A-CPL and metadata reported `kTruncated` for the same failure; an HSF extension substream
 that nothing claimed got no report, although the header said HSF was refused; there was no
-`tools/ci/abi-allowlist/libac4dec.so.txt`; and the Android, WASM and Python wheel configurations
+`tools/ci/abi-allowlist/libiclforge_ac4dec.so.txt`; and the Android, WASM and Python wheel configurations
 compiled both AC-4 libraries without linking them, since `AC3FORGE_BUILD_AC4` is on by default and
 their targets are not `EXCLUDE_FROM_ALL`.
 
@@ -499,10 +499,10 @@ count comes out exact.
 **Transform lengths have factors of three and five.** At 48 kHz internal the inverse MDCT runs at
 fifteen lengths from 96 to 2,048 (Part 1 Tables 99 to 105). Ten of them are 96 · 2^k or 120 · 2^k,
 not powers of two. `ac3::forge`'s FFT kernel takes powers of two only
-(`src/forge/src/core/fft_kernel.hpp`), and its public MDCT is fixed at 512 and 256 samples.
+(`src/dsp/include/iclforge/dsp/detail/fft_kernel.hpp`), and its public MDCT is fixed at 512 and 256 samples.
 
 **The QMF bank has a published window.** AC-4's filterbank has the structure of the one
-`ac3::forge` built for E-AC-3 JOC (`src/forge/include/ac3/dsp/qmf.hpp`): 64 complex subbands, a
+`ac3::forge` built for E-AC-3 JOC (`src/dsp/include/iclforge/dsp/qmf.hpp`): 64 complex subbands, a
 hop of 64 samples and a 640-tap window. ETSI TS 103 420 does not publish that window, so the
 repository designed its own. AC-4 publishes `QWIN`, which carries the alternating sign in the table
 itself, uses a different phase convention, reconstructs to about 78 dB, and delays by 577 samples.
@@ -631,7 +631,7 @@ what the decoder will be told:
 transmitted exponents with a normative model, and an encoder tunes a few of its parameters. ASF
 sends scale factors and codebooks directly, as MPEG AAC does, so every choice of precision is the
 encoder's, and coding quality rests on its psychoacoustic model and its rate loop. The nearest thing
-in the tree is `ac3::quality`'s model (`src/forge/include/ac3/quality/perceptual.hpp`): Johnston's
+in the tree is `ac3::quality`'s model (`src/ac3/include/iclforge/ac3/quality/perceptual.hpp`): Johnston's
 perceptual entropy with the tonality measure of ISO/IEC 11172-3 Annex D.2 and Schroeder's spreading,
 over A/52's 50 bands. It prices AC-3's allocation parameters and has never driven an allocation.
 
@@ -749,7 +749,7 @@ The two directions carry their own ([decision 7](#decisions)), in the shared cor
 - the kernels of reconstruction an encoder also runs, to see what a decoder will produce. As built,
   the core holds A-SPX's subband tables and HF generator, A-CPL's parameter bands, tables,
   interpolation, three decorrelators and transient ducker, and A-JCC's and A-JOC's reconstruction,
-  which reuse the decorrelators (`src/ac4core/src/aspx`, `acpl`, `ajcc` and `ajoc`).
+  which reuse the decorrelators (`src/ac4core/include/iclforge/ac4core/aspx`, `acpl`, `ajcc` and `ajoc`).
   Dequantisation, the stereo and multichannel matrices, companding and A-SPX's envelope adjustment
   stayed in the decoder (`src/ac4dec/src/pcm`), and the encoder has the matrices' inverses of its own
   (`src/ac4enc/src/asf`);
@@ -803,7 +803,7 @@ across toolchains.
 ### The API
 
 The decoder takes one `raw_ac4_frame` at a time and returns PCM for one presentation. This is the
-sketch the design started from; `src/ac4dec/include/ac4dec/decoder.hpp` is the API as built, and the
+sketch the design started from; `src/ac4dec/include/iclforge/ac4dec/decoder.hpp` is the API as built, and the
 notes after the sketch say where it differs:
 
 ```cpp
@@ -885,7 +885,7 @@ extension it reads and does not decode.
 
 The encoder takes PCM at 48 kHz, or at 44.1 kHz for `frame_rate_index` 13, the one index Part 1
 Table 84 defines at that rate, in blocks of any length, and returns each `raw_ac4_frame` as it
-completes. This is the design's sketch; `src/ac4enc/include/ac4enc/encoder.hpp` is the API as built,
+completes. This is the design's sketch; `src/ac4enc/include/iclforge/ac4enc/encoder.hpp` is the API as built,
 and the notes after the sketch say where it differs:
 
 ```cpp
@@ -1743,7 +1743,7 @@ three angles Part 1 Table 216 defines; the multiplexed streams parse in both imp
   everything that linked `libac4dec.so`, and in a static build the inspector's archive as well; each
   library now links the inspector of its own kind. The member functions of `ac4::Decoder::Impl`
   were exported from `libac4dec.so` with the class they are nested in; they are hidden now, and
-  `tools/ci/abi-allowlist/libac4dec.so.txt` lists the header's API alone.
+  `tools/ci/abi-allowlist/libiclforge_ac4dec.so.txt` lists the header's API alone.
 - Over DEE's local set the test standing in for Hearth's engine decoded 406 of 533 streams when D8
   merged, and refused the 127 5.1.4 streams by the immersive channel element's name; over the 13
   third-party streams it decoded 12, and refused Chromium's A-JOC stream naming the substream it
@@ -1983,7 +1983,7 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
 
   The QMF banks are each one 64-point complex transform between a rotation that packs pairs of
   samples into complex values and a butterfly that pairs subband k with 63 - k, which is
-  Pseudocode 65 and 66 reduced algebraically (the derivation is in `src/ac4core/src/dsp/qmf.hpp`),
+  Pseudocode 65 and 66 reduced algebraically (the derivation is in `src/ac4core/include/iclforge/ac4core/dsp/qmf.hpp`),
   on separate real and imaginary planes, with ten-block delay lines that move an index. Every
   twiddle factor is a `constexpr` array built by integer angle arithmetic from one generated
   quarter-wave cosine table, the `Real` nearest its exact value, and the banks share them. They are
@@ -1991,7 +1991,7 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   sum, at both scalars. A slot takes 0.77 us in analysis and 0.83 us in synthesis at `double`, from
   3.15 and 3.3. The vector kernels (`qmf_vector.hpp`) put the seven steps of a slot on `f32x4` and
   `f64x2`, each tested equal bit for bit to the scalar loop it replaces, at both scalars, and the
-  banks to those loops composed. The SIMD seam moved from `src/forge` to `src/arithmetic` for them
+  banks to those loops composed. The SIMD seam moved from `src/ac3` to `src/arithmetic` for them
   (`ac3::arithmetic` now carries the architecture directory): on the x86-64 seam a slot is 2.2 to
   3.9 times faster at `float` and 0.9 to 1.6 times at `double`. On the Cortex-M3 leg the seam is the
   generic directory, and the same kernels run 0.2 to 0.3% fewer instructions and add 4.2 KB to the image
@@ -2455,7 +2455,7 @@ languages and levels as configured.
   literal, across the substreams, the presentations, their metadata and the rate; `create()` still
   answers `kInvalidConfig` alone. Every field of the configuration's structures has a default, so a
   designated initializer names only what it sets, as D8's decoder configuration does. The members of
-  `Encoder::Impl` defined out of line are hidden, and `tools/ci/abi-allowlist/libac4enc.so.txt` lists
+  `Encoder::Impl` defined out of line are hidden, and `tools/ci/abi-allowlist/libiclforge_ac4enc.so.txt` lists
   the header's API alone.
 - `ac3cli ac4-encode` takes the substreams and presentations as numbered options, `substream2=` to
   `substream32=` and `presentation1=` to `presentation64=`, each with keys of its own
@@ -2678,7 +2678,7 @@ against a real device (the software-ALSA tests run on Linux CI).
 - `spdif` and `unspdif` for AC-4, from D11; `record` and `live` encode AC-4 with `codec=ac4`.
 - `ac3::plan::Codec` gains AC-4, and every helper that decides by codec becomes a switch that
   refuses a codec it does not know: they were two-way ternaries, under which a third codec read as
-  E-AC-3 (`src/forge/include/ac3/encoder/plan.hpp`). The help topics' bitmask, which was full
+  E-AC-3 (`src/ac3/include/iclforge/ac3/encoder/plan.hpp`). The help topics' bitmask, which was full
   (`apps/cli/usage.hpp`), is widened.
 
 - Built: `transcode` decodes an AC-4 presentation as coded, since 5.7.9.4 asks a transcoder for no
@@ -3263,8 +3263,8 @@ for the old names and the stale phrases; `mkdocs build --strict` and
   `ac3forge`, is replaced by a port `iclforge` (the winget submission was closed unmerged).
 - N1B is layout and naming only: no algorithm changes and every output byte stays the same. It covers
   where the code sits, the C++ namespaces, the header roots and the CMake target names. The duplicated
-  DSP (FFT, MDCT, QMF and resampler in `src/forge` and `src/ac4core`) is a later phase.
-- The study recommends renaming `src/forge` to `ac3`, beside the AC-4 libraries, with five
+  DSP (FFT, MDCT, QMF and resampler in `src/ac3` and `src/ac4core`) is a later phase.
+- The study recommends renaming `src/ac3` to `ac3`, beside the AC-4 libraries, with five
   codec-blind libraries cut out of it, in stages S0 to S6 with N1A in the same freeze. The user has not
   yet answered its 14 decisions ([its section (i)](layout.md#i-decisions)): the layout, the
   namespace root, grouping, the order with N1A, the merge method, the repository and Pages names,
@@ -3947,7 +3947,7 @@ outright, with no compatibility shim.
   `docs/assets/data/support-catalogue.json`, `src/capi/`, `python/`, `rust/` and `apps/wasm/`.
 - `tools/ci/classify_changes.py` has no lane of its own for AC-4 (`src/ac4*` is in the core lane),
   and `tools/generators/` and `tools/references/` match no lane, so every lane runs when they
-  change. No phase gave AC-4 a lane. The ESP32 lane lights after a merge for `src/forge/`,
+  change. No phase gave AC-4 a lane. The ESP32 lane lights after a merge for `src/ac3/`,
   `src/arithmetic/` and `cmake/` (#1131) and leaves the AC-4 trees, which the component's pack stages
   only for `--with-ac4`, to the nightly run.
 - librempeg's binary is named `ffmpeg`; nothing puts it on `PATH` ([The oracles](#the-oracles)).

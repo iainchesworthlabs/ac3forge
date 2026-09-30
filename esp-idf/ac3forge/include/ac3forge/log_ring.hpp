@@ -13,7 +13,7 @@
 // the ring has moved past what it asked for.
 //
 // Free of ESP-IDF, like firmware_image.hpp beside it: log.cpp feeds it the
-// console's writes under its own lock. tests/io/test_log_ring.cpp runs it on a
+// console's writes under its own lock. tests/ac3/io/test_log_ring.cpp runs it on a
 // laptop.
 
 namespace ac3forge {

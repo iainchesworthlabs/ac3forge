@@ -1,4 +1,4 @@
-// A-SPX in the AC-4 shared core (src/ac4core/src/aspx): the subband group
+// A-SPX in the AC-4 shared core (src/ac4core/include/iclforge/ac4core/aspx): the subband group
 // tables of ETSI TS 103 190-1 V1.4.1 Pseudocodes 67 to 74, worked by hand for
 // the two configurations DEE's 2.0 streams use and checked for their
 // invariants over every configuration a stream can select; and the high

@@ -73,7 +73,7 @@ constexpr auto kSymmetricReconstruction = make_symmetric_reconstructions();
 //
 // This is the closed form of dequantize_mantissa(quantize_mantissa(m, bap),
 // bap) subtracted from m, and it is only allowed to exist because
-// tests/quality/test_distortion.cpp proves the two agree bit-exactly over
+// tests/ac3/quality/test_distortion.cpp proves the two agree bit-exactly over
 // the whole input space at every bap. Each branch mirrors the corresponding
 // branch of quantize_mantissa() in core/mantissas.cpp line for line; a
 // change there without a change here is what that test is watching for.

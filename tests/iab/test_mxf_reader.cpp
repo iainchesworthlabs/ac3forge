@@ -11,7 +11,7 @@
 #include "iclforge/iab/mxf.hpp"
 
 // ac3iab::parse_mxf_iab (mxf.hpp) - IAB reader, phase 2. These tests build MXF-level KLV
-// fixtures byte-by-byte, independently of src/ac3iab/src/mxf_reader.cpp's own implementation - the
+// fixtures byte-by-byte, independently of src/iab/src/mxf_reader.cpp's own implementation - the
 // same "independent fixture" convention test_ac3iab.cpp already establishes for its own IAB
 // bitstream fixtures. Key byte values are transcribed directly from SMPTE ST 377-1:2019 Table 4/6
 // (Partition Pack Key), ST 379-1:2009 Table 2 (Essence Element Key) and ST 2067-201:2021 Table 4.2

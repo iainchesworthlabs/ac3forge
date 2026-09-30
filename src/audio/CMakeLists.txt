@@ -1,16 +1,16 @@
 # ---------------------------------------------------------------------------
-# ac3::audio - live capture, IEC 61937 passthrough delivery, shared-mode
+# iclforge::audio - live capture, IEC 61937 passthrough delivery, shared-mode
 # monitor playback, and a live object-position source over OSC (roadmap
 # UX4). Almost all the OS-specific code in the project lives here rather than
 # in ac3::forge: WASAPI/ALSA/PipeWire/CoreAudio for the three capabilities
 # above, and (a second, independent platform axis - see the net/ block below)
 # Winsock/Berkeley sockets for the position source's UDP listener.
 #
-# Split out of ac3::forge (see git history) so the codec library itself stays
-# platform-independent - a third party linking ac3::forge purely to encode or
+# Split out of iclforge::ac3 (see git history) so the codec library itself stays
+# platform-independent - a third party linking iclforge::ac3 purely to encode or
 # decode AC-3/E-AC-3/Atmos streams needs no WASAPI or ALSA dependency at all,
 # and a third party targeting a platform with neither can still use the codec
-# without this library existing for their platform yet. ac3::audio is what
+# without this library existing for their platform yet. iclforge::audio is what
 # ac3cli/ac3gui link for their live-capture/monitor/passthrough commands
 # (record, live, devices, outputs, play, monitor) and for `live`'s
 # `positions=osc:<port>` - it is not part of the distributed ac3forge-dev
@@ -26,18 +26,18 @@
 # there is no install(EXPORT) graph for the wider dependency to leak into.
 #
 # Always STATIC, deliberately, regardless of the ambient BUILD_SHARED_LIBS a
-# whole-project configure might set for ac3::forge/matroska::matroska's own
-# benefit (see src/forge/CMakeLists.txt): this target carries no export
+# whole-project configure might set for iclforge::ac3/iclforge::matroska's own
+# benefit (see src/ac3/CMakeLists.txt): this target carries no export
 # annotations at all, so building it SHARED produces a DLL with nothing
 # exported and no usable import library - a link failure for every in-tree
-# consumer, not a working shared ac3audio. It isn't part of the distributed
+# consumer, not a working shared iclforge_audio. It isn't part of the distributed
 # package (see the header comment above), so there is no packaging reason to
-# give it the same static+shared treatment ac3::forge/matroska::matroska get.
+# give it the same static+shared treatment iclforge::ac3/iclforge::matroska get.
 # ---------------------------------------------------------------------------
-add_library(ac3audio STATIC)
-add_library(ac3::audio ALIAS ac3audio)
+add_library(iclforge_audio STATIC)
+add_library(iclforge::audio ALIAS iclforge_audio)
 
-target_include_directories(ac3audio
+target_include_directories(iclforge_audio
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:include>")
@@ -48,40 +48,40 @@ target_include_directories(ac3audio
 # see sink_capabilities.hpp's own header comment. Each platform's own
 # read_sink_capabilities() is added alongside that platform's other four
 # backend files, below.
-target_sources(ac3audio PRIVATE src/sink_capabilities.cpp)
+target_sources(iclforge_audio PRIVATE src/sink_capabilities.cpp)
 
 # speakers.cpp is platform-independent for the same reason: WAVEFORMATEXTENSIBLE's
 # channel mask is the vocabulary all four real backends already report their
 # speaker positions in, and mapping it to the renderer's locations is arithmetic
 # over a table, with no platform call in it (see speakers.hpp's header).
-target_sources(ac3audio PRIVATE src/speakers.cpp)
+target_sources(iclforge_audio PRIVATE src/speakers.cpp)
 
 # pcm_output.cpp likewise: it is MonitorSink, the render-device enumeration
 # both halves already share, and arithmetic over a routing patch - no platform
 # call of its own. It is what opens a stream at the device's own width instead
 # of the caller's, so see pcm_output.hpp's header for why that matters.
-target_sources(ac3audio PRIVATE src/pcm_output.cpp)
+target_sources(iclforge_audio PRIVATE src/pcm_output.cpp)
 
 # render_devices.cpp too: DeviceWatcher and the enumeration are the parts that
 # differ per platform, and both are already behind their own interfaces - what
 # is left is a list, a worker thread and a timer, which are the same
 # everywhere (and are what ALSA has instead of a watcher at all).
-target_sources(ac3audio PRIVATE src/render_devices.cpp)
+target_sources(iclforge_audio PRIVATE src/render_devices.cpp)
 
-target_compile_features(ac3audio PUBLIC cxx_std_23)
+target_compile_features(iclforge_audio PUBLIC cxx_std_23)
 
 # ac3::coverage is a no-op unless AC3FORGE_ENABLE_COVERAGE is on (see
 # cmake/Coverage.cmake). Plain, not $<BUILD_INTERFACE:...>-wrapped: this
 # target is never installed (see the header comment above), so it has no
 # install(EXPORT) graph to keep the dependency out of.
-target_link_libraries(ac3audio PUBLIC ac3::forge)
-target_link_libraries(ac3audio PRIVATE ac3::warnings ac3::coverage ac3::fmt)
+target_link_libraries(iclforge_audio PUBLIC iclforge::ac3)
+target_link_libraries(iclforge_audio PRIVATE ac3::warnings ac3::coverage ac3::fmt)
 
 # live_positions.cpp: platform-independent by construction (it names
 # UdpSocket and ac3::oba, never a socket API directly), and the first source
 # in this library that is not part of a backend/ directory - said here
 # rather than left to look misfiled.
-target_sources(ac3audio PRIVATE src/live_positions.cpp)
+target_sources(iclforge_audio PRIVATE src/live_positions.cpp)
 
 # ---------------------------------------------------------------------------
 # The backend tree.
@@ -119,14 +119,14 @@ target_sources(ac3audio PRIVATE src/live_positions.cpp)
 # ---------------------------------------------------------------------------
 if(NOT WIN32 AND NOT LINUX AND NOT APPLE AND NOT ANDROID)
     message(FATAL_ERROR
-        "ac3audio has no backend directory for this system. Add "
+        "iclforge_audio has no backend directory for this system. Add "
         "src/audio/src/backend/<backend>/{audio_backend,capture,passthrough,monitor,"
         "sink_capabilities,spatial,device_watcher}.cpp - src/audio/src/backend/posix/ is the no-backend "
         "implementation and is a working starting point - then select it here.")
 endif()
 
 if(WIN32)
-    target_sources(ac3audio
+    target_sources(iclforge_audio
         PRIVATE
             src/backend/windows/audio_backend.cpp
             src/backend/windows/capture.cpp
@@ -140,12 +140,12 @@ if(WIN32)
     # header set, and no min/max macros to collide with <algorithm>. Stated
     # here rather than #defined at the top of each backend, so the two cannot
     # drift apart and a third backend cannot forget.
-    target_compile_definitions(ac3audio PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_compile_definitions(iclforge_audio PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
     # WASAPI: COM for the device enumerator, MMCSS for capture-thread priority,
     # and mmdevapi for ActivateAudioInterfaceAsync (the per-process loopback
     # tap).
-    target_link_libraries(ac3audio PRIVATE ole32 avrt mmdevapi)
+    target_link_libraries(iclforge_audio PRIVATE ole32 avrt mmdevapi)
 
     set(AC3FORGE_AUDIO_BACKEND windows)
 endif(WIN32)
@@ -164,7 +164,7 @@ if(LINUX)
     # Optional, and detected rather than assumed. libasound2-dev (Debian and
     # Ubuntu) or alsa-lib-devel (Fedora) is a small and universally packaged
     # dependency, but a machine that has not installed it must still
-    # configure and build - ac3::forge, the codec itself, does not need a
+    # configure and build - iclforge::ac3, the codec itself, does not need a
     # sound card to exist. So AC3FORGE_WITH_ALSA defaults to AUTO: a missing
     # ALSA falls back to pipewire/ or posix/ with a message saying what was
     # lost, and only -DAC3FORGE_WITH_ALSA=ON turns that into an error - which
@@ -267,7 +267,7 @@ if(LINUX)
     # already forces posix/ today.
     # -----------------------------------------------------------------------
     if(ALSA_FOUND)
-        target_sources(ac3audio
+        target_sources(iclforge_audio
             PRIVATE
                 src/backend/alsa/audio_backend.cpp
                 src/backend/alsa/capture.cpp
@@ -276,13 +276,13 @@ if(LINUX)
                 src/backend/alsa/sink_capabilities.cpp
                 src/backend/alsa/spatial.cpp
                 src/backend/alsa/device_watcher.cpp)
-        target_link_libraries(ac3audio PRIVATE ALSA::ALSA)
+        target_link_libraries(iclforge_audio PRIVATE ALSA::ALSA)
         set(AC3FORGE_AUDIO_BACKEND alsa)
         message(STATUS
             "ALSA ${ALSA_VERSION_STRING}: live capture, monitor playback and IEC 61937 "
             "passthrough enabled")
     elseif(PipeWire_FOUND)
-        target_sources(ac3audio
+        target_sources(iclforge_audio
             PRIVATE
                 src/backend/pipewire/audio_backend.cpp
                 src/backend/pipewire/capture.cpp
@@ -291,7 +291,7 @@ if(LINUX)
                 src/backend/pipewire/sink_capabilities.cpp
                 src/backend/pipewire/spatial.cpp
                 src/backend/pipewire/device_watcher.cpp)
-        target_link_libraries(ac3audio PRIVATE PkgConfig::PipeWire)
+        target_link_libraries(iclforge_audio PRIVATE PkgConfig::PipeWire)
         set(AC3FORGE_AUDIO_BACKEND pipewire)
         message(STATUS
             "PipeWire ${PipeWire_VERSION}: live capture and monitor playback enabled; IEC "
@@ -299,7 +299,7 @@ if(LINUX)
             "the target node by the session manager first - see "
             "src/backend/pipewire/passthrough.cpp")
     else()
-        target_sources(ac3audio
+        target_sources(iclforge_audio
             PRIVATE
                 src/backend/posix/audio_backend.cpp
                 src/backend/posix/capture.cpp
@@ -353,7 +353,7 @@ if(APPLE)
     # directory stays plain C++ and includes process_tap.hpp, which names
     # nothing Objective-C.
     #
-    # Enabled HERE rather than in the top-level project() call. ac3audio is
+    # Enabled HERE rather than in the top-level project() call. iclforge_audio is
     # the only target defined in this file with an OBJCXX source, and no
     # target outside apps/crucible has one either, so this is the directory
     # that compiles the language for the library.
@@ -362,7 +362,7 @@ if(APPLE)
     # because it asks for something slightly wider than that: the highest
     # directory common to every target using the language "directly for
     # compiling sources or indirectly through link dependencies". ac3cli,
-    # ac3gui, ac3crucible and ac3tests all link ac3audio from sibling
+    # ac3gui, ac3crucible and ac3tests all link iclforge_audio from sibling
     # directories, so by that reading the call belongs at the top level under
     # if(APPLE). It is here instead because the language registration itself
     # is global to the generator and this directory's only OBJCXX compile is
@@ -416,12 +416,12 @@ if(APPLE)
     # every other file in the same archive. CMakePresets.json's floor is
     # 3.28; if a leg on that floor turns out to reject this, the floor is
     # what moves.
-    set_target_properties(ac3audio PROPERTIES
+    set_target_properties(iclforge_audio PROPERTIES
         OBJCXX_STANDARD 23
         OBJCXX_STANDARD_REQUIRED ON
         OBJCXX_EXTENSIONS OFF)
 
-    target_sources(ac3audio
+    target_sources(iclforge_audio
         PRIVATE
             src/backend/macos/audio_backend.cpp
             src/backend/macos/capture.cpp
@@ -452,7 +452,7 @@ if(APPLE)
     # "-framework <name>" strings rather than through
     # find_library/find_package - there is nothing to find, they ship with
     # every macOS SDK.
-    target_link_libraries(ac3audio
+    target_link_libraries(iclforge_audio
         PRIVATE "-framework CoreAudio" "-framework CoreFoundation" "-framework Foundation")
 
     set(AC3FORGE_AUDIO_BACKEND macos)
@@ -477,7 +477,7 @@ if(ANDROID)
     # NAME is "Android", not "Linux", for an NDK cross-compile, so the LINUX
     # block above is never entered here.
     # -----------------------------------------------------------------------
-    target_sources(ac3audio
+    target_sources(iclforge_audio
         PRIVATE
             src/backend/android/audio_backend.cpp
             src/backend/android/capture.cpp
@@ -489,7 +489,7 @@ if(ANDROID)
 
     # aaudio: monitor.cpp's native playback API. log: android/log.h, used
     # throughout the backend for diagnostics visible in `adb logcat`.
-    target_link_libraries(ac3audio PRIVATE aaudio log)
+    target_link_libraries(iclforge_audio PRIVATE aaudio log)
 
     set(AC3FORGE_AUDIO_BACKEND android)
 endif(ANDROID)
@@ -522,10 +522,10 @@ set(AC3FORGE_AUDIO_BACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/backend/${AC3FOR
 # outside live_positions.cpp needs a socket type at all.
 # ---------------------------------------------------------------------------
 if(WIN32)
-    target_sources(ac3audio PRIVATE src/net/windows/udp_socket.cpp)
-    target_link_libraries(ac3audio PRIVATE ws2_32)
+    target_sources(iclforge_audio PRIVATE src/net/windows/udp_socket.cpp)
+    target_link_libraries(iclforge_audio PRIVATE ws2_32)
 else()
-    target_sources(ac3audio PRIVATE src/net/posix/udp_socket.cpp)
+    target_sources(iclforge_audio PRIVATE src/net/posix/udp_socket.cpp)
 endif()
 
 # Published the same way AC3FORGE_AUDIO_BACKEND_DIR is (see above):

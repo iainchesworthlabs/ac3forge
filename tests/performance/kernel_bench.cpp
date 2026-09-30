@@ -545,7 +545,7 @@ int main(int argc, char** argv) {
             g_sink += imdct_out[256];
         }));
 
-        // The project's own complex type (src/ac4core/src/dsp/complex.hpp), which
+        // The project's own complex type (src/ac4core/include/iclforge/ac4core/dsp/complex.hpp), which
         // the AC-4 transforms take since D14a in place of std::complex.
         std::vector<dsp::Complex<double>> fft_source(512);
         for (std::size_t i = 0; i < fft_source.size(); ++i) {

@@ -7,7 +7,7 @@
 
 // ---------------------------------------------------------------------------
 // The x86-64 (SSE2) member of the arch seam. See
-// src/arithmetic/arch/generic/ac3/internal/arch/simd.hpp for what the
+// src/arithmetic/variants/arch-generic/iclforge/arithmetic/detail/simd.hpp for what the
 // seam is, how CMake selects between the three directories, and why no
 // header here needs a preprocessor conditional to name its architecture.
 //
@@ -87,7 +87,7 @@ struct f64x2 {
 //   unchanged. A NaN compares unordered, takes the arithmetic path, and
 //   propagates through it.
 //
-// tests/core/test_simd_kernels.cpp pins this against std::round() over the
+// tests/ac3/core/test_simd_kernels.cpp pins this against std::round() over the
 // tie ladder, the powers of two either side of the magic number, denormals,
 // both zeros, infinities and a large pseudorandom spread.
 [[nodiscard]] inline f64x2 round_ties_away(f64x2 x) {

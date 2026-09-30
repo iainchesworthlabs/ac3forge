@@ -13,7 +13,7 @@ fn main() {
         .expect("rust/ac3forge-sys must live two directories below the repo root")
         .to_path_buf();
 
-    for rel in ["src/capi", "src/forge/include", "CMakeLists.txt"] {
+    for rel in ["src/capi", "src/ac3/include", "CMakeLists.txt"] {
         println!("cargo:rerun-if-changed={}", repo_root.join(rel).display());
     }
 

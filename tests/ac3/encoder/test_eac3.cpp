@@ -253,7 +253,7 @@ TEST_CASE("E-AC-3 transmits the allocation parameters it allocated against", "[e
         // audfrm's bamode flag: bsi is 54 bits for this 2/0 no-LFE shape with
         // addbsie clear, then expstre, ahte, snroffststr(2), transproce,
         // blkswe and dithflage - the same count "carrying metadata sets
-        // skipflde" in tests/emdf/test_emdf.cpp walks to reach skipflde at
+        // skipflde" in tests/ac3/emdf/test_emdf.cpp walks to reach skipflde at
         // bit 64.
         ac3::BitReader flags{*frame};
         flags.skip(54 + 1 + 1 + 2 + 1 + 1 + 1);

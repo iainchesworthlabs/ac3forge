@@ -4,7 +4,7 @@ A stable, minimal C-callable surface over `ac3::forge`'s encode/decode core —
 AC-3, E-AC-3 and Atmos (OAMD + JOC) — and over the AC-4 decoder and encoder ([AC-4](#ac-4)), for
 bindings and embedding by callers that cannot or do not want to link C++23. The whole surface is
 one header,
-[`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/ac3forge_c/ac3forge.h),
+[`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/iclforge_c/iclforge.h),
 plain C11 with no C++ type crossing it anywhere — only opaque handles and POD structs. It is a
 separate library from `ac3::forge`: link `ac3::forge_c` instead, not both.
 
@@ -390,7 +390,7 @@ application layer, which composes the same three the way a caller of this API wo
 `ac3forge_ac4_decoder_t` and `ac3forge_ac4_encoder_t` mirror `ac4::Decoder`/`ac4::Encoder`
 (ETSI TS 103 190-1 V1.4.1, TS 103 190-2 V1.3.1) behind the same opaque-handle, `_config_init()`
 and out-parameter conventions as the rest of this header — see
-[`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/ac3forge_c/ac3forge.h)'s
+[`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/iclforge_c/iclforge.h)'s
 own AC-4 section for the full surface. The section is declared whether or not this library was
 configured with `AC3FORGE_BUILD_AC4` (on by default): built without it, every fallible function
 returns `AC3FORGE_ERROR_UNSUPPORTED` (4), a `_create()` leaves its out-parameter `NULL`, and

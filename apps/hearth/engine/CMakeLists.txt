@@ -62,7 +62,7 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     # same httplib already linked in for sink_firmware.cpp above, so it adds
     # nothing new to a core-only build to leave out.
     target_sources(ac3hearth_engine PRIVATE diagnostics_server.cpp)
-    target_link_libraries(ac3hearth_engine PRIVATE ac3sendspin_httplib)
+    target_link_libraries(ac3hearth_engine PRIVATE iclforge_sendspin_httplib)
 endif()
 
 # From apps/common, which has no library target: the container facts an item's
@@ -77,22 +77,22 @@ target_sources(ac3hearth_engine PRIVATE
     "${PROJECT_SOURCE_DIR}/apps/common/ac4_object_render.cpp")
 target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/apps/common")
 
-# ac3::audio for the output side (PcmOutput, PassthroughSink, the device
-# records the output decision reads), ac3::forge for the decoder and the
-# renderer, ac4::ac4 for an AC-4 item's table of contents and ac4::decoder for
-# its presentations and metadata (probe_json's AC-4 walk), and ac3::sendspin
+# iclforge::audio for the output side (PcmOutput, PassthroughSink, the device
+# records the output decision reads), iclforge::ac3 for the decoder and the
+# renderer, iclforge::ac4 for an AC-4 item's table of contents and iclforge::ac4dec for
+# its presentations and metadata (probe_json's AC-4 walk), and iclforge::sendspin
 # for the JSON writer the media information is written with, the key ring the
 # pairing records implement (pairing_store.hpp), discovery and pairing
 # themselves (network_sinks.hpp), and Group, the burst/PCM streaming path a
-# network output plays through (network_group_sink.hpp). ac3::signing asks
+# network output plays through (network_group_sink.hpp). iclforge::signing asks
 # whether frames carry an authenticity tag.
-target_link_libraries(ac3hearth_engine PUBLIC ac3::audio ac3::forge ac4::ac4 ac4::decoder ac3::sendspin)
+target_link_libraries(ac3hearth_engine PUBLIC iclforge::audio iclforge::ac3 iclforge::ac4 iclforge::ac4dec iclforge::sendspin)
 # ac3::coverage (coverage floors, tools/checks/coverage_report.sh's "apps/hearth" row) instruments
 # this target's OWN sources - apps/cli's own comment on its matching link explains why the
 # instrumented EXECUTABLE that eventually links this library is not enough on its own: --coverage
 # is a compile-time flag, so without this a coverage build's .cpp files here would produce no
 # .gcno at all and read as no data rather than as low coverage.
-target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt ac3::signing ac3::coverage)
+target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt iclforge::signing ac3::coverage)
 # The engine thread (engine_thread.cpp).
 find_package(Threads REQUIRED)
 target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)
@@ -106,4 +106,4 @@ target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)
 # per-executable).
 target_link_libraries(ac3hearth_engine PUBLIC ac3::tracy)
 target_include_directories(ac3hearth_engine PUBLIC
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")

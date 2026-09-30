@@ -66,7 +66,7 @@
 //
 // Moved from the ESP-IDF component with layout.hpp, and tested on the host in
 // tests/render/test_layout.cpp: the geometry has its own tests under
-// tests/spatial/, so what is checked here is the indexing between coded
+// tests/render/, so what is checked here is the indexing between coded
 // channels, objects and slots - the part where a swapped subscript is silent.
 //
 // Bass management. A slot marked ":small" (OutputLayout::listed()) cannot

@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# libFuzzer harnesses over ac3::forge's untrusted-input entry points.
+# libFuzzer harnesses over iclforge::ac3's untrusted-input entry points.
 #
 # libFuzzer (-fsanitize=fuzzer) is an LLVM built-in, unavailable under GCC or
 # MSVC, so this whole directory requires upstream Clang - not clang-cl, whose
@@ -33,21 +33,21 @@ endif()
 # libFuzzer's own main, which a library must not carry.
 #
 # PUBLIC so every harness executable below inherits the same compile AND link
-# flags automatically through target_link_libraries(... ac3::forge). -fno-
+# flags automatically through target_link_libraries(... iclforge::ac3). -fno-
 # sanitize-recover=undefined turns a UBSan report into a process abort
 # libFuzzer can catch and minimize, rather than a warning it would otherwise
 # print and run straight past.
 #
-# Set on forge_objects, not the forge_static/forge_shared wrapper
-# targets: the actual codec sources compile there (see src/forge/CMakeLists.txt),
+# Set on iclforge_ac3_objects, not the iclforge_ac3_static/forge_shared wrapper
+# targets: the actual codec sources compile there (see src/ac3/CMakeLists.txt),
 # and PUBLIC on an OBJECT library's usage requirements still propagates
-# through PUBLIC target_link_libraries(forge_static PUBLIC forge_objects)
-# to whatever finally links ac3::forge - here, each fuzz harness below.
+# through PUBLIC target_link_libraries(iclforge_ac3_static PUBLIC iclforge_ac3_objects)
+# to whatever finally links iclforge::ac3 - here, each fuzz harness below.
 #
-# signing_objects gets the identical treatment, for the identical reason:
-# fuzz_signing_verify drives ac3::signing's own frame walk and HMAC
+# iclforge_signing_objects gets the identical treatment, for the identical reason:
+# fuzz_signing_verify drives iclforge::signing's own frame walk and HMAC
 # construction (src/signing/src/emdf_atmos_signer.cpp), which is a separate
-# target from ac3::forge (see src/signing/CMakeLists.txt) and would otherwise
+# target from iclforge::ac3 (see src/signing/CMakeLists.txt) and would otherwise
 # be the one library in this build linked into a fuzzer without coverage
 # counters or sanitizer instrumentation of its own - so a report would only
 # fire on the ASan runtime's own interceptors, and the mutation engine would
@@ -61,8 +61,8 @@ function(ac3forge_instrument_for_fuzzing target)
     target_link_options(${target} PUBLIC -fsanitize=address,undefined,fuzzer-no-link)
 endfunction()
 
-ac3forge_instrument_for_fuzzing(forge_objects)
-ac3forge_instrument_for_fuzzing(signing_objects)
+ac3forge_instrument_for_fuzzing(iclforge_ac3_objects)
+ac3forge_instrument_for_fuzzing(iclforge_signing_objects)
 
 # The container libraries need the identical treatment: they parse
 # self-declared lengths straight off untrusted input, which is exactly the
@@ -71,10 +71,10 @@ ac3forge_instrument_for_fuzzing(signing_objects)
 # but only by luck, and the mutation engine would be walking blind - the
 # coverage counters are what steer it into the branches that matter.
 #
-# Same PUBLIC-on-the-OBJECT-library reasoning as forge_objects above: the
+# Same PUBLIC-on-the-OBJECT-library reasoning as iclforge_ac3_objects above: the
 # usage requirements propagate through the static/shared wrappers to
-# whatever finally links matroska::matroska - here, each harness.
-foreach(container_target IN ITEMS matroska_objects mp4_objects mpegts_objects)
+# whatever finally links iclforge::matroska - here, each harness.
+foreach(container_target IN ITEMS iclforge_matroska_objects iclforge_mp4_objects iclforge_mpegts_objects)
     target_compile_options(${container_target} PUBLIC
         -fsanitize=address,undefined,fuzzer-no-link
         -fno-sanitize-recover=undefined
@@ -84,50 +84,50 @@ foreach(container_target IN ITEMS matroska_objects mp4_objects mpegts_objects)
         -fsanitize=address,undefined,fuzzer-no-link)
 endforeach()
 
-# ac4_objects and ac3iab_objects, for the same reason: fuzz_ac4_parse and
+# iclforge_ac4_objects and iclforge_iab_objects, for the same reason: fuzz_ac4_parse and
 # fuzz_iab_parse below mutate parsers that take their counts and lengths from
-# the file. Each is a library of its own rather than part of ac3::forge (see
-# src/ac4/ and src/ac3iab/), so nothing ac3::forge carries reaches their
+# the file. Each is a library of its own rather than part of iclforge::ac3 (see
+# src/ac4/ and src/iab/), so nothing iclforge::ac3 carries reaches their
 # sources, and until these calls existed both harnesses ran against
 # uninstrumented parsers. A harness executable still carries the ASan
 # runtime, so a segfault, a timeout or an allocation over -rss_limit_mb
 # stopped those runs; an out-of-bounds read or undefined behaviour inside the
 # parser did not, and the mutation engine got no coverage from it.
 #
-# ac3adm_objects, which fuzz_adm_parse links, was the last one left out, and
+# iclforge_adm_objects, which fuzz_adm_parse links, was the last one left out, and
 # for a reason the other two did not have: libbw64 is header-only, so
 # instrumenting ac3adm instruments the libbw64 code it compiles too. UBSan then
 # stopped the harness within a few hundred executions inside libbw64's
 # UnknownChunk constructor, which takes &data_[0] of an empty vector for a
 # zero-length chunk, and does the same in Bw64Reader::read() for a <data> chunk
 # of zero length. Both are patched in the dependency itself at populate time
-# (src/ac3adm/patch_libbw64.cmake, wired up in src/ac3adm/CMakeLists.txt), which
+# (src/adm/patch_libbw64.cmake, wired up in src/adm/CMakeLists.txt), which
 # is what let this call join the set.
 #
 # An ignorelist scoped to libbw64 was the alternative, and would have hidden
 # more than it suppressed: a <fmt > whose channel count and width overflow
 # libbw64's uint16_t block alignment gets its read buffer sized from the wrapped
 # value and decoded against the real one, which ASan reports as a heap overread
-# against ac3adm's own read_pcm. That one is guarded in src/ac3adm/src/adm.cpp,
+# against ac3adm's own read_pcm. That one is guarded in src/adm/src/adm.cpp,
 # and an uninstrumented ac3adm reads it as a clean execution.
 #
 # Each call is guarded on the option that decides whether its library exists,
 # and each harness below sits under the same guard, so turning one of those
 # options off drops its harness instead of failing the configure.
 if(AC3FORGE_BUILD_AC4)
-    ac3forge_instrument_for_fuzzing(ac4_objects)
+    ac3forge_instrument_for_fuzzing(iclforge_ac4_objects)
 endif()
 if(AC3FORGE_BUILD_IAB)
-    ac3forge_instrument_for_fuzzing(ac3iab_objects)
+    ac3forge_instrument_for_fuzzing(iclforge_iab_objects)
 endif()
 if(AC3FORGE_BUILD_ADM)
-    ac3forge_instrument_for_fuzzing(ac3adm_objects)
+    ac3forge_instrument_for_fuzzing(iclforge_adm_objects)
 endif()
 
 add_custom_target(ac3forge_fuzzers)
 
 # One executable per untrusted-input entry point. Each adds -fsanitize=fuzzer
-# on top of what it already inherited from ac3::forge above: that flag links
+# on top of what it already inherited from iclforge::ac3 above: that flag links
 # libFuzzer's runtime and its LLVMFuzzerTestOneInput-driven main, which must
 # exist exactly once per executable and never inside the library itself.
 #
@@ -139,9 +139,9 @@ add_custom_target(ac3forge_fuzzers)
 # reshape the input a fuzzer thinks it is passing in.
 #
 # Anything after `name` is an extra library that harness needs beyond
-# ac3::forge - ac3::signing for fuzz_signing_verify, ac3iab::ac3iab for
-# fuzz_iab_parse, ac4::ac4 for fuzz_ac4_parse, ac3adm::ac3adm for
-# fuzz_adm_parse. Each is a separate target rather than part of ac3::forge
+# iclforge::ac3 - iclforge::signing for fuzz_signing_verify, iclforge::iab for
+# fuzz_iab_parse, iclforge::ac4 for fuzz_ac4_parse, iclforge::adm for
+# fuzz_adm_parse. Each is a separate target rather than part of iclforge::ac3
 # (see its own CMakeLists.txt for why), and none is needed by the harnesses
 # that only call into the codec. Naming a library here does not instrument
 # it: its OBJECT library needs its own ac3forge_instrument_for_fuzzing() call
@@ -149,7 +149,7 @@ add_custom_target(ac3forge_fuzzers)
 # checks.
 function(ac3forge_add_fuzzer name)
     add_executable(${name} "${name}.cpp")
-    target_link_libraries(${name} PRIVATE ac3::forge ac3::warnings ${ARGN})
+    target_link_libraries(${name} PRIVATE iclforge::ac3 ac3::warnings ${ARGN})
     target_compile_options(${name} PRIVATE -fsanitize=fuzzer)
     target_link_options(${name} PRIVATE -fsanitize=fuzzer)
     set_target_properties(${name} PROPERTIES
@@ -160,7 +160,7 @@ endfunction()
 # Same, for a harness whose subject is a container library rather than the
 # codec: everything about the flags is identical, only the linked library
 # differs. Kept as its own function rather than a parameter on the one above
-# because every EXISTING harness takes ac3::forge and would gain a noise
+# because every EXISTING harness takes iclforge::ac3 and would gain a noise
 # argument for it.
 function(ac3forge_add_container_fuzzer name library)
     add_executable(${name} "${name}.cpp")
@@ -173,25 +173,25 @@ function(ac3forge_add_container_fuzzer name library)
 endfunction()
 
 # ac3::io::scan: format-sniffing over an unidentified byte stream, before any
-# decoder commits to a layout (src/forge/src/io/elementary.cpp).
+# decoder commits to a layout (src/ac3/src/io/elementary.cpp).
 ac3forge_add_fuzzer(fuzz_scan)
 
 # matroska::demux + matroska::Reader: the EBML walk over a container that came
 # from a disc rip, a broadcast capture or a download - every length in it
 # self-declared (src/matroska/src/reader.cpp).
-ac3forge_add_container_fuzzer(fuzz_matroska_demux matroska::matroska)
+ac3forge_add_container_fuzzer(fuzz_matroska_demux iclforge::matroska)
 
 # mp4::demux + mp4::Reader: the box walk, and the sample table it resolves
 # against the file - an INDEX of self-declared offsets and sizes, which is a
 # wider attack surface than Matroska's in-line framing
 # (src/mp4/src/reader.cpp).
-ac3forge_add_container_fuzzer(fuzz_mp4_demux mp4::mp4)
+ac3forge_add_container_fuzzer(fuzz_mp4_demux iclforge::mp4)
 
 # mpegts::demux + mpegts::Reader: sync search, PSI section reassembly and PES
 # reassembly, all loops driven by self-declared lengths over a format that is
 # EXPECTED to arrive damaged - the harness most likely to find a hang rather
 # than a crash (src/mpegts/src/reader.cpp).
-ac3forge_add_container_fuzzer(fuzz_mpegts_demux mpegts::mpegts)
+ac3forge_add_container_fuzzer(fuzz_mpegts_demux iclforge::mpegts)
 
 # --- The other two Dolby bitstreams this repo reads --------------------------
 #
@@ -202,7 +202,7 @@ ac3forge_add_container_fuzzer(fuzz_mpegts_demux mpegts::mpegts)
 #
 # ac3iab::parse_iabitstream + parse_mxf_iab + parse_iaframe: §7's
 # Preamble+IAFrame run, the SMPTE ST 2067-201 KLV wrapper an IAB track file
-# clip-wraps it in, and §9.1's single extracted frame (src/ac3iab/). One
+# clip-wraps it in, and §9.1's single extracted frame (src/iab/). One
 # harness over all three because they are three framings of the same bytes and
 # a shared corpus serves them better than three split ones. Includes
 # BitReader::read_plex, whose §5.2 escape bound is exactly the sort of clause
@@ -213,7 +213,7 @@ ac3forge_add_container_fuzzer(fuzz_mpegts_demux mpegts::mpegts)
 # input the uninstrumented runs never reached. Fixed, with the input under
 # fuzz/regressions/fuzz_iab_parse/.
 if(AC3FORGE_BUILD_IAB)
-    ac3forge_add_fuzzer(fuzz_iab_parse ac3iab::ac3iab)
+    ac3forge_add_fuzzer(fuzz_iab_parse iclforge::iab)
 endif()
 
 # ac4::scan + ac4::parse_raw_frame: sync search, then the TOC - a presentation
@@ -226,7 +226,7 @@ endif()
 #
 # Its first runs found a null dereference and five loops that ran on an
 # attacker's count after the data behind it was gone; all are fixed. The six
-# million clean executions reported after those fixes ran before ac4_objects
+# million clean executions reported after those fixes ran before iclforge_ac4_objects
 # was instrumented (see above), so they could catch a segfault, a timeout or
 # an oversized allocation, and nothing the parser did within its own memory.
 # Instrumented, the committed regression corpus read past a six-entry count
@@ -234,25 +234,25 @@ endif()
 # presentation_config_ext_info() overflowed an int. Both are fixed, with
 # reproducers under fuzz/regressions/fuzz_ac4_parse/.
 if(AC3FORGE_BUILD_AC4)
-    ac3forge_add_fuzzer(fuzz_ac4_parse ac4::ac4)
+    ac3forge_add_fuzzer(fuzz_ac4_parse iclforge::ac4)
 endif()
 
 # split_frames + FrameDecoder::decode_frame, driven the way ac3cli's 'decode'
-# drives them (src/forge/src/decoder/decoder.cpp).
+# drives them (src/ac3/src/decoder/decoder.cpp).
 ac3forge_add_fuzzer(fuzz_ac3_decode)
 
 # split_access_units + Eac3Decoder::decode_access_unit (which calls
 # decode_substream internally), driven the way ac3cli's 'decode' drives them
-# for E-AC-3 (src/forge/src/decoder/eac3_decoder.cpp).
+# for E-AC-3 (src/ac3/src/decoder/eac3_decoder.cpp).
 ac3forge_add_fuzzer(fuzz_eac3_decode)
 
 # ac3::io::read_wav: a realistic input too, not only an adversarial one - a
 # truncated or hand-edited WAV is exactly what a user hands the CLI
-# (src/forge/src/io/wav.cpp).
+# (src/ac3/src/io/wav.cpp).
 ac3forge_add_fuzzer(fuzz_wav_read)
 
 # ac3::iec61937::BurstReader: IEC 61937 burst de-framing, driven the way
-# ac3cli's 'unspdif' drives it (src/forge/src/iec61937/iec61937.cpp). The one
+# ac3cli's 'unspdif' drives it (src/iec61937/src/iec61937.cpp). The one
 # entry point here whose input is by definition off a wire - an S/PDIF or
 # HDMI capture - and whose Pd word is an attacker-chosen length.
 ac3forge_add_fuzzer(fuzz_iec61937_unwrap)
@@ -281,21 +281,21 @@ ac3forge_add_fuzzer(fuzz_differential_eac3_decode)
 
 # ac3::emdf::parse_container: ETSI TS 102 366 Annex H's container, located by
 # a bit-by-bit sync scan and sized by its own 16-bit length field
-# (src/forge/src/emdf/emdf.cpp).
+# (src/objects/src/emdf.cpp).
 ac3forge_add_fuzzer(fuzz_emdf_parse)
 
 # ac3::oba::parse_payload: TS 103 420 §5's object_audio_metadata_payload
-# (src/forge/src/oba/oamd.cpp).
+# (src/objects/src/oamd.cpp).
 ac3forge_add_fuzzer(fuzz_oamd_parse)
 
 # ac3::oba::joc::parse_payload: TS 103 420 §6's joc() payload, the one metadata
 # parser here that Huffman-decodes and that sizes a matrix from the stream's
-# own numbers (src/forge/src/oba/joc.cpp).
+# own numbers (src/ac3/src/oba/joc.cpp).
 ac3forge_add_fuzzer(fuzz_joc_parse)
 
 # --- Live position input (live OSC object positions) ---------------------------------------
 # ac3::oba::parse_osc_packet: the OSC 1.0 wire form of a live scene update
-# (src/forge/src/oba/scene_osc.cpp). Not behind the bitstream at all - this
+# (src/objects/src/scene_osc.cpp). Not behind the bitstream at all - this
 # is the project's first NETWORK-facing parser, reached straight from a UDP
 # datagram by ac3::audio::LivePositionSource whenever a live session opts
 # into positions=osc:<port>, with no CRC or container ahead of it the way
@@ -304,13 +304,13 @@ ac3forge_add_fuzzer(fuzz_osc_parse)
 
 # ac3::signing::verify_atmos_stream/verify_atmos_frame: the only signing
 # operation that runs on a stream its caller did not produce
-# (src/signing/src/emdf_atmos_signer.cpp). Links ac3::signing on top of
-# ac3::forge; the key is part of the fuzzed input, and nothing here needs or
+# (src/signing/src/emdf_atmos_signer.cpp). Links iclforge::signing on top of
+# iclforge::ac3; the key is part of the fuzzed input, and nothing here needs or
 # derives a real one - see the harness's own header comment.
-ac3forge_add_fuzzer(fuzz_signing_verify ac3::signing)
+ac3forge_add_fuzzer(fuzz_signing_verify iclforge::signing)
 
 # ac3adm::parse_bw64: BW64/RF64 chunks plus an arbitrary ADM XML document
-# (src/ac3adm/src/adm.cpp). Gated on the same AC3FORGE_BUILD_ADM the library
+# (src/adm/src/adm.cpp). Gated on the same AC3FORGE_BUILD_ADM the library
 # itself is - that option is OFF by default and additionally needs vcpkg's
 # "adm" feature for libadm's Boost headers, which the rest of this build
 # deliberately has no vcpkg dependency at all (see fuzz/run.sh's own
@@ -318,14 +318,14 @@ ac3forge_add_fuzzer(fuzz_signing_verify ac3::signing)
 # without that this harness simply is not built, exactly as ac3adm itself is
 # not.
 if(AC3FORGE_BUILD_ADM)
-    ac3forge_add_fuzzer(fuzz_adm_parse ac3adm::ac3adm)
+    ac3forge_add_fuzzer(fuzz_adm_parse iclforge::adm)
 endif()
 
 # ac4::Decoder::parse: every substream of an AC-4 frame below the table of
 # contents fuzz_ac4_parse presses (src/ac4dec) - section lengths, Huffman
 # codewords, A-SPX envelope counts, DRC gain sets and EMDF payloads, each
 # counted by the stream - and, from D2, the reconstruction of what they
-# decode to. ac4dec_objects is a library of its own, so it needs its own
+# decode to. iclforge_ac4dec_objects is a library of its own, so it needs its own
 # instrumentation call, as fuzz_ac4_parse's parser does, and so does the
 # shared core it links (src/ac4core: the tables and transforms). Its seeds
 # are fuzz_ac4_parse's (fuzz/run.sh's seed_source_for).
@@ -336,9 +336,9 @@ endif()
 # the escape to 21 bits, which the decoder now enforces; the input is under
 # fuzz/regressions/fuzz_ac4_decode/.
 if(AC3FORGE_BUILD_AC4)
-    ac3forge_instrument_for_fuzzing(ac4core)
-    ac3forge_instrument_for_fuzzing(ac4dec_objects)
-    ac3forge_add_fuzzer(fuzz_ac4_decode ac4::decoder)
+    ac3forge_instrument_for_fuzzing(iclforge_ac4core)
+    ac3forge_instrument_for_fuzzing(iclforge_ac4dec_objects)
+    ac3forge_add_fuzzer(fuzz_ac4_decode iclforge::ac4dec)
 endif()
 
 # ac4::Encoder (src/ac4enc): configurations and samples from the input, each
@@ -347,33 +347,33 @@ endif()
 # (planning/ac4.md, the encoder's ladder, items 1 and 8). The core and the
 # decoder are instrumented by the block above.
 if(AC3FORGE_BUILD_AC4)
-    ac3forge_instrument_for_fuzzing(ac4enc_objects)
-    ac3forge_add_fuzzer(fuzz_ac4_encode ac4::encoder ac4::decoder)
+    ac3forge_instrument_for_fuzzing(iclforge_ac4enc_objects)
+    ac3forge_add_fuzzer(fuzz_ac4_encode iclforge::ac4enc iclforge::ac4dec)
 endif()
 
 # --- Sendspin (planning/hearth-reference-player.md, A4) ----------------------
-# ac3::sendspin's parsers are the first code a network peer's bytes reach, on
+# iclforge::sendspin's parsers are the first code a network peer's bytes reach, on
 # ac3hearth's server and on a sink. Gated on AC3FORGE_BUILD_HEARTH like the
 # library; fuzz/run.sh turns it on with AC3FORGE_SENDSPIN_CORE_ONLY, which
 # builds the library's dependency-free core and keeps this build free of vcpkg.
-if(TARGET ac3sendspin)
-    ac3forge_instrument_for_fuzzing(ac3sendspin)
+if(TARGET iclforge_sendspin)
+    ac3forge_instrument_for_fuzzing(iclforge_sendspin)
 
     # ac3::sendspin::json::Document::parse, with a write-and-reparse check
     # (src/sendspin/src/json.cpp).
-    ac3forge_add_container_fuzzer(fuzz_sendspin_json ac3::sendspin)
+    ac3forge_add_container_fuzzer(fuzz_sendspin_json iclforge::sendspin)
 
     # ac3::sendspin::Reassembler in both fragment forms, and the player@v1 and
     # _ac3forge_player@v1 chunk parsers (src/sendspin/src/frames.cpp, chunks.cpp).
-    ac3forge_add_container_fuzzer(fuzz_sendspin_frames ac3::sendspin)
+    ac3forge_add_container_fuzzer(fuzz_sendspin_frames iclforge::sendspin)
 
     # The handshake phase's messages - client/init, server/init, server/error,
     # noise/handshake and the two Noise payloads - read and written back
     # (src/sendspin/src/handshake.cpp).
-    ac3forge_add_container_fuzzer(fuzz_sendspin_handshake ac3::sendspin)
+    ac3forge_add_container_fuzzer(fuzz_sendspin_handshake iclforge::sendspin)
 
     # The core and pairing messages after the handshake, every reader in both dialects, with a
     # check that what is written back reads and writes back to itself
     # (src/sendspin/src/messages.cpp, pairing_messages.cpp).
-    ac3forge_add_container_fuzzer(fuzz_sendspin_messages ac3::sendspin)
+    ac3forge_add_container_fuzzer(fuzz_sendspin_messages iclforge::sendspin)
 endif()

@@ -168,7 +168,7 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
     // should hand channel 0 straight back through - modulo the algorithmic
     // delay of whichever pair the domain runs. Both are checked, because
     // both ship: the MDCT pair's own 256 samples (the same one-block delay
-    // tests/decoder/test_eac3_decoder.cpp's snr_db helper documents), and
+    // tests/ac3/decoder/test_eac3_decoder.cpp's snr_db helper documents), and
     // the filterbank's 576 (its 640-tap window less one 64-sample hop).
     // oba::joc::reconstruction_delay() is the single place either number is
     // written down, so a test that used the wrong one could not silently

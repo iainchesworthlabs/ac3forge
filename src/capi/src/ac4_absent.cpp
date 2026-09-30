@@ -20,7 +20,7 @@
 // --- config initializers -----------------------------------------------
 // Pure C structs; the defaults below are ac4::OutputConfig{}'s,
 // ac4::DecoderConfig{}'s and ac4::EncoderConfig{}'s (src/ac4dec/include/
-// ac4dec/decoder.hpp, src/ac4enc/include/ac4enc/encoder.hpp) spelled as C
+// ac4dec/decoder.hpp, src/ac4enc/include/iclforge/ac4enc/encoder.hpp) spelled as C
 // literals, so a config built by this library is the same whichever way
 // AC3FORGE_BUILD_AC4 was set - naming no ac4:: type does not have to mean
 // guessing at its defaults.
@@ -66,7 +66,7 @@ void ac3forge_ac4_decoder_config_init(ac3forge_ac4_decoder_config_t* config) {
     config->decoding = AC3FORGE_AC4_DECODING_FULL;
 }
 
-// ac4::ObjectProperties{}'s defaults (src/ac4/include/ac4/ac4.hpp).
+// ac4::ObjectProperties{}'s defaults (src/ac4/include/iclforge/ac4/ac4.hpp).
 void ac3forge_ac4_object_properties_init(ac3forge_ac4_object_properties_t* properties) {
     if (properties == nullptr) {
         return;

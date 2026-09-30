@@ -46,7 +46,7 @@
 # AC3FORGE_CROSS_TIER_CHECK=1 switches this script into a different mode: run
 # the entire matrix below TWICE from the SAME binary, once with
 # AC3FORGE_SIMD_TIER=sse2 and once with =avx2 (see
-# src/forge/src/internal/cpu/cpu_features.hpp), then byte-diff the two output
+# src/base/include/iclforge/base/detail/cpu_features.hpp), then byte-diff the two output
 # trees. This is the runtime-dispatch analogue of the -DAC3FORGE_SIMD=generic
 # cross-build check documented above: that one proves two different binaries
 # (SIMD tier baked in at compile time) agree bit-for-bit; this one proves the
@@ -186,7 +186,7 @@ done
 # --- The §7.8 output stage and §7.10 concealment (decoder output stage and concealment) ---------
 # Every new decode token, over a real 5.1 stream rather than silence, because
 # a fold of silence is silence whatever the matrix says. The unit suite
-# (tests/decoder/test_output_stage.cpp) is what checks the coefficients
+# (tests/ac3/decoder/test_output_stage.cpp) is what checks the coefficients
 # themselves; what these rows cover is the thing a unit test cannot - that the
 # CLI plumbs each token through to a WAV that actually gets written, at the
 # channel count and channel order the sink was opened for. A fold changes both
@@ -333,7 +333,7 @@ run decode eac3_1+1.ec3 dc1_eac3_dualmono.wav channels=2
 run decode eac3_51.ec3 dc2_eac3_repeat.wav conceal=repeat
 
 # "atten:N" and "noatten" alone tune spectral extension's notch but do not,
-# by themselves, turn spx on (see parse_tools in src/forge/src/encoder/plan.cpp)
+# by themselves, turn spx on (see parse_tools in src/ac3/src/encoder/plan.cpp)
 # - so they round-trip like "none". "nofastmdct" and "nodither" are the same
 # shape one step further: neither is a coding tool at all - nofastmdct only
 # changes the forward transform's rounding, nodither only pins §7.3.4's
@@ -731,7 +731,7 @@ run decode atmos_path.ec3 atmos_path.wav
 run_ffmpeg_check atmos_path.ec3
 
 # atmos-adm (ADM BWF reader): only exercised for real when THIS build actually has it.
-# ac3adm::ac3adm/ac3::admbridge are this project's one opt-in, non-default library
+# iclforge::adm/iclforge::admbridge are this project's one opt-in, non-default library
 # (AC3FORGE_BUILD_ADM, default off - see the root CMakeLists.txt's own option()), and it needs
 # Boost plus a dedicated vcpkg feature neither of this script's two CI callers (the ASan+UBSan
 # leg, the FFmpeg-oracle leg this file's own header describes) pulls in - both build the plain
@@ -773,8 +773,8 @@ else
 fi
 
 # atmos-iab (IAB reader phase 3): the identical conditional-command shape atmos-adm above uses,
-# and for the same reason - it needs ac3::admbridge's own IAB mapping, gated by the same
-# AC3FORGE_BUILD_ADM flag (see apps/cli/adm/atmos_iab.hpp's own header comment: ac3iab::ac3iab
+# and for the same reason - it needs iclforge::admbridge's own IAB mapping, gated by the same
+# AC3FORGE_BUILD_ADM flag (see apps/cli/adm/atmos_iab.hpp's own header comment: iclforge::iab
 # itself is on by default, but build_iab() only exists once admbridge is). Detected the same
 # "ask the real usage listing" way, not guessed from a preset name. examples/encode_iab's own
 # --write-fixture mode produces a real elementary IAB file on disk, so this is driven through a
@@ -806,7 +806,7 @@ fi
 # chanmap convention the decoder writes, not atmos-cbi's own DEE cbi_wav/
 # Table 12 order, but a channel COUNT match is all this smoke-coverage script
 # needs - the per-channel semantic labeling (which physical channel lands as
-# which OAMD bed label) is what tests/oba/test_atmos_cbi.cpp and
+# which OAMD bed label) is what tests/ac3/oba/test_atmos_cbi.cpp and
 # tests/cli/test_cli_atmos_cbi.cpp prove, with a distinct tone per channel
 # identified after JOC reconstruction, which this script does not repeat.
 # Always a 5.1 bed physically (OAMD+JOC ride in the same independent

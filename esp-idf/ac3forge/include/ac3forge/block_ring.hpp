@@ -25,7 +25,7 @@
 //
 // What this does not do is wait: a producer that finds the ring full, or a
 // consumer that finds it empty, does something else. That keeps it free of
-// ESP-IDF, so tests/io/test_block_ring.cpp checks the arithmetic on the host.
+// ESP-IDF, so tests/ac3/io/test_block_ring.cpp checks the arithmetic on the host.
 
 namespace ac3forge {
 

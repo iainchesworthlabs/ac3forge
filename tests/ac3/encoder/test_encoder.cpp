@@ -688,7 +688,7 @@ TEST_CASE("a block-switched channel never dithers", "[encoder][dither]") {
     // coefficient set, so a zero-bap slot there is really two half-block bins
     // and filling it spreads noise across the transient the switch just spent
     // bits resolving. Dolby's own encoder writes dithflag as exactly !blksw
-    // (see src/forge/src/encoder/dither.hpp); this holds this encoder to the
+    // (see src/ac3/src/encoder/dither.hpp); this holds this encoder to the
     // same rule wherever it switches at all.
     //
     // A hard onset in the middle of the frame is what trips the §8.2.2

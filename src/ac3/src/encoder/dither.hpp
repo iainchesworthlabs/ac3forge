@@ -47,7 +47,7 @@
 // applied at both call sites, and the comparison above is what decides the
 // rest.
 //
-// Internal to src/forge/src/encoder/ on purpose, like snr_search.hpp beside
+// Internal to src/ac3/src/encoder/ on purpose, like snr_search.hpp beside
 // it - shared between the AC-3 and E-AC-3 encoders, not library surface.
 
 namespace ac3::internal {

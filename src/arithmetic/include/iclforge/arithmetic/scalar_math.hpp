@@ -34,7 +34,7 @@
 // flatness in [0, 1] that is then quantised to five bits or compared with a
 // threshold; choose_delta_segments rounds 128 * log2 |c| to an integer psd
 // unit (1/128 of one exponent step). A few float ulps of error in log2 move
-// none of those by a visible amount; tests/encoder/test_scalar_math.cpp pins
+// none of those by a visible amount; tests/ac3/encoder/test_scalar_math.cpp pins
 // the bounds.
 
 namespace ac3::internal {

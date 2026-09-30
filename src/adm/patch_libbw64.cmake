@@ -1,12 +1,12 @@
 # ---------------------------------------------------------------------------
-# Patch step for the vendored libbw64, run by src/ac3adm/CMakeLists.txt's
+# Patch step for the vendored libbw64, run by src/adm/CMakeLists.txt's
 # FetchContent_Populate(libbw64 ... PATCH_COMMAND), in libbw64's source directory,
 # which `cmake -P` reports as CMAKE_CURRENT_SOURCE_DIR.
 #
 # Two patches against the pinned commit, both PRs proposed against the pinned fork
 # (github.com/pwnified/libbw64) - see the CHANGELOG entry that added each for its PR link.
 # Each stays until its PR lands, or until the pin moves to a commit that already carries it;
-# either way, deleting this file and its PATCH_COMMAND wiring in src/ac3adm/CMakeLists.txt is
+# either way, deleting this file and its PATCH_COMMAND wiring in src/adm/CMakeLists.txt is
 # the whole removal once both do.
 #
 # 1. Bw64Reader::parseChunkHeaders() (reader.hpp) refuses ANY chunk whose resolved size runs
@@ -24,7 +24,7 @@
 #    by one value to reach them.
 #
 # The empty-vector undefined behaviour an earlier libbw64 pin needed patching for
-# (fuzz/CMakeLists.txt's instrumented set could not build ac3adm_objects without it) is already
+# (fuzz/CMakeLists.txt's instrumented set could not build iclforge_adm_objects without it) is already
 # fixed here, upstream - see docs/threat-model.md's ADM section for the history; that is not a
 # third patch.
 #
@@ -55,9 +55,9 @@ function(ac3adm_patch_libbw64 file from to expected_count)
         return()
     endif()
     message(FATAL_ERROR
-        "src/ac3adm/patch_libbw64.cmake: expected ${expected_count} of '${from}' in "
+        "src/adm/patch_libbw64.cmake: expected ${expected_count} of '${from}' in "
         "${path}, found ${count}. The script was written against the GIT_TAG pinned "
-        "in src/ac3adm/CMakeLists.txt at the time; update it for whatever the pin is "
+        "in src/adm/CMakeLists.txt at the time; update it for whatever the pin is "
         "now, then delete the libbw64-src directory so the patch applies to a fresh "
         "checkout.")
 endfunction()
@@ -74,7 +74,7 @@ ac3adm_patch_libbw64(reader.hpp
         }
         fileStream_.seekg(chunk_size, std::ios::cur);"
     "        if (chunk_end > end) {
-          // ac3forge's own patch (src/ac3adm/patch_libbw64.cmake): a recording
+          // ac3forge's own patch (src/adm/patch_libbw64.cmake): a recording
           // truncated mid-<data> is an ordinary file, not a malformed one -
           // clamp to what is actually there instead of refusing it. Every
           // other chunk still throws.

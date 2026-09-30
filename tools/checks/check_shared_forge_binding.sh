@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove that an executable built with BUILD_SHARED_LIBS=ON runs its ac3::forge code from
+# Prove that an executable built with BUILD_SHARED_LIBS=ON runs its iclforge::ac3 code from
 # libac3forge.so, not from a second copy of the codec that reached it another way.
 #
 # The shared-libs pass (config-linux-llvm-shared, .github/workflows/_ci-linux.yml) exists to show

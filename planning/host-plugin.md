@@ -76,24 +76,24 @@ Four candidates, evaluated rather than assumed. The verdict column is what the t
 | **Object panner writing ADM** | author positions, emit object metadata | **Blocked by the formats**, not by the library |
 
 **Metering and QC.** `ac3::meta::LoudnessMeter`
-(`src/forge/include/ac3/meta/loudness.hpp:76`) is already shaped like a plugin: a `push()` that
+(`src/ac3/include/iclforge/ac3/meta/loudness.hpp:76`) is already shaped like a plugin: a `push()` that
 takes any number of samples, and const getters for momentary, short-term, integrated, loudness
 range and true peak. It has two constructors — BS.1770 Annex 1 keyed on `acmod`, and Annex 3
 over a rendered wide layout — so 5.1.4 and 7.1.4 are measurable, not just 5.1.
-`src/forge/include/ac3/meta/qc.hpp:60` adds named broadcast limits with pass/fail and margins.
+`src/ac3/include/iclforge/ac3/meta/qc.hpp:60` adds named broadcast limits with pass/fail and margins.
 Nothing in this path encodes anything, so none of the encoder's constraints below apply to it.
 
 **Encoder for monitoring.** All three encoders take the same shape: pimpl'd, scratch allocated
 once in the constructor, spans in, one owning buffer out —
-`ac3::FrameEncoder::encode_frame` (`src/forge/include/ac3/encoder/encoder.hpp:187`),
-`ac3::eac3::FrameEncoder::encode_frame` (`src/forge/include/ac3/encoder/eac3_frame.hpp:560`)
-and `ac3::oba::AtmosEncoder::encode_frame` (`src/forge/include/ac3/oba/atmos.hpp:167`). Each
+`ac3::FrameEncoder::encode_frame` (`src/ac3/include/iclforge/ac3/encoder/encoder.hpp:187`),
+`ac3::eac3::FrameEncoder::encode_frame` (`src/ac3/include/iclforge/ac3/encoder/eac3_frame.hpp:560`)
+and `ac3::oba::AtmosEncoder::encode_frame` (`src/ac3/include/iclforge/ac3/oba/atmos.hpp:167`). Each
 reports a `LatencyBudget` (roadmap PF6), so the number a plugin must declare to its host is
 already computable rather than guessed. What is missing is in
 [Real-time safety](#real-time-safety).
 
 **Decoder on a timeline.** `ac3forge_decoder_decode_frame_into()`
-(`src/capi/include/ac3forge_c/ac3forge.h:366`) and
+(`src/capi/include/iclforge_c/iclforge.h:366`) and
 `ac3forge_eac3_decoder_decode_access_unit_into()` (`:664`) are the only codec entry points in
 the tree that write into caller-owned memory, and their own comments say they exist "for a
 realtime embedder". The API side of a decode plugin is done. The use case is the weak half: a
@@ -101,8 +101,8 @@ DAW decodes coded material at import and puts PCM on the timeline, so a decode p
 in an insert slot has no coded input to receive. A host would have to hand a plugin an
 elementary stream, and no format below has a way to do that.
 
-**Object panner.** The library has the machinery — `src/ac3adm` for BW64/ADM,
-`src/forge/include/ac3/oba/oamd.hpp`, `scene.hpp` and `motion.hpp` for object metadata and
+**Object panner.** The library has the machinery — `src/adm` for BW64/ADM,
+`src/objects/include/iclforge/objects/oamd.hpp`, `scene.hpp` and `motion.hpp` for object metadata and
 trajectories, `src/admbridge` for coordinate conversion. The wall is the formats, and it is the
 next section.
 
@@ -147,7 +147,7 @@ in that conversation, and the plugin formats give it no way to join.
 Two consequences follow, and they set the shape of everything below.
 
 - **An object panner is not possible in any open plugin format.** The blocker is not GPL-3.0,
-  not the SDK, and not anything in `src/ac3adm` or `src/forge/include/ac3/oba/`. It is that the
+  not the SDK, and not anything in `src/adm` or `src/objects/include/iclforge/objects/`. It is that the
   formats carry no object metadata and the renderer path is private.
 - **A bed is a different question, and the answer there is yes.** 5.1.4 and 7.1.4 arrive at a
   plugin as ordinary channel arrangements every format above can express, and
@@ -165,7 +165,7 @@ there records that the slow half, run on the frame thread, once cost seven secon
 architecture is a decoupled frame thread feeding a sink, and it does not transfer to a plugin
 unchanged; a plugin would need the same decoupling built inside it.
 
-**What the tree already gets right.** A scan of `src/forge/src/{encoder,oba,spatial,quality,meta,core,dsp}`
+**What the tree already gets right.** A scan of `src/ac3/src/{encoder,oba,spatial,quality,meta,core,dsp}`
 for `std::mutex`, `lock_guard`, `std::cout`, `std::cerr`, `fopen`, `ofstream`,
 `std::this_thread`, `condition_variable` and bare `malloc` returns **zero hits in all seven
 directories**. There is no locking, no I/O, no logging and no sleeping anywhere in the encode,
@@ -176,7 +176,7 @@ become no-ops once the stream count settles.
 
 **The one structural allocation.** Every encode returns an owning buffer, and the bit writer is
 emptied to produce it: `BitWriter::take()` is `std::exchange(bytes_, {})`
-(`src/forge/include/ac3/core/bitwriter.hpp:65-68`), so the writer starts each frame with no
+(`src/base/include/iclforge/base/bitwriter.hpp:65-68`), so the writer starts each frame with no
 capacity and grows again, and `encoder.cpp:2500` then returns that buffer by value. That is
 heap traffic on every frame, on what would be the audio thread. The fix is already modelled in
 the tree: the decode side has `..._into()` entry points that write into caller memory
@@ -185,7 +185,7 @@ a `BitWriter` that keeps its capacity — is the single missing library API an e
 needs.**
 
 **What is bounded, and what is not.** The SNR-offset search is a bounded binary search:
-`search_max_fitting` (`src/forge/src/encoder/snr_search.hpp:33`) probes over `[0, limit]`, warm-
+`search_max_fitting` (`src/ac3/src/encoder/snr_search.hpp:33`) probes over `[0, limit]`, warm-
 started from the previous frame's answer, and falls back to a plain binary search when the hint
 misses. So the probe count has a ceiling. The cost per probe is a full bit allocation over every
 stream, and the hint misses precisely at transients and scene changes — which is to say, the
@@ -200,7 +200,7 @@ whether an encode plugin is possible is:
    maximum, 99.9th and 99th percentiles over a corpus that includes transients and scene changes,
    since those are where the search hint misses. The gate is the host's block deadline: at 48 kHz
    a 256-sample block is 5.33 ms, and one 1536-sample frame
-   (`src/forge/include/ac3/core/tables.hpp:22`) spans six of them, so a frame's work must fit
+   (`src/ac3/include/iclforge/ac3/core/tables.hpp:22`) spans six of them, so a frame's work must fit
    inside roughly 32 ms of budget shared with every other plugin in the session.
 2. **Allocation count and bytes per `encode_frame` in steady state**, captured by an
    instrumented global allocator around the call, to confirm the only remaining traffic is the
@@ -468,17 +468,17 @@ It is an **analyser**: audio passes through unchanged.
 
 | Need | Where it exists | State |
 |---|---|---|
-| Loudness, true peak, LRA | `src/forge/include/ac3/meta/loudness.hpp:76` | complete; see the gap below |
-| Broadcast presets, pass/fail | `src/forge/include/ac3/meta/qc.hpp:60` | complete |
+| Loudness, true peak, LRA | `src/ac3/include/iclforge/ac3/meta/loudness.hpp:76` | complete; see the gap below |
+| Broadcast presets, pass/fail | `src/ac3/include/iclforge/ac3/meta/qc.hpp:60` | complete |
 | Wide-layout loudness (5.1.4, 7.1.4) | `LoudnessMeter`'s Annex 3 constructor | complete |
-| Level analysis | `src/forge/include/ac3/analysis/levels.hpp` | complete |
+| Level analysis | `src/ac3/include/iclforge/ac3/analysis/levels.hpp` | complete |
 | Qt Quick UI patterns, theming, accessibility | `apps/gui`, `apps/crucible/ui` | complete, but see [10](#10-localisation-and-accessibility) |
 | Notices composition | `apps/notices/notices.cmake` | complete |
 | Packaging components | `cmake/Packaging.cmake:454` | needs one component added |
 
 **What is missing in the library, and it is one thing.** `LoudnessMeter` is built for a file: a
 finite programme, measured once, reported once. Two consequences make it wrong for a plugin left
-open on a mixer for hours, and both are in `src/forge/src/meta/loudness.cpp`:
+open on a mixer for hours, and both are in `src/ac3/src/meta/loudness.cpp`:
 
 - **The history grows without bound.** `push_block()` appends one double per 100 ms to
   `block_power_` (`:477`) and one to `short_term_power_history_` (`:500`). The header comment is
@@ -918,7 +918,7 @@ code is finished.
 | CLAP and VST3 SDK licences are MIT | **verified 2026-09-07** against both owners' own pages | none |
 | VST3 expresses no object metadata | **verified 2026-09-07** from Steinberg's `SpeakerArr` reference | none |
 | CLAP expresses no object metadata | **verified 2026-09-07** from `clap/ext/surround.h` | none |
-| The encode path takes no lock and does no I/O | **verified 2026-09-07** — zero hits across seven `src/forge/src/` directories | none |
+| The encode path takes no lock and does no I/O | **verified 2026-09-07** — zero hits across seven `src/ac3/src/` directories | none |
 | `LoudnessMeter`'s history is unbounded | **verified 2026-09-07** at `loudness.cpp:477,500` | none |
 | Worst-case `encode_frame` time fits an audio block | **no** | the probe does not exist; it is [Phase 4](#phase-4-the-encoder-question-decides-itself) |
 | No DAW would ever expose objects to a third-party plugin | **no** — only that none does through a published API today | host-private renderer paths are undocumented and can change |

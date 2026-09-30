@@ -10,7 +10,7 @@
 // The decoder's third scalar (planning/arithmetic-tiers.md): a signed 32-bit
 // integer read as Q7.24 - seven bits of headroom above unity, twenty-four
 // below. It is what `decode_scalar_t` names in the fixed-point build
-// (src/forge/src/internal/scalar/fixed32/), for parts with no floating-point
+// (src/ac3/variants/decode-scalar-fixed32/), for parts with no floating-point
 // unit at all: an ESP32-C3 or a Cortex-M3, where even `float` is a compiled
 // subroutine and a 5.1 E-AC-3 frame is 12.9 M soft-float instructions.
 //

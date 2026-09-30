@@ -134,7 +134,7 @@ Seven, and five of them exist. The order is the order bytes take.
 4. **Sample format.** Planar float to interleaved 16-bit, or 24-in-32 with slot padding for TDM.
    Exists as [`ac3forge/interleave.hpp`](../esp-idf/ac3forge/include/ac3forge/interleave.hpp),
    moved on 2026-09-10 from inside the streaming example into the component, free of ESP-IDF, and
-   tested on the host by `tests/io/test_interleave.cpp`. It is library code with a temporary home.
+   tested on the host by `tests/ac3/io/test_interleave.cpp`. It is library code with a temporary home.
 5. **Bytes to PCM.** The loop over 1 to 4: feed bytes, take frames, with hold-back (§3.7) and
    end-of-stream handled once. Written three times, as above. Library code with no home.
 6. **Buffering and tasks.** A fetch task filling a ring buffer, a decode task draining it and
@@ -161,14 +161,14 @@ Three homes, and the rule for choosing is the one the repository already uses: p
 in the library, platform-specific code in the platform's own directory, and an example shows how
 to use both.
 
-**The library, `src/forge`.** Layers 4 and 5. `ac3::io::interleave` is a move of code that already
+**The library, `src/ac3`.** Layers 4 and 5. `ac3::io::interleave` is a move of code that already
 has host tests. A `StreamDecoder` over the accumulator, the E-AC-3 decoder and the output stage,
 with `feed()` and `next()` into caller-owned spans, is the loop written three times, written once.
-Both are hand-over items for whoever owns `src/forge`, so this page describes them and does not
+Both are hand-over items for whoever owns `src/ac3`, so this page describes them and does not
 touch that tree. Until they land, the component carries copies, marked as
 such, and the day they land is the day the copies are deleted. **As built,** neither has landed:
 `ac3forge/interleave.hpp` and the player's loop are still the component's. The layout and the
-renderer did move into the library, as `ac3::render` (`src/forge/include/ac3/render/`, tests in
+renderer did move into the library, as `ac3::render` (`src/render/include/iclforge/render/`, tests in
 `tests/render/`), for Hearth.
 
 **The component, `esp-idf/ac3forge/`.** Layer 6, and the seams for 7. The component registered no
@@ -417,7 +417,7 @@ speaker already does in its `spdif_mode`, so the technique is proven on this sil
 
 **Atmos.** "Audio to Atmos" is `ac3::oba::AtmosEncoder`: a 5.1 bed and mono objects with
 positions, JOC-coded into one E-AC-3 access unit. It is not in the minimum-footprint profile.
-`src/forge/minimal.cmake`'s encoder list carries neither `oba/atmos.cpp` nor the QMF bank the
+`src/ac3/minimal.cmake`'s encoder list carries neither `oba/atmos.cpp` nor the QMF bank the
 JOC solve estimates in, so it has never been built for Xtensa and there is no footprint or timing
 for it. On the host the object layer adds 0.80 ms a frame for four objects over the bed's encode;
 this part decodes about fifty times slower than a desktop core, so the object layer alone would
@@ -651,13 +651,13 @@ the slave role played against a SigmaDSP as master; a 7.1.4 stream decoded and r
 the player on the board with its per-frame cost recorded beside the probe's 0.90x for the
 decode alone.
 
-**Verified by:** `tests/io/test_interleave.cpp` for the layout and the probe's render row for the
+**Verified by:** `tests/ac3/io/test_interleave.cpp` for the layout and the probe's render row for the
 levels; hardware for the role and the timing, which have no substitute.
 
 **Built 2026-09-10, everything but what needs a board.** (Both headers and their tests have since
-moved into the library, as `src/forge/include/ac3/render/` and `tests/render/test_layout.cpp`,
+moved into the library, as `src/render/include/iclforge/render/` and `tests/render/test_layout.cpp`,
 for [Hearth](hearth-reference-player.md#a1-the-renderer-moves-into-the-library).)
-`OutputLayout` (now `src/forge/include/ac3/render/layout.hpp`) is a name (`7.1.4`) or a speaker
+`OutputLayout` (now `src/render/include/iclforge/render/layout.hpp`) is a name (`7.1.4`) or a speaker
 list (`L,R,C,LFE,Ls,Rs`, or angles), one speaker per slot, sixteen at most, and `LayoutRenderer`
 (now `render.hpp` beside it) turns a `PcmBlock`
 into one block per slot: unit gain to a slot whose location matches, `pan_direction` for one that
@@ -766,7 +766,7 @@ passthrough path in Music Assistant. Not schedulable here; the exit is the answe
 
 ### Hand-over to the decoder core
 
-Six items for whoever owns `src/forge`; this page describes them and does not touch
+Six items for whoever owns `src/ac3`; this page describes them and does not touch
 that tree.
 
 1. **A defect, found by the streaming example's CI shape on 2026-09-10.**
@@ -787,7 +787,7 @@ that tree.
    the comment above the two decoders in `player.hpp` still says `Eac3Decoder` does not survive a
    fold.
 2. `ac3::io::interleave`, moved from the example with its host tests. **Status: not done.**
-   `ac3forge/interleave.hpp` is still the component's, with `tests/io/test_interleave.cpp`.
+   `ac3forge/interleave.hpp` is still the component's, with `tests/ac3/io/test_interleave.cpp`.
 3. `ac3::io::StreamDecoder` over the accumulator, both decoders and the output stage, with
    `feed()` and `next()` into caller-owned spans, tested over both generations. The component's
    copy goes when it lands. **Status: not done.** The library has no `StreamDecoder`.
@@ -869,7 +869,7 @@ Outcomes, 2026-09-30:
    library, behind a FreeRTOS abstraction; (c) the example, as it is. **Recommend (a).** The
    library is platform-free and stays so; the example is where an integrator copies from, and a
    player they have to copy is one they will get wrong. Cost: the component stops being a
-   three-file wrapper, and the packing script's claim that everything real is in `src/forge`
+   three-file wrapper, and the packing script's claim that everything real is in `src/ac3`
    becomes "and in the component's own `src/`".
 
 2. **The ESPHome route.** (a) **an `ac3forge` media player platform now, upstream after**; (b)

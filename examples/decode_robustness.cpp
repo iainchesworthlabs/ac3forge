@@ -11,7 +11,7 @@
 // DecoderConfig::diagnostics (decoder diagnostics describe()) rides alongside: it fires for the
 // same CRC failure the returned error already reports here, but it is the
 // only signal at all once ConcealmentPolicy is turned on (see
-// tests/decoder/test_diagnostics.cpp) - a concealed frame comes back as a
+// tests/ac3/decoder/test_diagnostics.cpp) - a concealed frame comes back as a
 // SUCCESSFUL decode_frame result, and polling DecodedFrame::concealed on
 // every call is the only alternative to a sink that speaks up when it
 // actually happens.
