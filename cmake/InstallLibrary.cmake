@@ -538,19 +538,23 @@ if(AC3FORGE_BUILD_CAPI)
     ac3forge_pkgconfig_libname(_ac3forge_capi_pc_libname forge_c_shared ac3forge_c ac3forge_c_static
         "${_ac3forge_capi_install_targets}")
     # ac3forge.h declares its AC-4 section either way; with AC3FORGE_BUILD_AC4 off those functions
-    # return AC3FORGE_ERROR_UNSUPPORTED (src/capi/src/ac4_absent.cpp).
+    # return AC3FORGE_ERROR_UNSUPPORTED (src/capi/src/ac4_absent.cpp). With it on, the archive also
+    # calls into the decoder's and the encoder's (capiTargets carries their $<LINK_ONLY:...> archives
+    # too), and the .pc of each brings the inspector and the core.
     if(AC3FORGE_BUILD_AC4)
         set(_ac3forge_capi_pc_description
             "Stable C11 API over the AC-3, E-AC-3 and AC-4 encoders and decoders")
+        set(_ac3forge_capi_pc_static_requires ac3forge ac4dec ac4enc)
     else()
         set(_ac3forge_capi_pc_description
             "Stable C11 API over the AC-3 and E-AC-3 encoders and decoders")
+        set(_ac3forge_capi_pc_static_requires ac3forge)
     endif()
     ac3forge_install_pkgconfig(
         NAME ac3forge_c
         DESCRIPTION "${_ac3forge_capi_pc_description}"
         LIBNAME "${_ac3forge_capi_pc_libname}"
-        STATIC_REQUIRES ac3forge)
+        STATIC_REQUIRES ${_ac3forge_capi_pc_static_requires})
 endif()
 
 # The config file find_package(ac3forge) actually loads. No find_dependency()
