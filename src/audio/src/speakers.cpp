@@ -10,13 +10,11 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/layout.hpp"
 
 namespace ac3::audio {
 
 namespace {
-
-namespace chanmap = ac3::eac3::chanmap;
 
 struct Position {
     std::uint32_t speaker;
@@ -176,7 +174,7 @@ std::string describe_speakers(std::uint32_t mask) {
         if (!text.empty()) {
             text.push_back(' ');
         }
-        text += chanmap::name(location);
+        text += ac3::base::name(location);
     }
     const std::uint16_t named = speaker_count(mask & kSpeakerAllPositions);
     const auto placed = static_cast<std::uint16_t>(locations_of(mask).size());

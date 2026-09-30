@@ -8,12 +8,12 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/oba/joc.hpp"
+#include "ac3/core/layout.hpp"
+#include "ac3/oba/joc_domain.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/render/float_biquad.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3/render/pcm_block.hpp"
 #include "ac3/spatial/spatial.hpp"
 
 // From what the decoder rendered to what the speakers want, one 256-sample
@@ -87,7 +87,7 @@ namespace ac3::render {
 
 class LayoutRenderer {
    public:
-    using Location = ac3::eac3::chanmap::Location;
+    using Location = ac3::base::Location;
     static constexpr std::size_t kMaxSlots = OutputLayout::kMaxSlots;
     // JOC carries at most sixteen objects (TS 103 420); a rendered programme
     // has at most sixteen slots (§E3.8.2).
@@ -189,7 +189,7 @@ class LayoutRenderer {
     // announces the same layout again: the LFE's delay line, when there is
     // one, is only emptied if the coded LFE channels themselves actually
     // move or change count, not on every call.
-    void set_bed(const ac3::eac3::chanmap::Layout& coded) {
+    void set_bed(const ac3::base::Layout& coded) {
         coded_ = coded;
         bed_channels_ = std::min(static_cast<std::size_t>(coded.count), kMaxCoded);
         for (auto& row : bed_gains_) {
@@ -361,7 +361,7 @@ class LayoutRenderer {
     // none, the bed is placed whatever this says); `gain` is applied to
     // everything, 1.0 being free. While objects are placed, the LFE a slot
     // plays is the bed's of object_lag() samples before.
-    void render(const ac3::PcmBlock& block, bool objects, float gain,
+    void render(const ac3::render::PcmBlock& block, bool objects, float gain,
                 std::span<const std::span<float>> out) {
         const std::size_t slots = std::min(out.size(), layout_.slots());
         const std::size_t n = block_length(block, out);
@@ -441,7 +441,7 @@ class LayoutRenderer {
     // the slots have names - L to the slot named L, R to R - so a list that
     // wires a stereo DAC as "R,L" still plays the right way round. Empty and
     // LFE slots are written as zeros.
-    void render_folded(const ac3::PcmBlock& block, float gain,
+    void render_folded(const ac3::render::PcmBlock& block, float gain,
                        std::span<const std::span<float>> out) const {
         const std::size_t slots = std::min(out.size(), layout_.slots());
         const std::size_t n = block_length(block, out);
@@ -529,7 +529,7 @@ class LayoutRenderer {
         }
     }
 
-    static std::size_t block_length(const ac3::PcmBlock& block,
+    static std::size_t block_length(const ac3::render::PcmBlock& block,
                                     std::span<const std::span<float>> out) {
         std::size_t n = block.channels.empty() ? 0 : block.channels.front().size();
         if (n == 0 && !block.objects.empty()) {
@@ -593,7 +593,7 @@ class LayoutRenderer {
     // the line, either way, go the block's samples, a run at a time up to the
     // line's end, so a block longer than the lag works too. A channel the
     // block lacks, or has short, is silence, as add_channel() takes it.
-    void add_lfe(const ac3::PcmBlock& block, std::size_t n, std::size_t slots,
+    void add_lfe(const ac3::render::PcmBlock& block, std::size_t n, std::size_t slots,
                  std::span<const std::span<float>> out, bool delayed) {
         const std::size_t lag = object_lag_;
         for (std::size_t i = 0; i < lfe_channels_; ++i) {
@@ -631,7 +631,7 @@ class LayoutRenderer {
     std::array<ac3::spatial::Direction, kMaxSlots> target_directions_{};
     std::array<std::size_t, kMaxSlots> target_slots_{};
     std::size_t targets_ = 0;
-    ac3::eac3::chanmap::Layout coded_{};
+    ac3::base::Layout coded_{};
     std::size_t bed_channels_ = 0;
     std::array<std::array<float, kMaxSlots>, kMaxCoded> bed_gains_{};
     std::array<std::array<float, kMaxSlots>, kMaxObjects> object_gains_{};

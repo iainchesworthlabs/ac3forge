@@ -2,7 +2,7 @@
 // package": everything a consumer touches has a real interface instead of
 // the `any` an untyped Embind wrapper would otherwise force on callers.
 
-/** ac3::DownmixTarget's own numeric order (output.hpp) - kept in sync by hand, there being only four values. */
+/** ac3::DownmixTarget's own numeric order (core/downmix_target.hpp) - kept in sync by hand, there being only four values. */
 export enum DownmixTarget {
   AsCoded = 0,
   LoRo = 1,

@@ -31,7 +31,8 @@ it directly. Four tiers, assigned per header below:
 | Header(s) | Tier |
 |---|---|
 | `ac3/core/tables.hpp` | Public — `SampleRate`, `Acmod` and the frame constants appear directly in public function signatures everywhere. |
-| `ac3/core/eac3_tables.hpp` | Public — `chanmap`, `Layout`, `ChannelPlan` are likewise part of `plan.hpp`'s own public surface. |
+| `ac3/core/eac3_tables.hpp` | Public — `chanmap` and `ChannelPlan` are likewise part of `plan.hpp`'s own public surface. |
+| `ac3/core/layout.hpp`, `downmix_target.hpp` | Public — `Location`, `Layout` and `DownmixTarget` appear in public signatures (`plan.hpp`, the output stage, the renderer) and keep the tier of the headers they left. |
 | `ac3/core/bitreader.hpp`, `bitwriter.hpp` | Internal — bitstream I/O primitives, never called directly by a caller using the encoder/decoder API. |
 | `ac3/core/mdct.hpp`, `window.hpp` | Internal — transform internals. |
 | `ac3/core/bitalloc.hpp`, `exponents.hpp`, `mantissas.hpp` | Internal — §7.1–7.3 coding internals shared by encoder and decoder. |
@@ -40,6 +41,7 @@ it directly. Four tiers, assigned per header below:
 | `ac3/encoder/encoder.hpp`, `eac3_frame.hpp`, `silent_frame.hpp`, `plan.hpp`, `assignment.hpp` | Public. |
 | `ac3/encoder/transient.hpp`, `bandwidth.hpp` | Internal — coding-tool implementations selected via `plan::Tools`/content-adaptive search (`bandwidth.hpp` chooses `chbwcod`), not instantiated directly by a caller. |
 | `ac3/decoder/decoder.hpp`, `output.hpp`, `diagnostics.hpp` | Public — `DecoderConfig` carries `diagnostics.hpp`'s sink in its own fields. |
+| `ac3/render/pcm_block.hpp` | Public — `PcmBlock` and `BlockSink` are the by-block decode API of `decoder.hpp`, which includes it; the header sits with the renderer, whose tier below is not this one. |
 | `ac3/decoder/syntax_trace.hpp` | Diagnostic. |
 | `ac3/decoder/transient_prenoise.hpp` | Internal — applied automatically by `Eac3Decoder`; a caller observes its buffering effect, never calls it. |
 | `ac3/io/elementary.hpp`, `stream_accumulator.hpp`, `metadata_edit.hpp`, `probe.hpp`, `object_strip.hpp`, `dec3.hpp`, `wav.hpp` | Public. |
@@ -47,6 +49,7 @@ it directly. Four tiers, assigned per header below:
 | `ac3/spatial/spatial.hpp` | Public. |
 | `ac3/render/layout.hpp`, `render.hpp`, `serving.hpp`, `routing.hpp`, `trim_delay.hpp`, `identify.hpp`, `float_biquad.hpp` | **Experimental** — the output layout, renderer and speaker management the ESP32 player and Hearth share ([Hearth reference-player plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md)), outside the `v1.0.0` freeze while Hearth's phases settle their shape; see [Experimental modules](#experimental-modules). |
 | `ac3/oba/atmos.hpp`, `joc.hpp`, `oamd.hpp`, `motion.hpp`, `scene.hpp`, `scene_osc.hpp` | Public — `ac3::oba::joc` included, now that AP2 folded it into `ac3::oba` proper. |
+| `ac3/oba/joc_domain.hpp` | Public — `joc::Domain` is selected through `AtmosConfig` and `reconstruct()`, as it was in `joc.hpp`. |
 | `ac3/emdf/emdf.hpp` | Public. |
 | `ac3/emdf/frame_layout.hpp` | Internal — the bit-accurate frame walk `strip_objects` and `ac3::signing` share; a caller uses them, not it. |
 | `ac3/iec61937/iec61937.hpp` | Public. |

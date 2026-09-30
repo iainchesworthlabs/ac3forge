@@ -10,8 +10,8 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/decoder/output.hpp"
+#include "ac3/core/downmix_target.hpp"
+#include "ac3/core/layout.hpp"
 #include "ac3/spatial/spatial.hpp"
 
 // The speakers a player has, one per output slot.
@@ -145,12 +145,12 @@ struct Speaker {
     // The Table E2.5 location this slot was named by, when it was. A coded
     // channel of the same location goes to this slot with unit gain; a slot
     // placed by angle alone has none and takes what the panner gives it.
-    std::optional<ac3::eac3::chanmap::Location> location = std::nullopt;
+    std::optional<ac3::base::Location> location = std::nullopt;
 };
 
 class OutputLayout {
    public:
-    using Location = ac3::eac3::chanmap::Location;
+    using Location = ac3::base::Location;
 
     // Sixteen is §E3.8.2's cap on a rendered programme, the most one TDM line
     // carries at 32 bits, and the panner's own ring limit.
@@ -371,12 +371,13 @@ class OutputLayout {
     // the caller's choice), one is kMono. Anything wider, or anything with an
     // LFE or a height, is rendered as coded through ac3/render/render.hpp,
     // because §7.8 has no fold that keeps an LFE or places a height.
-    [[nodiscard]] std::optional<ac3::DownmixTarget> fold(ac3::DownmixTarget stereo) const {
+    [[nodiscard]] std::optional<ac3::base::DownmixTarget> fold(
+        ac3::base::DownmixTarget stereo) const {
         if (lfe_count() != 0 || has_height()) {
             return std::nullopt;
         }
         switch (speaker_count()) {
-            case 1: return ac3::DownmixTarget::kMono;
+            case 1: return ac3::base::DownmixTarget::kMono;
             case 2: return stereo;
             default: return std::nullopt;
         }
@@ -409,7 +410,7 @@ class OutputLayout {
         std::array<char, 32> angle{};
         std::string_view name = "-";
         if (speaker.location.has_value()) {
-            name = ac3::eac3::chanmap::name(*speaker.location);
+            name = ac3::base::name(*speaker.location);
         } else if (speaker.kind == Speaker::Kind::kLfe) {
             name = "lfe";
         } else if (speaker.kind == Speaker::Kind::kSpeaker) {
@@ -560,9 +561,9 @@ class OutputLayout {
     }
 
     static std::optional<Location> location_named(std::string_view token) {
-        for (int i = 0; i < ac3::eac3::chanmap::kMaxChannels; ++i) {
+        for (int i = 0; i < ac3::base::kMaxChannels; ++i) {
             const auto location = static_cast<Location>(i);
-            if (equals_ignoring_case(token, ac3::eac3::chanmap::name(location))) {
+            if (equals_ignoring_case(token, ac3::base::name(location))) {
                 return location;
             }
         }
@@ -731,7 +732,7 @@ class OutputLayout {
             const Speaker& speaker = speakers_[i];
             std::string_view token = "-";
             if (speaker.location.has_value()) {
-                token = ac3::eac3::chanmap::name(*speaker.location);
+                token = ac3::base::name(*speaker.location);
             } else if (speaker.kind == Speaker::Kind::kLfe) {
                 token = "lfe";
             }
