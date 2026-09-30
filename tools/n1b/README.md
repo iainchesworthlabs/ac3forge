@@ -16,7 +16,7 @@ Each script's header says what it does and takes. This page says in what order.
 | S1, the cuts | `python tools/n1b/cuts.py --root <worktree> [--only C1,C3]`; one commit per cut. |
 | S2, moves and include spellings | `python tools/n1b/n1b_apply.py --root <worktree> --phase all --json <plan.json>` moves `src/` and `tests/` (the default scope, `src,tests`): it stages the renames (`git mv`) and edits the includes; the first commit is the renames alone (`git commit` with nothing added), the second is `git add -A`. |
 | S2, build files | `python tools/n1b/n1b_cmake.py --root <worktree> --plan <plan.json>`: target names, output names and moved paths, and the paths `tests/CMakeLists.txt` names relative to itself. The build files of the split libraries are written by hand. |
-| S2, paths in text | `python tools/n1b/n1b_paths.py --root <worktree> --plan <plan.json>`: every other file that names a moved file by its repository path (pages, plans, comments, strings, workflows, scripts) follows it, so `check_doc_paths.py` stays green. It lists the directories whose files went to several libraries and are still named. |
+| S2, paths in text | `python tools/n1b/n1b_paths.py --root <worktree> --plan <plan.json>`: every other file that names a moved file by its repository path (pages, plans, comments, strings, a Python path built from its components, workflows, scripts) follows it, so `check_doc_paths.py` stays green. It lists the directories whose files went to several libraries and are still named. |
 | S3, the namespace root | `python tools/n1b/n1b_names.py --root <worktree>`. |
 
 The plan a stage writes is what the build-file pass reads, since the pass runs after the files have moved.
@@ -24,11 +24,12 @@ All the passes are idempotent: a second run on a finished tree changes nothing.
 
 ## S2, start to finish
 
-In a worktree of `main` after the seven cuts and the docs sweep have merged, with `<before>` an MSVC
-build of that `main` (every option on, no `--target`) and `<work>` a directory outside the tree:
+In a worktree of `main` after the seven cuts, the fix of the static `ac3forge_c.pc` (#1157) and the
+docs sweep have merged, with `<before>` an MSVC build of that `main` (every option on, no `--target`)
+and `<work>` a directory outside the tree:
 
     python tools/n1b/baseline.py record --build <before> --out <work>/before
-    python tools/n1b/n1b_apply.py --root . --phase all --json <work>/plan.json     # 402 moves, about a minute
+    python tools/n1b/n1b_apply.py --root . --phase all --json <work>/plan.json     # 404 moves, half a minute
     git commit -m "S2: move src and tests"          # nothing added: the staged renames alone
     python tools/n1b/baseline.py check-moves --plan <work>/plan.json --baseline <work>/before --pure
     git add -A && git commit -m "S2: include spellings"
@@ -43,29 +44,59 @@ header of `src/ac3/src/` by its bare name, `test_mdct_fixed.cpp` and eight like 
 include directory that `tests/CMakeLists.txt` already names and `n1b_cmake.py` moves with the header,
 so there is nothing to do; a `PROBLEM` outside `tests/` would be a real include across libraries.
 
-Then build every default target with MSVC, `baseline.py record --build <after> --out <work>/after`, and
+Then the proof. On Windows, build every default target with MSVC, `baseline.py record --build <after>
+--out <work>/after`, and
 
     python tools/n1b/baseline.py compare <work>/before <work>/after --only hashes,cli        # identical
     python tools/n1b/export_diff.py --old <work>/before/symbols-msvc.json \
         --new <work>/after/symbols-msvc.json --map l2      # every library the same, plus has_avx2()
-    python tools/checks/check_layering.py                  # 0 debts, 213 edges, 0 failures
+    python tools/checks/check_layering.py                  # 0 debts, 217 edges, 0 failures
     python tools/checks/check_doc_paths.py
     python tools/ci/precheck.py
 
-`s2-hand.patch` is the part of S2 no script does, made on the output of the scripts above (28 files,
-about 600 lines): `cmake/IclforgeLibrary.cmake` and the `CMakeLists.txt` of `base`, `dsp`, `objects`,
-`render` and `iec61937` (new), `src/ac3/CMakeLists.txt` rewritten to link them, the root's
-`add_subdirectory` list and the install rules for six export sets; `ICLFORGE_BASE_EXPORT` on
-`has_avx2()`, the one source edit; the minimum-footprint profile's archive, made of files from six
-libraries, with the five export headers it generates; the ESP-IDF component and packer; the path
-filters of the change planner (`tools/ci/classify_changes.py`) and of `esp-component.yml` and
-`wheels.yml`, which need the five new trees beside `src/ac3/`, and the test that names one; and five
-comment lines the rewrites made longer than 100 columns. It goes stale as `main` moves: on a `main`
-that has changed those files, `git apply --3way` leaves conflict markers where it did, and the file's
-own hunks say what each edit was for. What it leaves, and the scripts list: variant directories that
-became `variants/<axis>-<choice>/` and are still named in comments, the build tree's own path in
-`_ci-linux.yml`, and the coverage floors of `tools/checks/coverage_report.sh` (six components from one
-run, where the script now has one row for `src/ac3`).
+On Linux, the `-Werror` builds with GCC 16 and Clang 22 and the whole `ac3tests`, and three checks that
+only the nightly run holds (`shared_libs` is deep-only in `.github/ci/legs.jsonc`), each of which a moved
+layout can break without a test noticing:
+
+    cmake --preset config-linux-llvm-shared && cmake --build build/config-linux-llvm-shared
+    ctest --preset test-linux-llvm-shared -LE Performance
+    bash tools/checks/check_shared_forge_binding.sh build/config-linux-llvm-shared/bin/ac3tests \
+        <the six libiclforge_{ac3,base,dsp,objects,render,iec61937}.so, in src/<name>/ of that tree>
+    python tools/ci/check_abi_symbols.py --allowlist-dir tools/ci/abi-allowlist --lib <each .so of it>
+    bash tools/checks/check_install_consumer.sh <the three trees _ci-linux.yml builds for it>
+    python tools/n1b/abi_compare.py <the parent's allowlists> tools/ci/abi-allowlist
+
+The last one names what each library lost or gained against the parent's allowlists, which should be
+`has_avx2()` alone. Take the parent's from `check_abi_symbols.py --update` over the shared libraries of the
+same `main` before S2, not from the committed files: those were seven names short of the build when this was
+written, which is no doing of S2.
+
+`s2-hand.patch` is the part of S2 no script does, made on the output of the scripts above (51 files, 858
+lines added and 756 removed):
+
+- The build of the split: `cmake/IclforgeLibrary.cmake` (new: `iclforge_add_library()` and
+  `iclforge_install_library()`, which also writes each library's `.pc` file), the `CMakeLists.txt` of
+  `base`, `dsp`, `objects`, `render` and `iec61937` (new), `src/ac3/CMakeLists.txt` rewritten to link
+  them, the root's `add_subdirectory` list, the install rules for six export sets and
+  `ac3forgeConfig.cmake.in`; `ICLFORGE_BASE_EXPORT` on `has_avx2()`, the one source edit; the
+  minimum-footprint profile's archive, made of files from six libraries, with the five export headers it
+  generates; the ESP-IDF component and packer.
+- What a moved layout does to the checks and the CI that name a tree, a build output or an installed
+  name: the path filters of the change planner and of `esp-component.yml` and `wheels.yml`; the Sonar
+  job's archives; `check_install_consumer.sh` (the installed include directory, the library names);
+  `check_shared_forge_binding.sh` (six libraries, not one); the gcovr filter and a floor row for each new
+  library in `coverage_report.sh`, measured from one run; the sixteen ABI allowlists; the Rust sys
+  crate's build script; and two generators, whose output directories and emitted `#include` lines the
+  include pass cannot know.
+- Five comment lines that the rewrites made longer than 100 columns.
+
+It goes stale as `main` moves. On a `main` that has changed a file it touches, `git apply --3way` merges
+where the repository has the blobs it was made from and otherwise stops, changing nothing, with the
+files that do not fit; `git apply --reject tools/n1b/s2-hand.patch` applies every hunk that fits and
+leaves each one that does not in a `.rej` beside its file, and the hunk's own lines say what the edit was
+for. What the patch leaves, and the scripts list: variant directories that became
+`variants/<axis>-<choice>/` and are still named in comments, and the comments and pages that name a
+library file by its old name (`libac3forge.so`), which S4 and S5 rewrite.
 
 ## Proof
 

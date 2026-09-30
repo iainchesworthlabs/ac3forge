@@ -1,3 +1,21 @@
+diff --git a/.github/workflows/_ci-linux.yml b/.github/workflows/_ci-linux.yml
+index b8681fddd..2508e2742 100644
+--- a/.github/workflows/_ci-linux.yml
++++ b/.github/workflows/_ci-linux.yml
+@@ -1047,7 +1047,12 @@ jobs:
+           ctest --preset test-linux-llvm-shared -LE Performance
+           bash tools/checks/check_shared_forge_binding.sh \
+             build/config-linux-llvm-shared/bin/ac3tests \
+-            build/config-linux-llvm-shared/src/forge/libac3forge.so
++            build/config-linux-llvm-shared/src/ac3/libiclforge_ac3.so \
++            build/config-linux-llvm-shared/src/base/libiclforge_base.so \
++            build/config-linux-llvm-shared/src/dsp/libiclforge_dsp.so \
++            build/config-linux-llvm-shared/src/objects/libiclforge_objects.so \
++            build/config-linux-llvm-shared/src/render/libiclforge_render.so \
++            build/config-linux-llvm-shared/src/iec61937/libiclforge_iec61937.so
+ 
+       # A build tree is not an installed package. tests/capi and the C examples compile against
+       # the build tree, where every generated header is already on the include path whether or
 diff --git a/.github/workflows/esp-component.yml b/.github/workflows/esp-component.yml
 index 19973aeca..90718c434 100644
 --- a/.github/workflows/esp-component.yml
@@ -14,6 +32,22 @@ index 19973aeca..90718c434 100644
        - "cmake/**"
        - "CMakeLists.txt"
        - "tools/packaging/pack_esp_component.py"
+diff --git a/.github/workflows/sonarcloud.yml b/.github/workflows/sonarcloud.yml
+index 6bc56a26e..47dcd52bb 100644
+--- a/.github/workflows/sonarcloud.yml
++++ b/.github/workflows/sonarcloud.yml
+@@ -240,8 +240,9 @@ jobs:
+             -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE \
+             -Isrc/ac4/include -Isrc/ac4dec/include \
+             -I"${BUILD_DIR}/src/ac4/generated" -I"${BUILD_DIR}/src/ac4dec/generated" \
+-            "${BUILD_DIR}/src/ac4dec/libac4dec_static.a" "${BUILD_DIR}/src/ac4core/libac4core_static.a" \
+-            "${BUILD_DIR}/src/ac4/libac4_static.a"
++            "${BUILD_DIR}/src/ac4dec/libiclforge_ac4dec_static.a" \
++            "${BUILD_DIR}/src/ac4core/libiclforge_ac4core_static.a" \
++            "${BUILD_DIR}/src/ac4/libiclforge_ac4_static.a"
+           python3 tools/checks/ac4_syntax_differential.py \
+             --trace-tool "${BUILD_DIR}/ac4_syntax_trace" \
+             --work-dir "${BUILD_DIR}/ac4-differential" \
 diff --git a/.github/workflows/wheels.yml b/.github/workflows/wheels.yml
 index 001e6fd28..fcaf12ec9 100644
 --- a/.github/workflows/wheels.yml
@@ -65,10 +99,10 @@ index 9b67b1a04..77400bc53 100644
  if(AC3FORGE_BUILD_IAMF)
 diff --git a/cmake/IclforgeLibrary.cmake b/cmake/IclforgeLibrary.cmake
 new file mode 100644
-index 000000000..8d4106ca7
+index 000000000..24f2e7b95
 --- /dev/null
 +++ b/cmake/IclforgeLibrary.cmake
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,163 @@
 +# ---------------------------------------------------------------------------
 +# IclforgeLibrary.cmake
 +#
@@ -132,9 +166,12 @@ index 000000000..8d4106ca7
 +    endif()
 +    target_compile_features(${objects} PUBLIC cxx_std_23)
 +
-+    # Compile-time use of each dependency on the objects; the wrappers carry the link.
++    # Compile-time use of each dependency on the objects; the wrappers carry the link. Only the
++    # compile side: an ordinary link here would put the dependency's shared variant (what the bare
++    # alias is under BUILD_SHARED_LIBS) on the link line of the static wrapper too, and a library
++    # that embeds the static one, as iclforge::c does, would need it at run time.
 +    foreach(dep IN LISTS ARG_DEPENDS)
-+        target_link_libraries(${objects} PRIVATE iclforge::${dep})
++        target_link_libraries(${objects} PRIVATE "$<COMPILE_ONLY:iclforge::${dep}>")
 +        target_link_libraries(${static} PUBLIC iclforge_${dep}_static)
 +        target_link_libraries(${shared} PUBLIC iclforge_${dep}_shared)
 +    endforeach()
@@ -176,14 +213,20 @@ index 000000000..8d4106ca7
 +    set_target_properties(${static} PROPERTIES
 +        OUTPUT_NAME "iclforge_${name}_static"
 +        EXPORT_NAME "${name}_static")
-+    set_target_properties(${objects} PROPERTIES EXPORT_NAME "${name}_objects")
++    set_target_properties(${objects} PROPERTIES
++        EXPORT_NAME "${name}_objects"
++        ICLFORGE_DEPENDS "${ARG_DEPENDS}")
 +endfunction()
 +
 +# The install and export rules of a library iclforge_add_library() made. `AC3FORGE_INSTALL_BOTH_LINKAGES`
 +# and BUILD_SHARED_LIBS choose which variants are installed, as cmake/InstallLibrary.cmake always did.
 +# The export set is <name>Targets under the iclforge:: namespace, in the package directory
-+# find_package(ac3forge) reads; the package config includes it when the file exists.
++# find_package(ac3forge) reads; the package config includes it when the file exists. The library also
++# gets a pkg-config file, iclforge_<name>.pc, that requires the .pc files of the libraries it links: a
++# static-only install has to name every archive on a link line, since nothing in an archive records
++# what it needs (cmake/PkgConfig.cmake).
 +function(iclforge_install_library name)
++    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "DESCRIPTION" "")
 +    if(AC3FORGE_INSTALL_BOTH_LINKAGES)
 +        set(targets iclforge_${name}_objects iclforge_${name}_static iclforge_${name}_shared)
 +    elseif(BUILD_SHARED_LIBS)
@@ -207,9 +250,24 @@ index 000000000..8d4106ca7
 +        NAMESPACE iclforge::
 +        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
 +        COMPONENT library)
++
++    ac3forge_pkgconfig_libname(pc_libname iclforge_${name}_shared iclforge_${name}
++        iclforge_${name}_static "${targets}")
++    get_target_property(deps iclforge_${name}_objects ICLFORGE_DEPENDS)
++    set(pc_requires "")
++    if(deps)
++        foreach(dep IN LISTS deps)
++            list(APPEND pc_requires iclforge_${dep})
++        endforeach()
++    endif()
++    ac3forge_install_pkgconfig(
++        NAME iclforge_${name}
++        DESCRIPTION "${ARG_DESCRIPTION}"
++        LIBNAME "${pc_libname}"
++        REQUIRES ${pc_requires})
 +endfunction()
 diff --git a/cmake/InstallLibrary.cmake b/cmake/InstallLibrary.cmake
-index 8710c2b23..5421855e7 100644
+index 29a4ba7ab..efe893b50 100644
 --- a/cmake/InstallLibrary.cmake
 +++ b/cmake/InstallLibrary.cmake
 @@ -137,6 +137,20 @@ endif()
@@ -254,23 +312,31 @@ index 8710c2b23..5421855e7 100644
 +    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/ac3"
      COMPONENT library)
  
- ac3forge_pkgconfig_libname(_ac3forge_forge_pc_libname iclforge_ac3_shared ac3forge ac3forge_static
-@@ -188,6 +202,14 @@ ac3forge_install_pkgconfig(
+ ac3forge_pkgconfig_libname(_ac3forge_forge_pc_libname iclforge_ac3_shared iclforge_ac3 iclforge_ac3_static
+@@ -186,7 +200,21 @@ ac3forge_pkgconfig_libname(_ac3forge_forge_pc_libname iclforge_ac3_shared iclfor
+ ac3forge_install_pkgconfig(
+     NAME ac3forge
      DESCRIPTION "Clean-room AC-3 (ATSC A/52) and E-AC-3 encoder and decoder with a spatial object layer"
-     LIBNAME "${_ac3forge_forge_pc_libname}")
- 
+-    LIBNAME "${_ac3forge_forge_pc_libname}")
++    LIBNAME "${_ac3forge_forge_pc_libname}"
++    REQUIRES iclforge_base iclforge_dsp iclforge_objects iclforge_render iclforge_iec61937)
++
 +# The codec-blind libraries iclforge::ac3 links (src/base, dsp, objects, render, iec61937): each is a
 +# mandatory component, installed and exported like the codec.
-+iclforge_install_library(base)
-+iclforge_install_library(dsp)
-+iclforge_install_library(objects)
-+iclforge_install_library(render)
-+iclforge_install_library(iec61937)
-+
++iclforge_install_library(base
++    DESCRIPTION "The bit reader and writer, the speaker vocabulary and the CPU feature probe the iclforge libraries build on")
++iclforge_install_library(dsp
++    DESCRIPTION "The FFT, the QMF bank, the sample-rate converter and the biquad sections the iclforge codecs share")
++iclforge_install_library(objects
++    DESCRIPTION "The object-audio model, its scene readers and the Object Audio Metadata payload of ETSI TS 103 420")
++iclforge_install_library(render
++    DESCRIPTION "Speaker layouts, routing, the bed and object renderer and the panner")
++iclforge_install_library(iec61937
++    DESCRIPTION "IEC 61937 burst packing and unpacking for AC-3, E-AC-3 and AC-4")
+ 
  # iclforge::signing is mandatory, not an AC3FORGE_BUILD_<NAME>-gated optional component (same as
  # iclforge::ac3 itself, unconditionally add_subdirectory()'d in the root CMakeLists.txt) - so unlike
- # iclforge::matroska/iclforge::mp4/iclforge::mpegts/iclforge::c below, its install/export block carries
-@@ -203,7 +225,7 @@ install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/signing/include/"
+@@ -203,7 +231,7 @@ install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/signing/include/"
      COMPONENT library)
  
  install(FILES "${CMAKE_BINARY_DIR}/src/signing/generated/iclforge/signing/export.hpp"
@@ -278,8 +344,8 @@ index 8710c2b23..5421855e7 100644
 +    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/signing"
      COMPONENT library)
  
- ac3forge_pkgconfig_libname(_ac3forge_signing_pc_libname iclforge_signing_shared ac3signing ac3signing_static
-@@ -232,7 +254,7 @@ if(AC3FORGE_BUILD_MATROSKA)
+ ac3forge_pkgconfig_libname(_ac3forge_signing_pc_libname iclforge_signing_shared iclforge_signing iclforge_signing_static
+@@ -232,7 +260,7 @@ if(AC3FORGE_BUILD_MATROSKA)
          COMPONENT library)
  
      install(FILES "${CMAKE_BINARY_DIR}/src/matroska/generated/iclforge/matroska/export.hpp"
@@ -287,8 +353,8 @@ index 8710c2b23..5421855e7 100644
 +        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/matroska"
          COMPONENT library)
  
-     ac3forge_pkgconfig_libname(_ac3forge_matroska_pc_libname iclforge_matroska_shared matroska iclforge_matroska_static
-@@ -261,7 +283,7 @@ if(AC3FORGE_BUILD_MP4)
+     ac3forge_pkgconfig_libname(_ac3forge_matroska_pc_libname iclforge_matroska_shared iclforge_matroska iclforge_matroska_static
+@@ -261,7 +289,7 @@ if(AC3FORGE_BUILD_MP4)
          COMPONENT library)
  
      install(FILES "${CMAKE_BINARY_DIR}/src/mp4/generated/iclforge/mp4/export.hpp"
@@ -296,8 +362,8 @@ index 8710c2b23..5421855e7 100644
 +        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/mp4"
          COMPONENT library)
  
-     ac3forge_pkgconfig_libname(_ac3forge_mp4_pc_libname iclforge_mp4_shared mp4 iclforge_mp4_static
-@@ -287,7 +309,7 @@ if(AC3FORGE_BUILD_MPEGTS)
+     ac3forge_pkgconfig_libname(_ac3forge_mp4_pc_libname iclforge_mp4_shared iclforge_mp4 iclforge_mp4_static
+@@ -287,7 +315,7 @@ if(AC3FORGE_BUILD_MPEGTS)
          COMPONENT library)
  
      install(FILES "${CMAKE_BINARY_DIR}/src/mpegts/generated/iclforge/mpegts/export.hpp"
@@ -305,8 +371,8 @@ index 8710c2b23..5421855e7 100644
 +        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/mpegts"
          COMPONENT library)
  
-     ac3forge_pkgconfig_libname(_ac3forge_mpegts_pc_libname iclforge_mpegts_shared mpegts iclforge_mpegts_static
-@@ -313,8 +335,8 @@ if(AC3FORGE_BUILD_IAB)
+     ac3forge_pkgconfig_libname(_ac3forge_mpegts_pc_libname iclforge_mpegts_shared iclforge_mpegts iclforge_mpegts_static
+@@ -313,8 +341,8 @@ if(AC3FORGE_BUILD_IAB)
          DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
          COMPONENT library)
  
@@ -316,8 +382,8 @@ index 8710c2b23..5421855e7 100644
 +        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/iab"
          COMPONENT library)
  
-     ac3forge_pkgconfig_libname(_ac3forge_iab_pc_libname iclforge_iab_shared ac3iab iclforge_iab_static
-@@ -343,8 +365,8 @@ if(AC3FORGE_BUILD_ADM)
+     ac3forge_pkgconfig_libname(_ac3forge_iab_pc_libname iclforge_iab_shared iclforge_iab iclforge_iab_static
+@@ -343,8 +371,8 @@ if(AC3FORGE_BUILD_ADM)
          DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
          COMPONENT library)
  
@@ -328,7 +394,7 @@ index 8710c2b23..5421855e7 100644
          COMPONENT library)
  
      # LIBNAME hardcoded, not ac3forge_pkgconfig_libname() - ac3adm/admbridge are shared-only, so
-@@ -365,7 +387,7 @@ if(AC3FORGE_BUILD_ADM)
+@@ -365,7 +393,7 @@ if(AC3FORGE_BUILD_ADM)
          COMPONENT library)
  
      install(FILES "${CMAKE_BINARY_DIR}/src/admbridge/generated/iclforge/admbridge/export.hpp"
@@ -337,7 +403,7 @@ index 8710c2b23..5421855e7 100644
          COMPONENT library)
  
      ac3forge_install_pkgconfig(
-@@ -390,7 +412,7 @@ if(AC3FORGE_BUILD_IAMF)
+@@ -390,7 +418,7 @@ if(AC3FORGE_BUILD_IAMF)
          COMPONENT library)
  
      install(FILES "${CMAKE_BINARY_DIR}/src/iamf/generated/iclforge/iamf/export.hpp"
@@ -345,8 +411,8 @@ index 8710c2b23..5421855e7 100644
 +        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/iamf"
          COMPONENT library)
  
-     ac3forge_pkgconfig_libname(_ac3forge_iamf_pc_libname iclforge_iamf_shared iamf iclforge_iamf_static
-@@ -429,7 +451,7 @@ if(AC3FORGE_BUILD_AC4)
+     ac3forge_pkgconfig_libname(_ac3forge_iamf_pc_libname iclforge_iamf_shared iclforge_iamf iclforge_iamf_static
+@@ -429,7 +457,7 @@ if(AC3FORGE_BUILD_AC4)
          COMPONENT library)
  
      install(FILES "${CMAKE_BINARY_DIR}/src/ac4/generated/iclforge/ac4/export.hpp"
@@ -354,8 +420,8 @@ index 8710c2b23..5421855e7 100644
 +        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/ac4"
          COMPONENT library)
  
-     ac3forge_pkgconfig_libname(_ac3forge_ac4_pc_libname iclforge_ac4_shared ac4 iclforge_ac4_static
-@@ -450,7 +472,7 @@ if(AC3FORGE_BUILD_AC4)
+     ac3forge_pkgconfig_libname(_ac3forge_ac4_pc_libname iclforge_ac4_shared iclforge_ac4 iclforge_ac4_static
+@@ -450,7 +478,7 @@ if(AC3FORGE_BUILD_AC4)
          COMPONENT library)
  
      install(FILES "${CMAKE_BINARY_DIR}/src/ac4dec/generated/iclforge/ac4dec/export.hpp"
@@ -364,7 +430,7 @@ index 8710c2b23..5421855e7 100644
          COMPONENT library)
  
      # REQUIRES ac4: the decoder's header includes the inspector's, and each decoder library links
-@@ -476,7 +498,7 @@ if(AC3FORGE_BUILD_AC4)
+@@ -476,7 +504,7 @@ if(AC3FORGE_BUILD_AC4)
          COMPONENT library)
  
      install(FILES "${CMAKE_BINARY_DIR}/src/ac4enc/generated/iclforge/ac4enc/export.hpp"
@@ -373,7 +439,7 @@ index 8710c2b23..5421855e7 100644
          COMPONENT library)
  
      # As the decoder's: the encoder's header includes the inspector's, each encoder library links
-@@ -528,7 +550,7 @@ if(AC3FORGE_BUILD_CAPI)
+@@ -528,7 +556,7 @@ if(AC3FORGE_BUILD_CAPI)
      install(FILES
              "${CMAKE_BINARY_DIR}/src/capi/generated/iclforge_c/export.h"
              "${CMAKE_BINARY_DIR}/src/capi/generated/iclforge_c/version.h"
@@ -382,7 +448,7 @@ index 8710c2b23..5421855e7 100644
          COMPONENT library)
  
      # STATIC_REQUIRES ac3forge: libac3forge_c_static.a calls into libac3forge_static.a (capiTargets
-@@ -586,22 +608,22 @@ install(FILES
+@@ -590,22 +618,22 @@ install(FILES
      DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
      COMPONENT library)
  
@@ -410,7 +476,7 @@ index 8710c2b23..5421855e7 100644
          DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
          COMPONENT library)
  endif()
-@@ -609,7 +631,7 @@ endif()
+@@ -613,7 +641,7 @@ endif()
  if(AC3FORGE_BUILD_MP4)
      install(EXPORT mp4Targets
          FILE mp4Targets.cmake
@@ -419,7 +485,7 @@ index 8710c2b23..5421855e7 100644
          DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
          COMPONENT library)
  endif()
-@@ -617,7 +639,7 @@ endif()
+@@ -621,7 +649,7 @@ endif()
  if(AC3FORGE_BUILD_MPEGTS)
      install(EXPORT mpegtsTargets
          FILE mpegtsTargets.cmake
@@ -428,7 +494,7 @@ index 8710c2b23..5421855e7 100644
          DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
          COMPONENT library)
  endif()
-@@ -625,7 +647,7 @@ endif()
+@@ -629,7 +657,7 @@ endif()
  if(AC3FORGE_BUILD_IAB)
      install(EXPORT iabTargets
          FILE iabTargets.cmake
@@ -437,7 +503,7 @@ index 8710c2b23..5421855e7 100644
          DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
          COMPONENT library)
  endif()
-@@ -633,7 +655,7 @@ endif()
+@@ -637,7 +665,7 @@ endif()
  if(AC3FORGE_BUILD_ADM)
      install(EXPORT admTargets
          FILE admTargets.cmake
@@ -446,7 +512,7 @@ index 8710c2b23..5421855e7 100644
          DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
          COMPONENT library)
  
-@@ -641,7 +663,7 @@ if(AC3FORGE_BUILD_ADM)
+@@ -645,7 +673,7 @@ if(AC3FORGE_BUILD_ADM)
      # see src/admbridge/CMakeLists.txt), the same way capiTargets uses ac3:: below for forge_c.
      install(EXPORT admbridgeTargets
          FILE admbridgeTargets.cmake
@@ -455,7 +521,7 @@ index 8710c2b23..5421855e7 100644
          DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
          COMPONENT library)
  endif()
-@@ -649,7 +671,7 @@ endif()
+@@ -653,7 +681,7 @@ endif()
  if(AC3FORGE_BUILD_IAMF)
      install(EXPORT iamfTargets
          FILE iamfTargets.cmake
@@ -464,7 +530,7 @@ index 8710c2b23..5421855e7 100644
          DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
          COMPONENT library)
  endif()
-@@ -657,7 +679,7 @@ endif()
+@@ -661,7 +689,7 @@ endif()
  if(AC3FORGE_BUILD_AC4)
      install(EXPORT ac4Targets
          FILE ac4Targets.cmake
@@ -473,7 +539,7 @@ index 8710c2b23..5421855e7 100644
          DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
          COMPONENT library)
  endif()
-@@ -665,7 +687,7 @@ endif()
+@@ -669,7 +697,7 @@ endif()
  if(AC3FORGE_BUILD_CAPI)
      install(EXPORT capiTargets
          FILE capiTargets.cmake
@@ -528,8 +594,87 @@ index 259e869a7..f2ce21d86 100644
          "capi": False,
          "ac4": False,
          "iab": False,
+diff --git a/rust/ac3forge-sys/build.rs b/rust/ac3forge-sys/build.rs
+index 160d045ac..ec8062011 100644
+--- a/rust/ac3forge-sys/build.rs
++++ b/rust/ac3forge-sys/build.rs
+@@ -13,7 +13,16 @@ fn main() {
+         .expect("rust/ac3forge-sys must live two directories below the repo root")
+         .to_path_buf();
+ 
+-    for rel in ["src/capi", "src/ac3/include", "CMakeLists.txt"] {
++    for rel in [
++        "src/capi",
++        "src/ac3/include",
++        "src/base",
++        "src/dsp",
++        "src/objects",
++        "src/render",
++        "src/iec61937",
++        "CMakeLists.txt",
++    ] {
+         println!("cargo:rerun-if-changed={}", repo_root.join(rel).display());
+     }
+ 
+@@ -48,7 +57,7 @@ fn main() {
+         // feature that supplies sendspin's cpp-httplib/mbedTLS/libFLAC/Opus/mdns - left unset,
+         // configure fails resolving packages this build never installed.
+         .define("AC3FORGE_BUILD_HEARTH", "OFF")
+-        .build_target("forge_c_shared");
++        .build_target("iclforge_capi_shared");
+     // `dst` is cmake-rs's own OUT_DIR-rooted prefix; the actual CMake build tree (what a plain
+     // `cmake -B <dir>` would call the binary dir) lives at `<dst>/build` by cmake-rs convention.
+     // Deliberately NOT calling `cmake --install`: the project's install() rules cover the whole
+@@ -60,7 +69,7 @@ fn main() {
+     let build_dir = dst.join("build");
+ 
+     let source_include_dir = repo_root.join("src").join("capi").join("include");
+-    let header = source_include_dir.join("ac3forge_c").join("ac3forge.h");
++    let header = source_include_dir.join("iclforge_c").join("iclforge.h");
+     assert!(
+         header.is_file(),
+         "expected the C API header at {}",
+@@ -70,15 +79,15 @@ fn main() {
+     // generate_export_header() (src/capi/CMakeLists.txt) writes export.h under this target's own
+     // binary dir at configure/build time - a real generated file, not something `cmake --install`
+     // is needed for either.
+-    let generated_include_dir = find_dir_containing(&build_dir, Path::new("ac3forge_c/export.h"))
+-        .expect("could not find generated ac3forge_c/export.h under the CMake build tree");
++    let generated_include_dir = find_dir_containing(&build_dir, Path::new("iclforge_c/export.h"))
++        .expect("could not find generated iclforge_c/export.h under the CMake build tree");
+ 
+     let (runtime_name, import_lib_name): (&str, Option<&str>) = if cfg!(target_os = "windows") {
+-        ("ac3forge_c.dll", Some("ac3forge_c.lib"))
++        ("iclforge_c.dll", Some("iclforge_c.lib"))
+     } else if cfg!(target_os = "macos") {
+-        ("libac3forge_c.dylib", None)
++        ("libiclforge_c.dylib", None)
+     } else {
+-        ("libac3forge_c.so", None)
++        ("libiclforge_c.so", None)
+     };
+     let runtime_lib = find_file(&build_dir, runtime_name).unwrap_or_else(|| {
+         panic!(
+@@ -99,7 +108,7 @@ fn main() {
+         "cargo:rustc-link-search=native={}",
+         link_search_dir.display()
+     );
+-    println!("cargo:rustc-link-lib=dylib=ac3forge_c");
++    println!("cargo:rustc-link-lib=dylib=iclforge_c");
+ 
+     copy_runtime_library(&runtime_lib, runtime_name);
+ 
+@@ -183,7 +192,7 @@ fn find_file(root: &Path, name: &str) -> Option<PathBuf> {
+ }
+ 
+ /// Finds the directory that contains `suffix` as a relative path underneath it (e.g. a directory
+-/// `D` such that `D/ac3forge_c/export.h` exists), searching under `root`. Used to locate the
++/// `D` such that `D/iclforge_c/export.h` exists), searching under `root`. Used to locate the
+ /// generated `export.h`'s own include root without assuming the exact `CMAKE_CURRENT_BINARY_DIR`
+ /// nesting `generate_export_header()` used.
+ fn find_dir_containing(root: &Path, suffix: &Path) -> Option<PathBuf> {
 diff --git a/src/ac3/CMakeLists.txt b/src/ac3/CMakeLists.txt
-index 33e6ac0f6..c4badc58a 100644
+index 33e6ac0f6..089b356da 100644
 --- a/src/ac3/CMakeLists.txt
 +++ b/src/ac3/CMakeLists.txt
 @@ -1,139 +1,79 @@
@@ -1073,15 +1218,12 @@ index 33e6ac0f6..c4badc58a 100644
  if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
      add_library(iclforge_ac3_simd_avx2 OBJECT
          src/internal/avx2/avx2_probe.cpp
-@@ -463,16 +223,13 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
+@@ -463,16 +223,17 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
          "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
          "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2")
      target_compile_features(iclforge_ac3_simd_avx2 PRIVATE cxx_std_23)
 -    target_link_libraries(iclforge_ac3_simd_avx2 PRIVATE "$<BUILD_INTERFACE:ac3::warnings>")
-+    target_link_libraries(iclforge_ac3_simd_avx2 PRIVATE
-+        iclforge::base iclforge::render iclforge::objects iclforge::dsp
-+        "$<BUILD_INTERFACE:ac3::warnings>")
- 
+-
 -    # /arch:AVX2 for MSVC and clang-cl, -mavx2 for GCC/Clang/AppleClang.
 -    # Deliberately never -mfma alongside it: this project's own code must
 -    # never call an FMA intrinsic regardless of what the flag would
@@ -1090,13 +1232,21 @@ index 33e6ac0f6..c4badc58a 100644
 -    # kernel's bit-exactness argument cannot survive), and not requesting
 -    # it keeps has_avx2()'s CPUID gate to the single AVX2 bit rather than
 -    # needing a second, independent FMA capability check nothing here uses.
++    # Compile-only, as iclforge_add_library() does for the objects it makes: this object library is
++    # PUBLIC-linked into the static wrapper too, and an ordinary link would carry the shared variants
++    # of these libraries (what the bare aliases are under BUILD_SHARED_LIBS) into it.
++    target_link_libraries(iclforge_ac3_simd_avx2 PRIVATE
++        "$<COMPILE_ONLY:iclforge::base>" "$<COMPILE_ONLY:iclforge::render>"
++        "$<COMPILE_ONLY:iclforge::objects>" "$<COMPILE_ONLY:iclforge::dsp>"
++        "$<BUILD_INTERFACE:ac3::warnings>")
++
 +    # /arch:AVX2 for MSVC and clang-cl, -mavx2 for GCC/Clang/AppleClang. Deliberately never -mfma
 +    # alongside it: the project's own code must never call an FMA intrinsic, and not requesting it keeps
 +    # has_avx2()'s CPUID gate to the single AVX2 bit.
      if(AC3FORGE_IS_MSVC_LIKE)
          target_compile_options(iclforge_ac3_simd_avx2 PRIVATE /arch:AVX2)
      else()
-@@ -481,162 +238,18 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
+@@ -481,162 +242,18 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
  
      set_target_properties(iclforge_ac3_simd_avx2 PROPERTIES
          POSITION_INDEPENDENT_CODE ON
@@ -1419,7 +1569,7 @@ index bab7bf73a..9fdfd814d 100644
  
  set_target_properties(iclforge_ac3_minimal PROPERTIES OUTPUT_NAME "iclforge_ac3_minimal")
 diff --git a/src/ac4core/CMakeLists.txt b/src/ac4core/CMakeLists.txt
-index 1ab8db28d..e9f434a76 100644
+index 7d2f90b68..f8b8c9bdd 100644
 --- a/src/ac4core/CMakeLists.txt
 +++ b/src/ac4core/CMakeLists.txt
 @@ -48,7 +48,7 @@ target_sources(iclforge_ac4core
@@ -1433,7 +1583,7 @@ index 1ab8db28d..e9f434a76 100644
  
 @@ -104,7 +104,7 @@ endif()
  # include directory among them, or its own translation units cannot resolve
- # the header iclforge_ac4core's PUBLIC header just asked for.
+ # the header ac4core's PUBLIC header just asked for.
  target_include_directories(iclforge_ac4core PUBLIC
 -    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac4core_scalar_dir}>")
 +    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/variants/scalar-${_ac4core_scalar_dir}>")
@@ -1746,6 +1896,282 @@ index d2c20750d..111b23288 100644
  
  
  def main() -> None:
+diff --git a/tools/checks/check_install_consumer.sh b/tools/checks/check_install_consumer.sh
+index 434554241..e295e26f0 100644
+--- a/tools/checks/check_install_consumer.sh
++++ b/tools/checks/check_install_consumer.sh
+@@ -79,23 +79,24 @@ cache_value() {
+ }
+ 
+ # Each optional library: its AC3FORGE_BUILD_<NAME> option, its CMake export file (without
+-# .cmake), and the stem its library files, .pc files and include directories are named from.
++# .cmake), the stem of its .pc files, the stem of its library files and its include directory
++# below include/.
+ components=(
+-    "AC3FORGE_BUILD_MATROSKA matroskaTargets matroska"
+-    "AC3FORGE_BUILD_MP4 mp4Targets mp4"
+-    "AC3FORGE_BUILD_MPEGTS mpegtsTargets mpegts"
+-    "AC3FORGE_BUILD_IAB iabTargets ac3iab"
+-    "AC3FORGE_BUILD_IAMF iamfTargets iamf"
+-    "AC3FORGE_BUILD_AC4 ac4Targets ac4"
++    "AC3FORGE_BUILD_MATROSKA matroskaTargets matroska iclforge_matroska iclforge/matroska"
++    "AC3FORGE_BUILD_MP4 mp4Targets mp4 iclforge_mp4 iclforge/mp4"
++    "AC3FORGE_BUILD_MPEGTS mpegtsTargets mpegts iclforge_mpegts iclforge/mpegts"
++    "AC3FORGE_BUILD_IAB iabTargets ac3iab iclforge_iab iclforge/iab"
++    "AC3FORGE_BUILD_IAMF iamfTargets iamf iclforge_iamf iclforge/iamf"
++    "AC3FORGE_BUILD_AC4 ac4Targets ac4 iclforge_ac4 iclforge/ac4"
+ )
+ 
+ # Each optional library the tree $1 was configured with is in the prefix $2 with its export file
+ # and its .pc file, and each it was configured without has no file there at all. -print -quit, not
+ # a pipe into head: with pipefail, the SIGPIPE a closed pipe sends find would stop the script.
+ check_components() {
+-    local build="$1" prefix="$2" entry option targets stem value found
++    local build="$1" prefix="$2" entry option targets stem libstem incdir value found
+     for entry in "${components[@]}"; do
+-        read -r option targets stem <<< "$entry"
++        read -r option targets stem libstem incdir <<< "$entry"
+         value="$(cache_value "$build" "$option")"
+         case "${value^^}" in
+             ON|TRUE|1|YES|Y)
+@@ -107,8 +108,8 @@ check_components() {
+                 echo "--- $option=ON: $targets.cmake and $stem.pc installed"
+                 ;;
+             *)
+-                found="$(find "$prefix" \( -name "$targets*.cmake" -o -name "lib$stem*" -o -name "$stem*.pc" \
+-                    -o -path "$prefix/include/$stem*" \) -print -quit)"
++                found="$(find "$prefix" \( -name "$targets*.cmake" -o -name "lib$libstem*" -o -name "$stem*.pc" \
++                    -o -path "$prefix/include/$incdir*" \) -print -quit)"
+                 if [[ -n "$found" ]]; then
+                     echo "::error::$build has $option=${value:-unset} and installed a file of it anyway: $found - see cmake/InstallLibrary.cmake" >&2
+                     return 1
+@@ -142,7 +143,7 @@ pkg_config_check() {
+     # A Libs line that names the archive is a static-only install, and --static is what makes
+     # pkg-config read the private fields that say what the archive needs.
+     case " $(pc --libs-only-l ac3forge_c) " in
+-        *" -lac3forge_c_static "*) static=(--static) ;;
++        *" -liclforge_c_static "*) static=(--static) ;;
+         *) ;;
+     esac
+ 
+@@ -161,7 +162,7 @@ pkg_config_check() {
+     # line brings ac4.pc, and a static-only install's Requires.private the core's archive.
+     if [[ -f "$pc_dir/ac4dec.pc" ]]; then
+         case " $(pc --libs-only-l ac4dec) " in
+-            *" -lac4dec_static "*) iclforge_ac4_static=(--static) ;;
++            *" -liclforge_ac4dec_static "*) iclforge_ac4_static=(--static) ;;
+             *) ;;
+         esac
+         libdir="$(pc --variable=libdir ac4dec)"
+@@ -181,7 +182,7 @@ pkg_config_check() {
+     if [[ -f "$pc_dir/ac4enc.pc" ]]; then
+         iclforge_ac4_static=()
+         case " $(pc --libs-only-l ac4enc) " in
+-            *" -lac4enc_static "*) iclforge_ac4_static=(--static) ;;
++            *" -liclforge_ac4enc_static "*) iclforge_ac4_static=(--static) ;;
+             *) ;;
+         esac
+         libdir="$(pc --variable=libdir ac4enc)"
+@@ -234,12 +235,12 @@ for build in "$@"; do
+     cmake --install "$build" --prefix "$prefix" --component library
+     cmake --install "$build" --prefix "$prefix" --component libruntime
+ 
+-    if [[ ! -d "$prefix/include/ac3forge_c" ]]; then
+-        echo "::error::$build installed no include/ac3forge_c; was it configured with AC3FORGE_BUILD_CAPI=OFF?" >&2
++    if [[ ! -d "$prefix/include/iclforge_c" ]]; then
++        echo "::error::$build installed no include/iclforge_c; was it configured with AC3FORGE_BUILD_CAPI=OFF?" >&2
+         exit 1
+     fi
+-    echo "--- installed include/ac3forge_c:"
+-    ls -1 "$prefix/include/ac3forge_c"
++    echo "--- installed include/iclforge_c:"
++    ls -1 "$prefix/include/iclforge_c"
+     check_components "$build" "$prefix"
+ 
+     # The compilers that built the libraries, not whichever cc and c++ a machine offers.
+diff --git a/tools/checks/check_shared_forge_binding.sh b/tools/checks/check_shared_forge_binding.sh
+index 95510eb7b..5c36efeb8 100644
+--- a/tools/checks/check_shared_forge_binding.sh
++++ b/tools/checks/check_shared_forge_binding.sh
+@@ -1,40 +1,43 @@
+ #!/usr/bin/env bash
+ # Prove that an executable built with BUILD_SHARED_LIBS=ON runs its iclforge::ac3 code from
+-# libac3forge.so, not from a second copy of the codec that reached it another way.
++# the shared libraries of the codec, not from a second copy of it that reached the executable
++# another way.
+ #
+ # The shared-libs pass (config-linux-llvm-shared, .github/workflows/_ci-linux.yml) exists to show
+ # that every in-tree consumer links and runs against the real .so. For ac3tests it did not: the
+ # C API library embeds the codec as a static archive, exported its C++ symbols, and put the archive
+-# on the link line of whatever linked it, all of them ahead of libac3forge.so. Every test still
++# on the link line of whatever linked it, all of them ahead of the codec's .so. Every test still
+ # passed, on code that was never in the .so. A passing test suite cannot show this, which is why
+ # this looks at the binding itself.
+ #
+-# Two questions, both about the ac3:: C++ symbols libac3forge.so exports:
++# The codec is six libraries (iclforge_ac3, base, dsp, objects, render and iec61937), and all of
++# them export ac3:: symbols, so they are all given. Two questions, both about the ac3:: C++
++# symbols the libraries export:
+ #
+ #   1. Where does the dynamic linker bind the ones the executable imports? Read from
+ #      LD_DEBUG=bindings with LD_BIND_NOW=1, so every import is resolved at load whether or not a
+-#      test would have called it. All of them must bind to libac3forge.so.
++#      test would have called it. Each must bind to the library that exports it.
+ #   2. Does the executable define any of them itself? A definition linked in from a static archive
+ #      is used ahead of the shared library and binds nothing, so the first question cannot see it.
+ #      None may be.
+ #
+-# It also fails if nothing binds to libac3forge.so at all, since an executable that links no
+-# forge symbols would pass both questions for the wrong reason.
++# It also fails if nothing binds to the libraries at all, since an executable that links no
++# codec symbols would pass both questions for the wrong reason.
+ #
+-# libstdc++ template instantiations that libac3forge.so exports are left out: every C++ binary
++# libstdc++ template instantiations that the libraries export are left out: every C++ binary
+ # carries its own copy of those, and the executable's is meant to win.
+ #
+-# Usage: check_shared_forge_binding.sh <executable> <libac3forge.so>
++# Usage: check_shared_forge_binding.sh <executable> <library.so>...
+ 
+ set -euo pipefail
+ export LC_ALL=C
+ 
+-if [ "$#" -ne 2 ]; then
+-    echo "usage: $0 <executable> <libac3forge.so>" >&2
++if [ "$#" -lt 2 ]; then
++    echo "usage: $0 <executable> <library.so>..." >&2
+     exit 2
+ fi
+ exe=$1
+-forge=$2
++shift
+ 
+ work="$(mktemp -d)"
+ trap 'rm -rf "$work"' EXIT
+@@ -45,16 +48,29 @@ ac3_symbol='^_Z(N|NK|TVN|TIN|TSN|GVN|ZN|ZNK)3ac3'
+ 
+ names() { awk '{print $NF}' | { grep -E "$ac3_symbol" || true; } | sort -u; }
+ 
+-nm -D --defined-only "$forge" | names > "$work/exports"
++# One line per exported symbol: the library's name without its version, and the symbol.
++: > "$work/exports"
++for lib in "$@"; do
++    stem="$(basename "$lib")"
++    stem="${stem%%.so*}"
++    nm -D --defined-only "$lib" | names | sed "s/^/$stem /" >> "$work/exports"
++done
++sort -u -o "$work/exports" "$work/exports"
+ if [ ! -s "$work/exports" ]; then
+-    echo "error: $forge exports no ac3:: symbols; is it libac3forge.so?" >&2
++    echo "error: none of the libraries exports ac3:: symbols; are they the codec's?" >&2
+     exit 2
+ fi
+ 
+ # 2. What the executable defines: its dynamic table (a definition the process can bind to) and, if
+ # it has not been stripped, its full symbol table.
+ { nm -D --defined-only "$exe"; nm --defined-only "$exe" 2>/dev/null || true; } | names > "$work/defined"
+-comm -12 "$work/exports" "$work/defined" > "$work/linked_in"
++awk 'NR == FNR { defined[$1] = 1; next } ($2 in defined) { print $2 }' \
++    "$work/defined" "$work/exports" | sort -u > "$work/linked_in"
++# One definition is meant to be there twice. ac3tests compiles src/base/src/cpu_features.cpp a
++# second time on purpose (tests/CMakeLists.txt) to test the dispatch against the probe directory the
++# build chose, and iclforge_base exports has_avx2() since the libraries were split.
++{ grep -v -E '^_ZN3ac38internal3cpu8has_avx2Ev$' "$work/linked_in" || true; } > "$work/kept"
++mv "$work/kept" "$work/linked_in"
+ 
+ # 1. Where the executable's imports bind. The tag matches no test, so the binary loads, registers
+ # its tests and exits without running any. That is Catch2's exit code 2 (0 in some versions); with
+@@ -73,14 +89,19 @@ fi
+ sed -nE "s/.*binding file ([^ ]+) \[[0-9]+\] to ([^ ]+) \[[0-9]+\]: (normal|weak) symbol .([^ ']+)'.*/\1 \2 \4/p" \
+     "$work/ld_debug" > "$work/all_bindings"
+ 
++# The executable's bindings of a symbol some library exports: the provider it got, and whether that
++# is one of the libraries that export it.
+ awk -v exe="$(basename "$exe")" '
+     function base(path,  parts, n) { n = split(path, parts, "/"); return parts[n] }
+-    NR == FNR { exported[$1] = 1; next }
+-    base($1) == exe && ($3 in exported) { print base($2), $3 }
++    function stem(path,  s) { s = base(path); sub(/\.so.*$/, "", s); return s }
++    NR == FNR { owners[$2] = owners[$2] " " $1 " "; next }
++    base($1) == exe && ($3 in owners) {
++        print stem($2), $3, (index(owners[$3], " " stem($2) " ") ? "ok" : "elsewhere")
++    }
+ ' "$work/exports" "$work/all_bindings" > "$work/forge_bindings"
+ 
+-bound_to_forge=$(awk '$1 ~ /^libac3forge\.so/' "$work/forge_bindings" | wc -l)
+-awk '$1 !~ /^libac3forge\.so/' "$work/forge_bindings" > "$work/elsewhere"
++bound=$(awk '$3 == "ok"' "$work/forge_bindings" | wc -l)
++awk '$3 == "elsewhere" { print $1, $2 }' "$work/forge_bindings" > "$work/elsewhere"
+ 
+ status=0
+ report() {
+@@ -94,20 +115,20 @@ report() {
+ }
+ 
+ if [ -s "$work/elsewhere" ]; then
+-    report "$(wc -l < "$work/elsewhere") ac3:: symbol(s) $(basename "$exe") imports from libac3forge.so bind to another library:" \
++    report "$(wc -l < "$work/elsewhere") ac3:: symbol(s) $(basename "$exe") imports from the codec's libraries bind to another library:" \
+         "$work/elsewhere"
+     awk '{print "    bound to " $1}' "$work/elsewhere" | sort | uniq -c >&2
+ fi
+ if [ -s "$work/linked_in" ]; then
+-    report "$(wc -l < "$work/linked_in") ac3:: symbol(s) libac3forge.so exports are defined inside $(basename "$exe") itself:" \
++    report "$(wc -l < "$work/linked_in") ac3:: symbol(s) the libraries export are defined inside $(basename "$exe") itself:" \
+         "$work/linked_in"
+ fi
+-if [ "$bound_to_forge" -eq 0 ]; then
+-    echo "FAIL: nothing in $(basename "$exe") binds to $(basename "$forge"); the check has nothing to say." >&2
++if [ "$bound" -eq 0 ]; then
++    echo "FAIL: nothing in $(basename "$exe") binds to the libraries; the check has nothing to say." >&2
+     status=1
+ fi
+ 
+ if [ "$status" -eq 0 ]; then
+-    echo "OK: $bound_to_forge ac3:: symbols bind to $(basename "$forge") from $(basename "$exe"); none are linked in."
++    echo "OK: $bound ac3:: symbols bind from $(basename "$exe") to the $# libraries that export them; none are linked in."
+ fi
+ exit "$status"
+diff --git a/tools/checks/coverage_report.sh b/tools/checks/coverage_report.sh
+index 0249d37e5..779599962 100755
+--- a/tools/checks/coverage_report.sh
++++ b/tools/checks/coverage_report.sh
+@@ -127,6 +127,15 @@ fi
+ #   ac3iab 95.4/92.9  iamf 96.1/96.2    apps/common 83.3/71.9
+ #   apps/crucible/engine 95.9/87.8
+ #
++# forge is six components since the layout change of planning/layout.md, one row each below. Measured
++# on the split code the same way (GCC 16 / gcovr 8.6, WSL2, the 3,250 tests of the coverage leg):
++#
++#   ac3 94.5/87.9    base 88.8/64.7    dsp 87.7/94.7
++#   objects 93.3/86.3  render 96.3/89.5  iec61937 96.9/89.6
++#
++# base is 107 lines and 68 branches, so a single line moves its figures by about one and a half
++# points and its floors are set further under than the rest.
++#
+ # src/audio and apps/cli's device commands no longer depend on the runner
+ # having an audio endpoint: their success paths run against alsa-lib's
+ # built-in null/file/route/multi plugins. What they still miss needs a real
+@@ -140,6 +149,11 @@ fi
+ # the rest of apps/crucible keeps its own floors in coverage_crucible.ps1.
+ components="
+ src/ac3             90 82
++src/base              80 56
++src/dsp               82 88
++src/objects           88 80
++src/render            91 83
++src/iec61937          91 83
+ src/audio             72 58
+ src/signing           90 76
+ src/matroska          88 85
+@@ -200,7 +214,7 @@ html="$build_dir/coverage.html"
+ # but it made the DSP-heavy cases 2-6x slower (the ten-minute playout case
+ # 4.9 s -> 30.8 s), so the flag stays.
+ gcovr --root . \
+-    --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin|ac4|ac4core|ac4dec|ac3iab|iamf)/.*' \
++    --filter 'src/(ac3|base|dsp|objects|render|iec61937|audio|signing|matroska|mp4|mpegts|capi|adm|admbridge|sendspin|ac4|ac4core|ac4dec|iab|iamf)/.*' \
+     --filter 'apps/cli/.*' \
+     --filter 'apps/common/.*' \
+     --filter 'apps/crucible/engine/.*' \
 diff --git a/tools/checks/score_ac4_decode.py b/tools/checks/score_ac4_decode.py
 index ebc69893c..001f44618 100644
 --- a/tools/checks/score_ac4_decode.py
@@ -1791,6 +2217,359 @@ index 38e0980a2..e2e93f48b 100644
  
  
  def _resolved_cache_variables(presets: dict, name: str) -> dict:
+diff --git a/tools/ci/abi-allowlist/libac3forge.so.txt b/tools/ci/abi-allowlist/libiclforge_ac3.so.txt
+similarity index 83%
+rename from tools/ci/abi-allowlist/libac3forge.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_ac3.so.txt
+index a0d3021ec..ce11788cf 100644
+--- a/tools/ci/abi-allowlist/libac3forge.so.txt
++++ b/tools/ci/abi-allowlist/libiclforge_ac3.so.txt
+@@ -100,21 +100,6 @@ ac3::dequantize_mantissa(unsigned int, int)
+ ac3::describe(ac3::DecodeError)
+ ac3::describe(ac3::DiagnosticEvent)
+ ac3::describe(ac3::FrameError)
+-ac3::dft512(std::span<double const, 512ul>, std::span<double const, 512ul>, std::span<double, 512ul>, std::span<double, 512ul>)
+-ac3::dft512(std::span<float const, 512ul>, std::span<float const, 512ul>, std::span<float, 512ul>, std::span<float, 512ul>)
+-ac3::dsp::Biquad::process(float)
+-ac3::dsp::Biquad::reset()
+-ac3::dsp::Biquad::set_coefficients(double, double, double, double, double)
+-ac3::dsp::LfeLowpass::LfeLowpass(double, unsigned int)
+-ac3::dsp::LfeLowpass::process(std::span<float, 18446744073709551615ul>)
+-ac3::dsp::LfeLowpass::reset()
+-ac3::dsp::QmfAnalysis::push(std::span<float const, 64ul>, std::span<double, 64ul>, std::span<double, 64ul>)
+-ac3::dsp::QmfAnalysis::reset()
+-ac3::dsp::QmfSynthesis::pull(std::span<double const, 64ul>, std::span<double const, 64ul>, std::span<float, 64ul>)
+-ac3::dsp::QmfSynthesis::reset()
+-ac3::dsp::qmf_prototype()
+-ac3::dsp::resample(std::span<float const, 18446744073709551615ul>, unsigned int, unsigned int)
+-ac3::dsp::resample_planar(std::span<std::vector<float, std::allocator<float> > const, 18446744073709551615ul>, unsigned int, unsigned int)
+ ac3::eac3::AccessUnit::substream(unsigned long) const
+ ac3::eac3::AccessUnitEncoder::AccessUnitEncoder(ac3::eac3::AccessUnitConfig const&)
+ ac3::eac3::AccessUnitEncoder::AccessUnitEncoder(ac3::eac3::AccessUnitEncoder&&)
+@@ -173,11 +158,7 @@ ac3::eac3::spx_apply_notch(std::span<double, 18446744073709551615ul>, int, ac3::
+ ac3::eac3::spx_apply_notch(std::span<float, 18446744073709551615ul>, int, ac3::eac3::BandLayout const&, std::span<bool const, 18446744073709551615ul>, int)
+ ac3::eac3::spx_attenuation(int, int)
+ ac3::eac3::spx_noise_ratio(int, int, int, int)
+-ac3::emdf::build_container(std::span<ac3::emdf::Payload const, 18446744073709551615ul>, int)
+-ac3::emdf::parse_container(std::span<std::byte const, 18446744073709551615ul>)
+-ac3::emdf::put_variable_bits(ac3::BitWriter&, unsigned int, int)
+ ac3::emdf::syncframe_size(std::span<std::byte const, 18446744073709551615ul>)
+-ac3::emdf::variable_bits_size(unsigned int, int)
+ ac3::emdf::walk_frame(std::span<std::byte const, 18446744073709551615ul>)
+ ac3::encode_coupling_exponents(std::span<unsigned char const, 18446744073709551615ul>, ac3::ExpStrategy)
+ ac3::encode_coupling_exponents_into(std::span<unsigned char const, 18446744073709551615ul>, ac3::ExpStrategy, ac3::EncodedCouplingExponents&)
+@@ -192,29 +173,6 @@ ac3::encoder::rate_ceiling_chbwcod(unsigned int, int)
+ ac3::extract_exponents(std::span<int const, 18446744073709551615ul>, std::span<unsigned char, 18446744073709551615ul>)
+ ac3::fast_gain(int)
+ ac3::has_eac3_extension_substreams(std::span<std::byte const, 18446744073709551615ul>)
+-ac3::iec61937::Ac4BurstPacker::Ac4BurstPacker(ac3::iec61937::BurstDataType)
+-ac3::iec61937::Ac4BurstPacker::push(std::span<std::byte const, 18446744073709551615ul>)
+-ac3::iec61937::BurstReader::compact()
+-ac3::iec61937::BurstReader::finish() const
+-ac3::iec61937::BurstReader::push(std::span<std::byte const, 18446744073709551615ul>, std::vector<std::byte, std::allocator<std::byte> >&)
+-ac3::iec61937::Eac3BurstPacker::Eac3BurstPacker()
+-ac3::iec61937::Eac3BurstPacker::Eac3BurstPacker(ac3::iec61937::Eac3BurstPacker&&)
+-ac3::iec61937::Eac3BurstPacker::operator=(ac3::iec61937::Eac3BurstPacker&&)
+-ac3::iec61937::Eac3BurstPacker::push(std::span<std::byte const, 18446744073709551615ul>)
+-ac3::iec61937::Eac3BurstPacker::~Eac3BurstPacker()
+-ac3::iec61937::PassthroughDetector::push(std::span<float const, 18446744073709551615ul>, unsigned short)
+-ac3::iec61937::ac4_burst_timing(ac3::iec61937::BurstDataType, int, int)
+-ac3::iec61937::ac4_burst_timing_for_code(ac3::iec61937::BurstDataType, int)
+-ac3::iec61937::ac4_burst_type_for(unsigned long, int, int)
+-ac3::iec61937::carrier_from_capture(std::span<float const, 18446744073709551615ul>, unsigned short, std::vector<std::byte, std::allocator<std::byte> >&)
+-ac3::iec61937::data_type_name(ac3::iec61937::BurstDataType)
+-ac3::iec61937::describe(ac3::iec61937::UnwrapError)
+-ac3::iec61937::read_ac4_sync_frame(std::span<std::byte const, 18446744073709551615ul>)
+-ac3::iec61937::repetition_period(ac3::iec61937::BurstDataType)
+-ac3::iec61937::unwrap_stream(std::span<std::byte const, 18446744073709551615ul>)
+-ac3::iec61937::wrap_ac4_stream(std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, ac3::iec61937::BurstDataType)
+-ac3::iec61937::wrap_frame(std::span<std::byte const, 18446744073709551615ul>)
+-ac3::iec61937::wrap_stream(std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, bool)
+ ac3::imdct256_pair_windowed(std::span<double const, 256ul>, std::span<double, 512ul>, bool)
+ ac3::imdct256_pair_windowed(std::span<float const, 256ul>, std::span<float, 512ul>)
+ ac3::imdct512_windowed(std::span<double const, 256ul>, std::span<double, 512ul>, bool)
+@@ -347,6 +305,7 @@ ac3::meta::encode_compr_at_most(double)
+ ac3::meta::encode_dynrng(double)
+ ac3::meta::evaluate_qc_gate(ac3::meta::QcPreset const&, std::optional<double>, std::optional<double>)
+ ac3::meta::format_timecode[abi:cxx11](ac3::meta::TimeCodeCoarse const&, ac3::meta::TimeCodeFine const&)
++ac3::meta::is_associated_service(ac3::meta::BitstreamMode, ac3::Acmod)
+ ac3::meta::level_dbfs(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
+ ac3::meta::lfe_mix_gain(double)
+ ac3::meta::ltrt_downmix(ac3::Acmod, double, double)
+@@ -372,63 +331,27 @@ ac3::meta::valid_mix_metadata(ac3::meta::MixMetadata const&)
+ ac3::mix_levels(ac3::Acmod, std::optional<ac3::meta::CentreMixLevel>, std::optional<ac3::meta::SurroundMixLevel>, std::optional<ac3::meta::AlternateBsi> const&)
+ ac3::mix_levels(std::optional<ac3::meta::CentreMixLevel>, std::optional<ac3::meta::SurroundMixLevel>)
+ ac3::mix_levels(std::optional<ac3::meta::MixMetadata> const&)
++ac3::oba::AtmosEncoder::AtmosEncoder(ac3::oba::AtmosConfig const&, ac3::oba::BedProgram)
+ ac3::oba::AtmosEncoder::AtmosEncoder(ac3::oba::AtmosConfig const&, int)
+ ac3::oba::AtmosEncoder::AtmosEncoder(ac3::oba::AtmosEncoder&&)
++ac3::oba::AtmosEncoder::Impl::render_and_reconstruct(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>, std::span<std::array<double, 5ul> const, 18446744073709551615ul>, std::span<std::array<double, 5ul> const, 18446744073709551615ul>, std::span<double const, 18446744073709551615ul>, std::span<double const, 18446744073709551615ul>)
+ ac3::oba::AtmosEncoder::bed() const
+ ac3::oba::AtmosEncoder::bed_latency() const
+ ac3::oba::AtmosEncoder::dynamic_object_count() const
++ac3::oba::AtmosEncoder::encode_bed_frame(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
+ ac3::oba::AtmosEncoder::encode_frame(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>, std::span<ac3::oba::ObjectPlacement const, 18446744073709551615ul>)
+ ac3::oba::AtmosEncoder::latency() const
+ ac3::oba::AtmosEncoder::operator=(ac3::oba::AtmosEncoder&&)
+ ac3::oba::AtmosEncoder::parameters() const
+ ac3::oba::AtmosEncoder::program() const
+ ac3::oba::AtmosEncoder::~AtmosEncoder()
+-ac3::oba::KeyframePath::create(std::vector<ac3::oba::Keyframe, std::allocator<ac3::oba::Keyframe> >)
+-ac3::oba::KeyframePath::evaluate(double) const
+-ac3::oba::ObjectPath::evaluate(double) const
+-ac3::oba::ObjectScene::create(std::vector<ac3::oba::SceneObject, std::allocator<ac3::oba::SceneObject> >, ac3::oba::Orientation const&)
+-ac3::oba::ObjectScene::duration_s() const
+-ac3::oba::ObjectScene::evaluate(double) const
+-ac3::oba::ObjectScene::evaluate(unsigned long, double) const
+-ac3::oba::ObjectScene::evaluate_into(double, std::span<ac3::oba::ObjectPlacement, 18446744073709551615ul>) const
+-ac3::oba::OrbitPath::OrbitPath(double, double, double, double, double)
+-ac3::oba::OrbitPath::evaluate(double) const
+-ac3::oba::SceneCursor::SceneCursor(ac3::oba::ObjectScene)
+-ac3::oba::SceneCursor::is_live(unsigned long) const
+-ac3::oba::SceneCursor::push(ac3::oba::SceneUpdate const&)
+-ac3::oba::SceneCursor::release(unsigned long)
+-ac3::oba::SceneCursor::release_all()
+-ac3::oba::SceneCursor::sample(double) const
+-ac3::oba::SceneCursor::sample_into(double, std::span<ac3::oba::ObjectPlacement, 18446744073709551615ul>) const
+-ac3::oba::apply(ac3::oba::SceneOscUpdate const&, ac3::oba::ObjectPlacement const&)
+ ac3::oba::band_energy(std::span<float const, 18446744073709551615ul>, std::span<unsigned char const, 64ul>, std::span<double, 18446744073709551615ul>, bool)
+-ac3::oba::bed_label_position(ac3::oba::BedLabel)
+-ac3::oba::bed_labels(unsigned short)
+-ac3::oba::build_payload(ac3::oba::Program const&, std::span<ac3::oba::DynamicObject const, 18446744073709551615ul>, int)
+-ac3::oba::describe(ac3::oba::BedLabel)
+-ac3::oba::describe_objects(ac3::oba::DecodedProgram const&, unsigned long)
+-ac3::oba::evaluate_placements(std::span<ac3::oba::ObjectPath const, 18446744073709551615ul>, double)
+ ac3::oba::joc::build_payload(ac3::oba::joc::FrameParameters const&)
+ ac3::oba::joc::dequantize(int, bool)
+ ac3::oba::joc::parse_payload(std::span<std::byte const, 18446744073709551615ul>)
+ ac3::oba::joc::quantize(double, bool)
+ ac3::oba::joc::reconstruct(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>, ac3::oba::joc::FrameParameters const&, ac3::oba::joc::ReconstructionState&, bool, bool, ac3::oba::joc::Domain)
+-ac3::oba::joc_object_indices(ac3::oba::Program const&)
+-ac3::oba::make_orbit_path(double, double, double, double, double)
+-ac3::oba::orientation_from_degrees(double, double, double)
+-ac3::oba::parse_osc_packet(std::span<std::byte const, 18446744073709551615ul>, ac3::oba::OscParseStats*)
+-ac3::oba::parse_osc_packet_into(std::span<std::byte const, 18446744073709551615ul>, std::span<ac3::oba::SceneOscUpdate, 18446744073709551615ul>, ac3::oba::OscParseStats*)
+-ac3::oba::parse_payload(std::span<std::byte const, 18446744073709551615ul>)
+ ac3::oba::qmf_band_energy(std::span<float const, 18446744073709551615ul>, std::span<unsigned char const, 64ul>, std::span<double, 18446744073709551615ul>, ac3::dsp::QmfAnalysis&)
+-ac3::oba::read_scene(std::basic_string_view<char, std::char_traits<char> >)
+-ac3::oba::read_scene_json(std::basic_string_view<char, std::char_traits<char> >)
+-ac3::oba::rotate(ac3::oba::Position const&, ac3::oba::Orientation const&)
+-ac3::oba::scene_from_json(std::basic_string_view<char, std::char_traits<char> >)
+-ac3::oba::scene_from_text(std::basic_string_view<char, std::char_traits<char> >, ac3::oba::ObjectPlacement const&)
+-ac3::oba::scene_objects_from_keyframe_text(std::basic_string_view<char, std::char_traits<char> >)
+-ac3::oba::to_json[abi:cxx11](ac3::oba::ObjectScene const&)
+-ac3::oba::to_keyframe_text[abi:cxx11](ac3::oba::ObjectScene const&)
+-ac3::oba::to_keyframe_text[abi:cxx11](std::span<ac3::oba::SceneObject const, 18446744073709551615ul>)
+ ac3::output_channel_count(ac3::OutputConfig const&, ac3::Acmod, bool)
+ ac3::plan::Assignment::at(unsigned long, unsigned long) const
+ ac3::plan::Assignment::rows_of(ac3::plan::DestinationKind) const
+@@ -494,16 +417,6 @@ ac3::quality::snr_db(ac3::quality::BandNoise const&)
+ ac3::quantize_mantissa(int, int)
+ ac3::rate_adaptive_fgaincod(int, int)
+ ac3::slow_gain(int)
+-ac3::spatial::BedRenderer::add_object(ac3::spatial::ObjectState const&)
+-ac3::spatial::BedRenderer::render_block(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>, std::span<std::span<float, 18446744073709551615ul> const, 18446744073709551615ul>)
+-ac3::spatial::BedRenderer::set_target(unsigned long, ac3::spatial::ObjectState const&)
+-ac3::spatial::direction_of(ac3::base::Location, bool, bool)
+-ac3::spatial::pan_azimuth(double)
+-ac3::spatial::pan_direction(ac3::spatial::Direction, std::span<ac3::spatial::Direction const, 18446744073709551615ul>, std::span<double, 18446744073709551615ul>)
+-ac3::spatial::pan_ring(double, std::span<double const, 18446744073709551615ul>, std::span<double, 18446744073709551615ul>)
+-ac3::spatial::pan_room(double, double)
+-ac3::spatial::pan_targets(std::span<ac3::base::Location const, 18446744073709551615ul>)
+-ac3::spatial::position_direction(double, double, double)
+ ac3::split_access_units(std::span<std::byte const, 18446744073709551615ul>)
+ ac3::split_access_units(std::span<std::byte const, 18446744073709551615ul>, int)
+ ac3::split_frames(std::span<std::byte const, 18446744073709551615ul>)
+@@ -541,6 +454,5 @@ ac3::verify::report[abi:cxx11](std::span<ac3::verify::Eac3Mismatch const, 184467
+ ac3::verify::report[abi:cxx11](std::span<ac3::verify::Mismatch const, 18446744073709551615ul>, int, int)
+ ac3::verify::trace_csv_header()
+ ac3::version_details[abi:cxx11]()
+-std::__throw_bad_variant_access(unsigned int)::__reasons
+ void ac3::quality::PerceptualModel::analyse_over<double>(int, std::span<double const, 18446744073709551615ul>, int, ac3::quality::BlockAnalysis&)
+ void ac3::quality::PerceptualModel::analyse_over<float>(int, std::span<float const, 18446744073709551615ul>, int, ac3::quality::BlockAnalysis&)
+diff --git a/tools/ci/abi-allowlist/libac4.so.txt b/tools/ci/abi-allowlist/libiclforge_ac4.so.txt
+similarity index 100%
+rename from tools/ci/abi-allowlist/libac4.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_ac4.so.txt
+diff --git a/tools/ci/abi-allowlist/libac4dec.so.txt b/tools/ci/abi-allowlist/libiclforge_ac4dec.so.txt
+similarity index 96%
+rename from tools/ci/abi-allowlist/libac4dec.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_ac4dec.so.txt
+index c8f0926fc..134efe972 100644
+--- a/tools/ci/abi-allowlist/libac4dec.so.txt
++++ b/tools/ci/abi-allowlist/libiclforge_ac4dec.so.txt
+@@ -16,6 +16,7 @@ ac4::Decoder::set_output(ac4::OutputConfig const&)
+ ac4::Decoder::set_presentation(ac4::PresentationChoice const&)
+ ac4::Decoder::~Decoder()
+ ac4::describe(ac4::DecodeError)
++ac4::describe(ac4::DecodingMode)
+ ac4::describe(ac4::DownmixTarget)
+ ac4::describe(ac4::DrcMode)
+ ac4::describe(ac4::Speaker)
+diff --git a/tools/ci/abi-allowlist/libac4enc.so.txt b/tools/ci/abi-allowlist/libiclforge_ac4enc.so.txt
+similarity index 100%
+rename from tools/ci/abi-allowlist/libac4enc.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_ac4enc.so.txt
+diff --git a/tools/ci/abi-allowlist/libiclforge_base.so.txt b/tools/ci/abi-allowlist/libiclforge_base.so.txt
+new file mode 100644
+index 000000000..8696d16c2
+--- /dev/null
++++ b/tools/ci/abi-allowlist/libiclforge_base.so.txt
+@@ -0,0 +1 @@
++ac3::internal::cpu::has_avx2()
+diff --git a/tools/ci/abi-allowlist/libac3forge_c.so.txt b/tools/ci/abi-allowlist/libiclforge_c.so.txt
+similarity index 100%
+rename from tools/ci/abi-allowlist/libac3forge_c.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_c.so.txt
+diff --git a/tools/ci/abi-allowlist/libiclforge_dsp.so.txt b/tools/ci/abi-allowlist/libiclforge_dsp.so.txt
+new file mode 100644
+index 000000000..6806271e2
+--- /dev/null
++++ b/tools/ci/abi-allowlist/libiclforge_dsp.so.txt
+@@ -0,0 +1,15 @@
++ac3::dft512(std::span<double const, 512ul>, std::span<double const, 512ul>, std::span<double, 512ul>, std::span<double, 512ul>)
++ac3::dft512(std::span<float const, 512ul>, std::span<float const, 512ul>, std::span<float, 512ul>, std::span<float, 512ul>)
++ac3::dsp::Biquad::process(float)
++ac3::dsp::Biquad::reset()
++ac3::dsp::Biquad::set_coefficients(double, double, double, double, double)
++ac3::dsp::LfeLowpass::LfeLowpass(double, unsigned int)
++ac3::dsp::LfeLowpass::process(std::span<float, 18446744073709551615ul>)
++ac3::dsp::LfeLowpass::reset()
++ac3::dsp::QmfAnalysis::push(std::span<float const, 64ul>, std::span<double, 64ul>, std::span<double, 64ul>)
++ac3::dsp::QmfAnalysis::reset()
++ac3::dsp::QmfSynthesis::pull(std::span<double const, 64ul>, std::span<double const, 64ul>, std::span<float, 64ul>)
++ac3::dsp::QmfSynthesis::reset()
++ac3::dsp::qmf_prototype()
++ac3::dsp::resample(std::span<float const, 18446744073709551615ul>, unsigned int, unsigned int)
++ac3::dsp::resample_planar(std::span<std::vector<float, std::allocator<float> > const, 18446744073709551615ul>, unsigned int, unsigned int)
+diff --git a/tools/ci/abi-allowlist/libac3iab.so.txt b/tools/ci/abi-allowlist/libiclforge_iab.so.txt
+similarity index 100%
+rename from tools/ci/abi-allowlist/libac3iab.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_iab.so.txt
+diff --git a/tools/ci/abi-allowlist/libiamf.so.txt b/tools/ci/abi-allowlist/libiclforge_iamf.so.txt
+similarity index 100%
+rename from tools/ci/abi-allowlist/libiamf.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_iamf.so.txt
+diff --git a/tools/ci/abi-allowlist/libiclforge_iec61937.so.txt b/tools/ci/abi-allowlist/libiclforge_iec61937.so.txt
+new file mode 100644
+index 000000000..68105b778
+--- /dev/null
++++ b/tools/ci/abi-allowlist/libiclforge_iec61937.so.txt
+@@ -0,0 +1,23 @@
++ac3::iec61937::Ac4BurstPacker::Ac4BurstPacker(ac3::iec61937::BurstDataType)
++ac3::iec61937::Ac4BurstPacker::push(std::span<std::byte const, 18446744073709551615ul>)
++ac3::iec61937::BurstReader::compact()
++ac3::iec61937::BurstReader::finish() const
++ac3::iec61937::BurstReader::push(std::span<std::byte const, 18446744073709551615ul>, std::vector<std::byte, std::allocator<std::byte> >&)
++ac3::iec61937::Eac3BurstPacker::Eac3BurstPacker()
++ac3::iec61937::Eac3BurstPacker::Eac3BurstPacker(ac3::iec61937::Eac3BurstPacker&&)
++ac3::iec61937::Eac3BurstPacker::operator=(ac3::iec61937::Eac3BurstPacker&&)
++ac3::iec61937::Eac3BurstPacker::push(std::span<std::byte const, 18446744073709551615ul>)
++ac3::iec61937::Eac3BurstPacker::~Eac3BurstPacker()
++ac3::iec61937::PassthroughDetector::push(std::span<float const, 18446744073709551615ul>, unsigned short)
++ac3::iec61937::ac4_burst_timing(ac3::iec61937::BurstDataType, int, int)
++ac3::iec61937::ac4_burst_timing_for_code(ac3::iec61937::BurstDataType, int)
++ac3::iec61937::ac4_burst_type_for(unsigned long, int, int)
++ac3::iec61937::carrier_from_capture(std::span<float const, 18446744073709551615ul>, unsigned short, std::vector<std::byte, std::allocator<std::byte> >&)
++ac3::iec61937::data_type_name(ac3::iec61937::BurstDataType)
++ac3::iec61937::describe(ac3::iec61937::UnwrapError)
++ac3::iec61937::read_ac4_sync_frame(std::span<std::byte const, 18446744073709551615ul>)
++ac3::iec61937::repetition_period(ac3::iec61937::BurstDataType)
++ac3::iec61937::unwrap_stream(std::span<std::byte const, 18446744073709551615ul>)
++ac3::iec61937::wrap_ac4_stream(std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, ac3::iec61937::BurstDataType)
++ac3::iec61937::wrap_frame(std::span<std::byte const, 18446744073709551615ul>)
++ac3::iec61937::wrap_stream(std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, bool)
+diff --git a/tools/ci/abi-allowlist/libmatroska.so.txt b/tools/ci/abi-allowlist/libiclforge_matroska.so.txt
+similarity index 100%
+rename from tools/ci/abi-allowlist/libmatroska.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_matroska.so.txt
+diff --git a/tools/ci/abi-allowlist/libmp4.so.txt b/tools/ci/abi-allowlist/libiclforge_mp4.so.txt
+similarity index 100%
+rename from tools/ci/abi-allowlist/libmp4.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_mp4.so.txt
+diff --git a/tools/ci/abi-allowlist/libmpegts.so.txt b/tools/ci/abi-allowlist/libiclforge_mpegts.so.txt
+similarity index 93%
+rename from tools/ci/abi-allowlist/libmpegts.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_mpegts.so.txt
+index 2fa942fe7..f07bb2aa4 100644
+--- a/tools/ci/abi-allowlist/libmpegts.so.txt
++++ b/tools/ci/abi-allowlist/libiclforge_mpegts.so.txt
+@@ -16,3 +16,4 @@ mpegts::describe(mpegts::DemuxError)
+ mpegts::describe(mpegts::MuxError)
+ mpegts::mux(mpegts::AudioTrack const&, std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, mpegts::MuxOptions const&)
+ mpegts::mux(mpegts::AudioTrack const&, std::span<std::vector<std::byte, std::allocator<std::byte> > const, 18446744073709551615ul>, mpegts::MuxOptions const&)
++mpegts::parse_service_descriptor(unsigned char, std::span<std::byte const, 18446744073709551615ul>)
+diff --git a/tools/ci/abi-allowlist/libiclforge_objects.so.txt b/tools/ci/abi-allowlist/libiclforge_objects.so.txt
+new file mode 100644
+index 000000000..a878f3b68
+--- /dev/null
++++ b/tools/ci/abi-allowlist/libiclforge_objects.so.txt
+@@ -0,0 +1,45 @@
++ac3::emdf::build_container(std::span<ac3::emdf::Payload const, 18446744073709551615ul>, int)
++ac3::emdf::parse_container(std::span<std::byte const, 18446744073709551615ul>)
++ac3::emdf::put_variable_bits(ac3::BitWriter&, unsigned int, int)
++ac3::emdf::variable_bits_size(unsigned int, int)
++ac3::oba::KeyframePath::create(std::vector<ac3::oba::Keyframe, std::allocator<ac3::oba::Keyframe> >)
++ac3::oba::KeyframePath::evaluate(double) const
++ac3::oba::ObjectPath::evaluate(double) const
++ac3::oba::ObjectScene::create(std::vector<ac3::oba::SceneObject, std::allocator<ac3::oba::SceneObject> >, ac3::oba::Orientation const&)
++ac3::oba::ObjectScene::duration_s() const
++ac3::oba::ObjectScene::evaluate(double) const
++ac3::oba::ObjectScene::evaluate(unsigned long, double) const
++ac3::oba::ObjectScene::evaluate_into(double, std::span<ac3::oba::ObjectPlacement, 18446744073709551615ul>) const
++ac3::oba::OrbitPath::OrbitPath(double, double, double, double, double)
++ac3::oba::OrbitPath::evaluate(double) const
++ac3::oba::SceneCursor::SceneCursor(ac3::oba::ObjectScene)
++ac3::oba::SceneCursor::is_live(unsigned long) const
++ac3::oba::SceneCursor::push(ac3::oba::SceneUpdate const&)
++ac3::oba::SceneCursor::release(unsigned long)
++ac3::oba::SceneCursor::release_all()
++ac3::oba::SceneCursor::sample(double) const
++ac3::oba::SceneCursor::sample_into(double, std::span<ac3::oba::ObjectPlacement, 18446744073709551615ul>) const
++ac3::oba::apply(ac3::oba::SceneOscUpdate const&, ac3::oba::ObjectPlacement const&)
++ac3::oba::bed_label_position(ac3::oba::BedLabel)
++ac3::oba::bed_labels(unsigned short)
++ac3::oba::build_payload(ac3::oba::Program const&, std::span<ac3::oba::DynamicObject const, 18446744073709551615ul>, int)
++ac3::oba::build_payload_updates(ac3::oba::Program const&, std::span<ac3::oba::ObjectUpdate const, 18446744073709551615ul>)
++ac3::oba::describe(ac3::oba::BedLabel)
++ac3::oba::describe_objects(ac3::oba::DecodedProgram const&, unsigned long)
++ac3::oba::evaluate_placements(std::span<ac3::oba::ObjectPath const, 18446744073709551615ul>, double)
++ac3::oba::joc_object_indices(ac3::oba::Program const&)
++ac3::oba::make_orbit_path(double, double, double, double, double)
++ac3::oba::orientation_from_degrees(double, double, double)
++ac3::oba::parse_osc_packet(std::span<std::byte const, 18446744073709551615ul>, ac3::oba::OscParseStats*)
++ac3::oba::parse_osc_packet_into(std::span<std::byte const, 18446744073709551615ul>, std::span<ac3::oba::SceneOscUpdate, 18446744073709551615ul>, ac3::oba::OscParseStats*)
++ac3::oba::parse_payload(std::span<std::byte const, 18446744073709551615ul>)
++ac3::oba::read_scene(std::basic_string_view<char, std::char_traits<char> >)
++ac3::oba::read_scene_json(std::basic_string_view<char, std::char_traits<char> >)
++ac3::oba::rotate(ac3::oba::Position const&, ac3::oba::Orientation const&)
++ac3::oba::scene_from_json(std::basic_string_view<char, std::char_traits<char> >)
++ac3::oba::scene_from_text(std::basic_string_view<char, std::char_traits<char> >, ac3::oba::ObjectPlacement const&)
++ac3::oba::scene_objects_from_keyframe_text(std::basic_string_view<char, std::char_traits<char> >)
++ac3::oba::to_json[abi:cxx11](ac3::oba::ObjectScene const&)
++ac3::oba::to_keyframe_text[abi:cxx11](ac3::oba::ObjectScene const&)
++ac3::oba::to_keyframe_text[abi:cxx11](std::span<ac3::oba::SceneObject const, 18446744073709551615ul>)
++std::__throw_bad_variant_access(unsigned int)::__reasons
+diff --git a/tools/ci/abi-allowlist/libiclforge_render.so.txt b/tools/ci/abi-allowlist/libiclforge_render.so.txt
+new file mode 100644
+index 000000000..0ed4f49e4
+--- /dev/null
++++ b/tools/ci/abi-allowlist/libiclforge_render.so.txt
+@@ -0,0 +1,10 @@
++ac3::spatial::BedRenderer::add_object(ac3::spatial::ObjectState const&)
++ac3::spatial::BedRenderer::render_block(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>, std::span<std::span<float, 18446744073709551615ul> const, 18446744073709551615ul>)
++ac3::spatial::BedRenderer::set_target(unsigned long, ac3::spatial::ObjectState const&)
++ac3::spatial::direction_of(ac3::base::Location, bool, bool)
++ac3::spatial::pan_azimuth(double)
++ac3::spatial::pan_direction(ac3::spatial::Direction, std::span<ac3::spatial::Direction const, 18446744073709551615ul>, std::span<double, 18446744073709551615ul>)
++ac3::spatial::pan_ring(double, std::span<double const, 18446744073709551615ul>, std::span<double, 18446744073709551615ul>)
++ac3::spatial::pan_room(double, double)
++ac3::spatial::pan_targets(std::span<ac3::base::Location const, 18446744073709551615ul>)
++ac3::spatial::position_direction(double, double, double)
+diff --git a/tools/ci/abi-allowlist/libac3signing.so.txt b/tools/ci/abi-allowlist/libiclforge_signing.so.txt
+similarity index 100%
+rename from tools/ci/abi-allowlist/libac3signing.so.txt
+rename to tools/ci/abi-allowlist/libiclforge_signing.so.txt
 diff --git a/tools/ci/classify_changes.py b/tools/ci/classify_changes.py
 index 4607053d9..8451585ac 100644
 --- a/tools/ci/classify_changes.py
@@ -1830,7 +2609,7 @@ index 26b2847c7..6b1eb068f 100644
              "cmake/Compiler.cmake",
              "CMakeLists.txt",
 diff --git a/tools/generators/gen_ac4_qmf_twiddles.py b/tools/generators/gen_ac4_qmf_twiddles.py
-index b3c016e0c..5be52e575 100644
+index ef3d2a492..ec4364faf 100644
 --- a/tools/generators/gen_ac4_qmf_twiddles.py
 +++ b/tools/generators/gen_ac4_qmf_twiddles.py
 @@ -5,9 +5,10 @@ their 64-point transform apply is a multiple of pi / 256: the pre- and post-rota
@@ -1847,6 +2626,121 @@ index b3c016e0c..5be52e575 100644
  
  The values are computed here in 60-digit decimal arithmetic (a Taylor series, with pi
  to 80 digits) and rounded once to the nearest double, so the table does not depend on
+diff --git a/tools/generators/gen_ac4_tables.py b/tools/generators/gen_ac4_tables.py
+index 10638d8f3..886270b95 100644
+--- a/tools/generators/gen_ac4_tables.py
++++ b/tools/generators/gen_ac4_tables.py
+@@ -31,7 +31,8 @@ Reads, from --spec-dir (default spec/ in the repo root):
+   ts_10319002v010301p.txt                Part 2 Annex A.1.1's and A.1.2's
+                                          codebook tables.
+ 
+-Writes src/ac4core/include/iclforge/ac4core/tables/huffman_tables.hpp and .cpp (every Annex A
++Writes each header to src/ac4core/include/iclforge/ac4core/tables/ and each source to
++src/ac4core/src/tables/: huffman_tables.hpp and .cpp (every Annex A
+ codebook, its entries sorted by length and then codeword, as
+ huffman_codebook.hpp's Codebook wants them for reading), huffman_codes.hpp and
+ .cpp (the same codebooks in index order, the codeword and its length for each
+@@ -100,7 +101,9 @@ from fractions import Fraction
+ from pathlib import Path
+ 
+ REPO = Path(__file__).resolve().parent.parent.parent
+-OUT_DIR = REPO / "src" / "ac4core" / "include" / "iclforge" / "ac4core" / "tables"
++# The headers are public and sit in the include tree; the sources sit beside the other sources.
++HEADER_DIR = REPO / "src" / "ac4core" / "include" / "iclforge" / "ac4core" / "tables"
++SOURCE_DIR = REPO / "src" / "ac4core" / "src" / "tables"
+ SPEC_TXT = "ts_10319001v010401p.txt"
+ TABLES_C = Path("ts_10319001_attach") / "ts_103190_tables.c"
+ SPEC2_TXT = "ts_10319002v010301p.txt"
+@@ -988,7 +991,8 @@ def emit_huffman_header(codebooks):
+     column = max(len(f"extern const Codebook {cb.cxx};") for cb in codebooks
+                  if cb.name in comments) + 2
+ 
+-    out = ["#pragma once", "", "#include <array>", "", '#include "huffman_codebook.hpp"', "",
++    out = ["#pragma once", "", "#include <array>", "",
++           '#include "iclforge/ac4core/huffman_codebook.hpp"', "",
+            *HEADER_BANNER_HUFFMAN, "", "namespace ac4::detail::tables {", ""]
+     for clause in OUTPUT_CLAUSES:
+         out.append(clause_heading(clause))
+@@ -1021,7 +1025,7 @@ def emit_huffman_header(codebooks):
+ 
+ def emit_codes_header(codebooks):
+     out = ["#pragma once", "", "#include <array>", "#include <span>", "",
+-           '#include "huffman_codebook.hpp"', "",
++           '#include "iclforge/ac4core/huffman_codebook.hpp"', "",
+            "// Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A, and the A-JCC",
+            "// and A-JOC codebooks of ETSI TS 103 190-2 V1.3.1 Annex A.1, in index order,",
+            "// for writing: the codeword and its length for each index huff_decode()",
+@@ -1050,7 +1054,8 @@ def emit_codes_header(codebooks):
+ 
+ 
+ def emit_codes_source(codebooks):
+-    out = ['#include "huffman_codes.hpp"', "", "namespace ac4::detail::tables {", ""]
++    out = ['#include "iclforge/ac4core/tables/huffman_codes.hpp"', "",
++           "namespace ac4::detail::tables {", ""]
+     for cb in codebooks:
+         digits = (max(cb.lengths) + 3) // 4
+         out.append(f"// {cb.label}, {cb.name}.")
+@@ -1074,7 +1079,7 @@ def emit_codes_source(codebooks):
+ 
+ 
+ def emit_huffman_source(codebooks, cb_dim, unsigned_cb):
+-    out = ['#include "huffman_tables.hpp"', "", "#include <array>", "",
++    out = ['#include "iclforge/ac4core/tables/huffman_tables.hpp"', "", "#include <array>", "",
+            *HEADER_BANNER_HUFFMAN,
+            "//",
+            "// Each codebook's entries are sorted by length and then by codeword, with",
+@@ -1237,8 +1242,8 @@ def emit_rate_offset_arrays(rate_label, lengths, num_sfb, offsets, offset_tables
+ 
+ 
+ def emit_sfb_source(num_sfb, offsets, mappings, offset_tables, hsf):
+-    out = ['#include "sfb_tables.hpp"', "", "#include <array>", "#include <cstddef>",
+-           "#include <cstdint>", "#include <span>", "",
++    out = ['#include "iclforge/ac4core/tables/sfb_tables.hpp"', "", "#include <array>",
++           "#include <cstddef>", "#include <cstdint>", "#include <span>", "",
+            "// GENERATED by tools/generators/gen_ac4_tables.py from ETSI TS 103 190-1 V1.4.1",
+            "// Annex B's text; do not edit by hand.",
+            "", "namespace ac4::detail::tables {", "", "namespace {", "",
+@@ -1381,7 +1386,7 @@ NOISE_HEADER = [
+ 
+ 
+ def emit_noise_source(literals):
+-    return ['#include "noise_tables.hpp"', "",
++    return ['#include "iclforge/ac4core/tables/noise_tables.hpp"', "",
+             "namespace ac4::detail::tables {", "",
+             f"const std::array<float, {NOISE_ENTRIES}> kRandomNoiseTable = {{",
+             *wrap(literals, "   "),
+@@ -1415,7 +1420,7 @@ QMF_HEADER = [
+ 
+ def emit_qmf_source(qwin, aspx_noise):
+     noise = [f"{{{float_literal(re)}, {float_literal(im)}}}" for re, im in aspx_noise]
+-    return ['#include "qmf_tables.hpp"', "",
++    return ['#include "iclforge/ac4core/tables/qmf_tables.hpp"', "",
+             "namespace ac4::detail::tables {", "",
+             f"const std::array<float, {QWIN_ENTRIES}> kQwin = {{",
+             *wrap([float_literal(text) for text in qwin], "   "),
+@@ -1462,7 +1467,8 @@ ISF_HEADER = [
+ 
+ 
+ def emit_isf_source(matrices):
+-    out = ['#include "isf_tables.hpp"', "", "namespace ac4::detail::tables {", "namespace {", ""]
++    out = ['#include "iclforge/ac4core/tables/isf_tables.hpp"', "",
++           "namespace ac4::detail::tables {", "namespace {", ""]
+     for config in ISF_CONFIGS:
+         for layout in ISF_LAYOUTS:
+             rows = matrices[config, layout]
+@@ -1575,9 +1581,10 @@ def main():
+     for name, out in outputs.items():
+         for number, text in enumerate(out, start=1):
+             check(len(text) < 100, f"{name}:{number} is {len(text)} columns: {text!r}")
+-    OUT_DIR.mkdir(parents=True, exist_ok=True)
++    HEADER_DIR.mkdir(parents=True, exist_ok=True)
++    SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+     for name, out in outputs.items():
+-        path = OUT_DIR / name
++        path = (HEADER_DIR if name.endswith(".hpp") else SOURCE_DIR) / name
+         path.write_text("\n".join(out) + "\n", encoding="utf-8", newline="\n")
+         shown = path.relative_to(REPO) if path.is_relative_to(REPO) else path
+         print(f"wrote {shown} ({len(out)} lines)")
 diff --git a/tools/packaging/pack_esp_component.py b/tools/packaging/pack_esp_component.py
 index 570495dd8..e062b3081 100644
 --- a/tools/packaging/pack_esp_component.py
