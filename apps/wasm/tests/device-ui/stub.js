@@ -33,7 +33,7 @@ const POLICY =
 // control.cpp's reply texts, character for character.
 const REPLIES = {
     api: [
-        'ac3forge player',
+        'iclforge player',
         'GET  /              a web page that shows and drives the player',
         'GET  /api           this list',
         'GET  /status        what is playing, as JSON',

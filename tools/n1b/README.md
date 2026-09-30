@@ -248,6 +248,9 @@ under is `iainchesworthlabs.iclforge`: the submission of the old one (winget-pkg
 - winget: `bump_manifests.py` writes a later release under `manifests/i/iainchesworthlabs/iclforge/`, the four
   released versions stay under `.../ac3forge/`, and `check_packaging_versions.sh` reads both directories with the
   identity each one's name gives.
+- The stand-in of the device page's tests repeats the firmware's replies "character for character"
+  (`apps/wasm/tests/device-ui/stub.js`, read against `esp-idf/iclforge/src/control.cpp` by `contract.spec.js`): it is
+  in a program's tree, where the bare word stays, and the heading of `GET /api` is a string both ends read.
 - The three table generators write where their headers are; `gen_joc_tables.py` needs TS 103 420's text and was not
   run. The PyPI project's description says "(formerly ac3forge)". The GUI test that reads the About dialog's
   version line expects the library's, which begins `iclforge` now.
