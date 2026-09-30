@@ -1655,6 +1655,26 @@ The sections below contain the complete change list and fixes.
   transform, A-SPX, A-CPL, the converter and the decoder, and `src/ac4core`'s kernels take `-O2`
   under `AC3FORGE_MINIMAL_HOT_O2`.
   [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables.
+- **The `float` AC-4 decoder gives one PCM on every platform, and its frame-rate converter runs in
+  `float` (phase D14a4).** Companding's gain (`std::pow` at `float`), its `exp2(1 / alpha)`, A-SPX's
+  `exp2` of a gain and the `hypotf` of Pseudocode 87's prediction limit were the calls whose last bit
+  differed between C libraries, and the five plays with companding differed between the P4, the
+  Cortex-M3 leg and the host. At `float` they are `ac3::internal::scalar_exp2` and `scalar_log2` (as
+  `hf_generator.cpp`'s gains already were) and a comparison of the squared magnitude; at `double`
+  they are libm's calls as before. The converter's table is designed in `double` and, in the
+  decoder's `float` build, rounded to `float` once, and an output is a sum of `float` products over
+  four lanes in an order that `dsp/resampler_vector.hpp` fixes. The board's PCM now equals the
+  host's (MSVC, GCC 16, Clang 22), the Cortex-M3 leg's and the probe's pinned hashes on D14b's
+  twenty plays and six core plays, under either allocation policy; the converter takes 7.3 ms a
+  frame on the P4 at 24 and 25 fps from 205 and 208 (the frames are 0.92 and 0.82 of real time, from
+  5.6 and 5.9), 22.4 ms at 1001/960 and 23.976 fps from 231 (1.25), and 98.5 ms in the 29.97 fps play
+  where the default allocation policy's slow stage falls on it (17.5 under the other policy);
+  the first frame at 1001/960 still takes 5.9 s, the table being designed in `double`. The `double`
+  output is byte-identical to before (360 decodes and 6 encodes compared) and the scorers hold their
+  pins with the `float` CLI. The Cortex-M3 probe gains a sixth AC-4 fixture with companding, whose
+  PCM is identical on that leg and the host and pinned, and `tests/golden/ac4dec/scalar-agreement.json`
+  is pinned again for the three IMS streams, which sit 1.4 to 3.3 dB lower above A-SPX's crossover
+  now that their converter rounds to `float`.
 
 **Browser (WASM)**
 

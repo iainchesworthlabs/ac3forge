@@ -236,7 +236,8 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, DecodingMode de
     const ResamplingRatio ratio = resampling_ratio(ctx.frame_rate_index);
     converter_filter_.reset();
     if (ratio.up != ratio.down) {
-        converter_filter_ = std::make_shared<const dsp::ResamplerFilter>(ratio.up, ratio.down);
+        converter_filter_ =
+            std::make_shared<const dsp::BasicResamplerFilter<Real>>(ratio.up, ratio.down);
     }
     channels_.clear();
     for (std::size_t c = 0; c < speakers_.size(); ++c) {

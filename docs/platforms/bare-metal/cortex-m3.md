@@ -19,7 +19,7 @@ target and the first with hardware floating point.
 | Atmos bed and objects | Correct. Objects reconstruct here, and are placed onto 7.1.4 by their positions (`eac3_atmos_render`, through the block form's object views); the flat newlib heap makes it easier than on the [ESP32-S3](esp32-s3.md#objects) |
 | Fixed-point decode | `-DAC3FORGE_DECODE_SCALAR=fixed` builds every decode row above in Q7.24 integers under a per-block exponent, for a part with no FPU at all - the plan is [arithmetic-tiers.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md). CI runs the probe twice on this leg, and the fixed build's PCM is identical to the x86 host's and to an ESP32-C3's under `qemu-riscv32` - three architectures, one pinned set of hashes (`tests/golden/fixed-probe-pcm-hashes.json`). It costs 0.33x the instructions the default build spends on the same frame: `eac3.instructions_per_frame=4241000` against 12,942,000, integer arithmetic where that one's is software floating point |
 | Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 226,780-byte image, 158,911 peak, 9.1 M to 48.2 M instructions a frame under `--encoder --icount` - see [Building](../../building.md#what-the-encode-direction-costs) |
-| AC-4 decode | A third probe, `run_baremetal_probe.sh --ac4`, for the AC-4 decoder in `float` (`ac4::decoder` with its inspector and core, static, without exceptions; the encoder is not built): five committed streams, 2.0 and 5.1 with and without A-CPL and 5.1.4, each channel's level exact against `apps/baremetal/ac4_fixture.hpp`, and the PCM bit-identical to the x86-64 host's (`tests/golden/ac4-probe-pcm-hashes.json`). 486,192-byte image, 432 KB to 1.93 MB peak heap by fixture, 52 to 193 allocations a frame, 18.6 to 19.6 KB of stack, 54.5 M to 205.8 M instructions a frame under `--ac4 --icount` - see [the AC-4 rows](#the-ac-4-probe) |
+| AC-4 decode | A third probe, `run_baremetal_probe.sh --ac4`, for the AC-4 decoder in `float` (`ac4::decoder` with its inspector and core, static, without exceptions; the encoder is not built): six committed streams, 2.0 and 5.1 with and without A-CPL, 5.1.4 and 2.0 with companding, each channel's level exact against `apps/baremetal/ac4_fixture.hpp`, and the PCM bit-identical to the x86-64 host's (`tests/golden/ac4-probe-pcm-hashes.json`). 486,192-byte image, 432 KB to 1.93 MB peak heap by fixture, 52 to 193 allocations a frame, 18.6 to 19.6 KB of stack, 54.5 M to 205.8 M instructions a frame under `--ac4 --icount` - see [the AC-4 rows](#the-ac-4-probe) |
 | Image size | 355,709 bytes — 293,092 `.text`, 400 `.data`, 62,217 `.bss` |
 | Peak heap | 195,025 bytes, the height-object fixture placed onto 7.1.4 (`eac3_atmos_render`); 194,655 with Atmos objects reconstructed, 173,794 for the 7.1.4 fixture folded to stereo, 167,386 as coded |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
@@ -85,7 +85,7 @@ list if any component needing the full library is still switched on.
 every channel's level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines the
 runner gates on: the levels, image size, peak heap, retained bytes and allocations per frame.
 `encode_probe.cpp` is its counterpart, checking a byte count and FNV-1a hash against
-`encode_fixture.hpp`, and `ac4_probe.cpp` the AC-4 decoder's, decoding five streams through
+`encode_fixture.hpp`, and `ac4_probe.cpp` the AC-4 decoder's, decoding six streams through
 `Decoder::decode_by_block` and reading the stack the decode used by painting a window of it first.
 
 It is not a unit test — the profile requires `AC3FORGE_BUILD_TESTS=OFF`, since nothing under
@@ -101,27 +101,32 @@ moving together is invisible to it. Regenerate with
 
 ### The AC-4 probe
 
-`ac4_probe.cpp` decodes five committed streams (`apps/baremetal/ac4_fixture.hpp`): DEE's 2.0 with
-A-SPX, a constructed 2.0 in A-CPL, DEE's 5.1, a constructed 5.1 in A-CPL and DEE's 5.1.4 tones,
-two to four frames each, all at frame rate index 13 (2,048 samples at 48 kHz). The rows are the
-`build-footprint` job's on 2026-09-29, in `float`, with GCC 14.2.1 under QEMU 10.2.1, `-Os`, soft
-float, and the generic SIMD seam, so the QMF banks' vector kernels run through its portable types:
+`ac4_probe.cpp` decodes six committed streams (`apps/baremetal/ac4_fixture.hpp`): DEE's 2.0 with
+A-SPX, a constructed 2.0 in A-CPL, DEE's 5.1, a constructed 5.1 in A-CPL, DEE's 5.1.4 tones and
+DEE's 2.0 at 48 kbit/s, whose A-SPX runs companding (added by D14a4, the one fixture that reaches
+`float` `pow` and `exp2`), two to four frames each, all at frame rate index 13 (2,048 samples at 48
+kHz). The rows are the `build-footprint` job's on 2026-09-29, in `float`, with GCC 14.2.1 under
+QEMU 10.2.1, `-Os`, soft float, and the generic SIMD seam, so the QMF banks' vector kernels run
+through its portable types; the instruction counts and the stack are measured again with D14a4
+(the A-SPX rows lose 0.1 to 0.4%, from the calls that no longer reach libm), and the last row is
+new:
 
 | Fixture | Frames | Instructions a frame | Peak heap | Allocations a frame, steady | Stack |
 |---|---:|---:|---:|---:|---:|
 | `ac4_20_music`, 2.0 | 3 | 54,533,000 | 432,073 | 54 | 18,552 |
-| `ac4_20_acpl`, 2.0 A-CPL | 4 | 57,884,000 | 626,544 | 52 | 19,448 |
-| `ac4_51_music`, 5.1 | 3 | 117,583,000 | 997,730 | 155 | 19,448 |
-| `ac4_51_acpl`, 5.1 A-CPL | 4 | 124,491,000 | 1,205,728 | 92 | 19,448 |
-| `ac4_514_tones`, 5.1.4 | 2 | 205,783,000 | 1,932,456 | 193 | 19,644 |
+| `ac4_20_acpl`, 2.0 A-CPL | 4 | 57,785,000 | 626,544 | 52 | 19,440 |
+| `ac4_51_music`, 5.1 | 3 | 117,086,000 | 997,730 | 155 | 19,440 |
+| `ac4_51_acpl`, 5.1 A-CPL | 4 | 124,186,000 | 1,205,728 | 92 | 19,440 |
+| `ac4_514_tones`, 5.1.4 | 2 | 205,500,000 | 1,932,456 | 193 | 19,644 |
+| `ac4_20_companding`, 2.0 with companding | 3 | 58,624,000 | 466,163 | 75 | 19,440 |
 
 The runner holds each column to a ceiling about a tenth above the figure (`ICOUNT_CEILING_AC4`,
 `PEAK_CEILING_AC4` and `CHURN_CEILING_AC4` in `tools/checks/run_baremetal_probe.sh`), and the image
-(486,192 bytes, ceiling 535,000) and the stack (ceiling 21,500) have ceilings of their own. Nothing
+(485,056 bytes, ceiling 535,000) and the stack (ceiling 21,500) have ceilings of their own. Nothing
 is retained after the decoders are destroyed. The stack is read by painting a window of it below
 the probe's frame before each fixture and finding how far the decode reached. The PCM of each
 fixture hashes to the value `tests/golden/ac4-probe-pcm-hashes.json` pins, on this leg and on the
-x86-64 host, and an ESP32-P4 board's hash equals the same five
+x86-64 host, and an ESP32-P4 board's hash equals the same six
 ([ESP32-P4](esp32-p4.md#float-output-on-the-host-the-cortex-m3-leg-and-the-board)). Instructions
 are not cycles: the [P4 page](esp32-p4.md#what-it-decodes-in-real-time) has what the decoder takes on
 a part with an FPU, and no part has run AC-4 in the fixed-point tier.

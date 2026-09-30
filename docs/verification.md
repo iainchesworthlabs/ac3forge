@@ -1470,9 +1470,10 @@ and no fixed-point tier exists for AC-4 yet. What is checked:
   re-pinned.
 - **The bare-metal probe** (`tools/checks/run_baremetal_probe.sh --ac4`, in the ESP lane's
   `build-footprint` job, which the run after a merge lights for a change to the lane's trees
-  ([CI lane partitions](ci-lanes.md)) and the nightly run lights always): five committed streams
+  ([CI lane partitions](ci-lanes.md)) and the nightly run lights always): six committed streams
   (2.0 from DEE with A-SPX, 2.0 constructed in A-CPL, 5.1 from DEE, 5.1
-  constructed in A-CPL and DEE's 5.1.4 tones; `apps/baremetal/ac4_fixture.hpp`, made by
+  constructed in A-CPL, DEE's 5.1.4 tones and DEE's 2.0 at 48 kbit/s with companding;
+  `apps/baremetal/ac4_fixture.hpp`, made by
   `tools/generators/gen_baremetal_ac4_fixture.py`) decode in float on the Cortex-M3 leg under QEMU
   with each channel's level checked, and the image, the peak heap, the allocations a frame, the
   stack and the bytes retained after teardown are held to ceilings about a tenth over the measured
@@ -1486,11 +1487,13 @@ and no fixed-point tier exists for AC-4 yet. What is checked:
   `hearth_sink` with AC-4 in it and does not run it, and the checks are on a board. Twenty plays
   of DEE's streams (2.0, 5.1 and 5.1.4 in full decoding, the three 5.1.4 modes in core decoding and
   the converter's four frame rates) measured time, heap, stack and a PCM hash. The board's float
-  output equals the probe's pinned hashes on the five fixtures, and the host's on 15 of the 20
-  plays and all six core plays; it differs on the five plays with companding, where `std::pow` and
-  `std::exp2` at `float` give a different last bit in each C library. [ESP32-P4](platforms/bare-metal/esp32-p4.md#ac-4)
-  has the times: the P4 decodes 2.0 in SIMPLE and in A-SPX mode in real time and nothing wider.
-  AC-4 on the S3 and on the C6 is not built.
+  output equals the probe's pinned hashes on the six fixtures (the sixth, with companding, since
+  D14a4), and the host's (MSVC, GCC 16 and Clang 22) and the Cortex-M3 leg's on the 20 plays, the
+  six core plays and their cuts. D14b found it different on the five plays with companding, where
+  `std::pow` and `std::exp2` at `float` gave a different last bit in each C library, and D14a4 took
+  those calls out of libm. [ESP32-P4](platforms/bare-metal/esp32-p4.md#ac-4) has the times: the P4
+  decodes 2.0 in SIMPLE and in A-SPX mode, and through the frame-rate converter at 24 and 25 fps, in
+  real time and nothing wider. AC-4 on the S3 and on the C6 is not built.
 
 ### The encoder
 

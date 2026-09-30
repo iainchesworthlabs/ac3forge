@@ -278,7 +278,7 @@
         "bare-metal": [
           "source",
           "emulated",
-          "float probe; five committed streams"
+          "float probe; six committed streams"
         ]
       }
     },

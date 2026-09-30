@@ -23,6 +23,11 @@ The streams are the table STREAMS below. What each is for:
   - ac4_514_tones: DEE's widest layout in this set, ten channels (5.1.4), in
     full decoding: the row that measures what the widest programme needs of a
     part, on the way to the D14 rows.
+  - ac4_20_companding: a stereo stream DEE wrote at 48 kbit/s, whose A-SPX
+    runs the companding tool (b_compand_on in every frame): the one fixture
+    that reaches float pow and exp2 in the decoder, so that its pinned hash
+    is what holds decision 26 for the streams with companding (planning/ac4.md,
+    D14a4).
 
 The levels are the WAV that `ac3cli decode` writes, read back per channel and put
 in the order the decoder hands its channels over in (the speakers of
@@ -85,6 +90,9 @@ STREAMS = (
     Stream("ac4_514_tones", "Ac4514Tones",
            "fuzz/seeds/fuzz_ac4_parse/ac4-514-tones-256-2frames.ac4",
            "AC-4 5.1.4 from DEE, tones, 256 kbit/s", "514"),
+    Stream("ac4_20_companding", "Ac420Companding",
+           "fuzz/seeds/fuzz_ac4_parse/ac4-20-music-48-3frames.ac4",
+           "AC-4 2.0 from DEE, A-SPX with companding, 48 kbit/s", "stereo"),
 )
 
 SAMPLES_PER_FRAME = 2048
