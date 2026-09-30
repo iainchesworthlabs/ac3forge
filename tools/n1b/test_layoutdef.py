@@ -233,6 +233,119 @@ class TestsAndPackages(unittest.TestCase):
         )
         self.assertIsNone(layoutdef.package_new("apps/cli/main.cpp"))
 
+    def test_a_nested_directory_and_a_file_of_the_component_take_the_new_name(self) -> None:
+        for old, new in (
+            (
+                "esp-idf/ac3forge/conversion/bits/ac3forge/slot_conversion.hpp",
+                "esp-idf/iclforge/conversion/bits/iclforge/slot_conversion.hpp",
+            ),
+            (
+                "esp-idf/ac3forge/lwip_hooks/ac3forge_lwip_hooks.h",
+                "esp-idf/iclforge/lwip_hooks/iclforge_lwip_hooks.h",
+            ),
+            (
+                "esp-idf/ac3forge/ui/ac3forge_ui.html",
+                "esp-idf/iclforge/ui/iclforge_ui.html",
+            ),
+            (
+                "esphome/components/ac3forge/ac3forge.cpp",
+                "esphome/components/iclforge/iclforge.cpp",
+            ),
+            ("esphome/tests/ac3forge-test.yaml", "esphome/tests/iclforge-test.yaml"),
+        ):
+            with self.subTest(old):
+                self.assertEqual(layoutdef.package_new(old), new)
+
+    def test_packaging_follows_but_the_released_winget_manifests_stay(self) -> None:
+        self.assertEqual(
+            layoutdef.package_new("packaging/homebrew/Formula/ac3forge.rb"),
+            "packaging/homebrew/Formula/iclforge.rb",
+        )
+        self.assertEqual(
+            layoutdef.package_new("packaging/homebrew/Casks/ac3gui.rb"),
+            "packaging/homebrew/Casks/iclforge.rb",
+        )
+        self.assertEqual(
+            layoutdef.package_new("packaging/vcpkg-port/ac3forge/portfile.cmake"),
+            "packaging/vcpkg-port/iclforge/portfile.cmake",
+        )
+        self.assertIsNone(
+            layoutdef.package_new(
+                "packaging/winget/manifests/i/iainchesworthlabs/ac3forge/0.10.0-beta.1/"
+                "iainchesworthlabs.ac3forge.yaml"
+            )
+        )
+        self.assertIsNone(layoutdef.package_new("packaging/conan/conandata.yml"))
+
+    def test_the_files_named_for_the_wire_extension_are_renamed_where_they_sit(self) -> None:
+        for old, new in (
+            (
+                "src/sendspin/include/iclforge/sendspin/ac3forge_player.hpp",
+                "src/sendspin/include/iclforge/sendspin/iclforge_player.hpp",
+            ),
+            ("src/sendspin/src/ac3forge_player.cpp", "src/sendspin/src/iclforge_player.cpp"),
+            (
+                "tests/sendspin/test_ac3forge_player.cpp",
+                "tests/sendspin/test_iclforge_player.cpp",
+            ),
+            (
+                "fuzz/seeds/fuzz_sendspin_messages/client-hello-ac3forge.json",
+                "fuzz/seeds/fuzz_sendspin_messages/client-hello-iclforge.json",
+            ),
+            (
+                "fuzz/regressions/fuzz_sendspin_messages/ac3forge-settings-number-past-the-writer",
+                "fuzz/regressions/fuzz_sendspin_messages/iclforge-settings-number-past-the-writer",
+            ),
+            (
+                "docs/assets/wasm-encode-demo/ac3forge_encode.wasm",
+                "docs/assets/wasm-encode-demo/iclforge_encode.wasm",
+            ),
+            (
+                "docs/assets/wasm-decode-demo/ac3forge_decode.js",
+                "docs/assets/wasm-decode-demo/iclforge_decode.js",
+            ),
+        ):
+            with self.subTest(old):
+                self.assertEqual(layoutdef.package_new(old), new)
+
+    def test_what_n1a_names_does_not_move(self) -> None:
+        for path in (
+            "apps/android/app/src/main/java/com/ac3forge/shield/MainActivity.kt",
+            "apps/windows/driver/Ac3ForgeNullSink.sln",
+            "apps/gui/icons/ac3forge-256.png",
+            "apps/crucible/ui/tests/fixtures/xdg/applications/org.ac3forge.CrucibleFixture.desktop",
+            "assets/icon/ac3forge-icon.svg",
+            "docs/assets/wasm-decode-demo/demo.js",
+        ):
+            with self.subTest(path):
+                self.assertIsNone(layoutdef.package_new(path))
+
+    def test_a_second_run_finds_nothing_to_move(self) -> None:
+        for path in (
+            "esp-idf/iclforge/include/iclforge/player.hpp",
+            "rust/iclforge-sys/build.rs",
+            "src/sendspin/src/iclforge_player.cpp",
+            "packaging/homebrew/Casks/iclforge.rb",
+        ):
+            with self.subTest(path):
+                self.assertIsNone(layoutdef.package_new(path))
+
+    def test_the_conversion_headers_of_the_component_share_one_spelling(self) -> None:
+        for kind in ("bits", "float"):
+            with self.subTest(kind):
+                self.assertEqual(
+                    layoutdef.spelling_of(
+                        f"esp-idf/ac3forge/conversion/{kind}/ac3forge/slot_conversion.hpp"
+                    ),
+                    "ac3forge/slot_conversion.hpp",
+                )
+                self.assertEqual(
+                    layoutdef.spelling_of(
+                        f"esp-idf/iclforge/conversion/{kind}/iclforge/slot_conversion.hpp"
+                    ),
+                    "iclforge/slot_conversion.hpp",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

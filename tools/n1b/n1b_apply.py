@@ -203,7 +203,8 @@ def compute_moves(
             new = layoutdef.l2_new(f, True) if "src" in scope else None
         elif f.startswith("tests/"):
             new = layoutdef.mirrored_tests_new(f, per_file_lib) if "tests" in scope else None
-        elif "packages" in scope:
+        # the packages and the files named for the wire extension: some sit under src/ and tests/
+        if new is None and "packages" in scope:
             new = layoutdef.package_new(f)
         if new and new != f:
             moves[f] = new
