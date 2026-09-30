@@ -13,11 +13,17 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-
 namespace ac3::iec61937 {
 
 namespace {
+
+// E-AC-3's audio blocks per syncframe by numblkscod (A/52 Table E2.4), which the burst
+// length follows from. A copy of eac3::blocks_per_syncframe: this library includes
+// none of the codec's tables.
+[[nodiscard]] constexpr int blocks_per_syncframe(int numblkscod) {
+    constexpr std::array<int, 4> counts = {1, 2, 3, 6};
+    return counts[static_cast<std::size_t>(numblkscod & 0x3)];
+}
 
 void put_word_le(std::vector<std::byte>& out, std::uint16_t word) {
     out.push_back(static_cast<std::byte>(word & 0xFF));
@@ -100,9 +106,8 @@ std::expected<std::optional<std::vector<std::byte>>, WrapError> Eac3BurstPacker:
     // fscod == 3 selects the reduced-sample-rate path (§E2.3.1.3), which does
     // not transmit numblkscod at all — it is implicitly always the six-block
     // code. Mirrors spdif_header_eac3's own bsid > 10 && fscod != 3 guard.
-    const int blocks = (bsid > 10 && fscod != 3)
-                           ? eac3::blocks_per_syncframe(static_cast<int>(numblkscod))
-                           : 6;
+    const int blocks =
+        (bsid > 10 && fscod != 3) ? blocks_per_syncframe(static_cast<int>(numblkscod)) : 6;
 
     impl_->pending_.insert(impl_->pending_.end(), access_unit.begin(), access_unit.end());
     impl_->blocks_pending_ += blocks;

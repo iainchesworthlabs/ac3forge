@@ -14,8 +14,8 @@
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
+#include "ac3/decoder/serving.hpp"
 #include "ac3/render/layout.hpp"
-#include "ac3/render/serving.hpp"
 
 // The player: bytes in, sound out, on two cores.
 //
@@ -106,7 +106,7 @@ struct PlayerConfig {
     // fold, which is the complete mix for a stereo or 5.1 room). Costs this
     // part about 10 ms of every 32 ms frame and, under the QMF domain, about
     // 233 KB of heap - PSRAM territory. The policy is the library's
-    // (ac3/render/serving.hpp): kAuto reconstructs exactly when the layout has
+    // (ac3/decoder/serving.hpp): kAuto reconstructs exactly when the layout has
     // height speakers, kAlways for any rendered layout, kNever plays the bed,
     // and a layout that folds never reconstructs.
     using Objects = ac3::render::ObjectsPolicy;

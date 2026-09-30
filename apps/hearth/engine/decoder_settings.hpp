@@ -6,8 +6,8 @@
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
+#include "ac3/decoder/serving.hpp"
 #include "ac3/render/layout.hpp"
-#include "ac3/render/serving.hpp"
 #include "ac4dec/decoder.hpp"
 
 // The decoder configuration model (planning/hearth-reference-player.md,

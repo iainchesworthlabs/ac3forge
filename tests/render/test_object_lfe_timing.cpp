@@ -33,13 +33,13 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
+#include "ac3/decoder/serving.hpp"
 #include "ac3/latency.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3/render/render.hpp"
-#include "ac3/render/serving.hpp"
 
 namespace {
 

@@ -1,5 +1,0 @@
-# C7: serving.hpp leaves render/ for decoder/: it adapts the renderer to DecoderConfig, so it belongs to the codec
-# planning/layout.md, stage S1. The change that makes this cut deletes this file.
-
-src/forge/include/ac3/render/serving.hpp ac3/decoder/decoder.hpp
-src/forge/include/ac3/render/serving.hpp ac3/decoder/output.hpp

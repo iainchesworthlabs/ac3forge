@@ -22,11 +22,11 @@
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/serving.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/stream_accumulator.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/render/render.hpp"
-#include "ac3/render/serving.hpp"
 
 #include "ac3forge/unit_hold.hpp"
 
