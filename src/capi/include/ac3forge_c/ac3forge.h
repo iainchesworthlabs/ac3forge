@@ -1712,7 +1712,9 @@ AC3FORGEC_EXPORT const float* ac3forge_ac4_decoded_frame_object_samples(
  *     sent as one object_width where they are equal;
  *   - screen_factor: F.4, 0 or 1/8 to 1 in steps of 1/8;
  *   - depth_exponent: the exponent object_depth_factor gives Y (Table 107),
- *     exactly 0.25, 0.5, 1 or 2;
+ *     exactly 0.25, 0.5, 1 or 2, and where it is not 1 the object needs a
+ *     screen_factor of 1/8 or more (the two are one group of fields, whose
+ *     factor has no code for 0);
  *   - distance, where has_distance: F.4's object_distance_factor (Table 108),
  *     1 or more, or +infinity for b_obj_at_infinity;
  *   - divergence: F.9, 0 to 1;

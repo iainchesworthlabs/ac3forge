@@ -13,13 +13,14 @@
 // stream in syntax this version refuses by name is counted, not failed.
 //
 // Under the sanitizers (tests/sanitized.hpp) the engine plays one committed
-// stream of each kind, and of a long stream its first 5 frames. Each stream is
-// decoded twice, and DEE's 120-frame legs took most of the ASan leg's time for
-// this test. A kind is a frame rate, the channels and substream roles of the
-// presentation decode() plays, how the stream codes its objects, and the codec
-// modes of its first frame: every layout, codec mode, object coding and frame
-// rate the streams show is still played. A normal build plays every stream to
-// its end.
+// stream of each kind, and of a long stream its first 5 frames
+// (tests/ac4_stream_kinds.hpp, which tests/hearth/test_ac4_engine.cpp shares).
+// Each stream is decoded twice, and DEE's 120-frame legs took most of the ASan
+// leg's time for this test. A kind is a frame rate, the channels and substream
+// roles of the presentation decode() plays, how the stream codes its objects,
+// and the codec modes of its first frame: every layout, codec mode, object
+// coding and frame rate the streams show is still played. A normal build plays
+// every stream to its end.
 
 #include <algorithm>
 #include <array>
@@ -45,6 +46,7 @@
 
 #include "ac4/ac4.hpp"
 #include "ac4/syntax.hpp"
+#include "ac4_stream_kinds.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4dec_bits.hpp"
 #include "ac4enc/encoder.hpp"
@@ -54,6 +56,8 @@ namespace {
 
 namespace fs = std::filesystem;
 using ac3::test::kSanitized;
+using ac3::test::kSanitizedFrames;
+using ac3::test::streams_to_play;
 using ac4dec_test::BitWriter;
 
 std::vector<std::byte> read_file(const fs::path& path) {
@@ -854,85 +858,6 @@ Played play(const fs::path& path, std::size_t limit = kAllFrames) {
         REQUIRE(engine.out()[slot] == expected[slot]);
     }
     return {};
-}
-
-// The frames of each stream the sanitizers play (see the top of the file). The
-// constructed streams have 4, and the hand-built object streams send their second
-// I-frame as their fifth.
-constexpr std::size_t kSanitizedFrames = 5;
-
-// What a stream shows an engine that another of its kind does not: the frame
-// rate, the channels and substream roles of the presentation decode() plays, how
-// the objects of its groups are coded, and the codec modes its first frame
-// codes. Only the traits matter, as a key.
-std::set<std::string> kind_of(std::span<const std::byte> first_frame) {
-    std::set<std::string> kind;
-    ac4::DecoderConfig config;
-    config.syntax = [&kind](const ac4::SyntaxRecord& record) {
-        if (record.name.find("codec_mode") != std::string_view::npos) {
-            kind.insert(std::string{record.name} + "=" + std::to_string(record.value));
-        }
-    };
-    ac4::Decoder decoder(config);
-    REQUIRE(decoder.parse(first_frame).has_value());
-    const auto raw = ac4::parse_raw_frame(first_frame);
-    REQUIRE(raw.has_value());
-    kind.insert("bitstream_version " + std::to_string(raw->toc.bitstream_version));
-    kind.insert("frame_rate_index " + std::to_string(raw->toc.frame_rate_index));
-
-    const std::span<const ac4::PresentationInfo> presentations = decoder.presentations();
-    const std::optional<std::size_t> selected = decoder.metadata().presentation;
-    if (selected && *selected < presentations.size()) {
-        for (const ac4::Speaker speaker : presentations[*selected].speakers) {
-            kind.insert("speaker " + std::string{ac4::describe(speaker)});
-        }
-        for (const ac4::PresentationMember& member : presentations[*selected].members) {
-            kind.insert("role " + std::string{ac4::describe(member.role)});
-        }
-    }
-    for (const ac4::SubstreamGroupInfo& group : raw->toc.substream_groups) {
-        for (const ac4::GroupSubstream& substream : group.substreams) {
-            if (substream.ajoc) {
-                kind.insert("A-JOC objects");
-            } else if (substream.obj) {
-                kind.insert(substream.obj->b_dynamic_objects ? "direct dynamic objects"
-                                                             : "direct static objects");
-            }
-        }
-    }
-    return kind;
-}
-
-// The streams the engine plays: all of them, or under the sanitizers one of each
-// kind, the one with the fewest frames to play and, among equals, the first in
-// path order.
-std::vector<fs::path> streams_to_play(const std::vector<fs::path>& streams) {
-    if (!kSanitized) {
-        return streams;
-    }
-    struct Choice {
-        fs::path path;
-        std::size_t frames = 0;
-    };
-    std::map<std::set<std::string>, Choice> kinds;
-    for (const fs::path& path : streams) {
-        const auto frames = frames_of(path);
-        REQUIRE_FALSE(frames.empty());
-        const std::size_t cost = std::min(frames.size(), kSanitizedFrames);
-        const auto [it, added] = kinds.try_emplace(kind_of(frames.front()), Choice{path, cost});
-        if (!added && cost < it->second.frames) {
-            it->second = Choice{path, cost};
-        }
-    }
-    // The streams show 45 kinds. A key that stopped telling them apart would
-    // leave a few streams to play and no failure to say so.
-    REQUIRE(kinds.size() >= 40);
-    std::vector<fs::path> chosen;
-    for (const auto& kind : kinds) {
-        chosen.push_back(kind.second.path);
-    }
-    std::ranges::sort(chosen);
-    return chosen;
 }
 
 }  // namespace

@@ -459,10 +459,13 @@ first sample as an `ac3forge_ac4_object_properties_t`, the struct the decoder al
 position, gain, priority, size (a width in each axis), zone mask, screen factor, depth exponent,
 distance, divergence and headphone render mode, with the range and step of each in the header.
 `ac3forge_ac4_object_properties_init()` fills it with the defaults; a zero-initialised struct has
-a depth exponent no code holds and the encoder refuses it. The objects are coded as A-JOC (the
-default: a computed downmix of `downmix_signals` signals, or a static 5.0 or 5.1 bed) or as
-direct-coded object substreams (`coding`), and the object substream is experimental, so
-`experimental.objects` has to be set beside the configuration:
+a depth exponent no code holds and the encoder refuses it. So does an exponent other than 1 with a
+screen factor of 0: the two are sent as one group of fields, whose factor has no code for 0, so
+such an exponent needs a factor of 1/8 or more (`ac3forge_ac4_encoder_create()` answers
+`AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG` and an update `AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT`).
+The objects are coded as A-JOC (the default: a computed downmix of `downmix_signals` signals, or a
+static 5.0 or 5.1 bed) or as direct-coded object substreams (`coding`), and the object substream is
+experimental, so `experimental.objects` has to be set beside the configuration:
 
 ```c
 ac3forge_ac4_object_config_t objects[3];

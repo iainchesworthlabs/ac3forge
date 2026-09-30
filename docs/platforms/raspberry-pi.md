@@ -1,6 +1,6 @@
 # Raspberry Pi
 
-ac3forge runs on Raspberry Pi as a plain **aarch64 Debian/Ubuntu Linux** target, not through any
+ac3forge runs on Raspberry Pi as a plain **aarch64 Debian/Ubuntu Linux** target, with no
 Pi-specific code. This page covers what's specific to that arm64 target and its HDMI output; for the
 general Linux picture (toolchains, the ALSA backend, the GUI, packaging), see
 [Linux](linux.md) and [Building from source](../building.md) - everything there applies here
@@ -11,8 +11,9 @@ unchanged, just with `-arm64` presets.
 | | |
 |---|---|
 | What runs here | Everything Linux arm64 runs. There is no Pi-specific code |
-| Pi 4 Model B | Validated on the board: 440/440 tests on both compilers, including the hard real-time encode gate |
+| Pi 4 Model B | Validated on the board, as recorded on 2026-08-15: 440 of 440 tests on both compilers, including the hard real-time encode gate. The suite has grown since (the arm64 CI leg ran 3,175 tests on 2026-09-29) and this page records no later full run on the board |
 | Bitstream to a real receiver | Confirmed over HDMI to a powered Atmos-capable AVR, over ALSA and over PipeWire |
+| AC-4 | The AC-4 decoder and encoder build in the aarch64 legs and no Pi has run them. ALSA can carry AC-4 bursts (see [Linux](linux.md#ac-4)); no receiver is known to accept them |
 | Pi 5 | Expected to behave identically; **not validated** on real hardware |
 | Pi 3 | Not a supported target — the weaker CPU puts the real-time encode gate at risk |
 | OS | 64-bit required (`aarch64`); there is no 32-bit ARM triplet |
@@ -41,7 +42,7 @@ triplet Apple Silicon already uses.
 |---|---|
 | Raspberry Pi 4 Model B | Supported. Validated hardware - see [Verified configuration](#verified-configuration) below. |
 | Raspberry Pi 5 | Expected to work identically (same BCM27xx SoC family, same `vc4`/`v3d` HDMI/GPU driver stack as the Pi 4) but **not yet validated on real Pi 5 hardware** - don't take this as tested until this page says otherwise. |
-| Raspberry Pi 3 | **Not a supported target.** It would resolve through the exact same untested arm64 build path, but its Cortex-A53 CPU is materially weaker than the Pi 4/5's Cortex-A72/A76, and `tests/performance/test_performance.cpp`'s `ac3perf` suite gates on a hard real-time encode budget - there's a real risk some layouts simply don't make it in time on that CPU class. Building it is possible; it just isn't validated or promised to keep up in real time. |
+| Raspberry Pi 3 | **Not a supported target.** It would use the same arm64 build path as the Pi 4, but its Cortex-A53 CPU is materially weaker than the Pi 4/5's Cortex-A72/A76, and `tests/performance/test_performance.cpp`'s `ac3perf` suite gates on a hard real-time encode budget, so some layouts may not make it in time on that CPU class. Building it is possible; it is not validated or promised to keep up in real time. |
 
 A 64-bit OS is required (`aarch64`, not `armhf`/`armv7`) - the project defines no 32-bit ARM triplet,
 and none is planned.
@@ -50,11 +51,12 @@ and none is planned.
 
 Same as [Linux](linux.md#toolchains) generally, but Raspberry Pi OS's own package archive (Debian
 13 "Trixie" as of this writing) doesn't necessarily carry the exact GCC 16 / Clang 22 versions CI
-pins. `cmake/toolchains/linux.{gcc,llvm}.toolchain.cmake` already `find_program` a fallback list
-(`gcc-16, gcc, gcc-15, gcc-14, gcc-13` / `clang-22, clang, clang-21, clang-20`), so an older distro compiler
-is picked up automatically - the version pin is a CI reproducibility choice, not a hard requirement
-of the code. See [Verified configuration](#verified-configuration) for what was actually resolved on
-real hardware.
+pins. `cmake/toolchains/linux.{gcc,llvm}.toolchain.cmake` `find_program` a fallback list
+(`gcc-16 gcc-15 gcc-14 gcc-13 gcc` / `clang-22 clang clang-21 clang-20`, in that order), so an older
+distro compiler is picked up automatically when it is one of those names. The version pin is a CI
+reproducibility choice, not a hard requirement of the code. Trixie's GCC 14 is in the list. Its
+Clang 19 is not, and is found only under the unversioned name `clang` (see below). See
+[Verified configuration](#verified-configuration) for what was resolved on the board.
 
 ```bash
 sudo apt install build-essential cmake ninja-build pkg-config git \
@@ -70,9 +72,21 @@ every C++20/23 translation unit's module-dependency scan, not just files using `
 sudo apt install clang-19 lld-19 clang-tools-19
 ```
 
+The toolchain file looks for `clang-22`, `clang`, `clang-21` and `clang-20` (and `clang++` to
+match); it named `clang-19` until the pin moved to 22 on 2026-08-23. Installing `clang-19` does not
+create an unversioned `clang`, so give it one, as `.github/toolchain/03-llvm-toolchain.sh` does for
+CI with `update-alternatives`:
+
+```bash
+sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-19 100
+sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100
+```
+
+These two steps were not re-run on a Pi after the pin moved; the validated run below predates it.
+
 Without `clang-tools-<N>`, configure fails confusingly - every `find_package`-driven try_compile
 (Qt6, Threads, ALSA) fails too, since they all hit the same missing `clang-scan-deps` binary, which
-reads like broken dependency detection rather than a missing package. Substitute Trixie's actual
+reads like broken dependency detection rather than a missing package. Substitute Trixie's
 `clang`/`lld`/`clang-tools` version for `19` if a future Raspberry Pi OS release ships something
 newer.
 
@@ -89,7 +103,9 @@ ctest --preset test-linux-gcc-arm64-debug
 ```
 
 Substitute `linux-llvm-arm64` for `linux-gcc-arm64` to build with Clang instead - same tradeoff as on
-x64. `VCPKG_ROOT` only ever supplies Catch2, exactly as on every other platform.
+x64. `VCPKG_ROOT` supplies what it supplies on every other platform: Catch2 and {fmt}, and the packages
+behind Hearth (mbedTLS, cpp-httplib, libFLAC, Opus, mdns) through the `hearth` feature the presets
+select by default.
 
 ## HDMI output
 
@@ -97,7 +113,7 @@ The Pi's only audio-capable HDMI path is its VideoCore HDMI ALSA card, normally 
 like `vc4-hdmi` (`bcm2835` on older firmware/kernel combinations). ac3forge doesn't special-case
 this name - `src/audio/src/backend/alsa/device_names.hpp`'s `classify_digital_output()` already
 recognizes any ALSA PCM whose name contains `hdmi` and builds the IEC 60958 channel-status device
-string generically. Find the real name on a given Pi with:
+string generically. Find the name on a given Pi with:
 
 ```bash
 aplay -L
@@ -117,18 +133,18 @@ Produces an arm64-labeled `.tar.gz`, plus a `.deb` (`Architecture: arm64`, auto-
 DEB generator via `dpkg --print-architecture` on the build host - nothing here hardcodes an
 architecture) and `.rpm` on top when the corresponding tool is on `PATH`. See
 [Packaging](../building.md#packaging) for the general shape, and
-[docs/releasing.md](../releasing.md#what-gets-published) for what a tagged release actually
+[docs/releasing.md](../releasing.md#what-gets-published) for what a tagged release
 publishes.
 
 ## Verified configuration
 
-Run for real, over SSH, on:
+Run over SSH and recorded on 2026-08-15, on:
 
 | | |
 |---|---|
 | Board | Raspberry Pi 4 Model B rev 1.1 (2GB) |
 | OS | Raspberry Pi OS 13 "Trixie" (Debian 13.6 base), kernel 6.18.34+rpt-rpi-v8 |
-| Compilers | GCC 14.2.0 and Clang 19.1.7 (Trixie's apt archive; Trixie has no `gcc-16`/`clang-22` yet - the toolchain files' fallback `find_program` list picked these up automatically, no configuration needed) |
+| Compilers | GCC 14.2.0 and Clang 19.1.7 (Trixie's apt archive; Trixie has no `gcc-16`/`clang-22` yet). On that date the toolchain files' fallback `find_program` lists named `gcc-14` and `clang-19`, so both were picked up without configuration; the Clang list no longer names `clang-19` (see [Requirements](#requirements)) |
 | CMake | 3.31.6, Ninja 1.12.1 |
 | Qt | 6.8.2, apt-packaged (`qt6-base-dev`, `qt6-declarative-dev`) |
 | ALSA | `libasound2-dev` 1.2.14 |
@@ -136,14 +152,14 @@ Run for real, over SSH, on:
 
 Both `config-linux-gcc-arm64[-debug]` and `config-linux-llvm-arm64[-debug]` configure, build and
 `ctest` all clean: **440/440 tests passing on both compilers**, including the `Performance` label
-(`ac3perf`'s hard real-time encode gate) - both the Atmos/JOC and plain 5.1 encoders stay comfortably
+(`ac3perf`'s hard real-time encode gate) - both the Atmos/JOC and plain 5.1 encoders stay
 inside their real-time budget on this hardware, and the Qt Quick Test GUI harness
 (`ac3gui_qmltests`) passes headless. `ac3gui --smoke` (`QT_QPA_PLATFORM=offscreen`) also runs clean,
-encoding real audio and instantiating real QML channel meters. A full Release build (`config-linux-gcc-arm64`)
-and `cpack --preset pack-linux-gcc-arm64` were also run for real, producing a `.deb` with
+encoding audio and instantiating the QML channel meters. A full Release build (`config-linux-gcc-arm64`)
+and `cpack --preset pack-linux-gcc-arm64` were also run, producing a `.deb` with
 `Architecture: arm64` and a correctly auto-resolved Qt runtime `Depends:` list (`libqt6core6t64`,
 `libqt6gui6`, `libqt6qml6`, `libqt6quick6`, `libqt6quickcontrols2-6`, plus `libasound2t64`) - this Pi's
-Qt6 came from apt, confirming for the first time on real hardware that `cmake/Packaging.cmake`'s "a
+Qt6 came from apt, confirming for the first time on hardware that `cmake/Packaging.cmake`'s "a
 system Qt6 install resolves fine through `dpkg-shlibdeps` alone" note holds in practice, not just in
 theory.
 
@@ -151,8 +167,7 @@ Builds are slow on this hardware and RAM-constrained (2GB, 4 cores) - a full `-j
 tests, all examples) takes roughly 17-22 minutes depending on Debug/Release and compiler; `-j4`
 wasn't tried, to leave headroom against OOM.
 
-**Two real, compiler/distro-specific issues were found and fixed by this validation, not
-hypothetical:**
+**Two compiler- and distro-specific issues were found and fixed by this validation:**
 
 1. GCC 14.2.0 at `-O2`/`-O3` (Release only - not seen at Debug) emits a false-positive
    `-Wnull-dereference` inside libstdc++'s own `<streambuf>`/`<bits/stl_construct.h>` internals,
@@ -171,7 +186,7 @@ hypothetical:**
    unconditionally, since every Linux LLVM leg configures the same way regardless of which distro's
    package split happens to be exercising the gap.
 
-**Real ALSA/HDMI device names found**:
+**ALSA/HDMI device names found**:
 
 ```
 hdmi:CARD=vc4hdmi0,DEV=0   # HDMI port 0
@@ -179,17 +194,17 @@ hdmi:CARD=vc4hdmi1,DEV=0   # HDMI port 1 (the 4B has two micro-HDMI outputs)
 hw:CARD=Headphones,DEV=0   # bcm2835 analogue out, not HDMI
 ```
 
-These names exist and are well-formed, but - see the next section - nothing had actually walked
+These names exist and are well-formed, but - see the next section - nothing had walked
 the device *classifier* against them with a receiver in the loop yet at this point in the
 validation, and that turned out to matter.
 
 ## Live HDMI passthrough to a real receiver
 
-Verified for real: an Atmos-capable AVR connected to HDMI port 0 and powered on, driven from this
-same Pi and checkout. This closes the one gap the section above left open, and found a third real
-bug on the way.
+Verified on hardware: an Atmos-capable AVR connected to HDMI port 0 and powered on, driven from this
+same Pi and checkout. This closes the one gap the section above left open, and found a third bug
+on the way.
 
-**A third real, hardware-only bug:** `classify_digital_output()` (`device_names.hpp`) judges a
+**A third bug, found only on hardware:** `classify_digital_output()` (`device_names.hpp`) judges a
 PCM's kind from the name alsa-lib's `snd_pcm_info_get_name()` gives it - "HDMI 0", "IEC958", etc.
 on most drivers. vc4-hdmi doesn't follow that convention: every one of its PCMs is named
 identically, `MAI PCM i2s-hifi-0`, regardless of which HDMI port it is - "hdmi" only ever appears
@@ -200,7 +215,9 @@ EDID-populated, and its `HDMI Jack` ALSA control reading `on`. Fixed by falling 
 id/name when the PCM's own name gives no signal; a regression test in `test_alsa_device_names.cpp`
 pins the vc4-hdmi case specifically, alongside the existing HDA-style cases it doesn't change.
 
-With the fix, `ac3cli outputs` reports both HDMI ports correctly:
+With the fix, `ac3cli outputs` reported both HDMI ports correctly (the columns as that build
+printed them; the current build adds a `ch` column and `speakers` and `rates` lines under each
+row):
 
 ```
 idx  AC-3       E-AC-3     excl PCM   name
@@ -210,7 +227,7 @@ idx  AC-3       E-AC-3     excl PCM   name
 
 (Port 1's all-`no` row is correct, not a bug - nothing is connected to it.)
 
-**Every stream shape tried locked on the real receiver, correctly identified:**
+**Every stream shape tried locked on the receiver, correctly identified:**
 
 | Stream | Result |
 |---|---|
@@ -219,18 +236,18 @@ idx  AC-3       E-AC-3     excl PCM   name
 | Plain E-AC-3, 5.1 (no object container) | Dolby Digital Plus, 5.1 |
 | Atmos `bed51` (5.1 bed, no object container) | Dolby Digital Plus, 5.1 |
 | Atmos `objects`, unsigned (object container present, no EMDF tag) | Dolby Digital Plus, 5.1 - a graceful fallback, not the hard refusal [object signing](../concepts/object-signing.md#desktop-cli) warns an unsigned-but-present container can get from a validating decoder. This receiver falls back gracefully instead. |
-| Atmos `objects`, signed with a real Dolby encoder license key (key and signed assets not part of this repo - see [object signing](../concepts/object-signing.md)) | Atmos confirmed on the receiver's own OSD, 4 height channels active (5.0.4 layout) |
+| Atmos `objects`, signed with a Dolby encoder license key (key and signed assets not part of this repo - see [object signing](../concepts/object-signing.md)) | Atmos confirmed on the receiver's own OSD, 4 height channels active (5.0.4 layout) |
 
 Every case submitted its bursts cleanly - `ac3cli play`'s own stats read 0 underruns throughout,
-every time. A couple of early runs looked like they hadn't synced, but that was purely down to the
+every time. A couple of early runs looked like they hadn't synced, but that was down to the
 short (12 s) clips ending before the receiver's own display could be checked in time; the same
 files replayed and locked correctly once watched for their full length. Nothing here needed a
 longer runway than that to lock - once the classifier fix above landed, every stream shape locked
-on the first real attempt.
+on the first attempt.
 
-This closes the [Linux](linux.md#audio-backend-alsa-or-pipewire) page's still-open gap for HDMI
-passthrough on Raspberry Pi specifically: verified end to end now, from plain AC-3 through
-Atmos/JOC with height rendering, against a real Dolby-licensed decoder.
+This is the hardware confirmation the [Linux](linux.md#audio-backend-alsa-or-pipewire) page cites
+for HDMI passthrough over ALSA, on Raspberry Pi specifically: verified end to end, from plain AC-3
+through Atmos/JOC with height rendering, against a Dolby-licensed decoder.
 
 ### Still to check: decoded multichannel output
 
