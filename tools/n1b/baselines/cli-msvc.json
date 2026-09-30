@@ -1,0 +1,295 @@
+{
+ "commands": {
+  "ac3_51_448": {
+   "files": {
+    "out.ac3": "6841b8f059f24e3724d9cce97a8b95fadd0feaa891458223beed332a4da19a15"
+   },
+   "rc": 0,
+   "stdout": "cffffa9ef591b000d66736192850c69cae778c132ba4c9d5979d9509f8f23a17"
+  },
+  "ac3_stereo_192": {
+   "files": {
+    "out.ac3": "20ee89474f9f3188a7244a910cb3b606c7f9b349396db92b8f2bf6c7a9b1b648"
+   },
+   "rc": 0,
+   "stdout": "bd0eac94a7cc2b67d0804534dac34469885c3d4d4d5cf62cb0ccd2c1df87fda5"
+  },
+  "ac4_51_256": {
+   "files": {
+    "out.ac4": "f1d5e1beda66fd5a31d9a7685c1c242ba54e76aa7e220469b9cdae9a0e111f34"
+   },
+   "rc": 0,
+   "stdout": "a37782bcab0adf1b2c0b44a1bf44b61ac5d749a0cfc2f4c9b53e2598c46d1400"
+  },
+  "ac4_51_mp4": {
+   "files": {
+    "out.mp4": "c45828da3aff9662477933f830bd3d7b76ca5994e4edf2300e65ebf2404693d4"
+   },
+   "rc": 0,
+   "stdout": "eba39a63a92a099dfca90bd7aaa904d491113af2d27431ccb607f5f30800d68f"
+  },
+  "ac4_stereo_128": {
+   "files": {
+    "out.ac4": "81835e5c8834fd1d1ab9515a216f812075ef0e2eb8bb9be47ba00c40cbc9e925"
+   },
+   "rc": 0,
+   "stdout": "21a766f4ee29319c4b12b95d3f42954661bf839679fe920ea94ab1616620facb"
+  },
+  "atmos_objects": {
+   "files": {
+    "out.ec3": "8f60c982febff60585e8d051ddf1ad3d793d5ba6e48fdf40e36631bf72a2e4b6"
+   },
+   "rc": 0,
+   "stdout": "b0441092815c9b2b48ca16ae6712370f3b5989d5579e094d1d8c712d6af71a53"
+  },
+  "atmos_synth": {
+   "files": {
+    "out.ec3": "4ff687fe51694393e189e1feab5e20b4e2ce6dcc6807e849027d8311530e8a8e"
+   },
+   "rc": 0,
+   "stdout": "607bf360ee0bb4d3943d8e6ca7573c539a98bae2eea2f726c3a1b81dbf17d99c"
+  },
+  "cut": {
+   "files": {
+    "out.ec3": "abd2c16ddf5b819a585b56644a3b0c97404865c70c4a4d227b0551b66589a9f8"
+   },
+   "rc": 0,
+   "stdout": "77aa7ae240634be901a4e52a4eb8808594cde1edfc80a37693e6291d511aa26a"
+  },
+  "dec_ac3-51-448_ac3": {
+   "files": {
+    "out.wav": "409132be21bf50bdfdf5fa4a10f2ebb0203f3bed067d07bd5ce7caf6781fa226"
+   },
+   "rc": 0,
+   "stdout": "b48c1971309eabef1d4ca26a0958be866ae3cf2a586198313506953a96ee474b"
+  },
+  "dec_ac3-music-stereo-192_ac3": {
+   "files": {
+    "out.wav": "8c286c095c24069164be731efb61dc28608a88ed749325d12241280664682adc"
+   },
+   "rc": 0,
+   "stdout": "59589536ebaa9dccde6177165068e5904277fcb82a425f3743b8a26c81477eac"
+  },
+  "dec_ac4_2_0-acpl1-stereoproc": {
+   "files": {
+    "out.wav": "dd9b07544771a61eb0c48734b1b8b0ad28f5887d5823d04b95403ff2f74d3871"
+   },
+   "rc": 0,
+   "stdout": "d569f4f24303f18c07004216b828219fde6699b506b1f0d1b16ceaafe8384df2"
+  },
+  "dec_ac4_2_0-acpl2-second": {
+   "files": {
+    "out.wav": "19f991f629f1c3d72306d40281a36555bc3e35992a8fdd00280e30c445b25c44"
+   },
+   "rc": 0,
+   "stdout": "bdbf2945346ef5d6b35e3ea6a136fe0f7eaac23f8c4cb6061fa1c3f7182dc85b"
+  },
+  "dec_ac4_3_0-aspx-config1-matsel5": {
+   "files": {
+    "out.wav": "b6e5c4951e1e94620ce28db8d150e5949c0c035772ab95167af2c1803d3a7248"
+   },
+   "rc": 0,
+   "stdout": "82a1c8a2a29a32687ed0b8dff50a7f156197c7db9c17143878757f119c987f18"
+  },
+  "dec_ac4_3_0-simple-config0": {
+   "files": {
+    "out.wav": "3d8186ecf1370ab9d827e3e1ea4328d90c5f24145102dce56f4617441266430e"
+   },
+   "rc": 0,
+   "stdout": "2cb3d59270c50d0524ae3b93cb7c51b8b3470c8f34817f960d7bab7a96ec3d7c"
+  },
+  "dec_ac4_5_0-acpl2-config0": {
+   "files": {
+    "out.wav": "64c30002c1deadce2a8b37696bf9d8c6207150cc52a127a47a18bfc6134a8aca"
+   },
+   "rc": 0,
+   "stdout": "a63e6167eea0b11fa94371518ddce7ed4fd9bee68972489cb0e58b0697404483"
+  },
+  "dec_eac3-51-256_ec3": {
+   "files": {
+    "out.wav": "9f643be988e3a7530b54ac89b8f46e75ac4436f4de17ab48c6a94dd75a18c5a1"
+   },
+   "rc": 0,
+   "stdout": "ed1e4d1ebec1f19cff11ccefd1dbd96912daff06dfc7c82c21dad7d2bd45d71e"
+  },
+  "dec_eac3-music-stereo-96_ec3": {
+   "files": {
+    "out.wav": "302fc732271d53df9df020f94ff485d5cd736b689a0eb36d000c681b255eaf08"
+   },
+   "rc": 0,
+   "stdout": "666d94cf52ade200fb3787af98ed60901221ae1b11a92d5a8d8a014d62a9c844"
+  },
+  "dec_eac3_ref": {
+   "files": {
+    "out.wav": "cb4db5333a691ee88d6ababc966e0c49889b5af8d3898f212746f8b9c833d3bd"
+   },
+   "rc": 0,
+   "stdout": "c8fe5495ba95f8bec9f152b2516bc1d383adaf0cc40f324c8f36880acaef809a"
+  },
+  "eac3_51_384": {
+   "files": {
+    "out.ec3": "6564885c8287eabe5609cab4ed6c5c54f2cffc91fd3846a56f84d1b7a5f0e300"
+   },
+   "rc": 0,
+   "stdout": "f0603c89d34f64ca8b821930193e35b5499cc86bf9af672d345123416c58c996"
+  },
+  "eac3_stereo_128": {
+   "files": {
+    "out.ec3": "c81d1ca549716e8eec0298c8dc187a13c61d6d80ebc4b56417487a93af559f9c"
+   },
+   "rc": 0,
+   "stdout": "02ca3f019b6f519ba1d18aa00daa110349e954db94dfcf7cdc847eab288c3f20"
+  },
+  "fmp4": {
+   "files": {
+    "outdir\\audio.m3u8": "64be37a52d5df5963bcd06d9a1add3fc7a8e4cdd22f871cb85c4687999d73227",
+    "outdir\\init.mp4": "fd2d5ab89f9b7a7a14d1be9d81b7eb055c048fe929bbde14bedebc0d4d92d66e",
+    "outdir\\manifest.mpd": "0502fb9e2219080719c0715204ef75d3f98201cef9fbe9b097c87cbc2a962849",
+    "outdir\\master.m3u8": "53aa18e314a371566d2cd47f62fefb737121185ec7c3a65090447953aace98a8",
+    "outdir\\segment1.m4s": "d033887adae83ebc9ba36a21ac3360445a8d3dedf7cfaea27a534cc4bbe8d7d1",
+    "outdir\\segment2.m4s": "2b4394483f2d3f5f7db382bada95a905e8e9ad4d18e39d29fb3e7cee39c12878"
+   },
+   "rc": 0,
+   "stdout": "e0f562abc5d7b7ea42a612632b98581c0630d70d6ed5496ad7270529f178bb99"
+  },
+  "levels_51": {
+   "files": {},
+   "rc": 0,
+   "stdout": "9887fd86eb2992c9467ee61e424cd115f59279e7057995d790f245bdf0d61e28"
+  },
+  "loudness_51": {
+   "files": {},
+   "rc": 0,
+   "stdout": "78ad226f9ea56bf84c122a67b5930acdedf8d8aaddef0f69767521c28fcdf8bc"
+  },
+  "metadata": {
+   "files": {
+    "out.ec3": "279eba61e85ad7d5c2f3ee6592d3e1e1cb18b1d76058b5d27c35905f07c64dcc"
+   },
+   "rc": 0,
+   "stdout": "fba468a95b0bdc21d8fcff0b03561857ecdc11bad5365a2cab199dcdc5bb07e3"
+  },
+  "mkv_wrap": {
+   "files": {
+    "out.mkv": "b65499f6c003a5954389ef8d878d1a93bea57bd0f403488ea9681eeb9f5f1d17"
+   },
+   "rc": 0,
+   "stdout": "637241c1a15cd604e25008a110819c4ccdd01179c787aea5366252b1c829dc30"
+  },
+  "mp4_wrap": {
+   "files": {
+    "out.mp4": "2254108500cf23d24838c665437f706648fb8c0f5e4e5bd51274d9e4112a4e75"
+   },
+   "rc": 0,
+   "stdout": "7753b8a6952498ad46fd10f3594e4964b63dc219c9562001b841bec97f93df73"
+  },
+  "normalize": {
+   "files": {
+    "out.ec3": "c1e707bdbf8dc05974106299c50aed0d6395a46920dd5d4811ecba6865794c03"
+   },
+   "rc": 0,
+   "stdout": "509ab9db14a2598f6dca37402e34841b45b5e54b935520be3981de75896ac0e0"
+  },
+  "orbit": {
+   "files": {
+    "out.ac3": "fead323e1bd52fddef983a11a54874a511be18391d4242572c2bf370be864a8f"
+   },
+   "rc": 0,
+   "stdout": "adee19aed8d448a88d20f1df47f625a3d6e13925586a7c6113fb9e525cdacacd"
+  },
+  "probe_ac3-51-448_ac3": {
+   "files": {},
+   "rc": 0,
+   "stdout": "cbca8ad5bde8db79ab76d33361929418c022ec967a9e66277022d1ddca178c15"
+  },
+  "probe_ac3-music-stereo-192_ac3": {
+   "files": {},
+   "rc": 0,
+   "stdout": "3f26cc663e4fb30812dcdc0837b41d54f1a59106fd5fb2151b5c1670773f7511"
+  },
+  "probe_ac4_2_0-acpl1-stereoproc": {
+   "files": {},
+   "rc": 0,
+   "stdout": "e7f749d6395273c76ba1c5891476f97738c8620ea0c29aa4fd2a4bc567edec9c"
+  },
+  "probe_ac4_2_0-acpl2-second": {
+   "files": {},
+   "rc": 0,
+   "stdout": "dd1153d06214364bbd4af516b41252bb7c2db62fb5a1fcf9efce65cdad1139cc"
+  },
+  "probe_ac4_3_0-aspx-config1-matsel5": {
+   "files": {},
+   "rc": 0,
+   "stdout": "7843e908f6f0dec3f761fe51c3f134fc66cc1386d1a1c22d6aa681289d361a0b"
+  },
+  "probe_ac4_3_0-simple-config0": {
+   "files": {},
+   "rc": 0,
+   "stdout": "d7478d42aa85b3167481bb934616ca7b3c1b64c220cffa0643bd92bd983f9f2d"
+  },
+  "probe_ac4_5_0-acpl2-config0": {
+   "files": {},
+   "rc": 0,
+   "stdout": "738a8a3860704821c5440e79badb4280d2efae2ac48ab793853e10f2c289ad9b"
+  },
+  "probe_eac3-51-256_ec3": {
+   "files": {},
+   "rc": 0,
+   "stdout": "1808756093ec26ab68ea82117c0f12f1395fcb0165a11c7edb9c119f33d368fc"
+  },
+  "probe_eac3-music-stereo-96_ec3": {
+   "files": {},
+   "rc": 0,
+   "stdout": "6cf25a4b63361deb0996e9c64dae0762ac54cf83e9c8b73bdcfd8177005f3c31"
+  },
+  "probe_ref_ec3": {
+   "files": {},
+   "rc": 0,
+   "stdout": "c51a11a86b136cf06e31a4a77a9f438a95db8d652be154813f7de53cc03cb0e3"
+  },
+  "qc_ref": {
+   "files": {},
+   "rc": 0,
+   "stdout": "cd8cd52ac479b14e9496625da067eac05a6cd2e6e99263cfe73097f2de4f236f"
+  },
+  "silence": {
+   "files": {
+    "out.ac3": "6c5c82a4bb1eb5c031ef449949bca08ca70e9d14c93ed6ead66ffa0ed7a7ae61"
+   },
+   "rc": 0,
+   "stdout": "33090f3601c446f5f5061f61474402e642ec5e0725781626aeb37c950fbaee77"
+  },
+  "sine": {
+   "files": {
+    "out.ac3": "442c8fb38fd8ed9323c11affbe01bf07add1405aae6f466e379faf40d060ad14"
+   },
+   "rc": 0,
+   "stdout": "b7bcba23c5c5d0e69e041bc215e4a88bed37494c16779077a7dd081a001718a1"
+  },
+  "spdif": {
+   "files": {
+    "out.wav": "6322627848d91eafbebdcb395adfc60823496ff4f63e77ded940e3456d32ae3d"
+   },
+   "rc": 0,
+   "stdout": "4b5c01b106df2b196e46a19ab0a4ae7693782dc5fdb3bde630b2e9fc9ce896c3"
+  },
+  "transcode_to_ac4": {
+   "files": {
+    "out.ac4": "efb52c0cd15ddb6d41ab74419fe0224bec0fb8da81cc6f1a154614ca1eee7e14"
+   },
+   "rc": 0,
+   "stdout": "0532ba0fd9b72ba1aebe430caf3d5ddaf1d5008dbdd4a436b8e6a7052a694d79"
+  },
+  "ts_wrap": {
+   "files": {
+    "out.ts": "6ce9fbad98734ea204eb1c569ff0141c90fb8100d84376029a91ae2842cc983d"
+   },
+   "rc": 0,
+   "stdout": "b2c219722fbf24c8e35efe689a8c5528ef3425b6ec4d429d0ec578776f33af66"
+  }
+ },
+ "kind": "cli",
+ "label": "msvc",
+ "measured_at": "90cba5b0ea967a79e92b7c8bd3af91020859546a",
+ "schema": 1
+}

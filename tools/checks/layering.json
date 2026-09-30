@@ -1,0 +1,47 @@
+{
+  "_comment": "The dependency table of the libraries under src/. libraries: each library and the libraries it may include from, in dependency order; check_layering.py fails an include that is not listed. layout: how a path under src/ is filed under a library while the tree is being re-laid out (planning/layout.md): `split` gives the libraries a directory holds (first match wins), `rename` the directories named for something else. Both go when the re-layout is done.",
+  "libraries": {
+    "arithmetic": [],
+    "base": [],
+    "dsp": ["arithmetic"],
+    "objects": ["base", "dsp"],
+    "render": ["base", "objects"],
+    "iec61937": [],
+    "ac3": ["base", "dsp", "objects", "render", "arithmetic"],
+    "ac4": [],
+    "ac4core": ["arithmetic"],
+    "ac4dec": ["ac4", "ac4core"],
+    "ac4enc": ["ac4", "ac4core"],
+    "mp4": [],
+    "mpegts": [],
+    "matroska": [],
+    "iamf": [],
+    "adm": [],
+    "iab": [],
+    "admbridge": ["adm", "iab", "objects"],
+    "signing": ["ac3"],
+    "audio": ["base", "render", "iec61937", "objects"],
+    "sendspin": [],
+    "capi": ["ac3", "ac4", "ac4dec", "ac4enc"]
+  },
+  "layout": {
+    "rename": {
+      "ac3adm": "adm",
+      "ac3iab": "iab"
+    },
+    "split": [
+      ["^src/forge/include/ac3/core/(bitreader|bitwriter|layout|downmix_target)\\.hpp$", "base"],
+      ["^src/forge/src/internal/(cpu|profiling)/", "base"],
+      ["^src/forge/(include/ac3|src)/dsp/", "dsp"],
+      ["^src/forge/include/ac3/core/fft\\.hpp$", "dsp"],
+      ["^src/forge/src/core/fft(_kernel)?\\.(cpp|hpp)$", "dsp"],
+      ["^src/forge/(include/ac3|src)/render/", "render"],
+      ["^src/forge/(include/ac3|src)/spatial/", "render"],
+      ["^src/forge/include/ac3/oba/(scene|scene_osc|motion|oamd|joc_domain|placement)\\.hpp$", "objects"],
+      ["^src/forge/src/oba/(scene|scene_json|scene_osc|scene_text|motion|oamd)\\.(cpp|hpp)$", "objects"],
+      ["^src/forge/(include/ac3|src)/emdf/emdf\\.(hpp|cpp)$", "objects"],
+      ["^src/forge/(include/ac3|src)/iec61937/", "iec61937"],
+      ["^src/forge/", "ac3"]
+    ]
+  }
+}

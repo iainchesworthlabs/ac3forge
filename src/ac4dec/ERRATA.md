@@ -20,7 +20,9 @@ reading. The evidence for a reading is one of:
   alike; whether the reading is the intended one rests on the text.
 - **Observation**: the text says nothing; the encoded streams decide.
 
-Later phases add the readings their processing needs.
+Phases D2 to D10 added the readings their processing needs, under their own headings below. A
+reading only a writer needs is in `src/ac4enc/ERRATA.md`, which points back here wherever the decoder
+depends on the same reading.
 
 ## Table of contents and presentations
 
@@ -64,7 +66,7 @@ Later phases add the readings their processing needs.
   carry different ones, and no stream here does. With a factor above 1,
   `substream_index` names the first of that many consecutive substreams (Part 1 4.3.3.7.9, p. 79),
   and both transcriptions read each as an instance of its own, with that instance's `b_audio_ndot`.
-- **The series, not the instance, is what carries state.** 4.3.3.5.3, p. 78, has the substreams of a
+- **The series, not the instance, is what carries state.** 4.3.3.5.3, p. 76, has the substreams of a
   series decoded consecutively, and 4.3.3.2.7, p. 74, fulfils `b_iframe_global` when the **first**
   `b_iframe` of a series of 2 or 4 is true, so a stream whose I-frames set only that first flag is legal.
   The configuration an I-frame of the series sends therefore serves the instances after it, and each
@@ -83,8 +85,8 @@ Later phases add the readings their processing needs.
 
 ### A frame rate the sample rate does not define
 
-- **Where:** Part 1 Table 83, p. 76, gives `frame_len_base` for each `frame_rate_index` at 48 kHz;
-  Table 84, p. 76, covers 44.1 kHz and defines index 13 alone, leaving every other index reserved there.
+- **Where:** Part 1 Table 83, p. 74, gives `frame_len_base` for each `frame_rate_index` at 48 kHz;
+  Table 84, p. 74, covers 44.1 kHz and defines index 13 alone, leaving every other index reserved there.
 - **Reading:** such a frame has no frame length, so nothing in it that derives from one is read: every
   audio substream and the presentation substream are refused for a reserved `frame_rate_index`, rather
   than read with the 48 kHz length or read until a field that needs the length is reached.
@@ -94,10 +96,10 @@ Later phases add the readings their processing needs.
 
 ### The efficient high frame rate mode is refused
 
-- **Where:** Part 2 5.1.3, p. 30, and Table 18: above 30 fps a presentation may transmit
+- **Where:** Part 2 5.1.3, p. 56, and Table 18: above 30 fps a presentation may transmit
   `frame_rate_fraction` 2 or 4, spreading one coded frame over that many `raw_ac4_frame()`s, each
   carrying fragments of the substreams; a decoder holds the partial frames and concatenates them.
-- **Reading:** this phase reads no fragments, so a frame whose presentation carries a fraction above 1
+- **Reading:** the decoder reads no fragments, so a frame whose presentation carries a fraction above 1
   has every substream refused as unsupported, naming the mode. Reading a fragment as a whole substream
   reports a legal stream as a damaged one, which is what the decoder did before the fraction was carried
   out of the table of contents at all.
@@ -116,9 +118,9 @@ Later phases add the readings their processing needs.
 ### A substream group named twice by one presentation
 
 - **Where:** Part 2 6.2.1.3, p. 115: a presentation reads its `ac4_sgi_specifier()` elements in turn, and
-  nothing forbids two of them naming one `group_index`. Clauses 6.3.3.1.29 to 6.3.3.1.31, p. 166, define
-  `pres_ch_mode`, `n_substreams_in_presentation` and the other helpers over the substreams in the
-  presentation.
+  nothing forbids two of them naming one `group_index`. Clauses 6.3.3.1.13 (p. 168) and 6.3.3.1.27 to
+  6.3.3.1.31 (pp. 170 to 173) define `n_substreams_in_presentation`, `pres_ch_mode` and the other helpers
+  over the substreams in the presentation.
 - **Reading:** a group named twice holds the same substreams both times, so it counts once, in the
   helpers and in the substream assignment alike. `n_substream_groups`, which 6.2.1.3 assigns and the
   `sg_gain` loop of `ac4_presentation_substream()` uses as a count, keeps the value the clause gives it.
@@ -130,9 +132,9 @@ Later phases add the readings their processing needs.
 
 - **Where:** Part 1 4.3.3.2.2, p. 72: a frame continues the stream when its `sequence_counter` is the
   previous frame's plus 1, wraps from 1020 to 1, or follows a 0, which a splicing device writes into the
-  first frame after a splice; anything else is a change of source, and a decoder bridges the gap "until
-  the next independently decodable frame". Part 1 6.2.19, p. 272: a switch of streams at an I-frame
-  "shall produce a flawless output", and the decoder "shall use this splice indication to ignore any
+  first frame after a splice; anything else is a change of source, over which a decoding system "should
+  provide continuity of audio experience" until the next independently decodable frame. Part 1 6.2.19, p.
+  272: a switch of streams at an I-frame "shall produce a flawless output", and the decoder "shall use this splice indication to ignore any
   information from previous frames when decoding the first frame after a splice". Part 2 5.11, p. 110,
   delays a change in the converter's phase "with the signal" until the new source's first sample
   reaches the converter's output.
@@ -272,7 +274,8 @@ Later phases add the readings their processing needs.
 
 ### get_max_sfb() with b_dual_maxsfb
 
-- **Where:** Part 1 Pseudocode 5, p. 91, returns `max_sfb_side` only "when decoding the side channel";
+- **Where:** Part 1 Pseudocode 5, p. 91, returns `max_sfb_side` for `b_dual_maxsfb` only where
+  `b_side_channel` is 1, which a note beside it says "indicates the decoding of the side channel";
   4.3.6.2.3, p. 89, makes it the side's count of "transmitted scale factor bands", and clause 5.3.3.2,
   p. 175, gives the stereo matrix per band without saying what it takes where the two tracks send
   different bands.
@@ -312,7 +315,7 @@ Later phases add the readings their processing needs.
   far.
 - **Reading:** `max_sfb` in Table 39's own pseudocode is `get_max_sfb_hsf(g)`, not `get_max_sfb(g)`,
   whenever this channel's HSF extension is active (its `ac4_hsf_ext_substream_info()` links a substream,
-  and this channel's own `sf_multiplier` is set - Part 2 Table 89, p. 78). `asf_spectral_data()`,
+  and this channel's own `sf_multiplier` is set - Part 1 Table 89, p. 78). `asf_spectral_data()`,
   `asf_scalefac_data()` and `asf_snf_data()` (Tables 40 to 42) are unaffected: their own `get_max_sfb(g)`
   and `min(get_max_sfb(g), num_sfb_48(...))` calls keep the core-only reading, which is what makes a
   channel with no active extension unaffected byte for byte by touching the section loop at all.
@@ -429,7 +432,8 @@ here. The one encoded stream that reaches any of it is Chromium's `ac4-ajoc.ac4`
 downmix signals in a SIMPLE `var_channel_element()` and seventeen objects, no LFE, no decorrelators, one
 metadata block a frame), which both read to the end of every substream of all 64 frames, every size
 invariant holding; the constructed object streams of `tests/ac4dec/ac4dec_objects.cpp`, written with the
-encoder's writers, and the differential check, which mutates them, reach the rest.
+encoder's writers, and the differential check, whose synthetic streams include object-coded groups over
+random payloads, reach the rest.
 
 ### The objects of an A-JOC substream
 
@@ -626,7 +630,7 @@ encoder's writers, and the differential check, which mutates them, reach the res
 
 ### Values the A-SPX syntax cannot follow
 
-- **Where:** Part 1 Pseudocode 68, p. 204; Table 128 and 4.3.10.1.9, p. 101.
+- **Where:** Part 1 Pseudocode 68, p. 204; 4.3.10.1.9, p. 98; Table 128, p. 101.
 - **Reading:** failures: an `aspx_xover_subband_offset` at or beyond `num_sbg_master` (the master table
   would be indexed past its end, or leave no subband group), more than five noise subband groups
   (5.7.6.3.1.3), and more envelopes than Table 128 allows (four for FIXFIX, five otherwise).
@@ -861,7 +865,8 @@ decodes those streams' coded pair as L and R and leaves Ls and Rs silent.
   Table 78, p. 69, writes `de_par[ch][band]`.
 - **Reading:** Part 1's. The codewords read do not depend on it, only the parameter values, so the trace
   is unaffected. A DEE stream with `de_channel_config` 6 and `de_ms_proc_flag` 0 takes this path in every
-  I-frame; the phase that applies dialogue enhancement checks the reading there.
+  I-frame (`ac4-20-speech-128` is one), and `tests/ac4dec/test_ac4dec_de.cpp` decodes it through dialogue
+  enhancement at 0 dB and at its cap.
 
 ### de_ms_proc_flag leaves one parameter set
 
@@ -1096,7 +1101,7 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 - **Reading:** SIMPLE substreams pass through the analysis and synthesis banks too, behind the same
   history of `ts_offset_hfgen` slots that A-SPX keeps (Table 192), so the decoder has one delay for every
   codec mode: `d_pcm`, the banks' 577 samples and 6 x 64 samples, 1,313 at `frame_rate_index` 13. The
-  banks reconstruct to 75 to 88 dB on tones and 78 dB on noise, which now bounds a SIMPLE decode's SNR.
+  banks reconstruct to 75 to 88 dB on tones and 78 dB on noise, which bounds a SIMPLE decode's SNR.
 - **Evidence:** Observation. DEE's SIMPLE and ASPX 2.0 streams decode with the same lag, 4,385 samples,
   and its output manifests give both the same MP4 offset; librempeg's output lags DEE's source by one
   delay, 3,649 samples, on SIMPLE and ASPX streams alike. DEE's IMS encoder runs one frame shorter: its
@@ -1453,8 +1458,8 @@ reading below rests on it.
 
 - **Where:** Part 2 4.8.3.1, p. 41: in core decoding, for A-CPL "gain factors shall be applied instead";
   4.8.3.14, p. 48, gives the factor, 2, for the immersive element alone, and says the decoder "shall
-  utilize the A-CPL tool" of Part 1 for the other elements. Table 71, p. 171, gives no core channel mode for
-  the Part 1 channel modes.
+  utilize the A-CPL tool" of Part 1 for the other elements. Part 2 Table 71, p. 171, gives no core channel
+  mode for the Part 1 channel modes.
 - **Reading:** core decoding changes only the immersive element; the Part 1 elements decode as in full
   decoding, A-CPL included.
 - **Evidence:** Text.
@@ -1705,8 +1710,8 @@ it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.
   of a presentation with dialogue 6 dB under the same substream decoded alone, and make every level
   depend on the number of substreams.
 - **Evidence:** Text; every mix of the multiplexed streams measures each substream at its formula's
-  gain, and a decoder that divides fails five of the presentations test's eleven cases and 62 of
-  `mix_ac4_decode.py`'s 68 mixes.
+  gain (`mix_ac4_decode.py` now checks 114 mixes). When this entry was written, a decoder that
+  divided failed five of the presentations test's eleven cases and 62 of the script's 68 mixes.
 
 ### Substream group gains
 
@@ -1848,6 +1853,7 @@ it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.
   takes the main group's gain and the scaling of associated audio.
 - **Evidence:** Text; the three methods measure to 0.01 dB against the main and the waveform decoded
   alone, in both transcriptions.
+
 ## The channel renderer
 
 The readings phase D9 takes to render the immersive element by Part 2's channel renderer (5.10.2), which
@@ -2060,7 +2066,7 @@ formulas of 6.3.9.8.4 and 5.9.2, and their intermediate spatial format to Annex 
 
 ### Object audio metadata
 
-- **Where:** Part 2 6.3.9.6 to 6.3.9.8 and 6.3.9.12, pp. 188 to 197, and Annex F: what an
+- **Where:** Part 2 6.3.9.6 to 6.3.9.8 and 6.3.9.12, pp. 188 to 204, and Annex F: what an
   `object_info_block()` sets; NOTE 1 of 6.3.9.8.4.2 to 6.3.9.8.4.4: a difference refers to "the standard
   precision position value coded in the previous metadata update block"; Table 101's `object_gain_code`
   0b11, "Set to object_gain of previous object".
@@ -2164,7 +2170,9 @@ The Huffman codebooks come from the table attachment of Part 1, `ts_103190_table
 names as normative, with the parameters Annex A prints; every one of the 60 is a complete prefix code
 (its Kraft sum is exactly 1). Annex B's scale factor band tables come from the text, each checked against
 a rendering of its page. `tools/generators/gen_ac4_tables.py` and
-`tools/generators/gen_ac4_reference_tables.py` generate the C++ and Python tables separately.
+`tools/generators/gen_ac4_reference_tables.py` generate the C++ and Python tables separately. Part 2's
+A-JOC and A-JCC codebooks (its Annex A.1.1 and A.1.2, 24 in all) come from the arrays of its attachment,
+`ts_103190_tables_part2.c`, the same way, so that all 84 codebooks are complete prefix codes.
 
 Phase D10's tables: A-JOC's Table 28 and its dequantisation (Tables 29 to 32, uniform steps about each
 range's centre, every row checked), Tables 78 and 82, and the object audio metadata's tables that give
@@ -2198,7 +2206,8 @@ enhancement methods 1 to 3 and alternative presentations among it. The construct
 transcriptions read them alike. To compare the two transcriptions on the rest, both read streams made for
 the purpose: DEE frames with one substream altered (a random tail from a random bit, a few flipped bits,
 or a random codec mode), and tables of contents built for the channel modes no encoder here writes, over
-random payloads. Wherever both read a substream to its end their traces must agree record for record,
-and where either stops they must agree up to that point. The two transcriptions still stop at different
+random payloads, a quarter of them for a group of A-JOC and direct-coded object substreams. Wherever
+both read a substream to its end their traces must agree record for record, and where either stops they must agree up to that point. The two transcriptions still stop at different
 elements on some corrupt input, since each checks some values at a different point, which the check
-reports separately.
+reports separately. The script is `tools/checks/ac4_syntax_differential.py`, which the nightly
+SonarCloud workflow runs; it does not gate a merge.

@@ -27,12 +27,11 @@ The [Quick start](quickstart.md) covers installation, source builds, and the ESP
 
 ## Performance and quality
 
-The following values are loaded from the append-only measurement history maintained by CI on the
-`quality-history` branch.
-
-<div id="ac3f-stats">
-  <p class="ac3f-stat-status">Loading the latest measurements from <code>main</code>…</p>
-</div>
+The *Measured on every merge* strip above loads the newest figures from the append-only
+measurement history that CI keeps on the `quality-history` branch. Each tile has one line per codec
+(AC-3, E-AC-3, and AC-4), and a line is the worst case among that codec's own workloads, with the
+workload named. The lines of two codecs come from different workloads and do not compare with each
+other.
 
 [Performance and quality](performance-quality.md) explains the measures and links to the full
 performance, decoder-accuracy, listening-quality, object-quality, and memory histories.

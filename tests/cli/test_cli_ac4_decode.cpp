@@ -137,6 +137,43 @@ TEST_CASE("decode takes AC-4 at an output level in each DRC decoder mode", "[cli
     }
 }
 
+TEST_CASE("decode compresses AC-4 alike on one DRC profile and differently on a curve of its own",
+          "[cli][ac4]") {
+    const auto log = scratch_dir() / "ac4_drc_curves.log";
+    // The one committed leg whose modes differ: DEE's ac4-51-drc-ltrt-192 sends
+    // home theatre and portable headphones a curve each (music light and
+    // speech), and flat panel TV and portable speakers the stream's default
+    // profile (tools/generators/gen_ac4_baseline.py). The film leg above sends
+    // every mode the default profile, so it cannot show a mode's curve at all.
+    // Under the sanitizers the leg's first frames, decoded in `off`, home
+    // theatre and portable headphones alone: the curves set the outputs apart
+    // within 4 frames.
+    constexpr std::size_t kSanitizedCurveFrames = 12;
+    const fs::path stream = decoded_stream(leg("ac4-51-drc-ltrt-192"), kSanitizedCurveFrames,
+                                           scratch_dir() / "ac4_drc_curves_prefix.ac4");
+    const auto in_mode = [&](const std::string& mode) {
+        return decode(stream, "output-level=-10 drcmode=" + mode, log);
+    };
+    const auto off = in_mode("off");
+    const auto home_theatre = in_mode("home-theatre");
+    const auto headphones = in_mode("portable-headphones");
+    REQUIRE(home_theatre.channels.size() == off.channels.size());
+    CHECK(home_theatre.channels != off.channels);
+    CHECK(headphones.channels != off.channels);
+    // Two curves, two outputs.
+    CHECK(home_theatre.channels != headphones.channels);
+    if (!kSanitized) {
+        // Flat panel TV and portable speakers are on the default profile: one
+        // output, which differs from off and from each curve of the stream's own.
+        const auto flat_panel = in_mode("flat-panel-tv");
+        const auto speakers = in_mode("portable-speakers");
+        CHECK(flat_panel.channels != off.channels);
+        CHECK(flat_panel.channels != home_theatre.channels);
+        CHECK(flat_panel.channels != headphones.channels);
+        CHECK(speakers.channels == flat_panel.channels);
+    }
+}
+
 TEST_CASE("decode chooses AC-4's presentation by position associated service and level",
           "[cli][ac4]") {
     const auto log = scratch_dir() / "ac4_presentation_choice.log";

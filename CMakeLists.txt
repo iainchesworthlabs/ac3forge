@@ -140,7 +140,7 @@ add_compile_options("${AC3_FP_CONTRACT_FLAG}")
 # ---------------------------------------------------------------------------
 option(AC3FORGE_BUILD_CLI "Build the ac3cli command-line application" ON)
 option(AC3FORGE_BUILD_GUI "Build the Qt6 Quick GUI application" ON)
-option(AC3FORGE_BUILD_CRUCIBLE "Build AC3Forge Crucible (Crucible cross-platform promotion; Windows, Linux and macOS)" OFF)
+option(AC3FORGE_BUILD_CRUCIBLE "Build AC3Forge Crucible (Windows, Linux and macOS)" OFF)
 option(AC3FORGE_BUILD_TESTS "Build the unit test suite" ON)
 # Catch2 is the only build-time dependency. Turn this off to insist it comes
 # from a package manager instead of the network (see tests/CMakeLists.txt).
@@ -185,7 +185,7 @@ option(AC3FORGE_BUILD_IAB "Build the standalone Immersive Audio Bitstream reader
 # comment.
 option(AC3FORGE_BUILD_IAMF "Build the standalone IAMF OBU/ISOBMFF writer (src/iamf)" ON)
 
-# minimum-footprint decoder profile: the minimum-footprint decoder profile. Not a "build X too"
+# The minimum-footprint decoder profile. Not a "build X too"
 # option like the ones above - it REPLACES what src/forge builds with a single
 # decode-only static library for a target with a few hundred kilobytes of RAM
 # and no operating system (see cmake/MinimalDecoder.cmake and
@@ -214,7 +214,7 @@ option(AC3FORGE_MINIMAL_DECODER
 # Sequential use is a different question and is fine: tear one down, build the
 # other. It is holding both at once that does not fit.
 option(AC3FORGE_MINIMAL_ENCODER
-    "Build ONLY the encode-only, exception-free ac3::forge_minimal (minimum-footprint decoder profile)"
+    "Build ONLY the encode-only, exception-free ac3::forge_minimal (minimum-footprint encoder profile)"
     OFF)
 
 if(AC3FORGE_MINIMAL_DECODER AND AC3FORGE_MINIMAL_ENCODER)
@@ -384,7 +384,7 @@ endif()
 # (-DVCPKG_MANIFEST_FEATURES=adm, see vcpkg.json) that a normal build never pulls in.
 option(AC3FORGE_BUILD_ADM "Build the standalone BW64/RF64 + ADM parser (src/ac3adm) - needs Boost, see vcpkg.json's \"adm\" feature" OFF)
 
-# ac3forge_c (src/capi) - C API: the C API over ac3::forge's encode/decode core. Depends
+# ac3forge_c (src/capi) - the C API over ac3::forge's encode/decode core. Depends
 # on nothing but ac3::forge_static (see src/capi/CMakeLists.txt's own header comment on why it
 # always embeds the static codec rather than tracking BUILD_SHARED_LIBS), so - unlike
 # AC3FORGE_BUILD_ADM - there is no extra dependency footprint to opt out of; default ON matches
@@ -497,8 +497,8 @@ if(AC3FORGE_BUILD_MPEGTS)
 endif()
 
 # A fourth standalone module, same "depends on nothing of ac3::forge" shape
-# as the three container writers above - AC-4 bitstream inspector's AC-4 bitstream
-# inspector, and the AC-4 decoder beside it, which links the inspector and
+# as the three container writers above - the AC-4 bitstream inspector, and the
+# AC-4 decoder beside it, which links the inspector and
 # nothing of ac3::forge either, and the AC-4 encoder (src/ac4enc). src/ac4core
 # is what the decoder and the encoder compute alike (tables and transforms),
 # linked privately by both.
@@ -622,7 +622,7 @@ if(AC3FORGE_BUILD_HEARTH AND NOT AC3FORGE_SENDSPIN_PLAYER_ONLY)
     add_subdirectory(apps/hearth)
 endif()
 
-# AC3Forge Crucible (WASAPI loopback tap and UX12, docs/crucible/design/promotion.md).
+# AC3Forge Crucible (docs/crucible/design/promotion.md).
 # In-tree like the GUI rather than wrapping the root the way the Android app
 # does, because it shares this toolchain. All three desktop platforms now have
 # a half under apps/crucible/engine/platform/ and apps/crucible/ui/platform/,
@@ -653,7 +653,7 @@ if(AC3FORGE_BUILD_FUZZERS)
     add_subdirectory(fuzz)
 endif()
 
-# The browser decode demo (WASM browser demo, docs/platforms/wasm.md) - a platform
+# The browser decode demo (docs/platforms/wasm.md) - a platform
 # app, same shape and reasoning as apps/android/'s Shield app: a small
 # demo consuming ac3::forge unmodified, kept out of both src/ (not library
 # code) and examples/ (not a single-API-call snippet backing a
@@ -668,7 +668,7 @@ if(EMSCRIPTEN)
     add_subdirectory(apps/wasm)
 endif()
 
-# The minimum-footprint decoder probe (minimum-footprint decoder profile, docs/building.md). Gated on
+# The minimum-footprint probe, decoder or encoder (docs/building.md). Gated on
 # the profile rather than on an option of its own, for the same reason
 # apps/wasm is gated on EMSCRIPTEN: outside that profile there is no
 # ac3::forge_minimal for it to link, so there is nothing to opt in or out of.

@@ -15,11 +15,13 @@ placement in an E-AC-3 + JOC stream. The third surface is
 **[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**, the
 `ac3forge-wasm-decoder` npm package that turns the same decode path into a
 push-frame API, a realtime AudioWorklet pipeline, and an hls.js/MSE bridge, answering the fact
-that **Chrome still cannot decode EC-3**
-([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297) is open).
+that a browser cannot be relied on to decode EC-3: [Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297)
+when an EC-3 track turns up in an MPD, in a report that has been open since 2023.
 That package is named but **not published**: this repository has never released it to npm, so
 building it from `js/` is the only way to get it — see [Publishing](#publishing)
-below.
+below. A fourth piece, the [AC-4 module](#ac-4-module), wraps the AC-4 decoder and encoder over
+the `ac4::` libraries rather than `ac3::forge`; it has no demo page, and the package exports its
+typed wrapper as `./ac4`.
 The decode demo consumes the package (see "What's reused, what's new" below) rather than
 reimplementing it — see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
 for the package's own API docs. The demos exist to prove the codec runs correctly outside a
@@ -37,9 +39,9 @@ pages in this section.
 | Decode demo | Built and [published live](../wasm-demo.md) |
 | Encode demo, and the Atmos authoring page | Built and [published live](../wasm-encode-demo.md) |
 | `ac3forge-wasm-decoder` npm package | **Never released to npm.** Building it from `js/` is the only way to get it |
-| AC-4 module | Built in the same CI job as the two modules above; no demo page yet |
-| Why the package exists | Chrome still cannot decode EC-3 |
-| Correctness | Checked in CI against the native decoder's own output, not by hand |
+| AC-4 module | Decodes and encodes AC-4, objects included. Built in the same CI job as the two modules above, and the package's Node tests drive its wrapper against a fake module; no test runs the compiled module, and there is no demo page yet |
+| Why the package exists | A browser cannot be relied on to decode EC-3 |
+| Correctness | CI asserts stream properties and known-signal measurements (channel count, sample rate, object count and movement, non-silent output, a 997 Hz tone's true peak, a decode round trip). It does not compare the WebAssembly decoder's samples with the native decoder's |
 | Real hardware | Not applicable — the browser is the target |
 
 --8<-- "docs-snippets/generated/platform-browser.md"
@@ -65,8 +67,8 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 - **Real-time factor.** Timed under Node/V8 (a reasonable proxy for Chrome's own engine),
   single-threaded, no WASM SIMD, `-O3`, real encoder code paths (not a timing loop around a stub):
   AC-3 2.0 encodes at **385x real-time**, E-AC-3 3/2+LFE at **120x**, a 4-object Atmos/JOC encode at
-  **82x**. There is enormous headroom below 1x even accounting for a slower mobile CPU and for
-  optional encoder work not exercised in that measurement (`search=distortion`, coupling). This is
+  **82x**. That leaves a wide margin for a slower mobile CPU and for optional encoder work not
+  exercised in that measurement (`search=distortion`, coupling). This is
   why the encode module needs no `pthreads`/`SharedArrayBuffer` — everything above runs on the main
   thread (or a plain `postMessage`-fed Worker) with room to spare, which also means a future
   real-time (microphone-capture) product is a plumbing problem, not a CPU one.
@@ -77,9 +79,9 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
   pass/fail table is necessarily an end-of-file readout, not a live one — `momentaryLkfs()`/
   `shortTermLkfs()` are what a future live product would show updating in real time.
 
-`apps/wasm/encoder_bindings.cpp` binds the full surface above (including Atmos/JOC) even though
-`apps/wasm/encode/`'s page only exposes AC-3/E-AC-3 bed encoding today — an object-authoring UI on
-top of the bound `AtmosBedEncoder` is page-only work for a later PR, not a module change.
+`apps/wasm/encoder_bindings.cpp` binds the full surface above (including Atmos/JOC).
+`apps/wasm/encode/`'s page exposes AC-3/E-AC-3 bed encoding, and the object-authoring page in
+`apps/wasm/atmos/` drives the bound `AtmosBedEncoder`.
 
 ## AC-4 module
 
@@ -127,7 +129,9 @@ wrapper with their metadata within the codec's tolerance; it holds the wrapper's
 native module, not the codec, which the C API's, Rust's and Python's tests hold to `ac4::Encoder`.
 `js/tests/package-exports.test.js` holds the `exports` map to the files the build writes and
 imports `./ac4` through the package's own name. `ac4_bindings.cpp` itself is built by `build-wasm`
-in CI; Emscripten is not part of the development machines' setup.
+in CI: the run on `main` of 2026-09-29 linked `bin/wasm_ac4_demo/ac3forge_ac4.js`, and the
+package's suite passed 102 tests. No test runs the compiled module, so what the wrapper does with
+the compiled module is not verified by CI.
 
 ## Build and run
 
@@ -274,15 +278,17 @@ preset needs.
 
 Verified against **Emscripten 6.0.6**. No version is pinned in the toolchain file itself (unlike the
 Android NDK's explicit pin) — there is no CMake-side equivalent of `local.properties`' `sdk.dir` to
-pin against yet; whatever `$EMSDK` resolves to is what gets used.
+pin against yet; whatever `$EMSDK` resolves to is what gets used. CI pins it in
+`.github/actions/setup-emscripten` (`EMSDK_VERSION`).
 
 ## Publishing
 
 `ac3forge-wasm-decoder` has **never been published to npm**, so there is no release of it to
 install; the two things holding that are set out at the end of this section. What the CI does
-today is build, test and `npm pack` the tarball on every pull request and every push to `main`
-touching `js/`, and upload it as an Actions artefact; the `publish` job below it runs only on a
-manual `workflow_dispatch` against a `v*` tag. No date is set for that changing.
+today is build, test and `npm pack` the tarball (the `npm` job of `ci.yml`, not on a pull request)
+in the run after a merge to `main` that touches `js/` and in the nightly run, and upload it as an
+Actions artefact; the `publish` job below it runs only on a manual `workflow_dispatch` against a
+`v*` tag. No date is set for that changing.
 
 Until it does, the way to use the package is to build it from source:
 `cd js && npm ci && npm run build` — the same install and build the `build-wasm` job runs, which
@@ -310,8 +316,9 @@ manual dispatch has been seen to work.
 
 The demos build alongside the desktop packages rather than only ever being hand-built locally:
 `.github/workflows/_build.yml`'s `build-wasm` job configures and builds both (one `cmake --build`
-over the whole preset) on every push, the same continuous-smoke-test role `build-android`'s
-always-on debug APK plays — proving the Emscripten toolchain and every file it touches still build.
+over the whole preset) in every run in which the WASM lane runs — the nightly run, and the run
+after a merge that changes `apps/wasm/` or `js/`, the same smoke-test role `build-android` plays —
+proving the Emscripten toolchain and every file it touches still build.
 Like `build-android`, it's its own job rather than a `build` matrix entry: this leg has no ctest
 suite, no cpack package and no gold-reference gate, so folding it into that matrix would mean
 threading new `if:` exclusions through most of that job's steps for no benefit. The same job also
@@ -337,9 +344,11 @@ working copy in a throwaway CI workspace rather than committing the refresh back
 list below — `mkdocs build --strict`) therefore also byte-compares
 `index.html`, `demo.js`, the two favicon files and `assets/demo.ec3` against their `apps/wasm/`
 originals, and does the same for the encode demo's `encode/index.html`/`encode/app.js` and its
-own favicon copies against `docs/assets/wasm-encode-demo/` — the plain copies, not Emscripten
+own favicon copies against `docs/assets/wasm-encode-demo/`, and for the Atmos page's `index.html`
+and `app.js` against `docs/assets/wasm-encode-demo/atmos/` — the plain copies, not Emscripten
 output, so the check needs no toolchain. The `.js`/`.wasm` build artifacts (both modules) have no source-tree counterpart and are
-outside this check's scope; they only get refreshed by an actual Emscripten rebuild.
+outside this check's scope; they only get refreshed by an actual Emscripten rebuild. The AC-4
+module has no committed copy at all.
 
 `docs.yml`'s trigger `paths:` list includes `apps/wasm/**`, `CMakeLists.txt`,
 `CMakePresets.json`, `.github/actions/setup-emscripten/**` and the WASM toolchain file
@@ -351,8 +360,9 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 
 !!! note "Verified in a browser"
     Both `cmake --preset config-wasm-emscripten` and the full desktop presets configure and build
-    clean from the same source tree (confirmed repeatedly across this PR's history, including after
-    merging in the then-current integration branch and #169's own branch directly). A Chromium
+    clean from the same source tree (confirmed repeatedly across the history of the PR that added
+    the demo, including after merging in the then-current integration branch and #169's own branch
+    directly). A Chromium
     instance loading the built page — both standalone and embedded in the
     `mkdocs build --strict`-built docs site — decodes a bundled 8-second, 3-object Atmos-in-DD+ fixture
     (`E-AC-3, 48000 Hz, 6 ch (L, C, R, Ls, Rs, LFE), 3 Atmos object(s), 8.0s`, matching what was
@@ -366,7 +376,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     code ran, and the room-view canvas paints non-empty content from it. Each "Solo object N"
     button was confirmed to switch playback to a buffer that (a) sample-for-sample matches
     `tanh()` of that specific object's own `object_audio`, (b) differs from every other object's
-    audio, and (c) differs from the bed downmix: the isolated object plays, not just some audio.
+    audio, and (c) differs from the bed downmix: the isolated object plays.
 
 !!! note "Encode module, verified in a browser"
     A dropped multi-second WAV (a known tone at a known level) encodes through
@@ -378,16 +388,17 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     the source audio replayed — and reports the right sample rate and channel count back.
 
 !!! note "Automated in CI"
-    `apps/wasm/tests/` is a Playwright harness `build-wasm` now runs on every push, right after the
-    demo artifact uploads: two projects, one per demo, each serving its own just-built directory.
+    `apps/wasm/tests/` is a Playwright harness `build-wasm` runs in every run of the job, right
+    after the demo artifact uploads: two projects, one per demo, each serving its own just-built
+    directory (seven tests in the run of 2026-09-29).
     `decode.spec.js` loads `index.html` in a headless Chromium and drives the packaged decoder
     (`js/`'s `decodeFile()` and `Ac3ForgeDecoderNode` — the same calls `demo.js` itself
     makes) to decode the bundled fixture and assert on its values — `48000 Hz, 6 channels,
     3 Atmos objects, 8.0s`, that the same object's decoded position differs between its
     first and last frame, and that the AudioWorklet pipeline (a Worker
     doing the WASM decode, a `SharedArrayBuffer` ring buffer, an `AudioWorkletNode`)
-    produces non-silent decoded audio out an `OfflineAudioContext` — not just that the worker
-    didn't throw. `encode.spec.js` does the same for the encode module: encodes a 997 Hz tone
+    produces non-silent decoded audio out an `OfflineAudioContext`. `encode.spec.js` does the same
+    for the encode module: encodes a 997 Hz tone
     through the bound `Encoder`, measures it with `QcMeter`, asserts the true peak and every preset
     verdict land where that known signal predicts, and round-trips the result through the decode
     module. A regression in any of those numbers now fails CI rather than waiting for the next
@@ -397,7 +408,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     `decoder_bindings.cpp`'s rewrite (the old whole-file `Decoder` class replaced by
     `scanStream()`/`PushDecoder`) was built and linked clean, and both decode Playwright specs
     (the whole-file `decodeFile()` path and the new AudioWorklet pipeline) passed against that
-    build, not just against source review. `js/`'s own `node:test` suite — the fMP4 box
+    build. `js/`'s own `node:test` suite — the fMP4 box
     walker against an ffmpeg-remuxed fixture (every extracted sample landing exactly on an
     AC-3/E-AC-3 syncword), the ring buffer's wraparound/underrun/overrun arithmetic, and the
     `MediaSource`/`addSourceBuffer` shim's mechanics against a fake `MediaSource` stub — passed

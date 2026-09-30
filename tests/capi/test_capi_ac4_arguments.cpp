@@ -969,3 +969,76 @@ TEST_CASE("the AC-4 encoder configuration's optional object fields reach the enc
     scene.has_screen_size_ratio_code = 0;
     CHECK((encode_with_c_api(config, input).frames != expected.frames));
 }
+
+TEST_CASE("the AC-4 encoder refuses an object with a depth exponent and no screen factor",
+          "[capi][ac4]") {
+    // The screen factor and the depth exponent are one group of fields whose factor has no code for
+    // 0 (src/ac4enc/ERRATA.md): an exponent other than 1 needs a factor of 1/8 or more. A
+    // configuration without one answers AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG and names the
+    // reason, and an update AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT.
+    std::array<ac3forge_ac4_object_config_t, 2> objects{};
+    for (auto& object : objects) {
+        ac3forge_ac4_object_config_init(&object);
+    }
+    ac3forge_ac4_objects_config_t scene;
+    ac3forge_ac4_objects_config_init(&scene);
+    scene.objects = objects.data();
+    scene.object_count = objects.size();
+    scene.coding = AC3FORGE_AC4_OBJECT_CODING_DIRECT;
+    ac3forge_ac4_encoder_config_t config;
+    ac3forge_ac4_encoder_config_init(&config);
+    config.bitrate_kbps = 256;
+    config.experimental.objects = 1;
+    config.objects = &scene;
+
+    const auto create_status = [&config]() {
+        ac3forge_ac4_encoder_t* encoder = nullptr;
+        const ac3forge_status_t status = ac3forge_ac4_encoder_create(&config, &encoder);
+        CHECK((encoder != nullptr) == (status == AC3FORGE_OK));
+        ac3forge_ac4_encoder_destroy(encoder);
+        return status;
+    };
+    const auto reason = [&config]() {
+        return std::string_view(ac3forge_ac4_encoder_refusal_reason(&config));
+    };
+    REQUIRE(create_status() == AC3FORGE_OK);
+    for (const double exponent : {0.25, 0.5, 2.0}) {
+        CAPTURE(exponent);
+        objects[1].properties.depth_exponent = exponent;
+        objects[1].properties.screen_factor = 0.0;
+        CHECK(create_status() == AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG);
+        CHECK(reason().find("a screen factor of 0") != std::string_view::npos);
+        objects[1].properties.screen_factor = 0.125;
+        CHECK(create_status() == AC3FORGE_OK);
+        CHECK(reason().empty());
+    }
+
+    // An update with such properties is invalid input, and the encoder goes on to take one with a
+    // factor.
+    objects[1].properties.depth_exponent = 0.5;
+    objects[1].properties.screen_factor = 0.5;
+    ac3forge_ac4_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_ac4_encoder_create(&config, &encoder) == AC3FORGE_OK);
+    const std::vector<std::vector<float>> input = tones({562.5, 1312.5}, 2 * kFrameSamples);
+    std::vector<const float*> views;
+    for (const auto& channel : input) {
+        views.push_back(channel.data());
+    }
+    ac3forge_ac4_object_metadata_update_t update;
+    ac3forge_ac4_object_metadata_update_init(&update);
+    update.object = 1;
+    update.sample = 100;
+    update.properties = objects[1].properties;
+    update.properties.screen_factor = 0.0;
+    ac3forge_ac4_encoded_frame_t** frames = nullptr;
+    size_t count = 0;
+    CHECK(ac3forge_ac4_encoder_encode_objects(encoder, views.data(), views.size(),
+                                              input.front().size(), &update, 1, &frames,
+                                              &count) == AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT);
+    update.properties.screen_factor = 0.125;
+    REQUIRE(ac3forge_ac4_encoder_encode_objects(encoder, views.data(), views.size(),
+                                                input.front().size(), &update, 1, &frames,
+                                                &count) == AC3FORGE_OK);
+    ac3forge_ac4_encoded_frame_array_destroy(frames, count);
+    ac3forge_ac4_encoder_destroy(encoder);
+}

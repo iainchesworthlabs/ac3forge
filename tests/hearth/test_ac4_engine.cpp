@@ -29,11 +29,13 @@
 #include "ac3/render/layout.hpp"
 #include "ac4/ac4.hpp"
 #include "ac4_stream.hpp"
+#include "ac4_stream_kinds.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
 #include "decoder_settings.hpp"
 #include "pcm_sink.hpp"
 #include "player.hpp"
+#include "sanitized.hpp"
 #include "session.hpp"
 #include "stream_decoder.hpp"
 
@@ -51,6 +53,12 @@
 // values. The formulas are gain_ac4_decode.py's and the E6 tests', which hold
 // the decoder to them; what these hold is that the engine's settings reach
 // the decoder as the page means them.
+//
+// Under the sanitizers (tests/sanitized.hpp) the first of them plays one
+// committed stream of each kind, and of each its first frames
+// (tests/ac4_stream_kinds.hpp): it decodes each stream three times, and the
+// ASan leg runs ctest serially. The DRC modes' test plays the first frames of
+// its stream. A normal build plays every stream to its end.
 
 namespace {
 
@@ -67,6 +75,7 @@ using ac3::hearth::QueueItem;
 using ac3::hearth::Session;
 using ac3::hearth::StreamDecoder;
 using ac3::hearth::UnitReport;
+using ac3::test::kSanitized;
 
 // A slot for every speaker ac4::Decoder names, each at its own location, so
 // the renderer puts each decoded channel on one slot at a gain of exactly 1.
@@ -482,15 +491,19 @@ TEST_CASE(
     "[hearth][ac4]") {
     const std::vector<fs::path> streams = committed_streams();
     REQUIRE(streams.size() >= 42);
+    const std::vector<fs::path> to_play = ac3::test::streams_to_play(streams);
     const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
     // What a listener gets: dialogue to -31 dBFS, the DRC mode for it.
     const DecoderSettings settings;
     const ac4::DecoderConfig config = ac3::hearth::decoder_setup(settings, layout).ac4;
     int played_whole = 0;
     std::map<std::string, int> refused;
-    for (const fs::path& path : streams) {
+    for (const fs::path& path : to_play) {
         INFO("stream " << path.string());
-        const std::vector<std::byte> bytes = read_file(path);
+        std::vector<std::byte> bytes = read_file(path);
+        if (kSanitized) {
+            bytes.resize(ac3::test::first_frames(bytes, ac3::test::kSanitizedFrames).size());
+        }
         // A stream none of whose presentations the decoder decodes - the
         // immersive legs, until the decoder has their channel elements - is
         // refused when it opens, with the decoder's own reason.
@@ -523,14 +536,15 @@ TEST_CASE(
                                   [](const UnitReport& r) { return r.ac4.has_value(); }));
     }
     std::ostringstream summary;
-    summary << played_whole << " of " << streams.size() << " committed streams played;";
+    summary << played_whole << " of " << to_play.size() << " streams played, of " << streams.size()
+            << " committed;";
     for (const auto& [reason, count] : refused) {
         summary << " " << count << " refused: " << reason << ";";
     }
     WARN(summary.str());
     // The 42 D8 decoded through the API, and any stream since that the
-    // decoder decodes.
-    CHECK(played_whole >= 42);
+    // decoder decodes; under the sanitizers the 40 kinds or more there are.
+    CHECK(played_whole >= (kSanitized ? 40 : 42));
 }
 
 TEST_CASE("hearth ac4: the engine plays the streams of AC4DEC_API_STREAM_DIR", "[hearth][ac4]") {
@@ -784,8 +798,15 @@ TEST_CASE("hearth ac4: audio description is mixed in at its level, or not at all
 TEST_CASE("hearth ac4: each DRC decoder mode compresses as the decoder's own does",
           "[hearth][ac4]") {
     // DEE's stream with a compression curve for home theatre and portable
-    // headphones, and the default profile for the other two.
-    const std::vector<std::byte> bytes = read_file(baseline("ac4-51-drc-ltrt-192"));
+    // headphones, and the default profile for the other two. Under the
+    // sanitizers its first 12 frames, half a second: the curves have set the
+    // modes' outputs apart within 4, and each mode is played twice, by the
+    // engine and by the decoder.
+    constexpr std::size_t kSanitizedDrcFrames = 12;
+    std::vector<std::byte> bytes = read_file(baseline("ac4-51-drc-ltrt-192"));
+    if (kSanitized) {
+        bytes.resize(ac3::test::first_frames(bytes, kSanitizedDrcFrames).size());
+    }
     const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
     std::vector<std::vector<float>> off;
     std::vector<std::vector<float>> home;

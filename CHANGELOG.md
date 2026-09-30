@@ -2591,6 +2591,15 @@ The sections below contain the complete change list and fixes.
 
 **Codec correctness**
 
+- **The AC-4 encoder wrote a screen factor of 1/8 for an object whose depth exponent was other than
+  1 and whose screen factor was 0.** Part 2 sends `object_screen_factor_code` and
+  `object_depth_factor` as one group of fields, and the factor, (code + 1) / 8, has no code for 0,
+  so the group the encoder wrote for such an object decoded with a factor of 1/8. The encoder now
+  refuses the object, naming the reason (`Encoder::refusal_reason()`, and through the C API
+  `AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG` with `ac3forge_ac4_encoder_refusal_reason()`), and a
+  metadata update with such properties as invalid input (`EncodeError::kInvalidInput`,
+  `AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT`): an exponent other than 1 takes a screen factor of 1/8
+  or more. The Rust, Python and JavaScript encoders already report both.
 - **The AC-4 encoder left the band above A-SPX's crossover empty where the low band held nothing to
   copy.** A tone sweeping through the band (or a steady high tone in a quiet programme) has nothing
   in the low band for A-SPX's patch to copy, and the decoder's noise, a share of the envelope

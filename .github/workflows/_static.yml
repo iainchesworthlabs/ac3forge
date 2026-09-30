@@ -153,12 +153,15 @@ jobs:
       # links to is what put a suite in tools/ci in the first place.
       # tools/hearth holds ota.py, which updates boards over the network
       # (planning/esp32-ota.md): its suite runs it against a stand-in board.
+      # tools/n1b holds the scripts that rewrite most of the tree when the
+      # libraries are re-laid out (planning/layout.md): their suite runs each
+      # rewrite over a miniature tree and pins where every kind of path goes.
       - name: Oracle unit tests
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
-          for suite in tools/checks tools/ci tools/hearth; do
+          for suite in tools/checks tools/ci tools/hearth tools/n1b; do
             printf '\n=== %s ===\n' "$suite"
             python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
           done
@@ -193,6 +196,20 @@ jobs:
         if: ${{ !cancelled() }}
         shell: bash
         run: python3 tools/checks/check_platform_matrix.py
+
+      # The libraries under src/ form a graph with no cycle, and nothing but the
+      # habit of the people editing it keeps it so. tools/checks/layering.json
+      # lists each library and the libraries it may include from
+      # (planning/layout.md); this resolves every #include under src/ the way the
+      # compiler does and fails one that crosses into a library the table does not
+      # list. The includes a pending cut still has to remove are listed in
+      # tools/checks/layering_debt/, one file per cut, and a listed include that is
+      # gone fails too, so the change that removes it deletes its line. Its own
+      # suite runs in the Oracle unit tests step above.
+      - name: Library layering
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python3 tools/checks/check_layering.py
 
       # A board flashed from this tree has to stay recoverable over USB, and
       # its bootloader has to keep checking an image before it boots it
