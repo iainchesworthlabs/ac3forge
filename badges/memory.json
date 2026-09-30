@@ -1,6 +1,6 @@
 {
-  "color": "orange",
-  "label": "memory",
-  "message": "2009 KB/frame",
+  "color": "blue",
+  "label": "allocation per frame (heaviest workload)",
+  "message": "AC-3 5.1 decode: 42 KB | E-AC-3 Atmos 4-object decode: 80 KB | AC-4 5.1 encode: 2009 KB",
   "schemaVersion": 1
 }

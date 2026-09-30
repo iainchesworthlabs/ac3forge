@@ -1,6 +1,6 @@
 {
   "color": "brightgreen",
-  "label": "decode accuracy",
-  "message": "2.0 dB SNR",
+  "label": "decode accuracy, SNR (tightest check)",
+  "message": "AC-3 5.1 448 kbps: 58.1 dB | E-AC-3 stereo 128 kbps transient: 2.0 dB | AC-4 Dolby streams: 16.7 dB min, MOS-LQO 4.39",
   "schemaVersion": 1
 }
