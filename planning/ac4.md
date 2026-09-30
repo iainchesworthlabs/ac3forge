@@ -2196,7 +2196,7 @@ played streams, as coded, folded and in core decoding) and 6 encodes, at index 1
 `score_ac4_decode.py` (15 legs) and `score_ac4_encode.py` (72) hold their pins with the `float` CLI. (d)
 The converter on the P4, per frame of two channels, before and after: 204,951 to 7,321 us at 25/24,
 208,009 to 7,169 at 15/16, 230,897 to 22,395 at 1001/960 and 23.976 fps and 184,609 to 98,547 at 29.97
-fps, where the default policy's sporadic slow stage falls on it (17,454 under the 512-byte policy). The
+fps, where the default policy's slow stage falls on it (17,454 under the 512-byte policy). The
 frame is 0.92 and 0.82 of its duration at 24 and 25 fps, from 5.64 and 5.92, and 1.25 and 3.65 (1.21 and
 1.26) at the 1001/960 rates. On the host, in one channel's frame, the `double` sum takes 119 to 143 us
 and the `float` lanes 41 to 54 (2.6 to 3.1 times, MSVC). The first frame at 1001/960 still takes 5.9 s,

@@ -304,7 +304,7 @@ converter at 24 and 25 fps, DEE's immersive stereo, which takes 0.92 and 0.82. N
 to 4.5 folded to 2.0. 5.1.4 in full decoding takes 2.8 to 3.7 to its own layout and 2.5 to 3.4
 folded to 2.0, and core decoding 2.3 to 3.1 to 5.1.4 and 2.1 to 2.9 to 2.0. The converter's other
 two frame rates, 23.976 and 29.97 fps, are the ratio 1001/960, whose table of 1,001 phases is read
-from PSRAM: they take 1.25 and 3.65, the second being the play where a stage runs sporadically slow
+from PSRAM: they take 1.25 and 3.65, the second being the play where a stage runs slow
 under the default policy (1.21 and 1.26 with the 512-byte policy). Before D14a's third part the same
 streams took 0.86 and 1.04 at 2.0, 3.5 to 6.7 at 5.1, 5.4 to 6.1 at 5.1.4 and 5.9 to 6.5 through the
 converter: the part made a frame 1.1 to 2.5 times faster and the converter's streams not at all,
@@ -491,7 +491,7 @@ and 25 fps in real time.
 At 1001/960 the table is 1,001 phases of 94 taps, 376,376 bytes as `float` (752,752 as `double`),
 in PSRAM, and every output reads one phase's 376 bytes from it, a different phase each time. The
 converter takes 22.4 ms a frame at 23.976 fps, three times the small tables' time for an output
-sample, and 98.5 ms in the 29.97 fps play, where the default policy's sporadic slow stage
+sample, and 98.5 ms in the 29.97 fps play, where the default policy's slow stage
 ([Allocation policy](#allocation-policy)) falls on it: the same play with allocations over 512
 bytes sent to PSRAM first takes 17.5 ms (1.26 times real time) and the 23.976 fps play 21.0. The
 first frame at 1001/960 still takes 5.9 s, 5.5 s more than an ordinary one, since the table is designed in

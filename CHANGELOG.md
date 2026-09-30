@@ -1668,7 +1668,7 @@ The sections below contain the complete change list and fixes.
   twenty plays and six core plays, under either allocation policy; the converter takes 7.3 ms a
   frame on the P4 at 24 and 25 fps from 205 and 208 (the frames are 0.92 and 0.82 of real time, from
   5.6 and 5.9), 22.4 ms at 1001/960 and 23.976 fps from 231 (1.25), and 98.5 ms in the 29.97 fps play
-  where the default allocation policy's sporadic slow stage falls on it (17.5 under the other policy);
+  where the default allocation policy's slow stage falls on it (17.5 under the other policy);
   the first frame at 1001/960 still takes 5.9 s, the table being designed in `double`. The `double`
   output is byte-identical to before (360 decodes and 6 encodes compared) and the scorers hold their
   pins with the `float` CLI. The Cortex-M3 probe gains a sixth AC-4 fixture with companding, whose
