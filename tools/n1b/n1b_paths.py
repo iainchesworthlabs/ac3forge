@@ -9,7 +9,8 @@ a source file by path, a comment that says where a function lives), the workflow
 the data files. The rule is n1b_cmake.rewrite_paths: a whole old path, or a directory that the moves
 kept together, becomes its new path, and nothing that merely ends the same way. A Python path built
 from its components (`REPO / "src" / "forge" / "src" / "dsp"`) is joined, moved by the same rule and
-split again.
+split again. The pages also follow the files that the hand-written part of S2 renames and no plan
+lists (HAND_RENAMES: the ABI allowlists).
 
 It leaves alone the files that quote the old layout as history: the changelog, the layout study and
 its inventory, the scripts and baselines of the migration (KEEP_OLD_PATHS), and the byte-exact
@@ -45,6 +46,26 @@ KEEP_OLD_PATHS = (
     "fuzz/seeds/",
     "fuzz/regressions/",
 )
+# Files the hand-written part of S2 renames (tools/n1b/s2-hand.patch) and no move plan lists: the
+# exported-symbol allowlists take the name of the library that replaces the one they list, and the
+# pages that name one follow the rename as they follow a move.
+_ALLOWLISTS = "tools/ci/abi-allowlist/"
+HAND_RENAMES = {
+    f"{_ALLOWLISTS}{old}.so.txt": f"{_ALLOWLISTS}{new}.so.txt"
+    for old, new in {
+        "libac3forge": "libiclforge_ac3",
+        "libac3forge_c": "libiclforge_c",
+        "libac3iab": "libiclforge_iab",
+        "libac3signing": "libiclforge_signing",
+        "libac4": "libiclforge_ac4",
+        "libac4dec": "libiclforge_ac4dec",
+        "libac4enc": "libiclforge_ac4enc",
+        "libiamf": "libiclforge_iamf",
+        "libmatroska": "libiclforge_matroska",
+        "libmp4": "libiclforge_mp4",
+        "libmpegts": "libiclforge_mpegts",
+    }.items()
+}
 BINARY_EXT = {
     ".png",
     ".ttf",
@@ -134,6 +155,7 @@ def run(root: Path, plan: Path, dry_run: bool = False) -> tuple[int, dict[str, l
         except (OSError, UnicodeDecodeError):
             continue
         out = rewrite_paths(text, moves, dirs, hold, known)
+        out = rewrite_paths(out, HAND_RENAMES, None)
         named = out
         if f.endswith(".py"):
             out = rewrite_chains(out, moves, dirs, hold, known)

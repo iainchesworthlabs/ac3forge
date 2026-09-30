@@ -56,6 +56,10 @@ FILES = {
         'KEPT = REPO / "src" / "ac3" / "src"\n'
     ),
     "docs/notes.md": 'not python: REPO / "src" / "forge" / "src" / "dsp" / "fft.cpp"\n',
+    "docs/abi.md": (
+        "Allowlists: `tools/ci/abi-allowlist/libac4enc.so.txt` and\n"
+        "tools/ci/abi-allowlist/libac3forge.so.txt. The libac4.so.txt name alone is no path.\n"
+    ),
     "CHANGELOG.md": f"- moved {OLD_A}\n",
     "planning/layout.md": f"the study read {OLD_A}\n",
     "tools/n1b/notes.py": f'OLD = "{OLD_A}"\n',
@@ -155,6 +159,13 @@ class Paths(unittest.TestCase):
         self.assertIn('KEPT = REPO / "src" / "ac3" / "src"\n', gen)
         # the same words in a page are not a path chain
         self.assertIn('"src" / "forge" / "src" / "dsp"', self.text("docs/notes.md"))
+
+    def test_a_file_the_hand_written_part_renames_is_followed_where_a_page_names_it(self) -> None:
+        self.run_pass()
+        text = self.text("docs/abi.md")
+        self.assertIn("`tools/ci/abi-allowlist/libiclforge_ac4enc.so.txt` and\n", text)
+        self.assertIn("tools/ci/abi-allowlist/libiclforge_ac3.so.txt. The", text)
+        self.assertIn("The libac4.so.txt name alone", text)
 
     def test_a_chain_that_names_a_split_directory_is_left_and_reported(self) -> None:
         _, hits = self.run_pass()
