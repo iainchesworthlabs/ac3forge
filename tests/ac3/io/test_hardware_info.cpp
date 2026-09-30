@@ -5,7 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/hardware_info.hpp"
+#include "iclforge/hardware_info.hpp"
 
 using ac3forge::describe_hardware;
 using ac3forge::HardwareFacts;

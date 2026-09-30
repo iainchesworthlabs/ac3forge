@@ -12,7 +12,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/firmware_status.hpp"
+#include "iclforge/firmware_status.hpp"
 #include "sink_firmware.hpp"
 #include "sink_firmware_images.hpp"
 #include "sink_firmware_view.hpp"

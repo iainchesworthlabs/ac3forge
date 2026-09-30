@@ -17,7 +17,7 @@
 
 #include "platform/process.hpp"
 
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/handshake.hpp"
 #include "iclforge/sendspin/messages.hpp"
 #include "iclforge/sendspin/noise.hpp"

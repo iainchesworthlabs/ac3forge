@@ -16,10 +16,10 @@
 #include "iclforge/ac3/decoder/output.hpp"
 #include "iclforge/ac3/decoder/serving.hpp"
 #include "iclforge/render/layout.hpp"
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/chunks.hpp"
 #include "iclforge/sendspin/messages.hpp"
-#include "ac3forge/playout.hpp"
+#include "iclforge/playout.hpp"
 
 // The Sendspin player's audio (planning/hearth-reference-player.md, B3): what
 // the server sends arrives here with the time it should play, and leaves for

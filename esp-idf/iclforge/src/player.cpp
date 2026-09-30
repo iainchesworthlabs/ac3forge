@@ -1,7 +1,7 @@
 // The player's two tasks and the ring between them. See
 // ../include/ac3forge/player.hpp for what this is and why it is here.
 
-#include "ac3forge/player.hpp"
+#include "iclforge/player.hpp"
 
 #include <algorithm>
 #include <array>
@@ -28,7 +28,7 @@
 #include "iclforge/objects/oamd.hpp"
 #include "iclforge/render/render.hpp"
 
-#include "ac3forge/unit_hold.hpp"
+#include "iclforge/unit_hold.hpp"
 
 #if CONFIG_AC3FORGE_AC4
 #include "ac4_bridge.hpp"

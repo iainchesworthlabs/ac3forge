@@ -1,6 +1,6 @@
 // The Sendspin player's audio. See ../include/ac3forge/burst_player.hpp.
 
-#include "ac3forge/burst_player.hpp"
+#include "iclforge/burst_player.hpp"
 
 #include <algorithm>
 #include <array>
@@ -33,10 +33,10 @@
 #include "iclforge/render/render.hpp"
 #include "iclforge/render/routing.hpp"
 #include "iclforge/render/trim_delay.hpp"
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/chunks.hpp"
 
-#include "ac3forge/access_units.hpp"
+#include "iclforge/access_units.hpp"
 
 namespace ac3forge {
 namespace {

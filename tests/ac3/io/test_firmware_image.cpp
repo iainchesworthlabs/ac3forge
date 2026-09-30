@@ -14,7 +14,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/firmware_image.hpp"
+#include "iclforge/firmware_image.hpp"
 
 using ac3forge::BoardFacts;
 using ac3forge::ContentDigest;

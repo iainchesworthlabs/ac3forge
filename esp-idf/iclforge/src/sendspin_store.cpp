@@ -1,7 +1,7 @@
 // A Sendspin player's keys and pairing records in NVS. See
 // ../include/ac3forge/sendspin_store.hpp.
 
-#include "ac3forge/sendspin_store.hpp"
+#include "iclforge/sendspin_store.hpp"
 
 #include <algorithm>
 #include <array>

@@ -9,7 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 
-#include "ac3forge/sink_plan.hpp"
+#include "iclforge/sink_plan.hpp"
 
 using ac3forge::line_ceiling;
 using ac3forge::plan_sink;

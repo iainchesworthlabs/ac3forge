@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3forge/slot_conversion.hpp"
+#include "iclforge/slot_conversion.hpp"
 
 // Planar float to interleaved fixed-point, in the two shapes the sinks need.
 //

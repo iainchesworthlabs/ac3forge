@@ -1,7 +1,7 @@
 // The Sendspin player's WebSocket server and sessions. See
 // ../include/ac3forge/sendspin_host.hpp.
 
-#include "ac3forge/sendspin_host.hpp"
+#include "iclforge/sendspin_host.hpp"
 
 #include <algorithm>
 #include <array>
@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "lwip/sockets.h"
 
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/arbiter.hpp"
 #include "iclforge/sendspin/base64url.hpp"
 #include "iclforge/sendspin/chunks.hpp"
@@ -41,7 +41,7 @@
 #include "iclforge/sendspin/player_session.hpp"
 #include "iclforge/sendspin/session.hpp"
 #include "iclforge/sendspin/transport.hpp"
-#include "ac3forge/tcp_arrivals.hpp"
+#include "iclforge/tcp_arrivals.hpp"
 
 namespace ac3forge {
 namespace {

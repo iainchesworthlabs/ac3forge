@@ -11,7 +11,7 @@
 #include "iclforge/sendspin/handshake.hpp"
 #include "iclforge/sendspin/handshake_session.hpp"
 #include "iclforge/sendspin/noise.hpp"
-#include "ac3forge/pairing_records.hpp"
+#include "iclforge/pairing_records.hpp"
 
 // What a Sendspin player keeps across a reboot, in NVS: its X25519 identity,
 // its pairing PSK, its pairing records, the names of the servers they are with,

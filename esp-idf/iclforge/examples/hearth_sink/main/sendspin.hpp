@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "iclforge/render/layout.hpp"
-#include "ac3forge/control.hpp"
+#include "iclforge/control.hpp"
 
 // The board as a Sendspin player (planning/hearth-reference-player.md, B3), as
 // a seam CMake resolves, like the source and the sink:

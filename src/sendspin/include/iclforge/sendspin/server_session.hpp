@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/channel.hpp"
 #include "iclforge/sendspin/dialect.hpp"
 #include "iclforge/sendspin/handshake.hpp"

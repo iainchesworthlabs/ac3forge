@@ -4,7 +4,7 @@
 #include <optional>
 #include <span>
 
-#include "ac3forge/playout.hpp"
+#include "iclforge/playout.hpp"
 
 // Where decoded audio goes, as a seam CMake resolves rather than a flag the
 // code branches on - the same rule the library follows for its own platform

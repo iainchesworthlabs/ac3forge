@@ -1,7 +1,7 @@
 // The REST control surface, and the web UI it serves. See
 // ../include/ac3forge/control.hpp and planning/esp32-device-ui.md.
 
-#include "ac3forge/control.hpp"
+#include "iclforge/control.hpp"
 
 #include <algorithm>
 #include <array>
@@ -19,9 +19,9 @@
 #include "esp_http_server.h"
 #include "esp_psram.h"
 
-#include "ac3forge/firmware.hpp"
-#include "ac3forge/hardware_info.hpp"
-#include "ac3forge/log.hpp"
+#include "iclforge/firmware.hpp"
+#include "iclforge/hardware_info.hpp"
+#include "iclforge/log.hpp"
 
 // The web UI's two files. CMakeLists.txt embeds them (EMBED_FILES) and they stay
 // in flash. ESP-IDF names each symbol after the file's base name, which is why

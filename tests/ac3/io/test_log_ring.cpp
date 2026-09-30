@@ -7,7 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/log_ring.hpp"
+#include "iclforge/log_ring.hpp"
 
 using ac3forge::LogRing;
 

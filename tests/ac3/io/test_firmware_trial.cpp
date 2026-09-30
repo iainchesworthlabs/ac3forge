@@ -5,7 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/firmware_trial.hpp"
+#include "iclforge/firmware_trial.hpp"
 
 using ac3forge::Trial;
 using ac3forge::TrialPolicy;

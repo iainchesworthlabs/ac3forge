@@ -26,8 +26,8 @@
 #include <type_traits>
 #include <vector>
 
-#include "ac3forge/interleave.hpp"
-#include "ac3forge/slot_conversion.hpp"
+#include "iclforge/interleave.hpp"
+#include "iclforge/slot_conversion.hpp"
 
 namespace {
 

@@ -54,10 +54,10 @@
 #include <cstdio>
 
 #include "iclforge/ac3/core/tables.hpp"
-#include "ac3forge/dac_queue_model.hpp"
-#include "ac3forge/interleave.hpp"
-#include "ac3forge/playout.hpp"
-#include "ac3forge/sink_plan.hpp"
+#include "iclforge/dac_queue_model.hpp"
+#include "iclforge/interleave.hpp"
+#include "iclforge/playout.hpp"
+#include "iclforge/sink_plan.hpp"
 #include "driver/i2s_std.h"
 #include "driver/i2s_tdm.h"
 #include "esp_attr.h"

@@ -59,10 +59,10 @@
 
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/render/layout.hpp"
-#include "ac3forge/control.hpp"
-#include "ac3forge/firmware.hpp"
-#include "ac3forge/log.hpp"
-#include "ac3forge/player.hpp"
+#include "iclforge/control.hpp"
+#include "iclforge/firmware.hpp"
+#include "iclforge/log.hpp"
+#include "iclforge/player.hpp"
 
 #include "audio_sink.hpp"
 #include "byte_source.hpp"

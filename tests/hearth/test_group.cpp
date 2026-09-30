@@ -35,7 +35,7 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/render/layout.hpp"
 #include "iclforge/render/render.hpp"
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/crypto.hpp"
 #include "iclforge/sendspin/handshake.hpp"
 #include "iclforge/sendspin/messages.hpp"

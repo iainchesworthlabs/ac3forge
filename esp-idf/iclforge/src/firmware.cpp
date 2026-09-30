@@ -1,7 +1,7 @@
 // Updates over the network. See ../include/ac3forge/firmware.hpp and
 // planning/esp32-ota.md.
 
-#include "ac3forge/firmware.hpp"
+#include "iclforge/firmware.hpp"
 
 #include <algorithm>
 #include <array>
@@ -40,8 +40,8 @@
 #include "nvs.h"
 #include "psa/crypto.h"
 
-#include "ac3forge/firmware_image.hpp"
-#include "ac3forge/firmware_status.hpp"
+#include "iclforge/firmware_image.hpp"
+#include "iclforge/firmware_status.hpp"
 
 namespace ac3forge {
 namespace {

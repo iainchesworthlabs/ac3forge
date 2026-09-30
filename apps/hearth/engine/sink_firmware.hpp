@@ -11,8 +11,8 @@
 #include <thread>
 #include <vector>
 
-#include "ac3forge/firmware_image.hpp"
-#include "ac3forge/firmware_status.hpp"
+#include "iclforge/firmware_image.hpp"
+#include "iclforge/firmware_status.hpp"
 
 // A Hearth sink's firmware, from this computer (planning/esp32-ota.md, O5).
 //
