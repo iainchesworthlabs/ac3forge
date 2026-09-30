@@ -152,7 +152,7 @@ fi
 # The same idea for a difference the CLI cannot be asked for at RUN time.
 # AC3FORGE_DECODE_SCALAR=float is a build option - it decides whether the
 # decoder carries its coefficients as float or double
-# (src/forge/src/internal/scalar/) - so a float32 run means a second BINARY
+# (src/ac3/variants/) - so a float32 run means a second BINARY
 # rather than a second token, and the caller passes that binary as $1 and
 # names it here.
 #

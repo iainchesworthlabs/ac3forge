@@ -348,7 +348,7 @@ the failures of the last run; add `--output-on-failure` to any run to see a fail
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
 | `AC3FORGE_CRUCIBLE_X11` | `AUTO` | Linux only, with `AC3FORGE_BUILD_CRUCIBLE`. `AUTO` compiles Crucible's X11 full-screen check over libxcb when `libxcb1-dev` is present; `ON` requires it; `OFF` never builds it. Without it the rule is off at runtime and the Room page says so. The configure summary prints `Crucible X11   : xcb` or `none`. |
-| `AC3FORGE_SIMD` | `auto` | Which `src/arithmetic/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from the *effective target* architecture (`CMAKE_SYSTEM_PROCESSOR`, or `CMAKE_OSX_ARCHITECTURES` where a macOS cross-build sets one) and falls back to `generic` everywhere else, including a macOS universal binary, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
+| `AC3FORGE_SIMD` | `auto` | Which `arch-*` directory of `src/arithmetic/variants/` supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from the *effective target* architecture (`CMAKE_SYSTEM_PROCESSOR`, or `CMAKE_OSX_ARCHITECTURES` where a macOS cross-build sets one) and falls back to `generic` everywhere else, including a macOS universal binary, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
 | `AC3FORGE_AVX2` | `ON` | x86_64 only. Compiles an AVX2 SIMD tier alongside the baseline SSE2 one, selected at *runtime* rather than at configure time. See [Runtime AVX2 dispatch](#runtime-avx2-dispatch). `OFF` (or a non-x86_64 target) yields a provably AVX2-free binary. |
 | `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` or `-tsan` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_COVERAGE` | `OFF` | Coverage instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. gcov's `--coverage` on GCC and Clang, LLVM source-based coverage on clang-cl; off is a no-op, and other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` presets above rather than by hand. |
@@ -614,7 +614,7 @@ Both runners gate it at 1,024 — deliberately tight, because nothing here grows
 the scratch is handed back or it is not, and the difference is five figures.
 [The ESP32-S3 page](platforms/bare-metal/esp32-s3.md#objects) has what it unblocked.
 
-**A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
+**A float32-only path — met for the decode path.** `src/ac3/variants/decode-scalar-{float32,float64}/`'s
 seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
 build, and selectable there with `-DAC3FORGE_DECODE_SCALAR=float`. Both
 decoders' coefficient stores, transform scratch and overlap-add history follow it, and
@@ -688,7 +688,7 @@ the fixed one. The plan, phases, and measurements are in
 [`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md).
 
 **And the encoders' analysis front end, on its own axis.**
-`src/forge/src/internal/scalar/encode/{float64,float32}/` carries `encode_scalar_t`: the type
+`src/ac3/variants/encode-scalar-{float64,float32}/` carries `encode_scalar_t`: the type
 the two encoders run in, from transient detection and the forward transform through the
 coefficient store, the coupling, spectral-extension and enhanced-coupling analyses and fits, the
 dither and delta-segment decisions and the fixed-point conversion - `double` by default, `float`
@@ -1269,12 +1269,12 @@ Pi OS, and so on).
 ## SIMD kernels and the architecture tree
 
 The codec's hot kernels are vectorised, and the vector types they are written against come from
-a directory CMake chooses — never from an `#ifdef`. `src/arithmetic/arch/` holds
-`generic/`, `x86_64/` and `aarch64/`, each carrying one identically-pathed
-`ac3/internal/arch/simd.hpp`; `src/arithmetic/CMakeLists.txt` puts exactly one of them on
+a directory CMake chooses — never from an `#ifdef`. `src/arithmetic/variants/` holds
+`arch-generic/`, `arch-x86_64/` and `arch-aarch64/`, each carrying one identically-pathed
+`iclforge/arithmetic/detail/simd.hpp`; `src/arithmetic/CMakeLists.txt` puts exactly one of them on
 `ac3::arithmetic`'s include path, which `forge_objects` and `src/ac4core` link, so every `#include "iclforge/arithmetic/detail/simd.hpp"` in the
 core resolves to it and no translation unit ever asks what it is being compiled for. This is the
-same mechanism `src/forge/src/internal/profiling/tracy_{enabled,disabled}/` uses for the
+same mechanism `src/base/variants/profiling-tracy_{enabled,disabled}/` uses for the
 profiling seam and `src/audio/src/backend/<backend>/` uses for the operating system, and it is what
 `tools/checks/check_platform_macros.ps1` exists to keep true (no preprocessor conditional anywhere
 in `src/`, `apps/`, `tests/`, `fuzz/`, `examples/`, `tools/` or `python/`).

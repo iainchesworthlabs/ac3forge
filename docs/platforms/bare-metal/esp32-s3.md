@@ -1259,7 +1259,7 @@ pointer, and `.tbss` from 32,784 bytes to 24.
 wider than anything downstream can use, and memory was the binding constraint: the per-block
 `coeffs` store was 100,352 bytes and the AHT's own buffer 86,016 (an AHT stream now decodes into
 the per-block store, as [Objects](#objects) says).
-`src/forge/src/internal/scalar/{float32,float64}/` carries `decode_scalar_t` — `float` under the
+`src/ac3/variants/decode-scalar-{float32,float64}/` carries `decode_scalar_t` — `float` under the
 minimum-footprint profile, `double` by default elsewhere, and selectable in any build with
 `-DAC3FORGE_DECODE_SCALAR=float`. Which profile a build is and which scalar its decoder carries
 are independent CMake axes. The option's third value, `fixed`, is the tier for a part with no FPU
@@ -1283,8 +1283,8 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
   frame depending on fixture, from per-block geometry vectors and the `std::vector` members of the
   returned `DecodedFrame`. Reaching zero means those becoming fixed-capacity, which changes public
   types. The runner gates at 100 so the distance from zero cannot grow quietly.
-- **A vectorised float32 path.** `src/arithmetic/arch/` carries an `f32x4`, but it
-  resolves to `generic/` here and compiles to four scalar operations: PIE's vector ALU is
+- **A vectorised float32 path.** `src/arithmetic/variants/` carries an `f32x4`, but it
+  resolves to `arch-generic/` here and compiles to four scalar operations: PIE's vector ALU is
   integer-only. What `esp-dsp` uses instead is `EE.LDF.128.IP`, a 128-bit load filling four FPU
   registers feeding four scalar `madd.s` — load bandwidth and instruction-level parallelism rather
   than a four-wide multiply. That is not reachable from the arch seam, measured rather than

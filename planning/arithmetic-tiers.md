@@ -42,7 +42,7 @@ three implementations. The bitstream syntax, the exponent and mantissa machinery
 tools' logic, the planners and the searches are integer or structural and shared; what varies
 is the type the coefficients, the transforms and the analyses run in. That is already how the
 first two tiers are built: `decode_scalar_t` and `encode_scalar_t`
-(`src/forge/src/internal/scalar/`) are template parameters whose `<double>` instantiations are
+(`src/ac3/variants/`) are template parameters whose `<double>` instantiations are
 textually the functions the reference build always called, so the golden bitstream hashes and
 the fixture levels pin the reference while the other tier is measured against it.
 

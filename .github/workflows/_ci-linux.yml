@@ -339,7 +339,7 @@ jobs:
       # A third run of the same gate, against a decoder built float32 rather
       # than double (minimum-footprint decoder profile). Unlike mode=reference above this cannot be a
       # token: AC3FORGE_DECODE_SCALAR is a BUILD option
-      # (src/forge/src/internal/scalar/), so it needs its own binary.
+      # (src/ac3/variants/), so it needs its own binary.
       #
       # Why it is worth a second build. Every fixture both bare-metal legs
       # decode goes through the float32 path, and until this existed nothing
@@ -463,7 +463,7 @@ jobs:
           python3 tools/checks/check_probe_hashes.py --expected tests/golden/ac4-probe-pcm-hashes.json "$RUNNER_TEMP/ac4-host.txt"
 
       # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
-      # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
+      # (src/ac3/variants/encode-scalar-{float64,float32}/) is the axis the minimum-footprint
       # profile encodes on for the ESP32-S3, and a float encoder is a different
       # thing from a float decoder: it makes its own decisions at its own
       # thresholds and rounds its own coefficients, so it produces a different,
