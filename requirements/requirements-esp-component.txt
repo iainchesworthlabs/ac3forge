@@ -197,7 +197,7 @@ esp-pylib==1.1.5 \
 idf-component-manager==3.1.2 \
     --hash=sha256:424494493b47b61ea0f7666d3018a71deecb77f21186bc8b6761b0b6f98e8f90 \
     --hash=sha256:75ad9e4452d1bf42bea0a77d72af679714e2bb147627d926cee114122b6e33a0
-    # via -r requirements-esp-component.in
+    # via -r requirements/requirements-esp-component.in
 idna==3.20 \
     --hash=sha256:a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44 \
     --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c

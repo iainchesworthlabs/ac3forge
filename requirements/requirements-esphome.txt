@@ -797,7 +797,7 @@ dbus-fast==5.0.22 \
 esphome==2026.9.0 \
     --hash=sha256:53385a4946719bc61d1063ee898cdc1cd9b2ba9172ca2d9c693cc7a923584e01 \
     --hash=sha256:d98e9c69f3683b7ba47b64e7b0f1dcdd7b68a2b491a78aa2046d9fd19aeff55e
-    # via -r requirements-esphome.in
+    # via -r requirements/requirements-esphome.in
 esphome-glyphsets==0.2.0 \
     --hash=sha256:3875fd581f8605b5038315dac5913423474a3eb0c1cb2849d9841ad3c9e8b1e7 \
     --hash=sha256:f68523dabd1960659d1b0d5d2d39e0bf002885228bd494fb8ed857302297d95c
@@ -1744,7 +1744,7 @@ starlette==0.52.1 \
     --hash=sha256:0029d43eb3d273bc4f83a08720b4912ea4b071087a3b48db01b7c839f7954d74 \
     --hash=sha256:834edd1b0a23167694292e94f597773bc3f89f362be6effee198165a35d62933
     # via
-    #   -r requirements-esphome.in
+    #   -r requirements/requirements-esphome.in
     #   platformio
 tabulate==0.10.0 \
     --hash=sha256:e2cfde8f79420f6deeffdeda9aaec3b6bc5abce947655d17ac662b126e48a60d \
