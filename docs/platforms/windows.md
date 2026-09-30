@@ -1,8 +1,9 @@
 # Windows
 
-ac3forge is built and tested on Windows today — both toolchains, CLI and GUI alike, are
-required, green CI legs. This page covers what is specific to Windows; for the full preset
-reference, options list and troubleshooting, see [Building from source](../building.md).
+ac3forge builds and is tested on Windows with two toolchains, MSVC and clang-cl, CLI and GUI
+alike: Windows MSVC in the merge queue, and both in the run after a merge to main (see
+[CI for many agents](../ci-agentic.md)). This page covers what is specific to Windows; for the
+full preset reference, options list and troubleshooting, see [Building from source](../building.md).
 Crucible's kernel driver and driver VM live under
 [`apps/windows/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/windows/README.md),
 separate from the application in `apps/crucible/`.
@@ -11,14 +12,15 @@ separate from the application in `apps/crucible/`.
 
 | | |
 |---|---|
-| What runs here | The library, `ac3cli`, `ac3gui` and Crucible |
-| Build | MSVC and clang-cl, both required and green in CI; the GUI is on by default |
+| What runs here | The library, `ac3cli`, `ac3gui`, Hearth (`ac3hearth`) and Crucible |
+| Build | MSVC and clang-cl, x64, both building the GUI; MSVC in the merge queue, both in the run after a merge to main. The GUI is on by default |
 | Capture and monitor playback | Confirmed on real hardware — a Realtek endpoint, live microphone capture through encode to playback |
-| Windows Spatial Sound (`ac3cli spatial`) | Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions |
+| Windows Spatial Sound (`ac3cli spatial`) | Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions. E-AC-3 objects only |
 | IEC 61937 passthrough output | Confirmed on real hardware — an Onkyo TX-RZ740 over HDMI locks AC-3 (Dolby Digital 5.1), E-AC-3 (Dolby Digital Plus 5.1) and signed Atmos (JOC objects, decoded to 5.0.4) through `PassthroughSink` itself |
+| AC-4 | Decoded and encoded by `ac3cli` and `ac3gui`, decoded by Hearth; `ac3gui`'s live capture takes AC-3 and E-AC-3 only. WASAPI has no IEC 61937 subformat for AC-4, so `PassthroughSink` refuses it and `ac3cli play` decodes it to PCM. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
 | Passthrough capture | **Never confirmed** — no HDMI or S/PDIF capture card has been available |
 | Crucible's null sink | A kernel driver, **test-signed only**; a default-settings machine refuses to load it — see [the driver page](windows-driver-acx.md) |
-| ARM64 | One CI leg, still marked experimental, and it packages for release |
+| ARM64 | One CI leg, still marked experimental and run in the nightly run; it builds the CLI only, and its packages have shipped since v0.10.0-beta.1 |
 
 The table below separates x64 from ARM64. Package status and runtime evidence are separate: a
 package can exist even where its hardware-facing paths have not been exercised.
@@ -27,8 +29,8 @@ package can exist even where its hardware-facing paths have not been exercised.
 
 ## Toolchains
 
-Built and tested with **MSVC 14.51** and **clang-cl 22.1** on **Windows 11**, via Visual Studio
-2026 (MSVC) or clang-cl.
+CI builds with **MSVC 14.51** (the Visual Studio 2026 Build Tools) and **clang-cl 22.1**; the
+development workstation is Windows 11 (build 26200).
 
 Every Windows preset chainloads a toolchain file that locates `cl.exe`/`clang-cl.exe` and
 `link.exe` itself (via `vswhere` and `vcvarsall.bat` if a Developer PowerShell hasn't already
@@ -40,69 +42,74 @@ for the mechanics.
 
 ## Audio backend: WASAPI
 
-On Windows, the three features that touch sound hardware are all implemented over **WASAPI**:
+On Windows, the five pieces that touch sound hardware are all implemented over **WASAPI**:
 
 - **`ac3::audio`** — live input/loopback capture through a lock-free SPSC ring.
 - **`ac3::iec61937::PassthroughDetector`** — recognising, from that same capture, that the
-  endpoint is handing over IEC 61937 bursts rather than PCM.
+  endpoint is handing over IEC 61937 bursts (AC-3, E-AC-3 or AC-4) rather than PCM.
 - **`ac3::audio::PassthroughSink`** — exclusive-mode/direct bitstream output, for both AC-3 and
   E-AC-3 burst framing (IEC 61937). AC-4 (IEC 61937-14) is refused here with
   `kUnsupportedFormat`: WASAPI asks for a compressed format by its `KSDATAFORMAT_SUBTYPE_IEC61937_*`
   subformat, and the Windows SDK (`ksmedia.h`, 10.0.26100) defines none for AC-4.
 - **`ac3::audio::MonitorSink`** — shared-mode PCM playback: a non-bitstreamed preview/monitor
-  path that decodes what is being encoded and plays it back on an ordinary output.
+  path that decodes what is being encoded and plays it back on an ordinary output. It is also
+  where `ac3cli monitor` and `ac3cli play` send an AC-4 stream, decoded, and where an AC-4
+  stream's objects arrive rendered to speakers by the layout renderer.
 - **`ac3::audio::SpatialObjectSink`** — `ISpatialAudioObjectRenderStream`: decoded
   Atmos objects go out as dynamic objects at their real OAMD positions, and the bed's LFE (never
   a JOC output, TS 103 420 §6.3.2.2) as a static one. Behind `ac3cli spatial`. This is the one
   path that lets Dolby's own renderer engage with this project's reconstructed objects at all — a
   licensed decoder otherwise refuses object decoding without a signing key this project doesn't
   ship (see [Object signing](../concepts/object-signing.md)) — and needs nothing but a spatial-
-  sound-capable endpoint to do it, no AVR and no key.
+  sound-capable endpoint to do it, no AVR and no key. It takes E-AC-3 only: `ac3cli spatial`
+  reads no AC-4 stream (on a spatial-enabled endpoint it answers "not a valid E-AC-3 stream", exit
+  code 2).
 
-These five are not equally verified against real hardware, and the project's own documentation
-is deliberately explicit about the difference.
+What each can carry:
 
-!!! note "MonitorSink is confirmed against real hardware"
-    `ac3cli monitor` / `ac3cli live --monitor` have actually played decoded AC-3 and E-AC-3
-    (including an Atmos stream's 5.1 bed) through a real Realtek output in real time, and a live
-    microphone capture→encode→monitor session has run end to end. Building this path against
-    real hardware surfaced two bugs that neither unit tests nor silent/synthetic input
-    would have caught — a fixed submit-readiness threshold smaller than an actual chunk, which
+| Path | Carries | Does not carry |
+|---|---|---|
+| Capture (`ac3::audio`) | PCM from an input, an endpoint's loopback or one process tree; IEC 61937 bursts that arrive as PCM, which the detector recognises for AC-3, E-AC-3 and AC-4 | |
+| `MonitorSink` | PCM the library decoded: AC-3, E-AC-3 (an Atmos stream's bed) and AC-4, whose objects the layout renderer puts on speakers | A bitstream |
+| `PassthroughSink` | IEC 61937 bursts of AC-3 and E-AC-3, the latter with its JOC objects | AC-4, refused with `kUnsupportedFormat` |
+| `SpatialObjectSink` | E-AC-3 object streams, as dynamic objects and a static LFE | AC-4 objects |
+
+These five are not equally verified on hardware, and the project's own documentation
+is explicit about the difference.
+
+!!! note "MonitorSink is confirmed on hardware"
+    `ac3cli monitor` and `ac3cli live`'s monitor leg have played decoded AC-3 and E-AC-3
+    (including an Atmos stream's 5.1 bed) through a Realtek output in real time, and a live
+    microphone capture→encode→monitor session has run end to end. Building this path on
+    hardware surfaced two bugs that neither unit tests nor silent/synthetic input
+    would have caught — a fixed submit-readiness threshold smaller than one chunk, which
     let the ring buffer silently perform a partial write while reporting failure, and the live
     pipeline's Atmos metering step writing past the end of a buffer sized for the object count
     rather than the bed's fixed six channels. Both are fixed; see
     `src/audio/src/backend/windows/monitor.cpp` and `run_live` in
     `apps/cli/commands/live_audio.cpp`.
 
-!!! note "MonitorSink now distinguishes a format refusal from a WASAPI failure"
-    Found 2026-09-22, debugging why `ac3tests "[monitor-unplug]"` would not open the same "AV
-    Receiver (NVIDIA High Definition Audio)" HDMI endpoint the exclusive-mode passthrough
-    confirmation below used. `MonitorSink::start()` had no way to say why beyond the generic
-    "a Windows audio (WASAPI/COM) call failed" — diagnosing it took a standalone WASAPI probe
-    written outside this codebase, which pinned the cause down to the sample rate rather than
-    the bit depth: this endpoint's shared-mode engine is locked to whatever its Advanced-tab
-    "Default Format" is set to (192 kHz here), converts bit depth but not sample rate, and
-    `IAudioClient::Initialize(AUDCLNT_SHAREMODE_SHARED, ..., 48kHz)` returns
-    `AUDCLNT_E_UNSUPPORTED_FORMAT` (`0x88890008`) for every 48 kHz variant tried while the same
-    formats at 192 kHz succeed. `start()` now reports `MonitorError::kFormatRejected` for that
-    HRESULT specifically, checked on both the `IAudioClient3` low-latency path and the ordinary
-    fallback; every other failure in `start()` still reports `kComFailure`. `"[monitor-unplug]"`
-    still needs either this endpoint's default format changed to a 48 kHz variant or a different
-    default output to run at all, but the CLI and the test now say why instead of only the
-    generic WASAPI/COM message.
+!!! note "MonitorSink: a format refusal is told apart from a WASAPI failure, and any rate plays"
+    `MonitorSink::start()` reports `MonitorError::kFormatRejected` for `AUDCLNT_E_UNSUPPORTED_FORMAT`
+    (`0x88890008`), checked on both the `IAudioClient3` low-latency path and the ordinary
+    fallback; every other failure in `start()` still reports `kComFailure`. That was added on
+    2026-09-22, debugging why `ac3tests "[monitor-unplug]"` would not open the "AV Receiver
+    (NVIDIA High Definition Audio)" HDMI endpoint the exclusive-mode passthrough confirmation
+    below used: `start()` had no way to say why beyond "a Windows audio (WASAPI/COM) call
+    failed", and a standalone WASAPI probe written outside this codebase found the refusal at
+    48 kHz on an endpoint whose shared-mode engine ran at 192 kHz, its Advanced-tab "Default
+    Format", while the same formats at 192 kHz opened.
 
-!!! note "MonitorSink asks the engine to resample, so any rate plays on any endpoint"
-    Found 2026-09-26, when Hearth would not play a 44.1 kHz AC-3 file on a machine whose only
-    output, "Speakers (Realtek(R) Audio)", runs its shared-mode engine at 48 kHz: every play
-    ended in `kFormatRejected`. The note above put the refusal down to the endpoint, which
-    "converts bit depth but not sample rate". That is what WASAPI's shared mode does for a
-    client that asks for nothing more: it takes the mix format's own rate and channel count and
-    refuses any other with `AUDCLNT_E_UNSUPPORTED_FORMAT`, unless the stream is initialised
-    with `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`, which puts the engine's own resampler and channel
+    On 2026-09-26 Hearth would not play a 44.1 kHz AC-3 file on a machine whose only output,
+    "Speakers (Realtek(R) Audio)", runs its shared-mode engine at 48 kHz: every play ended in
+    `kFormatRejected`. The earlier reading, that such an endpoint "converts bit depth but not
+    sample rate", was incomplete. That is what WASAPI's shared mode does for a client that asks
+    for nothing more: it takes the mix format's own rate and channel count and refuses any other
+    with `AUDCLNT_E_UNSUPPORTED_FORMAT`, unless the stream is initialised with
+    `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`, which puts the engine's own resampler and channel
     matrixer in front of the mix (`AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY` picks its better
     filter). `start()` set neither flag, so every rate but the endpoint's own was refused, and a
     caller that opens at each item's own rate - Hearth - could not play a song there at all.
-
     A probe of that Realtek endpoint gave `0x88890008` at 44.1 kHz and at 96 kHz without the
     flag and success at both with it; 48 kHz opened either way. `start()` now sets both flags on
     its ordinary shared-mode initialise. The `IAudioClient3` low-latency path is unchanged, and
@@ -200,7 +207,7 @@ is deliberately explicit about the difference.
 !!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
     see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink) — and that read
-    (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
+    (`ac3::audio::sink_capabilities`) exists today for ALSA and for PipeWire (see
     [Linux](linux.md#reading-a-sinks-own-edideld)). WASAPI answers "will this
     endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already
     uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
@@ -208,7 +215,7 @@ is deliberately explicit about the difference.
     documented public API was found that hands the source data back. `play` falls back to the
     same `IsFormatSupported` probe here, exactly as it always has.
 
-    The one real avenue checked and ruled out: WMI's `root\wmi` monitor provider
+    The one avenue checked and ruled out: WMI's `root\wmi` monitor provider
     (`WmiMonitorID`/`WmiMonitorDescriptor`) does expose raw EDID bytes on Windows, but it is a
     *display* API keyed to the desktop/monitor topology, not an audio one. Tried against the
     Onkyo TX-RZ740 used for the passthrough confirmation above:
@@ -267,7 +274,8 @@ it. The bursts arrive as ordinary PCM16 samples: `IAudioClient` has no way to sa
 Dolby Digital", and `Capture` converts them to float by dividing by 32768, which loses nothing.
 
 `ac3::iec61937::PassthroughDetector` recognises the framing from those floats — a `Pa`/`Pb`
-preamble at a repetition period with a `0x0B77` syncframe behind it — and `ac3cli record`
+preamble at a repetition period with a syncframe behind it (`0x0B77` for AC-3 and E-AC-3, the
+AC-4 sync word for AC-4) — and `ac3cli record`
 switches to writing the elementary stream instead of encoding the bursts as audio; `ac3cli
 live` stops with an error instead. `ac3cli unspdif` does the same job on a capture already
 saved to disk. `carrier_from_capture` is the conversion back to PCM16 words, exact for all
@@ -284,10 +292,12 @@ saved to disk. `carrier_from_capture` is the conversion back to PCM16 words, exa
     that resamples or mixes would destroy the bursts before anything here saw them, which shows
     up as no detection rather than as wrong output.
 
-## Qt (GUI only)
+## Qt (the windows: GUI, Hearth, Crucible)
 
 `ac3gui` needs a **prebuilt Qt 6.5+ kit**, discovered by `cmake/FindQt6.cmake` — never from
-vcpkg. `AC3FORGE_BUILD_GUI` defaults **ON** on Windows. `FindQt6.cmake` widens
+vcpkg. Hearth's and Crucible's windows need Qt 6.8 or later; on an older kit each is skipped with
+a warning and its engine still builds. CI installs Qt 6.10.3. `AC3FORGE_BUILD_GUI` defaults **ON**
+on Windows. `FindQt6.cmake` widens
 `CMAKE_PREFIX_PATH` to the usual install roots (`C:/Qt`, `%USERPROFILE%/Qt`, `D:/Qt`); to point
 at a specific kit explicitly:
 
@@ -305,8 +315,9 @@ cmake --build --preset build-windows-msvc-debug
 ctest --preset test-windows-msvc-debug
 ```
 
-Drop `-debug` for a Release build. Swap `msvc` for `llvm` throughout to build with clang-cl
-instead:
+Drop `-debug` for a Release build. The window of Hearth builds by default (`AC3FORGE_BUILD_HEARTH`
+is on); Crucible is opt-in with `-DAC3FORGE_BUILD_CRUCIBLE=ON`. Swap `msvc` for `llvm`
+throughout to build with clang-cl instead:
 
 ```bash
 cmake --preset config-windows-llvm-debug
@@ -314,8 +325,9 @@ cmake --build --preset build-windows-llvm-debug
 ctest --preset test-windows-llvm-debug
 ```
 
-`VCPKG_ROOT` must point at a vcpkg checkout (it supplies Catch2 — plus Boost and Tracy only if
-you opt into the `adm`/`profiling` features; see [building.md](../building.md)). See
+`VCPKG_ROOT` must point at a vcpkg checkout (it supplies Catch2 and {fmt}, mbedTLS, cpp-httplib,
+libFLAC, Opus and mdns through the `hearth` feature the desktop presets select, and Boost and
+Tracy only if you opt into the `adm`/`profiling` features; see [building.md](../building.md)). See
 [Presets](../building.md#presets) for the full preset table and the `ci-windows-msvc` /
 `ci-windows-llvm` workflow presets that chain all three steps.
 
@@ -330,17 +342,28 @@ installs it via Chocolatey automatically and fails the leg if the installer does
 other end — see [releasing.md](../releasing.md#winget-manifest); locally, install NSIS yourself
 or `cpack` falls back to ZIP-only with a `message(WARNING ...)` explaining why).
 `pack-windows-llvm` is the clang-cl equivalent, and `pack-windows-msvc-arm64` the ARM64 one
-(below). `windows-msvc` is the only leg packaged continuously — CI packages it on every push and
-uploads the result as a workflow artifact, a standing smoke test of the packaging path; tagged
-releases package every `release_package` leg (Windows x64/arm64, Linux x64/arm64, macOS). See
+(below). `windows-msvc` is the only leg packaged in ordinary runs — CI packages it in every run
+that builds it (the run after a merge, the nightly run) and uploads the result as a workflow
+artifact, a standing smoke test of the packaging path; a tagged release packages every
+`release_package` leg (Windows x64 and ARM64, Linux x64 and arm64, macOS). See
 [Packaging](../building.md#packaging).
 
+An x64 installer built from main (`ac3forge-<version>-win64.exe`) carries `ac3cli`, `ac3gui` and
+`ac3hearth`; the one in v0.10.0-beta.1, the latest release, predates Hearth's packaging and
+carries the first two. The Start Menu folder has an entry for `ac3gui`, one for `ac3hearth`, and
+an "ac3cli command prompt" with the install's `bin` on `PATH`. The ZIP splits by component: the
+runtime archive, an `ac3forge-dev-*` library archive, an `ac3forge-hearth-*` archive and an
+`ac3forge-crucible-*` archive, of which the release has the first two. Crucible stays out of the
+installer while its driver is test-signed (`cmake/CPackProjectConfig.cmake`).
+
 The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointing
-`shell\open\command` at the installed `ac3gui.exe` and nudging Explorer to pick up the change with
-`SHChangeNotify`, and reverses both keys on uninstall — `CPACK_NSIS_EXTRA_INSTALL_COMMANDS`/
-`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`. CI now builds and verifies the installer itself
-on every push; running it and double-clicking a `.ac3` file to confirm the file association end
-to end is still a manual, unautomated check.
+`shell\open\command` at the installed `ac3hearth.exe` (`ac3gui.exe` in a build with no Hearth)
+and nudging Explorer to pick up the change with `SHChangeNotify`, and reverses both keys on
+uninstall — `CPACK_NSIS_EXTRA_INSTALL_COMMANDS`/`_UNINSTALL_COMMANDS` in `cmake/Packaging.cmake`.
+Nothing registers `.ac4`. The installer and every binary in it are unsigned (Authenticode signing
+waits on a certificate), so SmartScreen may warn on install. CI builds and verifies the installer
+itself in every run that packages Windows; running it and double-clicking a `.ac3` file to confirm the file association
+end to end is still a manual, unautomated check.
 
 ## Windows Firewall
 
@@ -370,9 +393,12 @@ never show a prompt of any kind.
 
 ## ARM64
 
-A third Windows leg, `windows-msvc-arm64`, targets GitHub's hosted `windows-11-vs2026-arm` runner — real
-ARM64 hardware, not x64 emulation. It shares every file the two x64 legs above use; only the
-vcpkg triplet and the resolved MSVC tools directory differ.
+A third Windows leg, `windows-msvc-arm64`, runs on GitHub's hosted `windows-11-vs2026-arm` runner,
+an ARM64 host. It shares every file the two x64 legs above use; only
+the vcpkg triplet and the resolved MSVC tools directory differ. It is `experimental: true`
+(`continue-on-error`, so a failure fails no run) and belongs to the nightly tier, so it runs in
+the nightly run and in a release, not after each merge (`.github/ci/legs.jsonc`). Its packages
+have shipped since v0.10.0-beta.1.
 
 **Toolchain.** `cmake/vcpkg/triplets/arm64-windows-msvc.cmake` sets `VCPKG_TARGET_ARCHITECTURE
 arm64` (same CRT/library linkage policy as `x64-windows-msvc.cmake`).
@@ -380,64 +406,38 @@ arm64` (same CRT/library linkage policy as `x64-windows-msvc.cmake`).
 subdirectory the same way `linux.gcc.toolchain.cmake`/`macos.llvm.toolchain.cmake` already resolve
 their own arm64 legs — generically, not hardcoded — and, for the arm64 case specifically, tries
 more than one candidate directory: `bin/Hostarm64/arm64` (a native ARM64-hosted toolset) first,
-falling back to `bin/Hostx64/arm64` (the older x64-hosted cross toolset, which still produces
-ARM64 binaries, just via x64 tools running under Windows' x64 emulation). Which one this runner's
-VS Build Tools install actually ships was unconfirmed when this leg was written and needed a real
-CI run to answer. `cmake/toolchains/windows.msvc.environment.cmake`'s `vcvarsall.bat` bootstrap
-and `.github/actions/setup-msvc-env`'s CI-side environment loader probe the same pair of
+falling back to `bin/Hostx64/arm64` (the x64-hosted cross toolset, which also produces ARM64
+binaries, via x64 tools running under Windows' x64 emulation).
+`cmake/toolchains/windows.msvc.environment.cmake`'s `vcvarsall.bat` bootstrap and
+`.github/actions/setup-msvc-env`'s CI-side environment loader probe the same pair of
 `vcvarsall.bat` arguments (`arm64` native, then `amd64_arm64` cross), since the target
 architecture's CRT/Windows SDK library directories have to match whichever compiler actually got
-picked, or linking fails outright with a machine-type mismatch. Which of the two candidates wins
-is still open as of this writing — the leg's first real run failed one step earlier than Configure
-(see "Toolset generation" below) — and this section gets a follow-up update once that's resolved.
+picked, or linking fails outright with a machine-type mismatch.
 
-**Toolset generation is older than the x64 images, confirmed empirically.** The `windows-11-arm`
-hosted runner's VS Build Tools install carries MSVC 14.44.35207 (VS2022, roughly the 17.14
-generation) — older than `windows-latest`'s x64 image, which is on the 14.5x ("VS 2026"/18.x)
-toolset every other Windows leg's `msvc_toolset` pin (`.github/toolchain-versions.json`) is written
-against. This is a difference between the two runner images' own update cadences, not a
-misconfiguration — `vswhere`/`vcvarsall` resolution and the Ninja install both worked fine on the
-ARM64 runner in the same run that surfaced this. `_build.yml`'s "Report and assert toolchain
-versions" step accordingly does not hard-assert the shared pin for `windows-msvc-arm64` the way it
-does for `windows-msvc`; it reports whatever toolset this runner actually has instead, the same
-report-only shape already used for `macos-llvm`'s unpinnable Homebrew LLVM, with the reasoning
-recorded in that step's own case arm. This finding predates the 2026-09 switch to the
-`windows-11-vs2026-arm` preview label (see "Status" below) and needs reconfirming on the new image
-— the report-only handling stays either way, but the actual toolset generation it reports may now
-differ, since VS2026 is exactly what the older `windows-11-arm` image was missing.
+On the runner's `windows-11-vs2026-arm64` image (version 20260920.164.1) the first candidate
+wins. The leg's log of 2026-09-28 shows `vcvarsall.bat arm64` succeeding and MSVC toolset
+14.51.36231 under `bin\HostARM64\ARM64`, the toolset version the x64 legs report. That run built
+the CLI and passed all 2,984 ctest cases. The image before it, `windows-11-arm`, carried MSVC
+14.44.35207 (VS2022), which is why the "Report and assert toolchain versions" step in
+`.github/actions/build-leg/action.yml` only prints the toolset for this leg instead of asserting
+the pin the x64 legs share; the exception is still in place.
 
 **CLI-only, for now.** Unlike every other packageable Windows/Linux/macOS leg, `windows-msvc-arm64`
 does not build `ac3gui` — `AC3FORGE_BUILD_GUI` is off in `CMakePresets.json`'s
-`windows-msvc-arm64` preset. Qt's only Windows ARM64 kit for the pinned 6.9.3 (introduced in 6.8, the first Qt LTS
-with official Windows ARM64 support at all) is `win64_msvc2022_arm64_cross_compiled` — a
-cross-compile kit that expects a paired `win64_msvc2022_64` install to supply its host build
-tools (`moc`/`uic`/`rcc`), and `aqtinstall`/`jurplel/install-qt-action` have a documented CI bug
-against exactly that combination (`qtpaths.bat` pointing at the wrong x64 setup). That is real
-complexity a *native*-ARM64-host build doesn't need for a first pass, so this leg stays CLI-only.
-Revisiting this is a natural fast-follow once Qt ships a native-hosted ARM64 Windows kit.
+`windows-msvc-arm64` preset. Qt's only Windows ARM64 kit for the pinned 6.10.3 (Qt has offered one
+since 6.8) is `win64_msvc2022_arm64_cross_compiled` (`python -m aqt list-qt windows desktop --arch
+6.10.3`) — a cross-compile kit that expects a paired `win64_msvc2022_64` install to supply its
+host build tools (`moc`/`uic`/`rcc`), and `aqtinstall`/`jurplel/install-qt-action` have a
+documented CI bug against exactly that combination (`qtpaths.bat` pointing at the wrong x64
+setup). That is complexity a *native*-ARM64-host build doesn't need for a first pass, so this
+leg stays CLI-only. Revisiting this is a natural fast-follow once Qt ships a native-hosted ARM64
+Windows kit.
 
 **Gold-reference gate.** `choco`'s `ffmpeg` package is x64-only, so this leg installs a static
 `win-arm64` FFmpeg build from
-[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest) instead of
-`choco install ffmpeg` — see the "Install ffmpeg (Windows ARM64)" step in `_build.yml`.
-
-**Status.** New and `experimental: true` (`continue-on-error`) in `_build.yml` until it has proven
-green over real runs, the same promotion path `macos-llvm` and the Android leg both went through —
-see that file's own header comment for the mechanics. The `windows-11-arm` runner label was
-confirmed enabled for this repository/org: the leg's first real run picked up a runner immediately
-and passed checkout, "Setup MSVC environment" (`vswhere`/`vcvarsall` resolution) and the Ninja
-install, failing only at the toolset-version assertion described above (since relaxed to
-report-only for this leg). As of 2026-09, `_build.yml` targets `windows-11-vs2026-arm` instead:
-GitHub is running a Windows 11 ARM64 image built on Visual Studio 2026 in public preview under that
-label, in parallel with the existing `windows-11-arm` image, and has said `windows-11-arm` itself
-will be repointed at that VS2026 image once the preview ends (early September 2026). Targeting
-`windows-11-vs2026-arm` now, ahead of that cutover, validates the new image on our own schedule
-instead of having `windows-11-arm`'s meaning change under this leg unannounced on some later run.
-The label-enabled and toolset findings above are from `windows-11-arm` runs on the older image;
-this leg's `experimental: true` stays on until a real run on `windows-11-vs2026-arm` reconfirms
-them - the toolset generation in particular may now read differently, since VS2026 is exactly what
-was missing before. Once `windows-11-arm` itself moves to the VS2026 image, this leg should switch
-back to plain `windows-11-arm` and drop the preview label. Iteration continues from there.
+[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) (a dated `autobuild-*`
+release, pinned in the "Install ffmpeg (Windows ARM64)" step of `_ci-windows.yml`) instead of
+`choco install ffmpeg`.
 
 **Unsigned binaries.** Like every other Windows binary this project ships today, this leg's output
 is unsigned — Authenticode signing is blocked project-wide on acquiring a
@@ -447,9 +447,12 @@ fewer alternative trusted sources to fall back on than an x64 user does.
 
 ## CI
 
-All three Windows legs — `windows-msvc`, `windows-llvm` and (experimentally) `windows-msvc-arm64`
-— run on every push; the first two are **required**, alongside every other required leg — see the
-full matrix in [Verified configuration](../building.md#verified-configuration), including the
-Linux and macOS legs and the coverage/FFmpeg-validation legs. CI runs the CLI and GUI on both x64
-Windows legs; the ARM64 leg runs the CLI only (see above) and does not yet block the build while it
-proves itself out.
+`windows-msvc` and `windows-llvm` run in the run after a merge to main, and `windows-msvc-arm64`
+in the nightly run; Windows MSVC also builds in the merge queue. The stages are set out in
+[CI for many agents](../ci-agentic.md#the-stages), and the full matrix, including the Linux and
+macOS legs and the coverage and FFmpeg-validation jobs, is in
+[Verified configuration](../building.md#verified-configuration). CI runs the CLI and GUI on both
+x64 Windows legs; the ARM64 leg runs the CLI only (see above) and fails no run while it proves
+itself out. A separate `windows-driver` job builds Crucible's null-sink driver, test-signed, on
+GitHub's `windows-latest` whenever the Windows lane runs (see [the driver
+page](windows-driver-acx.md)).

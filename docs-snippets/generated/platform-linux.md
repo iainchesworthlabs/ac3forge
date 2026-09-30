@@ -4,12 +4,13 @@
 
 | Capability | x86_64 | aarch64 |
 |---|---|---|
-| C++ library | **Published**<br>CI<br>TGZ, DEB and RPM | **Published**<br>confirmed on hardware<br>TGZ, DEB and RPM |
-| Forge CLI | **Published**<br>CI<br>TGZ, DEB and RPM | **Published**<br>confirmed on hardware<br>TGZ, DEB and RPM |
-| Forge GUI | **Published**<br>CI<br>packages plus AppImage | **Published**<br>confirmed on hardware<br>packages; no AppImage |
-| Crucible | **Next release**<br>CI<br>TGZ and DEB; check the release assets | **Next release**<br>confirmed on hardware<br>TGZ and DEB; check the release assets |
-| Hearth desktop player | **In development**<br>CI<br>Qt/QML shell builds; six pages implemented | **In development**<br>CI<br>Qt/QML shell builds; six pages implemented |
-| Live capture and PCM monitor | **Source**<br>CI<br>ALSA or PipeWire | **Source**<br>confirmed on hardware<br>ALSA or PipeWire |
-| IEC 61937 output | **Source**<br>CI<br>hardware untried | **Source**<br>confirmed on hardware<br>ALSA and PipeWire on one Pi 4B |
-| AC-4 IEC 61937 output | **Source**<br>CI<br>ALSA's null device; PipeWire has no AC-4 codec | **Source**<br>build only<br>ALSA; no receiver accepts AC-4 |
-| Per-application capture | **Source**<br>CI<br>PipeWire | **Source**<br>confirmed on hardware<br>PipeWire on one Pi 4B |
+| C++ library | **Published**<br>built and tested in CI<br>TGZ, DEB and RPM | **Published**<br>confirmed on hardware<br>TGZ, DEB and RPM |
+| Forge CLI | **Published**<br>built and tested in CI<br>TGZ, DEB and RPM | **Published**<br>confirmed on hardware<br>TGZ, DEB and RPM |
+| Forge GUI | **Published**<br>built and tested in CI<br>packages plus AppImage | **Published**<br>confirmed on hardware<br>packages; no AppImage |
+| Crucible | **Next release**<br>built and tested in CI<br>TGZ and DEB; check the release assets | **Next release**<br>confirmed on hardware<br>TGZ and DEB; check the release assets |
+| Hearth desktop player | **Next release**<br>built and tested in CI<br>Qt/QML window with six pages, built in CI; TGZ, DEB and RPM | **Next release**<br>built and tested in CI<br>Qt/QML window with six pages, built in CI; TGZ, DEB and RPM |
+| Live capture and PCM monitor | **Source**<br>built and tested in CI<br>ALSA or PipeWire | **Source**<br>confirmed on hardware<br>ALSA or PipeWire |
+| IEC 61937 output | **Source**<br>built and tested in CI<br>hardware untried | **Source**<br>confirmed on hardware<br>ALSA and PipeWire on one Pi 4B |
+| AC-4 decode and encode | **Next release**<br>built and tested in CI<br>ac3cli and ac3gui decode and encode, Hearth decodes; decoded AC-4 plays through the PCM monitor | **Next release**<br>built and tested in CI<br>ac3cli and ac3gui decode and encode, Hearth decodes |
+| AC-4 IEC 61937 output | **Source**<br>built and tested in CI<br>ALSA's null device; PipeWire has no AC-4 codec | **Source**<br>build only<br>ALSA; no receiver accepts AC-4 |
+| Per-application capture | **Source**<br>built and tested in CI<br>PipeWire | **Source**<br>confirmed on hardware<br>PipeWire on one Pi 4B |

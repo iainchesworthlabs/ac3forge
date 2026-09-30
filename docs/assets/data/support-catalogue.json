@@ -32,7 +32,7 @@
   },
   "evidence": {
     "hardware": "confirmed on hardware",
-    "ci": "CI",
+    "ci": "built and tested in CI",
     "experimental-ci": "experimental CI",
     "emulated": "emulation",
     "build": "build only",
@@ -248,27 +248,27 @@
         "windows": [
           "source",
           "ci",
-          "channel-based, immersive and object streams"
+          "channel-based, immersive and object streams in ac3cli, ac3gui and Hearth"
         ],
         "linux": [
           "source",
           "ci",
-          "channel-based, immersive and object streams"
+          "channel-based, immersive and object streams in ac3cli, ac3gui and Hearth"
         ],
         "macos": [
           "source",
           "ci",
-          "channel-based, immersive and object streams"
+          "channel-based, immersive and object streams; same code, audio untested"
         ],
         "browser": [
           "source",
           "ci",
-          "WebAssembly module; no demo page"
+          "ac3forge_wasm_ac4 module; no demo page yet"
         ],
         "android": [
           "source",
           "build",
-          "library builds; demo does not expose decode"
+          "the NDK build compiles it; the Shield demo links none of it"
         ],
         "esp32": [
           "limited",
@@ -289,27 +289,27 @@
         "windows": [
           "source",
           "ci",
-          "mono to 5.1, 5.1.4 and objects"
+          "mono to 5.1, 5.1.4 and objects in ac3cli and ac3gui"
         ],
         "linux": [
           "source",
           "ci",
-          "mono to 5.1, 5.1.4 and objects"
+          "mono to 5.1, 5.1.4 and objects in ac3cli and ac3gui"
         ],
         "macos": [
           "source",
           "ci",
-          "mono to 5.1, 5.1.4 and objects"
+          "mono to 5.1, 5.1.4 and objects; same code, audio untested"
         ],
         "browser": [
           "source",
           "ci",
-          "WebAssembly module, objects included; no demo page"
+          "ac3forge_wasm_ac4 module, objects included; no demo page yet"
         ],
         "android": [
           "source",
           "build",
-          "library builds; demo does not expose encode"
+          "the NDK build compiles it; the Shield demo links none of it"
         ],
         "esp32": [
           "unavailable",
@@ -473,7 +473,7 @@
         "android": [
           "source",
           "build",
-          "ENCODING_IEC61937; no receiver accepts AC-4"
+          "ENCODING_IEC61937; the demo never sends AC-4; no receiver accepts AC-4"
         ],
         "esp32": [
           "unavailable",
@@ -533,12 +533,12 @@
       "page": "hearth/index.md",
       "cells": {
         "windows": [
-          "development",
+          "configured",
           "ci",
           "Hearth engine, Network page and test tools"
         ],
         "linux": [
-          "development",
+          "configured",
           "ci",
           "Hearth engine, Network page and test tools"
         ],
@@ -699,7 +699,7 @@
       "page": "crucible/index.md",
       "cells": {
         "windows": [
-          "published",
+          "configured",
           "hardware",
           "x64 UI/driver run; receiver output untested"
         ],
@@ -740,19 +740,19 @@
       "page": "hearth/index.md",
       "cells": {
         "windows": [
-          "development",
+          "configured",
           "hardware",
-          "Qt/QML shell built and run; six pages implemented"
+          "Qt/QML window with six pages, built and run; ZIP and installer"
         ],
         "linux": [
-          "development",
+          "configured",
           "ci",
-          "Qt/QML shell builds; six pages implemented"
+          "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM"
         ],
         "macos": [
           "development",
           "ci",
-          "Qt/QML shell builds; six pages implemented"
+          "Qt/QML window with six pages, built in CI; no macOS release package"
         ],
         "browser": [
           "unavailable",
@@ -916,7 +916,7 @@
             "release archive"
           ],
           [
-            "configured",
+            "published",
             "experimental-ci",
             "release archive"
           ]
@@ -929,7 +929,7 @@
             "ZIP and NSIS installer"
           ],
           [
-            "configured",
+            "published",
             "experimental-ci",
             "ZIP and NSIS installer"
           ]
@@ -950,7 +950,7 @@
         [
           "Crucible",
           [
-            "published",
+            "configured",
             "hardware",
             "UI/driver run; receiver output untested"
           ],
@@ -963,9 +963,9 @@
         [
           "Hearth desktop player",
           [
-            "development",
+            "configured",
             "hardware",
-            "Qt/QML shell built and run; six pages implemented"
+            "Qt/QML window with six pages, built and run; ZIP and installer"
           ],
           [
             "unavailable",
@@ -997,6 +997,19 @@
             "source",
             "experimental-ci",
             "no receiver run"
+          ]
+        ],
+        [
+          "AC-4 decode and encode",
+          [
+            "configured",
+            "ci",
+            "ac3cli and ac3gui decode and encode, Hearth decodes; decoded AC-4 plays through the PCM monitor"
+          ],
+          [
+            "configured",
+            "experimental-ci",
+            "ac3cli only"
           ]
         ],
         [
@@ -1102,14 +1115,14 @@
         [
           "Hearth desktop player",
           [
-            "development",
+            "configured",
             "ci",
-            "Qt/QML shell builds; six pages implemented"
+            "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM"
           ],
           [
-            "development",
+            "configured",
             "ci",
-            "Qt/QML shell builds; six pages implemented"
+            "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM"
           ]
         ],
         [
@@ -1136,6 +1149,19 @@
             "source",
             "hardware",
             "ALSA and PipeWire on one Pi 4B"
+          ]
+        ],
+        [
+          "AC-4 decode and encode",
+          [
+            "configured",
+            "ci",
+            "ac3cli and ac3gui decode and encode, Hearth decodes; decoded AC-4 plays through the PCM monitor"
+          ],
+          [
+            "configured",
+            "ci",
+            "ac3cli and ac3gui decode and encode, Hearth decodes"
           ]
         ],
         [
@@ -1251,12 +1277,12 @@
           [
             "development",
             "ci",
-            "Qt/QML shell builds; six pages implemented"
+            "Qt/QML window with six pages, built in CI; no macOS release package"
           ],
           [
             "development",
             "ci",
-            "Qt/QML shell builds; six pages implemented"
+            "Qt/QML window with six pages, built in CI; no macOS release package"
           ],
           [
             "unavailable",
@@ -1298,6 +1324,24 @@
             "unavailable",
             "not-applicable",
             ""
+          ]
+        ],
+        [
+          "AC-4 decode and encode",
+          [
+            "source",
+            "ci",
+            "ac3cli and ac3gui; audio untested"
+          ],
+          [
+            "source",
+            "ci",
+            "ac3cli and ac3gui; audio untested"
+          ],
+          [
+            "configured",
+            "ci",
+            "the DMG carries ac3cli and ac3gui"
           ]
         ],
         [
@@ -1393,11 +1437,19 @@
           ]
         ],
         [
+          "AC-4 decode and encode",
+          [
+            "source",
+            "build",
+            "the NDK build compiles the AC-4 libraries; the Shield demo links none of them"
+          ]
+        ],
+        [
           "AC-4 IEC 61937 output",
           [
             "source",
             "build",
-            "ENCODING_IEC61937; no receiver accepts AC-4"
+            "ENCODING_IEC61937; the demo never sends AC-4; no receiver accepts AC-4"
           ]
         ],
         [
@@ -1569,12 +1621,12 @@
           [
             "source",
             "build",
-            "ALSA; no receiver accepts AC-4"
+            "ALSA; PipeWire has no AC-4 codec; no receiver accepts AC-4"
           ],
           [
             "source",
             "not-run",
-            "expected; no receiver accepts AC-4"
+            "expected through Linux aarch64; no receiver accepts AC-4"
           ],
           [
             "unavailable",
@@ -1926,7 +1978,7 @@
       "product": "Forge",
       "platform": "Windows",
       "variant": "ARM64",
-      "state": "configured",
+      "state": "published",
       "artifact": "NSIS installer or ZIP containing ac3cli",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
@@ -1966,11 +2018,11 @@
       "product": "Crucible",
       "platform": "Windows",
       "variant": "x64",
-      "state": "published",
-      "artifact": "Separate Crucible ZIP",
+      "state": "configured",
+      "artifact": "Separate Crucible ZIP when present in the release",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
-      "note": "The archive has driver scripts. The test-signed driver must be built from source."
+      "note": "Packaging is wired, but no tag has exercised this route. The archive has driver scripts; the test-signed driver must be built from source."
     },
     {
       "product": "Crucible",
@@ -2006,31 +2058,31 @@
       "product": "Hearth",
       "platform": "Windows",
       "variant": "x64",
-      "state": "development",
-      "artifact": "No desktop package",
+      "state": "configured",
+      "artifact": "ZIP, and inside the NSIS installer",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The Qt/QML shell builds and runs on Windows, with the Play page confirmed on hardware; its Media, Speakers, Decoder, Network and Settings pages are implemented."
+      "note": "Packaging is wired, but no tag has exercised this route. The Qt/QML window has six pages and runs on Windows; the installer registers it as the .ac3 and .ec3 handler."
     },
     {
       "product": "Hearth",
       "platform": "Linux",
       "variant": "x86_64",
-      "state": "development",
-      "artifact": "No desktop package",
+      "state": "configured",
+      "artifact": "TGZ, DEB or RPM",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The Qt/QML shell builds in CI with its six pages implemented, but it has not been run on Linux."
+      "note": "Packaging is wired, but no tag has exercised this route. The Qt/QML window has six pages and builds in CI; it has not been run on Linux."
     },
     {
       "product": "Hearth",
       "platform": "Linux",
       "variant": "aarch64",
-      "state": "development",
-      "artifact": "No desktop package",
+      "state": "configured",
+      "artifact": "TGZ, DEB or RPM",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The Qt/QML shell builds in CI with its six pages implemented, but it has not been run on Linux."
+      "note": "Packaging is wired, but no tag has exercised this route. The Qt/QML window has six pages and builds in CI; it has not been run on Linux."
     },
     {
       "product": "Hearth",
@@ -2040,7 +2092,7 @@
       "artifact": "No desktop package",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The Qt/QML shell builds in CI with its six pages implemented, but it has not been used on a Mac."
+      "note": "The Qt/QML window has six pages and builds in CI. The release DMG carries only ac3cli and ac3gui, and the window has not been used on a Mac."
     },
     {
       "product": "Hearth",
@@ -2096,7 +2148,7 @@
       "product": "C++ library",
       "platform": "Windows",
       "variant": "ARM64",
-      "state": "configured",
+      "state": "published",
       "artifact": "ac3forge-dev ZIP",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
@@ -2126,7 +2178,7 @@
       "product": "C++ library",
       "platform": "macOS",
       "variant": "Universal (Apple Silicon + Intel)",
-      "state": "configured",
+      "state": "published",
       "artifact": "Best-effort ac3forge-dev ZIP",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",

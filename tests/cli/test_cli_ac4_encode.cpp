@@ -26,11 +26,13 @@
 #include <vector>
 
 #include "platform/process.hpp"
+#include "sanitized.hpp"
 
 #include "ac3/io/wav.hpp"
 #include "ac4/ac4.hpp"
 
 namespace fs = std::filesystem;
+using ac3::test::kSanitized;
 
 namespace {
 
@@ -95,16 +97,29 @@ fs::path tones_wav(const std::string& name, std::size_t count, std::size_t secon
     return wav_of(name, channels);
 }
 
+// The tones of a run that reads its first frame's syntax alone: one frame
+// under the sanitizers (tests/sanitized.hpp), where a run costs a process start
+// and each frame it encodes. The encoder's delay gives the run three frames or
+// more, and its first is the same from a whole frame of tones.
+constexpr std::size_t kSanitizedSamples = 2048;
+
 // A quarter of a second of tones, for the immersive layouts' runs, which read
 // their first frames' syntax: ten or twelve channels cost the sanitizer build
-// the most.
-fs::path short_tones_wav(const std::string& name, std::size_t count) {
+// the most. Under the sanitizers a frame, which is all a first frame needs.
+fs::path short_tones_wav(const std::string& name, std::size_t count,
+                         std::size_t samples = kSanitized ? kSanitizedSamples
+                                                          : static_cast<std::size_t>(kRate / 4)) {
     std::vector<std::vector<float>> channels;
     for (std::size_t c = 0; c < count; ++c) {
-        channels.push_back(
-            tone(331.0 + 157.0 * static_cast<double>(c), static_cast<std::size_t>(kRate / 4)));
+        channels.push_back(tone(331.0 + 157.0 * static_cast<double>(c), samples));
     }
     return wav_of(name, channels);
+}
+
+// `seconds` of tones, or under the sanitizers a frame, for the runs that read
+// their first frame's syntax and the status lines alone.
+fs::path first_frame_tones_wav(const std::string& name, std::size_t count, std::size_t seconds) {
+    return kSanitized ? short_tones_wav(name, count) : tones_wav(name, count, seconds);
 }
 
 // One syntax-trace= record: frame, substream, value and name.
@@ -203,9 +218,16 @@ TEST_CASE("ac4-encode's stream options each write what they name", "[cli][ac4]")
     const auto log = dir / "ac4_stream_options.log";
     const auto trace = dir / "ac4_stream_options.tsv";
     const fs::path out = dir / "ac4_stream_options.ac4";
-    const fs::path stereo = tones_wav("ac4_options_stereo.wav", 2, 2);
-    const fs::path five_one = tones_wav("ac4_options_51.wav", 6, 2);
+    // Each run reads its first frame's syntax and the status lines, so under
+    // the sanitizers (tests/sanitized.hpp) its input is a frame in place of two
+    // seconds. loudness= measures the programme in blocks of 400 ms (BS.1770),
+    // so its input is half a second.
+    const fs::path stereo = first_frame_tones_wav("ac4_options_stereo.wav", 2, 2);
+    const fs::path five_one = first_frame_tones_wav("ac4_options_51.wav", 6, 2);
     const fs::path five_one_four = short_tones_wav("ac4_options_514.wav", 10);
+    const fs::path measured = kSanitized ? short_tones_wav("ac4_options_measured.wav", 2,
+                                                           static_cast<std::size_t>(kRate / 2))
+                                         : stereo;
     struct Run {
         const char* name;
         const fs::path* in;
@@ -313,7 +335,7 @@ TEST_CASE("ac4-encode's stream options each write what they name", "[cli][ac4]")
          {1, 0, 1, 1}},
         // A loudness practice besides EBU R 128's.
         {"loudness=atsc-a85",
-         &stereo,
+         &measured,
          " 192 loudness=atsc-a85",
          "loudness range",
          "loud_prac_type",
@@ -395,7 +417,12 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
     const auto log = dir / "ac4_experimental.log";
     const auto trace = dir / "ac4_experimental.tsv";
     const fs::path out = dir / "ac4_experimental.ac4";
-    const std::size_t count = 2 * kRate;
+    // Two seconds of signal, or under the sanitizers (tests/sanitized.hpp) half
+    // a second, where a run costs a process start and each frame it encodes:
+    // each of the first four tools' syntax shows within a few frames. The
+    // immersive layouts' and the seven-channel runs read their first frame's
+    // syntax alone, and take a frame of tones (short_tones_wav()).
+    const auto count = static_cast<std::size_t>(kSanitized ? kRate / 2 : 2 * kRate);
     const auto run = [&](const fs::path& in, const std::string& options) {
         REQUIRE(run_cli("ac4-encode " + quoted(in) + " " + quoted(out) + " " + options +
                             " syntax-trace=" + quoted(trace),
@@ -433,17 +460,19 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
         CHECK(count_of(records, "aspx_fic_present", 1) > 0U);
     }
     SECTION("coding-configs chooses among the 5.X element's coding configurations") {
-        // A second of independent tones, then one signal in L, R and C.
+        // A second of independent tones, then one signal in L, R and C: half
+        // of the signal each.
+        const std::size_t half = count / 2;
         std::vector<std::vector<float>> input(6, std::vector<float>(count, 0.0F));
-        const std::vector<float> shared = tone(523.0, kRate, 0.2);
+        const std::vector<float> shared = tone(523.0, half, 0.2);
         for (std::size_t c = 0; c < 6; ++c) {
-            const std::vector<float> t = tone(331.0 + 157.0 * static_cast<double>(c), kRate);
+            const std::vector<float> t = tone(331.0 + 157.0 * static_cast<double>(c), half);
             std::ranges::copy(t, input[c].begin());
         }
-        for (std::size_t n = 0; n < static_cast<std::size_t>(kRate); ++n) {
-            input[0][kRate + n] = shared[n];
-            input[1][kRate + n] = 0.8F * shared[n];
-            input[2][kRate + n] = 0.6F * shared[n];
+        for (std::size_t n = 0; n < half; ++n) {
+            input[0][half + n] = shared[n];
+            input[1][half + n] = 0.8F * shared[n];
+            input[2][half + n] = 0.6F * shared[n];
         }
         const auto records =
             run(wav_of("ac4_coding_configs.wav", input), "256 experimental=coding-configs");
@@ -492,7 +521,7 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
         for (const Layout layout :
              {Layout{"7x-wide", 8, "7.1: 5/2/0.1"}, Layout{"7x-top-front", 7, "7.0: 3/2/2"}}) {
             CAPTURE(layout.option);
-            (void)run(tones_wav("ac4_seven.wav", layout.channels),
+            (void)run(first_frame_tones_wav("ac4_seven.wav", layout.channels, 1),
                       "512 experimental=" + std::string{layout.option});
             const std::vector<std::byte> bytes = read_bytes(out);
             const ac4::Toc toc = first_toc(bytes);
