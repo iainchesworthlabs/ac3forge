@@ -2177,8 +2177,9 @@ table designed once in `double`. One pull request.
   test that pins the bits of the converter's `float` table at the three ratios.
 
 **Built in D14a4.** The changes above, in `pcm/companding.cpp`, `pcm/aspx.cpp`, `aspx/hf_generator.cpp`,
-`dsp/resampler.{hpp,cpp}` and the new `dsp/resampler_vector.hpp`, with `ac4dec` linking `ac3::arithmetic`
-for the header. The five probe fixtures' hashes did not move; the sixth, `ac4_20_companding`, is
+`dsp/resampler.{hpp,cpp}` and the new `dsp/real_functions.hpp` and `dsp/resampler_vector.hpp` of
+`src/ac4core`; `src/ac4dec` reaches the arithmetic through the first, as the layering table has it, and
+compiles with `ac3::arithmetic`'s include directory. The five probe fixtures' hashes did not move; the sixth, `ac4_20_companding`, is
 `5b93c61c57566b0c` on the Cortex-M3 under QEMU, on the x86-64 host and on the board, at 58.6 M instructions
 a frame, 466,163 bytes of peak heap and 75 allocations a frame. The `float` decode of every committed
 stream still agrees with the `double` one to the floors of `scalar-agreement.json`, except that the three

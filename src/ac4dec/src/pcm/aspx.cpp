@@ -5,8 +5,8 @@
 #include <cstddef>
 #include <memory>
 
-#include "ac3/internal/scalar_math.hpp"
 #include "ac4/detail/profiling.hpp"
+#include "dsp/real_functions.hpp"
 #include "tables/qmf_tables.hpp"
 
 namespace ac4::detail {
@@ -39,12 +39,12 @@ constexpr Real kMaxExponent = 96;
     return static_cast<std::size_t>(index);
 }
 
-// 2^exponent through ac3::internal's scalar_exp2: at double that is std::exp2,
-// as it always was, and at float the project's own function, which gives the
-// same float on every platform where the C libraries' exp2f differ in the last
-// bit (planning/ac4.md, D14a4).
+// 2^exponent through dsp::exp2_of: at double that is std::exp2, as it always
+// was, and at float the project's own function, which gives the same float on
+// every platform where the C libraries' exp2f differ in the last bit
+// (planning/ac4.md, D14a4).
 [[nodiscard]] Real exp2_clamped(Real exponent) noexcept {
-    return ac3::internal::scalar_exp2(std::clamp(exponent, kMinExponent, kMaxExponent));
+    return dsp::exp2_of(std::clamp(exponent, kMinExponent, kMaxExponent));
 }
 
 using SigQscf = std::array<std::array<int, aspx::kMaxSbgMaster>, kMaxEnv>;
