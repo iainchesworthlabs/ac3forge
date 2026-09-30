@@ -14,7 +14,7 @@
 // A stereo or mono room is the decoder's fold (OutputLayout::fold); anything
 // wider is rendered as coded (ac3/render/render.hpp). Objects are worth their
 // cost only when the layout asks for what the bed cannot give. This is the
-// ESP32 player's policy, moved beside the renderer so that every player that
+// ESP32 player's policy, moved out of the player so that every player that
 // renders - the boards, the desktop player's engine and its test sink - makes
 // the same decision from the same inputs (planning/hearth-reference-player.md,
 // "Decoder configuration").

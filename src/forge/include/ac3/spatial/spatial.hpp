@@ -5,7 +5,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/layout.hpp"
 #include "ac3/export.hpp"
 
 // The spatial/object layer: applications place and move mono sources around
@@ -118,18 +118,18 @@ inline constexpr double kNegligibleGain = 1e-9;
 // return {0, 0}; a caller that means to pan a source should exclude them
 // first (see PanTargets below), since an LFE-type entry here says nothing
 // about where the LFE speaker is.
-[[nodiscard]] AC3FORGE_EXPORT Direction direction_of(eac3::chanmap::Location location,
-                                                      bool has_rears, bool has_side_discrete);
+[[nodiscard]] AC3FORGE_EXPORT Direction direction_of(base::Location location, bool has_rears,
+                                                     bool has_side_discrete);
 
 // A layout's full-bandwidth locations and the direction each one sits at,
 // LFE-type locations excluded - the set pan_direction below actually spreads
 // a source over.
 struct PanTargets {
-    std::vector<eac3::chanmap::Location> locations;
+    std::vector<base::Location> locations;
     std::vector<Direction> directions;
 
     // Where a location sits in this set, or -1 if it takes no panned audio.
-    [[nodiscard]] int index_of(eac3::chanmap::Location location) const {
+    [[nodiscard]] int index_of(base::Location location) const {
         for (std::size_t i = 0; i < locations.size(); ++i) {
             if (locations[i] == location) {
                 return static_cast<int>(i);
@@ -139,8 +139,7 @@ struct PanTargets {
     }
 };
 
-[[nodiscard]] AC3FORGE_EXPORT PanTargets pan_targets(
-    std::span<const eac3::chanmap::Location> locations);
+[[nodiscard]] AC3FORGE_EXPORT PanTargets pan_targets(std::span<const base::Location> locations);
 
 // One source direction spread over a target speaker set. Two rings - the
 // listener's plane and the ceiling - each panned by azimuth (via pan_ring

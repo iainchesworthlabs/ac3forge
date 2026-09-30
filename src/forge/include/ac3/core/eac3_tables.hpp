@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "ac3/core/exponents.hpp"
+#include "ac3/core/layout.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/export.hpp"
 
@@ -199,63 +200,11 @@ inline constexpr std::uint16_t kPairs =
     return std::popcount(map) + std::popcount(static_cast<std::uint16_t>(map & kPairs));
 }
 
-// One speaker feed. A pair location expands to two adjacent enumerators, in
-// that order, which is what lets the expansion below be a single sweep.
-enum class Location : std::uint8_t {
-    kLeft,
-    kCentre,
-    kRight,
-    kLeftSurround,
-    kRightSurround,
-    kLc,
-    kRc,
-    kLrs,
-    kRrs,
-    kCs,
-    kTs,
-    kLsd,
-    kRsd,
-    kLw,
-    kRw,
-    kVhl,
-    kVhr,
-    kVhc,
-    kLts,
-    kRts,
-    kLfe2,
-    kLfe,
-};
-
-// Sixteen locations, six of which name two channels.
-inline constexpr int kMaxChannels = 22;
-
-[[nodiscard]] constexpr std::string_view name(Location location) {
-    constexpr std::array<std::string_view, kMaxChannels> names = {
-        "L",   "C",   "R",  "Ls", "Rs",  "Lc",  "Rc",  "Lrs", "Rrs", "Cs",   "Ts",
-        "Lsd", "Rsd", "Lw", "Rw", "Vhl", "Vhr", "Vhc", "Lts", "Rts", "LFE2", "LFE"};
-    return names[static_cast<std::size_t>(location)];
-}
-
-// A map's locations in coded order, which §E2.3.1.8 defines as bit order.
-struct Layout {
-    std::array<Location, kMaxChannels> items{};
-    int count = 0;
-
-    [[nodiscard]] constexpr Location operator[](int index) const {
-        return items[static_cast<std::size_t>(index)];
-    }
-    [[nodiscard]] constexpr auto begin() const { return items.begin(); }
-    [[nodiscard]] constexpr auto end() const { return std::next(items.begin(), count); }
-    // Where a location sits in this layout, or -1.
-    [[nodiscard]] constexpr int index_of(Location location) const {
-        for (int i = 0; i < count; ++i) {
-            if (items[static_cast<std::size_t>(i)] == location) {
-                return i;
-            }
-        }
-        return -1;
-    }
-};
+// The vocabulary moved to ac3/core/layout.hpp; the Annex E code keeps its old spelling.
+using ac3::base::kMaxChannels;
+using ac3::base::Layout;
+using ac3::base::Location;
+using ac3::base::name;
 
 [[nodiscard]] constexpr Layout expand(std::uint16_t map) {
     Layout out;

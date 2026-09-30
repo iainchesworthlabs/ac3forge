@@ -1,4 +1,0 @@
-# C6: iec61937.cpp keeps its own blocks_per_syncframe instead of including the codec's tables
-# planning/layout.md, stage S1. The change that makes this cut deletes this file.
-
-src/forge/src/iec61937/iec61937.cpp ac3/core/eac3_tables.hpp
