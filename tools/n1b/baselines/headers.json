@@ -8,7 +8,7 @@
   "src/ac4/include/ac4/ac4.hpp": "d606f83c68b7ff3f3a0b6cb41f2b580aad9da9f7",
   "src/ac4/include/ac4/syntax.hpp": "3c7688280c790e5109ffc4e803cbbe224bbc3097",
   "src/ac4dec/include/ac4dec/decoder.hpp": "ce345a5fe5e3820b4869cb29bea1400a196424ea",
-  "src/ac4enc/include/ac4enc/encoder.hpp": "d48f8bbb4ee61f187197c9968fdaae9bfaf9baca",
+  "src/ac4enc/include/ac4enc/encoder.hpp": "183d1a2c005356b2dbd1a9cc49dbc1d1f16c4cce",
   "src/admbridge/include/ac3/admbridge/bridge.hpp": "8aab7e69d1c9b921091d5e6f46c7f7620b111f6e",
   "src/admbridge/include/ac3/admbridge/coordinates.hpp": "de0e665bffefdd93404e7a383364bd1c29858108",
   "src/admbridge/include/ac3/admbridge/iab_bridge.hpp": "1ca34d65ea7c857449d763f9deb12c95c6b0d38b",
@@ -29,7 +29,7 @@
   "src/audio/include/ac3/audio/spatial.hpp": "1d1e61ede254760ae6c944961099b6270fa696a1",
   "src/audio/include/ac3/audio/speakers.hpp": "f5cc986dc8b605f146dabe99f7af7bffd27dbe85",
   "src/audio/include/ac3/audio/watchdog.hpp": "a5db8dc8ff0afe2377848cb14c3ea51f659927be",
-  "src/capi/include/ac3forge_c/ac3forge.h": "a10d9ae49cc1fd4d1b2172dbca12325e714634c3",
+  "src/capi/include/ac3forge_c/ac3forge.h": "0821e2df7c5f0033b5f5ede5aff80961740f753a",
   "src/capi/include/ac3forge_c/version.h.in": "52f0255991834a1db80e64304fb65a38c2d79dd6",
   "src/forge/include/ac3/analysis/levels.hpp": "13083f0c740054c05452dc4861901351f568eff7",
   "src/forge/include/ac3/core/aht_tables.hpp": "6167726f91eb7b32a05bffba602dc7ff12035464",
@@ -149,6 +149,6 @@
  },
  "kind": "headers",
  "label": "",
- "measured_at": "fa507e4a0aa0b6da8a1902102f75266bdf17ed53",
+ "measured_at": "ddaeacc7881547b853ac6befed18340bf2f17e8d",
  "schema": 1
 }

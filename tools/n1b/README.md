@@ -22,6 +22,46 @@ Each script's header says what it does and takes. This page says in what order.
 The plan a stage writes is what the build-file pass reads, since the pass runs after the files have moved.
 All the passes are idempotent: a second run on a finished tree changes nothing.
 
+## S2, start to finish
+
+In a worktree of `main` after the seven cuts and the docs sweep have merged, with `<before>` an MSVC
+build of that `main` (every option on, no `--target`) and `<work>` a directory outside the tree:
+
+    python tools/n1b/baseline.py record --build <before> --out <work>/before
+    python tools/n1b/n1b_apply.py --root . --phase all --json <work>/plan.json     # 402 moves, about a minute
+    git commit -m "S2: move src and tests"          # nothing added: the staged renames alone
+    python tools/n1b/baseline.py check-moves --plan <work>/plan.json --baseline <work>/before --pure
+    git add -A && git commit -m "S2: include spellings"
+    python tools/n1b/n1b_cmake.py --root . --plan <work>/plan.json
+    python tools/n1b/n1b_paths.py --root . --plan <work>/plan.json
+    git add -A && git commit -m "S2: build files and paths in text"
+    git apply --3way tools/n1b/s2-hand.patch        # the hand-written part, below
+    git add -A && git commit -m "S2: the build of the split libraries"
+
+then build every default target with MSVC, `baseline.py record --build <after> --out <work>/after`, and
+
+    python tools/n1b/baseline.py compare <work>/before <work>/after --only hashes,cli        # identical
+    python tools/n1b/export_diff.py --old <work>/before/symbols-msvc.json \
+        --new <work>/after/symbols-msvc.json --map l2      # every library the same, plus has_avx2()
+    python tools/checks/check_layering.py                  # 0 debts, 213 edges, 0 failures
+    python tools/checks/check_doc_paths.py
+    python tools/ci/precheck.py
+
+`s2-hand.patch` is the part of S2 no script does, made on the output of the scripts above (28 files,
+about 600 lines): `cmake/IclforgeLibrary.cmake` and the `CMakeLists.txt` of `base`, `dsp`, `objects`,
+`render` and `iec61937` (new), `src/ac3/CMakeLists.txt` rewritten to link them, the root's
+`add_subdirectory` list and the install rules for six export sets; `ICLFORGE_BASE_EXPORT` on
+`has_avx2()`, the one source edit; the minimum-footprint profile's archive, made of files from six
+libraries, with the five export headers it generates; the ESP-IDF component and packer; the path
+filters of the change planner (`tools/ci/classify_changes.py`) and of `esp-component.yml` and
+`wheels.yml`, which need the five new trees beside `src/ac3/`, and the test that names one; and five
+comment lines the rewrites made longer than 100 columns. It goes stale as `main` moves: on a `main`
+that has changed those files, `git apply --3way` leaves conflict markers where it did, and the file's
+own hunks say what each edit was for. What it leaves, and the scripts list: variant directories that
+became `variants/<axis>-<choice>/` and are still named in comments, the build tree's own path in
+`_ci-linux.yml`, and the coverage floors of `tools/checks/coverage_report.sh` (six components from one
+run, where the script now has one row for `src/ac3`).
+
 ## Proof
 
 `tools/n1b/baseline.py` records and compares what a stage must not change, against a build tree:
