@@ -412,8 +412,8 @@ still not a listener. This section is where a listening session's result goes.
 ([`tools/listening/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/tools/listening));
 the listening is human time that has not been spent. The results table below
 is empty and says so rather than carrying placeholder numbers, and
-`README.md`'s and [Validation](verification.md)'s "no listening test has been
-run" sentences stay as they are until it is not.
+`README.md`'s and [Validation](verification.md)'s sentences saying that no
+listening test has been run stay as they are until one has.
 
 ### Protocol
 

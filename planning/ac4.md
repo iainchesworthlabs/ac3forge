@@ -2861,9 +2861,10 @@ Found: the decoder lists the objects in its own order, not the encoder's (the LF
 bed objects, then the dynamic objects, each group in the order the configuration lists it), which
 the header and each binding's documentation now state. An inactive object sends none of its
 metadata, so the decoder reports it with gain -infinity and priority 0. E9's `object_codes()`
-writes the screen factor and the depth exponent as one group of fields whose factor has no code for
-0, so an object with a depth exponent other than 1 and a screen factor of 0 decodes with a factor of
-1/8; the tests give such an object a factor, and the encoder is unchanged. Python binds the C++
+wrote the screen factor and the depth exponent as one group of fields whose factor has no code for
+0, so an object with a depth exponent other than 1 and a screen factor of 0 decoded with a factor of
+1/8; the tests gave such an object a factor, and the encoder now refuses it, naming the reason
+(`src/ac4enc/ERRATA.md`, "The screen factor and the depth exponent"). Python binds the C++
 structs, so its streams are the C++ encoder's by construction: its test holds two ways of
 configuring the same scene to the same bytes, and the decoder's read-back holds each field. A C
 caller can store any int in an enumeration-typed field, and reading a value the enumeration does not

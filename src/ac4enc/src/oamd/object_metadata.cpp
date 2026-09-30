@@ -90,18 +90,30 @@ void fill_render(const ObjectCodes& codes, ObjectRenderFields& r) {
 
 }  // namespace
 
-bool properties_valid(const ObjectProperties& p) noexcept {
+std::string_view properties_refusal(const ObjectProperties& p) noexcept {
     const bool gain = (std::isinf(p.gain_db) && p.gain_db < 0.0) || in(p.gain_db, -49.0, 15.0);
     const bool depth = std::ranges::find(kDepthExponent, p.depth_exponent) != kDepthExponent.end();
     const bool distance =
         !p.distance || (std::isinf(*p.distance) && *p.distance > 0.0) || in(*p.distance, 1.0, 1e9);
     const bool headphone =
         !p.headphone_render_mode || (*p.headphone_render_mode >= 0 && *p.headphone_render_mode <= 3);
-    return gain && in(p.priority, 0.0, 1.0) && in(p.position[0], 0.0, 1.0) &&
-           in(p.position[1], 0.0, 1.0) && in(p.position[2], -1.0, 1.0) && p.zone_mask >= 0 &&
-           p.zone_mask <= 7 && in(p.width[0], 0.0, 1.0) && in(p.width[1], 0.0, 1.0) &&
-           in(p.width[2], 0.0, 1.0) && in(p.screen_factor, 0.0, 1.0) && depth && distance &&
-           in(p.divergence, 0.0, 1.0) && headphone;
+    const bool in_range = gain && in(p.priority, 0.0, 1.0) && in(p.position[0], 0.0, 1.0) &&
+                          in(p.position[1], 0.0, 1.0) && in(p.position[2], -1.0, 1.0) &&
+                          p.zone_mask >= 0 && p.zone_mask <= 7 && in(p.width[0], 0.0, 1.0) &&
+                          in(p.width[1], 0.0, 1.0) && in(p.width[2], 0.0, 1.0) &&
+                          in(p.screen_factor, 0.0, 1.0) && depth && distance &&
+                          in(p.divergence, 0.0, 1.0) && headphone;
+    if (!in_range) {
+        return "an object's properties off the ranges ObjectProperties gives them";
+    }
+    // object_codes() sends the screen factor and the depth exponent as one group,
+    // where the factor is above 0 or the exponent is not 1, and the factor's code,
+    // (code + 1) / 8, has no value of 0: the decoder would read the factor as 1/8.
+    if (p.depth_exponent != 1.0 && p.screen_factor == 0.0) {
+        return "an object with a depth exponent other than 1 and a screen factor of 0, which the "
+               "group of fields that sends both has no code for";
+    }
+    return {};
 }
 
 bool ObjectCodes::same_other(const ObjectCodes& o) const noexcept {
