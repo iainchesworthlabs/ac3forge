@@ -276,7 +276,10 @@ ManifestVersion: 1.12.0
 
 
 def bump_winget(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
-    base = root / "packaging/winget/manifests/i/iainchesworthlabs/ac3forge"
+    # winget-pkgs files a package under manifests/<first letter>/<publisher>/<package>/, and the
+    # package is the last part of the identifier: the releases staged under
+    # iainchesworthlabs.ac3forge stay in the ac3forge directory as they were made.
+    base = root / "packaging/winget/manifests/i/iainchesworthlabs/iclforge"
 
     if plan.winzip_sha256 is None:
         plan.results.append(

@@ -117,7 +117,7 @@ endfunction()
 # and BUILD_SHARED_LIBS choose which variants are installed, as cmake/InstallLibrary.cmake always did.
 # The export set is <name>Targets under the iclforge:: namespace, in the package directory
 # find_package(iclforge) reads; the package config includes it when the file exists. The library also
-# gets a pkg-config file, iclforge_<name>.pc, that requires the .pc files of the libraries it links: a
+# gets a pkg-config file, iclforge-<name>.pc, that requires the .pc files of the libraries it links: a
 # static-only install has to name every archive on a link line, since nothing in an archive records
 # what it needs (cmake/PkgConfig.cmake).
 function(iclforge_install_library name)
@@ -152,11 +152,11 @@ function(iclforge_install_library name)
     set(pc_requires "")
     if(deps)
         foreach(dep IN LISTS deps)
-            list(APPEND pc_requires iclforge_${dep})
+            list(APPEND pc_requires iclforge-${dep})
         endforeach()
     endif()
     iclforge_install_pkgconfig(
-        NAME iclforge_${name}
+        NAME iclforge-${name}
         DESCRIPTION "${ARG_DESCRIPTION}"
         LIBNAME "${pc_libname}"
         REQUIRES ${pc_requires})

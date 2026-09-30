@@ -22,6 +22,7 @@
 //
 // See __init__.py for what is deliberately absent.
 
+// The component's namespace is esphome::iclforge, so the library's is written ::iclforge:: here.
 namespace esphome {
 namespace iclforge {
 
@@ -60,8 +61,8 @@ class IclForgeComponent : public Component {
  protected:
   std::size_t buffer_size_;
   std::vector<std::byte> storage_;
-  std::unique_ptr<iclforge::io::AccessUnitAccumulator> accumulator_;
-  iclforge::FrameDecoder decoder_;
+  std::unique_ptr<::iclforge::io::AccessUnitAccumulator> accumulator_;
+  ::iclforge::FrameDecoder decoder_;
   std::vector<std::vector<float>> channels_;
   std::uint64_t frames_{0};
   bool failed_{false};

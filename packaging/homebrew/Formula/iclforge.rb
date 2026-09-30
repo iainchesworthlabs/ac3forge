@@ -7,7 +7,7 @@
 # vcpkg deliberately does not, and skips find_package(iclforge) dev files
 # vcpkg already covers. The Qt6 GUI (ac3gui) is not packaged here - a Homebrew
 # Cask, not a Formula, is the right shape for a bundled .app. That cask
-# (../Casks/ac3gui.rb) installs the prebuilt ac3gui.app from each release's
+# (../Casks/iclforge.rb) installs the prebuilt ac3gui.app from each release's
 # .dmg.
 #
 # Staged here (packaging/homebrew/Formula/iclforge.rb) for local

@@ -198,10 +198,10 @@ install(FILES
 iclforge_pkgconfig_libname(_iclforge_forge_pc_libname iclforge_ac3_shared iclforge_ac3 iclforge_ac3_static
     "${_iclforge_forge_install_targets}")
 iclforge_install_pkgconfig(
-    NAME iclforge
+    NAME iclforge-ac3
     DESCRIPTION "Clean-room AC-3 (ATSC A/52) and E-AC-3 encoder and decoder with a spatial object layer"
     LIBNAME "${_iclforge_forge_pc_libname}"
-    REQUIRES iclforge_base iclforge_dsp iclforge_objects iclforge_render iclforge_iec61937)
+    REQUIRES iclforge-base iclforge-dsp iclforge-objects iclforge-render iclforge-iec61937)
 
 # The codec-blind libraries iclforge::ac3 links (src/base, dsp, objects, render, iec61937): each is a
 # mandatory component, installed and exported like the codec.
@@ -237,10 +237,10 @@ install(FILES "${CMAKE_BINARY_DIR}/src/signing/generated/iclforge/signing/export
 iclforge_pkgconfig_libname(_iclforge_signing_pc_libname iclforge_signing_shared iclforge_signing iclforge_signing_static
     "${_iclforge_signing_install_targets}")
 iclforge_install_pkgconfig(
-    NAME ac3signing
+    NAME iclforge-signing
     DESCRIPTION "EMDF Atmos object-signing tag for iclforge"
     LIBNAME "${_iclforge_signing_pc_libname}"
-    REQUIRES iclforge)
+    REQUIRES iclforge-ac3)
 
 # iclforge::matroska is an optional component (ICLFORGE_BUILD_MATROSKA, see the root
 # CMakeLists.txt) - a vcpkg port maps this straight to its own "matroska" feature. Its
@@ -266,7 +266,7 @@ if(ICLFORGE_BUILD_MATROSKA)
     iclforge_pkgconfig_libname(_iclforge_matroska_pc_libname iclforge_matroska_shared iclforge_matroska iclforge_matroska_static
         "${_iclforge_matroska_install_targets}")
     iclforge_install_pkgconfig(
-        NAME matroska
+        NAME iclforge-matroska
         DESCRIPTION "Standalone Matroska (.mkv) container writer"
         LIBNAME "${_iclforge_matroska_pc_libname}")
 endif()
@@ -295,7 +295,7 @@ if(ICLFORGE_BUILD_MP4)
     iclforge_pkgconfig_libname(_iclforge_mp4_pc_libname iclforge_mp4_shared iclforge_mp4 iclforge_mp4_static
         "${_iclforge_mp4_install_targets}")
     iclforge_install_pkgconfig(
-        NAME mp4
+        NAME iclforge-mp4
         DESCRIPTION "Standalone MP4/ISOBMFF container writer, plus fMP4/CMAF and HLS/DASH signaling"
         LIBNAME "${_iclforge_mp4_pc_libname}")
 endif()
@@ -321,7 +321,7 @@ if(ICLFORGE_BUILD_MPEGTS)
     iclforge_pkgconfig_libname(_iclforge_mpegts_pc_libname iclforge_mpegts_shared iclforge_mpegts iclforge_mpegts_static
         "${_iclforge_mpegts_install_targets}")
     iclforge_install_pkgconfig(
-        NAME mpegts
+        NAME iclforge-mpegts
         DESCRIPTION "Standalone MPEG-2 Transport Stream container writer"
         LIBNAME "${_iclforge_mpegts_pc_libname}")
 endif()
@@ -348,7 +348,7 @@ if(ICLFORGE_BUILD_IAB)
     iclforge_pkgconfig_libname(_iclforge_iab_pc_libname iclforge_iab_shared iclforge_iab iclforge_iab_static
         "${_iclforge_iab_install_targets}")
     iclforge_install_pkgconfig(
-        NAME ac3iab
+        NAME iclforge-iab
         DESCRIPTION "Standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader"
         LIBNAME "${_iclforge_iab_pc_libname}")
 endif()
@@ -378,7 +378,7 @@ if(ICLFORGE_BUILD_ADM)
     # LIBNAME hardcoded, not iclforge_pkgconfig_libname() - ac3adm/admbridge are shared-only, so
     # there's no static/shared choice to derive here, unlike every other component above.
     iclforge_install_pkgconfig(
-        NAME ac3adm
+        NAME iclforge-adm
         DESCRIPTION "Standalone BW64/RF64 + Audio Definition Model (ADM) parser"
         LIBNAME iclforge_adm)
 
@@ -397,10 +397,10 @@ if(ICLFORGE_BUILD_ADM)
         COMPONENT library)
 
     iclforge_install_pkgconfig(
-        NAME admbridge
-        DESCRIPTION "Maps a parsed ADM object graph onto/from ac3::oba::AtmosEncoder"
+        NAME iclforge-admbridge
+        DESCRIPTION "Maps a parsed ADM object graph onto/from iclforge::oba::AtmosEncoder"
         LIBNAME iclforge_admbridge
-        REQUIRES iclforge ac3adm)
+        REQUIRES iclforge-ac3 iclforge-adm)
 endif()
 
 # iclforge::iamf is an optional component (ICLFORGE_BUILD_IAMF, see the root CMakeLists.txt) - same
@@ -424,7 +424,7 @@ if(ICLFORGE_BUILD_IAMF)
     iclforge_pkgconfig_libname(_iclforge_iamf_pc_libname iclforge_iamf_shared iclforge_iamf iclforge_iamf_static
         "${_iclforge_iamf_install_targets}")
     iclforge_install_pkgconfig(
-        NAME iamf
+        NAME iclforge-iamf
         DESCRIPTION "IAMF v1.1.0 OBU / ISO-BMFF writer"
         LIBNAME "${_iclforge_iamf_pc_libname}")
 endif()
@@ -463,7 +463,7 @@ if(ICLFORGE_BUILD_AC4)
     iclforge_pkgconfig_libname(_iclforge_ac4_pc_libname iclforge_ac4_shared iclforge_ac4 iclforge_ac4_static
         "${_iclforge_ac4_install_targets}")
     iclforge_install_pkgconfig(
-        NAME ac4
+        NAME iclforge-ac4
         DESCRIPTION "AC-4 (ETSI TS 103 190) sync frame, table of contents and presentation reader"
         LIBNAME "${_iclforge_ac4_pc_libname}")
 
@@ -487,11 +487,11 @@ if(ICLFORGE_BUILD_AC4)
     iclforge_pkgconfig_libname(_iclforge_ac4dec_pc_libname iclforge_ac4dec_shared iclforge_ac4dec iclforge_ac4dec_static
         "${_iclforge_ac4dec_install_targets}")
     iclforge_install_pkgconfig(
-        NAME ac4dec
+        NAME iclforge-ac4dec
         DESCRIPTION "AC-4 decoder (ETSI TS 103 190-1 and TS 103 190-2)"
         LIBNAME "${_iclforge_ac4dec_pc_libname}"
-        REQUIRES ac4
-        STATIC_REQUIRES iclforge_ac4core)
+        REQUIRES iclforge-ac4
+        STATIC_REQUIRES iclforge-ac4core)
 
     install(TARGETS ${_iclforge_ac4enc_install_targets}
         EXPORT ac4Targets
@@ -512,11 +512,11 @@ if(ICLFORGE_BUILD_AC4)
     iclforge_pkgconfig_libname(_iclforge_ac4enc_pc_libname iclforge_ac4enc_shared iclforge_ac4enc iclforge_ac4enc_static
         "${_iclforge_ac4enc_install_targets}")
     iclforge_install_pkgconfig(
-        NAME ac4enc
+        NAME iclforge-ac4enc
         DESCRIPTION "AC-4 encoder (ETSI TS 103 190-1 and TS 103 190-2)"
         LIBNAME "${_iclforge_ac4enc_pc_libname}"
-        REQUIRES ac4
-        STATIC_REQUIRES iclforge_ac4core)
+        REQUIRES iclforge-ac4
+        STATIC_REQUIRES iclforge-ac4core)
 
     if("iclforge_ac4dec_static" IN_LIST _iclforge_ac4dec_install_targets OR
        "iclforge_ac4enc_static" IN_LIST _iclforge_ac4enc_install_targets)
@@ -525,7 +525,7 @@ if(ICLFORGE_BUILD_AC4)
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
 
         iclforge_install_pkgconfig(
-            NAME iclforge_ac4core
+            NAME iclforge-ac4core
             DESCRIPTION "The tables and transforms libac4dec_static.a and libac4enc_static.a link (no headers)"
             LIBNAME iclforge_ac4core_static)
     endif()
@@ -572,14 +572,14 @@ if(ICLFORGE_BUILD_CAPI)
     if(ICLFORGE_BUILD_AC4)
         set(_iclforge_capi_pc_description
             "Stable C11 API over the AC-3, E-AC-3 and AC-4 encoders and decoders")
-        set(_iclforge_capi_pc_static_requires iclforge ac4dec ac4enc)
+        set(_iclforge_capi_pc_static_requires iclforge-ac3 iclforge-ac4dec iclforge-ac4enc)
     else()
         set(_iclforge_capi_pc_description
             "Stable C11 API over the AC-3 and E-AC-3 encoders and decoders")
-        set(_iclforge_capi_pc_static_requires iclforge)
+        set(_iclforge_capi_pc_static_requires iclforge-ac3)
     endif()
     iclforge_install_pkgconfig(
-        NAME iclforge_c
+        NAME iclforge-c
         DESCRIPTION "${_iclforge_capi_pc_description}"
         LIBNAME "${_iclforge_capi_pc_libname}"
         STATIC_REQUIRES ${_iclforge_capi_pc_static_requires})

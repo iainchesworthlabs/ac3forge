@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "iclforge"
 dynamic = ["version"]
-description = "Clean-room AC-3/E-AC-3 (Dolby Digital/Digital Plus) and AC-4 encoder and decoder, with Atmos object encode/decode"
+description = "Clean-room AC-3/E-AC-3 (Dolby Digital/Digital Plus) and AC-4 encoder and decoder, with Atmos object encode/decode (formerly ac3forge)"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.10"

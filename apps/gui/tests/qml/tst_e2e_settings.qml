@@ -243,7 +243,7 @@ TestCase {
         click(findByName(win.contentItem, "aboutOpenButton"));
         const version = findByName(win.contentItem, "aboutVersionText");
         tryCompare(version, "visible", true);
-        verify(version.text.indexOf("ac3forge") === 0, version.text);
+        verify(version.text.indexOf("iclforge") === 0, version.text);
         click(findByName(win.contentItem, "aboutCloseButton"));
         tryCompare(version, "visible", false);
     }

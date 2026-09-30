@@ -12,7 +12,7 @@
 #
 # Staged here (packaging/homebrew/Casks/iclforge.rb), the same way the Formula
 # was, for validation against a real release, and copied into the live
-# personal tap (iainchesworthlabs/homebrew-ac3forge) as Casks/ac3gui.rb after
+# personal tap (iainchesworthlabs/homebrew-ac3forge) as Casks/iclforge.rb after
 # each bump - see packaging/homebrew/README.md.
 #
 # v0.8.0-beta.2 was the first tagged release whose macos-llvm leg builds
@@ -32,7 +32,7 @@
 # with the arm64 build's own install tree rather than either one shipping
 # alone. No `depends_on arch:` line any more for exactly that reason - the
 # same .dmg installs on both architectures.
-cask "ac3gui" do
+cask "iclforge" do
   version "0.10.0-beta.1"
   # Pinned from the release's actual .dmg asset (GitHub's own reported digest
   # for iclforge-<MAJOR.MINOR.PATCH>-Darwin.dmg - the same CPACK_PACKAGE_CHECKSUM

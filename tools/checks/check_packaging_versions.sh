@@ -37,14 +37,26 @@ note() { echo "::error::$1"; echo "  $1"; fail=1; }
 
 # --- winget: every version directory's three files must agree with each
 # other and with the directory name, and the installer's hash/URL must be
-# well-formed. ---
-winget_root="$root/packaging/winget/manifests/i/iainchesworthlabs/ac3forge"
-if [[ -d "$winget_root" ]]; then
-    for dir in "$winget_root"/*/; do
+# well-formed. The releases staged before the rename are under the package
+# identity iainchesworthlabs.ac3forge and stay as they were made; what
+# tools/release/bump_manifests.py writes from now on is under
+# iainchesworthlabs.iclforge. Each package directory is read with the identity
+# its own name gives, and the versions of both are checked. ---
+winget_dirs=()
+for winget_package in ac3forge iclforge; do
+    for dir in "$root/packaging/winget/manifests/i/iainchesworthlabs/$winget_package"/*/; do
+        if [[ -d "$dir" ]]; then
+            winget_dirs+=("$dir")
+        fi
+    done
+done
+if [[ ${#winget_dirs[@]} -gt 0 ]]; then
+    for dir in "${winget_dirs[@]}"; do
         version="$(basename "$dir")"
-        installer="$dir/iainchesworthlabs.iclforge.installer.yaml"
-        locale="$dir/iainchesworthlabs.iclforge.locale.en-US.yaml"
-        manifest="$dir/iainchesworthlabs.iclforge.yaml"
+        package="$(basename "$(dirname "$dir")")"
+        installer="$dir/iainchesworthlabs.$package.installer.yaml"
+        locale="$dir/iainchesworthlabs.$package.locale.en-US.yaml"
+        manifest="$dir/iainchesworthlabs.$package.yaml"
 
         for f in "$installer" "$locale" "$manifest"; do
             [[ -f "$f" ]] || note "winget $version: missing $(basename "$f")"
@@ -106,7 +118,7 @@ if [[ -d "$winget_root" ]]; then
         esac
     done
 else
-    note "winget manifest root not found: $winget_root"
+    note "winget manifests not found under $root/packaging/winget/manifests/i/iainchesworthlabs/{ac3forge,iclforge}"
 fi
 
 # --- conan: every sources: entry's key, url and sha256 must agree with each
@@ -147,7 +159,7 @@ fi
 # even though they version independently (Formula from source, Cask from a
 # prebuilt .dmg) - see docs/releasing.md#homebrew-formula-and-cask. ---
 formula="$root/packaging/homebrew/Formula/iclforge.rb"
-cask="$root/packaging/homebrew/Casks/ac3gui.rb"
+cask="$root/packaging/homebrew/Casks/iclforge.rb"
 formula_version=""
 cask_version=""
 if [[ -f "$formula" ]] && [[ -f "$cask" ]]; then

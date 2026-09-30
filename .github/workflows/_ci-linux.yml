@@ -1066,7 +1066,7 @@ jobs:
       #
       # A vcpkg or Conan package installs one linkage only (ICLFORGE_INSTALL_BOTH_LINKAGES=OFF),
       # which neither tree above does, and two defects showed only there: static archives that
-      # left {fmt} symbols undefined (cmake/Fmt.cmake) and a static iclforge_c.pc that named neither
+      # left {fmt} symbols undefined (cmake/Fmt.cmake) and a static iclforge-c.pc that named neither
       # libiclforge_ac3_static.a nor the C++ runtime (cmake/PkgConfig.cmake). The .pc files of both
       # trees above name the shared library, so a third tree is configured with one linkage. It
       # builds only what the install holds, so no tests, examples, CLI or Hearth. The AC-4

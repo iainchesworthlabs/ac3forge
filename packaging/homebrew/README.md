@@ -1,7 +1,7 @@
 # Homebrew formula and cask
 
-`Formula/ac3forge.rb` packages `ac3cli` — the CLI only, built from the release source
-tarball. `Casks/ac3gui.rb` packages `ac3gui` — the GUI, as the prebuilt `.app` bundle from a
+`Formula/iclforge.rb` packages `ac3cli` — the CLI only, built from the release source
+tarball. `Casks/iclforge.rb` packages `ac3gui` — the GUI, as the prebuilt `.app` bundle from a
 release's DragNDrop `.dmg`. Both live here first and are copied into the personal tap
 [`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge),
 which is public and carries both at `v0.10.0-beta.1`. Neither is submitted to `homebrew-core`.
@@ -10,6 +10,11 @@ which is public and carries both at `v0.10.0-beta.1`. Neither is submitted to `h
 brew install iainchesworthlabs/ac3forge/ac3forge          # ac3cli, built from source
 brew install --cask iainchesworthlabs/ac3forge/ac3gui     # ac3gui.app, prebuilt
 ```
+
+The formula and the cask are named `iclforge` from the first release made after the rename of
+the family (`planning/ac4.md`, decision 41). `tap_migrations.json` here maps the old names
+(`ac3forge`, `ac3gui`) to them, and goes to the root of the tap, which `manifest-bump.yml`
+copies it to with the formula and the cask.
 
 After a release, [`manifest-bump.yml`](../../.github/workflows/manifest-bump.yml) rewrites both
 files for the new tag and, when `HOMEBREW_TAP_TOKEN` is set, opens a pull request on the tap. The
@@ -33,7 +38,7 @@ and when it happens, is a separate decision from staging the formula here.
 ## What gets packaged
 
 **The formula:** just `ac3cli` — `AC3FORGE_BUILD_CLI=ON`, GUI/tests/examples/fuzzers off, same
-reasoning as the vcpkg port ([`packaging/vcpkg-port/iclforge/`](../vcpkg-port/ac3forge/))
+reasoning as the vcpkg port ([`packaging/vcpkg-port/iclforge/`](../vcpkg-port/iclforge/))
 staying library-only but pointed the other way: Homebrew formulae are for end-user tools, not
 `find_package()`-consumed libraries, so this ships the thing vcpkg deliberately does not.
 
@@ -41,7 +46,7 @@ staying library-only but pointed the other way: Homebrew formulae are for end-us
 `ac3forge-*-Darwin.dmg` (`cmake/Packaging.cmake`). A Cask, not a Formula, is the right shape
 for a bundled `.app` — Homebrew formulae build from source, and a Qt6 GUI app is idiomatically
 distributed prebuilt and signed (or, here, prebuilt and *not* Apple-signed — see the cask's own
-`caveats` block). `Casks/ac3gui.rb` names one release: `version` is its tag and `sha256` is the
+`caveats` block). `Casks/iclforge.rb` names one release: `version` is its tag and `sha256` is the
 digest of its `ac3forge-*-Darwin.dmg` (the digest GitHub reports for that asset). `v0.8.0-beta.2`
 was the first tag whose `macos-llvm` CI leg builds `AC3FORGE_BUILD_GUI=ON` (see
 [docs/platforms/macos.md](../../docs/platforms/macos.md#gui-on-macos)), so it was the first
@@ -60,9 +65,9 @@ for a person to merge after the local validation below. See
 From a macOS machine with Homebrew installed:
 
 ```bash
-brew install --build-from-source ./packaging/homebrew/Formula/ac3forge.rb
+brew install --build-from-source ./packaging/homebrew/Formula/iclforge.rb
 brew test ac3forge
-brew audit --formula ./packaging/homebrew/Formula/ac3forge.rb
+brew audit --formula ./packaging/homebrew/Formula/iclforge.rb
 brew uninstall ac3forge
 ```
 
@@ -76,8 +81,8 @@ The cask points at a downloadable `.dmg`, so it can be validated the same way, f
 machine with Homebrew installed:
 
 ```bash
-brew audit --cask ./packaging/homebrew/Casks/ac3gui.rb
-brew install --cask ./packaging/homebrew/Casks/ac3gui.rb
+brew audit --cask ./packaging/homebrew/Casks/iclforge.rb
+brew install --cask ./packaging/homebrew/Casks/iclforge.rb
 brew uninstall --cask ac3gui
 ```
 

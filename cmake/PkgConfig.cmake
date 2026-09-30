@@ -3,7 +3,7 @@
 #
 # One .pc file per installed library component (see cmake/InstallLibrary.cmake, which calls
 # iclforge_install_pkgconfig() once at the end of each component's own install block), for a
-# non-CMake consumer - `pkg-config --cflags --libs iclforge`, or a Makefile/autotools/meson build
+# non-CMake consumer - `pkg-config --cflags --libs iclforge-ac3`, or a Makefile/autotools/meson build
 # that discovers dependencies that way rather than via find_package(). One .pc per component
 # mirrors the one-export-set-per-component shape InstallLibrary.cmake already uses; there is no
 # umbrella "iclforge.pc" pulling everything in, the same way there is no single combined CMake
@@ -43,9 +43,9 @@ endforeach()
 list(REMOVE_DUPLICATES _ICLFORGE_PC_CXX_RUNTIME_LIBS)
 unset(_iclforge_pc_lib)
 
-# NAME: pkg-config name, e.g. `pkg-config --libs iclforge` - matches the shared OUTPUT_NAME
-# convention (see e.g. src/ac3/CMakeLists.txt), which is also the on-disk library basename
-# whenever the shared variant is what's actually installed.
+# NAME: pkg-config name, e.g. `pkg-config --libs iclforge-ac3`: iclforge-<library>, the library's
+# file name (iclforge_<library>, see e.g. src/ac3/CMakeLists.txt) with a hyphen, which is also
+# the on-disk library basename whenever the shared variant is what's actually installed.
 # LIBNAME: the `-l<LIBNAME>` this component's install actually provides - see
 # iclforge_pkgconfig_libname() below for how callers derive this correctly for whichever
 # linkage(s) got installed.
