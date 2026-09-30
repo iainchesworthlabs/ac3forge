@@ -123,13 +123,13 @@ idf_component_register(
 # wanted by the library (ac3forge, and the AC-4 archives), which comes later in
 # the link than this archive and cannot pull a member out of one already passed;
 # without this the link ends in undefined references to
-# ac3::internal::profiling::zone_enter and zone_leave. Naming the first makes it
+# iclforge::internal::profiling::zone_enter and zone_leave. Naming the first makes it
 # undefined from the start of the link, so the member is taken from libmain.a
 # when it is reached, and the rest of that object with it. Only for a build that
 # has markers to serve: a plain build carries none of it.
 if(AC3FORGE_STAGE_TIMERS AND AC3FORGE_STAGE_TIMER_SRCS)
     target_link_options(${COMPONENT_LIB} INTERFACE
-        "-Wl,--undefined=_ZN3ac38internal9profiling10zone_enterEPKc")
+        "-Wl,--undefined=_ZN8iclforge8internal9profiling10zone_enterEPKc")
 endif()
 
 # How long the audio actually is. The partition is 256 KB and the sample is

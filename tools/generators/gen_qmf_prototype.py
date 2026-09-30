@@ -255,7 +255,7 @@ def main():
         f"//     peak stopband beyond pi/64        {peak:.2f} dB",
         f"//     single-band isolation             {isolation:.2f} dB",
         "",
-        "namespace ac3::dsp {",
+        "namespace iclforge::dsp {",
         "",
         "inline constexpr std::size_t kQmfPrototypeTaps = 640;",
         "",
@@ -264,7 +264,7 @@ def main():
     for start in range(0, L, 4):
         row = ", ".join(f"{value: .17e}" for value in taps[start : start + 4])
         lines.append(f"    {row},")
-    lines += ["}};", "", "}  // namespace ac3::dsp", ""]
+    lines += ["}};", "", "}  // namespace iclforge::dsp", ""]
     OUT.write_text("\n".join(lines), encoding="utf-8")
     print(f"wrote {OUT.relative_to(REPO)}")
 

@@ -261,9 +261,9 @@ def main_source(with_ac4: bool) -> str:
         "    // Instantiated and CALLED, not merely linked: a component",
         "    // that unpacked but whose headers did not resolve would",
         "    // still link an empty app_main and prove nothing.",
-        "    static ac3::FrameDecoder decoder{",
-        "        {.output = {.target = ac3::DownmixTarget::kLoRo}}};",
-        "    static std::array<float, ac3::kSamplesPerFrame> pcm{};",
+        "    static iclforge::FrameDecoder decoder{",
+        "        {.output = {.target = iclforge::DownmixTarget::kLoRo}}};",
+        "    static std::array<float, iclforge::kSamplesPerFrame> pcm{};",
         "    static std::array<std::span<float>, 1> spans{std::span<float>(pcm)};",
         "    (void)decoder.decode_frame_into({}, spans);",
     ]
@@ -271,7 +271,7 @@ def main_source(with_ac4: bool) -> str:
         lines += [
             "    // The AC-4 decoder the same way: an empty frame is a table of",
             "    // contents that does not read, which it refuses.",
-            "    static ac4::Decoder ac4_decoder;",
+            "    static iclforge::ac4::Decoder ac4_decoder;",
             "    (void)ac4_decoder.decode({});",
         ]
     lines.append("}")

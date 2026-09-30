@@ -3488,96 +3488,96 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../network_controller.cpp" line="337"/>
+        <location filename="../network_controller.cpp" line="340"/>
         <source>not sent: the sink refused the settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="338"/>
+        <location filename="../network_controller.cpp" line="341"/>
         <source>not sent: the sink does not take settings from Hearth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="340"/>
+        <location filename="../network_controller.cpp" line="343"/>
         <source>The sink does not take settings from Hearth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="344"/>
+        <location filename="../network_controller.cpp" line="347"/>
         <source>revision %1 sent, not reported yet</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="346"/>
+        <location filename="../network_controller.cpp" line="349"/>
         <source>revision %1 refused: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="350"/>
+        <location filename="../network_controller.cpp" line="353"/>
         <source>revision %1 · applied</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="352"/>
+        <location filename="../network_controller.cpp" line="355"/>
         <source>revision %1 sent · sink on %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="357"/>
+        <location filename="../network_controller.cpp" line="360"/>
         <source>Nothing playing.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="358"/>
-        <location filename="../network_controller.cpp" line="371"/>
+        <location filename="../network_controller.cpp" line="361"/>
+        <location filename="../network_controller.cpp" line="374"/>
         <source>none</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="359"/>
-        <location filename="../network_controller.cpp" line="400"/>
-        <location filename="../network_controller.cpp" line="406"/>
-        <location filename="../network_controller.cpp" line="408"/>
+        <location filename="../network_controller.cpp" line="362"/>
+        <location filename="../network_controller.cpp" line="403"/>
+        <location filename="../network_controller.cpp" line="409"/>
+        <location filename="../network_controller.cpp" line="411"/>
         <source>not reported</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="364"/>
+        <location filename="../network_controller.cpp" line="367"/>
         <source>%1 · %2%3 · %4 substream%5</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="372"/>
+        <location filename="../network_controller.cpp" line="375"/>
         <source>%1 carried · %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="373"/>
+        <location filename="../network_controller.cpp" line="376"/>
         <source>placed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="374"/>
+        <location filename="../network_controller.cpp" line="377"/>
         <source>not placed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="375"/>
+        <location filename="../network_controller.cpp" line="378"/>
         <source>dialnorm %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="382"/>
+        <location filename="../network_controller.cpp" line="385"/>
         <source>%1 bursts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="383"/>
+        <location filename="../network_controller.cpp" line="386"/>
         <source>%1 underruns · %2 late · %3 dropped · %4 invalid</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="399"/>
+        <location filename="../network_controller.cpp" line="402"/>
         <source>%1-bit · %2 slots</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4341,32 +4341,32 @@ Drop AC-3, E-AC-3 or AC-4 files or a folder here.</source>
     </message>
 </context>
 <context>
-    <name>ac3::hearth::ui::HearthController</name>
+    <name>iclforge::hearth::ui::HearthController</name>
     <message>
-        <location filename="../hearth_controller.cpp" line="1164"/>
+        <location filename="../hearth_controller.cpp" line="1172"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../hearth_controller.cpp" line="2197"/>
+        <location filename="../hearth_controller.cpp" line="2210"/>
         <source>saved to %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../hearth_controller.cpp" line="2200"/>
+        <location filename="../hearth_controller.cpp" line="2213"/>
         <source>could not write %1: %2</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
-    <name>ac3::hearth::ui::NetworkController</name>
+    <name>iclforge::hearth::ui::NetworkController</name>
     <message>
-        <location filename="../network_controller.cpp" line="892"/>
+        <location filename="../network_controller.cpp" line="896"/>
         <source>it could not be read: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="895"/>
+        <location filename="../network_controller.cpp" line="899"/>
         <source>it is %1 bytes, more than any sink&apos;s app slot holds</source>
         <translation type="unfinished"></translation>
     </message>

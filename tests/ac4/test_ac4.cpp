@@ -2792,14 +2792,20 @@ TEST_CASE("dash_channel_configuration maps channel groups by Table G.1 or the Do
         {10, std::nullopt, kCicp, "14", 8},  // 7.1 3/2/2: 000057
         // 7.1.4 and 5.1.4 (00007F, 000077), and 5.1.2 (0000C7), which Table
         // G.1 does not list: G.3.3.2's Example 1, in the Dolby scheme.
-        {12, iclforge::ac4::OriginalContent{.b_4_back_channels_present = true, .b_centre_present = true,
-                                  .top_channels_present = 3},
+        {12,
+         iclforge::ac4::OriginalContent{.b_4_back_channels_present = true,
+                                        .b_centre_present = true,
+                                        .top_channels_present = 3},
          kCicp, "19", 12},
-        {12, iclforge::ac4::OriginalContent{.b_4_back_channels_present = false, .b_centre_present = true,
-                                  .top_channels_present = 3},
+        {12,
+         iclforge::ac4::OriginalContent{.b_4_back_channels_present = false,
+                                        .b_centre_present = true,
+                                        .top_channels_present = 3},
          kCicp, "16", 10},
-        {12, iclforge::ac4::OriginalContent{.b_4_back_channels_present = false, .b_centre_present = true,
-                                  .top_channels_present = 1},
+        {12,
+         iclforge::ac4::OriginalContent{.b_4_back_channels_present = false,
+                                        .b_centre_present = true,
+                                        .top_channels_present = 1},
          kDolby, "0000C7", 8},
     };
     // clang-format on

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Prove that an executable built with BUILD_SHARED_LIBS=ON runs its iclforge::ac3 code from
-# the shared libraries of the codec, not from a second copy of it that reached the executable
+# Prove that an executable built with BUILD_SHARED_LIBS=ON runs its iclforge:: code from the
+# shared libraries of the codec, not from a second copy of it that reached the executable
 # another way.
 #
 # The shared-libs pass (config-linux-llvm-shared, .github/workflows/_ci-linux.yml) exists to show
@@ -11,8 +11,8 @@
 # this looks at the binding itself.
 #
 # The codec is six libraries (iclforge_ac3, base, dsp, objects, render and iec61937), and all of
-# them export ac3:: symbols, so they are all given. Two questions, both about the ac3:: C++
-# symbols the libraries export:
+# them export iclforge:: symbols, so they are all given. Two questions, both about the
+# iclforge:: C++ symbols the libraries export:
 #
 #   1. Where does the dynamic linker bind the ones the executable imports? Read from
 #      LD_DEBUG=bindings with LD_BIND_NOW=1, so every import is resolved at load whether or not a
@@ -42,11 +42,13 @@ shift
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# An Itanium-mangled name in namespace ac3: _ZN3ac3... for a function, _ZNK3ac3... for a const
-# member, and the vtable, typeinfo, guard and static-local forms of the same.
-ac3_symbol='^_Z(N|NK|TVN|TIN|TSN|GVN|ZN|ZNK)3ac3'
+# An Itanium-mangled name in namespace iclforge: _ZN8iclforge... for a function, _ZNK8iclforge...
+# for a const member, and the vtable, typeinfo, guard and static-local forms of the same. The
+# libraries that are not given (ac4, mp4 ...) export iclforge:: names too, and they are not looked
+# at: only what the given libraries export is asked about.
+iclforge_symbol='^_Z(N|NK|TVN|TIN|TSN|GVN|ZN|ZNK)8iclforge'
 
-names() { awk '{print $NF}' | { grep -E "$ac3_symbol" || true; } | sort -u; }
+names() { awk '{print $NF}' | { grep -E "$iclforge_symbol" || true; } | sort -u; }
 
 # One line per exported symbol: the library's name without its version, and the symbol.
 : > "$work/exports"
@@ -57,7 +59,7 @@ for lib in "$@"; do
 done
 sort -u -o "$work/exports" "$work/exports"
 if [ ! -s "$work/exports" ]; then
-    echo "error: none of the libraries exports ac3:: symbols; are they the codec's?" >&2
+    echo "error: none of the libraries exports iclforge:: symbols; are they the codec's?" >&2
     exit 2
 fi
 
@@ -69,7 +71,7 @@ awk 'NR == FNR { defined[$1] = 1; next } ($2 in defined) { print $2 }' \
 # One definition is meant to be there twice. ac3tests compiles src/base/src/cpu_features.cpp a
 # second time on purpose (tests/CMakeLists.txt) to test the dispatch against the probe directory the
 # build chose, and iclforge_base exports has_avx2() since the libraries were split.
-{ grep -v -E '^_ZN3ac38internal3cpu8has_avx2Ev$' "$work/linked_in" || true; } > "$work/kept"
+{ grep -v -E '^_ZN8iclforge8internal3cpu8has_avx2Ev$' "$work/linked_in" || true; } > "$work/kept"
 mv "$work/kept" "$work/linked_in"
 
 # 1. Where the executable's imports bind. The tag matches no test, so the binary loads, registers
@@ -115,12 +117,12 @@ report() {
 }
 
 if [ -s "$work/elsewhere" ]; then
-    report "$(wc -l < "$work/elsewhere") ac3:: symbol(s) $(basename "$exe") imports from the codec's libraries bind to another library:" \
+    report "$(wc -l < "$work/elsewhere") iclforge:: symbol(s) $(basename "$exe") imports from the codec's libraries bind to another library:" \
         "$work/elsewhere"
     awk '{print "    bound to " $1}' "$work/elsewhere" | sort | uniq -c >&2
 fi
 if [ -s "$work/linked_in" ]; then
-    report "$(wc -l < "$work/linked_in") ac3:: symbol(s) the libraries export are defined inside $(basename "$exe") itself:" \
+    report "$(wc -l < "$work/linked_in") iclforge:: symbol(s) the libraries export are defined inside $(basename "$exe") itself:" \
         "$work/linked_in"
 fi
 if [ "$bound" -eq 0 ]; then
@@ -129,6 +131,6 @@ if [ "$bound" -eq 0 ]; then
 fi
 
 if [ "$status" -eq 0 ]; then
-    echo "OK: $bound ac3:: symbols bind from $(basename "$exe") to the $# libraries that export them; none are linked in."
+    echo "OK: $bound iclforge:: symbols bind from $(basename "$exe") to the $# libraries that export them; none are linked in."
 fi
 exit "$status"

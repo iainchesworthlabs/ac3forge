@@ -363,9 +363,11 @@ constexpr int kPollMs = 60;
     // clang-format off
     switch (member.role) {
         case iclforge::ac4::SubstreamRole::kMain: return QStringLiteral("main");
-        case iclforge::ac4::SubstreamRole::kMusicAndEffects: return QStringLiteral("musicAndEffects");
+        case iclforge::ac4::SubstreamRole::kMusicAndEffects:
+            return QStringLiteral("musicAndEffects");
         case iclforge::ac4::SubstreamRole::kDialogue: return QStringLiteral("dialogue");
-        case iclforge::ac4::SubstreamRole::kDialogueEnhancement: return QStringLiteral("dialogueEnhancement");
+        case iclforge::ac4::SubstreamRole::kDialogueEnhancement:
+            return QStringLiteral("dialogueEnhancement");
         case iclforge::ac4::SubstreamRole::kAssociated:
             switch (member.content_classifier.value_or(-1)) {
                 case 2: return QStringLiteral("audioDescription");
@@ -738,7 +740,8 @@ constexpr int kPollMs = 60;
         case iclforge::ac4::DrcMode::kHomeTheatre: return QStringLiteral("homeTheatre");
         case iclforge::ac4::DrcMode::kFlatPanelTv: return QStringLiteral("flatPanelTv");
         case iclforge::ac4::DrcMode::kPortableSpeakers: return QStringLiteral("portableSpeakers");
-        case iclforge::ac4::DrcMode::kPortableHeadphones: return QStringLiteral("portableHeadphones");
+        case iclforge::ac4::DrcMode::kPortableHeadphones:
+            return QStringLiteral("portableHeadphones");
         case iclforge::ac4::DrcMode::kDefault: return QStringLiteral("auto");
     }
     // clang-format on

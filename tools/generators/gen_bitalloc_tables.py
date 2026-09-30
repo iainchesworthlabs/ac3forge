@@ -181,7 +181,7 @@ def main():
         "#include <array>",
         "#include <cstdint>",
         "",
-        "namespace ac3::tables {",
+        "namespace iclforge::tables {",
         "",
         "// Table 7.6 / 7.7: slow & fast decay.",
         _fmt("kSlowDec", t["slowdec"], CPP_INT32),
@@ -210,7 +210,7 @@ def main():
         "",
         "// Table 7.16: address -> bit allocation pointer.",
         _fmt("kBapTab", t["baptab"], "std::uint8_t", per_line=16),
-        "}  // namespace ac3::tables",
+        "}  // namespace iclforge::tables",
     ]
     OUT.write_text("\n".join(parts) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {OUT} ({OUT.stat().st_size} bytes); all self-checks passed")

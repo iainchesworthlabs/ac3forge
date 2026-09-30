@@ -30,14 +30,14 @@ Archive member included to satisfy reference by file (symbol)
 Discarded input sections
 
  .text.unused   0x00000000     0x9000 build/unused.o
- .text._ZN3ac3LongDiscardedNameEv
+ .text._ZN8iclforge17LongDiscardedNameEv
                 0x00000000     0x9000 build/decoder.o
 
 Memory Configuration
 
 Linker script and memory map
 
- .text._ZN3ac312FrameDecoder6decodeEv
+ .text._ZN8iclforge12FrameDecoder6decodeEv
                 0x00001000     0x1800 build/src/decoder.o
  .text.small    0x00002800       0x40 lib/libc.a(memcpy.o)
  .rodata.tables 0x00003000      0x900 build/src/decoder.o
