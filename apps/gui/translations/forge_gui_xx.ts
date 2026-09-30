@@ -13,7 +13,7 @@
         </message>
         <message>
             <source>the ICL Forge encoder tools, %1</source>
-            <translation>[thé ÀC3Fõrgé éncõdér tõõls, %1 ~~~~~~~~~~~~]</translation>
+            <translation>[thé ÎCL Fõrgé éncõdér tõõls, %1 ~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Clean-room AC-3 / E-AC-3 encoder — ATSC A/52, ETSI TS 103 420</source>
@@ -29,7 +29,7 @@
         </message>
         <message>
             <source>ICL Forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNU General Public License&lt;/a&gt; for details.</source>
-            <translation>[ÀC3Fõrgé îs fréé sõftwàré: yõû càn rédîstrîbûté ît ànd/õr mõdîfy ît ûndér thé térms õf thé GNÛ Généràl Pûblîc Lîcénsé às pûblîshéd by thé Fréé Sõftwàré Fõûndàtîõn, éîthér vérsîõn 3 õf thé Lîcénsé, õr (àt yõûr õptîõn) àny làtér vérsîõn. Ît îs dîstrîbûtéd WÎTHÕÛT ÀNY WÀRRÀNTY; séé thé &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNÛ Généràl Pûblîc Lîcénsé&lt;/a&gt; fõr détàîls. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <translation>[ÎCL Fõrgé îs fréé sõftwàré: yõû càn rédîstrîbûté ît ànd/õr mõdîfy ît ûndér thé térms õf thé GNÛ Généràl Pûblîc Lîcénsé às pûblîshéd by thé Fréé Sõftwàré Fõûndàtîõn, éîthér vérsîõn 3 õf thé Lîcénsé, õr (àt yõûr õptîõn) àny làtér vérsîõn. Ît îs dîstrîbûtéd WÎTHÕÛT ÀNY WÀRRÀNTY; séé thé &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNÛ Généràl Pûblîc Lîcénsé&lt;/a&gt; fõr détàîls. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Includes the Archivo typeface, licensed under the SIL Open Font License 1.1.</source>
@@ -44,11 +44,11 @@
         <name>Ac4Panel</name>
         <message>
             <source>AC-4 objects take the coding, the dialnorm in whole dB and a raw stream's CRC, as “forge atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.</source>
-            <translation>[ÀC-4 õbjécts tàké thé cõdîng, thé dîàlnõrm în whõlé dB ànd à ràw stréàm's CRC, às “àc3clî àtmõs-éncõdé … cõdéc=àc4” dõés. Théy àré wrîttén àt thé nàtîvé fràmé ràté, 2 048 sàmplés, àt à cõnstànt ràté. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <translation>[ÀC-4 õbjécts tàké thé cõdîng, thé dîàlnõrm în whõlé dB ànd à ràw stréàm's CRC, às “fõrgé àtmõs-éncõdé … cõdéc=àc4” dõés. Théy àré wrîttén àt thé nàtîvé fràmé ràté, 2 048 sàmplés, àt à cõnstànt ràté. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “forge ac4-encode” does.</source>
-            <translation>[ÀC-4 éncõdés thé sõûrcé în îts õwn làyõût (mõnõ, stéréõ, 5.0 õr 5.1) tõ à ràw stréàm õr àn MP4 fîlé, às “àc3clî àc4-éncõdé” dõés. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <translation>[ÀC-4 éncõdés thé sõûrcé în îts õwn làyõût (mõnõ, stéréõ, 5.0 õr 5.1) tõ à ràw stréàm õr àn MP4 fîlé, às “fõrgé àc4-éncõdé” dõés. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Frames and rate</source>
@@ -136,7 +136,7 @@
         </message>
         <message>
             <source>Left to “forge ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.</source>
-            <translation>[Léft tõ “àc3clî àc4-éncõdé”: sévéràl sûbstréàms ànd préséntàtîõns, dîàlõgûé stéms, à DRC prõfîlé pér décõdér mõdé, thé LFÉ mîx ànd thé õthér làyõûts. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <translation>[Léft tõ “fõrgé àc4-éncõdé”: sévéràl sûbstréàms ànd préséntàtîõns, dîàlõgûé stéms, à DRC prõfîlé pér décõdér mõdé, thé LFÉ mîx ànd thé õthér làyõûts. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
     </context>
     <context>
@@ -348,7 +348,7 @@
         </message>
         <message>
             <source>Every encode lands in a run list with its settings, its result and the exact forge line that reproduces it.</source>
-            <translation>[Évéry éncõdé lànds în à rûn lîst wîth îts séttîngs, îts résûlt ànd thé éxàct àc3clî lîné thàt réprõdûcés ît. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <translation>[Évéry éncõdé lànds în à rûn lîst wîth îts séttîngs, îts résûlt ànd thé éxàct fõrgé lîné thàt réprõdûcés ît. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Advanced coding tools and broadcast metadata start hidden. Switch Controls to Advanced or Expert at any time.</source>
@@ -969,7 +969,7 @@
         </message>
         <message>
             <source>Forge — %1</source>
-            <translation>[àc3fõrgé — %1 ~~~~~]</translation>
+            <translation>[Fõrgé — %1 ~~~~]</translation>
         </message>
         <message>
             <source>Format</source>
@@ -1193,7 +1193,7 @@
         </message>
         <message>
             <source>Forge</source>
-            <translation>[àc3fõrgé ~~~]</translation>
+            <translation>[Fõrgé ~~]</translation>
         </message>
         <message>
             <source>Clean-room AC-3 / E-AC-3 encoder — ATSC A/52, ETSI TS 103 420</source>
@@ -1737,7 +1737,7 @@
         </message>
         <message>
             <source>forge tools token:  %1</source>
-            <translation>[àc3clî tõõls tõkén:  %1 ~~~~~~~~~]</translation>
+            <translation>[fõrgé tõõls tõkén:  %1 ~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Loudness</source>
@@ -2477,7 +2477,7 @@
         </message>
         <message>
             <source>forge command line</source>
-            <translation>[àc3clî cõmmànd lîné ~~~~~~~~]</translation>
+            <translation>[fõrgé cõmmànd lîné ~~~~~~~]</translation>
         </message>
         <message>
             <source>Opens the command line that reproduces this encode, with a Copy button.</source>
@@ -2485,7 +2485,7 @@
         </message>
         <message>
             <source>forge</source>
-            <translation>[àc3clî ~~]</translation>
+            <translation>[fõrgé ~~]</translation>
         </message>
         <message>
             <source>command line ↗</source>
@@ -2497,7 +2497,7 @@
         </message>
         <message>
             <source>Encode runs the encoder in-process — this is the exact forge equivalent, quoting and all.</source>
-            <translation>[Éncõdé rûns thé éncõdér în-prõcéss — thîs îs thé éxàct àc3clî éqûîvàlént, qûõtîng ànd àll. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <translation>[Éncõdé rûns thé éncõdér în-prõcéss — thîs îs thé éxàct fõrgé éqûîvàlént, qûõtîng ànd àll. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Copy</source>
@@ -2815,7 +2815,7 @@
         </message>
         <message>
             <source>WHEN FORGE OPENS</source>
-            <translation>[WHÉN ÀC3FÕRGÉ ÕPÉNS ~~~~~~~~]</translation>
+            <translation>[WHÉN FÕRGÉ ÕPÉNS ~~~~~~]</translation>
         </message>
         <message>
             <source>Controls</source>
@@ -2951,7 +2951,7 @@
         </message>
         <message>
             <source>Keep the forge line visible</source>
-            <translation>[Kéép thé àc3clî lîné vîsîblé ~~~~~~~~~~~]</translation>
+            <translation>[Kéép thé fõrgé lîné vîsîblé ~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>DIAGNOSTICS</source>
@@ -3010,7 +3010,7 @@
         </message>
         <message>
             <source>Decodes an already-encoded file and measures it the same way “forge qc” does — the stream's own claims, checked against what is actually in it, not the source that made it.</source>
-            <translation>[Décõdés àn àlréàdy-éncõdéd fîlé ànd méàsûrés ît thé sàmé wày “àc3clî qc” dõés — thé stréàm's õwn clàîms, chéckéd àgàînst whàt îs àctûàlly în ît, nõt thé sõûrcé thàt màdé ît. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <translation>[Décõdés àn àlréàdy-éncõdéd fîlé ànd méàsûrés ît thé sàmé wày “fõrgé qc” dõés — thé stréàm's õwn clàîms, chéckéd àgàînst whàt îs àctûàlly în ît, nõt thé sõûrcé thàt màdé ît. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Choose file…</source>
@@ -3394,7 +3394,7 @@
         </message>
         <message>
             <source>forge vbr token:  %1</source>
-            <translation>[àc3clî vbr tõkén:  %1 ~~~~~~~~]</translation>
+            <translation>[fõrgé vbr tõkén:  %1 ~~~~~~~~]</translation>
         </message>
     </context>
 </TS>
