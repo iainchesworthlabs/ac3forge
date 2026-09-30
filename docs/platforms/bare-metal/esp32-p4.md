@@ -459,8 +459,11 @@ default. Why the default costs the AC-4 decoder anything once internal RAM is go
 established: the candidates are buffers whose addresses conflict in the caches and the cost of the
 allocator's failing first attempts, and the count above points away from the second. With the
 converter at `float` the effect is larger where it lands on the converter: the 29.97 fps play's
-takes 98.5 ms a frame under the default policy and 17.5 under the 512-byte one, from the same code
-and the same table.
+converter takes 98.5 ms a frame under the default policy and 17.5 under the 512-byte one, from the
+same code and the same table. It repeats: the play's converter took 98.5 to 98.6 ms in each of its
+four runs under the default policy (two images of this tree, the play fourth in a list of eight and
+twentieth in a list of twenty) and 17.2 to 17.5 in both of its runs under the 512-byte one, so with
+these images it belongs to the play, and its cause is the open question above.
 
 ### The frame-rate converter
 
