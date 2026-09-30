@@ -414,7 +414,11 @@
       "llvm": true,
       "gui": true,
       "packageable": true,
-      "gold_reference": true
+      "gold_reference": true,
+      // 120, not the 90 the other legs get: the first run after a stage that rewrites most
+      // sources starts with a cold compiler cache, and this leg reached the limit inside its
+      // packaging step (91 minutes; the build, the tests and the gold-reference gate had passed).
+      "timeout_minutes": 120
     }
   ]
 }

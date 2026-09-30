@@ -63,7 +63,9 @@ jobs:
     # silently create the exposure - same reasoning as _ci-windows.yml's).
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON(matrix.runner) }}
-    timeout-minutes: 90
+    # A backstop against a hang, as in _ci-linux.yml. A leg can name a longer one (macos-llvm-x64 does:
+    # see its entry).
+    timeout-minutes: ${{ matrix.timeout_minutes || 90 }}
     # Only the newest main commit is guaranteed its macOS legs. On a push to
     # main each leg shares one concurrency group across every main run, so a
     # newer merge replaces an older run's still-waiting macOS job; one that
