@@ -1,139 +1,79 @@
 # ---------------------------------------------------------------------------
-# iclforge::ac3 - the whole codec: bitstream, DSP, encoder, decoder, the spatial
-# object layer and the IEC 61937 sink. No GUI, no third-party codec code (see
-# CONTRIBUTING.md's "The clean-room rule") - and, deliberately, no
-# platform-specific code at all: this target builds identically on any
-# C++23 platform, with no WASAPI/ALSA dependency, so a third party linking it
-# purely to encode/decode AC-3/E-AC-3/Atmos streams needs nothing else. Live
-# capture, monitor playback and IEC 61937 delivery are iclforge::audio
-# (src/audio/), a separate target ac3cli/ac3gui link alongside this one -
-# see that target's own header comment.
+# iclforge::ac3 - the AC-3 and E-AC-3 codec: bitstream syntax, bit allocation, the encoder and decoder
+# with their output stage, the Annex E tools, Atmos in E-AC-3 (JOC and the object encoder), the EMDF
+# container, the encoder/decoder mirror check and the psychoacoustic model. No GUI, no third-party
+# codec code (CONTRIBUTING.md's "The clean-room rule"), and no platform-specific code at all: this
+# target builds identically on any C++23 platform.
 #
-# Built and installed as BOTH a static and a shared library - a distributed
-# package can't know in advance which a downstream consumer wants. One
-# OBJECT library compiles the sources exactly once; iclforge_ac3_static and
-# iclforge_ac3_shared are thin archive/DLL wrappers around the same object code
-# (a single add_library() can't be both STATIC and SHARED at once). In-tree
-# consumers (ac3cli/ac3gui/tests) link the plain iclforge::ac3 alias, which
-# resolves to whichever variant BUILD_SHARED_LIBS asks for; an installed
-# package has no such ambient default, so it exports both variants under
-# their own names, iclforge::ac3_static / iclforge::ac3_shared.
+# What the codec uses and does not own is in the libraries it links: iclforge::base (bit I/O, the
+# speaker vocabulary, the kernels' build variants), iclforge::dsp, iclforge::objects (the object
+# model and the OAMD payload), iclforge::render (PcmBlock and the panner) and iclforge::iec61937.
+# None of them links this one. AC-4 is a peer, in src/ac4*, and links none of this.
 #
-# The raw target names are iclforge_ac3_objects/forge_static/forge_shared, not
-# ac3forge_*: install(EXPORT ... NAMESPACE ac3::) prepends the namespace to
-# whatever the target is actually named, so an ac3forge_static target would
-# export as the stuttering ac3::ac3forge_static, not iclforge::ac3_static - the
-# leading "ac3" only needs to appear once, either in the target's own name or
-# the namespace, never both. (iclforge::matroska's own targets don't have
-# this problem: iclforge_matroska_static under the matroska:: namespace already lands
-# on the intended iclforge::matroska_static with no stutter.)
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# The target architecture (AC3FORGE_BUILD_ARCH, for the version strings and the
-# AVX2 tier below), the SIMD arch seam (AC3FORGE_SIMD, AC3FORGE_SIMD_RESOLVED and
-# AC3FORGE_ARCH_INCLUDE_DIR, for the codec's vector kernels) and the ac3/internal/
-# arch/simd.hpp they select are resolved in src/arithmetic/CMakeLists.txt, which the
-# root adds before this directory: src/ac4core writes its own vector kernels against
-# the same types (planning/ac4.md, decision 31), so the seam lives with the other
-# scalar building blocks. What it sets reaches this file through the root scope, and
-# iclforge::arithmetic, which iclforge_ac3_objects and iclforge_ac3_minimal both link, carries the
-# include path.
+# Built and installed as a static library, a shared library and the OBJECT library both wrap;
+# iclforge_add_library() (cmake/IclforgeLibrary.cmake) makes the three, their aliases, the export
+# header and the file names. In-tree consumers link iclforge::ac3, which follows BUILD_SHARED_LIBS; an
+# installed package has no ambient default and exports iclforge::ac3_static and iclforge::ac3_shared.
 # ---------------------------------------------------------------------------
 
-# The minimum-footprint decoder profile builds something different
-# enough - static only, decode only, no exceptions, no direct-form transform
-# tables - that it gets its own file rather than a dozen conditionals through
-# this one. Off by default; the root CMakeLists.txt refuses the combination of
-# this option with anything that would need the full library.
-# Appended to the generated ac3/export.hpp (both the shared library's and the
-# minimum-footprint archive's, below and in minimal.cmake): a class template
-# whose instantiations the library exports needs its own macros, because the
-# two compiler families put the attribute in different places. MSVC accepts
-# dllimport on an explicit-instantiation DECLARATION but refuses dllexport
-# there (C4910), so the `extern template class` line in a public header
-# carries the import decoration for a consumer and nothing for the library's
-# own build, and the definition in the .cpp carries the export. GCC and Clang
-# refuse a visibility attribute on that definition once an extern declaration
-# precedes it ("type attributes ignored after type is already defined") and
-# want it on the class template itself, where MSVC would read a dllexport on
-# every implicit instantiation. Generated rather than written into the header
-# because a conditional directive in a source file is what
-# tools/checks/check_platform_macros.ps1 forbids; this one is the export
-# header's own kind, not a platform branch.
+# Class templates the library exports through explicit instantiations (iclforge/ac3/encoder/transient.hpp).
+# Each compiler wants the attribute in a different place, so three macros, one per place. MSVC exports
+# the instantiation definition and imports through the declaration (C4910 forbids dllexport on
+# `extern template`). GCC and Clang take the visibility attribute on the class template itself, and
+# reject it on an instantiation that follows an extern declaration. Generated rather than written into
+# the header because a conditional directive in a source file is what
+# tools/checks/check_platform_macros.ps1 forbids; this one is the export header's own kind, not a
+# platform branch.
 set(_ac3_export_custom_content [[
-/* Class templates the library exports through explicit instantiations
-   (ac3/encoder/transient.hpp). Each compiler wants the attribute in a
-   different place, so three macros, one per place - see
-   src/ac3/CMakeLists.txt for why this is generated rather than written.
-     AC3FORGE_TEMPLATE_CLASS       on the class template's definition
-     AC3FORGE_TEMPLATE_IMPORT      on `extern template class` declarations
-     AC3FORGE_TEMPLATE_INSTANTIATE on `template class` definitions
-   MSVC exports the instantiation definition and imports through the
-   declaration (C4910 forbids dllexport on `extern template`). GCC and Clang
-   take the visibility attribute on the class template itself, and reject it
-   on an instantiation that follows an extern declaration ("type attributes
-   ignored after type is already defined"). */
-#ifdef AC3FORGE_STATIC_DEFINE
-#  define AC3FORGE_TEMPLATE_CLASS
-#  define AC3FORGE_TEMPLATE_IMPORT
-#  define AC3FORGE_TEMPLATE_INSTANTIATE
+/* ICLFORGE_AC3_TEMPLATE_CLASS       on the class template's definition
+   ICLFORGE_AC3_TEMPLATE_IMPORT      on `extern template class` declarations
+   ICLFORGE_AC3_TEMPLATE_INSTANTIATE on `template class` definitions */
+#ifdef ICLFORGE_AC3_STATIC_DEFINE
+#  define ICLFORGE_AC3_TEMPLATE_CLASS
+#  define ICLFORGE_AC3_TEMPLATE_IMPORT
+#  define ICLFORGE_AC3_TEMPLATE_INSTANTIATE
 #elif defined(_MSC_VER)
-#  define AC3FORGE_TEMPLATE_CLASS
-#  ifdef AC3FORGE_BUILDING_SHARED
-#    define AC3FORGE_TEMPLATE_IMPORT
+#  define ICLFORGE_AC3_TEMPLATE_CLASS
+#  ifdef ICLFORGE_AC3_BUILDING_SHARED
+#    define ICLFORGE_AC3_TEMPLATE_IMPORT
 #  else
-#    define AC3FORGE_TEMPLATE_IMPORT AC3FORGE_EXPORT
+#    define ICLFORGE_AC3_TEMPLATE_IMPORT ICLFORGE_AC3_EXPORT
 #  endif
-#  define AC3FORGE_TEMPLATE_INSTANTIATE AC3FORGE_EXPORT
+#  define ICLFORGE_AC3_TEMPLATE_INSTANTIATE ICLFORGE_AC3_EXPORT
 #else
-#  define AC3FORGE_TEMPLATE_CLASS AC3FORGE_EXPORT
-#  define AC3FORGE_TEMPLATE_IMPORT
-#  define AC3FORGE_TEMPLATE_INSTANTIATE
+#  define ICLFORGE_AC3_TEMPLATE_CLASS ICLFORGE_AC3_EXPORT
+#  define ICLFORGE_AC3_TEMPLATE_IMPORT
+#  define ICLFORGE_AC3_TEMPLATE_INSTANTIATE
 #endif
 ]])
 
+# The minimum-footprint profile (decode-only or encode-only, static, no exceptions, no fmt) builds a
+# different shape from a hand-picked list of this library's and its neighbours' sources, so it has its
+# own file. Off by default; the root CMakeLists.txt refuses the combination of these options with
+# anything that would need the full library.
 if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
     include("${CMAKE_CURRENT_SOURCE_DIR}/minimal.cmake")
     return()
 endif()
 
-add_library(iclforge_ac3_objects OBJECT)
-add_library(iclforge_ac3_static STATIC)
-add_library(iclforge_ac3_shared SHARED)
-
-target_link_libraries(iclforge_ac3_static PUBLIC iclforge_ac3_objects)
-target_link_libraries(iclforge_ac3_shared PUBLIC iclforge_ac3_objects)
-
-add_library(iclforge::ac3_static ALIAS iclforge_ac3_static)
-add_library(iclforge::ac3_shared ALIAS iclforge_ac3_shared)
-if(BUILD_SHARED_LIBS)
-    add_library(iclforge::ac3 ALIAS iclforge_ac3_shared)
-else()
-    add_library(iclforge::ac3 ALIAS iclforge_ac3_static)
-endif()
-
 # --- Version + git stamp ---------------------------------------------------
 find_package(Git QUIET)
-set(AC3FORGE_VERSION_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/include/ac3/version.hpp.in")
+set(AC3FORGE_VERSION_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/include/iclforge/ac3/version.hpp.in")
 set(AC3FORGE_VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac3/version.hpp")
 
-# OS/architecture/compiler this binary is built for, for version_details()'s
-# --version/About-dialog output. Computed here (CMake already knows all three
-# from the toolchain it configured) rather than read back with predefined
-# macros at compile time, so version.cpp needs no #ifdef - see iclforge::audio's
-# platform tree (src/audio/CMakeLists.txt) and tools/checks/check_platform_macros.ps1.
+# OS/architecture/compiler this binary is built for, for version_details()'s --version/About-dialog
+# output. Computed here (CMake already knows all three from the toolchain it configured) rather than
+# read back with predefined macros at compile time, so version.cpp needs no #ifdef.
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(AC3FORGE_BUILD_OS "macOS")
 else()
     set(AC3FORGE_BUILD_OS "${CMAKE_SYSTEM_NAME}")
 endif()
 
-
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(AC3FORGE_BUILD_COMPILER "GCC ${CMAKE_CXX_COMPILER_VERSION}")
 else()
-    # AppleClang, Clang and MSVC already spell their own CMAKE_CXX_COMPILER_ID
-    # the way version_details() wants it.
+    # AppleClang, Clang and MSVC already spell their own CMAKE_CXX_COMPILER_ID the way version_details() wants it.
     set(AC3FORGE_BUILD_COMPILER "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 endif()
 
@@ -147,9 +87,8 @@ set(DST "${AC3FORGE_VERSION_HEADER}")
 set(WORKDIR "${PROJECT_SOURCE_DIR}")
 include("${PROJECT_SOURCE_DIR}/cmake/GenerateVersion.cmake")
 
-# Re-stamp on every build so the git information tracks new commits without a
-# reconfigure. configure_file only rewrites when the content changes, so this
-# does not needlessly recompile dependants.
+# Re-stamp on every build so the git information tracks new commits without a reconfigure.
+# configure_file only rewrites when the content changes, so this does not recompile dependants.
 add_custom_target(ac3forge_version ALL
     BYPRODUCTS "${AC3FORGE_VERSION_HEADER}"
     COMMAND "${CMAKE_COMMAND}"
@@ -164,17 +103,49 @@ add_custom_target(ac3forge_version ALL
     COMMENT "Stamping version and git information"
     VERBATIM)
 
-# Everything here is portable: bitstream, DSP, containers, measurement. The
-# OS-specific code is selected further down, out of this list.
-target_sources(iclforge_ac3_objects
-    PRIVATE
+# --- The build variants this library owns -------------------------------------------------
+# The scalar the DECODER carries its coefficients in, the build profile and the encoder's front-end
+# scalar are each chosen by directory, the same mechanism iclforge::base uses for the SIMD tier: CMake
+# picks the directory that holds iclforge/ac3/detail/<x>.hpp and no source picks with an #ifdef.
+#
+# double is the default and stays it for every ordinary build: the gold references, the quality trend
+# and the cross-platform bitstream hashes are all stated in terms of that arithmetic.
+# iclforge_ac3_minimal picks float32 unconditionally - see minimal.cmake.
+set(AC3FORGE_DECODE_SCALAR "double" CACHE STRING
+    "Scalar the decoder carries coefficients in: double (default), float, or fixed (Q7.24 in an int32, for parts with no FPU)")
+set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
+if(AC3FORGE_DECODE_SCALAR STREQUAL "float")
+    set(_ac3_scalar_dir "float32")
+elseif(AC3FORGE_DECODE_SCALAR STREQUAL "double")
+    set(_ac3_scalar_dir "float64")
+elseif(AC3FORGE_DECODE_SCALAR STREQUAL "fixed")
+    # iclforge::arithmetic's Fixed32 - the third tier (planning/arithmetic-tiers.md).
+    set(_ac3_scalar_dir "fixed32")
+else()
+    message(FATAL_ERROR
+        "AC3FORGE_DECODE_SCALAR is 'double', 'float' or 'fixed' (got '${AC3FORGE_DECODE_SCALAR}')")
+endif()
+
+set(AC3FORGE_ENCODE_SCALAR "double" CACHE STRING
+    "Scalar the encoders' analysis front end runs in: double (default) or float")
+set_property(CACHE AC3FORGE_ENCODE_SCALAR PROPERTY STRINGS double float)
+if(AC3FORGE_ENCODE_SCALAR STREQUAL "float")
+    set(_ac3_encode_scalar_dir "float32")
+elseif(AC3FORGE_ENCODE_SCALAR STREQUAL "double")
+    set(_ac3_encode_scalar_dir "float64")
+else()
+    message(FATAL_ERROR
+        "AC3FORGE_ENCODE_SCALAR is 'double' or 'float' (got '${AC3FORGE_ENCODE_SCALAR}')")
+endif()
+
+iclforge_add_library(ac3
+    SOURCES
         src/analysis/levels.cpp
         src/core/bitalloc.cpp
         src/core/coupling.cpp
         src/core/eac3_tables.cpp
         src/core/eac3_tools.cpp
         src/core/exponents.cpp
-        src/core/fft.cpp
         src/core/mantissas.cpp
         src/core/mdct.cpp
         src/core/transform/reference/reference_transform.cpp
@@ -183,10 +154,6 @@ target_sources(iclforge_ac3_objects
         src/decoder/eac3_decoder.cpp
         src/decoder/output.cpp
         src/decoder/transient_prenoise.cpp
-        src/dsp/biquad.cpp
-        src/dsp/qmf.cpp
-        src/dsp/resampler.cpp
-        src/emdf/emdf.cpp
         src/emdf/frame_layout.cpp
         src/encoder/assignment.cpp
         src/encoder/bandwidth.cpp
@@ -195,8 +162,6 @@ target_sources(iclforge_ac3_objects
         src/encoder/plan.cpp
         src/encoder/silent_frame.cpp
         src/encoder/transient.cpp
-        src/iec61937/iec61937.cpp
-        src/internal/cpu/cpu_features.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
         src/io/stream_accumulator.cpp
@@ -215,244 +180,39 @@ target_sources(iclforge_ac3_objects
         src/meta/qc.cpp
         src/oba/atmos.cpp
         src/oba/joc.cpp
-        src/oba/motion.cpp
-        src/oba/oamd.cpp
-        src/oba/scene.cpp
-        src/oba/scene_json.cpp
-        src/oba/scene_osc.cpp
-        src/oba/scene_text.cpp
         src/quality/distortion.cpp
         src/quality/perceptual.cpp
-        src/spatial/spatial.cpp
         src/verify/bap_census.cpp
         src/verify/eac3_mirror.cpp
         src/verify/eac3_selfcheck.cpp
         src/verify/mirror.cpp
         src/verify/selfcheck.cpp
         src/verify/trace_export.cpp
-        src/version.cpp)
-
+        src/version.cpp
+    DEPENDS base dsp objects render iec61937
+    EXPORT_CUSTOM_CONTENT_VAR _ac3_export_custom_content
+    PRIVATE_INCLUDES
+        "${CMAKE_CURRENT_SOURCE_DIR}/variants/decode-scalar-${_ac3_scalar_dir}"
+        # src/core on the path so the CMake-selected src/core/transform/<variant>/reference_transform.cpp
+        # can include the declaration it implements the same way mdct.cpp does.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+        "${CMAKE_CURRENT_SOURCE_DIR}/variants/profile-full"
+        "${CMAKE_CURRENT_SOURCE_DIR}/variants/encode-scalar-${_ac3_encode_scalar_dir}"
+        # mdct_avx2.hpp's plain-signature declarations must resolve for mdct.cpp on every configuration.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2"
+    LINK_PRIVATE
+        "$<BUILD_INTERFACE:ac3::tracy>"
+        "$<BUILD_INTERFACE:ac3::fmt_private>"
+        "$<BUILD_INTERFACE:iclforge::arithmetic>")
 add_dependencies(iclforge_ac3_objects ac3forge_version)
+target_include_directories(iclforge_ac3_objects PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>")
 
-target_include_directories(iclforge_ac3_objects
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
-        "$<INSTALL_INTERFACE:include>")
-
-# Selects which of the two identically-pathed ac3/internal/profiling.hpp
-# variants (src/internal/profiling/tracy_{enabled,disabled}/) every
-# `#include "iclforge/base/detail/profiling.hpp"` call site resolves to - CMake
-# choosing the directory, not an #ifdef in the header, per
-# tools/checks/check_platform_macros.ps1's platform/feature-isolation rule (the
-# same reason src/audio's platform backends and the quarantine hook seam are
-# selected this way rather than with a preprocessor conditional). PRIVATE:
-# this header is internal build-diagnostics tooling, never installed, so it
-# has no business on iclforge_ac3_objects's PUBLIC include path at all.
-if(AC3FORGE_ENABLE_TRACY)
-    target_include_directories(iclforge_ac3_objects PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_enabled")
-else()
-    target_include_directories(iclforge_ac3_objects PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled")
-endif()
-
-# The same mechanism again, for the build-profile facts every source asks
-# through ac3/internal/profile.hpp: full/ says the direct-form
-# transform tables are present, minimal/ says they are not, and CMake picks
-# the directory rather than any source picking with an #ifdef.
-#
-# iclforge::ac3 itself is always the full profile - the minimum-footprint
-# decoder is a SEPARATE target (iclforge_ac3_minimal, below), not a reconfiguration
-# of this one, so turning the option on never changes what an ordinary build
-# produces.
-target_include_directories(iclforge_ac3_objects PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/full")
-
-# The scalar the DECODER carries its coefficients in - the same
-# CMake-picks-a-directory mechanism again, on its own axis.
-#
-# Separate from the profile above on purpose. The two used to be one header, so
-# float32 decoding could only exist in a build that was also decode-only and had
-# no CLI - which is why docs/building.md's "~139 dB worst-channel SNR against
-# the double decode" is prose rather than a gate: it came from a hand-made build
-# no preset could reproduce. With the axes split, an ordinary build can be
-# configured float32 and diffed against the double one by
-# tools/checks/compare_wav.py, which is what turns that number into something CI
-# can hold.
-#
-# double is the default and stays it for every ordinary build: the gold
-# references, the quality trend and the cross-platform bitstream hashes are all
-# stated in terms of that arithmetic. iclforge_ac3_minimal below picks float32
-# unconditionally - see src/ac3/minimal.cmake.
-set(AC3FORGE_DECODE_SCALAR "double" CACHE STRING
-    "Scalar the decoder carries coefficients in: double (default), float, or fixed (Q7.24 in an int32, for parts with no FPU)")
-set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
-if(AC3FORGE_DECODE_SCALAR STREQUAL "float")
-    set(_ac3_scalar_dir "float32")
-elseif(AC3FORGE_DECODE_SCALAR STREQUAL "double")
-    set(_ac3_scalar_dir "float64")
-elseif(AC3FORGE_DECODE_SCALAR STREQUAL "fixed")
-    # src/core/fixed32.hpp's Fixed32 - the third tier (planning/arithmetic-tiers.md).
-    set(_ac3_scalar_dir "fixed32")
-else()
-    message(FATAL_ERROR
-        "AC3FORGE_DECODE_SCALAR is 'double', 'float' or 'fixed' (got '${AC3FORGE_DECODE_SCALAR}')")
-endif()
-target_include_directories(iclforge_ac3_objects PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac3_scalar_dir}")
-
-# The encoders' analysis front end - transient detection, the block gather,
-# the analysis window and the forward transform - in double or float
-# (src/internal/scalar/encode/{float64,float32}/ac3/internal/encode_scalar.hpp).
-# Its own axis beside the decoder's, for the reason that one was split from the
-# profile: a full build with either scalar float and the other double is what
-# makes the float front end's bitstreams comparable against the double ones
-# through the CLI and the oracles. double is the default and stays it for every
-# ordinary build; iclforge_ac3_minimal picks float32 for both - see minimal.cmake.
-set(AC3FORGE_ENCODE_SCALAR "double" CACHE STRING
-    "Scalar the encoders' analysis front end runs in: double (default) or float")
-set_property(CACHE AC3FORGE_ENCODE_SCALAR PROPERTY STRINGS double float)
-if(AC3FORGE_ENCODE_SCALAR STREQUAL "float")
-    set(_ac3_encode_scalar_dir "float32")
-elseif(AC3FORGE_ENCODE_SCALAR STREQUAL "double")
-    set(_ac3_encode_scalar_dir "float64")
-else()
-    message(FATAL_ERROR
-        "AC3FORGE_ENCODE_SCALAR is 'double' or 'float' (got '${AC3FORGE_ENCODE_SCALAR}')")
-endif()
-target_include_directories(iclforge_ac3_objects PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/encode/${_ac3_encode_scalar_dir}")
-
-# src/core/ on the include path so the CMake-selected
-# src/core/transform/<variant>/reference_transform.cpp can include the
-# declaration it implements the same way mdct.cpp includes it - quote-relative
-# lookup only reaches a file's own directory, and the two variants live one
-# level down from the header they share.
-target_include_directories(iclforge_ac3_objects PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
-
-# ac3/internal/arch/simd.hpp comes with iclforge::arithmetic, linked below.
-
-
-# ---------------------------------------------------------------------------
-# Runtime CPU-feature detection (runtime SIMD dispatch).
-#
-# AC3FORGE_SIMD above is a compile-time choice: it bakes in exactly one of
-# SSE2/NEON/scalar, because those are architectural (guaranteed present, no
-# feature to ask about). AVX2 is not architectural - it is a real CPU
-# feature a build machine cannot know the DEPLOYMENT machine has - so it
-# needs an actual runtime answer instead. `AC3FORGE_AVX2` (default ON,
-# meaningful only on an x86_64 AC3FORGE_SIMD_RESOLVED) controls whether
-# iclforge_ac3_simd_avx2 (below) exists at all; the three-way switch here controls
-# how ac3::internal::cpu::has_avx2() answers "is it safe to run AVX2 on
-# THIS process's actual CPU" - one of src/internal/cpu/probe/{none,msvc,
-# builtin}/ goes on the include path, exactly the same directory-selection
-# mechanism as the SIMD arch tree above, so no translation unit ever asks
-# what it is being compiled for here either. See
-# src/internal/cpu/cpu_features.hpp for the full contract.
-#
-# msvc/ is shared by real MSVC AND clang-cl: clang-cl reports
-# CMAKE_CXX_COMPILER_ID "Clang" with CMAKE_CXX_COMPILER_FRONTEND_VARIANT
-# "MSVC" (the same distinction CompilerWarnings.cmake and the top-level
-# CMakeLists.txt's -ffp-contract policy already key on) - and although
-# clang-cl is Clang underneath, __builtin_cpu_supports needs compiler-rt's
-# cpu-model support linked in, which this project's clang-cl configuration
-# (MSVC-CRT-linked) does not guarantee. <intrin.h>'s CPUID/XGETBV
-# intrinsics have no such dependency on either compiler, so MSVC and
-# clang-cl share that path instead of the GCC/Clang/AppleClang builtin one.
-option(AC3FORGE_AVX2
-    "Compile an AVX2 SIMD tier (x86_64 only) alongside the baseline SSE2 one, selected at runtime"
-    ON)
-
-# Shared between the probe-directory choice just below and the AVX2 compile
-# flag further down - both need the same real-MSVC-or-clang-cl distinction,
-# and computing it once keeps the two decisions from ever being able to
-# silently disagree with each other.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR
-   (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
-    CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
-    set(AC3FORGE_IS_MSVC_LIKE TRUE)
-else()
-    set(AC3FORGE_IS_MSVC_LIKE FALSE)
-endif()
-
-if(NOT (AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2))
-    set(AC3FORGE_CPU_PROBE_DIR "none")
-elseif(AC3FORGE_IS_MSVC_LIKE)
-    set(AC3FORGE_CPU_PROBE_DIR "msvc")
-else()
-    set(AC3FORGE_CPU_PROBE_DIR "builtin")
-endif()
-
-# Two directories, not one: src/internal/cpu itself holds cpu_features.hpp
-# (bare-includable, unconditional - the same "just a directory on the path"
-# convention src/core/fft_kernel.hpp uses, since there is only ever one
-# copy of this file), and the resolved probe/<name>/ subdirectory holds the
-# one genuinely multi-variant piece, hardware_avx2.hpp, reached through the
-# "ac3/internal/cpu/hardware_avx2.hpp" spelling every probe/ variant shares
-# (the same convention the SIMD arch tree above uses, for the same reason:
-# the include spelling must not change depending on which directory
-# answered it).
-target_include_directories(iclforge_ac3_objects PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/${AC3FORGE_CPU_PROBE_DIR}"
-    # mdct_avx2.hpp's plain-signature declarations (below) must resolve for
-    # mdct.cpp on every config, same reasoning as the cpu/ directory just
-    # above - its own .cpp backing is directory/target-selected further
-    # down, but the include path itself is unconditional.
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2")
-
-# tests/CMakeLists.txt compiles src/internal/cpu/cpu_features.cpp a SECOND
-# time, directly into ac3tests, against these same two directories - the
-# same white-box arrangement (and the same DLL-export reasoning) as
-# iclforge_ac3_simd_avx2's own PARENT_SCOPE variables further down. Exposed
-# unconditionally, not only when the AVX2 tier is active: has_avx2()
-# correctly answering "false" on a generic/AVX2-disabled build is exactly as
-# worth testing as it answering "true" where AVX2 is actually compiled in.
-set(AC3FORGE_CPU_FEATURES_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu" PARENT_SCOPE)
-set(AC3FORGE_CPU_PROBE_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/${AC3FORGE_CPU_PROBE_DIR}" PARENT_SCOPE)
-set(AC3FORGE_CPU_FEATURES_SOURCE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/cpu_features.cpp" PARENT_SCOPE)
-set(AC3FORGE_IS_MSVC_LIKE "${AC3FORGE_IS_MSVC_LIKE}" PARENT_SCOPE)
-
-# getenv (AC3FORGE_SIMD_TIER's override, cpu_features.cpp) is flagged as
-# "unsafe" by MSVC's CRT (C4996, since it has no bounds to check the caller
-# did anything wrong with) - a real question for a caller-supplied buffer,
-# not for reading one environment variable into a function-local static at
-# process start. Scoped to this one file rather than /wd4996 on the whole
-# target, the same reasoning as iclforge_ac3_shared's /wd4251 further down: a
-# narrow, understood exception, not a blanket policy. Same-directory
-# CMakeLists.txt as the target_sources() call above that adds this file, so
-# the "silently no-ops from another directory" trap set_source_files_properties()
-# usually carries does not apply here.
-#
-# AC3FORGE_IS_MSVC_LIKE, not a $<CXX_COMPILER_ID:MSVC> generator expression:
-# clang-cl reports its own CXX_COMPILER_ID as "Clang" even in MSVC mode (the
-# same distinction this file's own AC3FORGE_IS_MSVC_LIKE computation exists
-# for), so a bare :MSVC genex here would miss it and clang-cl would hit the
-# same C4996-equivalent hard error real MSVC needs this suppression for -
-# confirmed by hand: it does.
-if(AC3FORGE_IS_MSVC_LIKE)
-    set_source_files_properties(src/internal/cpu/cpu_features.cpp PROPERTIES
-        COMPILE_OPTIONS "/wd4996")
-endif()
-
-# The one target in the whole build that ever sees an AVX2 compiler flag.
-# Object library, not folded into iclforge_ac3_objects: an AVX2 flag applied to
-# iclforge_ac3_objects would apply to every OTHER file in the codec core too,
-# which is exactly the "compiled with -march= for a feature the deployment
-# machine might not have" mistake ac3::internal::cpu::has_avx2() exists to
-# let this project avoid - see cpu_features.hpp. avx2_probe.cpp proved the
-# whole build/link/dispatch/test pipeline (the runtime-dispatch work, phase
-# one) before any real kernel joined it; mdct_avx2.cpp is
-# the first real one - apply_analysis_window and the DCT-IV/IMDCT twiddle
-# stages, the two PF5 kernels phase one's own measurement (docs/building.md)
-# showed a real, reproducible cycle-count win for. dft512's normalisation
-# and bitalloc.cpp/exponents.cpp's kernels are deliberately NOT here: that
-# same measurement found no signal for them above the ~2-4% cross-build
-# noise floor at this granularity.
+# tests/CMakeLists.txt compiles src/internal/avx2/avx2_probe.cpp a SECOND time, directly into ac3tests
+# (the same white-box arrangement src/signing/src has there).
+# The one target in the whole build that ever sees an AVX2 compiler flag: an AVX2 flag applied to the
+# codec's other files would compile them for a feature the deployment machine might not have, which
+# iclforge/base/detail/cpu_features.hpp's has_avx2() exists to let this project avoid.
 if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
     add_library(iclforge_ac3_simd_avx2 OBJECT
         src/internal/avx2/avx2_probe.cpp
@@ -463,16 +223,17 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2")
     target_compile_features(iclforge_ac3_simd_avx2 PRIVATE cxx_std_23)
-    target_link_libraries(iclforge_ac3_simd_avx2 PRIVATE "$<BUILD_INTERFACE:ac3::warnings>")
+    # Compile-only, as iclforge_add_library() does for the objects it makes: this object library is
+    # PUBLIC-linked into the static wrapper too, and an ordinary link would carry the shared variants
+    # of these libraries (what the bare aliases are under BUILD_SHARED_LIBS) into it.
+    target_link_libraries(iclforge_ac3_simd_avx2 PRIVATE
+        "$<COMPILE_ONLY:iclforge::base>" "$<COMPILE_ONLY:iclforge::render>"
+        "$<COMPILE_ONLY:iclforge::objects>" "$<COMPILE_ONLY:iclforge::dsp>"
+        "$<BUILD_INTERFACE:ac3::warnings>")
 
-    # /arch:AVX2 for MSVC and clang-cl, -mavx2 for GCC/Clang/AppleClang.
-    # Deliberately never -mfma alongside it: this project's own code must
-    # never call an FMA intrinsic regardless of what the flag would
-    # otherwise permit (see the top-level CMakeLists.txt's
-    # -ffp-contract=off comment - contraction is exactly what an AVX2
-    # kernel's bit-exactness argument cannot survive), and not requesting
-    # it keeps has_avx2()'s CPUID gate to the single AVX2 bit rather than
-    # needing a second, independent FMA capability check nothing here uses.
+    # /arch:AVX2 for MSVC and clang-cl, -mavx2 for GCC/Clang/AppleClang. Deliberately never -mfma
+    # alongside it: the project's own code must never call an FMA intrinsic, and not requesting it keeps
+    # has_avx2()'s CPUID gate to the single AVX2 bit.
     if(AC3FORGE_IS_MSVC_LIKE)
         target_compile_options(iclforge_ac3_simd_avx2 PRIVATE /arch:AVX2)
     else()
@@ -481,162 +242,18 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
 
     set_target_properties(iclforge_ac3_simd_avx2 PROPERTIES
         POSITION_INDEPENDENT_CODE ON
-        # Same hidden-by-default rule iclforge_ac3_objects sets below: this object
-        # library's code ends up in the same iclforge_ac3_static/forge_shared
-        # archives, and without its own CXX_VISIBILITY_PRESET every symbol
-        # here (ac3::internal::avx2::*, the batched kernel entry points)
-        # compiles with default visibility and leaks into the .so's dynamic
-        # symbol table - visibility is a per-TU compile setting, so
-        # iclforge_ac3_shared's own hidden preset can't retroactively hide object
-        # code it merely links in.
         CXX_VISIBILITY_PRESET hidden
         VISIBILITY_INLINES_HIDDEN ON
-        # LTO/LTCG is the one mechanism that can hoist AVX2-flagged codegen
-        # across a translation-unit boundary into a caller that was never
-        # compiled with the flag - silently producing an illegal
-        # instruction on hardware has_avx2() would otherwise have refused
-        # to run it on. This line is a correctness requirement, not a
-        # tidiness one: it must stay off on this target regardless of
-        # whatever LTO policy the rest of the build ever adopts.
-        INTERPROCEDURAL_OPTIMIZATION OFF)
+        # LTO/LTCG is the one mechanism that can hoist AVX2-flagged codegen across a translation-unit
+        # boundary into a caller never compiled with the flag: a correctness requirement, not tidiness.
+        INTERPROCEDURAL_OPTIMIZATION OFF
+        EXPORT_NAME ac3_simd_avx2)
 
-    # iclforge_ac3_static/forge_shared already pull in iclforge_ac3_objects's object code
-    # this same way (top of this file) - an OBJECT library "links" into a
-    # STATIC/SHARED target by contributing its object files to the final
-    # archive/binary, not by needing anything from iclforge_ac3_objects itself, so
-    # this is independent of that link and just as safe to add here.
     target_link_libraries(iclforge_ac3_static PUBLIC iclforge_ac3_simd_avx2)
     target_link_libraries(iclforge_ac3_shared PUBLIC iclforge_ac3_simd_avx2)
-
-    # tests/CMakeLists.txt compiles avx2_probe.cpp a SECOND time, directly
-    # into ac3tests (the same white-box arrangement src/signing/src already
-    # has there) rather than calling into this object library's copy - that
-    # sidesteps needing AC3FORGE_EXPORT/dllimport treatment on internal
-    # build plumbing that would otherwise only matter for the
-    # config-linux-llvm-shared (BUILD_SHARED_LIBS=ON) leg. AC3FORGE_IS_MSVC_LIKE
-    # is already exposed PARENT_SCOPE further up this file (unconditionally,
-    # since cpu_features.cpp needs it too regardless of whether this AVX2
-    # tier exists at all).
     set(AC3FORGE_AVX2_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2" PARENT_SCOPE)
 else()
-    # mdct.cpp's call sites still need something to link against - the
-    # unreachable-body stub, compiled straight into iclforge_ac3_objects with no
-    # AVX2 flag at all (it contains no AVX2 code), exactly the same
-    # "always linkable, directory-selected implementation" shape
-    # AC3FORGE_CPU_PROBE_DIR's "none" variant already uses for
-    # cpuid_reports_avx2() above.
+    # mdct.cpp's call sites still need something to link against: the unreachable-body stub, compiled
+    # straight into the objects with no AVX2 flag.
     target_sources(iclforge_ac3_objects PRIVATE src/internal/avx2/none/mdct_avx2.cpp)
 endif()
-
-target_compile_features(iclforge_ac3_objects PUBLIC cxx_std_23)
-
-# $<BUILD_INTERFACE:...> wrapping, not a plain PRIVATE link: ac3::warnings/
-# ac3::coverage/ac3::tracy are dev-only interface targets that must never
-# propagate to an installed consumer regardless - but OBJECT libraries
-# specifically require install(EXPORT) to be able to resolve every dependency
-# they have, PRIVATE included, since a .o file's compile-time requirements
-# aren't fully self-contained the way a finished .lib/.dll's are. Wrapping
-# makes the dependency invisible to the export graph outright, which is what
-# "dev-only, never for a consumer" actually means here, not "somehow also
-# exported." ac3::tracy is a no-op INTERFACE target unless AC3FORGE_ENABLE_TRACY
-# is on (see cmake/Tracy.cmake), so linking it unconditionally costs nothing
-# by default.
-#
-# ac3::fmt_private is wrapped for the same reason, but it changes the object code, which the
-# other three do not: {fmt} is compiled into this library, as a private copy in its own
-# namespace, and no {fmt} library is linked. iclforge_ac3_static is an archive, so a {fmt} function
-# called from here and defined elsewhere would be an undefined reference for every consumer of
-# the installed package, which names no {fmt} to resolve it. cmake/Fmt.cmake has the full account.
-target_link_libraries(iclforge_ac3_objects PRIVATE
-    "$<BUILD_INTERFACE:ac3::warnings>"
-    "$<BUILD_INTERFACE:ac3::coverage>"
-    "$<BUILD_INTERFACE:ac3::tracy>"
-    "$<BUILD_INTERFACE:ac3::fmt_private>"
-    "$<BUILD_INTERFACE:iclforge::arithmetic>")
-
-# --- Static+shared plumbing -------------------------------------------------
-# PIC is required for any object code that might end up in a shared library
-# (mandatory on Linux/macOS, ignored by MSVC) - the same objects feed
-# iclforge_ac3_static too, but a static archive being built PIC costs nothing.
-# Hidden visibility by default + explicit AC3FORGE_EXPORT annotation (see
-# ac3/export.hpp's callers) is the standard pattern: only the intentionally
-# public API surfaces across the .so/.dll boundary, everything else - helper
-# functions, implementation detail classes - stays invisible outside it.
-set_target_properties(iclforge_ac3_objects PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON)
-
-# MSVC's C4251 ("class X needs to have dll-interface...") fires for every
-# PRIVATE STL-typed member of an AC3FORGE_EXPORT class - std::vector/std::map/
-# std::optional fields that are pure implementation detail, never touched by
-# a caller except through the class's own (exported) methods. That's exactly
-# the case this warning can't tell apart from a genuinely unsafe one, so it's
-# suppressed here rather than by scattering non-portable
-# #pragma warning(disable:) through headers GCC/Clang also compile (see
-# cmake/CompilerWarnings.cmake's own MSVC-vs-portable split for the same
-# reasoning). Scoped to this target, not ac3::warnings globally: it's a
-# consequence of exporting a library, not a project-wide warning policy call.
-#
-# PUBLIC, not PRIVATE: the warning fires wherever a translation unit parses
-# the dllexport/dllimport-decorated class definition, not only inside
-# iclforge_ac3_objects's own compilation - a consumer built against
-# iclforge::ac3_shared (ac3cli/ac3gui/tests/examples, once BUILD_SHARED_LIBS=ON)
-# includes these same headers under the dllimport branch and hits the
-# identical warning in its own translation units. iclforge::ac3_static's
-# consumers never see it (AC3FORGE_STATIC_DEFINE strips the decoration
-# entirely), so this is a no-op for them, not an unwanted suppression.
-target_compile_options(iclforge_ac3_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
-
-# generate_export_header() normally adds the "building the DLL" compile
-# definition to the target it's called on (here, iclforge_ac3_shared) - but
-# iclforge_ac3_shared has no sources of its own, everything actually compiles
-# via iclforge_ac3_objects, so that auto-added definition would never reach the
-# code it's meant to affect. Setting DEFINE_SYMBOL explicitly and adding it
-# to iclforge_ac3_objects by hand closes that gap. The object code is therefore
-# always compiled as if building the DLL (dllexport, not dllimport) - this
-# is harmless for the objects that end up in iclforge_ac3_static too: a plain
-# (non-decorated) consumer of the static archive still resolves the same
-# underlying symbol names, dllexport just also lets those symbols export
-# through a DLL if one were ever built from them, which iclforge_ac3_static
-# itself isn't. AC3FORGE_STATIC_DEFINE is what a static consumer needs
-# instead, so the generated header emits no import/export decoration at
-# all - see the target_compile_definitions on iclforge_ac3_static below.
-#
-# The generated header keeps the .hpp extension and generated/iclforge/ac3/ layout
-# every other generated header here already uses (ac3/version.hpp), rather
-# than generate_export_header's own .h default, so nothing that already
-# includes "ac3/export.hpp" (every annotated header) needs to change.
-include(GenerateExportHeader)
-# DEFINE_SYMBOL is a target property generate_export_header() reads (not one
-# of its own function keywords) to decide which #ifdef the generated header
-# guards the dllexport branch with - set explicitly since it would otherwise
-# default to forge_shared_EXPORTS, and it's iclforge_ac3_objects that must
-# actually define it (see above).
-set_target_properties(iclforge_ac3_shared PROPERTIES DEFINE_SYMBOL "AC3FORGE_BUILDING_SHARED")
-generate_export_header(iclforge_ac3_shared
-    BASE_NAME AC3FORGE
-    CUSTOM_CONTENT_FROM_VARIABLE _ac3_export_custom_content
-    EXPORT_MACRO_NAME AC3FORGE_EXPORT
-    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac3/export.hpp"
-    DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC3FORGE_STATIC_DEFINE)
-target_compile_definitions(iclforge_ac3_objects PRIVATE AC3FORGE_BUILDING_SHARED)
-target_compile_definitions(iclforge_ac3_static PUBLIC AC3FORGE_STATIC_DEFINE)
-
-# SOVERSION is the full version, not just the major component: pre-1.0, no
-# ABI-compatibility promise holds across any two releases, so there is no
-# meaningful "compatible" version range narrower than an exact match.
-set_target_properties(iclforge_ac3_shared PROPERTIES
-    VERSION "${PROJECT_VERSION}"
-    SOVERSION "${PROJECT_VERSION}")
-
-# On Windows, iclforge_ac3_shared's import library and iclforge_ac3_static's archive
-# would otherwise both be named ac3forge.lib in the same output directory -
-# name the static one distinctly so installing both side by side doesn't
-# clobber either. iclforge_ac3_shared keeps the plain "ac3forge" name (-> the
-# ac3forge.dll a consumer actually expects). These are the installed
-# filenames a consumer sees, deliberately unrelated to the CMake target
-# names above.
-set_target_properties(iclforge_ac3_shared PROPERTIES OUTPUT_NAME "iclforge_ac3")
-set_target_properties(iclforge_ac3_static PROPERTIES OUTPUT_NAME "iclforge_ac3_static")

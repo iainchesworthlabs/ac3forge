@@ -25,6 +25,11 @@ on:
     paths:
       - "esp-idf/**"
       - "src/ac3/**"
+      - "src/base/**"
+      - "src/dsp/**"
+      - "src/objects/**"
+      - "src/render/**"
+      - "src/iec61937/**"
       - "cmake/**"
       - "CMakeLists.txt"
       - "tools/packaging/pack_esp_component.py"

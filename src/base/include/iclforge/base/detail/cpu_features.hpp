@@ -1,5 +1,7 @@
 #pragma once
 
+#include "iclforge/base/export.hpp"
+
 // ---------------------------------------------------------------------------
 // Runtime CPU-feature detection, x86-64 only (SIMD kernels's follow-on
 // dynamic-dispatch work).
@@ -44,6 +46,6 @@ namespace ac3::internal::cpu {
 // tier compiled in at all (AC3FORGE_AVX2=OFF, or a non-x86-64 target),
 // aborts with a clear message rather than ever letting an illegal
 // instruction fault stand in for one.
-[[nodiscard]] bool has_avx2() noexcept;
+[[nodiscard]] ICLFORGE_BASE_EXPORT bool has_avx2() noexcept;
 
 } // namespace ac3::internal::cpu

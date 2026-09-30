@@ -41,7 +41,7 @@ PYPROJECT = ROOT / "python" / "pyproject.toml"
 
 
 def _ac4_referenced(path: Path) -> bool:
-    return re.search(r"\bac4::", path.read_text(encoding="utf-8")) is not None
+    return re.search(r"\biclforge::ac4", path.read_text(encoding="utf-8")) is not None
 
 
 def _resolved_cache_variables(presets: dict, name: str) -> dict:

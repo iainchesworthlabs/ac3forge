@@ -27,6 +27,11 @@ on:
     paths:
       - "python/**"
       - "src/ac3/**"
+      - "src/base/**"
+      - "src/dsp/**"
+      - "src/objects/**"
+      - "src/render/**"
+      - "src/iec61937/**"
       - "examples/python/**"
       - "CMakeLists.txt"
       - ".github/workflows/wheels.yml"

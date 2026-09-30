@@ -434,9 +434,18 @@ endif()
 # Fixed32 and the cross-platform-identical float transcendentals
 # (planning/ac4.md, decision 31). Header-only and dependency-free, so it goes
 # first; both consumers link it PRIVATE.
+include(IclforgeLibrary)
 add_subdirectory(src/arithmetic)
 
-# The library holds the entire codec and spatial engine and is GUI-free.
+# The codec-blind libraries the AC-3 codec builds on, each linking only the ones above it:
+# base (bit I/O, the speaker vocabulary, the kernels' build variants), dsp, objects (the object model
+# and the OAMD payload), render and iec61937. Then the codec, which links all of them. None of the
+# five links a codec; AC-4 (src/ac4*) links none of them yet.
+add_subdirectory(src/base)
+add_subdirectory(src/dsp)
+add_subdirectory(src/objects)
+add_subdirectory(src/render)
+add_subdirectory(src/iec61937)
 add_subdirectory(src/ac3)
 
 # Live capture, monitor playback and IEC 61937 passthrough - the only
@@ -535,7 +544,7 @@ if(AC3FORGE_BUILD_IAB)
     add_subdirectory(src/iab)
 endif()
 
-# A standalone writer, not a reader like ac3iab above - IAMF writer, phase 1 (an IAMF
+# A standalone writer, not a reader like iab above - IAMF writer, phase 1 (an IAMF
 # OBU/ISOBMFF writer). Gated by AC3FORGE_BUILD_IAMF (default ON, see the option()
 # above).
 if(AC3FORGE_BUILD_IAMF)

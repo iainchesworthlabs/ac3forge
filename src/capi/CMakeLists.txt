@@ -167,7 +167,7 @@ set(AC3FORGEC_VERSION_PATCH "${CMAKE_MATCH_3}")
 # Feeds version.h.in's #cmakedefine AC3FORGE_HAS_AC4 - see that file's comment.
 set(AC3FORGE_HAS_AC4 ${AC3FORGE_BUILD_AC4})
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/ac3forge_c/version.h.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/iclforge_c/version.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge_c/version.h"
     @ONLY)
 

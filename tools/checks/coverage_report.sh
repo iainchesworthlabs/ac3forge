@@ -127,6 +127,15 @@ fi
 #   ac3iab 95.4/92.9  iamf 96.1/96.2    apps/common 83.3/71.9
 #   apps/crucible/engine 95.9/87.8
 #
+# forge is six components since the layout change of planning/layout.md, one row each below. Measured
+# on the split code the same way (GCC 16 / gcovr 8.6, WSL2, the 3,250 tests of the coverage leg):
+#
+#   ac3 94.5/87.9    base 88.8/64.7    dsp 87.7/94.7
+#   objects 93.3/86.3  render 96.3/89.5  iec61937 96.9/89.6
+#
+# base is 107 lines and 68 branches, so a single line moves its figures by about one and a half
+# points and its floors are set further under than the rest.
+#
 # src/audio and apps/cli's device commands no longer depend on the runner
 # having an audio endpoint: their success paths run against alsa-lib's
 # built-in null/file/route/multi plugins. What they still miss needs a real
@@ -140,6 +149,11 @@ fi
 # the rest of apps/crucible keeps its own floors in coverage_crucible.ps1.
 components="
 src/ac3             90 82
+src/base              80 56
+src/dsp               82 88
+src/objects           88 80
+src/render            91 83
+src/iec61937          91 83
 src/audio             72 58
 src/signing           90 76
 src/matroska          88 85
@@ -200,7 +214,7 @@ html="$build_dir/coverage.html"
 # but it made the DSP-heavy cases 2-6x slower (the ten-minute playout case
 # 4.9 s -> 30.8 s), so the flag stays.
 gcovr --root . \
-    --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin|ac4|ac4core|ac4dec|ac3iab|iamf)/.*' \
+    --filter 'src/(ac3|base|dsp|objects|render|iec61937|audio|signing|matroska|mp4|mpegts|capi|adm|admbridge|sendspin|ac4|ac4core|ac4dec|iab|iamf)/.*' \
     --filter 'apps/cli/.*' \
     --filter 'apps/common/.*' \
     --filter 'apps/crucible/engine/.*' \

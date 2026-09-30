@@ -74,7 +74,7 @@ target_compile_features(iclforge_audio PUBLIC cxx_std_23)
 # cmake/Coverage.cmake). Plain, not $<BUILD_INTERFACE:...>-wrapped: this
 # target is never installed (see the header comment above), so it has no
 # install(EXPORT) graph to keep the dependency out of.
-target_link_libraries(iclforge_audio PUBLIC iclforge::ac3)
+target_link_libraries(iclforge_audio PUBLIC iclforge::render iclforge::iec61937 iclforge::objects)
 target_link_libraries(iclforge_audio PRIVATE ac3::warnings ac3::coverage ac3::fmt)
 
 # live_positions.cpp: platform-independent by construction (it names

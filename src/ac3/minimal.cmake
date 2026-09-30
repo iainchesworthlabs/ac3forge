@@ -44,11 +44,11 @@ add_library(iclforge::ac3_minimal ALIAS iclforge_ac3_minimal)
 # already refused the option outside this profile.
 if(AC3FORGE_STAGE_TIMERS)
     set(_ac3_minimal_profiling_dir
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/stage_timers")
+        "${PROJECT_SOURCE_DIR}/src/base/variants/profiling-stage_timers")
     message(STATUS "Minimum-footprint profile: zone markers routed to the stage-timer backend")
 else()
     set(_ac3_minimal_profiling_dir
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled")
+        "${PROJECT_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled")
 endif()
 
 target_sources(iclforge_ac3_minimal
@@ -61,7 +61,8 @@ target_sources(iclforge_ac3_minimal
         src/core/eac3_tools.cpp      # spx/ecpl band geometry and the §3.5.5 enhanced-coupling
                                      # reconstruction the decoder shares
         src/core/exponents.cpp       # §7.1 exponent decoding
-        src/core/fft.cpp             # the 512-point DFT §3.5.5 enhanced coupling needs
+        "${PROJECT_SOURCE_DIR}/src/dsp/src/fft.cpp"  # the 512-point DFT §3.5.5 enhanced coupling
+                                     # needs
         src/core/mantissas.cpp       # §7.3 mantissa ungrouping and dither
         src/core/mdct.cpp            # §7.9.4 inverse transform (and the unused forward)
         src/core/transform/stub/reference_transform.cpp
@@ -86,7 +87,7 @@ target_sources(iclforge_ac3_minimal
         # translation unit rather than a branch. none/mdct_avx2.cpp supplies
         # the std::unreachable() bodies for the declarations mdct.cpp calls on
         # the branch a constant-false has_avx2() makes dead.
-        src/internal/cpu/minimal/cpu_features.cpp
+        "${PROJECT_SOURCE_DIR}/src/base/src/minimal/cpu_features.cpp"
         src/internal/avx2/none/mdct_avx2.cpp)
 
 # --- and then one direction or the other ------------------------------------
@@ -109,8 +110,9 @@ target_sources(iclforge_ac3_minimal
                                             # from decode_frame_core/apply_output/conceal
         src/decoder/transient_prenoise.cpp  # §3.7 post-IMDCT correction
         # --- what the decoders call into ---------------------------------
-        src/dsp/qmf.cpp            # the polyphase QMF bank JOC's reconstruction runs through
-        src/emdf/emdf.cpp          # the TS 102 366 Annex H container the objects ride in
+        "${PROJECT_SOURCE_DIR}/src/dsp/src/qmf.cpp"  # the polyphase QMF bank JOC runs through
+        "${PROJECT_SOURCE_DIR}/src/objects/src/emdf.cpp"  # the TS 102 366 Annex H container
+                                   # the objects ride in
         # --- getting a stream IN ------------------------------------------
         # The profile had no input path at all until these: the probe decodes a
         # fixture linked into its own image, which is fine for a measurement and
@@ -128,7 +130,7 @@ target_sources(iclforge_ac3_minimal
         src/meta/drc.cpp           # §7.7 dynrng/compr application
         src/meta/mixing.cpp        # §7.8 downmix coefficients - OutputStage::apply's own
         src/oba/joc.cpp            # §6 object reconstruction from the bed
-        src/oba/oamd.cpp           # §H.1 object metadata
+        "${PROJECT_SOURCE_DIR}/src/objects/src/oamd.cpp"  # §H.1 object metadata
         # --- and placing them -----------------------------------------------
         # Reconstructed objects are mono signals with a position each; a part
         # driving loudspeakers has to pan them onto its layout, and this is
@@ -137,7 +139,7 @@ target_sources(iclforge_ac3_minimal
         # for any Table E2.5 layout. Pure arithmetic over <vector> and <cmath>
         # - no fmt, no exceptions - which is why it can be here. The probe's
         # eac3_atmos_render row exercises it onto 7.1.4.
-        src/spatial/spatial.cpp
+        "${PROJECT_SOURCE_DIR}/src/render/src/spatial.cpp"
 )
 else()
 target_sources(iclforge_ac3_minimal
@@ -182,17 +184,24 @@ endif()
 target_include_directories(iclforge_ac3_minimal
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        # The profile is one archive of files from six libraries (base, dsp, objects and render
+        # are not built on their own here: their CMakeLists.txt return early for it), so it
+        # carries all six public include trees and the six export headers, generated below.
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/base/include>"
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/dsp/include>"
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/objects/include>"
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/render/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
         "$<INSTALL_INTERFACE:include>"
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/minimal"
+        "${CMAKE_CURRENT_SOURCE_DIR}/variants/profile-minimal"
         # float32 or fixed32 - see _ac3_minimal_scalar_dir above.
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac3_minimal_scalar_dir}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/variants/decode-scalar-${_ac3_minimal_scalar_dir}"
         # And the encoders' front end in float32 too (encode_scalar_t), for
         # the same part's sake: in double, transient detection and the
         # forward transform were 64% of an AC-3 5.1 frame on an ESP32-S3.
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/encode/float32"
+        "${CMAKE_CURRENT_SOURCE_DIR}/variants/encode-scalar-float32"
         # Tracy is never part of this profile - the disabled variant's macros
         # expand to nothing, which is what a footprint build wants. What CAN
         # answer the same markers here is the stage-timer backend, resolved
@@ -219,8 +228,7 @@ target_include_directories(iclforge_ac3_minimal
         # constant false here rather than a question. src/internal/avx2 is on
         # the path for mdct_avx2.hpp's plain-signature declarations, which
         # mdct.cpp includes unconditionally on every configuration.
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/cpu/probe/none"
+        "${PROJECT_SOURCE_DIR}/src/base/variants/cpu-probe-none"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2")
 
 target_compile_features(iclforge_ac3_minimal PUBLIC cxx_std_23)
@@ -251,7 +259,7 @@ if(AC3FORGE_MINIMAL_HOT_O2)
     set_source_files_properties(
         src/core/bitalloc.cpp
         src/core/eac3_tools.cpp
-        src/core/fft.cpp
+        "${PROJECT_SOURCE_DIR}/src/dsp/src/fft.cpp"
         src/decoder/decoder.cpp
         src/decoder/eac3_decoder.cpp
         src/decoder/output.cpp
@@ -264,19 +272,29 @@ target_link_libraries(iclforge_ac3_minimal
     PUBLIC ac3::minimal_profile
     PRIVATE "$<BUILD_INTERFACE:ac3::warnings>" "$<BUILD_INTERFACE:iclforge::arithmetic>")
 
-# ac3/export.hpp is generated, and every annotated header includes it. This
-# profile is static-only, so the generated header is asked for the no-op
-# variant outright (AC3FORGE_STATIC_DEFINE below) rather than the
-# dllexport/dllimport pair the ordinary build needs - there is no DLL here to
-# export from or import into.
+# iclforge/<library>/export.hpp is generated for each of the six libraries the archive holds, and
+# every annotated header includes its own. This profile is static-only, so each is asked for the
+# no-op variant outright (ICLFORGE_<LIBRARY>_STATIC_DEFINE below) rather than the dllexport/dllimport
+# pair the ordinary build needs - there is no DLL here to export from or import into. Only the
+# codec's own header carries the class-template macros (_ac3_export_custom_content).
 include(GenerateExportHeader)
 generate_export_header(iclforge_ac3_minimal
-    BASE_NAME AC3FORGE
+    BASE_NAME ICLFORGE_AC3
     CUSTOM_CONTENT_FROM_VARIABLE _ac3_export_custom_content
-    EXPORT_MACRO_NAME AC3FORGE_EXPORT
+    EXPORT_MACRO_NAME ICLFORGE_AC3_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac3/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC3FORGE_STATIC_DEFINE)
-target_compile_definitions(iclforge_ac3_minimal PUBLIC AC3FORGE_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_AC3_STATIC_DEFINE)
+foreach(_lib IN ITEMS base dsp objects render)
+    string(TOUPPER "${_lib}" _upper)
+    generate_export_header(iclforge_ac3_minimal
+        BASE_NAME ICLFORGE_${_upper}
+        EXPORT_MACRO_NAME ICLFORGE_${_upper}_EXPORT
+        EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/${_lib}/export.hpp"
+        DEFINE_NO_DEPRECATED
+        STATIC_DEFINE ICLFORGE_${_upper}_STATIC_DEFINE)
+    target_compile_definitions(iclforge_ac3_minimal PUBLIC ICLFORGE_${_upper}_STATIC_DEFINE)
+endforeach()
+target_compile_definitions(iclforge_ac3_minimal PUBLIC ICLFORGE_AC3_STATIC_DEFINE)
 
 set_target_properties(iclforge_ac3_minimal PROPERTIES OUTPUT_NAME "iclforge_ac3_minimal")

@@ -65,8 +65,8 @@ class Ac3forgeConan(ConanFile):
         "mpegts": True,
         # Off by default, same reasoning as the vcpkg port's own features of the same names: each
         # adds whole new installed libraries and public targets (iclforge::c; iclforge::ac4,
-        # iclforge::ac4dec and iclforge::ac4enc; iclforge::iab; iclforge::iamf), not a behavior toggle on an
-        # already-installed one - opt in explicitly with -o "&:ac4=True" and the like.
+        # iclforge::ac4dec and iclforge::ac4enc; iclforge::iab; iclforge::iamf), not a behavior
+        # toggle on an already-installed one - opt in explicitly with -o "&:ac4=True" and the like.
         "capi": False,
         "ac4": False,
         "iab": False,

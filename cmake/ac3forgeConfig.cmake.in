@@ -3,7 +3,12 @@
 # Independent, dependency-free libraries in one package - see
 # cmake/InstallLibrary.cmake for why they're separate EXPORT sets sharing
 # this one Config file rather than a single combined export.
-include("${CMAKE_CURRENT_LIST_DIR}/forgeTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/baseTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/dspTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/objectsTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/renderTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/iec61937Targets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/ac3Targets.cmake")
 
 # iclforge::signing is mandatory, like iclforge::ac3 itself (no AC3FORGE_BUILD_<NAME> switch, so no
 # if(EXISTS) guard needed the way the optional components below need one).

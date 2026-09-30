@@ -216,7 +216,8 @@ class SatellitesDirectTest(unittest.TestCase):
 
     def test_the_trees_the_esp_component_ships_light_the_esp_lane_too(self):
         for path in (
-            "src/forge/coder/eac3_encoder.cpp",
+            "src/ac3/coder/eac3_encoder.cpp",
+            "src/base/detail/cpu_features.cpp",
             "src/arithmetic/fixed32.hpp",
             "cmake/Compiler.cmake",
             "CMakeLists.txt",

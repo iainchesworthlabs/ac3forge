@@ -48,7 +48,7 @@ target_sources(iclforge_ac4core
 
 target_include_directories(iclforge_ac4core
     PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>")
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
 
 target_compile_features(iclforge_ac4core PUBLIC cxx_std_23)
 
@@ -104,7 +104,7 @@ endif()
 # include directory among them, or its own translation units cannot resolve
 # the header ac4core's PUBLIC header just asked for.
 target_include_directories(iclforge_ac4core PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac4core_scalar_dir}>")
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/variants/scalar-${_ac4core_scalar_dir}>")
 
 # Which "ac4/detail/profiling.hpp" the kernels' AC4_ZONE_SCOPED_N() markers see
 # (planning/ac4.md, D14b): none/, where they expand to nothing, or stage_timers/,
@@ -121,7 +121,7 @@ else()
     set(_ac4core_profiling_dir "none")
 endif()
 target_include_directories(iclforge_ac4core PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/${_ac4core_profiling_dir}>")
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/variants/profiling-${_ac4core_profiling_dir}>")
 
 # -Wdouble-promotion as an error on the float build (planning/ac4.md, D14a):
 # an implicit float-to-double promotion anywhere in these kernels is exactly

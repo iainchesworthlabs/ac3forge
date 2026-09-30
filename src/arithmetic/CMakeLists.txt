@@ -130,13 +130,13 @@ else()
 endif()
 
 set(AC3FORGE_ARCH_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/arch/${AC3FORGE_SIMD_RESOLVED}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/variants/arch-${AC3FORGE_SIMD_RESOLVED}")
 if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
     message(FATAL_ERROR
         "AC3FORGE_SIMD=${AC3FORGE_SIMD} resolved to '${AC3FORGE_SIMD_RESOLVED}', which has no "
-        "directory under src/arithmetic/arch/. Add "
-        "src/arithmetic/arch/<name>/ac3/internal/arch/simd.hpp - the generic/ copy is "
-        "the portable implementation and is a working starting point.")
+        "directory under src/arithmetic/variants/. Add "
+        "src/arithmetic/variants/arch-<name>/iclforge/arithmetic/detail/simd.hpp - the arch-generic "
+        "copy is the portable implementation and is a working starting point.")
 endif()
 
 # Every consumer of iclforge::arithmetic (iclforge::ac3, iclforge_ac3_minimal, src/ac4core) gets the

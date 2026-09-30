@@ -1047,7 +1047,12 @@ jobs:
           ctest --preset test-linux-llvm-shared -LE Performance
           bash tools/checks/check_shared_forge_binding.sh \
             build/config-linux-llvm-shared/bin/ac3tests \
-            build/config-linux-llvm-shared/src/forge/libac3forge.so
+            build/config-linux-llvm-shared/src/ac3/libiclforge_ac3.so \
+            build/config-linux-llvm-shared/src/base/libiclforge_base.so \
+            build/config-linux-llvm-shared/src/dsp/libiclforge_dsp.so \
+            build/config-linux-llvm-shared/src/objects/libiclforge_objects.so \
+            build/config-linux-llvm-shared/src/render/libiclforge_render.so \
+            build/config-linux-llvm-shared/src/iec61937/libiclforge_iec61937.so
 
       # A build tree is not an installed package. tests/capi and the C examples compile against
       # the build tree, where every generated header is already on the include path whether or

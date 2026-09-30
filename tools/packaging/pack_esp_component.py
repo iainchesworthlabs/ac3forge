@@ -58,7 +58,14 @@ COMPONENT = REPO / "esp-idf" / "ac3forge"
 # language binding, and none of the container muxers. A component archive should
 # carry the part that builds for this chip.
 STAGED_TREES = (
+    # The AC-3 codec and the five libraries it is built from: the minimum-footprint profile is
+    # one archive of files from all six (src/ac3/minimal.cmake).
     "src/ac3",
+    "src/base",
+    "src/dsp",
+    "src/objects",
+    "src/render",
+    "src/iec61937",
     # The header-only Fixed32 / scalar-function target src/ac3 and src/ac4core
     # both link (planning/ac4.md decision 31); the root CMakeLists.txt adds it
     # with add_subdirectory before it reaches src/ac3, so a staged tree
@@ -163,7 +170,7 @@ def describe(archive: pathlib.Path) -> tuple[int, int]:
     """Returns (entries, forge source files) - the second is what matters."""
     with tarfile.open(archive) as tar:
         names = tar.getnames()
-    sources = [n for n in names if "/lib/src/forge/src/" in n and n.endswith(".cpp")]
+    sources = [n for n in names if "/lib/src/ac3/src/" in n and n.endswith(".cpp")]
     return len(names), len(sources)
 
 

@@ -82,7 +82,7 @@ target_compile_features(iclforge_admbridge_objects PUBLIC cxx_std_23)
 # variants in the install/export set, so the ambient alias is exactly right for it.
 target_link_libraries(iclforge_admbridge_objects
     PUBLIC
-        iclforge::ac3
+        iclforge::objects
         iclforge::adm_shared
         iclforge::iab
     PRIVATE
