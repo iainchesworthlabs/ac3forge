@@ -1670,7 +1670,7 @@ The sections below contain the complete change list and fixes.
   5.6 and 5.9), 22.4 ms at 1001/960 and 23.976 fps from 231 (1.25), and 98.5 ms in the 29.97 fps play
   where the default allocation policy's sporadic slow stage falls on it (17.5 under the other policy);
   the first frame at 1001/960 still takes 5.9 s, the table being designed in `double`. The `double`
-  output is byte-identical to before (357 decodes and 6 encodes compared) and the scorers hold their
+  output is byte-identical to before (360 decodes and 6 encodes compared) and the scorers hold their
   pins with the `float` CLI. The Cortex-M3 probe gains a sixth AC-4 fixture with companding, whose
   PCM is identical on that leg and the host and pinned, and `tests/golden/ac4dec/scalar-agreement.json`
   is pinned again for the three IMS streams, which sit 1.4 to 3.3 dB lower above A-SPX's crossover

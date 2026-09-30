@@ -2190,7 +2190,7 @@ before (91.4, 60.9 and 94.9 dB), and their floors are pinned again.
 leg and the P4 for D14b's twenty plays and six core plays, on the M3 for the 24-frame cut of each, for
 the probe's six fixtures and for D14b's four cuts: 84 plays and cuts compared across the five, under ESP-IDF's
 default allocation policy and under the 512-byte one, none different; before, the five plays with
-companding differed. (b) The `double` output byte-identical to main: 357 decodes (119 committed and
+companding differed. (b) The `double` output byte-identical to main: 360 decodes (120 committed and
 played streams, as coded, folded and in core decoding) and 6 encodes, at index 13 and at 24, 25, 23.976,
 29.97 and 30 fps, with the whole of `ac3tests` passing at both scalars with no `double` pin moved. (c)
 `score_ac4_decode.py` (15 legs) and `score_ac4_encode.py` (72) hold their pins with the `float` CLI. (d)
