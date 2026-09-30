@@ -53,6 +53,19 @@ class Names(unittest.TestCase):
     def test_a_namespace_alias_keeps_its_own_name(self) -> None:
         self.check("namespace mp4 = other;", "namespace mp4 = other;")
 
+    def test_libadms_namespace_is_named_from_the_global_namespace(self) -> None:
+        self.check(
+            "std::shared_ptr<adm::Document> d = adm::parseXml(s);",
+            "std::shared_ptr<::adm::Document> d = ::adm::parseXml(s);",
+        )
+        self.check(
+            "::adm::TypeDefinition t; ac3adm::Model m;",
+            "::adm::TypeDefinition t; iclforge::adm::Model m;",
+        )
+        self.check(
+            "ac3::admbridge::build(); my_adm::x;", "iclforge::admbridge::build(); my_adm::x;"
+        )
+
     def test_ac3iab_and_ac3adm_become_iab_and_adm(self) -> None:
         self.check(
             "ac3iab::Model m; ac3adm::Doc d;", "iclforge::iab::Model m; iclforge::adm::Doc d;"
