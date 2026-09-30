@@ -291,6 +291,10 @@ class Kept(Case):
             "          # what maps the old names (ac3forge, ac3gui) to the new ones\n",
         )
         self.kept(
+            ".github/workflows/manifest-bump.yml",
+            "          git rm -q --ignore-unmatch Formula/ac3forge.rb Casks/ac3gui.rb\n",
+        )
+        self.kept(
             "tools/checks/check_packaging_versions.sh",
             "for winget_package in ac3forge iclforge; do\n",
         )

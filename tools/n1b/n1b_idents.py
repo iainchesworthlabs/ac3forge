@@ -86,7 +86,10 @@ SKIP_SUFFIXES = (".md",)
 # tree still uses, so none of them is in the tree the pass runs on first.
 FORMER_NAME_LINES: dict[str, tuple[str, ...]] = {
     "python/pyproject.toml": ("(formerly ac3forge)",),
-    ".github/workflows/manifest-bump.yml": ("old names (ac3forge, ac3gui)",),
+    ".github/workflows/manifest-bump.yml": (
+        "old names (ac3forge, ac3gui)",
+        "git rm -q --ignore-unmatch Formula/ac3forge.rb Casks/ac3gui.rb",
+    ),
     "tools/checks/check_packaging_versions.sh": (
         "identity iainchesworthlabs.ac3forge and stay as they were made",
         "for winget_package in ac3forge iclforge; do",
