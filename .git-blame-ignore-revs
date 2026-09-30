@@ -1,0 +1,9 @@
+# Commits that rewrite files mechanically, for git blame --ignore-revs-file (GitHub's blame view reads this
+# file by itself; locally: git config blame.ignoreRevsFile .git-blame-ignore-revs). Each stage of the
+# re-layout of planning/layout.md adds its own rewrite commits. A commit that only renames files is not
+# listed: blame and git log --follow follow a rename by themselves.
+
+# N1B stage S2, the move of src/ and tests/ (the renames are the commit before these three)
+327a76cb61417a2948531846f8ffea2aabbc0e17  # S2: include spellings
+56b8130c844bc28dce6aa76824fb7e27390098c2  # S2: build files and paths in text
+dab28bcf816ceed802a2ec058d825ac96e4bf2b6  # S2: the build of the split libraries
