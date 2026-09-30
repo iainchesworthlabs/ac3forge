@@ -18,6 +18,7 @@ Each script's header says what it does and takes. This page says in what order.
 | S2, build files | `python tools/n1b/n1b_cmake.py --root <worktree> --plan <plan.json>`: target names, output names and moved paths, and the paths `tests/CMakeLists.txt` names relative to itself. The build files of the split libraries are written by hand. |
 | S2, paths in text | `python tools/n1b/n1b_paths.py --root <worktree> --plan <plan.json>`: every other file that names a moved file by its repository path (pages, plans, comments, strings, a Python path built from its components, workflows, scripts) follows it, so `check_doc_paths.py` stays green. It lists the directories whose files went to several libraries and are still named. |
 | S3, the namespace root | `python tools/n1b/n1b_names.py --root <worktree>`; then `python tools/n1b/n1b_reflow.py --root <worktree> --base HEAD~1`, which wraps the lines the first pass pushed past the column limit. Each is committed alone (below). |
+| S4, packages and identifiers | `n1b_apply.py --scope packages` and `n1b_paths.py` (the package directories and the files named for the brand), `n1b_sendspin.py`, `n1b_idents.py`, `n1b_reflow.py`, and then `cargo fmt` and `cargo update --workspace --offline` in `rust/`. Each is committed alone (below). |
 
 The plan a stage writes is what the build-file pass reads, since the pass runs after the files have moved.
 All the passes are idempotent: a second run on a finished tree changes nothing.
@@ -157,6 +158,113 @@ and the exported names change by design, so those two are not compared), and
 What S3 leaves for S4: the CMake helper targets (`ac3::warnings`, `coverage`, `fmt`, `fmt_private`,
 `tracy`, `minimal_profile`), the C++ namespaces named for a program or a package (`ac3cli`, `ac3gui`,
 `ac3probe`, `ac3forge`, `ac3forge_c`) and `sendspin::ac3forge`.
+
+## S4, start to finish
+
+In a worktree of `main` with S3 merged, with `<before>` a record of that `main` (`baseline.py record` over an
+MSVC build with every option on and no `--target`; S3's own record of its result is one) and `<work>` a directory
+outside the tree. Each script arrives in a commit of its own just before the pass that uses it, so the parent of a
+scripted commit holds the script that made it: `layoutdef.py`'s package renames, then `n1b_sendspin.py`, then
+`n1b_idents.py` (with `--rewrite idents` for `export_diff.py` and `abi_compare.py`).
+
+    python tools/n1b/n1b_apply.py --root . --phase all --scope packages --json <work>/plan-s4.json   # 211 moves
+    git commit -m "S4: move the package directories"      # nothing added: the staged renames alone
+    git add -A && git commit -m "S4: include spellings"   # 96 includes in 66 files
+    python tools/n1b/n1b_paths.py --root . --plan <work>/plan-s4.json                                # 99 files
+    git add -A && git commit -m "S4: paths in text"
+    python tools/n1b/n1b_sendspin.py --root .                                                        # 33 files, 164 lines
+    git add -A && git commit -m "S4: sendspin::ac3forge becomes sendspin::player"
+    python tools/n1b/n1b_idents.py --root . --dry-run                                                # 713 files, 20 s
+    python tools/n1b/n1b_idents.py --root . --report <work>/idents-report.txt
+    git add -A && git commit -m "S4: the brand ac3forge becomes iclforge ..."
+    python tools/n1b/n1b_reflow.py --root . --base HEAD~1                                            # 19 lines in 9 files
+    git add -A && git commit -m "S4: wrap the lines the identifier pass pushed past 100 columns"
+    (cd rust && cargo fmt --all)                                                                     # 4 files
+    git add -A && git commit -m "S4: cargo fmt puts the renamed use items in order"
+    (cd rust && cargo update --workspace --offline)                                                  # Cargo.lock: 15 lines each way
+    git add -A && git commit -m "S4: Cargo.lock lists the renamed crates in cargo's order"
+
+Every one of these is what its script gives on its parent: a scratch repository made from
+`git -c core.autocrlf=false archive` of the parent, with the script run there from the scratch tree itself, gives
+the commit's blobs (3,034 paths, 3,038 with the two scripts), and a second run of each script changes nothing.
+`cargo fmt` is needed because rustfmt sorts the items of a `use` block and `iclforge` sorts after `common`;
+`cargo update --workspace --offline` because `cargo build --locked` refuses a `Cargo.lock` whose packages are not
+in cargo's order, which is where the text rename leaves the two workspace crates.
+
+The Sendspin namespace goes first. The C++ of the extension role `_ac3forge_player@v1` is
+`iclforge::sendspin::ac3forge`, which the identifier pass would make `iclforge::sendspin::iclforge`: inside
+`iclforge::sendspin` the unqualified `iclforge` then finds that namespace before the family's root. So
+`n1b_sendspin.py` makes it `player`, the word the role's name ends in, on every qualification (`sendspin::`, `ss::`,
+the fully spelled name, the namespace aliases) and on the unqualified name only where the scope is
+`iclforge::sendspin` (`src/sendspin`, the Hearth controller's comments). An unqualified `ac3forge::` elsewhere is the
+ESP-IDF component's own namespace, which the identifier pass merges into the root.
+
+### What `n1b_idents.py` decides
+
+One decision per occurrence, each with a name and a reason (`RULES` in the script; `--report` lists what was kept).
+It renames the brand where it is an identifier, a name or a string that both ends of something read: the C API
+(`ac3forge_*`, `AC3FORGE_*`, `AC3FORGEC_EXPORT`), CMake options and variables, the package config, Kconfig, the
+environment variables, the wire and format strings (`_ac3forge_player@v1`, the OTA project name, `ac3forge.probe/1`,
+`ac3forge_scene`, the container `writing_app`), file, package and release-asset names, the bindings (the Python
+module, the crates, the npm package and the JS factories `Ac3Forge...` to `IclForge...`) and the entries of the Qt
+catalogues that quote one. Four families carry a prefix of their own and move with it: the per-library export
+macros (`MP4_EXPORT` becomes `ICLFORGE_MP4_EXPORT`, the name `iclforge_add_library()` makes), the CMake helper
+targets (`ac3::warnings` becomes `iclforge::warnings`), the profiling macros (`AC3_ZONE_BEGIN` becomes
+`ICLFORGE_ZONE_BEGIN`) and the AC-3 library's files as comments still name them (`libac3forge.so` becomes
+`libiclforge_ac3.so`). It keeps, and says so:
+
+- **External identities**, which change with the repository (S5, and the owner's): the repository slug and the Pages
+  address, the SonarCloud project, the tap repository, and the paths a runner derives from the repository's name.
+- **What N1A renames** with the programs: a program's QSettings organisation, registry keys and user-data
+  directories, its icons, its window titles and every string a person reads, the QML module URIs, the Android
+  package and its JNI names, the Windows driver, the packages named for a program. In the trees that are a program's
+  (`PROGRAM_TREES`), and in QML, HTML and the Qt catalogues, the bare word `ac3forge` is the program's; the identifiers
+  and the strings both ends of the wire read are still renamed there.
+- **What reaches a signature**: the example key of `examples/object_signing.cpp` is a key's own bytes. No other
+  string of the family reaches a signature, an HMAC, a key derivation, a magic number or a tag: the strings were
+  searched in `src/signing`, `src/objects`, `src/ac3` (OAMD, JOC, EMDF), `src/sendspin`, the OTA image checks and
+  `apps/hearth`.
+
+Pages (`.md`), the history (`CHANGELOG.md`, `planning/`, the scripts of this migration) and the byte-exact trees
+(`tests/golden`, the released winget manifests) are not read. The winget package identity a later release is written
+under is `iainchesworthlabs.iclforge`: the submission of the old one (winget-pkgs #419594) was closed unmerged on
+2026-09-29, so nothing outside the repository holds it.
+
+### What the passes cannot decide, by hand
+
+- The pkg-config names, `iclforge-<library>` (`planning/layout.md` (e), the naming map): the library files stay `libiclforge_<library>`,
+  the `.pc` files and their `Requires` take a hyphen. `cmake/InstallLibrary.cmake`, `cmake/IclforgeLibrary.cmake`,
+  `cmake/PkgConfig.cmake`, `check_install_consumer.sh` and the consumers' comments.
+- The ESPHome component's namespace is `esphome::iclforge`, which the unqualified `iclforge::` finds before the
+  family's root: the references to the root are written `::iclforge::`. The component needs ESPHome's headers to
+  build, which this repository does not carry; against stub headers a compile of it (clang-cl `-fsyntax-only`) passes,
+  and fails without the four `::`.
+- Homebrew: the formula and the cask are both `iclforge`, `tap_migrations.json` maps `ac3forge` and `ac3gui` to
+  them and goes to the root of the tap (`manifest-bump.yml` copies it there).
+- winget: `bump_manifests.py` writes a later release under `manifests/i/iainchesworthlabs/iclforge/`, the four
+  released versions stay under `.../ac3forge/`, and `check_packaging_versions.sh` reads both directories with the
+  identity each one's name gives.
+- The three table generators write where their headers are; `gen_joc_tables.py` needs TS 103 420's text and was not
+  run. The PyPI project's description says "(formerly ac3forge)". The GUI test that reads the About dialog's
+  version line expects the library's, which begins `iclforge` now.
+
+The proof is S3's, with what S4 changes:
+
+    python tools/n1b/baseline.py compare <before> <after> --only hashes,cli
+    python tools/n1b/export_diff.py --old <before>/symbols-msvc.json --new <after>/symbols-msvc.json \
+        --rewrite idents                                       # every library the same, -0 +0
+    python tools/n1b/abi_compare.py <the parent's allowlists> tools/ci/abi-allowlist \
+        --map identity --rewrite idents                        # every library -0 +0; only libiclforge_c.so.txt changes as a file
+
+The hashes are identical. The CLI corpus differs in 14 of its 44 commands, and in nothing but the family's name:
+the `schema` line of the ten `probe` outputs (`ac3forge.probe/1`) and the handler or writing-application string of
+the four MP4 and Matroska files. `cli_bytes.py` hashes the outputs, so to see that nothing else moved run the corpus
+with the old and the new `ac3cli` and compare the files byte for byte: every difference is the `a` and the `3` of
+the old brand against the `i` and the `l` of the new, at the same offsets, and no length changes.
+
+What S4 leaves: N1A's list (the programs' own names and what they register: `--report` names every place), S5's
+(the pages, the changelog and the plans: 177 lines of `CHANGELOG.md`, 735 of `planning/`, 1,885 of `docs/` and the
+other pages), and the external identities.
 
 ## Proof
 
