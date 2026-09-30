@@ -21,11 +21,11 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/admbridge/bridge.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/bridge.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 // planning/ac4.md, I5's named exit criterion: "an ADM ... master from the committed fixtures the
 // E-AC-3 object tests use, encoded to AC-4 by atmos-adm and decoded with adm_out, gives objects

@@ -13,14 +13,14 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/crc16.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/render/spatial.hpp"
 
 namespace {
 

@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/audio/sink_capabilities.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
 
 // Parsing the text ALSA's HD-audio driver exposes at
 // /proc/asound/card<N>/eld#<dev>.<port> for an HDMI/DisplayPort output -

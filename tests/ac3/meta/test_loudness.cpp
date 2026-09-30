@@ -13,9 +13,9 @@
 #include <cstdint>
 #include <optional>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/meta/loudness.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
 
 // Momentary/short-term loudness, Loudness Range and true peak - the R128
 // metering full R128 metering adds on top of the pre-existing integrated_lkfs()

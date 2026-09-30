@@ -1,4 +1,4 @@
-#include "mp4/reader.hpp"
+#include "iclforge/mp4/reader.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "isobmff_detail.hpp"
-#include "mp4/mp4.hpp"
+#include "iclforge/mp4/mp4.hpp"
 
 namespace mp4 {
 

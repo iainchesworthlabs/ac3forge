@@ -13,11 +13,11 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/mdct.hpp"
-#include "ac3/core/window.hpp"
-#include "ac3/internal/arch/simd.hpp"
-#include "cpu_features.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/window.hpp"
+#include "iclforge/arithmetic/detail/simd.hpp"
+#include "iclforge/base/detail/cpu_features.hpp"
 
 #include "avx2_tier.hpp"
 

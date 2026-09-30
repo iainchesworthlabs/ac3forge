@@ -16,7 +16,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "pcm/acpl.hpp"
 #include "syntax/acpl.hpp"
 #include "syntax/channel_elements.hpp"

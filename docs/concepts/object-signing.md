@@ -68,8 +68,8 @@ Any code that links `ac3::signing` gets a key-less signer and must construct a k
 whole API surface is the key type plus the sign/verify calls:
 
 ```cpp
-#include "ac3/signing/signing_key.hpp"
-#include "ac3/signing/emdf_atmos_signer.hpp"
+#include "iclforge/signing/signing_key.hpp"
+#include "iclforge/signing/emdf_atmos_signer.hpp"
 
 // You own the bytes. There is no default, no built-in, no fallback key.
 ac3::signing::SigningKey key{ my_32_key_bytes };          // or:

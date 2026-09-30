@@ -6,10 +6,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/frames.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/frames.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 // Sendspin's transport mode (messaging.md, Communication and Fragmentation): once the Noise
 // handshake is done, every WebSocket binary message is one Noise transport message, and its

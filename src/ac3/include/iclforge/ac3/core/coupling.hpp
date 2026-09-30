@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/exponents.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Channel coupling (A/52 §7.4, §8.2.4-8.2.5): above a chosen frequency the
 // coupled channels stop carrying their own coefficients and share a single
@@ -47,7 +47,7 @@ struct BandLayout {
 // structure[i] set merges sub-band i into the band before it; structure[0] is
 // never consulted, because the first sub-band always opens a band. Indices
 // count from the FIRST COUPLED sub-band, which is how cplbndstrc is numbered.
-[[nodiscard]] AC3FORGE_EXPORT BandLayout group_bands(int cplbegf, int subbands,
+[[nodiscard]] ICLFORGE_AC3_EXPORT BandLayout group_bands(int cplbegf, int subbands,
                                                      std::span<const bool> structure);
 
 // The structure this encoder asks for. A coordinate restores a band's level,
@@ -55,7 +55,7 @@ struct BandLayout {
 // critical bandwidth is roughly 2 kHz at 10 kHz and 4 kHz at 15, against a
 // sub-band's 1125 Hz. The bands therefore widen with frequency, and how many
 // there are depends on where coupling starts as well as how far it runs.
-[[nodiscard]] AC3FORGE_EXPORT std::array<bool, kSubBands> band_structure(int cplbegf, int subbands);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::array<bool, kSubBands> band_structure(int cplbegf, int subbands);
 
 // The transmitted form of one coupling coordinate (§7.4.3). The master is
 // per channel, shared by all of that channel's bands; exponent and mantissa
@@ -76,7 +76,7 @@ inline constexpr int kSpxMantissaBits = 2;
 
 // Reconstruct exactly as the decoder does (§7.4.3), so the encoder can see
 // the value the decoder will actually apply.
-[[nodiscard]] AC3FORGE_EXPORT double decode_coordinate(Coordinate coordinate, int master,
+[[nodiscard]] ICLFORGE_AC3_EXPORT double decode_coordinate(Coordinate coordinate, int master,
                                                        int mantissa_bits = kCplMantissaBits);
 
 // The same reconstruction in the caller's scalar; decode_coordinate() is this
@@ -121,12 +121,12 @@ template <typename Scalar>
 
 // Quantize a linear coupling coordinate for a given per-channel master.
 // Values are clamped into the representable range rather than wrapping.
-[[nodiscard]] AC3FORGE_EXPORT Coordinate quantize_coordinate(double value, int master,
+[[nodiscard]] ICLFORGE_AC3_EXPORT Coordinate quantize_coordinate(double value, int master,
                                                              int mantissa_bits = kCplMantissaBits);
 
 // The smallest master (0..3) that keeps every coordinate in `values`
 // representable. The master buys 3 exponent steps at a time, extending the
 // range downward by 54 dB in total.
-[[nodiscard]] AC3FORGE_EXPORT int choose_master(std::span<const double> values);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int choose_master(std::span<const double> values);
 
 }  // namespace ac3::coupling

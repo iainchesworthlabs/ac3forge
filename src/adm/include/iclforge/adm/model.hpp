@@ -6,7 +6,7 @@
 #include <variant>
 #include <vector>
 
-#include "ac3adm/export.hpp"
+#include "iclforge/adm/export.hpp"
 
 // The Audio Definition Model (ADM) object graph and the container-level data
 // that surrounds it, per Recommendation ITU-R BS.2076-2 ("Audio definition

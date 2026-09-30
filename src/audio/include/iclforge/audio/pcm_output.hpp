@@ -7,10 +7,10 @@
 #include <span>
 #include <string>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/routing.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/routing.hpp"
 
 // A PCM output at the device's own width, with each rendered channel placed
 // where a routing patch says.

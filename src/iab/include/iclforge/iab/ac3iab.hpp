@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3iab/export.hpp"
-#include "ac3iab/model.hpp"
+#include "iclforge/iab/export.hpp"
+#include "iclforge/iab/model.hpp"
 
 // Top-level entry points for ac3iab::ac3iab: parses SMPTE ST 2098-2:2022's Immersive Audio
 // Bitstream into an IaFrame per frame (see model.hpp for the full element graph).

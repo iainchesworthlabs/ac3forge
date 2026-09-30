@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // The A/52 §7.2.2 parametric bit allocation — the decoder-defined heart of
 // AC-3. The decoder recomputes this routine from transmitted parameters
@@ -40,8 +40,8 @@ struct BitAllocCodes {
 
 // Tables 7.11 and 7.8. Exposed because an encoder picking the coupling
 // channel's leak seeds needs the same gains the allocator will apply.
-[[nodiscard]] AC3FORGE_EXPORT int fast_gain(int fgaincod);
-[[nodiscard]] AC3FORGE_EXPORT int slow_gain(int sgaincod);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int fast_gain(int fgaincod);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int slow_gain(int sgaincod);
 
 // E-AC-3 fast-gain control's measured fast-gain curve: the fgaincod a frame at
 // `bitrate_kbps` across `nfchans` full-bandwidth channels should use, in
@@ -53,7 +53,7 @@ struct BitAllocCodes {
 // material that confirmed its low end. Lives here rather than in either
 // encoder because both now use it and a measured constant duplicated across
 // two translation units is a constant that drifts.
-[[nodiscard]] AC3FORGE_EXPORT int rate_adaptive_fgaincod(int bitrate_kbps, int nfchans);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int rate_adaptive_fgaincod(int bitrate_kbps, int nfchans);
 
 // Table 7.13: the 50-band mask()/bndpsd() index a bitstream bin belongs to.
 // Exposed because a caller validating delta bit allocation segments before
@@ -61,7 +61,7 @@ struct BitAllocCodes {
 // attacker-controlled bitstream fields) needs the same channel-start band
 // this routine derives internally as bndstrt, rather than a second copy of
 // Table 7.13 guessing at the same value.
-[[nodiscard]] AC3FORGE_EXPORT int bin_to_band(int bin);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int bin_to_band(int bin);
 
 // §7.2.2.3: bins `start`..`end` of a psd[] curve log-added into the 50-band
 // grid, indexed by absolute band. Exposed for the same reason bin_to_band is:
@@ -70,7 +70,7 @@ struct BitAllocCodes {
 // ac3/encoder/bandwidth.hpp - has to band it with arithmetic identical to
 // the allocator's, or the two are not comparable in the same units.
 // Bands outside the requested range are left zero.
-[[nodiscard]] AC3FORGE_EXPORT std::array<int, 50> band_psd(std::span<const int> psd, int start,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::array<int, 50> band_psd(std::span<const int> psd, int start,
                                                            int end);
 
 // §7.2.2.1: the composite SNR offset.
@@ -128,7 +128,7 @@ struct BitAllocRegion {
 // even when the region starts higher, so both span [0, endmant).
 // csnroffst == 0 && fsnroffst == 0 triggers the §7.2.2.1.1 special case
 // (all-zero bap).
-AC3FORGE_EXPORT void compute_bit_allocation(std::span<const std::uint8_t> exps,
+ICLFORGE_AC3_EXPORT void compute_bit_allocation(std::span<const std::uint8_t> exps,
                                             SampleRate sample_rate, const BitAllocCodes& codes,
                                             int csnroffst, int fsnroffst,
                                             std::span<std::uint8_t> bap,
@@ -155,7 +155,7 @@ struct MaskingCurve {
 
 // §7.2.2.2-7.2.2.5. Reads region.start, region.coupling and the leaks; the
 // delta segments, snr_all_zero and high_efficiency are the other half's.
-[[nodiscard]] AC3FORGE_EXPORT MaskingCurve compute_masking_curve(std::span<const std::uint8_t> exps,
+[[nodiscard]] ICLFORGE_AC3_EXPORT MaskingCurve compute_masking_curve(std::span<const std::uint8_t> exps,
                                                                  SampleRate sample_rate,
                                                                  const BitAllocCodes& codes,
                                                                  const BitAllocRegion& region);
@@ -163,7 +163,7 @@ struct MaskingCurve {
 // §7.2.2.6-7.2.2.7 from a curve compute_masking_curve gave for the same exps
 // and region (its start, coupling and leaks; the delta, snr_all_zero and
 // high_efficiency fields are read here). `codes` supplies the floor.
-AC3FORGE_EXPORT void allocate_from_curve(std::span<const std::uint8_t> exps,
+ICLFORGE_AC3_EXPORT void allocate_from_curve(std::span<const std::uint8_t> exps,
                                          const MaskingCurve& curve, const BitAllocCodes& codes,
                                          int csnroffst, int fsnroffst, std::span<std::uint8_t> bap,
                                          const BitAllocRegion& region);
@@ -185,13 +185,13 @@ AC3FORGE_EXPORT void allocate_from_curve(std::span<const std::uint8_t> exps,
 // region's `delta` field. The returned deltoffst[0] is relative to the
 // channel's own start band (bin_to_band(start)), matching how
 // compute_bit_allocation() applies it back — see that function's own note.
-[[nodiscard]] AC3FORGE_EXPORT DeltaSegments choose_delta_segments(
+[[nodiscard]] ICLFORGE_AC3_EXPORT DeltaSegments choose_delta_segments(
     std::span<const double> coefficients, std::span<const std::uint8_t> exps, int start);
 
 // The float form, for the float encode path (AC3FORGE_ENCODE_SCALAR): the
 // same comparison from float coefficients. Everything past the per-bin
 // magnitude is integer psd arithmetic in either form.
-[[nodiscard]] AC3FORGE_EXPORT DeltaSegments choose_delta_segments(
+[[nodiscard]] ICLFORGE_AC3_EXPORT DeltaSegments choose_delta_segments(
     std::span<const float> coefficients, std::span<const std::uint8_t> exps, int start);
 
 }  // namespace ac3

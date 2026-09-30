@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 // The messages of Sendspin's handshake phase (messaging.md, Communication;
 // connection.md, Encryption): the cleartext client/init, server/init and

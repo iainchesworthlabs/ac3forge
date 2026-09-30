@@ -43,8 +43,8 @@
 #include <string>
 #include <vector>
 
-#include "ac4/syntax.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4/syntax.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 namespace ac4dec_test {
 

@@ -7,9 +7,9 @@
 #include <span>
 #include <utility>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/render/layout.hpp"
 #include "ac4_stream.hpp"
 
 // See session.hpp.

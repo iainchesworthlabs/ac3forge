@@ -7,7 +7,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "bit_writer.hpp"
 
 // The metadata a frame carries beside the audio, as the codes the syntax

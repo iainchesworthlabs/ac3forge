@@ -1,4 +1,4 @@
-#include "ac3/oba/scene.hpp"
+#include "iclforge/objects/scene.hpp"
 
 #include <algorithm>
 #include <array>
@@ -15,8 +15,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/oba/oamd.hpp"
-#include "ac3/oba/placement.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/placement.hpp"
 #include "scene_text.hpp"
 
 namespace ac3::oba {

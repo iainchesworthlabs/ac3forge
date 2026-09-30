@@ -1,6 +1,6 @@
 #include "stream_player_controller.hpp"
 
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -12,15 +12,15 @@
 #include <thread>
 #include <utility>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_channels.hpp"
 #include "ac4_presentations.hpp"
 #include "ac4_sync_word.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "channel_geometry.hpp"
 
 using splayer_detail::RawResult;

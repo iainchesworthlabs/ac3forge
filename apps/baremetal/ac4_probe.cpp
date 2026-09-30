@@ -37,8 +37,8 @@
 #include <cstdlib>
 #include <span>
 
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 #include "ac4_fixture.hpp"
 #include "probe.hpp"

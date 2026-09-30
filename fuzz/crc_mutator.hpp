@@ -36,9 +36,9 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/crc16.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 // libFuzzer's own mutation engine, callable from inside a custom mutator.
 // Declared here rather than included from anywhere: libFuzzer ships no

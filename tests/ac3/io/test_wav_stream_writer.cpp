@@ -10,7 +10,7 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // WavStreamWriter exists so a live capture session (which can run an hour or
 // more) never has to hold the whole take in memory - these tests exercise

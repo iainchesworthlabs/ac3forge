@@ -13,7 +13,7 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // ac3::io::read_wav/parse_wav (src/forge/src/io/wav.cpp) is the file every
 // codec-path test in this suite leans on to get real audio in and decoded

@@ -9,15 +9,15 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/quality/distortion.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/export.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // What to encode, and how - the decisions a front end collects from a user and
 // hands to the encoders, in one place.
@@ -151,17 +151,17 @@ inline constexpr std::array<LayoutInfo, 8> kLayouts{{
     return kLayouts[static_cast<std::size_t>(id)];
 }
 
-[[nodiscard]] AC3FORGE_EXPORT std::optional<LayoutId> parse_layout(std::string_view name);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<LayoutId> parse_layout(std::string_view name);
 
 // The layout a source of this width most naturally is, for a front end that
 // must pick one before being told. Widths with no layout of their own (3, 4
 // and 5 channels) answer with the narrowest layout that holds them, which
 // leaves the channels they lack silent rather than inventing any.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<LayoutId> layout_for_source(std::size_t wav_channels);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<LayoutId> layout_for_source(std::size_t wav_channels);
 
 // "mono | stereo | 51 | ...", built from kLayouts so a usage line and the
 // parser that rejects a bad token cannot list different sets.
-[[nodiscard]] AC3FORGE_EXPORT std::string layout_names(Codec codec = Codec::kEac3);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string layout_names(Codec codec = Codec::kEac3);
 
 // Whether this codec can carry this layout at all. AC-3 stops at 5.1, as the
 // layouts without a dependent substream do; E-AC-3 carries every one. AC-4 takes
@@ -197,7 +197,7 @@ using ChannelPlanError = eac3::chanmap::AllocationError;
 // The plan a named layout has always built: its bed's acmod/lfe and its
 // dependents' chanmaps, unchanged from what LayoutId's own hand-picked
 // constants (k71Rear, kTopQuad, k512Height) already gave it.
-[[nodiscard]] AC3FORGE_EXPORT ChannelPlan channel_plan_for(LayoutId id);
+[[nodiscard]] ICLFORGE_AC3_EXPORT ChannelPlan channel_plan_for(LayoutId id);
 
 // Table E2.5 location names, comma-separated ("L,C,R,LFE,Vhl,Vhr"), as an
 // alternative to a named layout for whatever combination the format allows
@@ -205,11 +205,11 @@ using ChannelPlanError = eac3::chanmap::AllocationError;
 // Vhl/Vhr, Lts/Rts) must name both members - Table E2.5 has no bit for one
 // alone. Returns nullopt on an unrecognised name, an unpaired pair member, or
 // an empty list.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<std::uint16_t> parse_channels(std::string_view text);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<std::uint16_t> parse_channels(std::string_view text);
 
 // The inverse, in Table E2.5 bit order. Round-trips through parse_channels,
 // the way format_tools/parse_tools already do for coding tools.
-[[nodiscard]] AC3FORGE_EXPORT std::string format_channels(std::uint16_t locations);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_channels(std::uint16_t locations);
 
 // One coded channel of one substream, in transmission order.
 struct CodedChannel {
@@ -225,24 +225,24 @@ struct CodedChannel {
 
 // Every coded channel of a plan, in the order encode_access_unit() wants
 // them. For a named layout, size is layout(id).transmitted.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<CodedChannel> coded_channels(const ChannelPlan& plan);
-[[nodiscard]] AC3FORGE_EXPORT std::vector<CodedChannel> coded_channels(LayoutId id);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<CodedChannel> coded_channels(const ChannelPlan& plan);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<CodedChannel> coded_channels(LayoutId id);
 
 // Names for those channels, for meters and reports. A bed channel a dependent
 // replaces is marked, because otherwise a 7.1 display shows "Ls" twice with
 // different levels and no way to tell which is which.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::string> coded_channel_names(const ChannelPlan& plan);
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::string> coded_channel_names(LayoutId id);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::string> coded_channel_names(const ChannelPlan& plan);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::string> coded_channel_names(LayoutId id);
 
 // The independent substream's own coding mode - the plan a decoder that
 // ignores every dependent would play.
-[[nodiscard]] AC3FORGE_EXPORT Acmod bed_acmod(LayoutId id);
-[[nodiscard]] AC3FORGE_EXPORT bool bed_lfe(LayoutId id);
+[[nodiscard]] ICLFORGE_AC3_EXPORT Acmod bed_acmod(LayoutId id);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool bed_lfe(LayoutId id);
 
 // Every distinct location the plan renders, bed and dependents combined -
 // what layout(id).rendered counts for a named layout, generalised to any
 // plan.
-[[nodiscard]] AC3FORGE_EXPORT int rendered_channel_count(const ChannelPlan& plan);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int rendered_channel_count(const ChannelPlan& plan);
 
 // Speaker locations reordered into the order a WAV file interleaves them
 // (WAVE_FORMAT_EXTENSIBLE: FL FR FC LFE BL BR ...): entry i is the index in
@@ -253,7 +253,7 @@ struct CodedChannel {
 // Exported because the decode side needs the same answer: a decoded stream is
 // written out as a WAV, and if that used a different convention from the one
 // the encode side reads, a file would not survive a round trip.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::size_t> wav_order(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::size_t> wav_order(
     std::span<const eac3::chanmap::Location> locations);
 
 // Same permutation as wav_order(locations), for callers reordering a decoded
@@ -266,7 +266,7 @@ struct CodedChannel {
 // over `channel_count` in that case; Ch1 and Ch2 have no speaker location to
 // sort by, only the coded order decode_access_unit already documents them
 // in, which identity preserves.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::size_t> monitor_order(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::size_t> monitor_order(
     std::span<const eac3::chanmap::Location> locations, std::size_t channel_count);
 
 // --- Annex E coding tools ---------------------------------------------------
@@ -384,11 +384,11 @@ inline constexpr std::string_view kToolsSyntax =
 // or out of range, leaving `out` partially written - callers reject rather
 // than continue, because a silently ignored tool looks exactly like a tool
 // that did not help.
-[[nodiscard]] AC3FORGE_EXPORT bool parse_tools(std::string_view text, Tools& out);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_tools(std::string_view text, Tools& out);
 
 // The inverse, so a front end can show what it is about to do in the same
 // vocabulary the command line takes. Round-trips through parse_tools.
-[[nodiscard]] AC3FORGE_EXPORT std::string format_tools(const Tools& tools);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_tools(const Tools& tools);
 
 // --- variable bit rate -------------------------------------------------------
 
@@ -410,12 +410,12 @@ inline constexpr std::string_view kVbrSyntax =
 // above max, or with a min/max bound that excludes the average, leaving `out`
 // partially written - the same reject-rather-than-continue rule parse_tools
 // follows, for the same reason.
-[[nodiscard]] AC3FORGE_EXPORT bool parse_vbr(std::string_view text,
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_vbr(std::string_view text,
                                              std::optional<eac3::VbrConfig>& out);
 
 // The inverse, so a front end can show what it is about to do in the same
 // vocabulary the command line takes. Round-trips through parse_vbr.
-[[nodiscard]] AC3FORGE_EXPORT std::string format_vbr(const std::optional<eac3::VbrConfig>& vbr);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_vbr(const std::optional<eac3::VbrConfig>& vbr);
 
 // --- dynamic range, loudness and downmix metadata ---------------------------
 
@@ -498,12 +498,12 @@ struct Metadata {
 // derived from cmixlev/surmixlev/dmixmod (or taken from the explicit
 // overrides where they are set), lfemix, and everything Metadata::mixdepth
 // carries verbatim.
-[[nodiscard]] AC3FORGE_EXPORT meta::MixMetadata mix_metadata(const Metadata& options);
+[[nodiscard]] ICLFORGE_AC3_EXPORT meta::MixMetadata mix_metadata(const Metadata& options);
 
 // Annex D's xbsi1/xbsi2 the same options imply, for the AC-3 path. xbsi1 is
 // the same five levels mix_metadata() derives, minus the LFE level Annex D
 // has no field for.
-[[nodiscard]] AC3FORGE_EXPORT meta::AlternateBsi alternate_bsi(const Metadata& options);
+[[nodiscard]] ICLFORGE_AC3_EXPORT meta::AlternateBsi alternate_bsi(const Metadata& options);
 
 // --- the plan ---------------------------------------------------------------
 
@@ -549,7 +549,7 @@ enum class PlanError : std::uint8_t {
     kUnknownCodec,
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(PlanError error);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(PlanError error);
 
 // The plan's channel plan: custom_locations resolved through allocate() if
 // set, else channel_plan_for(layout). Every function below that consumes a
@@ -560,17 +560,17 @@ enum class PlanError : std::uint8_t {
 // eac3_config() (and so this) to reach the per-substream rates it has to
 // check. That call is made only after the channel checks have passed, so what
 // it resolves is always a selection allocate() could satisfy.
-[[nodiscard]] AC3FORGE_EXPORT ChannelPlan resolve(const Plan& plan);
+[[nodiscard]] ICLFORGE_AC3_EXPORT ChannelPlan resolve(const Plan& plan);
 
 // AC-3 only; the caller has already checked carries(). Coupling comes from
 // tools.coupling, which is the one Annex E selector A/52 §7.4 also defines for
 // the base syntax.
-[[nodiscard]] AC3FORGE_EXPORT EncoderConfig ac3_config(const Plan& plan);
+[[nodiscard]] ICLFORGE_AC3_EXPORT EncoderConfig ac3_config(const Plan& plan);
 
 // E-AC-3, including the dependent substreams the layout needs. Each dependent
 // gets its own slice of the rate rather than a share of the independent's:
 // substreams occupy one frame period, not one frame.
-[[nodiscard]] AC3FORGE_EXPORT eac3::AccessUnitConfig eac3_config(const Plan& plan);
+[[nodiscard]] ICLFORGE_AC3_EXPORT eac3::AccessUnitConfig eac3_config(const Plan& plan);
 
 // One programme of an access unit, built from a plan of its own: the same
 // independent-plus-dependents shape eac3_config() produces, without the
@@ -582,7 +582,7 @@ enum class PlanError : std::uint8_t {
 //
 // substreamid is not set here: the access unit assigns it by position, so a
 // programme does not know its own id until it is placed.
-[[nodiscard]] AC3FORGE_EXPORT eac3::ProgrammeConfig eac3_programme(const Plan& plan);
+[[nodiscard]] ICLFORGE_AC3_EXPORT eac3::ProgrammeConfig eac3_programme(const Plan& plan);
 
 // The one diagnosis every front end shares: std::nullopt if this plan is one
 // the encoders can actually be built from, else the first thing wrong with
@@ -593,7 +593,7 @@ enum class PlanError : std::uint8_t {
 // substreams, which leaves its channel_count() at zero. A Codec::kAc4 plan is
 // held to what this library can know of AC-4, its layout and sample rate;
 // ac4::Encoder::refusal_reason() names what the AC-4 encoder refuses beyond them.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<PlanError> validate(const Plan& plan);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<PlanError> validate(const Plan& plan);
 
 // --- routing a source onto a plan -------------------------------------------
 
@@ -603,7 +603,7 @@ enum class PlanError : std::uint8_t {
 // they picked - a microphone is two channels and will stay two channels
 // however immersive the target is. So a source is placed onto the target's
 // speakers by direction rather than by index.
-struct AC3FORGE_EXPORT Routing {
+struct ICLFORGE_AC3_EXPORT Routing {
     int source_channels = 0;
     int coded_channels = 0;
     // Row-major [coded * source_channels + source]. Mostly zero.
@@ -624,11 +624,11 @@ struct AC3FORGE_EXPORT Routing {
 // delivers. The downmix levels matter because folding a wide source into a
 // narrow layout is §7.8's job, not a panner's, and §7.8 is defined in terms of
 // exactly these two levels.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Routing> route(const ChannelPlan& target,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<Routing> route(const ChannelPlan& target,
                                                            std::size_t wav_channels,
                                                            meta::CentreMixLevel clev,
                                                            meta::SurroundMixLevel slev);
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Routing> route(LayoutId target,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<Routing> route(LayoutId target,
                                                            std::size_t wav_channels,
                                                            meta::CentreMixLevel clev,
                                                            meta::SurroundMixLevel slev);
@@ -636,7 +636,7 @@ struct AC3FORGE_EXPORT Routing {
 // Applies a routing to one frame. `source` holds source_channels spans of
 // `samples` samples; `coded` holds coded_channels spans of the same length and
 // is OVERWRITTEN. No allocation.
-AC3FORGE_EXPORT void render(const Routing& routing, std::span<const std::span<const float>> source,
+ICLFORGE_AC3_EXPORT void render(const Routing& routing, std::span<const std::span<const float>> source,
                             std::span<const std::span<float>> coded, std::size_t samples);
 
 }  // namespace ac3::plan

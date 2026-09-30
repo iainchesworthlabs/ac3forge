@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/verify/mirror.hpp"
-#include "ac3/verify/selfcheck.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
+#include "iclforge/ac3/verify/selfcheck.hpp"
 
 // ac3::verify - the encoder/decoder mirror check. See ac3/verify/mirror.hpp
 // for what it compares and why the bit offset at each block boundary is the

@@ -6,7 +6,7 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/sendspin/dialect.hpp"
+#include "iclforge/sendspin/dialect.hpp"
 
 // The two timestamped audio chunks a Sendspin player receives.
 //

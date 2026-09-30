@@ -38,11 +38,11 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/admbridge/bridge.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/bridge.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 namespace {
 

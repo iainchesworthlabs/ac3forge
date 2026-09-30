@@ -1,13 +1,13 @@
-#include "ac3/io/stream_accumulator.hpp"
+#include "iclforge/ac3/io/stream_accumulator.hpp"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 
 namespace ac3::io {
 

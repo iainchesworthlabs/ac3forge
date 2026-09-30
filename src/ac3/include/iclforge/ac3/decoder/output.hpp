@@ -6,12 +6,12 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/downmix_target.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/base/downmix_target.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // The decoder's output stage: what happens between "the coded channels have
 // been reconstructed" and "these are the samples a listener hears".
@@ -215,7 +215,7 @@ struct MixLevels {
 // -3 dB; and no LFE mix level, so §7.8's stated +10 dB ideal stands. That is
 // the whole of a bsid-8 stream's downmix information; the overload below adds
 // what an Annex D stream can say on top of it.
-[[nodiscard]] AC3FORGE_EXPORT MixLevels mix_levels(
+[[nodiscard]] ICLFORGE_AC3_EXPORT MixLevels mix_levels(
     std::optional<meta::CentreMixLevel> cmixlev, std::optional<meta::SurroundMixLevel> surmixlev);
 
 // AC-3 including Annex D's xbsi1 group (bsid 6). `alternate` is
@@ -245,7 +245,7 @@ struct MixLevels {
 // The four levels are converted as they are given. FrameDecoder has already
 // read a reserved surround level (Tables D2.4/D2.6) as -1.5 dB by then, the
 // same substitution the E-AC-3 reader makes for mixmdate.
-[[nodiscard]] AC3FORGE_EXPORT MixLevels mix_levels(
+[[nodiscard]] ICLFORGE_AC3_EXPORT MixLevels mix_levels(
     Acmod acmod, std::optional<meta::CentreMixLevel> cmixlev,
     std::optional<meta::SurroundMixLevel> surmixlev,
     const std::optional<meta::AlternateBsi>& alternate);
@@ -254,18 +254,18 @@ struct MixLevels {
 // wire at all - falls back on the AC-3 defaults above rather than on zero, so
 // a stream that says nothing folds down the same way either generation of it
 // would.
-[[nodiscard]] AC3FORGE_EXPORT MixLevels mix_levels(const std::optional<meta::MixMetadata>& mix);
+[[nodiscard]] ICLFORGE_AC3_EXPORT MixLevels mix_levels(const std::optional<meta::MixMetadata>& mix);
 
 // How many channels apply() will leave behind for a given coded programme.
 // kAsCoded reports the coded count unchanged.
-[[nodiscard]] AC3FORGE_EXPORT std::size_t output_channel_count(const OutputConfig& config,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::size_t output_channel_count(const OutputConfig& config,
                                                                Acmod acmod, bool lfe);
 
 // The stage itself. Stateful: the Lt/Rt phase shift carries a filter tail
 // across frames and RF mode carries its protection gain, so one instance
 // belongs to one stream and frames go through it in order - the same
 // contract the decoders' own overlap-add state has.
-class AC3FORGE_EXPORT OutputStage {
+class ICLFORGE_AC3_EXPORT OutputStage {
    public:
     OutputStage() = default;
     explicit OutputStage(const OutputConfig& config) : config_(config) {}

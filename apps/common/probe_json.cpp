@@ -5,11 +5,11 @@
 #include <fmt/format.h>
 #include <utility>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // See probe_json.hpp. Moved here from apps/cli/commands/probe.cpp, which
 // writes the same document it always did through these.

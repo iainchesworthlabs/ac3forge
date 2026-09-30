@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "mp4/mp4.hpp"
-#include "mp4/reader.hpp"
+#include "iclforge/mp4/mp4.hpp"
+#include "iclforge/mp4/reader.hpp"
 
 // Two halves, the same split the Matroska reader's tests make.
 //

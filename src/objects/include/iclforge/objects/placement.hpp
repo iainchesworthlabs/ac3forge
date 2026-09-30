@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 namespace ac3::oba {
 

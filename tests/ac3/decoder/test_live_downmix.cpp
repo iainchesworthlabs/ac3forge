@@ -6,9 +6,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
 
 // The live session's parallel 5.1 downmix receiver leg (bundle B2, item 16)
 // feeds a second, independent ac3::FrameEncoder the main plan's ALREADY-

@@ -1,4 +1,4 @@
-#include "ac3/encoder/bandwidth.hpp"
+#include "iclforge/ac3/encoder/bandwidth.hpp"
 
 #include <algorithm>
 #include <array>
@@ -6,10 +6,10 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/bitalloc_tables.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/bitalloc_tables.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 namespace ac3::encoder {
 

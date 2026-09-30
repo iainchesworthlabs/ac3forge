@@ -10,18 +10,18 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/noise.hpp"
-#include "ac3/sendspin/pairing_flow.hpp"
-#include "ac3/sendspin/pairing_messages.hpp"
-#include "ac3/sendspin/server_store.hpp"
-#include "ac3/sendspin/state_roles.hpp"
-#include "ac3/sendspin/stream_roles.hpp"
-#include "ac3/sendspin/websocket.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/noise.hpp"
+#include "iclforge/sendspin/pairing_flow.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/server_store.hpp"
+#include "iclforge/sendspin/state_roles.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/websocket.hpp"
 
 // A Sendspin server on a computer: every connection to its clients, whichever side dialled, and
 // the groups that play to them (planning/hearth-reference-player.md, A4, the server half).

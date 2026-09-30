@@ -5,9 +5,9 @@
 #include <span>
 #include <vector>
 
-#include "ac4/detail/real.hpp"
-#include "acpl/acpl.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/acpl/acpl.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 // Advanced joint object coding's signal processing, ETSI TS 103 190-2 V1.3.1
 // clause 5.7: the parameter band mapping (5.7.3.1, Table 28), differential

@@ -12,9 +12,9 @@
 
 #include <fmt/format.h>
 
-#include "ac3/sendspin/base64.hpp"
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/json.hpp"
+#include "iclforge/sendspin/base64.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/json.hpp"
 
 namespace ac3::hearth {
 

@@ -1,10 +1,10 @@
-#include "ac3/version.hpp"
+#include "iclforge/ac3/version.hpp"
 
 #include <fmt/format.h>
 
 #include <string>
 
-#include "ac3/internal/arch/simd.hpp"
+#include "iclforge/arithmetic/detail/simd.hpp"
 
 namespace ac3 {
 

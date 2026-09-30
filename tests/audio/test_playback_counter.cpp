@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <thread>
 
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/playback_counter.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/playback_counter.hpp"
 
 // ac3::audio::PlaybackCounter against a fake device's clock
 // (src/audio/include/ac3/audio/playback_counter.hpp).

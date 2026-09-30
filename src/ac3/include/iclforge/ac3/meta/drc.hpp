@@ -5,8 +5,8 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Dynamic range metadata — A/52 §7.7.
 //
@@ -102,8 +102,8 @@ static_assert(compr_gain(0x80) == 1.0 / 256.0);  // X = −8, Y = 0: −48.16 dB
 // Nearest representable word for a gain in dB. Nearest is measured on the
 // LINEAR gain, because that is where both formats quantise uniformly; the
 // difference from nearest-in-dB is under a thousandth of a dB.
-[[nodiscard]] AC3FORGE_EXPORT std::uint8_t encode_dynrng(double gain_db);
-[[nodiscard]] AC3FORGE_EXPORT std::uint8_t encode_compr(double gain_db);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::uint8_t encode_dynrng(double gain_db);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::uint8_t encode_compr(double gain_db);
 
 // The largest representable gain that does NOT EXCEED gain_db. Rounding to
 // nearest can round up by half a step — 0.14 dB for compr — and §7.7.2 exists
@@ -114,9 +114,9 @@ static_assert(compr_gain(0x80) == 1.0 / 256.0);  // X = −8, Y = 0: −48.16 dB
 //
 // A gain_db above the format's maximum still clamps to the maximum: that
 // exceeds the request, but the alternative is to mute the programme.
-[[nodiscard]] AC3FORGE_EXPORT std::uint8_t encode_compr_at_most(double gain_db);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::uint8_t encode_compr_at_most(double gain_db);
 
-[[nodiscard]] AC3FORGE_EXPORT double to_db(double linear_gain);
+[[nodiscard]] ICLFORGE_AC3_EXPORT double to_db(double linear_gain);
 
 // --- the compression characteristic ---------------------------------------
 
@@ -202,7 +202,7 @@ enum class ProfileId : std::uint8_t {
 inline constexpr std::string_view kProfileNames =
     "film-standard | film-light | music-standard | music-light | speech";
 
-[[nodiscard]] AC3FORGE_EXPORT bool parse_profile(std::string_view name, ProfileId& out);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_profile(std::string_view name, ProfileId& out);
 
 // The static curve: gain in dB for a dialogue-referenced level in dBFS.
 // Monotonically non-increasing, continuous, and exactly zero across the null
@@ -229,7 +229,7 @@ inline constexpr std::string_view kProfileNames =
 // is excluded here for the same reason BS.1770 excludes it, that a subwoofer
 // channel's energy is not proportional to what the programme sounds like.
 // Returns a large negative number for digital silence rather than −inf.
-[[nodiscard]] AC3FORGE_EXPORT double level_dbfs(std::span<const std::span<const float>> channels);
+[[nodiscard]] ICLFORGE_AC3_EXPORT double level_dbfs(std::span<const std::span<const float>> channels);
 
 // True peak of a single channel, in dBFS. Dual mono (acmod 0) has no downmix
 // to measure — §7.7.2.2 is explicit that compr applies to Ch1's own signal
@@ -239,17 +239,17 @@ inline constexpr std::string_view kProfileNames =
 // for the same reason mono_downmix_peak_dbfs takes one: the frame that has
 // just gone quiet still owns the loud tail sitting in block 0's window. Pass
 // an empty span when there is none to account for.
-[[nodiscard]] AC3FORGE_EXPORT double channel_peak_dbfs(std::span<const double> history,
+[[nodiscard]] ICLFORGE_AC3_EXPORT double channel_peak_dbfs(std::span<const double> history,
                                                        std::span<const float> samples);
 // The same, for a history the caller keeps in float - the encoders' analysis
 // front end under ac3/internal/encode_scalar.hpp's float variant.
-[[nodiscard]] AC3FORGE_EXPORT double channel_peak_dbfs(std::span<const float> history,
+[[nodiscard]] ICLFORGE_AC3_EXPORT double channel_peak_dbfs(std::span<const float> history,
                                                        std::span<const float> samples);
 
 // One dynrng word per audio block. State carries across blocks AND frames:
 // the smoothing filter has no idea where a syncframe boundary is, and it must
 // not, or every 32 ms the gain would jump.
-class AC3FORGE_EXPORT RangeController {
+class ICLFORGE_AC3_EXPORT RangeController {
    public:
     RangeController(const Profile& profile, SampleRate rate);
     // Declared (and defined in drc.cpp, where Impl below is complete) rather
@@ -304,7 +304,7 @@ struct HeavyConfig {
 // a guarantee about instantaneous peaks and this control signal only updates
 // once per 32 ms frame: a peak that arrives in a frame must be caught by that
 // frame's word or it is not caught at all.
-class AC3FORGE_EXPORT HeavyCompressor {
+class ICLFORGE_AC3_EXPORT HeavyCompressor {
    public:
     HeavyCompressor(const HeavyConfig& config, SampleRate rate);
     // Same dllexport/unique_ptr reasoning as RangeController above.

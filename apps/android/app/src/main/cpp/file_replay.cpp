@@ -24,11 +24,11 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 namespace {
 

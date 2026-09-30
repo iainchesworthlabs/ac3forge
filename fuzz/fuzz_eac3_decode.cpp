@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
 #include "crc_mutator.hpp"
 
 // Mirrors ac3cli's 'decode' path for E-AC-3 (apps/cli/main.cpp:

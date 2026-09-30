@@ -6,8 +6,8 @@
 #include <string_view>
 #include <vector>
 
-#include "mp4/export.hpp"
-#include "mp4/mp4.hpp"
+#include "iclforge/mp4/export.hpp"
+#include "iclforge/mp4/mp4.hpp"
 
 // HLS signaling (RFC 8216, "HTTP Live Streaming") for the CMAF segments
 // mp4::fragment() produces.

@@ -14,10 +14,10 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/admbridge/bridge.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/bridge.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 // ac3cli's 'decode ... adm_out=' path (legacy item IM2's write direction - apps/cli/commands/decode.cpp's
 // accumulate_adm/run_decode_eac3). Real, subprocess-level integration test: the same "run the actual

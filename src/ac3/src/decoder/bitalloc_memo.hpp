@@ -5,8 +5,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 // §7.2.2's inputs for one stream's last bit allocation, and whether that
 // allocation is still what the stream's `bap` holds. Shared by both decoders

@@ -1,8 +1,8 @@
-#include "ac3/sendspin/codec.hpp"
+#include "iclforge/sendspin/codec.hpp"
 
 #include <memory>
 
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/messages.hpp"
 #include "codecs.hpp"
 
 namespace ac3::sendspin::codec {

@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/chunks.hpp"
-#include "ac3/sendspin/json.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/sendspin/json.hpp"
 
 // _ac3forge_player@v1 (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1): the
 // objects the role adds to client/hello, client/state, stream/start and server/command, each a

@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/mxf.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/mxf.hpp"
 
 // ac3iab::parse_mxf_iab (mxf.hpp) - IAB reader, phase 2. These tests build MXF-level KLV
 // fixtures byte-by-byte, independently of src/ac3iab/src/mxf_reader.cpp's own implementation - the

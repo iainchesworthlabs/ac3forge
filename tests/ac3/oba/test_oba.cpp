@@ -10,12 +10,12 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/bitwriter.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/base/bitwriter.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 namespace {
 

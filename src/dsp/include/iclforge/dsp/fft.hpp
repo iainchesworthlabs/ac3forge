@@ -2,7 +2,7 @@
 
 #include <span>
 
-#include "ac3/export.hpp"
+#include "iclforge/dsp/export.hpp"
 
 // A general N=512-point complex DFT, unrelated to the AC-3 MDCT/IMDCT pair in
 // mdct.hpp: enhanced coupling's decode algorithm (A/52:2018 §E3.5.5.1 step 5)
@@ -27,7 +27,7 @@ namespace ac3 {
 
 inline constexpr int kDftLength = 512;
 
-AC3FORGE_EXPORT void dft512(std::span<const double, kDftLength> real_in,
+ICLFORGE_DSP_EXPORT void dft512(std::span<const double, kDftLength> real_in,
                             std::span<const double, kDftLength> imag_in,
                             std::span<double, kDftLength> real_out,
                             std::span<double, kDftLength> imag_out);
@@ -39,7 +39,7 @@ AC3FORGE_EXPORT void dft512(std::span<const double, kDftLength> real_in,
 // power of two in either type. Not the double result narrowed - the
 // butterflies round in float - which is the same class of difference the
 // float coefficient store already accepted at the inverse transform.
-AC3FORGE_EXPORT void dft512(std::span<const float, kDftLength> real_in,
+ICLFORGE_DSP_EXPORT void dft512(std::span<const float, kDftLength> real_in,
                             std::span<const float, kDftLength> imag_in,
                             std::span<float, kDftLength> real_out,
                             std::span<float, kDftLength> imag_out);

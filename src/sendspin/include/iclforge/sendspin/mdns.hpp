@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "ac3/sendspin/discovery.hpp"
+#include "iclforge/sendspin/discovery.hpp"
 
 // The discovery seam's backend on a computer: DNS-SD over IPv4 mDNS with mjansson's mdns.
 //

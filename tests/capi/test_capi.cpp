@@ -31,13 +31,13 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3forge_c/ac3forge.h"
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge_c/iclforge.h"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 namespace {
 

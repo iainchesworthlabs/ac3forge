@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/render/float_biquad.hpp"
+#include "iclforge/render/float_biquad.hpp"
 
 // The identify tone: pink noise at a known level, on one output at a time, so
 // that whoever is setting up a room can hear which speaker an output reaches.

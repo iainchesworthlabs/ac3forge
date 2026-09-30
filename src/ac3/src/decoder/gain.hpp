@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <optional>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/internal/decode_scalar.hpp"
-#include "ac3/meta/drc.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/detail/decode_scalar.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
 
 // The §7.7 gain math both decoders apply, shared so a future correction to
 // the partial-compression exponent or the compr-fallback rule only has one

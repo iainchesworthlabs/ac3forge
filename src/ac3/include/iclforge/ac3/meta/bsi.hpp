@@ -5,9 +5,9 @@
 #include <string>
 #include <string_view>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // The bit stream information a frame carries ABOUT itself, as opposed to the
 // coding parameters that say how to decode it.
@@ -211,26 +211,26 @@ struct AlternateBsi {
 // syntax has five, so writing it would not merely record the wrong level, it
 // would push every following field one bit along and the frame would decode as
 // something else entirely.
-[[nodiscard]] AC3FORGE_EXPORT bool valid_bsi_info(const BsiInfo& value);
-[[nodiscard]] AC3FORGE_EXPORT bool valid_alternate_bsi(const AlternateBsi& value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool valid_bsi_info(const BsiInfo& value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool valid_alternate_bsi(const AlternateBsi& value);
 
 // True for Table 5.7's associated-service codes (VI, HI, D, C, E, and VO -
 // code 7 at acmod 1/0 only); false for a main service (CM, ME, or karaoke -
 // code 7 anywhere else). The one place bsmod's meaning depends on acmod, same
 // condition describe() below already renders as text - this is that same
 // question asked as a bool, for a caller deciding rather than displaying.
-[[nodiscard]] AC3FORGE_EXPORT bool is_associated_service(BitstreamMode value, Acmod acmod);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool is_associated_service(BitstreamMode value, Acmod acmod);
 
 // Names for a front end to show, in the same order as each enum's values.
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(BitstreamMode value, Acmod acmod);
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(SurroundMode value);
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(SurroundExMode value);
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(HeadphoneMode value);
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(AdConverterType value);
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(RoomType value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(BitstreamMode value, Acmod acmod);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(SurroundMode value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(SurroundExMode value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(HeadphoneMode value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(AdConverterType value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(RoomType value);
 // Table D2.2's indication for either codec - "reserved" for '11', which
 // neither A/52 nor TS 102 366 assigns (see DownmixMode's own comment).
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(DownmixMode value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(DownmixMode value);
 
 // The CLI token vocabularies, shared with the help text so the two cannot
 // drift. Each parse function returns false on anything unrecognised and
@@ -243,13 +243,13 @@ inline constexpr std::string_view kHeadphoneModeNames = "none | off | on";
 inline constexpr std::string_view kAdConverterNames = "standard | hdcd";
 inline constexpr std::string_view kRoomTypeNames = "none | large | small";
 
-[[nodiscard]] AC3FORGE_EXPORT bool parse_bsmod(std::string_view text, BitstreamMode& out);
-[[nodiscard]] AC3FORGE_EXPORT bool parse_surround_mode(std::string_view text, SurroundMode& out);
-[[nodiscard]] AC3FORGE_EXPORT bool parse_surround_ex_mode(std::string_view text,
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_bsmod(std::string_view text, BitstreamMode& out);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_surround_mode(std::string_view text, SurroundMode& out);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_surround_ex_mode(std::string_view text,
                                                           SurroundExMode& out);
-[[nodiscard]] AC3FORGE_EXPORT bool parse_headphone_mode(std::string_view text, HeadphoneMode& out);
-[[nodiscard]] AC3FORGE_EXPORT bool parse_ad_converter(std::string_view text, AdConverterType& out);
-[[nodiscard]] AC3FORGE_EXPORT bool parse_room_type(std::string_view text, RoomType& out);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_headphone_mode(std::string_view text, HeadphoneMode& out);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_ad_converter(std::string_view text, AdConverterType& out);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_room_type(std::string_view text, RoomType& out);
 
 // "HH:MM:SS", "HH:MM:SS:FF" or "HH:MM:SS:FF.N" (N being 1/64ths of a frame),
 // split across the two halves §5.4.2.26 defines: the coarse half takes the
@@ -259,11 +259,11 @@ inline constexpr std::string_view kRoomTypeNames = "none | large | small";
 // strange thing to ask for by writing out the seconds.
 inline constexpr std::string_view kTimeCodeSyntax = "HH:MM:SS[:FF[.N]] (FF 0..29, N 1/64 frame)";
 
-[[nodiscard]] AC3FORGE_EXPORT bool parse_timecode(std::string_view text, TimeCodeCoarse& coarse,
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_timecode(std::string_view text, TimeCodeCoarse& coarse,
                                                   TimeCodeFine& fine);
 
 // The inverse, in the same "HH:MM:SS:FF.N" vocabulary parse_timecode takes.
-[[nodiscard]] AC3FORGE_EXPORT std::string format_timecode(const TimeCodeCoarse& coarse,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_timecode(const TimeCodeCoarse& coarse,
                                                           const TimeCodeFine& fine);
 
 }  // namespace ac3::meta

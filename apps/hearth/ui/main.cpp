@@ -44,11 +44,11 @@
 #include <QTimer>
 #include <QUrl>
 
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 #include <optional>
 
-#include "ac3/sendspin/firewall.hpp"
+#include "iclforge/sendspin/firewall.hpp"
 #include "language_manager.hpp"
 #include "native_log_sink.hpp"
 

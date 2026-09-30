@@ -241,11 +241,11 @@ def main_source(with_ac4: bool) -> str:
     prove nothing.
     """
     lines = [
-        '#include "ac3/decoder/decoder.hpp"',
-        '#include "ac3/decoder/output.hpp"',
+        '#include "iclforge/ac3/decoder/decoder.hpp"',
+        '#include "iclforge/ac3/decoder/output.hpp"',
     ]
     if with_ac4:
-        lines.append('#include "ac4dec/decoder.hpp"')
+        lines.append('#include "iclforge/ac4dec/decoder.hpp"')
     lines += [
         "#include <array>",
         "#include <span>",

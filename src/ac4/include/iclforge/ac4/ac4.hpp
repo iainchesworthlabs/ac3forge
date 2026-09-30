@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac4/export.hpp"
+#include "iclforge/ac4/export.hpp"
 
 // AC-4 sync-frame / table-of-contents / presentation / substream-group
 // framing. ETSI TS 103 190-1 V1.4.1 (2025-07), "Digital Audio Compression

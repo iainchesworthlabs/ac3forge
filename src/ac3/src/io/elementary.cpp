@@ -1,4 +1,4 @@
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -12,10 +12,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 namespace ac3::io {
 

@@ -6,8 +6,8 @@
 #include <optional>
 #include <vector>
 
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/encoder/plan.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
 
 // Assignment is the explicit alternative to route()'s automatic panning: a
 // caller states exactly where each source channel goes rather than letting

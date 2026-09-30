@@ -6,9 +6,9 @@
 #include <span>
 #include <vector>
 
-#include "ajoc/ajoc.hpp"
+#include "iclforge/ac4core/ajoc/ajoc.hpp"
 #include "ajoc/ajoc_syntax.hpp"
-#include "dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 #include "frame/timing.hpp"
 
 // The encoder's A-JOC: ETSI TS 103 190-2 V1.3.1 clause 5.7 run from the other

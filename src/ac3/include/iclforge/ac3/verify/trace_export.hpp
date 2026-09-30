@@ -4,9 +4,9 @@
 #include <string>
 #include <string_view>
 
-#include "ac3/export.hpp"
-#include "ac3/verify/eac3_mirror.hpp"
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 
 // research trace export: getting the encoder/decoder mirror trace (ac3/verify/mirror.hpp,
 // ac3/verify/eac3_mirror.hpp) out in a form someone doing codec research can
@@ -56,19 +56,19 @@ namespace ac3::verify {
 
 // "frame,substream,block,stream,kind,index,value\n" - write this once, before
 // the first append_trace_csv call, for a self-describing file.
-[[nodiscard]] AC3FORGE_EXPORT std::string_view trace_csv_header();
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view trace_csv_header();
 
-AC3FORGE_EXPORT void append_trace_csv(const FrameTrace& trace, std::uint64_t frame_index,
+ICLFORGE_AC3_EXPORT void append_trace_csv(const FrameTrace& trace, std::uint64_t frame_index,
                                       std::string& out);
-AC3FORGE_EXPORT void append_trace_csv(const Eac3AccessUnitTrace& trace, std::uint64_t frame_index,
+ICLFORGE_AC3_EXPORT void append_trace_csv(const Eac3AccessUnitTrace& trace, std::uint64_t frame_index,
                                       std::string& out);
 
 // JSON Lines (one compact object per row, same columns as the CSV form) -
 // not one JSON document per file, so a caller can append and flush frame by
 // frame the same way the CSV form does, without a closing bracket to manage.
-AC3FORGE_EXPORT void append_trace_json_lines(const FrameTrace& trace, std::uint64_t frame_index,
+ICLFORGE_AC3_EXPORT void append_trace_json_lines(const FrameTrace& trace, std::uint64_t frame_index,
                                              std::string& out);
-AC3FORGE_EXPORT void append_trace_json_lines(const Eac3AccessUnitTrace& trace,
+ICLFORGE_AC3_EXPORT void append_trace_json_lines(const Eac3AccessUnitTrace& trace,
                                              std::uint64_t frame_index, std::string& out);
 
 }  // namespace ac3::verify

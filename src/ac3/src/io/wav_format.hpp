@@ -7,7 +7,7 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // The RIFF/RF64 header walk and the sample conversion, shared by wav.cpp's
 // whole-file readers and wav_stream_reader.cpp's block-at-a-time one.

@@ -5,7 +5,7 @@
 #include <numeric>
 #include <vector>
 
-#include "ac3/decoder/transient_prenoise.hpp"
+#include "iclforge/ac3/decoder/transient_prenoise.hpp"
 
 namespace {
 

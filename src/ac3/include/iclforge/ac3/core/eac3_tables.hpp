@@ -11,10 +11,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/layout.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/base/layout.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // The Annex E tables that both sides of the codec need. An encoder writes a
 // chanmap and a decoder reads one; a frame exponent strategy is a table
@@ -321,7 +321,7 @@ enum class AllocationError : std::uint8_t {
     kOrphanLfe2,  // LFE2 was requested with no full-bandwidth channel left to share its substream
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(AllocationError error);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(AllocationError error);
 
 // The Table 5.8 acmod/lfeon that code exactly the channels `mask` names, or
 // nullopt if no combination does - which happens only when `mask` asks for
@@ -330,12 +330,12 @@ enum class AllocationError : std::uint8_t {
 // both code four), so a fixed preference (documented at the definition)
 // breaks the tie; existing named layouts are built to agree with that choice,
 // so this is not a free-standing decision, it is what they already assume.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<std::pair<Acmod, bool>> acmod_for_chanmap(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<std::pair<Acmod, bool>> acmod_for_chanmap(
     std::uint16_t mask);
 
 // The inverse of name(): the Table E2.5 location a display name (as name()
 // prints it, e.g. "Ls", "LFE2") stands for, or nullopt for anything else.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Location> parse_location(std::string_view name);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<Location> parse_location(std::string_view name);
 
 // A concrete, general E-AC-3 channel plan: the independent substream's own
 // acmod/lfeon (Table 5.8 - only a dependent may carry a custom chanmap, so
@@ -355,7 +355,7 @@ struct ChannelPlan {
 // shapes, and among those that fit, the widest one leaves the least for
 // dependents to carry. Everything `locations` asks for that the bed cannot
 // express is packed into dependents of at most kMaxSubstreamChannels each.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<ChannelPlan, AllocationError> allocate(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<ChannelPlan, AllocationError> allocate(
     std::uint16_t locations);
 
 }  // namespace chanmap

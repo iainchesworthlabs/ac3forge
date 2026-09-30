@@ -20,7 +20,7 @@
 #include <QVariant>
 #include <QVariantMap>
 
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 #include "crucible_controller.hpp"
 #include "diagnostics.hpp"

@@ -21,9 +21,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "acpl/acpl.hpp"
-#include "ajoc/ajoc.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/acpl/acpl.hpp"
+#include "iclforge/ac4core/ajoc/ajoc.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 namespace {
 

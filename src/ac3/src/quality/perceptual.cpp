@@ -1,4 +1,4 @@
-#include "ac3/quality/perceptual.hpp"
+#include "iclforge/ac3/quality/perceptual.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,10 +9,10 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/internal/profiling.hpp"
-#include "ac3/quality/distortion.hpp"  // kBands, BandNoise
+#include "iclforge/ac3/core/bitalloc_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/base/detail/profiling.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"  // kBands, BandNoise
 
 // std::min<int> rather than bare std::min throughout this file: the band
 // tables are std::int32_t, which is 'long int' on arm-none-eabi and 'int' on

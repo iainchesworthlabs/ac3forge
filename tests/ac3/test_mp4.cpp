@@ -11,14 +11,14 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "mp4/hls.hpp"
-#include "mp4/mp4.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/mp4/hls.hpp"
+#include "iclforge/mp4/mp4.hpp"
 
 // These tests read the muxer's output back with an independent ISOBMFF box
 // walker rather than comparing against bytes this same code produced - the

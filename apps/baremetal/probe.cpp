@@ -35,11 +35,11 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tools.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/core/eac3_tools.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/spatial.hpp"
 
 #include "fixture.hpp"
 #include "probe.hpp"

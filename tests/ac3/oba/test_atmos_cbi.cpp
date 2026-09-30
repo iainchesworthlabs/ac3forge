@@ -9,10 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 // AtmosEncoder's channel-based-immersive (CBI) bed path: program.bed != 0,
 // dynamic_objects == 0, coded through OAMD+JOC exactly like a dynamic-object

@@ -10,14 +10,14 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 #include "container_input.hpp"
-#include "matroska/matroska.hpp"
-#include "mp4/mp4.hpp"
-#include "mp4/reader.hpp"
-#include "mpegts/mpegts.hpp"
+#include "iclforge/matroska/matroska.hpp"
+#include "iclforge/mp4/mp4.hpp"
+#include "iclforge/mp4/reader.hpp"
+#include "iclforge/mpegts/mpegts.hpp"
 
 namespace {
 

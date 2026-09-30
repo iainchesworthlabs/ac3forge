@@ -2,8 +2,8 @@
 
 #include <span>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // A/52:2018 §3.7.2 / Figure E3.2: transient pre-noise time-scaling synthesis.
 // A pure post-process on decoded PCM - it touches no bitstream, transform or
@@ -69,7 +69,7 @@ struct TransientPrenoiseRange {
     int first = 0;
     int last = 0;
 };
-[[nodiscard]] AC3FORGE_EXPORT TransientPrenoiseRange transient_prenoise_range(int transloc,
+[[nodiscard]] ICLFORGE_AC3_EXPORT TransientPrenoiseRange transient_prenoise_range(int transloc,
                                                                              int translen);
 
 // Applies the correction in place. `pcm` is one full-bandwidth channel's
@@ -93,6 +93,6 @@ struct TransientPrenoiseRange {
 // fixed-point tier's Q7.24, whichever this library was built with - the way
 // the output stage's per-sample products do, so a fixed-point build stays
 // integer arithmetic here too.
-AC3FORGE_EXPORT void apply_transient_prenoise(std::span<float> pcm, int transloc, int translen);
+ICLFORGE_AC3_EXPORT void apply_transient_prenoise(std::span<float> pcm, int transloc, int translen);
 
 }  // namespace ac3

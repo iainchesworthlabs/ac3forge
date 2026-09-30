@@ -3,7 +3,7 @@
 
 #include <optional>
 
-#include "ac3/meta/qc.hpp"
+#include "iclforge/ac3/meta/qc.hpp"
 
 // ac3::meta::qc.hpp's own surface: the named delivery-gate presets (roadmap
 // C2, refreshed by IO11) and the pure gate-evaluation math ac3cli qc and

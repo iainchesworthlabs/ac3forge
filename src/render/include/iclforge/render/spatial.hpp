@@ -5,8 +5,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/layout.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/base/layout.hpp"
+#include "iclforge/render/export.hpp"
 
 // The spatial/object layer: applications place and move mono sources around
 // the listener; the renderer turns the scene into a 5.1 channel bed that
@@ -46,7 +46,7 @@ using PanGains = std::array<double, kBedChannels>;
 
 // Energy-normalized pairwise pan of a direction (degrees, CCW from front,
 // any value; normalized internally) onto the 5.1 ring.
-[[nodiscard]] AC3FORGE_EXPORT PanGains pan_azimuth(double azimuth_deg);
+[[nodiscard]] ICLFORGE_RENDER_EXPORT PanGains pan_azimuth(double azimuth_deg);
 
 // The same pan onto an ARBITRARY horizontal ring, which is what any layout
 // wider than 5.1 needs: 7.1 puts its side surrounds at 90° and its rears at
@@ -60,7 +60,7 @@ using PanGains = std::array<double, kBedChannels>;
 // is singular and both gains solve negative. Across such an arc this
 // crossfades at constant power instead, which agrees with the pairwise
 // solution at both edges and never drops the source into silence.
-AC3FORGE_EXPORT void pan_ring(double azimuth_deg, std::span<const double> ring_azimuth_deg,
+ICLFORGE_RENDER_EXPORT void pan_ring(double azimuth_deg, std::span<const double> ring_azimuth_deg,
                               std::span<double> gains);
 
 // The same pan, addressed by a room-anchored position instead of an angle:
@@ -77,7 +77,7 @@ AC3FORGE_EXPORT void pan_ring(double azimuth_deg, std::span<const double> ring_a
 // The consequence is worth stating plainly: two sources at the same azimuth
 // and different heights get IDENTICAL bed gains, and nothing downstream can
 // tell them apart from the bed alone.
-[[nodiscard]] AC3FORGE_EXPORT PanGains pan_room(double x, double y);
+[[nodiscard]] ICLFORGE_RENDER_EXPORT PanGains pan_room(double x, double y);
 
 // --- arbitrary-layout, height-aware panning ---------------------------------
 //
@@ -118,7 +118,7 @@ inline constexpr double kNegligibleGain = 1e-9;
 // return {0, 0}; a caller that means to pan a source should exclude them
 // first (see PanTargets below), since an LFE-type entry here says nothing
 // about where the LFE speaker is.
-[[nodiscard]] AC3FORGE_EXPORT Direction direction_of(base::Location location, bool has_rears,
+[[nodiscard]] ICLFORGE_RENDER_EXPORT Direction direction_of(base::Location location, bool has_rears,
                                                      bool has_side_discrete);
 
 // A layout's full-bandwidth locations and the direction each one sits at,
@@ -139,7 +139,7 @@ struct PanTargets {
     }
 };
 
-[[nodiscard]] AC3FORGE_EXPORT PanTargets pan_targets(std::span<const base::Location> locations);
+[[nodiscard]] ICLFORGE_RENDER_EXPORT PanTargets pan_targets(std::span<const base::Location> locations);
 
 // One source direction spread over a target speaker set. Two rings - the
 // listener's plane and the ceiling - each panned by azimuth (via pan_ring
@@ -150,7 +150,7 @@ struct PanTargets {
 // than a cosine-attenuated share: a 5.1 ring has no height speakers, and a
 // legacy decoder has to hear everything or backward compatibility means
 // nothing - the same rule pan_room states for the 5.1 bed.
-AC3FORGE_EXPORT void pan_direction(Direction source, std::span<const Direction> targets,
+ICLFORGE_RENDER_EXPORT void pan_direction(Direction source, std::span<const Direction> targets,
                                     std::span<double> gains);
 
 // The direction an object-audio-metadata room position (TS 103 420 §4.2.1:
@@ -168,7 +168,7 @@ AC3FORGE_EXPORT void pan_direction(Direction source, std::span<const Direction> 
 // "the ceiling" - the two are independent numbers that only happen to agree
 // at kHeightElevationDeg for a source at the room's outer edge, which is
 // where every named height location in Table E2.5 sits.
-[[nodiscard]] AC3FORGE_EXPORT Direction position_direction(double x, double y, double z);
+[[nodiscard]] ICLFORGE_RENDER_EXPORT Direction position_direction(double x, double y, double z);
 
 struct ObjectState {
     double azimuth_deg = 0.0;
@@ -179,7 +179,7 @@ struct ObjectState {
 // Renders mono objects into a 5.1 bed (5 fullbw channels + LFE), one
 // 256-sample block at a time, ramping each object's channel gains linearly
 // from the previous block's values to the current targets.
-class AC3FORGE_EXPORT BedRenderer {
+class ICLFORGE_RENDER_EXPORT BedRenderer {
    public:
     // Returns the object's index. Call before rendering starts (allocates).
     std::size_t add_object(const ObjectState& initial);

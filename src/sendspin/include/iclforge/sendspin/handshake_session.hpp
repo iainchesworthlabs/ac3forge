@@ -6,10 +6,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 // Sendspin's handshake phase as two state machines (connection.md, Encryption): Initiator is
 // the server's side and Responder the client's, whichever side dialled. Each is fed the text

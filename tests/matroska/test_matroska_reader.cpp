@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "matroska/matroska.hpp"
-#include "matroska/reader.hpp"
+#include "iclforge/matroska/matroska.hpp"
+#include "iclforge/matroska/reader.hpp"
 
 // The reader's tests come in two halves, for two different questions.
 //

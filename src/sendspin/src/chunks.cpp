@@ -1,4 +1,4 @@
-#include "ac3/sendspin/chunks.hpp"
+#include "iclforge/sendspin/chunks.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -6,7 +6,7 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/sendspin/frames.hpp"
+#include "iclforge/sendspin/frames.hpp"
 
 namespace ac3::sendspin {
 

@@ -4,9 +4,9 @@
 #include <mutex>
 #include <optional>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/handshake_session.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/handshake_session.hpp"
 
 // What a Sendspin server remembers about its clients (pairing.md, Pairing Records and Unpaired
 // Access): the long-term PSK of each pairing, the pairing PSK an operator entered from a client's

@@ -9,10 +9,10 @@
 #include <span>
 #include <vector>
 
-#include "ac3/dsp/qmf.hpp"
-#include "ac3/export.hpp"
-#include "ac3/oba/joc_domain.hpp"
-#include "ac3/oba/joc_tables.hpp"
+#include "iclforge/dsp/qmf.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/objects/joc_domain.hpp"
+#include "iclforge/ac3/oba/joc_tables.hpp"
 
 // Joint Object Coding - ETSI TS 103 420 clause 6. The tool that gets more
 // objects out of a decoder than there are channels in the bitstream.
@@ -245,11 +245,11 @@ struct FrameParameters {
 
 // §6.6.4's quantizer, and its inverse. The step is 820/(4096*(1+fine)) and the
 // origin sits at nquant/2, so code nquant/2 is exactly zero gain.
-[[nodiscard]] AC3FORGE_EXPORT int quantize(double coefficient, bool fine_quant);
-[[nodiscard]] AC3FORGE_EXPORT double dequantize(int code, bool fine_quant);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int quantize(double coefficient, bool fine_quant);
+[[nodiscard]] ICLFORGE_AC3_EXPORT double dequantize(int code, bool fine_quant);
 
 // One joc() payload (§6.2.1), padded to whole bytes for emdf_payload_size.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::byte> build_payload(const FrameParameters& params);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::byte> build_payload(const FrameParameters& params);
 
 // --- Decode ------------------------------------------------------------
 
@@ -268,7 +268,7 @@ struct FrameParameters {
 // joc_ext_data() syntax, so there is no length to skip), a Huffman codeword
 // in neither table, more objects than §6.3.2.4's own cap, and a payload that
 // does not end within a byte of where its coefficients do.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<FrameParameters> parse_payload(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<FrameParameters> parse_payload(
     std::span<const std::byte> payload);
 
 // --- Audio reconstruction -----------------------------------------------
@@ -491,7 +491,7 @@ struct ReconstructionState {
 // every fast-path test validates against; Eac3Decoder passes
 // DecoderConfig::fast_mdct for the first and DecoderConfig::fast_imdct for
 // the second.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::vector<float>> reconstruct(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::vector<float>> reconstruct(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
     ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
     Domain domain = Domain::kQmf);

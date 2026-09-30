@@ -10,13 +10,13 @@
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 // Reconstruction-level coverage for the three 7-channel JOC downmix
 // configurations (Table 47 idx 1/2/4), which decode_substream_core alone

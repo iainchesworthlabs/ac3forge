@@ -6,7 +6,7 @@
 #include <memory>
 #include <string_view>
 
-#include "ac3/oba/scene.hpp"
+#include "iclforge/objects/scene.hpp"
 
 // A live object-position source over OSC (live OSC object positions): a UDP listener on
 // its own thread, feeding an ac3::oba::SceneCursor once per encoder frame.

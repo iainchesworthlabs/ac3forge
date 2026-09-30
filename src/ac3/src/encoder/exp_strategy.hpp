@@ -7,8 +7,8 @@
 #include <cstdlib>
 #include <span>
 
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 // Exponent-run planning, shared by both encoders' §8.2.8 reuse-span decisions
 // (AC-3's encoder.cpp and E-AC-3's eac3_frame.cpp).

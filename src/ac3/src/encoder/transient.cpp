@@ -1,12 +1,12 @@
-#include "ac3/encoder/transient.hpp"
+#include "iclforge/ac3/encoder/transient.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <numbers>
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 #include <span>
 
 namespace ac3 {
@@ -140,7 +140,7 @@ bool BasicTransientDetector<Scalar>::detect(std::span<const float, 256> pcm) {
 // runs - the same operations in the same order the non-template class did,
 // so tests/golden/bitstream-hashes.json holds. The float one is the
 // minimum-footprint profile's (ac3/internal/encode_scalar.hpp).
-template class AC3FORGE_TEMPLATE_INSTANTIATE BasicTransientDetector<double>;
-template class AC3FORGE_TEMPLATE_INSTANTIATE BasicTransientDetector<float>;
+template class ICLFORGE_AC3_TEMPLATE_INSTANTIATE BasicTransientDetector<double>;
+template class ICLFORGE_AC3_TEMPLATE_INSTANTIATE BasicTransientDetector<float>;
 
 }  // namespace ac3

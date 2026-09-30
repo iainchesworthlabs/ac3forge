@@ -8,15 +8,15 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/core/crc16.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/emdf/frame_layout.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/object_strip.hpp"
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/emdf/frame_layout.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/object_strip.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 
 // The claim ac3::io::strip_objects makes is narrow and checkable: the object
 // layer goes, and the AUDIO does not change at all. So the assertions here

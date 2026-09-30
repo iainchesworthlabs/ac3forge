@@ -1,4 +1,4 @@
-#include "ac3/encoder/plan.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
 
 #include <algorithm>
 #include <array>
@@ -18,15 +18,15 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/render/spatial.hpp"
 
 namespace ac3::plan {
 

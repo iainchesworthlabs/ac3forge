@@ -7,10 +7,10 @@
 #include <span>
 #include <vector>
 
-#include "ac4dec/decoder.hpp"
-#include "dsp/qmf.hpp"
-#include "dsp/resampler.hpp"
-#include "dsp/synthesis.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/resampler.hpp"
+#include "iclforge/ac4core/dsp/synthesis.hpp"
 #include "pcm/acpl.hpp"
 #include "pcm/ajcc.hpp"
 #include "pcm/ajoc.hpp"

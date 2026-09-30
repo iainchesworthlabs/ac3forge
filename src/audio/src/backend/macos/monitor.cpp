@@ -1,4 +1,4 @@
-#include "ac3/audio/monitor.hpp"
+#include "iclforge/audio/monitor.hpp"
 
 // The macOS monitor backend. CMake compiles this directory's monitor.cpp
 // under APPLE and another platform directory's everywhere else, so there is
@@ -46,8 +46,8 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/playback_counter.hpp"
-#include "ac3/audio/ring_buffer.hpp"
+#include "iclforge/audio/playback_counter.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
 #include "coreaudio_names.hpp"
 #include "coreaudio_support.hpp"
 

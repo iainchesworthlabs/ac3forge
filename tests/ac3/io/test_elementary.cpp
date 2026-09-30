@@ -9,14 +9,14 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"  // split_frames, to lift a dependent out of an access unit
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/metadata_edit.hpp"
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"  // split_frames, to lift a dependent out of an access unit
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 
 namespace {
 

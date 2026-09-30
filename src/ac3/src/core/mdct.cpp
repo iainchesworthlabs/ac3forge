@@ -1,4 +1,4 @@
-#include "ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
 
 #include <array>
 #include <cassert>
@@ -8,11 +8,11 @@
 #include <span>
 #include <type_traits>
 
-#include "ac3/core/window.hpp"
-#include "ac3/internal/arch/simd.hpp"
+#include "iclforge/ac3/core/window.hpp"
+#include "iclforge/arithmetic/detail/simd.hpp"
 
-#include "cpu_features.hpp"
-#include "fft_kernel.hpp"
+#include "iclforge/base/detail/cpu_features.hpp"
+#include "iclforge/dsp/detail/fft_kernel.hpp"
 #include "mdct_avx2.hpp"
 #include "reference_transform.hpp"
 

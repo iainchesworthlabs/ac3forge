@@ -22,7 +22,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "pcm/downmix.hpp"
 #include "pcm/renderer.hpp"
 #include "syntax/metadata.hpp"

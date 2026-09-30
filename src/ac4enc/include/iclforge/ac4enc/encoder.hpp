@@ -11,9 +11,9 @@
 #include <string_view>
 #include <vector>
 
-#include "ac4/ac4.hpp"
-#include "ac4/syntax.hpp"
-#include "ac4enc/export.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4/syntax.hpp"
+#include "iclforge/ac4enc/export.hpp"
 
 // An AC-4 encoder: ETSI TS 103 190-1 V1.4.1 (2025-07), "Part 1: Channel based
 // coding", and ETSI TS 103 190-2 V1.3.1 (2025-07), "Part 2: Immersive and

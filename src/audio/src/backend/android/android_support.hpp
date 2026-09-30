@@ -3,8 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // The Android backend's pure half, split out for the same reason
 // platform/alsa/device_names.hpp is: everything here compiles and tests on a

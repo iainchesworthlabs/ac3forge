@@ -10,9 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/export.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/oba/placement.hpp"
+#include "iclforge/objects/export.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/placement.hpp"
 
 // An object scene: what is in the room, where each thing goes, and when.
 //
@@ -122,13 +122,13 @@ struct Orientation {
     double roll_rad = 0.0;
 };
 
-[[nodiscard]] AC3FORGE_EXPORT Orientation orientation_from_degrees(double yaw_deg,
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT Orientation orientation_from_degrees(double yaw_deg,
                                                                    double pitch_deg,
                                                                    double roll_deg);
 
 // One position through one orientation. Exposed because the GUI's room plan
 // has to draw what the encoder will emit, not what was authored.
-[[nodiscard]] AC3FORGE_EXPORT Position rotate(const Position& position,
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT Position rotate(const Position& position,
                                               const Orientation& orientation);
 
 enum class SceneErrorKind : std::uint8_t {
@@ -165,7 +165,7 @@ struct SceneError {
 // are validated at construction and cannot then go out of order - except for
 // the orientation, which is a view-level transform a caller is expected to
 // turn while a session is open.
-class AC3FORGE_EXPORT ObjectScene {
+class ICLFORGE_OBJECTS_EXPORT ObjectScene {
    public:
     // Sorts each object's automation by time and rejects the ways a scene can
     // be unusable (see SceneErrorKind). An empty object LIST is
@@ -243,7 +243,7 @@ struct SceneUpdate {
 // reports a position in the same room coordinates the timeline is authored in,
 // so turning the scene has to turn the live object with it or a live object and
 // its authored neighbours would end up in different rooms.
-class AC3FORGE_EXPORT SceneCursor {
+class ICLFORGE_OBJECTS_EXPORT SceneCursor {
    public:
     explicit SceneCursor(ObjectScene scene);
 
@@ -299,14 +299,14 @@ struct SceneContents {
 // automation point per line, numbers short-round-tripped (the shortest decimal
 // that reads back as the same double), so a scene under version control shows
 // real edits rather than formatting churn.
-[[nodiscard]] AC3FORGE_EXPORT std::string to_json(const ObjectScene& scene);
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::string to_json(const ObjectScene& scene);
 
-[[nodiscard]] AC3FORGE_EXPORT std::expected<ObjectScene, SceneError> scene_from_json(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::expected<ObjectScene, SceneError> scene_from_json(
     std::string_view text);
 
 // The same read, stopping short of ObjectScene::create - for a caller that
 // wants to apply its own policy to the objects first. See SceneContents above.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<SceneContents, SceneError> read_scene_json(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::expected<SceneContents, SceneError> read_scene_json(
     std::string_view text);
 
 // The keyframe grammar ac3cli's atmos-path and atmos-encode have always read,
@@ -324,33 +324,33 @@ struct SceneContents {
 // atmos-path and its atmos-encode already disagree about it). Objects come back
 // indexed by object_index, unnamed, with gaps present as empty automation;
 // fill those, then ObjectScene::create.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<SceneObject>, SceneError>
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::expected<std::vector<SceneObject>, SceneError>
 scene_objects_from_keyframe_text(std::string_view text);
 
 // The same grammar, written back out. Object indices are scene order; names,
 // bed assignments, per-point interpolation and orientation have no column to
 // live in and are dropped, which is the reason to prefer to_json() for
 // anything a user will reload.
-[[nodiscard]] AC3FORGE_EXPORT std::string to_keyframe_text(const ObjectScene& scene);
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::string to_keyframe_text(const ObjectScene& scene);
 
 // The same, over raw objects rather than a validated scene - so a writer whose
 // indices are SPARSE can keep them. An object with no automation contributes no
 // lines, which is exactly how the format spells a skipped index; the GUI's
 // export needs that, because a bed-pinned channel occupies an index that
 // atmos-encode's own model has no object for.
-[[nodiscard]] AC3FORGE_EXPORT std::string to_keyframe_text(std::span<const SceneObject> objects);
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::string to_keyframe_text(std::span<const SceneObject> objects);
 
 // Reads either form: JSON when the first non-whitespace character is '{',
 // otherwise the keyframe grammar. Sniffing rather than trusting a file
 // extension, because the CLI's argument has always just been a path and both
 // forms have to keep working there.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<SceneContents, SceneError> read_scene(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::expected<SceneContents, SceneError> read_scene(
     std::string_view text);
 
 // read_scene() plus the simplest possible gap policy: an index the keyframe
 // form skipped becomes an object that sits at `fallback` and never moves. For a
 // caller that has no per-index policy of its own.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<ObjectScene, SceneError> scene_from_text(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::expected<ObjectScene, SceneError> scene_from_text(
     std::string_view text, const ObjectPlacement& fallback = {});
 
 }  // namespace ac3::oba

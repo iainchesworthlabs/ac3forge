@@ -11,13 +11,13 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/syntax_trace.hpp"
-#include "ac3/export.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/syntax_trace.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 // What a stream IS, as opposed to what it sounds like.
 //
@@ -257,7 +257,7 @@ struct ProbeOptions {
 //
 // A caller that already holds the whole stream should use probe() below; this
 // exists for the one that does not want to - see AccessUnitReader.
-class AC3FORGE_EXPORT Prober {
+class ICLFORGE_AC3_EXPORT Prober {
    public:
     explicit Prober(ProbeOptions options = {});
     ~Prober();
@@ -284,7 +284,7 @@ class AC3FORGE_EXPORT Prober {
 };
 
 // The whole-buffer form, for a caller that already holds the stream.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<ProbeReport, ScanError> probe(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<ProbeReport, ScanError> probe(
     std::span<const std::byte> stream, const ProbeOptions& options = {});
 
 // Access units off an istream, without holding the stream.
@@ -305,7 +305,7 @@ class AC3FORGE_EXPORT Prober {
 // first - the deterministic route that comment recommends - and so groups such
 // a stream correctly. Callers that only ever hand it E-AC-3 will see no
 // difference.
-class AC3FORGE_EXPORT AccessUnitReader {
+class ICLFORGE_AC3_EXPORT AccessUnitReader {
    public:
     explicit AccessUnitReader(std::istream& in);
     ~AccessUnitReader();

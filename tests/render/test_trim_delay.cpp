@@ -16,7 +16,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/render/trim_delay.hpp"
+#include "iclforge/render/trim_delay.hpp"
 
 namespace {
 

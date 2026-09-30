@@ -10,9 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Multi-source input: an explicit alternative to route()'s automatic,
 // direction-based panning. route() places ONE source onto a target by where
@@ -85,7 +85,7 @@ struct SourceShape {
 // inline with SourceShape, so a caller can grow or shrink its source list
 // without renumbering assignments it already made for channels that did not
 // move.
-class AC3FORGE_EXPORT Assignment {
+class ICLFORGE_AC3_EXPORT Assignment {
    public:
     void set(std::size_t source, std::size_t channel, Destination dest);
     void clear(std::size_t source, std::size_t channel) { set(source, channel, Destination{}); }
@@ -130,7 +130,7 @@ class AC3FORGE_EXPORT Assignment {
 // assignment is free to leave both programme slots unset, or even (for a
 // target that is not dual mono) unused entirely; dual_mono_routing() is
 // where that shape is required.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Routing> route(const ChannelPlan& target,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<Routing> route(const ChannelPlan& target,
                                                            std::span<const SourceShape> sources,
                                                            const Assignment& assignment);
 
@@ -145,7 +145,7 @@ class AC3FORGE_EXPORT Assignment {
 // either programme has zero or more than one channel assigned to it - dual
 // mono's two programmes are each a single channel, never a mix (§E1.3, no
 // downmix between them).
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Routing> dual_mono_routing(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<Routing> dual_mono_routing(
     std::span<const SourceShape> sources, const Assignment& assignment);
 
 // Every E-AC-3-forcing choice in one place, generalising plan::carries():
@@ -155,7 +155,7 @@ class AC3FORGE_EXPORT Assignment {
 // instead of hand-testing each condition, so a new promotion trigger is
 // added here once rather than at every call site that would otherwise
 // duplicate plan::carries()'s logic.
-[[nodiscard]] AC3FORGE_EXPORT Codec derive_codec(const ChannelPlan& target, const Tools& tools,
+[[nodiscard]] ICLFORGE_AC3_EXPORT Codec derive_codec(const ChannelPlan& target, const Tools& tools,
                                                  const Metadata& meta,
                                                  const std::optional<eac3::VbrConfig>& vbr,
                                                  SampleRate sample_rate);
@@ -169,8 +169,8 @@ class AC3FORGE_EXPORT Assignment {
 // location name, and none of obj/objm/p1/p2/none, contains it. The inverse
 // of parse_destination - round-trips the way format_channels already
 // round-trips through parse_channels.
-[[nodiscard]] AC3FORGE_EXPORT std::string format_destination(Destination dest);
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Destination> parse_destination(std::string_view token);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_destination(Destination dest);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<Destination> parse_destination(std::string_view token);
 
 inline constexpr std::string_view kAssignmentSyntax =
     "<source>.<channel>[-<channel2>]:<dest>[@<trim>][,...] - dest is a channel name, obj, objm, "
@@ -193,14 +193,14 @@ inline constexpr std::string_view kAssignmentSyntax =
 // rather than a gap to default silently. Returns false on any of that,
 // leaving `out` partially written, the same reject-rather-than-continue rule
 // the other parse_* functions already follow.
-[[nodiscard]] AC3FORGE_EXPORT bool parse_assignment(std::string_view text,
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_assignment(std::string_view text,
                                                     std::span<const SourceShape> sources,
                                                     Assignment& out);
 
 // The inverse, in (source, then channel) order - one entry per declared
 // channel, so it always satisfies parse_assignment's completeness
 // requirement. Round-trips through parse_assignment.
-[[nodiscard]] AC3FORGE_EXPORT std::string format_assignment(std::span<const SourceShape> sources,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string format_assignment(std::span<const SourceShape> sources,
                                                              const Assignment& assignment);
 
 }  // namespace ac3::plan

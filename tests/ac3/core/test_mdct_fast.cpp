@@ -9,7 +9,7 @@
 #include <ranges>
 #include <span>
 
-#include "ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
 #include "golden/mdct_goldens.hpp"
 
 // Phase 4 of the performance-observability programme: the opt-in §7.9.4

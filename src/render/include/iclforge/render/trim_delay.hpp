@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/render/routing.hpp"
+#include "iclforge/render/routing.hpp"
 
 // Per-output trim and delay: a level in dB and a time offset in samples for
 // each output a patch writes (ac3/render/routing.hpp), the speaker-level and

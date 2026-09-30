@@ -10,9 +10,9 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/core/downmix_target.hpp"
-#include "ac3/core/layout.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/base/downmix_target.hpp"
+#include "iclforge/base/layout.hpp"
+#include "iclforge/render/spatial.hpp"
 
 // The speakers a player has, one per output slot.
 //

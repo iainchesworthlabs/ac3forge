@@ -2,7 +2,7 @@
 
 #include <span>
 
-#include "ac3/export.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // The AC-3 long (512-sample) transform pair.
 //
@@ -45,11 +45,11 @@
 namespace ac3 {
 
 // Multiply a raw 512-sample block by the analysis window (§8.2.3.1).
-AC3FORGE_EXPORT void apply_analysis_window(std::span<const double, 512> x,
+ICLFORGE_AC3_EXPORT void apply_analysis_window(std::span<const double, 512> x,
                                            std::span<double, 512> windowed);
 
 // Forward MDCT of a pre-windowed block: 512 samples -> 256 coefficients.
-AC3FORGE_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
+ICLFORGE_AC3_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
                                      std::span<double, 256> coeffs, bool fast = false);
 
 // The float32 forms of the two above (minimum-footprint decoder profile's float32 gap). Their caller
@@ -61,15 +61,15 @@ AC3FORGE_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
 // No `fast` parameter, for the same reason the float32 inverse below has none:
 // the direct evaluation is the spec's own and the oracle the fast path is
 // validated against, so it stays double, and there is no choice to offer.
-AC3FORGE_EXPORT void apply_analysis_window(std::span<const float, 512> x,
+ICLFORGE_AC3_EXPORT void apply_analysis_window(std::span<const float, 512> x,
                                            std::span<float, 512> windowed);
-AC3FORGE_EXPORT void mdct512_forward(std::span<const float, 512> windowed,
+ICLFORGE_AC3_EXPORT void mdct512_forward(std::span<const float, 512> windowed,
                                      std::span<float, 256> coeffs);
 
 // Normative inverse: 256 coefficients -> 512 WINDOWED time samples
 // (§7.9.4.1 steps 1-5; the window application is part of step 5).
 // Reconstruction: pcm[n] = 2 * (x[n] + previous_block_x[256 + n]).
-AC3FORGE_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
+ICLFORGE_AC3_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
                                        std::span<double, 512> x, bool fast = false);
 
 // The float32 form of the inverse above (minimum-footprint decoder profile's float32 gap), for the
@@ -81,7 +81,7 @@ AC3FORGE_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
 // the spec's own and is the oracle the fast path is validated against, so it
 // stays double; offering a `false` a float32 caller could pass and then
 // ignoring it would be worse than not offering it.
-AC3FORGE_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
+ICLFORGE_AC3_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
                                        std::span<float, 512> x);
 
 // batched SIMD kernels: four INDEPENDENT calls to
@@ -99,7 +99,7 @@ AC3FORGE_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
 // `imdct512_windowed(coeffsN, xN, /*fast=*/true)` calls with the same
 // inputs either way (tests/core/test_simd_kernels.cpp's `[avx2]` case
 // checks exactly that against the AVX2 path specifically).
-AC3FORGE_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
+ICLFORGE_AC3_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
                                               std::span<const double, 256> coeffs1,
                                               std::span<const double, 256> coeffs2,
                                               std::span<const double, 256> coeffs3,
@@ -118,7 +118,7 @@ AC3FORGE_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeff
 // separate `mdct512_forward(wN, cN, /*fast=*/true)` calls with the same
 // inputs (tests/core/test_simd_kernels.cpp's `[avx2]` case checks that
 // against the AVX2 path specifically).
-AC3FORGE_EXPORT void mdct512_forward_batch4(std::span<const double, 512> w0,
+ICLFORGE_AC3_EXPORT void mdct512_forward_batch4(std::span<const double, 512> w0,
                                             std::span<const double, 512> w1,
                                             std::span<const double, 512> w2,
                                             std::span<const double, 512> w3,
@@ -129,12 +129,12 @@ AC3FORGE_EXPORT void mdct512_forward_batch4(std::span<const double, 512> w0,
 // there is no float32 AVX2 kernel for them to fill, so batching would buy
 // nothing yet. They exist so a caller written against the batch shape (joc.cpp
 // is) picks up a real one later without changing.
-AC3FORGE_EXPORT void mdct512_forward_batch4(
+ICLFORGE_AC3_EXPORT void mdct512_forward_batch4(
     std::span<const float, 512> w0, std::span<const float, 512> w1,
     std::span<const float, 512> w2, std::span<const float, 512> w3, std::span<float, 256> c0,
     std::span<float, 256> c1, std::span<float, 256> c2, std::span<float, 256> c3);
 
-AC3FORGE_EXPORT void imdct512_windowed_batch4(
+ICLFORGE_AC3_EXPORT void imdct512_windowed_batch4(
     std::span<const float, 256> coeffs0, std::span<const float, 256> coeffs1,
     std::span<const float, 256> coeffs2, std::span<const float, 256> coeffs3,
     std::span<float, 512> x0, std::span<float, 512> x1, std::span<float, 512> x2,
@@ -158,9 +158,9 @@ AC3FORGE_EXPORT void imdct512_windowed_batch4(
 // table to the same 1e-10 bound as the long transform's -
 // tests/core/test_mdct_fast.cpp. `fast = false` remains the spec's own
 // direct-form evaluation on all three.
-AC3FORGE_EXPORT void mdct256_forward_first(std::span<const double, 256> windowed,
+ICLFORGE_AC3_EXPORT void mdct256_forward_first(std::span<const double, 256> windowed,
                                            std::span<double, 128> coeffs, bool fast = false);
-AC3FORGE_EXPORT void mdct256_forward_second(std::span<const double, 256> windowed,
+ICLFORGE_AC3_EXPORT void mdct256_forward_second(std::span<const double, 256> windowed,
                                             std::span<double, 128> coeffs, bool fast = false);
 
 // The float32 forms of the short-block pair (minimum-footprint decoder profile), for the encoders'
@@ -168,21 +168,21 @@ AC3FORGE_EXPORT void mdct256_forward_second(std::span<const double, 256> windowe
 // (ac3/internal/encode_scalar.hpp). No `fast` parameter, as for the float32
 // mdct512_forward above: the direct evaluation stays double, and these are
 // the same two folds in float.
-AC3FORGE_EXPORT void mdct256_forward_first(std::span<const float, 256> windowed,
+ICLFORGE_AC3_EXPORT void mdct256_forward_first(std::span<const float, 256> windowed,
                                            std::span<float, 128> coeffs);
-AC3FORGE_EXPORT void mdct256_forward_second(std::span<const float, 256> windowed,
+ICLFORGE_AC3_EXPORT void mdct256_forward_second(std::span<const float, 256> windowed,
                                             std::span<float, 128> coeffs);
 
 // Normative inverse for blksw = 1 (§7.9.4.2): takes the SAME 256-length
 // interleaved coefficient set a long block would carry and produces 512
 // WINDOWED time samples, using the identical overlap-add as
 // imdct512_windowed — callers do not need to know which transform path ran.
-AC3FORGE_EXPORT void imdct256_pair_windowed(std::span<const double, 256> coeffs,
+ICLFORGE_AC3_EXPORT void imdct256_pair_windowed(std::span<const double, 256> coeffs,
                                             std::span<double, 512> x, bool fast = false);
 
 // The float32 form of the short-block inverse (minimum-footprint decoder profile). Same contract as
 // the float32 imdct512_windowed above, including the absent `fast` parameter.
-AC3FORGE_EXPORT void imdct256_pair_windowed(std::span<const float, 256> coeffs,
+ICLFORGE_AC3_EXPORT void imdct256_pair_windowed(std::span<const float, 256> coeffs,
                                             std::span<float, 512> x);
 
 }  // namespace ac3

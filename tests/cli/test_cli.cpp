@@ -21,16 +21,16 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/metadata_edit.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/meta/qc.hpp"
-#include "ac3/oba/scene.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/meta/qc.hpp"
+#include "iclforge/objects/scene.hpp"
 
 // apps/cli/main.cpp compiles directly into the ac3cli executable, everything
 // in an anonymous namespace - there is no library surface parse_options,

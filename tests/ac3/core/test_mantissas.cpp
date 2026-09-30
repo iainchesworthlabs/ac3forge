@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/mantissas.hpp"
+#include "iclforge/ac3/core/mantissas.hpp"
 
 namespace {
 

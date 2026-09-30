@@ -3,7 +3,7 @@
 #include <array>
 #include <span>
 
-#include "ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
 
 // compute_bit_allocation, with its internal §7.2.2.5 masking curve exposed to
 // the caller - the one quantity that routine derives and then discards, and

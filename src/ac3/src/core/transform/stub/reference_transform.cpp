@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <span>
 
-#include "ac3/internal/profile.hpp"
+#include "iclforge/ac3/detail/profile.hpp"
 
 // The variant of src/core/reference_transform.hpp that carries NO direct-form
 // tables - what the minimum-footprint decoder profile compiles

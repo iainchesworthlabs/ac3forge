@@ -25,8 +25,8 @@
 #include "huffman.hpp"
 #include "syntax/asf.hpp"
 #include "syntax/context.hpp"
-#include "tables/huffman_tables.hpp"
-#include "tables/sfb_tables.hpp"
+#include "iclforge/ac4core/tables/huffman_tables.hpp"
+#include "iclforge/ac4core/tables/sfb_tables.hpp"
 
 namespace {
 

@@ -7,8 +7,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/json.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/json.hpp"
 
 // The three roles whose state a server sends in server/state (messaging.md, server/state):
 // metadata@v1, controller@v1 with its client/command, and color@v1 (roles/metadata/v1.md,

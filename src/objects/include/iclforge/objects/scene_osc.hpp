@@ -5,8 +5,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/export.hpp"
-#include "ac3/oba/placement.hpp"
+#include "iclforge/objects/export.hpp"
+#include "iclforge/objects/placement.hpp"
 
 // The OSC 1.0 wire form of a live scene update - the third reader of a
 // per-object placement, beside the JSON and keyframe-text forms in scene.hpp
@@ -87,7 +87,7 @@ struct OscParseStats {
 // `stats`, if non-null, is incremented (not reset) for whatever this call
 // found - a caller accumulating across many packets passes the same struct
 // through repeatedly.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<SceneOscUpdate> parse_osc_packet(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::vector<SceneOscUpdate> parse_osc_packet(
     std::span<const std::byte> packet, OscParseStats* stats = nullptr);
 
 // As parse_osc_packet, writing into caller-owned storage instead of
@@ -97,7 +97,7 @@ struct OscParseStats {
 // more than out.size()). A single OSC packet carrying more live messages
 // than `out` holds is not expected in practice - a fader move is one
 // message - so stopping early rather than growing `out` costs nothing real.
-[[nodiscard]] AC3FORGE_EXPORT std::size_t parse_osc_packet_into(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::size_t parse_osc_packet_into(
     std::span<const std::byte> packet, std::span<SceneOscUpdate> out,
     OscParseStats* stats = nullptr);
 
@@ -118,7 +118,7 @@ struct OscParseStats {
 // `base`'s gain/lfe_send/size/snap/zone/enable_elevation carry through
 // unchanged for whichever fields `update` did not set - an object's authored
 // gain automation keeps running underneath a network-driven position.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<ObjectPlacement> apply(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::optional<ObjectPlacement> apply(
     const SceneOscUpdate& update, const ObjectPlacement& base);
 
 }  // namespace ac3::oba

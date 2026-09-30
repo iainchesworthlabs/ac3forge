@@ -11,10 +11,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac4/ac4.hpp"
-#include "ac4/syntax.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4/syntax.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // ac4::Encoder (src/ac4enc) over the configurations and input it takes, read
 // back by the decoder (planning/ac4.md, the encoder's ladder, items 1 and 8).

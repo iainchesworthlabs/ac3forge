@@ -7,9 +7,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include "exp_strategy.hpp"
 
 // The exponent-run planner (src/forge/src/encoder/exp_strategy.hpp), tested

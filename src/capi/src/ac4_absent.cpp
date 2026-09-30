@@ -15,7 +15,7 @@
 
 #include <cstdint>
 
-#include "ac3forge_c/ac3forge.h"
+#include "iclforge_c/iclforge.h"
 
 // --- config initializers -----------------------------------------------
 // Pure C structs; the defaults below are ac4::OutputConfig{}'s,

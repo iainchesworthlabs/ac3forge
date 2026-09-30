@@ -59,15 +59,15 @@
 
 #include <sys/resource.h>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/io/object_strip.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/io/object_strip.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/audio/passthrough.hpp"
 #include "shield_signing_hook.hpp"
 
 namespace {

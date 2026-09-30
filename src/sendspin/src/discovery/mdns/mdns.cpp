@@ -1,4 +1,4 @@
-#include "ac3/sendspin/mdns.hpp"
+#include "iclforge/sendspin/mdns.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,8 +20,8 @@
 
 #include <mdns.h>
 
-#include "ac3/sendspin/discovery.hpp"
-#include "ac3/sendspin/firewall.hpp"
+#include "iclforge/sendspin/discovery.hpp"
+#include "iclforge/sendspin/firewall.hpp"
 #include "packets.hpp"
 #include "platform.hpp"
 

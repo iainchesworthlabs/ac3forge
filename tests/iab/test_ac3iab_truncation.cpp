@@ -11,8 +11,8 @@
 #include <filesystem>
 #include <fstream>
 
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/mxf.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/mxf.hpp"
 
 // The IAB reader against damaged input: every element this reader understands, built with
 // randomly chosen but well-formed field values (a fixed seed, so a failure reproduces), parses

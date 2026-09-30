@@ -15,13 +15,13 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/crc16.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 // The device-facing half of ac3cli: devices/outputs/record/live/monitor.
 //

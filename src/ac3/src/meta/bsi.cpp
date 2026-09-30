@@ -1,4 +1,4 @@
-#include "ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
 
 #include <array>
 #include <charconv>
@@ -7,8 +7,8 @@
 #include <string_view>
 #include <system_error>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 namespace ac3::meta {
 

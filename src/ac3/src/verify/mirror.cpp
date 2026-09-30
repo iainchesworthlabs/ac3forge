@@ -1,7 +1,7 @@
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <span>

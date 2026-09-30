@@ -12,12 +12,12 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/transient_prenoise.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/transient_prenoise.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
 
 // §3.7 transient pre-noise processing as Eac3Decoder applies it: where a
 // correction lands (kTransientPrenoiseOrigin), one whose transient lies in a

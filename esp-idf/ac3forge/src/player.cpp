@@ -20,13 +20,13 @@
 #include "freertos/stream_buffer.h"
 #include "freertos/task.h"
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/serving.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/stream_accumulator.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/render/render.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/serving.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/stream_accumulator.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/render.hpp"
 
 #include "ac3forge/unit_hold.hpp"
 

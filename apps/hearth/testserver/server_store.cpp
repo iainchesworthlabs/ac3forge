@@ -11,9 +11,9 @@
 #include <string>
 #include <system_error>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/noise.hpp"
 #include "store.hpp"
 
 namespace ac3::hearth::testserver {

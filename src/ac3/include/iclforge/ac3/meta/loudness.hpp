@@ -7,9 +7,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Programme loudness to ITU-R BS.1770-4, and the dialnorm (§5.4.2.8) that
 // follows from it. Also the rest of an R128-style meter built on the same
@@ -70,10 +70,10 @@ namespace ac3::meta {
 // the only surrounds are M±110, the two agree exactly - measured to within
 // 0.02 dB, which is what makes ffmpeg a usable oracle for the Annex 1 path
 // and not for this one.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<double> position_weight(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<double> position_weight(
     eac3::chanmap::Location location);
 
-class AC3FORGE_EXPORT LoudnessMeter {
+class ICLFORGE_AC3_EXPORT LoudnessMeter {
    public:
     // BS.1770 Annex 1's basic algorithm for the 3/2 multichannel system:
     // channel weights follow its Table 3 - unity for the front channels,
@@ -183,6 +183,6 @@ class AC3FORGE_EXPORT LoudnessMeter {
 // 1..31. A programme louder than −1 LKFS or quieter than −31 clamps; the
 // clamp at 31 is why a stream that never measured anything says 31, and why
 // 31 is a poor default rather than a neutral one.
-[[nodiscard]] AC3FORGE_EXPORT int dialnorm_from_lkfs(double lkfs);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int dialnorm_from_lkfs(double lkfs);
 
 }  // namespace ac3::meta

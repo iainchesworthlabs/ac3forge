@@ -6,8 +6,8 @@
 #include <string>
 #include <string_view>
 
-#include "ac3adm/export.hpp"
-#include "ac3adm/model.hpp"
+#include "iclforge/adm/export.hpp"
+#include "iclforge/adm/model.hpp"
 
 // Top-level entry point for ac3adm::ac3adm: parses a BW64/RF64 (or plain,
 // sub-4 GB RIFF/WAVE carrying the same chunks) file into an AdmDocument -

@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "ac4_objects_core.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // The AC-4 page's choices, Qt-free so that ac3tests can hold them to the two
 // things they must agree on: the ac4::EncoderConfig the page encodes with and

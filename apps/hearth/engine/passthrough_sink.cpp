@@ -2,7 +2,7 @@
 
 #include <utility>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 #include "bitstream_sink.hpp"
 
 // The BitstreamSink over a real local endpoint: ac3::audio::PassthroughSink.

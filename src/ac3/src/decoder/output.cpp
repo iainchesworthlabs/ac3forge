@@ -1,4 +1,4 @@
-#include "ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,15 +12,15 @@
 #include <type_traits>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"  // eac3::chanmap::Location/Layout
-#include "ac3/core/tables.hpp"
-#include "ac3/internal/decode_scalar.hpp"
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"  // eac3::chanmap::Location/Layout
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/detail/decode_scalar.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 #include "eac3_seat_fold.hpp"
-#include "ac3/internal/fixed32.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/drc.hpp"  // to_db
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/arithmetic/fixed32.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/drc.hpp"  // to_db
+#include "iclforge/ac3/meta/mixing.hpp"
 
 namespace ac3 {
 

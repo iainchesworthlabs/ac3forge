@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
 
 // artwork@v1, visualizer@v1 and source@v1's objects and binary messages (roles/artwork/v1.md,
 // roles/visualizer/v1.md, roles/source/v1.md), byte for byte against the role files' layouts, and

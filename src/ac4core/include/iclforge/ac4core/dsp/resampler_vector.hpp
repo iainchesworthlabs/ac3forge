@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include "ac3/internal/arch/simd.hpp"
+#include "iclforge/arithmetic/detail/simd.hpp"
 
 // The sample rate converter's dot product at float (dsp/resampler.cpp), on the seam's
 // 128-bit f32x4 (src/arithmetic/arch).

@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/export.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Removing the object layer from a Dolby Digital Plus JOC stream, losslessly.
 //
@@ -76,7 +76,7 @@ enum class StripError : std::uint8_t {
     kFrameSizeDependentField,
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(StripError error);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(StripError error);
 
 struct StrippedStream {
     std::vector<std::byte> bytes;
@@ -92,7 +92,7 @@ struct StrippedStream {
 // including frames of a shape this project cannot map, since a frame with
 // neither the addbsi object marker nor a skip field has nothing to strip
 // whatever its shape.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<StrippedStream, StripError> strip_objects(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<StrippedStream, StripError> strip_objects(
     std::span<const std::byte> stream);
 
 }  // namespace ac3::io

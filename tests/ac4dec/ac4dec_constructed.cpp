@@ -12,7 +12,7 @@
 #include <utility>
 
 #include "ac4dec_printed_matrices.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "acpl/acpl_syntax.hpp"
 #include "ajcc/ajcc_syntax.hpp"
 #include "asf/analysis.hpp"

@@ -1,4 +1,4 @@
-#include "ac3/sendspin/pairing.hpp"
+#include "iclforge/sendspin/pairing.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,8 +9,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 namespace ac3::sendspin::pairing {
 

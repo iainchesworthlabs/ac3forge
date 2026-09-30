@@ -1,14 +1,14 @@
-#include "ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
 
 #include <algorithm>
 #include <charconv>
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/plan.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
 #include <optional>
 #include <span>
 #include <string>

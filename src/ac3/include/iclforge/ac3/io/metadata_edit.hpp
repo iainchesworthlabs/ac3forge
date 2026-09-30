@@ -7,10 +7,10 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // Changing a stream's bsi metadata WITHOUT re-encoding the audio.
 //
@@ -60,7 +60,7 @@ enum class EditError : std::uint8_t {
     kOutOfRange,       // a value the field cannot hold
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(EditError error);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(EditError error);
 
 // E-AC-3's mixmdate group (Table E1.2), as transmitted. Every member is
 // optional because acmod and lfeon decide which of them are sent at all -
@@ -131,7 +131,7 @@ struct MetadataEdit {
 
 // Reads one syncframe's metadata without changing anything. `frame` may be
 // longer than the syncframe (the trailing bytes are ignored) but not shorter.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<FrameMetadata, EditError> read_frame_metadata(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<FrameMetadata, EditError> read_frame_metadata(
     std::span<const std::byte> frame);
 
 // Applies `edit` to one syncframe in place and re-stamps its CRC word(s).
@@ -142,7 +142,7 @@ struct MetadataEdit {
 // Fails without modifying anything when a named field is not on the wire
 // (kFieldAbsent) or a value is out of range (kOutOfRange) - a partially
 // applied edit would leave a frame claiming metadata nobody asked for.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<FrameMetadata, EditError> edit_frame_metadata(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<FrameMetadata, EditError> edit_frame_metadata(
     std::span<std::byte> frame, const MetadataEdit& edit);
 
 // Re-stamps crc1 (AC-3 only) and crc2 for one syncframe, for a caller that
@@ -150,7 +150,7 @@ struct MetadataEdit {
 // exposed because the CRCs are the non-obvious half of any in-place rewrite
 // and a caller doing its own (ac3::signing::sign_atmos_frame is the
 // in-project precedent) should not have to reimplement crc1's solve.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<void, EditError> restamp_crc(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<void, EditError> restamp_crc(
     std::span<std::byte> frame);
 
 struct EditSummary {
@@ -174,7 +174,7 @@ struct EditSummary {
 // kFieldAbsent, checked before anything is written: the stream is either
 // fully rewritten or left byte-for-byte alone, and a metadata option that
 // silently did nothing is indistinguishable from one that does not work.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<EditSummary, EditError> edit_stream_metadata(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<EditSummary, EditError> edit_stream_metadata(
     std::span<std::byte> stream, const MetadataEdit& edit);
 
 }  // namespace ac3::io

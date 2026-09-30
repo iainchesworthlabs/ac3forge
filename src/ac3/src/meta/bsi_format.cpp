@@ -2,7 +2,7 @@
 
 #include <fmt/format.h>
 
-#include "ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
 
 // format_timecode alone, split out of bsi.cpp.
 //

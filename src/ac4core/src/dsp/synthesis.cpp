@@ -1,10 +1,10 @@
-#include "dsp/synthesis.hpp"
+#include "iclforge/ac4core/dsp/synthesis.hpp"
 
 #include <algorithm>
 #include <utility>
 
-#include "ac4/detail/profiling.hpp"
-#include "dsp/kbd.hpp"
+#include "iclforge/ac4core/detail/profiling.hpp"
+#include "iclforge/ac4core/dsp/kbd.hpp"
 
 namespace ac4::detail::dsp {
 namespace {

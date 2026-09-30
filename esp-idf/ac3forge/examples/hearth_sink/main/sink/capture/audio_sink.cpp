@@ -39,7 +39,7 @@
 #include <cmath>
 #include <cstdio>
 
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

@@ -1,11 +1,11 @@
-#include "ac3/core/fft.hpp"
+#include "iclforge/dsp/fft.hpp"
 
 #include <cstddef>
 #include <span>
 
-#include "ac3/internal/arch/simd.hpp"
+#include "iclforge/arithmetic/detail/simd.hpp"
 
-#include "fft_kernel.hpp"
+#include "iclforge/dsp/detail/fft_kernel.hpp"
 
 namespace ac3 {
 

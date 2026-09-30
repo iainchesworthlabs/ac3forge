@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "ac3/admbridge/bridge.hpp"
-#include "ac3/admbridge/export.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3iab/ac3iab.hpp"
+#include "iclforge/admbridge/bridge.hpp"
+#include "iclforge/admbridge/export.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/iab/ac3iab.hpp"
 
 // Roadmap item IM1 phase 3 of 3 ("IAB (SMPTE ST 2098-2) reader"): maps the parsed
 // IAB bed/object graph (ac3iab::ac3iab, phases 1-2) onto ac3::oba::AtmosEncoder's input shape - one

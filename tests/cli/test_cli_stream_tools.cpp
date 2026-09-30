@@ -17,16 +17,16 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/metadata_edit.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/meta/drc.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
 
 // The DC9 stream tools, driven the same way tests/cli/test_cli.cpp drives
 // every other command: the real built ac3cli.exe as a subprocess, inspecting

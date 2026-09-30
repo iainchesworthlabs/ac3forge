@@ -1,4 +1,4 @@
-#include "ac3/sendspin/cpace.hpp"
+#include "iclforge/sendspin/cpace.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
+#include "iclforge/sendspin/crypto.hpp"
 #include "field25519.hpp"
 
 namespace ac3::sendspin::cpace {

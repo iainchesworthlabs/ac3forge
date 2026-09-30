@@ -10,7 +10,7 @@
 #include <span>
 #include <type_traits>
 
-#include "ac3/internal/fixed32.hpp"
+#include "iclforge/arithmetic/fixed32.hpp"
 
 // The fixed-point tier's block exponent (planning/arithmetic-tiers.md,
 // Phase B), shared by both decoders.

@@ -9,10 +9,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // Reading the shape of an AC-3 or E-AC-3 elementary stream back off the wire.
 //
@@ -72,7 +72,7 @@ enum class ScanError : std::uint8_t {
     kUnsupportedStructure,
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(ScanError error);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(ScanError error);
 
 // One independent substream other than substream 0, as its own bsi describes
 // it. Both MPEG-TS registries carry a byte per such substream saying what
@@ -237,7 +237,7 @@ struct FrameHeader {
 // the stream is fine) - FrameHeader::bytes says where the frame itself ends,
 // which is not checked against `at.size()` here because a caller walking a
 // stream needs that length in order to do the checking.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<FrameHeader, ScanError> read_frame_header(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<FrameHeader, ScanError> read_frame_header(
     std::span<const std::byte> at);
 
 struct ScannedStream {
@@ -394,7 +394,7 @@ struct ScannedStream {
     std::uint16_t channel_map = 0;
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::expected<ScannedStream, ScanError> scan(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<ScannedStream, ScanError> scan(
     std::span<const std::byte> stream);
 
 // --- timing ------------------------------------------------------------------
@@ -455,22 +455,22 @@ struct AccessUnitTiming {
 };
 
 // Access unit `index`, or nothing when there is no such unit.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<AccessUnitTiming> access_unit_timing(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<AccessUnitTiming> access_unit_timing(
     const ScannedStream& stream, std::size_t index);
 
 // Total samples the stream codes, and the same figure in seconds.
-[[nodiscard]] AC3FORGE_EXPORT std::uint64_t stream_duration_samples(const ScannedStream& stream);
-[[nodiscard]] AC3FORGE_EXPORT double stream_duration_seconds(const ScannedStream& stream);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::uint64_t stream_duration_samples(const ScannedStream& stream);
+[[nodiscard]] ICLFORGE_AC3_EXPORT double stream_duration_seconds(const ScannedStream& stream);
 
 // The access unit covering `sample` - i.e. the one to cut at for a given
 // position. Nothing when `sample` is past the end. A cut is only ever
 // access-unit-aligned, so a caller asking for a time inside a unit gets that
 // whole unit's index, never a split.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<std::size_t> access_unit_at_sample(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<std::size_t> access_unit_at_sample(
     const ScannedStream& stream, std::uint64_t sample);
 
 // Same question in seconds, rounded to the nearest sample first.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<std::size_t> access_unit_at_seconds(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<std::size_t> access_unit_at_seconds(
     const ScannedStream& stream, double seconds);
 
 // The one length every access unit shares, or nothing when they differ. This
@@ -478,7 +478,7 @@ struct AccessUnitTiming {
 // variable one cannot: mp4::AudioTrack/mpegts::AudioTrack/matroska::AudioTrack
 // each hold a single samples_per_frame, so a stream this returns nothing for
 // cannot be described to them without per-sample durations they do not model.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<std::uint32_t> uniform_access_unit_samples(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<std::uint32_t> uniform_access_unit_samples(
     const ScannedStream& stream);
 
 }  // namespace ac3::io

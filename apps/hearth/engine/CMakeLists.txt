@@ -99,7 +99,7 @@ target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)
 
 # The profiling header pair, PUBLIC so the window (ui/, linked PRIVATE below
 # it in ../ui/CMakeLists.txt) and ac3hearth_qmltests (which links this same
-# library) both resolve every `#include "ac3/internal/profiling.hpp"` they
+# library) both resolve every `#include "iclforge/base/detail/profiling.hpp"` they
 # carry - apps/crucible/CMakeLists.txt's own ac3crucible_engine target sets up
 # the identical pair, for the identical reason (its own comment there has the
 # history of why this lives at the engine level rather than per-platform or

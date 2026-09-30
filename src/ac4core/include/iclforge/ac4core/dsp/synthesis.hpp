@@ -4,9 +4,9 @@
 #include <span>
 #include <vector>
 
-#include "ac4/detail/real.hpp"
-#include "dsp/complex.hpp"
-#include "dsp/mdct.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/mdct.hpp"
 
 // The inverse transform's windowing and overlap-add with block switching:
 // ETSI TS 103 190-1 V1.4.1 clause 5.5.2.2 steps 5 and 6 (Pseudocodes 63 and

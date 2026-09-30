@@ -8,10 +8,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"     // DeltaSegments
-#include "ac3/core/eac3_tables.hpp"  // StreamType
-#include "ac3/core/tables.hpp"       // kBlocksPerFrame
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"     // DeltaSegments
+#include "iclforge/ac3/core/eac3_tables.hpp"  // StreamType
+#include "iclforge/ac3/core/tables.hpp"       // kBlocksPerFrame
+#include "iclforge/ac3/export.hpp"
 
 // E-AC-3 encoder/decoder mirror verification - Annex E's counterpart to
 // ac3/verify/mirror.hpp, which this deliberately parallels rather than
@@ -200,7 +200,7 @@ struct Eac3SubstreamTrace {
 // Slots are retained, not freed, when an access unit ends: a caller stepping
 // through a whole stream reuses one trace, and the per-substream vectors are
 // the only allocation this facility makes at all.
-class AC3FORGE_EXPORT Eac3AccessUnitTrace {
+class ICLFORGE_AC3_EXPORT Eac3AccessUnitTrace {
    public:
     // The substreams of the access unit currently traced, in transmission
     // order.
@@ -283,7 +283,7 @@ enum class Eac3Field : std::uint8_t {
     kSpxBlend,
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(Eac3Field field);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(Eac3Field field);
 
 struct Eac3Mismatch {
     std::uint64_t frame = 0;
@@ -310,7 +310,7 @@ struct Eac3Mismatch {
 // "frame 12 substream 1 block 3 channel 1: bap[87] encoder=5 decoder=4", with
 // the stream named the way a reader of Annex E would name it rather than by
 // its internal index.
-[[nodiscard]] AC3FORGE_EXPORT std::string describe(const Eac3Mismatch& mismatch,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string describe(const Eac3Mismatch& mismatch,
                                                    int fbw_channels, int coded_channels);
 
 // A single stream's exponent, bap or coordinate array can disagree in
@@ -328,14 +328,14 @@ inline constexpr int kEac3MaxPerArray = 4;
 // report listing all of them buries the one line that names the cause.
 // Within that block the block-level fields come first (the bit offset above
 // all), then the per-stream detail, then the per-channel tool state.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<Eac3Mismatch> compare(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<Eac3Mismatch> compare(
     const Eac3SubstreamTrace& encoder, const Eac3SubstreamTrace& decoder,
     std::uint64_t frame_index, int substream_index);
 
 // The access-unit form: substream by substream, stopping at the first
 // substream that disagrees. A count mismatch is reported on its own, since
 // nothing below it lines up.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<Eac3Mismatch> compare(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<Eac3Mismatch> compare(
     const Eac3AccessUnitTrace& encoder, const Eac3AccessUnitTrace& decoder,
     std::uint64_t frame_index);
 
@@ -343,7 +343,7 @@ inline constexpr int kEac3MaxPerArray = 4;
 // failure message or a diagnostic dump. Stream names are resolved from the
 // substream each mismatch names, where `shape` has one. Empty string for an
 // empty span.
-[[nodiscard]] AC3FORGE_EXPORT std::string report(std::span<const Eac3Mismatch> mismatches,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string report(std::span<const Eac3Mismatch> mismatches,
                                                  const Eac3AccessUnitTrace& shape);
 
 }  // namespace ac3::verify

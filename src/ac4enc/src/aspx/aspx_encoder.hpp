@@ -9,10 +9,10 @@
 #include <vector>
 
 #include "aspx/aspx_syntax.hpp"
-#include "aspx/frequency_tables.hpp"
-#include "aspx/hf_generator.hpp"
-#include "dsp/complex.hpp"
-#include "dsp/qmf.hpp"
+#include "iclforge/ac4core/aspx/frequency_tables.hpp"
+#include "iclforge/ac4core/aspx/hf_generator.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 #include "frame/timing.hpp"
 
 // The encoder's QMF domain: ETSI TS 103 190-1 V1.4.1 clause 5.7 run from the

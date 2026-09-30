@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3iab/ac3iab.hpp"
+#include "iclforge/iab/ac3iab.hpp"
 
 // These tests build IAB bitstream fixtures bit-by-bit, independently of src/ac3iab's own
 // implementation (a fresh, from-scratch MSB-first BitWriter below, not src/bitreader.hpp's

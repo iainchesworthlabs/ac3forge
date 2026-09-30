@@ -8,13 +8,13 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/verify/eac3_mirror.hpp"
-#include "ac3/verify/eac3_selfcheck.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/verify/eac3_selfcheck.hpp"
 
 // ac3::verify's E-AC-3 half - the Annex E encoder/decoder mirror check. See
 // ac3/verify/eac3_mirror.hpp for what it compares and why it matters more

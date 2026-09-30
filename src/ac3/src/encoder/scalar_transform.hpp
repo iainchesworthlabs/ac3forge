@@ -4,9 +4,9 @@
 #include <cstddef>
 #include <span>
 
-#include "ac3/core/eac3_tools.hpp"
-#include "ac3/core/mdct.hpp"
-#include "ac3/internal/encode_scalar.hpp"
+#include "iclforge/ac3/core/eac3_tools.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/detail/encode_scalar.hpp"
 
 // The forward transforms the two encoders run, in whichever scalar the build
 // carries the time domain AND the coefficient store in

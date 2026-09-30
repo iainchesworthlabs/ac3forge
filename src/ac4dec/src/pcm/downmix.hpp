@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "pcm/aspx.hpp"
 #include "pcm/renderer.hpp"
 #include "syntax/metadata.hpp"

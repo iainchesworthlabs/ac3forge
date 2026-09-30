@@ -9,7 +9,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/dsp/biquad.hpp"
+#include "iclforge/dsp/biquad.hpp"
 
 using ac3::dsp::Biquad;
 using ac3::dsp::LfeLowpass;

@@ -13,7 +13,7 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // WavStreamReader exists so an encode of a feature-length input holds one
 // block of samples resident instead of the whole file twice over (raw bytes

@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "ac3/audio/speakers.hpp"
-#include "ac3/core/eac3_tables.hpp"
+#include "iclforge/audio/speakers.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
 
 // ac3::audio's speaker mask: WAVEFORMATEXTENSIBLE's positions against the
 // renderer's locations (src/audio/src/speakers.cpp).

@@ -3,11 +3,11 @@
 #include <array>
 #include <type_traits>
 
-#include "ac3/core/mdct.hpp"
-#include "ac3/internal/fixed32.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/arithmetic/fixed32.hpp"
 #include "mdct_fixed.hpp"
-#include "ac3/internal/decode_scalar.hpp"
-#include "ac3/internal/profile.hpp"
+#include "iclforge/ac3/detail/decode_scalar.hpp"
+#include "iclforge/ac3/detail/profile.hpp"
 
 // The §7.9.4 inverse pair, selected by the scalar type the decoder stores its
 // coefficients in (ac3::internal::decode_scalar_t, minimum-footprint decoder profile's float32 gap).

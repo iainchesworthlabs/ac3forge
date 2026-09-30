@@ -1,4 +1,4 @@
-#include "ac3/audio/sink_capabilities.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
 
 // This is now reachable only as ac3::audio's Linux fallback, when libasound's
 // development headers are not present - see audio_backend.cpp in this same

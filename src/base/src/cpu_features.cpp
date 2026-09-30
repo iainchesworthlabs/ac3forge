@@ -1,4 +1,4 @@
-#include "cpu_features.hpp"
+#include "iclforge/base/detail/cpu_features.hpp"
 
 #include <cstdint>
 #include <cstdlib>
@@ -6,7 +6,7 @@
 
 #include <fmt/base.h>
 
-#include "ac3/internal/cpu/hardware_avx2.hpp"
+#include "iclforge/base/detail/hardware_avx2.hpp"
 
 namespace ac3::internal::cpu {
 

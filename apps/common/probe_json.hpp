@@ -8,13 +8,13 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/probe.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/probe.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "container_input.hpp"
 #include "json_sink.hpp"
 

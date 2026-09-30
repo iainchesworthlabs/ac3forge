@@ -1,4 +1,4 @@
-#include "ac3/audio/sink_capabilities.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
 
 // The one platform-independent piece of ac3::audio::sink_capabilities - see
 // the header for the shape this is describing errors for. Compiled on every

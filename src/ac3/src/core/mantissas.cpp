@@ -1,4 +1,4 @@
-#include "ac3/core/mantissas.hpp"
+#include "iclforge/ac3/core/mantissas.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -6,8 +6,8 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 namespace ac3 {
 

@@ -1,8 +1,8 @@
-#include "ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include <cmath>
 #include <cstddef>
 #include <cstdint>

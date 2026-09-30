@@ -6,9 +6,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/crc16.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
 
 namespace {
 

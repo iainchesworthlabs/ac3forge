@@ -242,7 +242,7 @@ target_include_directories(forge_objects
 
 # Selects which of the two identically-pathed ac3/internal/profiling.hpp
 # variants (src/internal/profiling/tracy_{enabled,disabled}/) every
-# `#include "ac3/internal/profiling.hpp"` call site resolves to - CMake
+# `#include "iclforge/base/detail/profiling.hpp"` call site resolves to - CMake
 # choosing the directory, not an #ifdef in the header, per
 # tools/checks/check_platform_macros.ps1's platform/feature-isolation rule (the
 # same reason src/audio's platform backends and the quarantine hook seam are

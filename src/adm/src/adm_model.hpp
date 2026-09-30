@@ -5,8 +5,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "ac3adm/ac3adm.hpp"
-#include "ac3adm/model.hpp"
+#include "iclforge/adm/ac3adm.hpp"
+#include "iclforge/adm/model.hpp"
 
 // Forward-declared rather than #include <adm/document.hpp> here: libadm's
 // own headers (and the Boost headers they pull in) are an implementation

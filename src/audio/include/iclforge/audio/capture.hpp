@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/audio/ring_buffer.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
 
 // Live audio capture. On Windows this is WASAPI in shared mode: either a
 // real input endpoint (microphone, line in), a render endpoint opened in

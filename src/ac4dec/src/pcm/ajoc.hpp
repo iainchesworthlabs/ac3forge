@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "ajoc/ajoc.hpp"
+#include "iclforge/ac4core/ajoc/ajoc.hpp"
 #include "pcm/aspx.hpp"
 #include "syntax/ajoc.hpp"
 #include "syntax/context.hpp"

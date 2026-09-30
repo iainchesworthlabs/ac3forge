@@ -1,4 +1,4 @@
-#include "ac3/audio/speakers.hpp"
+#include "iclforge/audio/speakers.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/layout.hpp"
+#include "iclforge/base/layout.hpp"
 
 namespace ac3::audio {
 

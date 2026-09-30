@@ -1272,7 +1272,7 @@ The codec's hot kernels are vectorised, and the vector types they are written ag
 a directory CMake chooses — never from an `#ifdef`. `src/arithmetic/arch/` holds
 `generic/`, `x86_64/` and `aarch64/`, each carrying one identically-pathed
 `ac3/internal/arch/simd.hpp`; `src/arithmetic/CMakeLists.txt` puts exactly one of them on
-`ac3::arithmetic`'s include path, which `forge_objects` and `src/ac4core` link, so every `#include "ac3/internal/arch/simd.hpp"` in the
+`ac3::arithmetic`'s include path, which `forge_objects` and `src/ac4core` link, so every `#include "iclforge/arithmetic/detail/simd.hpp"` in the
 core resolves to it and no translation unit ever asks what it is being compiled for. This is the
 same mechanism `src/forge/src/internal/profiling/tracy_{enabled,disabled}/` uses for the
 profiling seam and `src/audio/src/backend/<backend>/` uses for the operating system, and it is what

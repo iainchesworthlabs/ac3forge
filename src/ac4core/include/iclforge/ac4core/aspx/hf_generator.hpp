@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <span>
 
-#include "ac4/detail/real.hpp"
-#include "aspx/frequency_tables.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/aspx/frequency_tables.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 // A-SPX's high frequency generator: ETSI TS 103 190-1 V1.4.1 clause
 // 5.7.6.4.1, Pseudocodes 85 to 89. It patches subbands of the low band Q_low

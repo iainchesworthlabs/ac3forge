@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/oba/oamd.hpp"
-#include "ac3/oba/scene.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/scene.hpp"
 #include "scene_text.hpp"
 
 // The serialised form of an ObjectScene. RFC 8259 JSON, read and written here

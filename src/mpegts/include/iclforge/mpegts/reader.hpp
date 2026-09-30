@@ -10,8 +10,8 @@
 #include <string_view>
 #include <vector>
 
-#include "mpegts/export.hpp"
-#include "mpegts/mpegts.hpp"
+#include "iclforge/mpegts/export.hpp"
+#include "iclforge/mpegts/mpegts.hpp"
 
 // The read side of mpegts::mux()/mpegts::Writer: pulling one programme's
 // audio back out of a transport stream.

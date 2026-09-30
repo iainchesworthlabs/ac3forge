@@ -9,18 +9,18 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/silent_frame.hpp"  // FrameError
-#include "ac3/encoder/transient.hpp"
-#include "ac3/export.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/quality/distortion.hpp"
-#include "ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"  // FrameError
+#include "iclforge/ac3/encoder/transient.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
 
 // E-AC-3 (Dolby Digital Plus) framing - ATSC A/52:2018 Annex E, bsid 16.
 //
@@ -556,7 +556,7 @@ using AuxPayload = std::span<const std::byte>;
         .holdback_samples = config.transient_prenoise ? kSamplesPerFrame : 0};
 }
 
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
     const FrameConfig& config, AuxPayload aux = {});
 
 // The §7.7 words for one frame, separated from FrameConfig because they change
@@ -579,7 +579,7 @@ struct FrameMetadata {
 // decoders are exercised on: exponent strategies and SNR offsets planned per
 // frame from content (EQ1) rather than fixed. Long blocks only; the Annex E
 // tools and FrameConfig::numblkscod are opt-in.
-class AC3FORGE_EXPORT FrameEncoder {
+class ICLFORGE_AC3_EXPORT FrameEncoder {
    public:
     explicit FrameEncoder(const FrameConfig& config);
     // Out of line because state_ below is an incomplete type here; movable
@@ -678,7 +678,7 @@ struct AccessUnitConfig {
 // wire. Nothing may sit between them and they may not be reordered - a decoder
 // finds each substream by walking sync word and frmsiz, so the concatenation
 // IS the framing.
-struct AC3FORGE_EXPORT AccessUnit {
+struct ICLFORGE_AC3_EXPORT AccessUnit {
     std::vector<std::byte> bytes;
     // Byte length of each substream frame, independent first; sums to
     // bytes.size(). Retained because crc2 is per substream, so anything that
@@ -695,7 +695,7 @@ struct AC3FORGE_EXPORT AccessUnit {
 // CBR only. Under VBR the word count follows the content, so it cannot be
 // known before a frame is actually encoded - callers must not call this when
 // any substream's FrameConfig::vbr is set.
-[[nodiscard]] AC3FORGE_EXPORT std::uint32_t access_unit_words(const AccessUnitConfig& config);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::uint32_t access_unit_words(const AccessUnitConfig& config);
 
 // TS 103 420 §8.2 fixes which substream carries the container: the LAST
 // dependent substream if the access unit has any, otherwise the independent
@@ -708,13 +708,13 @@ struct AC3FORGE_EXPORT AccessUnit {
 // programme's substreams are a different piece of audio entirely and putting
 // the container behind them would describe one programme with another's
 // metadata position.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<AccessUnit, FrameError> build_silent_access_unit(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<AccessUnit, FrameError> build_silent_access_unit(
     const AccessUnitConfig& config, AuxPayload aux = {});
 
 // Real audio across an independent substream and its dependents. One
 // FrameEncoder per substream: each keeps its own MDCT overlap and runs its own
 // SNR search against its own share of the rate.
-class AC3FORGE_EXPORT AccessUnitEncoder {
+class ICLFORGE_AC3_EXPORT AccessUnitEncoder {
    public:
     explicit AccessUnitEncoder(const AccessUnitConfig& config);
     // Declared (and defined in eac3_frame.cpp, where Impl below is complete)

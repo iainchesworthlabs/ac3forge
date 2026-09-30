@@ -35,8 +35,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // Set by CMake to the repo root, so the fixtures resolve regardless of the
 // working directory a bench binary is launched from. Every target that

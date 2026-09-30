@@ -1,4 +1,4 @@
-#include "ac3/audio/monitor.hpp"
+#include "iclforge/audio/monitor.hpp"
 
 // The PipeWire monitor backend. CMake compiles this directory's monitor.cpp
 // on a Linux host that selected pipewire/ over alsa/ (see
@@ -28,8 +28,8 @@
 #include <string>
 #include <thread>
 
-#include "ac3/audio/playback_counter.hpp"
-#include "ac3/audio/ring_buffer.hpp"
+#include "iclforge/audio/playback_counter.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
 #include "pipewire_support.hpp"
 
 namespace ac3::audio {

@@ -3,8 +3,8 @@
 #include <bit>
 #include <span>
 
-#include "tables/huffman_codes.hpp"
-#include "tables/huffman_tables.hpp"
+#include "iclforge/ac4core/tables/huffman_codes.hpp"
+#include "iclforge/ac4core/tables/huffman_tables.hpp"
 
 namespace ac4::detail {
 namespace {

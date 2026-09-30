@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/export.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/export.hpp"
 
 // Roadmap item IM1 phase 2 of 3 (): minimal SMPTE ST 336:2017 KLV extraction for an
 // IAB Track File, the way a real IMF/Dolby Atmos cinema master actually delivers ST 2098-2's

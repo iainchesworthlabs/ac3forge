@@ -20,10 +20,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac3forge_c/ac3forge.h"
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge_c/iclforge.h"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 namespace {
 

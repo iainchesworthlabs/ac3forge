@@ -22,12 +22,12 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/layout.hpp"
 #include "speaker_abi.hpp"
-#include "ac3/render/render.hpp"
+#include "iclforge/render/render.hpp"
 
 namespace {
 

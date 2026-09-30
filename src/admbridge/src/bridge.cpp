@@ -1,4 +1,4 @@
-#include "ac3/admbridge/bridge.hpp"
+#include "iclforge/admbridge/bridge.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,9 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/admbridge/coordinates.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/coordinates.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 namespace ac3::admbridge {
 

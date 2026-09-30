@@ -1,4 +1,4 @@
-#include "ac3/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
 
 #include <array>
 #include <cstdint>
@@ -10,10 +10,10 @@
 #include <string_view>
 #include <utility>
 
-#include "ac3/sendspin/base64url.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/base64url.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 namespace ac3::sendspin::pairing_messages {
 

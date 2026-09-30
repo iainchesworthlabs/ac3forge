@@ -21,8 +21,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/mxf.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/mxf.hpp"
 
 namespace {
 

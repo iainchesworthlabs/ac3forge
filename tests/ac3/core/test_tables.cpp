@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 TEST_CASE("frame geometry constants", "[tables]") {
     STATIC_CHECK(ac3::kSyncWord == 0x0B77);

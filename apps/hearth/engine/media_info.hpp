@@ -8,13 +8,13 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/probe.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/probe.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/objects/oamd.hpp"
 #include "container_input.hpp"
 #include "probe_json.hpp"
 #include "session.hpp"

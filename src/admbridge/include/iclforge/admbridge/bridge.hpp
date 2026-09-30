@@ -8,10 +8,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/admbridge/export.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3adm/model.hpp"
+#include "iclforge/admbridge/export.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/adm/model.hpp"
 
 // Roadmap item B1 phase 2 of 3 ("ADM BWF reader feeding the JOC encoder"): maps
 // the object graph ac3adm::ac3adm (phase 1) parses from a BW64/ADM master onto

@@ -5,8 +5,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
 
 // Two things a player that decodes a whole elementary stream has to get right
 // besides calling the decoders: which decoder reads the stream, and what

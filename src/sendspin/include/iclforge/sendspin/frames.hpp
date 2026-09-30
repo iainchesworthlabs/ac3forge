@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/dialect.hpp"
+#include "iclforge/sendspin/dialect.hpp"
 
 // Sendspin's transport-mode framing (messaging.md, Binary Message ID Structure
 // and Fragmentation): after the Noise handshake every WebSocket binary message

@@ -15,7 +15,7 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // The WAV-driven object encoders (apps/cli/commands/atmos.cpp: atmos-encode,
 // its src=/map= form, and atmos-cbi) on the requests they refuse and the

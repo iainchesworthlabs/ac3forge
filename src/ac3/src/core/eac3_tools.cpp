@@ -1,4 +1,4 @@
-#include "ac3/core/eac3_tools.hpp"
+#include "iclforge/ac3/core/eac3_tools.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -14,15 +14,15 @@
 #include <type_traits>
 #include <utility>
 
-#include "ac3/core/aht_tables.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/fft.hpp"
-#include "ac3/core/mdct.hpp"
-#include "ac3/core/window.hpp"
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/ac3/core/aht_tables.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/dsp/fft.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/window.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 #include "eac3_tools_fixed.hpp"
-#include "fft_kernel.hpp"
-#include "ac3/internal/fixed32.hpp"
+#include "iclforge/dsp/detail/fft_kernel.hpp"
+#include "iclforge/arithmetic/fixed32.hpp"
 #include "mdct_fixed.hpp"
 
 namespace ac3::eac3 {

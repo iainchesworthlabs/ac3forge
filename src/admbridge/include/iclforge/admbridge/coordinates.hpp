@@ -1,9 +1,9 @@
 #pragma once
 
-#include "ac3/admbridge/export.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3adm/model.hpp"
-#include "ac3iab/model.hpp"
+#include "iclforge/admbridge/export.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/adm/model.hpp"
+#include "iclforge/iab/model.hpp"
 
 // Coordinate conversion between the two position systems Recommendation ITU-R BS.2076-2 (10/2019)
 // Annex 1 defines for audioBlockFormat (Tables 15-17, and Clause 8 "Coordinate system" for the

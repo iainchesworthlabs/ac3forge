@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "bit_reader.hpp"
-#include "huffman_codebook.hpp"
+#include "iclforge/ac4core/huffman_codebook.hpp"
 #include "syntax/context.hpp"
 
 // Advanced joint object coding's syntax, ETSI TS 103 190-2 V1.3.1 clause

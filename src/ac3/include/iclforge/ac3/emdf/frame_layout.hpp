@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/export.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Where things ARE in an E-AC-3 syncframe that carries an EMDF object
 // container - a bit-accurate map of the frame, with no opinion about what to
@@ -141,10 +141,10 @@ struct FrameLayout {
 
 // Maps one complete E-AC-3 syncframe. `frame` must be exactly the syncframe -
 // syncframe_size() below is what sizes it out of a stream.
-[[nodiscard]] AC3FORGE_EXPORT FrameLayout walk_frame(std::span<const std::byte> frame);
+[[nodiscard]] ICLFORGE_AC3_EXPORT FrameLayout walk_frame(std::span<const std::byte> frame);
 
 // §E2.3.1.3: frmsiz (bits 16..26) is the frame's length in 16-bit words minus
 // one. Undefined for fewer than 4 bytes, which is not a syncframe.
-[[nodiscard]] AC3FORGE_EXPORT std::size_t syncframe_size(std::span<const std::byte> at);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::size_t syncframe_size(std::span<const std::byte> at);
 
 }  // namespace ac3::emdf

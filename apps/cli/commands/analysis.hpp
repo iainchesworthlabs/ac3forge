@@ -7,7 +7,7 @@
 #include <string_view>
 
 #include "../support.hpp"
-#include "ac3/encoder/plan.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
 
 // The measurement/transform commands that need no audio hardware: qc, levels, loudness, and
 // spdif/unspdif. spdif is not itself a measurement command, but by this point in the H4 split it sits

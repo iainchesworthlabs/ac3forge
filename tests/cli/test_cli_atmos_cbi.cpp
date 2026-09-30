@@ -15,10 +15,10 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 // ac3cli's 'atmos-cbi' command (apps/cli/commands/atmos.cpp's run_atmos_cbi): a channel-based-
 // immersive bed WAV straight to DD+ JOC E-AC-3 with program.bed != 0 and 0 dynamic objects. Same

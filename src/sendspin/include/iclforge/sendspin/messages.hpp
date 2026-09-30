@@ -7,11 +7,11 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/state_roles.hpp"
-#include "ac3/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/state_roles.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
 
 // Sendspin's JSON messages after the Noise handshake (messaging.md, Core messages;
 // roles/player/v1.md), each a struct with a writer and a reader, in both dialects where

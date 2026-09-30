@@ -12,14 +12,14 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/metadata_edit.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // The §7.8 output stage (ac3/decoder/output.hpp): dialnorm normalisation, the
 // three folds, LFE mixing, and §7.7's line and RF operating modes.

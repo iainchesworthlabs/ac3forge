@@ -5,8 +5,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/decoder/output.hpp"
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 #include "ac4_stream.hpp"
 
 // See stream_decoder.hpp. The decode path is apps/hearth/testsink/

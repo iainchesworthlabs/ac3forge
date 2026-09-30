@@ -18,7 +18,7 @@
 
 #include "platform/process.hpp"
 
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 // These tests build BW64/RF64 fixtures byte-by-byte, independently of
 // src/ac3adm's own implementation (which is itself just a thin translation

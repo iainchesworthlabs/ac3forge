@@ -20,13 +20,13 @@
 #include "platform/process.hpp"
 #include "sanitized.hpp"
 
-#include "ac3/decoder/decoder.hpp"  // split_frames, to lift the dependent out of a legacy-core unit
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/metadata_edit.hpp"  // restamp_crc, for the non-uniform-access-unit fixture
-#include "ac3/io/wav.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"  // split_frames, to lift the dependent out of a legacy-core unit
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"  // restamp_crc, for the non-uniform-access-unit fixture
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac4/ac4.hpp"
 
 // apps/cli/commands/containers.cpp measured 0.0% line coverage when roadmap
 // VX15 first pointed the apps/cli coverage gate at apps/ (re-measured at

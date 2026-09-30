@@ -11,19 +11,19 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/decoder/serving.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/render.hpp"
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/chunks.hpp"
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/serving.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/render.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 namespace ac3::hearth::testsink {
 

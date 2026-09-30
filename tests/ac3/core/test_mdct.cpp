@@ -6,8 +6,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/mdct.hpp"
-#include "ac3/core/window.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/window.hpp"
 #include "golden/mdct_goldens.hpp"
 
 namespace {

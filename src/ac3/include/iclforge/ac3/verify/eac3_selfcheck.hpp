@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/silent_frame.hpp"  // FrameError
-#include "ac3/export.hpp"
-#include "ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"  // FrameError
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
 
 // The encode-then-decode-then-compare driver over ac3/verify/eac3_mirror.hpp,
 // and the E-AC-3 counterpart of ac3/verify/selfcheck.hpp.
@@ -57,7 +57,7 @@ struct CheckedAccessUnit {
     [[nodiscard]] bool ok() const { return mismatches.empty() && !decode_error.has_value(); }
 };
 
-class AC3FORGE_EXPORT Eac3MirrorEncoder {
+class ICLFORGE_AC3_EXPORT Eac3MirrorEncoder {
    public:
     // `config` is taken by value and every substream's trace pointer
     // overwritten - a caller has no use for setting one here, and letting one

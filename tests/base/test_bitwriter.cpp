@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "ac3/core/bitwriter.hpp"
+#include "iclforge/base/bitwriter.hpp"
 
 namespace {
 

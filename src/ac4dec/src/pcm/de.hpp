@@ -4,7 +4,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "pcm/aspx.hpp"
 #include "syntax/metadata.hpp"
 

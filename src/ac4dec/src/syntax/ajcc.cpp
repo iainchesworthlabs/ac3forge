@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "tables/huffman_tables.hpp"
+#include "iclforge/ac4core/tables/huffman_tables.hpp"
 
 namespace ac4::detail {
 

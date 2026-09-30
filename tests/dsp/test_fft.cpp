@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <numbers>
 
-#include "ac3/core/fft.hpp"
+#include "iclforge/dsp/fft.hpp"
 
 namespace {
 

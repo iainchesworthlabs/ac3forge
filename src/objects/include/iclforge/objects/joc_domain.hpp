@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "ac3/dsp/qmf.hpp"
+#include "iclforge/dsp/qmf.hpp"
 
 namespace ac3::oba::joc {
 

@@ -1,4 +1,4 @@
-#include "ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,26 +12,26 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/bitwriter.hpp"
-#include "ac3/core/coupling.hpp"
-#include "ac3/core/crc16.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/mantissas.hpp"
-#include "ac3/core/mdct.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/bandwidth.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/encoder/transient.hpp"
-#include "ac3/internal/encode_scalar.hpp"
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/base/bitwriter.hpp"
+#include "iclforge/ac3/core/coupling.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/mantissas.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/bandwidth.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/encoder/transient.hpp"
+#include "iclforge/ac3/detail/encode_scalar.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/quality/distortion.hpp"
-#include "ac3/quality/perceptual.hpp"
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
+#include "iclforge/ac3/quality/perceptual.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 
 #include "scalar_transform.hpp"
 #include "dither.hpp"

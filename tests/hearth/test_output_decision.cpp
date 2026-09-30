@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 #include "output_decision.hpp"
 
 // ac3::hearth::choose_output's case table (apps/hearth/engine/output_decision.cpp).

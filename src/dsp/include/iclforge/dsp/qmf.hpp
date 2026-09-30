@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <span>
 
-#include "ac3/export.hpp"
+#include "iclforge/dsp/export.hpp"
 
 // The 64-band complex QMF that TS 103 420 §7.1 puts the JOC reconstruction
 // in - the filterbank this tree did not have, and whose absence made
@@ -59,7 +59,7 @@ inline constexpr int kQmfDelaySlots = kQmfDelay / kQmfHop;  // 9
 // One channel's streaming analysis. Construct once per channel per run,
 // push() once per 64 input samples in order, reset() only at a run
 // boundary - the same contract Biquad and audio::DriftResampler carry.
-class AC3FORGE_EXPORT QmfAnalysis {
+class ICLFORGE_DSP_EXPORT QmfAnalysis {
 public:
     void reset();
 
@@ -80,7 +80,7 @@ private:
 };
 
 // The matching synthesis, likewise one per reconstructed signal.
-class AC3FORGE_EXPORT QmfSynthesis {
+class ICLFORGE_DSP_EXPORT QmfSynthesis {
 public:
     void reset();
 
@@ -96,6 +96,6 @@ private:
 // The designed prototype, for tests that check the perfect-reconstruction
 // conditions on the coefficients directly rather than only through a
 // round trip.
-[[nodiscard]] AC3FORGE_EXPORT std::span<const double, kQmfTaps> qmf_prototype();
+[[nodiscard]] ICLFORGE_DSP_EXPORT std::span<const double, kQmfTaps> qmf_prototype();
 
 }  // namespace ac3::dsp

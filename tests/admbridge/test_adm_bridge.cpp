@@ -11,12 +11,12 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/admbridge/bridge.hpp"
-#include "ac3/admbridge/coordinates.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/bridge.hpp"
+#include "iclforge/admbridge/coordinates.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 // ac3::admbridge - ADM BWF → JOC bridge, phase 2 ("ADM BWF reader feeding the JOC encoder", see
 // ROADMAP.md). Most cases here construct ac3adm::AdmDocument/AdmModel values directly (they are

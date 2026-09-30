@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <span>
 
-#include "ac4/detail/real.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 // Advanced coupling's signal processing, ETSI TS 103 190-1 V1.4.1 clause 5.7.7:
 // the parameter bands (5.7.7.2, Table 197), interpolation (5.7.7.3,

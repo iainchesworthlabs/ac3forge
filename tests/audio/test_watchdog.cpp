@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-#include "ac3/audio/watchdog.hpp"
+#include "iclforge/audio/watchdog.hpp"
 
 using namespace std::chrono_literals;
 using ac3::audio::SilenceWatchdog;

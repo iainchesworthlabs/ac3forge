@@ -1,4 +1,4 @@
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 #include <algorithm>
 #include <array>
@@ -17,8 +17,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac4/ac4.hpp"
-#include "ac4/detail/profiling.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4core/detail/profiling.hpp"
 #include "bit_reader.hpp"
 #include "pcm/downmix.hpp"
 #include "pcm/drc.hpp"

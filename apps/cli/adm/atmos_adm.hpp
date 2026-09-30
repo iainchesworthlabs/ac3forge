@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/oba/motion.hpp"
-#include "ac3/audio/audio_backend.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/audio/audio_backend.hpp"
 
 // ADM BWF reader phase 3 of 3 ("ADM BWF reader feeding the JOC encoder") - the narrow
 // seam between main.cpp's 'atmos-adm' command and ac3adm::ac3adm/ac3::admbridge, this project's

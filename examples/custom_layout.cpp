@@ -17,9 +17,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/plan.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
 
 int main() {
     const auto locations = ac3::plan::parse_channels("L,C,R,Ls,Rs,LFE,Ts,Lw,Rw");

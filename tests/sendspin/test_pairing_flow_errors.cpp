@@ -9,14 +9,14 @@
 #include <variant>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/noise.hpp"
-#include "ac3/sendspin/pairing_flow.hpp"
-#include "ac3/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/noise.hpp"
+#include "iclforge/sendspin/pairing_flow.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
 
 // The pairing flows' refusals, beside test_pairing_flow.cpp's successful and mistyped runs:
 // activations the client cannot take up, and at each stage of a real attempt a message of the

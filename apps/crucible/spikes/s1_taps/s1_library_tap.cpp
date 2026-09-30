@@ -16,9 +16,9 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/audio_backend.hpp"
-#include "ac3/audio/capture.hpp"
-#include "ac3/audio/device_watcher.hpp"
+#include "iclforge/audio/audio_backend.hpp"
+#include "iclforge/audio/capture.hpp"
+#include "iclforge/audio/device_watcher.hpp"
 
 namespace {
 

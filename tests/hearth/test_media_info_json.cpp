@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/sendspin/json.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/sendspin/json.hpp"
 #include "container_input.hpp"
 #include "media_info.hpp"
 

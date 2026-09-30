@@ -1,4 +1,4 @@
-#include "ac3/quality/distortion.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,10 +8,10 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/bitalloc_tables.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/mantissas.hpp"
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/ac3/core/bitalloc_tables.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/mantissas.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 // std::min<int> rather than bare std::min throughout this file: the band
 // tables are std::int32_t, which is 'long int' on arm-none-eabi and 'int' on

@@ -1,15 +1,15 @@
-#include "ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include <cstdint>
 #include <memory>
 #include <span>
 #include <string_view>
 
-#include "ac3/meta/mixing.hpp"  // kReferenceDialnorm
+#include "iclforge/ac3/meta/mixing.hpp"  // kReferenceDialnorm
 
 namespace ac3::meta {
 

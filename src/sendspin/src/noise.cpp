@@ -1,4 +1,4 @@
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 #include <algorithm>
 #include <array>
@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
+#include "iclforge/sendspin/crypto.hpp"
 
 namespace ac3::sendspin::noise {
 

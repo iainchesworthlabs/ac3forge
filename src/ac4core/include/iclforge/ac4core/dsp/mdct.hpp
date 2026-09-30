@@ -4,9 +4,9 @@
 #include <span>
 #include <vector>
 
-#include "ac4/detail/real.hpp"
-#include "dsp/complex.hpp"
-#include "dsp/fft.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/fft.hpp"
 
 // The MDCT pair of ETSI TS 103 190-1 V1.4.1 clause 5.5.2.
 //

@@ -57,8 +57,8 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#include "ac3/core/tables.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/render/layout.hpp"
 #include "ac3forge/control.hpp"
 #include "ac3forge/firmware.hpp"
 #include "ac3forge/log.hpp"

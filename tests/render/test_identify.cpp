@@ -15,8 +15,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/render/float_biquad.hpp"
-#include "ac3/render/identify.hpp"
+#include "iclforge/render/float_biquad.hpp"
+#include "iclforge/render/identify.hpp"
 
 namespace {
 

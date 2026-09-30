@@ -1,4 +1,4 @@
-#include "ac3/meta/loudness.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
 
 #include <algorithm>
 #include <array>
@@ -7,8 +7,8 @@
 #include <memory>
 #include <numbers>
 #include <numeric>
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include <optional>
 #include <span>
 #include <vector>

@@ -9,8 +9,8 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/audio_backend.hpp"
-#include "ac3/audio/render_devices.hpp"
+#include "iclforge/audio/audio_backend.hpp"
+#include "iclforge/audio/render_devices.hpp"
 
 // ac3::audio::RenderDeviceWatch against a fake enumeration
 // (src/audio/src/render_devices.cpp): a list that keeps itself current whether

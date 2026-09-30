@@ -18,11 +18,11 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/plan.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
 
 int main() {
     const std::array<ac3::plan::SourceShape, 2> sources{{

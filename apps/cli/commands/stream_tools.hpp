@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 #include "../support.hpp"
 
 // The stream tools (stream tools): commands that operate on an ALREADY-encoded

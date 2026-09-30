@@ -5,8 +5,8 @@
 #include <numbers>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/transient.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/transient.hpp"
 
 namespace {
 

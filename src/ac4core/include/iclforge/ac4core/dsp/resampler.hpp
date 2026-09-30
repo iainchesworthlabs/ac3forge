@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4/detail/real.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
 
 // The sample rate converter of ETSI TS 103 190-1 V1.4.1 clause 6.2.15, and the
 // same converter the other way round, which the encoder uses. At every

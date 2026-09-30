@@ -13,8 +13,8 @@
 #include <string>
 #include <vector>
 
-#include "ac3/sendspin/codec.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/codec.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // player@v1's codecs: PCM and FLAC decoding to exactly what was encoded at each bit depth,
 // whatever sizes the input arrives in; FLAC's header, frames and positions; Opus's 20 ms packets,

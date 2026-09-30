@@ -1,13 +1,13 @@
-#include "ac3/verify/trace_export.hpp"
+#include "iclforge/ac3/verify/trace_export.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
 
-#include "ac3/core/tables.hpp"  // kBlocksPerFrame
-#include "ac3/verify/eac3_mirror.hpp"
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/core/tables.hpp"  // kBlocksPerFrame
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 
 namespace ac3::verify {
 

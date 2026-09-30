@@ -1,4 +1,4 @@
-#include "ac3/decoder/transient_prenoise.hpp"
+#include "iclforge/ac3/decoder/transient_prenoise.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,8 +8,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/internal/decode_scalar.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/detail/decode_scalar.hpp"
 #include "transient_prenoise_apply.hpp"
 
 namespace ac3 {

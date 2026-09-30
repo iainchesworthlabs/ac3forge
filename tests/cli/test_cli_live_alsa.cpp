@@ -20,10 +20,10 @@
 #include <unistd.h>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 #include "audio/alsa_null_device.hpp"
 
 // The device-facing ac3cli commands against software ALSA devices

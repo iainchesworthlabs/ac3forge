@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/audio/audio_backend.hpp"
-#include "ac3/audio/capture.hpp"
+#include "iclforge/audio/audio_backend.hpp"
+#include "iclforge/audio/capture.hpp"
 #include "coreaudio_names.hpp"
 
 // The macOS backend's pure half, tested directly - see coreaudio_names.hpp's

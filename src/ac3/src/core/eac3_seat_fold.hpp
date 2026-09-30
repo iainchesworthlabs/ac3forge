@@ -2,9 +2,9 @@
 
 #include <cstdint>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // Where a rendered Table E2.5 location seats once a programme with no §7.8
 // fold of its own - a wide layout such as 7.1.4 or 5.1.2 - has to be reduced

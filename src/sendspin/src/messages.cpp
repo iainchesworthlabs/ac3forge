@@ -1,4 +1,4 @@
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,12 +12,12 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/base64.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/state_roles.hpp"
-#include "ac3/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/base64.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/state_roles.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
 
 namespace ac3::sendspin::messages {
 

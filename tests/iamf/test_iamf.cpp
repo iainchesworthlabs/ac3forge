@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "iamf/iamf.hpp"
+#include "iclforge/iamf/iamf.hpp"
 
 // These tests read iamf::mux()'s output back with an independent OBU/ISOBMFF walker rather than
 // comparing against bytes this same code produced - the same reasoning as test_mp4.cpp's own

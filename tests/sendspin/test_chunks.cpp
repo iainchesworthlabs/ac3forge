@@ -11,12 +11,12 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/sendspin/chunks.hpp"
-#include "ac3/sendspin/frames.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/sendspin/frames.hpp"
 
 // The audio chunks, including planning/hearth-sendspin-extension.md's test
 // vectors for _ac3forge_player@v1: a burst chunk from wrap_frame for

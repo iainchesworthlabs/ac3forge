@@ -1,4 +1,4 @@
-#include "cpu_features.hpp"
+#include "iclforge/base/detail/cpu_features.hpp"
 
 // ---------------------------------------------------------------------------
 // has_avx2() in the MINIMUM-FOOTPRINT DECODER profile (AC3FORGE_MINIMAL_DECODER,

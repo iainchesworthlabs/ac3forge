@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 // What a syncframe's audio blocks actually said, as opposed to what they
 // decoded to.

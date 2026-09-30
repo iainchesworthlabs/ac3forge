@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac3iab/ac3iab.hpp"
+#include "iclforge/iab/ac3iab.hpp"
 #include "bitreader.hpp"
 
 // §7 Table 2 (IABitstream Syntax) / §8 (IABitstream Field Description): the outer TLV framing

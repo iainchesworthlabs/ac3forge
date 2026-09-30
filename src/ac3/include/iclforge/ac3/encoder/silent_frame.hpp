@@ -10,10 +10,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/bitwriter.hpp"
-#include "ac3/core/crc16.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/base/bitwriter.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Milestone 1-2: build complete, spec-conformant AC-3 syncframes encoding
 // digital silence in 2/0 (stereo) mode. Every field below is written in the
@@ -69,7 +69,7 @@ enum class FrameError : std::uint8_t {
     kInvalidBsi,
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(FrameError error);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(FrameError error);
 
 namespace detail {
 

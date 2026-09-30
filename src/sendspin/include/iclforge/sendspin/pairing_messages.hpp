@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // The pairing messages (pairing.md, Messages), each a struct with a writer and a reader, in
 // both dialects where they differ (planning/hearth-sendspin-extension.md, C22 to C26). The

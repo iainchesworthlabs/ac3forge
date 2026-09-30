@@ -1,4 +1,4 @@
-#include "ac3/emdf/emdf.hpp"
+#include "iclforge/objects/emdf.hpp"
 
 #include <array>
 #include <cassert>
@@ -10,8 +10,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/bitwriter.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/base/bitwriter.hpp"
 
 namespace ac3::emdf {
 

@@ -2,7 +2,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/oba/joc_tables.hpp"
+#include "iclforge/ac3/oba/joc_tables.hpp"
 #include "internal.hpp"
 
 using ac3forge_c::guard;

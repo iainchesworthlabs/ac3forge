@@ -7,8 +7,8 @@
 #include <memory>
 #include <vector>
 
-#include "ac3/audio/device_watcher.hpp"
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/device_watcher.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // A render-device list that keeps itself current, however the platform says
 // so - or does not.

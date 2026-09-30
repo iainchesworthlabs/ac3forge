@@ -9,10 +9,10 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
 
 // §E2.3.1.4 short syncframes (numblkscod 0-2) and §E2.3.1.64 convsync
 // (E-AC-3 short syncframes). The encoder always wrote numblkscod == 0x3 before this;

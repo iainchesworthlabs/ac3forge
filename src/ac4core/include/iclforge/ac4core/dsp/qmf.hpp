@@ -4,8 +4,8 @@
 #include <cstddef>
 #include <span>
 
-#include "ac4/detail/real.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 // The complex QMF analysis and synthesis banks of ETSI TS 103 190-1 V1.4.1
 // clauses 5.7.3 and 5.7.4 (Pseudocodes 65 and 66), with the window QWIN of

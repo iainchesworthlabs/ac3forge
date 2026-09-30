@@ -8,7 +8,7 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/render/layout.hpp"
+#include "iclforge/render/layout.hpp"
 
 // Where each rendered channel comes out: a patch from the renderer's slots to
 // the outputs of a device.

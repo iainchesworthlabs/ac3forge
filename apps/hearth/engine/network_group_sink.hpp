@@ -9,9 +9,9 @@
 #include <span>
 #include <string>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/render/layout.hpp"
 #include "transport.hpp"
 
 // Forward-declared, not included: player.hpp includes this header

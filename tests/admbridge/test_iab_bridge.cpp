@@ -12,13 +12,13 @@
 #include <string>
 #include <vector>
 
-#include "ac3/admbridge/coordinates.hpp"
-#include "ac3/admbridge/iab_bridge.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/model.hpp"
+#include "iclforge/admbridge/coordinates.hpp"
+#include "iclforge/admbridge/iab_bridge.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/model.hpp"
 
 // ac3::admbridge::build_iab - IAB reader bridge, phase 3 ("IAB (SMPTE ST 2098-2) reader", see
 // ROADMAP.md). Most cases here construct ac3iab::IABitstreamFrame/IaFrame/BedDefinition/

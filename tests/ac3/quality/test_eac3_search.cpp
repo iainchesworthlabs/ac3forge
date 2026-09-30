@@ -9,11 +9,11 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/quality/distortion.hpp"
-#include "ac3/verify/eac3_selfcheck.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
+#include "iclforge/ac3/verify/eac3_selfcheck.hpp"
 
 // EQ13's E-AC-3 half: eac3::FrameConfig::search, CBR only, dbpbcod-only - see
 // that field's own doc comment for the scope this mirrors AC-3's

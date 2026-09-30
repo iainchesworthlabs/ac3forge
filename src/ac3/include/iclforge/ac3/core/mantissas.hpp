@@ -8,9 +8,9 @@
 #include <type_traits>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Mantissa quantization and grouping (A/52 §7.3).
 //
@@ -38,10 +38,10 @@ inline constexpr std::array<int, 6> kSymmetricLevels = {0, 3, 5, 7, 11, 15};
 // exponent, representing [-1, 1)) to its bap's code. Symmetric baps return
 // the level index; asymmetric baps return the qntztab-bit two's-complement
 // pattern.
-[[nodiscard]] AC3FORGE_EXPORT std::uint32_t quantize_mantissa(std::int32_t mantissa, int bap);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::uint32_t quantize_mantissa(std::int32_t mantissa, int bap);
 
 // Reconstruction value in [-1, 1) for a code (test/decoder use).
-[[nodiscard]] AC3FORGE_EXPORT double dequantize_mantissa(std::uint32_t code, int bap);
+[[nodiscard]] ICLFORGE_AC3_EXPORT double dequantize_mantissa(std::uint32_t code, int bap);
 
 // The same reconstruction in the caller's own scalar. dequantize_mantissa()
 // above is this at double, and the decoders call this at whichever type
@@ -113,7 +113,7 @@ template <typename Scalar>
 // spec's own +-0.707 uniform range. Deterministic per instance - the same
 // stream always decodes to the same PCM - which is why it is a value type a
 // caller owns (one per decoder instance) rather than global state.
-struct AC3FORGE_EXPORT DitherGenerator {
+struct ICLFORGE_AC3_EXPORT DitherGenerator {
     std::uint32_t state = 0x6C8E9CF7U;  // never zero, or xorshift sticks at 0
     [[nodiscard]] double next();
 
@@ -163,7 +163,7 @@ struct MantissaToken {
 // add() mantissas in bitstream order (channel 0 all bins, then channel 1,
 // ...); finish_block() pads partial groups with dummy zero codes and
 // backfills group codewords. tokens() then yields the exact writes.
-class AC3FORGE_EXPORT MantissaBlockWriter {
+class ICLFORGE_AC3_EXPORT MantissaBlockWriter {
    public:
     void add(std::int32_t mantissa, int bap);
     // A pre-formed codeword of a known width, placed in sequence with the
@@ -208,7 +208,7 @@ class AC3FORGE_EXPORT MantissaBlockWriter {
 // Fast bit count for one block given per-channel bap arrays — must equal
 // what MantissaBlockWriter emits (property-tested). Grouped baps cost
 // ceil(count/members) codewords per block.
-[[nodiscard]] AC3FORGE_EXPORT std::size_t mantissa_bits_per_block(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::size_t mantissa_bits_per_block(
     std::span<const std::span<const std::uint8_t>> channel_baps);
 
 // The mirror of MantissaBlockWriter: reads ONE audio block's mantissas in
@@ -217,7 +217,7 @@ class AC3FORGE_EXPORT MantissaBlockWriter {
 // unpacked remainder forward. State is shared across exponent sets within a
 // block and discarded at block end, where the writer's dummy padding sits.
 // AC-3 and E-AC-3 group mantissas identically, so both decoders use this.
-class AC3FORGE_EXPORT MantissaBlockReader {
+class ICLFORGE_AC3_EXPORT MantissaBlockReader {
    public:
     [[nodiscard]] std::uint32_t read(BitReader& reader, int bap);
 

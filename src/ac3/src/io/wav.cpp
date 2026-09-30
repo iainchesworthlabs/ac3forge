@@ -1,4 +1,4 @@
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,7 +12,7 @@
 #include <numeric>
 #include <optional>
 #include <ostream>
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include <span>
 #include <string>
 #include <string_view>

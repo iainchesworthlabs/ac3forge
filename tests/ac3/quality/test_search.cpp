@@ -11,10 +11,10 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/quality/distortion.hpp"
-#include "ac3/verify/selfcheck.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
+#include "iclforge/ac3/verify/selfcheck.hpp"
 
 namespace {
 

@@ -9,9 +9,9 @@
 #include <string>
 #include <vector>
 
-#include "ac3/io/wav.hpp"
-#include "ac3/sendspin/codec.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/sendspin/codec.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // A test sink's output for player@v1: each stream decoded (PCM, FLAC or Opus) to a float WAV file
 // in the output directory, with a play-time log beside it. The log's lines are

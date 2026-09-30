@@ -8,7 +8,7 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 namespace ac3::io::detail {
 

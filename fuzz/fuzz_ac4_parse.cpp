@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4/ac4.hpp"
+#include "iclforge/ac4/ac4.hpp"
 
 // ac4::scan, ac4::SyncFrameSplitter and ac4::parse_raw_frame (src/ac4/src/
 // ac4.cpp) - the AC-4 bitstream inspector.

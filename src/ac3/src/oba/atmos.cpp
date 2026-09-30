@@ -1,4 +1,4 @@
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,19 +12,19 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/mdct.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/dsp/qmf.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/core/eac3_tables.hpp"  // blocks_per_syncframe
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/internal/profiling.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/oba/joc_tables.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/dsp/qmf.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"  // blocks_per_syncframe
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/base/detail/profiling.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/ac3/oba/joc_tables.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/spatial.hpp"
 
 namespace ac3::oba {
 

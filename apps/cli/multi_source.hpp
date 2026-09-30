@@ -10,10 +10,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // The src=/map= multi-source subsystem: the primary positional file plus every src= path, opened
 // and shaped, then routed as one programme (routing_for_sources) and gathered frame-by-frame

@@ -3,8 +3,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/admbridge/bridge.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/bridge.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 // Compiled only when AC3FORGE_BUILD_ADM turned ac3adm::ac3adm/ac3::admbridge on (see
 // apps/cli/CMakeLists.txt) - see ../decode_adm.hpp's own top comment for why this file, rather

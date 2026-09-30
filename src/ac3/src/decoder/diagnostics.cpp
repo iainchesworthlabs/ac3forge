@@ -1,4 +1,4 @@
-#include "ac3/decoder/diagnostics.hpp"
+#include "iclforge/ac3/decoder/diagnostics.hpp"
 
 #include <string_view>
 

@@ -1,4 +1,4 @@
-#include "isf_tables.hpp"
+#include "iclforge/ac4core/tables/isf_tables.hpp"
 
 namespace ac4::detail::tables {
 namespace {

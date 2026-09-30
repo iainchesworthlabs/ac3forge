@@ -13,10 +13,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 #include "support.hpp"
 
 namespace ac3cli {

@@ -7,7 +7,7 @@
 #include <optional>
 #include <string_view>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "bit_reader.hpp"
 
 // What a substream's syntax needs from outside the substream, and the result

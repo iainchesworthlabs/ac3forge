@@ -1,4 +1,4 @@
-#include "qmf_tables.hpp"
+#include "iclforge/ac4core/tables/qmf_tables.hpp"
 
 namespace ac4::detail::tables {
 

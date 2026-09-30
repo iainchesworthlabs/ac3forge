@@ -12,12 +12,12 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
-#include "mp4/dash.hpp"
-#include "mp4/hls.hpp"
-#include "mp4/mp4.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/mp4/dash.hpp"
+#include "iclforge/mp4/hls.hpp"
+#include "iclforge/mp4/mp4.hpp"
 
 // fragment()'s ISOBMFF output is read back with its own independent box
 // walker below, extended from test_mp4.cpp's (moof/traf/tfhd/tfdt/trun added

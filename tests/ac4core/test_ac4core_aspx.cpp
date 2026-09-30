@@ -17,9 +17,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "aspx/frequency_tables.hpp"
-#include "aspx/hf_generator.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/aspx/frequency_tables.hpp"
+#include "iclforge/ac4core/aspx/hf_generator.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 namespace {
 

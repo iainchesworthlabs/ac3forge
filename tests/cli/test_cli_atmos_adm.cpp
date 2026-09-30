@@ -14,8 +14,8 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
 
 // ac3cli's 'atmos-adm' command (ADM BWF reader phase 3 of 3 - 's "ADM BWF reader
 // feeding the JOC encoder" entry; apps/cli/main.cpp's run_atmos_adm). Real, subprocess-level

@@ -6,15 +6,15 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/dsp/qmf.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/export.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/oba/placement.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/dsp/qmf.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/placement.hpp"
+#include "iclforge/render/spatial.hpp"
 
 // Dolby Atmos in Dolby Digital Plus: objects in, one ordinary-looking 5.1
 // E-AC-3 stream out.
@@ -121,7 +121,7 @@ struct BedProgram {
     std::uint16_t bed = 0;
 };
 
-class AC3FORGE_EXPORT AtmosEncoder {
+class ICLFORGE_AC3_EXPORT AtmosEncoder {
    public:
     AtmosEncoder(const AtmosConfig& config, int objects);
     // Channel-based-immersive construction: see BedProgram and
@@ -247,7 +247,7 @@ class AC3FORGE_EXPORT AtmosEncoder {
 // ride the same transform path as its bed. Declared here purely for
 // kernel-level benchmarking - it is not part of the object-encoding API
 // above and no caller outside this library should need it directly.
-AC3FORGE_EXPORT void band_energy(std::span<const float> signal,
+ICLFORGE_AC3_EXPORT void band_energy(std::span<const float> signal,
                                  std::span<const std::uint8_t, 64> mapping,
                                  std::span<double> out, bool fast = false);
 
@@ -270,7 +270,7 @@ AC3FORGE_EXPORT void band_energy(std::span<const float> signal,
 // reconstruct this frame. Closing that 576-sample gap would need a frame of
 // encoder lookahead; what it costs instead is that the energy average is
 // taken over a window shifted 576 samples early.
-AC3FORGE_EXPORT void qmf_band_energy(std::span<const float> signal,
+ICLFORGE_AC3_EXPORT void qmf_band_energy(std::span<const float> signal,
                                      std::span<const std::uint8_t, 64> mapping,
                                      std::span<double> out, dsp::QmfAnalysis& analysis);
 

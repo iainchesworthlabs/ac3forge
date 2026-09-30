@@ -12,8 +12,8 @@
 #include <thread>
 #include <utility>
 
-#include "ac3/sendspin/session.hpp"
-#include "ac3/sendspin/transport.hpp"
+#include "iclforge/sendspin/session.hpp"
+#include "iclforge/sendspin/transport.hpp"
 
 // Runs one session over one transport::Connection on a computer. A reader thread hands the
 // session each frame that arrives; a writer thread sends what the session answers, in the order

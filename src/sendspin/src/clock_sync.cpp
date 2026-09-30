@@ -1,4 +1,4 @@
-#include "ac3/sendspin/clock_sync.hpp"
+#include "iclforge/sendspin/clock_sync.hpp"
 
 #include <sendspin_time_filter.h>
 
@@ -10,7 +10,7 @@
 #include <memory>
 #include <optional>
 
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 namespace ac3::sendspin {
 

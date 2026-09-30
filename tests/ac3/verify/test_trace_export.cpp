@@ -10,13 +10,13 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/verify/eac3_mirror.hpp"
-#include "ac3/verify/mirror.hpp"
-#include "ac3/verify/trace_export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
+#include "iclforge/ac3/verify/trace_export.hpp"
 
 // research trace export: research trace export. Two things are checked, separately:
 //

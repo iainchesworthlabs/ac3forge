@@ -15,14 +15,14 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/metadata_edit.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 #include "golden/drc_goldens.hpp"
 
 namespace {

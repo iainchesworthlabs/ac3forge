@@ -8,9 +8,9 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"  // DeltaSegments
-#include "ac3/core/tables.hpp"    // kBlocksPerFrame
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"  // DeltaSegments
+#include "iclforge/ac3/core/tables.hpp"    // kBlocksPerFrame
+#include "iclforge/ac3/export.hpp"
 
 // Encoder/decoder mirror verification.
 //
@@ -114,7 +114,7 @@ struct BlockTrace {
 };
 
 // One side's view of one frame.
-struct AC3FORGE_EXPORT FrameTrace {
+struct ICLFORGE_AC3_EXPORT FrameTrace {
     int fbw_channels = 0;    // nfchans
     int coded_channels = 0;  // nfchans + lfe; the coupling stream sits at this index
     std::array<BlockTrace, kBlocksPerFrame> blocks{};
@@ -140,7 +140,7 @@ enum class Field : std::uint8_t {
     kBap,  // a bit allocation pointer - the value that sizes a mantissa field
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(Field field);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(Field field);
 
 struct Mismatch {
     std::uint64_t frame = 0;
@@ -157,7 +157,7 @@ struct Mismatch {
 // "frame 12 block 3 channel 1: bap[87] encoder=5 decoder=4", with the stream
 // named the way a reader of A/52 would name it (channel N / LFE / coupling)
 // rather than by its internal index.
-[[nodiscard]] AC3FORGE_EXPORT std::string describe(const Mismatch& mismatch, int fbw_channels,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string describe(const Mismatch& mismatch, int fbw_channels,
                                                    int coded_channels);
 
 // Diffs the two views and returns what they disagree about, most useful first.
@@ -174,13 +174,13 @@ struct Mismatch {
 // needs and the rest is the same finding repeated.
 inline constexpr int kMaxPerArray = 4;
 
-[[nodiscard]] AC3FORGE_EXPORT std::vector<Mismatch> compare(const FrameTrace& encoder,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<Mismatch> compare(const FrameTrace& encoder,
                                                             const FrameTrace& decoder,
                                                             std::uint64_t frame_index);
 
 // The whole set as one multi-line block, one mismatch per line, for a test
 // failure message or a diagnostic dump. Empty string for an empty span.
-[[nodiscard]] AC3FORGE_EXPORT std::string report(std::span<const Mismatch> mismatches,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string report(std::span<const Mismatch> mismatches,
                                                  int fbw_channels, int coded_channels);
 
 }  // namespace ac3::verify

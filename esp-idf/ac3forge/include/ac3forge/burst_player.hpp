@@ -12,13 +12,13 @@
 
 #include "freertos/FreeRTOS.h"
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/decoder/serving.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/chunks.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/serving.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/sendspin/messages.hpp"
 #include "ac3forge/playout.hpp"
 
 // The Sendspin player's audio (planning/hearth-reference-player.md, B3): what

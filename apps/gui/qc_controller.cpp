@@ -14,17 +14,17 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/meta/qc.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/ac3/meta/qc.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_channels.hpp"
 #include "ac4_presentations.hpp"
 #include "ac4_sync_word.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "container_input.hpp"
 
 using qc_detail::RawProgramme;

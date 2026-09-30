@@ -13,8 +13,8 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
 
 // `ac3cli probe` (probe command), at the level its consumers actually use it:
 // the real binary, run as a subprocess, and the text it puts on stdout.

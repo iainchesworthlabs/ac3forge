@@ -9,8 +9,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/mxf.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/mxf.hpp"
 
 // SMPTE ST 336:2017 KLV/BER mechanics plus just enough of SMPTE ST 377-1:2019/ST 379-1:2009/
 // ST 2067-201:2021 to find one IAB Track File's single clip-wrapped essence KLV - see mxf.hpp's

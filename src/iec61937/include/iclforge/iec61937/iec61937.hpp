@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/export.hpp"
+#include "iclforge/iec61937/export.hpp"
 
 // IEC 61937 ("S/PDIF burst") packing: an AC-3 or E-AC-3 access unit disguised
 // as 16-bit stereo PCM so AV receivers accept it over S/PDIF or HDMI.
@@ -69,7 +69,7 @@ enum class BurstDataType : std::uint8_t {
 }
 
 // "AC-3", "E-AC-3", "AC-4", "AC-4 HBR4", "AC-4 HBR16" or "AC-4 LD".
-[[nodiscard]] AC3FORGE_EXPORT std::string_view data_type_name(BurstDataType type);
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::string_view data_type_name(BurstDataType type);
 
 enum class WrapError : std::uint8_t {
     kNotAFrame,  // missing sync word or truncated header
@@ -86,7 +86,7 @@ enum class WrapError : std::uint8_t {
 };
 
 // Wrap exactly one AC-3 syncframe into one 6144-byte burst.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, WrapError> wrap_frame(
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::expected<std::vector<std::byte>, WrapError> wrap_frame(
     std::span<const std::byte> frame);
 
 // Accumulates E-AC-3 access units into IEC 61937 bursts. Feed it whole access
@@ -95,7 +95,7 @@ enum class WrapError : std::uint8_t {
 // returns them) rather than lone syncframes: a dependent's channels only
 // reach the burst if its bytes are included, and a decoder finds them by the
 // same concatenation the elementary stream already uses.
-class AC3FORGE_EXPORT Eac3BurstPacker {
+class ICLFORGE_IEC61937_EXPORT Eac3BurstPacker {
    public:
     // Real work, not =default, because Impl below is incomplete here - same
     // reason ac3::io::WavStreamReader's default ctor gives.
@@ -134,7 +134,7 @@ class AC3FORGE_EXPORT Eac3BurstPacker {
 // split a raw buffer and wrap frame-by-frame instead (see main.cpp); both
 // paths bottom out in wrap_frame/Eac3BurstPacker above, so they cannot
 // disagree about how a unit becomes a burst.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, WrapError> wrap_stream(
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::expected<std::vector<std::byte>, WrapError> wrap_stream(
     std::span<const std::span<const std::byte>> units, bool eac3);
 
 // ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ struct Ac4BurstTiming {
 // when the type has none: AC-4 LD outside 100, 119.88 and 120 fps, and every
 // type at 44.1 kHz outside frame_rate_index 13, which is the only index Table
 // 84 defines there.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Ac4BurstTiming> ac4_burst_timing(BurstDataType type,
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::optional<Ac4BurstTiming> ac4_burst_timing(BurstDataType type,
                                                                              int fs_index,
                                                                              int frame_rate_index);
 
@@ -192,7 +192,7 @@ struct Ac4BurstTiming {
 // other code only a 48 kHz one, so the code alone decides the period. AC-4 LD's
 // code 14 (256 IEC 60958 frames, 187.5 fps) is here though no frame_rate_index
 // of TS 103 190-1 V1.4.1 reaches it: Table 83 reserves index 14.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Ac4BurstTiming> ac4_burst_timing_for_code(
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::optional<Ac4BurstTiming> ac4_burst_timing_for_code(
     BurstDataType type, int code);
 
 // The smallest of AC-4, AC-4 HBR4 and AC-4 HBR16 that carries sync frames of
@@ -200,7 +200,7 @@ struct Ac4BurstTiming {
 // burst type a stream's largest frame needs, chosen before the link opens,
 // since the link's rate goes with it. Nothing when even HBR16's does not, or
 // the rate has no row.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<BurstDataType> ac4_burst_type_for(
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::optional<BurstDataType> ac4_burst_type_for(
     std::size_t frame_bytes, int fs_index, int frame_rate_index);
 
 // What the head of an AC-4 sync frame says: its length and the fields of its
@@ -219,14 +219,14 @@ struct Ac4SyncFrame {
 
 // Nothing unless `bytes` is exactly one sync frame whose table of contents
 // can be read as far as frame_rate_index.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<Ac4SyncFrame> read_ac4_sync_frame(
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::optional<Ac4SyncFrame> read_ac4_sync_frame(
     std::span<const std::byte> bytes);
 
 // Packs one stream's AC-4 sync frames into data-bursts of one type, a frame to
 // a burst. One packer per stream: it remembers the stream's base sampling
 // frequency, which sets the link's rate, and the last frame's phase, which a
 // frame whose sequence_counter is 0 continues from (TS 103 190-2 5.11).
-class AC3FORGE_EXPORT Ac4BurstPacker {
+class ICLFORGE_IEC61937_EXPORT Ac4BurstPacker {
    public:
     explicit Ac4BurstPacker(BurstDataType type = BurstDataType::kAc4);
 
@@ -264,7 +264,7 @@ class AC3FORGE_EXPORT Ac4BurstPacker {
 
 // A whole stream's sync frames (as ac4::scan finds them in an .ac4 file) as one
 // carrier, the AC-4 counterpart of wrap_stream.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, WrapError> wrap_ac4_stream(
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::expected<std::vector<std::byte>, WrapError> wrap_ac4_stream(
     std::span<const std::span<const std::byte>> frames, BurstDataType type = BurstDataType::kAc4);
 
 // ---------------------------------------------------------------------------
@@ -303,7 +303,7 @@ enum class UnwrapError : std::uint8_t {
     kPayloadTooLarge,  // Pd claims more than the repetition period can hold
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(UnwrapError error);
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::string_view describe(UnwrapError error);
 
 // The repetition period a data type's bursts occupy, in carrier bytes:
 // 6144 for AC-3 (1536 sample frames), 24576 for E-AC-3 (6144 of them, the
@@ -311,7 +311,7 @@ enum class UnwrapError : std::uint8_t {
 // An AC-4 type's period follows the stream's frame rate, and this is the
 // longest it has (IEC 61937-14 Tables 5, 11, 17 and 23): 8192 for AC-4, 32768
 // for HBR4, 131072 for HBR16 and 1920 for AC-4 LD.
-[[nodiscard]] AC3FORGE_EXPORT std::size_t repetition_period(BurstDataType type);
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::size_t repetition_period(BurstDataType type);
 
 // What one burst's four preamble words said.
 struct BurstHeader {
@@ -341,7 +341,7 @@ struct BurstHeader {
 // elementary-stream bytes out. One burst's payload is the largest thing this
 // ever holds, so a whole session's memory is bounded by the chunk size plus
 // one repetition period however long the capture runs.
-class AC3FORGE_EXPORT BurstReader {
+class ICLFORGE_IEC61937_EXPORT BurstReader {
    public:
     // Appends every complete burst payload this chunk finished to `out`,
     // in carrier order, as elementary-stream bytes ready to be written as
@@ -410,7 +410,7 @@ class AC3FORGE_EXPORT BurstReader {
 //
 // kNoSync means no burst was found at all, which separates "this is ordinary
 // PCM" from "this is a carrier with nothing in it we decode".
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, UnwrapError> unwrap_stream(
+[[nodiscard]] ICLFORGE_IEC61937_EXPORT std::expected<std::vector<std::byte>, UnwrapError> unwrap_stream(
     std::span<const std::byte> carrier);
 
 // ---------------------------------------------------------------------------
@@ -426,7 +426,7 @@ class AC3FORGE_EXPORT BurstReader {
 // needs the identical conversion once detection has said yes: if the two
 // disagreed by a rounding step, a session would detect a bitstream and then
 // record a different one.
-AC3FORGE_EXPORT void carrier_from_capture(std::span<const float> interleaved,
+ICLFORGE_IEC61937_EXPORT void carrier_from_capture(std::span<const float> interleaved,
                                           std::uint16_t channels, std::vector<std::byte>& out);
 
 // Is this capture actually a bitstream?
@@ -443,7 +443,7 @@ AC3FORGE_EXPORT void carrier_from_capture(std::span<const float> interleaved,
 // every backend here does) loses nothing, so the words come back exactly;
 // a capture that is genuinely float32-native has been through a mixer and
 // its bursts are already destroyed, which shows up here as no detection.
-class AC3FORGE_EXPORT PassthroughDetector {
+class ICLFORGE_IEC61937_EXPORT PassthroughDetector {
    public:
     // How much carrier to look at before giving up. Two E-AC-3 repetition
     // periods, so even the worst case - starting mid-burst on the longer of

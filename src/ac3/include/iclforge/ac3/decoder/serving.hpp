@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <optional>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/render/layout.hpp"
 
 // How a player serves its layout: which of the decoder's own §7.8 folds it
 // asks for, if any, and whether the decoder reconstructs the stream's objects

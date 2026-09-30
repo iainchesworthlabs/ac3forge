@@ -3,9 +3,9 @@
 #include <array>
 #include <cstddef>
 
-#include "dsp/complex.hpp"
-#include "dsp/qmf_constants.hpp"
-#include "tables/qmf_tables.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/qmf_constants.hpp"
+#include "iclforge/ac4core/tables/qmf_tables.hpp"
 
 // The steps of one slot of the QMF analysis and synthesis (dsp/qmf.hpp), each
 // a loop over planes of Real, with the arithmetic in the order the derivation

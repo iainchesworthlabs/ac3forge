@@ -14,8 +14,8 @@
 #include <random>
 #include <span>
 
-#include "ac3/core/mdct.hpp"
-#include "ac3/internal/fixed32.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/arithmetic/fixed32.hpp"
 #include "mdct_fixed.hpp"
 
 using ac3::internal::Fixed32;

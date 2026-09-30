@@ -2,8 +2,8 @@
 
 #include <span>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/transient_prenoise.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/transient_prenoise.hpp"
 
 // The decoder's own way into ac3::apply_transient_prenoise: the same
 // correction, with the synthesis buffer supplied by the caller instead of

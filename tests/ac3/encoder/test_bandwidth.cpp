@@ -9,14 +9,14 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc_tables.hpp"
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/bandwidth.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/core/bitalloc_tables.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/bandwidth.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
 
 // Coded bandwidth, EQ7/EQ8. The unit half pins the decision function against
 // A/52's own tables; the encoder half proves both encoders act on it, and

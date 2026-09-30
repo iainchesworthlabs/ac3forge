@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake_session.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake_session.hpp"
 #include "pairing_store.hpp"
 #include "settings_model.hpp"
 

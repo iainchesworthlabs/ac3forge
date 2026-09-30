@@ -11,13 +11,13 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/admbridge/bridge.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/bridge.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 // Roadmap item IM2 ("JOC -> ADM BWF writer") - the write-direction counterpart of this
 // directory's own test_adm_bridge.cpp flagship test, and driven the same real way: a real

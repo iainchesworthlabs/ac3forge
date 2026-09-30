@@ -15,11 +15,11 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
-#include "mp4/mp4.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/mp4/mp4.hpp"
 
 int main() {
     // Some AC-3 to wrap.

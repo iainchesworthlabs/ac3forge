@@ -11,13 +11,13 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/crc16.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"  // the AC-3 FrameEncoder, for the §E2.3.1.2 legacy-core tests
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/meta/mixing.hpp"  // dialnorm_gain, for the OperatingMode::kLine legacy-core test
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"  // the AC-3 FrameEncoder, for the §E2.3.1.2 legacy-core tests
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"  // dialnorm_gain, for the OperatingMode::kLine legacy-core test
 
 // The in-repo E-AC-3 decoder is 7.1.4's only oracle. FFmpeg refuses any frame
 // with substreamid != 0 in ff_ac3_parse_header, and no container works around

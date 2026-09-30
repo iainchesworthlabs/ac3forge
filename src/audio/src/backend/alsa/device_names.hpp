@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // Everything the ALSA backend does with device names and IEC 60958 channel
 // status, expressed without touching libasound.

@@ -15,7 +15,7 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // The two reading commands - probe (apps/cli/commands/probe.cpp and the JSON
 // document apps/common/probe_json.cpp writes through apps/cli/json.cpp) and

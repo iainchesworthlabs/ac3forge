@@ -3,8 +3,8 @@
 #include <optional>
 #include <string>
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/messages.hpp"
 #include "network_sinks.hpp"
 #include "settings_model.hpp"
 

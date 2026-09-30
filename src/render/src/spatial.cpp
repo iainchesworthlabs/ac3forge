@@ -1,4 +1,4 @@
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/render/spatial.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,7 +9,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/layout.hpp"
+#include "iclforge/base/layout.hpp"
 
 namespace ac3::spatial {
 

@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/model.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/model.hpp"
 #include "bitreader.hpp"
 
 // The IAB element grammar - §9 (Bitstream IAFrame Specification) and §10 (IAFrame Data

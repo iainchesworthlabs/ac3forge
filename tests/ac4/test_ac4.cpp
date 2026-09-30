@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac4/ac4.hpp"
+#include "iclforge/ac4/ac4.hpp"
 
 namespace {
 

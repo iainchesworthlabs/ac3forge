@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/oba/scene_osc.hpp"
+#include "iclforge/objects/scene_osc.hpp"
 
 // ac3::oba::parse_osc_packet (src/forge/src/oba/scene_osc.cpp) - one UDP
 // datagram's worth of OSC 1.0, as ac3::audio::LivePositionSource hands it

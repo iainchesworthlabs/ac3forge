@@ -5,7 +5,7 @@
 #include <expected>
 #include <span>
 
-#include "ac3iab/ac3iab.hpp"
+#include "iclforge/iab/ac3iab.hpp"
 
 // A minimal MSB-first bit reader scoped to one element's payload span, matching §5.1's bit-
 // order rule ("bitstream data fields... shall be encoded... most-significant-bit-first...

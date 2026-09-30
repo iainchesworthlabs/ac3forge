@@ -6,7 +6,7 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/spatial.hpp"
+#include "iclforge/audio/spatial.hpp"
 
 // SpatialObjectSink against a real spatial-capable output
 // (src/audio/src/backend/*/spatial.cpp).

@@ -20,8 +20,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/oba/scene.hpp"
-#include "ac3/oba/scene_osc.hpp"
+#include "iclforge/objects/scene.hpp"
+#include "iclforge/objects/scene_osc.hpp"
 
 namespace {
 

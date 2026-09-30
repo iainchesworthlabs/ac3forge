@@ -6,7 +6,7 @@
 #include <optional>
 #include <vector>
 
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 
 // The slot plan: how the demo spends the encoder's fifteen dynamic objects
 // (docs/platforms/windows-demo.md, "Objects and the bed").

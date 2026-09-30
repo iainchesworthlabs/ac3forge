@@ -1,8 +1,8 @@
 #include "crucible_controller.hpp"
 
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
-#include "ac3/version.hpp"
+#include "iclforge/ac3/version.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -31,7 +31,7 @@
 #include <string>
 #include <utility>
 
-#include "ac3/audio/audio_backend.hpp"
+#include "iclforge/audio/audio_backend.hpp"
 #include "diagnostics.hpp"
 #include "output_policy.hpp"
 #include "platform_services.hpp"

@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "ac3/export.hpp"
-#include "ac3/verify/eac3_mirror.hpp"
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 
 // How many bins each coded stream gave zero bits to, counted over a whole
 // decode.
@@ -61,7 +61,7 @@ struct StreamBapCensus {
     }
 };
 
-class AC3FORGE_EXPORT BapCensus {
+class ICLFORGE_AC3_EXPORT BapCensus {
    public:
     // Accumulates one frame / one access unit. Safe to call for every frame of
     // a file; streams are added as they are first seen, so a stream that only

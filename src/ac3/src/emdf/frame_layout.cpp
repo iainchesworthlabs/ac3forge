@@ -1,4 +1,4 @@
-#include "ac3/emdf/frame_layout.hpp"
+#include "iclforge/ac3/emdf/frame_layout.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,12 +8,12 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/eac3_tools.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/emdf/emdf.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/ac3/core/eac3_tools.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/objects/emdf.hpp"
 
 namespace ac3::emdf {
 

@@ -9,7 +9,7 @@
 #include <span>
 #include <string_view>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 // The bit reader every syntax function reads through. MSB first, as both
 // parts read (Part 1 clause 3.4). Reading past the end does not throw and

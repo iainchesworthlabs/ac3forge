@@ -17,12 +17,12 @@
 #include <numbers>
 #include <random>
 
-#include "ac3/core/coupling.hpp"
-#include "ac3/core/eac3_tools.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/mantissas.hpp"
+#include "iclforge/ac3/core/coupling.hpp"
+#include "iclforge/ac3/core/eac3_tools.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/mantissas.hpp"
 #include "eac3_tools_fixed.hpp"
-#include "ac3/internal/fixed32.hpp"
+#include "iclforge/arithmetic/fixed32.hpp"
 
 using ac3::internal::Fixed32;
 

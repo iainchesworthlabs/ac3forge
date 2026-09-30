@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/layout.hpp"
+#include "iclforge/base/layout.hpp"
 
 // The channel mask WAVEFORMATEXTENSIBLE defines, and how its speaker positions
 // relate to the locations the renderer places (ac3::base::Location,

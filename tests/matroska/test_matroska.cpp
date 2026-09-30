@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "matroska/matroska.hpp"
+#include "iclforge/matroska/matroska.hpp"
 
 // These tests read the muxer's output back with an independent EBML walker
 // rather than comparing against bytes this same code produced. A muxer

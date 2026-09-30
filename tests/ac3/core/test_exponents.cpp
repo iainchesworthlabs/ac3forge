@@ -8,8 +8,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/exponents.hpp"
-#include "ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
 
 namespace {
 

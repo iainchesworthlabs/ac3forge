@@ -12,8 +12,8 @@
 #include <FLAC/stream_encoder.h>
 
 #include "../codecs.hpp"
-#include "ac3/sendspin/codec.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/codec.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // FLAC for player@v1 over libFLAC: each unit is one FLAC frame, and codec_header is the fLaC
 // marker with the STREAMINFO block (roles/player/v1.md, Codec framing).

@@ -4,7 +4,7 @@
 #include <sstream>
 #include <string>
 
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 // ac3adm::parse_bw64(std::istream&) (src/ac3adm/src/adm.cpp) - the BW64/RF64
 // container walk plus the ADM XML document inside <axml>.

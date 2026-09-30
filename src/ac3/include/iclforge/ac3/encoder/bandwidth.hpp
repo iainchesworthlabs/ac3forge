@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Where the coded spectrum should stop.
 //
@@ -32,7 +32,7 @@ namespace ac3::encoder {
 
 // The inverse, rounded UP to the transmitted grid so a partly-audible band is
 // kept whole rather than clipped. Clamped to the legal 0..60.
-[[nodiscard]] AC3FORGE_EXPORT int chbwcod_for_endmant(int endmant);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int chbwcod_for_endmant(int endmant);
 
 // Folds one channel-block of MDCT coefficients into a running per-bin
 // exponent minimum, the form audible_endmant() below wants. Start the array
@@ -42,12 +42,12 @@ namespace ac3::encoder {
 // The exponent comes from the same to_fixed25/exponent_from_fixed pair the
 // encoder's own step 4 uses, so this measures the spectrum the coder is
 // about to see rather than a second, subtly different, view of it.
-AC3FORGE_EXPORT void accumulate_peak_exponents(std::span<const double> coefficients,
+ICLFORGE_AC3_EXPORT void accumulate_peak_exponents(std::span<const double> coefficients,
                                                std::span<std::uint8_t> peak_exponents);
 
 // The float form, for the float encode path (AC3FORGE_ENCODE_SCALAR): the
 // same pair, rounding the float coefficient itself.
-AC3FORGE_EXPORT void accumulate_peak_exponents(std::span<const float> coefficients,
+ICLFORGE_AC3_EXPORT void accumulate_peak_exponents(std::span<const float> coefficients,
                                                std::span<std::uint8_t> peak_exponents);
 
 // The highest bin worth coding, as an endmant (exclusive), given the frame's
@@ -73,7 +73,7 @@ AC3FORGE_EXPORT void accumulate_peak_exponents(std::span<const float> coefficien
 // exists because a frame of near-silence has nothing above the threshold
 // anywhere, and a bandwidth that collapses on quiet passages and reopens on
 // loud ones would be audible as pumping rather than as detail.
-[[nodiscard]] AC3FORGE_EXPORT int audible_endmant(std::span<const std::uint8_t> peak_exponents,
+[[nodiscard]] ICLFORGE_AC3_EXPORT int audible_endmant(std::span<const std::uint8_t> peak_exponents,
                                                   SampleRate sample_rate);
 
 // What the RATE alone can afford, as a chbwcod. A ceiling, never a target:
@@ -82,7 +82,7 @@ AC3FORGE_EXPORT void accumulate_peak_exponents(std::span<const float> coefficien
 // changes that (measured, AC-3 5.1 at 192 kbit/s on real material: MOS 3.145
 // at chbwcod 24 falling to 2.411 at 59). The curve is unchanged from the one
 // AC-3 has used since 0.7.0.
-[[nodiscard]] AC3FORGE_EXPORT int rate_ceiling_chbwcod(std::uint32_t bitrate_kbps, int nfchans);
+[[nodiscard]] ICLFORGE_AC3_EXPORT int rate_ceiling_chbwcod(std::uint32_t bitrate_kbps, int nfchans);
 
 // Above this per-channel rate the content edge is not taken at all and the
 // rate ceiling stands on its own.
@@ -128,7 +128,7 @@ inline constexpr int kContentNarrowingCeiling = 128;
 // pumping in a way the missing band itself is not. Widening is not capped:
 // being a frame late to widen means a real transient's high band arrives
 // after the transient.
-[[nodiscard]] AC3FORGE_EXPORT int choose_chbwcod(std::uint32_t bitrate_kbps, int nfchans,
+[[nodiscard]] ICLFORGE_AC3_EXPORT int choose_chbwcod(std::uint32_t bitrate_kbps, int nfchans,
                                                  std::span<const std::uint8_t> peak_exponents,
                                                  SampleRate sample_rate, int previous_chbwcod);
 

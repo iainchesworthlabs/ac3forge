@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/export.hpp"
+#include "iclforge/dsp/export.hpp"
 
 // Small, real-time-safe IIR filtering for bundle C's explicit LFE routing:
 // when a caller uses the assignment table (ac3::plan::Assignment - see
@@ -37,7 +37,7 @@ namespace ac3::dsp {
 // numerically well-behaved standard form - two state variables, no separate
 // input/output delay lines to keep in sync). Coefficients are normalized so
 // a0 == 1 (i.e. b0,b1,b2,a1,a2 only - a0 already divided out).
-class AC3FORGE_EXPORT Biquad {
+class ICLFORGE_DSP_EXPORT Biquad {
 public:
     // Replaces the section's coefficients; does NOT touch the delay-line
     // state (z1_/z2_), so a caller retuning a running filter keeps whatever
@@ -80,7 +80,7 @@ private:
 // not an approximation of one. The two sections use deliberately different
 // Q values (see biquad.cpp); using the same Q for both would give a stable
 // 4th-order low-pass, but not a maximally-flat Butterworth one.
-class AC3FORGE_EXPORT LfeLowpass {
+class ICLFORGE_DSP_EXPORT LfeLowpass {
 public:
     // corner_hz: -3dB point, ~120 Hz for this project's LFE use.
     // sample_rate: the coded stream's rate (drives the bilinear-transform

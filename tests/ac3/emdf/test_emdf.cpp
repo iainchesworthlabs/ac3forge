@@ -7,13 +7,13 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/crc16.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/emdf/frame_layout.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/emdf/frame_layout.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 namespace {
 

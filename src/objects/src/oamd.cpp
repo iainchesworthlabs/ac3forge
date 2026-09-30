@@ -1,4 +1,4 @@
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/bitwriter.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/base/bitwriter.hpp"
 
 namespace ac3::oba {
 

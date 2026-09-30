@@ -3,7 +3,7 @@
 #include <array>
 #include <span>
 
-#include "huffman_codebook.hpp"
+#include "iclforge/ac4core/huffman_codebook.hpp"
 
 // Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A, and the A-JCC
 // and A-JOC codebooks of ETSI TS 103 190-2 V1.3.1 Annex A.1, in index order,

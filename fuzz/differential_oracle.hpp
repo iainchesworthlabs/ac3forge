@@ -105,7 +105,7 @@
 #include <string>
 #include <vector>
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 extern char** environ;
 

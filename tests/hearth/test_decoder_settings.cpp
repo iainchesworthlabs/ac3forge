@@ -3,10 +3,10 @@
 
 #include <optional>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/decoder/serving.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/serving.hpp"
+#include "iclforge/render/layout.hpp"
 #include "decoder_settings.hpp"
 
 // ac3::hearth::decoder_setup (apps/hearth/engine/decoder_settings.cpp): every

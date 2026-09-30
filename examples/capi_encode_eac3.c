@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "ac3forge_c/ac3forge.h"
+#include "iclforge_c/iclforge.h"
 
 #define kNumFrames 31 /* 48000 Hz / 1536 samples per frame, near enough one second */
 #define kNumChannels 8 /* 3/2 (5) + LFE (1) + dependent 2/0 (2) */

@@ -12,21 +12,21 @@
 #include <type_traits>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/mantissas.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/diagnostics.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/decoder/syntax_trace.hpp"
-#include "ac3/export.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/render/pcm_block.hpp"
-#include "ac3/verify/eac3_mirror.hpp"
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/mantissas.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/diagnostics.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/syntax_trace.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/pcm_block.hpp"
+#include "iclforge/ac3/verify/eac3_mirror.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 
 // The in-repo AC-3 / E-AC-3 decoder — the validation pyramid's strongest
 // correctness anchor (fully normative, shares tables/bit-allocation/exponents/
@@ -91,7 +91,7 @@ enum class DecodeError : std::uint8_t {
     kNoReferenceTransform,
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(DecodeError error);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(DecodeError error);
 
 // --- §7.10 error concealment ------------------------------------------------
 
@@ -397,7 +397,7 @@ struct DecodedFrame {
     std::optional<Concealment> concealed = std::nullopt;
 };
 
-class AC3FORGE_EXPORT FrameDecoder {
+class ICLFORGE_AC3_EXPORT FrameDecoder {
    public:
     // Real work, not =default, because Impl below is incomplete here - same
     // reason ac3::io::WavStreamReader's default ctor gives. A default-
@@ -713,7 +713,7 @@ struct DecodedAccessUnit {
     std::optional<Concealment> concealed = std::nullopt;
 };
 
-class AC3FORGE_EXPORT Eac3Decoder {
+class ICLFORGE_AC3_EXPORT Eac3Decoder {
    public:
     // Real work, not =default, because Impl below is incomplete here - same
     // reason FrameDecoder's default ctor gives.
@@ -904,7 +904,7 @@ class AC3FORGE_EXPORT Eac3Decoder {
 
 // Split a raw elementary stream into syncframes by sync word and declared
 // size. Handles both generations; bsid at bit 40 decides which.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
 split_frames(std::span<const std::byte> stream);
 
 // Group those syncframes into access units. A new one begins at each
@@ -919,7 +919,7 @@ split_frames(std::span<const std::byte> stream);
 // to a decoder in that order splices two programmes together; use the
 // programme-selecting overload below, or read
 // DecodedAccessUnit::programme, to keep them apart.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
 split_access_units(std::span<const std::byte> stream);
 
 // The access units of ONE programme, in order: those beginning with an
@@ -931,18 +931,18 @@ split_access_units(std::span<const std::byte> stream);
 // An empty result means the stream carries no such programme - not an error,
 // since asking is how a caller finds out. Use programme_ids() to enumerate
 // what is actually there.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<std::vector<std::span<const std::byte>>, DecodeError>
 split_access_units(std::span<const std::byte> stream, int programme);
 
 // The substreamid of every independent substream the stream carries, ascending
 // and without duplicates - one entry per programme. Always {0} for AC-3, which
 // has no substream layer, and for the single-programme E-AC-3 case.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<int>, DecodeError> programme_ids(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<std::vector<int>, DecodeError> programme_ids(
     std::span<const std::byte> stream);
 
 // bsid at bit 40, without committing to either layout. Fails only if the span
 // is too short to hold a header.
-[[nodiscard]] AC3FORGE_EXPORT std::expected<int, DecodeError> stream_bsid(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::expected<int, DecodeError> stream_bsid(
     std::span<const std::byte> frame);
 
 // True for A/52 §E2.3.1.2's legacy-core delivery: an AC-3 syncframe standing
@@ -964,7 +964,7 @@ split_access_units(std::span<const std::byte> stream, int programme);
 // for anything it cannot read, including a truncated or desynchronised
 // stream - "not this arrangement" is the safe answer, and every caller has a
 // real decode behind it to produce the actual error.
-[[nodiscard]] AC3FORGE_EXPORT bool has_eac3_extension_substreams(
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool has_eac3_extension_substreams(
     std::span<const std::byte> stream);
 
 }  // namespace ac3

@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 
-#include "ac3/export.hpp"
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 
 // The ISOBMFF codec-configuration box a container muxer embeds beside an
 // 'ac-3'/'ec-3' sample entry: ETSI TS 102 366 Annex F §F.4 AC3SpecificBox
@@ -32,7 +32,7 @@ namespace ac3::io {
 // Empty for kAc3CoreEac3Extension, which has no box defined for it - see the
 // function's own comment. A caller that gets an empty vector must not mux the
 // stream; there is no header that would describe it truthfully.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::byte> build_codec_config_box(
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::vector<std::byte> build_codec_config_box(
     const ScannedStream& stream);
 
 // The DASH <AudioChannelConfiguration> @value for this stream on the Dolby
@@ -50,6 +50,6 @@ namespace ac3::io {
 // mp4::DashOptions::dolby_channel_configuration in particular) has no business
 // re-deriving AC-3 semantics to fill in one attribute, the same boundary the
 // dac3/dec3 payload above already draws.
-[[nodiscard]] AC3FORGE_EXPORT std::string dash_channel_configuration(const ScannedStream& stream);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string dash_channel_configuration(const ScannedStream& stream);
 
 }  // namespace ac3::io

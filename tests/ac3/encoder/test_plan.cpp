@@ -11,10 +11,10 @@
 #include <string>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/render/spatial.hpp"
 
 // The plan layer is what stops the two front ends from disagreeing, so what is
 // checked here is mostly agreement: that a layout's channel counts match the

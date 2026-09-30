@@ -1,5 +1,5 @@
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/playback_counter.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/playback_counter.hpp"
 
 // The PipeWire passthrough backend. CMake compiles this directory's
 // passthrough.cpp on a Linux host that selected pipewire/ over alsa/ (see
@@ -65,9 +65,9 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/ring_buffer.hpp"
-#include "ac3/audio/speakers.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
+#include "iclforge/audio/speakers.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 #include "pipewire_support.hpp"
 
 namespace ac3::audio {

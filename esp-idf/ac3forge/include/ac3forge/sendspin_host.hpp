@@ -10,10 +10,10 @@
 
 #include "freertos/FreeRTOS.h"
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/chunks.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/player_session.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/player_session.hpp"
 #include "ac3forge/sendspin_store.hpp"
 
 // A Sendspin player on a board: the WebSocket a server connects to, a

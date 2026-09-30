@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "ac3forge_c/ac3forge.h"
+#include "iclforge_c/iclforge.h"
 
 #define kNumFrames 31 /* 48000 Hz / 1536 samples per frame, near enough one second */
 /* Not M_PI: math.h only defines it as a non-standard extension (absent under

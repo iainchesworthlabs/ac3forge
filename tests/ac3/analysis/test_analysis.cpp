@@ -11,9 +11,9 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/render/spatial.hpp"
 
 using Catch::Approx;
 

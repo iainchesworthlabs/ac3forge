@@ -1,4 +1,4 @@
-#include "ac3/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/chunks.hpp"
-#include "ac3/sendspin/json.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/sendspin/json.hpp"
 
 namespace ac3::sendspin::ac3forge {
 

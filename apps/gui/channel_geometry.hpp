@@ -3,8 +3,8 @@
 #include <optional>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 // The two pure per-location facts the soundfield ring (SoundfieldView.qml)
 // and its channelMeta() feed need, shared by EncoderController (the

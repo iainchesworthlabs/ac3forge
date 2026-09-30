@@ -20,9 +20,9 @@
 
 #include "internal.hpp"
 
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // --- enum-ordinal contract (global scope, matching internal.hpp's own
 // non-AC-4 static_asserts above the point its namespace ac3forge_c opens) ---

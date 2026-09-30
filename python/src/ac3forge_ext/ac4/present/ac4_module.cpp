@@ -1,8 +1,8 @@
 #include "optional_modules.hpp"
 
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 #include "binding_support.hpp"
 

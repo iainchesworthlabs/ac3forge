@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <span>
 
-#include "ac4/detail/real.hpp"
-#include "acpl/acpl.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/acpl/acpl.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 // Advanced joint channel coding's signal processing, ETSI TS 103 190-2 V1.3.1
 // clause 5.6, for the 7.X.4 channel modes (b_5fronts 0): differential decoding

@@ -17,13 +17,13 @@
 
 #include "../exit_codes.hpp"
 #include "../support.hpp"
-#include "ac3/analysis/levels.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/render/spatial.hpp"
 
 namespace ac3cli::commands {
 

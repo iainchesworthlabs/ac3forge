@@ -15,7 +15,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "ac3/audio/speakers.hpp"
+#include "iclforge/audio/speakers.hpp"
 
 // The handful of things capture.cpp, monitor.cpp and passthrough.cpp all
 // need from the CoreAudio HAL, kept in one place so the three cannot drift -

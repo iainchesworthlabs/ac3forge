@@ -6,10 +6,10 @@
 #include <string>
 #include <utility>
 
-#include "ac3/audio/capture.hpp"
-#include "ac3/audio/monitor.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/spatial.hpp"
+#include "iclforge/audio/capture.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/spatial.hpp"
 
 // The production AudioDevices: each interface forwards to the ac3::audio
 // class of the same shape, and error enums become the library's own

@@ -11,13 +11,13 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/bitalloc_tables.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/mdct.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/quality/distortion.hpp"
-#include "ac3/quality/perceptual.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/bitalloc_tables.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
+#include "iclforge/ac3/quality/perceptual.hpp"
 
 namespace {
 

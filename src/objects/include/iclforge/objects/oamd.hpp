@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/export.hpp"
+#include "iclforge/objects/export.hpp"
 
 // Object Audio Metadata - ETSI TS 103 420 clause 5. The payload that says what
 // the objects ARE: how many, where each one sits in the room, how loud, and
@@ -268,7 +268,7 @@ struct Program {
 // produces - this is {1, 2, ... }, so JOC output i is dynamic object i and
 // the identity every caller already assumed still holds. For a bed program it
 // is what says which bed channel came back.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<int> joc_object_indices(const Program& program);
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::vector<int> joc_object_indices(const Program& program);
 
 // The Table 12 channel labels a bed instance's assignment names, in the order
 // its channels occupy in the payload's object list - the order
@@ -287,11 +287,11 @@ enum class BedLabel : std::uint8_t {
     kL, kR, kC, kLfe, kLs, kRs, kLb, kRb, kTfl, kTfr, kTsl, kTsr, kTbl, kTbr, kLw, kRw, kLfe2,
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(BedLabel label);
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::string_view describe(BedLabel label);
 
 // Channel labels of the program's first bed instance, in payload order.
 // Empty for a dynamic-object-only program and for a non-standard assignment.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<BedLabel> bed_labels(std::uint16_t assignment);
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::vector<BedLabel> bed_labels(std::uint16_t assignment);
 
 // Where a bed channel's loudspeaker nominally sits in §4.2.1's room cuboid.
 //
@@ -302,7 +302,7 @@ enum class BedLabel : std::uint8_t {
 // halfway back and the back pair at the rear wall, which is the layout the
 // labels are named for. It exists so a view that draws objects in a room has
 // somewhere to draw a bed channel, and nothing in encode or decode reads it.
-[[nodiscard]] AC3FORGE_EXPORT Position bed_label_position(BedLabel label);
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT Position bed_label_position(BedLabel label);
 
 // One §5.5.6/§5.5.7 metadata update within a frame's object_element: where in
 // the frame it takes effect and the object states it establishes. Passing
@@ -352,7 +352,7 @@ struct ObjectUpdate {
 // complexity_index_type_a at 16 objects and §6.3.2.4 caps joc_num_objects at
 // the same. A stream that got past this would be rejected by the frame writer
 // (FrameError::kInvalidObjectAudio) before any of it reached a file.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::byte> build_payload_updates(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::vector<std::byte> build_payload_updates(
     const Program& program, std::span<const ObjectUpdate> updates);
 
 // The ordinary shape: one update covering the whole frame, aligned to its
@@ -364,7 +364,7 @@ struct ObjectUpdate {
 // (§E2.3.1.4, AtmosConfig::numblkscod 0-2) passes 256/512/768. Table 24 has
 // a code for each: 512 and 1536 directly, 256 through the §5.6.2.7 ramp
 // table, and anything else as the 11-bit literal.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::byte> build_payload(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::vector<std::byte> build_payload(
     const Program& program, std::span<const DynamicObject> objects,
     int ramp_samples = 1536);
 
@@ -470,7 +470,7 @@ struct DecodedProgram {
 // unknowable), an object count that disagrees with the program that was just
 // described, an element whose contents do not end where its own
 // oa_element_size says, or a read past the end of the payload.
-[[nodiscard]] AC3FORGE_EXPORT std::optional<DecodedProgram> parse_payload(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::optional<DecodedProgram> parse_payload(
     std::span<const std::byte> payload);
 
 // One JOC output as something that draws objects in a room needs it: where
@@ -493,7 +493,7 @@ struct DisplayObject {
 // joc_object_indices() order - so parallel to DecodedSubstream::object_audio
 // for both a dynamic-object-only program and a bed one. `block` selects which
 // metadata update block to read; out-of-range clamps to the last.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<DisplayObject> describe_objects(
+[[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::vector<DisplayObject> describe_objects(
     const DecodedProgram& program, std::size_t block = 0);
 
 }  // namespace ac3::oba

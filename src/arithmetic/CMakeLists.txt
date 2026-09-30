@@ -80,7 +80,7 @@ endif()
 # The mechanism src/internal/profiling/tracy_{enabled,disabled}/ uses for the
 # profiling seam, on the architecture axis: arch/{generic,x86_64,aarch64}/ each
 # hold an identically-pathed ac3/internal/arch/simd.hpp, one of them goes on the
-# include path, and every `#include "ac3/internal/arch/simd.hpp"` in the
+# include path, and every `#include "iclforge/arithmetic/detail/simd.hpp"` in the
 # codec resolves to it. No translation unit ever asks what it is being
 # compiled for - the rule tools/checks/check_platform_macros.ps1 enforces -
 # and adding an architecture means adding a directory, not editing

@@ -3,8 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "ac3forge_c/export.h"
-#include "ac3forge_c/version.h"
+#include "iclforge_c/export.h"
+#include "iclforge_c/version.h"
 
 /* ac3forge's C API — C API: a stable, minimal C-callable surface
  * over the encode/decode core, for bindings and embedding by callers that

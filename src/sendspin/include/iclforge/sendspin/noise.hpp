@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
+#include "iclforge/sendspin/crypto.hpp"
 
 // The Noise Protocol Framework (revision 34) as Sendspin uses it
 // (connection.md, Encryption): the KKpsk2 pattern with X25519, SHA-256 and either

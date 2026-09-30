@@ -8,13 +8,13 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/layout.hpp"
-#include "ac3/oba/joc_domain.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/render/float_biquad.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/pcm_block.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/base/layout.hpp"
+#include "iclforge/objects/joc_domain.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/float_biquad.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/pcm_block.hpp"
+#include "iclforge/render/spatial.hpp"
 
 // From what the decoder rendered to what the speakers want, one 256-sample
 // block at a time.

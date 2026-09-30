@@ -1,6 +1,6 @@
 #include "hearth_controller.hpp"
 
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -17,7 +17,7 @@
 #include <QSysInfo>
 #include <QUrl>
 
-#include "ac3/version.hpp"
+#include "iclforge/ac3/version.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -43,13 +43,13 @@
 // needs no access-specifier keyword at all.
 #undef slots
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/speakers.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/sendspin/crypto.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/speakers.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/sendspin/crypto.hpp"
 #include "decoder_settings.hpp"
 #include "diagnostics_report.hpp"
 #include "diagnostics_server.hpp"

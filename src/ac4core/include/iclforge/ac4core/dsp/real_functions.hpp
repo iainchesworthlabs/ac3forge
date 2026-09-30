@@ -3,7 +3,7 @@
 #include <cmath>
 #include <type_traits>
 
-#include "ac3/internal/scalar_math.hpp"
+#include "iclforge/arithmetic/scalar_math.hpp"
 
 // The transcendentals the QMF-domain tools of src/ac4dec call at the decoder's scalar, where the
 // answer reaches the output and a C library's last bit would be heard on a platform that had

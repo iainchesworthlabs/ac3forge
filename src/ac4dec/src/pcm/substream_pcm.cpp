@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <span>
 
-#include "aspx/hf_generator.hpp"
+#include "iclforge/ac4core/aspx/hf_generator.hpp"
 #include "pcm/asf_reconstruct.hpp"
 #include "pcm/companding.hpp"
 #include "pcm/immersive.hpp"

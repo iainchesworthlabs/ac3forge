@@ -8,7 +8,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 #include "fake_devices.hpp"
 #include "output_stage.hpp"
 #include "slots.hpp"

@@ -6,7 +6,7 @@
 #include <numbers>
 #include <span>
 
-#include "ac3/core/window.hpp"  // kTransformLength
+#include "iclforge/ac3/core/window.hpp"  // kTransformLength
 
 // The variant of src/core/reference_transform.hpp that CARRIES the direct-form
 // tables - what every build except the minimum-footprint decoder profile

@@ -13,10 +13,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4/ac4.hpp"
-#include "ac4/syntax.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4/syntax.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "asf/layout.hpp"
 #include "bit_reader.hpp"
 #include "bit_writer.hpp"
@@ -25,8 +25,8 @@
 #include "frame/metadata.hpp"
 #include "huffman.hpp"
 #include "pcm/drc.hpp"
-#include "tables/huffman_codes.hpp"
-#include "tables/huffman_tables.hpp"
+#include "iclforge/ac4core/tables/huffman_codes.hpp"
+#include "iclforge/ac4core/tables/huffman_tables.hpp"
 
 namespace {
 

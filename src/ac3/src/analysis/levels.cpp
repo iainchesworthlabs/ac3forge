@@ -1,4 +1,4 @@
-#include "ac3/analysis/levels.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,8 +12,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/render/spatial.hpp"
 
 namespace ac3::analysis {
 

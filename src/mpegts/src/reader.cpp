@@ -1,4 +1,4 @@
-#include "mpegts/reader.hpp"
+#include "iclforge/mpegts/reader.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "mpegts/mpegts.hpp"
+#include "iclforge/mpegts/mpegts.hpp"
 #include "ts_detail.hpp"
 
 namespace mpegts {

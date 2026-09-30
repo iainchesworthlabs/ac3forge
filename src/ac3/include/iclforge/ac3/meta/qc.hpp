@@ -5,7 +5,7 @@
 #include <optional>
 #include <string_view>
 
-#include "ac3/export.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Named loudness/true-peak delivery gates a decoded stream's measurement can
 // be checked against - roadmap items C2 (`ac3cli qc`) and IO11. Each preset
@@ -208,7 +208,7 @@ enum class QcPresetId : std::uint8_t {
 inline constexpr std::string_view kQcPresetNames =
     "ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos";
 
-[[nodiscard]] AC3FORGE_EXPORT bool parse_qc_preset(std::string_view name, QcPresetId& out);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool parse_qc_preset(std::string_view name, QcPresetId& out);
 
 // Every preset, in declaration order - for a caller that wants to check a
 // measurement against all of them (ac3cli qc's own preset=all).
@@ -233,7 +233,7 @@ struct QcVerdict {
     [[nodiscard]] bool pass() const { return loudness_pass && true_peak_pass; }
 };
 
-[[nodiscard]] AC3FORGE_EXPORT QcVerdict evaluate_qc_gate(const QcPreset& preset,
+[[nodiscard]] ICLFORGE_AC3_EXPORT QcVerdict evaluate_qc_gate(const QcPreset& preset,
                                                          std::optional<double> integrated_lkfs,
                                                          std::optional<double> true_peak_dbtp);
 

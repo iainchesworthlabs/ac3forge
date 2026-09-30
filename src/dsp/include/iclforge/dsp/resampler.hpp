@@ -4,7 +4,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/export.hpp"
+#include "iclforge/dsp/export.hpp"
 
 // Offline, whole-buffer sample-rate conversion for a loaded file - NOT the
 // live capture drift-correction resampler (ac3::audio::DriftResampler,
@@ -40,7 +40,7 @@ namespace ac3::dsp {
 // returns an empty result rather than dividing by zero or fabricating a
 // ratio - this is the only case (short of an empty `input`) that returns
 // fewer than round(input.size() * output_rate / input_rate) frames.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<float> resample(std::span<const float> input,
+[[nodiscard]] ICLFORGE_DSP_EXPORT std::vector<float> resample(std::span<const float> input,
                                                            std::uint32_t input_rate,
                                                            std::uint32_t output_rate);
 
@@ -52,7 +52,7 @@ namespace ac3::dsp {
 // stereo/multichannel state, no crosstalk), matching how a loaded WAV's
 // channels are otherwise treated as independent streams up to this point in
 // the pipeline.
-[[nodiscard]] AC3FORGE_EXPORT std::vector<std::vector<float>> resample_planar(
+[[nodiscard]] ICLFORGE_DSP_EXPORT std::vector<std::vector<float>> resample_planar(
     std::span<const std::vector<float>> channels, std::uint32_t input_rate,
     std::uint32_t output_rate);
 

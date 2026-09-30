@@ -27,15 +27,15 @@
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/meta/qc.hpp"
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/ac3/meta/qc.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 
 namespace {
 

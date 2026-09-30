@@ -1,4 +1,4 @@
-#include "ac3/oba/scene_osc.hpp"
+#include "iclforge/objects/scene_osc.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,8 +14,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/oba/oamd.hpp"
-#include "ac3/oba/placement.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/placement.hpp"
 
 // OSC 1.0, transcribed from the published specification
 // (opensoundcontrol.org, "OSC 1.0 Specification") one grammar element at a

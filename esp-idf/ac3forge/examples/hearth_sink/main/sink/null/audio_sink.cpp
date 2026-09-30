@@ -19,8 +19,8 @@
 #include <algorithm>
 #include <cstdio>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/render/layout.hpp"
 
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"

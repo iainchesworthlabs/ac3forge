@@ -11,11 +11,11 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/oba/scene.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/scene.hpp"
 
 namespace {
 

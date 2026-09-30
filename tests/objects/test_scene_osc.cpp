@@ -12,9 +12,9 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/scene.hpp"
-#include "ac3/oba/scene_osc.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/scene.hpp"
+#include "iclforge/objects/scene_osc.hpp"
 
 namespace {
 

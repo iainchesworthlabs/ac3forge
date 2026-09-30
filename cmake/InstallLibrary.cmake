@@ -173,7 +173,7 @@ install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/forge/include/"
 # generate_export_header() output - live in the library's own binary dir, not
 # its source tree (see src/forge/CMakeLists.txt), so the install(DIRECTORY
 # .../include/) call above never sees them. A consumer's
-# #include <ac3/version.hpp>/<ac3/export.hpp> needs both installed at the
+# #include <iclforge/ac3/version.hpp>/<ac3/export.hpp> needs both installed at the
 # same relative paths the in-tree BUILD_INTERFACE include dirs already use.
 install(FILES
         "${CMAKE_BINARY_DIR}/src/forge/generated/ac3/version.hpp"
@@ -523,7 +523,7 @@ if(AC3FORGE_BUILD_CAPI)
     # install(DIRECTORY) above copies: export.h is generate_export_header()'s output and
     # version.h is configure_file()'d from version.h.in (which that install does copy, as the
     # template), each into src/capi's own binary dir. Without version.h, every
-    # #include <ac3forge_c/ac3forge.h> against an installed prefix fails to compile. Same
+    # #include <iclforge_c/iclforge.h> against an installed prefix fails to compile. Same
     # reason ac3/version.hpp and ac3/export.hpp are installed by name for ac3::forge above.
     install(FILES
             "${CMAKE_BINARY_DIR}/src/capi/generated/ac3forge_c/export.h"

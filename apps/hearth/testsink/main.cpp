@@ -14,9 +14,9 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/sendspin/firewall.hpp"
-#include "ac3/sendspin/state_roles.hpp"
-#include "ac3/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/firewall.hpp"
+#include "iclforge/sendspin/state_roles.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
 #include "sink.hpp"
 
 namespace {

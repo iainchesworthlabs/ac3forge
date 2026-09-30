@@ -16,10 +16,10 @@
 
 #include "../exit_codes.hpp"
 #include "../support.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_encode_core.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "encode.hpp"
 
 // ac4-encode: WAV to AC-4 through ac4::Encoder (src/ac4enc), as a raw stream

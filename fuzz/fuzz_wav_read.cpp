@@ -4,7 +4,7 @@
 
 #include <unistd.h>
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // read_wav's only interface is a path (src/forge/include/ac3/io/wav.hpp), not a
 // byte span, so the one unavoidable step beyond calling it directly is

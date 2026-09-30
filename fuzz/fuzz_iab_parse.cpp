@@ -5,8 +5,8 @@
 #include <sstream>
 #include <string>
 
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/mxf.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/mxf.hpp"
 
 // ac3iab::parse_iabitstream(std::istream&) and ac3iab::parse_mxf_iab(std::istream&)
 // (src/ac3iab/src/iab_reader.cpp, mxf_reader.cpp), plus ac3iab::parse_iaframe

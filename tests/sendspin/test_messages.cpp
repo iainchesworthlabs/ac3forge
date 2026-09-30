@@ -6,10 +6,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // The core messages in both dialects. The specification's texts are checked byte for byte
 // against what messaging.md and roles/player/v1.md define, aiosendspin 9.1.1's against the

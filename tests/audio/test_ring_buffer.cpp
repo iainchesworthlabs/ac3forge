@@ -6,7 +6,7 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/ring_buffer.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
 
 TEST_CASE("ring buffer rounds capacity up to a power of two", "[ring][concurrency]") {
     CHECK(ac3::audio::RingBuffer(1000).capacity() == 1024);

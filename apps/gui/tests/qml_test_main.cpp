@@ -17,7 +17,7 @@
 #include <optional>
 
 #include "../language_manager.hpp"
-#include "ac3/version.hpp"
+#include "iclforge/ac3/version.hpp"
 
 // Standard Qt Quick Test entry point: discovers and runs every tst_*.qml
 // file under QUICK_TEST_SOURCE_DIR (set in CMakeLists.txt), exercising the

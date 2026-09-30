@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/window.hpp"
+#include "iclforge/ac3/core/window.hpp"
 
-#include "../../core/fft_kernel.hpp"
+#include "iclforge/dsp/detail/fft_kernel.hpp"
 #include "simd_avx2.hpp"
 
 namespace ac3::internal::avx2 {

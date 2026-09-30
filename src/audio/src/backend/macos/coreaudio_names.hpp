@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // The macOS backend's pure half: everything here is ordinary arithmetic and
 // struct inspection over types <CoreAudio/CoreAudio.h> defines, with no

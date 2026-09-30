@@ -6,8 +6,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 // ac3::meta::mixing (src/forge/src/meta/mixing.cpp) is the §7.8 downmix - what
 // most listeners actually hear when a 5.1 (or narrower) programme folds down

@@ -19,8 +19,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "dsp/resampler.hpp"
-#include "dsp/resampler_vector.hpp"
+#include "iclforge/ac4core/dsp/resampler.hpp"
+#include "iclforge/ac4core/dsp/resampler_vector.hpp"
 
 namespace {
 

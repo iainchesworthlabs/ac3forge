@@ -7,8 +7,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
 #include "golden/bitalloc_goldens.hpp"
 
 TEST_CASE("bit allocation matches the independent Python reference bit-exactly", "[bitalloc]") {

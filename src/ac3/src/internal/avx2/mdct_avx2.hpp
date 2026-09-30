@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <span>
 
-#include "../../core/fft_kernel.hpp"
+#include "iclforge/dsp/detail/fft_kernel.hpp"
 
 // ---------------------------------------------------------------------------
 // AVX2 kernel bodies for src/forge/src/core/mdct.cpp, dispatched behind

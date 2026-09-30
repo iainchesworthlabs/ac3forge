@@ -9,18 +9,18 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"  // BitAllocCodes, for previous_codes_ below
-#include "ac3/core/mantissas.hpp"  // MantissaToken, for the token scratch below
-#include "ac3/core/tables.hpp"
-#include "ac3/quality/distortion.hpp"
-#include "ac3/encoder/silent_frame.hpp"  // FrameError, SkipPlan/plan_padding
-#include "ac3/encoder/transient.hpp"
-#include "ac3/export.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"  // BitAllocCodes, for previous_codes_ below
+#include "iclforge/ac3/core/mantissas.hpp"  // MantissaToken, for the token scratch below
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"  // FrameError, SkipPlan/plan_padding
+#include "iclforge/ac3/encoder/transient.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 
 // The AC-3 encoder: any audio coding mode (mono through 3/2) plus optional
 // LFE, long blocks, optional channel coupling, 2/0 rematrixing, adaptive
@@ -179,7 +179,7 @@ struct EncoderConfig {
     verify::FrameTrace* trace = nullptr;
 };
 
-class AC3FORGE_EXPORT FrameEncoder {
+class ICLFORGE_AC3_EXPORT FrameEncoder {
    public:
     explicit FrameEncoder(const EncoderConfig& config);
     // Declared (and defaulted in encoder.cpp, where PlanScratch below is

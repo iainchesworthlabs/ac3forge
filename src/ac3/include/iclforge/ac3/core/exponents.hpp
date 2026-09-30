@@ -10,8 +10,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 namespace ac3 {
 
@@ -182,14 +182,14 @@ template <std::floating_point Scalar>
 // to libm's round() per element with in-line SSE2 arithmetic - see
 // src/arithmetic/arch/x86_64/ac3/internal/arch/simd.hpp. The spans
 // must be the same length.
-AC3FORGE_EXPORT void to_fixed25_block(std::span<const double> coefficients,
+ICLFORGE_AC3_EXPORT void to_fixed25_block(std::span<const double> coefficients,
                                       std::span<std::int32_t> fixed);
 
 // The float form, for the float encode path: the same rounding and clamp,
 // bin by bin. The seam's f32x4 carries no round_ties_away (simd.hpp says
 // why), and the one platform whose encode scalar is float, the ESP32-S3, has
 // no float vector arithmetic to widen it into.
-AC3FORGE_EXPORT void to_fixed25_block(std::span<const float> coefficients,
+ICLFORGE_AC3_EXPORT void to_fixed25_block(std::span<const float> coefficients,
                                       std::span<std::int32_t> fixed);
 
 // §8.2.7: leading zeros of the 24-bit magnitude, capped at 24 (zero input).
@@ -211,7 +211,7 @@ AC3FORGE_EXPORT void to_fixed25_block(std::span<const float> coefficients,
 }
 
 // Raw exponent extraction for a whole coefficient block.
-AC3FORGE_EXPORT void extract_exponents(std::span<const std::int32_t> fixed,
+ICLFORGE_AC3_EXPORT void extract_exponents(std::span<const std::int32_t> fixed,
                                        std::span<std::uint8_t> exponents);
 
 // The two above fused into a single pass over one block's coefficients - the
@@ -254,7 +254,7 @@ struct EncodedExponents {
 
 // §8.2.10 encoder-side preprocessing + differential encoding. raw.size() is
 // endmant; every raw exponent must be in [0, 24].
-[[nodiscard]] AC3FORGE_EXPORT EncodedExponents encode_exponents(std::span<const std::uint8_t> raw,
+[[nodiscard]] ICLFORGE_AC3_EXPORT EncodedExponents encode_exponents(std::span<const std::uint8_t> raw,
                                                                 ExpStrategy strategy);
 
 // Same computation, writing into `out` in place: `out.groups` is resized
@@ -262,12 +262,12 @@ struct EncodedExponents {
 // exponent run reused frame to frame, say) reuses its capacity instead of
 // allocating fresh every time. Mirrors decode_exponents' out-span shape;
 // encode_exponents above is now a thin wrapper over this.
-AC3FORGE_EXPORT void encode_exponents_into(std::span<const std::uint8_t> raw, ExpStrategy strategy,
+ICLFORGE_AC3_EXPORT void encode_exponents_into(std::span<const std::uint8_t> raw, ExpStrategy strategy,
                                            EncodedExponents& out);
 
 // §7.1.3 normative decode: absolute + grouped values -> per-bin exponents.
 // out.size() is endmant (group padding beyond endmant is discarded).
-AC3FORGE_EXPORT void decode_exponents(std::uint8_t absolute, std::span<const std::uint8_t> groups,
+ICLFORGE_AC3_EXPORT void decode_exponents(std::uint8_t absolute, std::span<const std::uint8_t> groups,
                                       ExpStrategy strategy, std::span<std::uint8_t> out);
 
 // The coupling channel's exponent set has a different shape (§7.1.3,
@@ -281,17 +281,17 @@ struct EncodedCouplingExponents {
     std::vector<std::uint8_t> groups;  // ncplgrps 7-bit grouped mapped values
 };
 
-[[nodiscard]] AC3FORGE_EXPORT EncodedCouplingExponents
+[[nodiscard]] ICLFORGE_AC3_EXPORT EncodedCouplingExponents
 encode_coupling_exponents(std::span<const std::uint8_t> raw, ExpStrategy strategy);
 
 // Same computation as encode_exponents_into, for the coupling channel's
 // shape: `out.groups` is resized in place rather than replaced.
-AC3FORGE_EXPORT void encode_coupling_exponents_into(std::span<const std::uint8_t> raw,
+ICLFORGE_AC3_EXPORT void encode_coupling_exponents_into(std::span<const std::uint8_t> raw,
                                                      ExpStrategy strategy,
                                                      EncodedCouplingExponents& out);
 
 // The matching normative decode: fills one exponent per coupling bin.
-AC3FORGE_EXPORT void decode_coupling_exponents(std::uint8_t cplabsexp,
+ICLFORGE_AC3_EXPORT void decode_coupling_exponents(std::uint8_t cplabsexp,
                                                std::span<const std::uint8_t> groups,
                                                ExpStrategy strategy, std::span<std::uint8_t> out);
 

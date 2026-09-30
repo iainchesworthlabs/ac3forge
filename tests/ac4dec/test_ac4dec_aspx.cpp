@@ -25,10 +25,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3/internal/scalar_math.hpp"
+#include "iclforge/arithmetic/scalar_math.hpp"
 #include "pcm/aspx.hpp"
 #include "pcm/companding.hpp"
-#include "tables/qmf_tables.hpp"
+#include "iclforge/ac4core/tables/qmf_tables.hpp"
 
 namespace {
 

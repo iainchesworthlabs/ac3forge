@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/export.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Decoded-domain distortion measurement for the encoder's own candidates.
 //
@@ -85,7 +85,7 @@ enum class Criterion : std::uint8_t {
 // ratio and their difference is meaningful. Accumulating: a caller
 // measuring a whole frame calls accumulate_block() once per block into one
 // of these, and the six blocks sum.
-struct AC3FORGE_EXPORT BandNoise {
+struct ICLFORGE_AC3_EXPORT BandNoise {
     std::array<double, kBands> signal{};
     std::array<double, kBands> noise{};
 
@@ -113,7 +113,7 @@ struct AC3FORGE_EXPORT BandNoise {
 // Exported mainly for the equivalence test and for diagnostics; the frame
 // loop wants accumulate_block() below, which evaluates the same thing
 // without a call per bin.
-[[nodiscard]] AC3FORGE_EXPORT double reconstruction_error(std::int32_t fixed, int exponent,
+[[nodiscard]] ICLFORGE_AC3_EXPORT double reconstruction_error(std::int32_t fixed, int exponent,
                                                           int bap);
 
 // Adds one (stream, block)'s signal and reconstruction-noise power to `out`.
@@ -128,7 +128,7 @@ struct AC3FORGE_EXPORT BandNoise {
 // `end` is the stream's endmant. Bins outside [start, end) are not coded and
 // contribute nothing - not even to `signal`, since a band's SNR should be
 // measured over what was actually offered to the quantizer.
-AC3FORGE_EXPORT void accumulate_block(std::span<const std::int32_t> fixed,
+ICLFORGE_AC3_EXPORT void accumulate_block(std::span<const std::int32_t> fixed,
                                       std::span<const std::uint8_t> exps,
                                       std::span<const std::uint8_t> bap, int start, int end,
                                       BandNoise& out);
@@ -140,10 +140,10 @@ AC3FORGE_EXPORT void accumulate_block(std::span<const std::int32_t> fixed,
 // saturates at the same value.
 inline constexpr double kMaxSnrDb = 200.0;
 
-[[nodiscard]] AC3FORGE_EXPORT double snr_db(const BandNoise& measured);
+[[nodiscard]] ICLFORGE_AC3_EXPORT double snr_db(const BandNoise& measured);
 
 // The same ratio per band, written into `out` (which must be kBands long).
 // Bands the stream does not cover report kMaxSnrDb, for the same reason.
-AC3FORGE_EXPORT void band_snr_db(const BandNoise& measured, std::span<double> out);
+ICLFORGE_AC3_EXPORT void band_snr_db(const BandNoise& measured, std::span<double> out);
 
 }  // namespace ac3::quality

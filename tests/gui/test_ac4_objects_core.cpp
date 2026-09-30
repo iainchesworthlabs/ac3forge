@@ -13,13 +13,13 @@
 #include <string>
 #include <vector>
 
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/oba/scene.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/objects/scene.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_encode_core.hpp"
 #include "ac4_objects_core.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // The steps ac3cli's `atmos-encode codec=ac4` and ac3gui's AC-4 objects share
 // (apps/common/ac4_objects_core.hpp): which channels are which objects, where a

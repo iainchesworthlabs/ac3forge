@@ -4,7 +4,7 @@
 #include <string_view>
 
 #include "bit_reader.hpp"
-#include "huffman_codebook.hpp"
+#include "iclforge/ac4core/huffman_codebook.hpp"
 #include "syntax/context.hpp"
 
 // Huffman decoding for every codebook of both parts' Annex A. The codebooks

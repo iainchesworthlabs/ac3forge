@@ -1,7 +1,7 @@
 #include <optional>
 #include <string_view>
 
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 // The Noise suite names, apart from noise.cpp so the handshake-message parsers
 // build without a crypto backend (the fuzz build has none).

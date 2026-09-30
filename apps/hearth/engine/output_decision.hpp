@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // Which output Hearth plays through, on which endpoint, and why
 // (planning/hearth-reference-player.md, A3).

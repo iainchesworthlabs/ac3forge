@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
-#include "ac3/export.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // A consumer-facing diagnostic sink: a callback hook for the recoverable,
 // informational decode events a caller otherwise has no way to hear about -
@@ -42,7 +42,7 @@ enum class DiagnosticEvent : std::uint8_t {
     kUnknownEmdfPayload,
 };
 
-[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(DiagnosticEvent event);
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::string_view describe(DiagnosticEvent event);
 
 // What happened. Which fields beyond `event` are meaningful depends on it
 // alone - unused ones stay at their default.

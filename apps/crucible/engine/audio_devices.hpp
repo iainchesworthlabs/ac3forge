@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "ac3/audio/spatial.hpp"
+#include "iclforge/audio/spatial.hpp"
 
 // The seam between the engine and the machine's audio devices
 // (docs/platforms/windows-demo.md, "Test remediation"). Everything the

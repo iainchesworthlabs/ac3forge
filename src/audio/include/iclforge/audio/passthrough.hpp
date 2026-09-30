@@ -10,8 +10,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 
 // Exclusive-mode IEC 61937 passthrough: hand already-packed AC-3, E-AC-3 or
 // AC-4 bursts to an S/PDIF or HDMI endpoint so the AV receiver on the other

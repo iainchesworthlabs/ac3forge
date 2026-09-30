@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/export.hpp"
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 
 // Turning a BYTE STREAM into whole access units, without owning any memory.
 //
@@ -72,7 +72,7 @@ inline constexpr std::size_t kMinimumBuffer = kMaxSyncframeBytes + 64;
 // cannot hold is not a case that arises.
 inline constexpr std::size_t kRecommendedBuffer = 16384;
 
-class AC3FORGE_EXPORT AccessUnitAccumulator {
+class ICLFORGE_AC3_EXPORT AccessUnitAccumulator {
    public:
     enum class Status : std::uint8_t {
         // `bytes` holds one complete access unit. Valid until the next call to

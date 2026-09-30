@@ -1,4 +1,4 @@
-#include "ac3/io/probe.hpp"
+#include "iclforge/ac3/io/probe.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,15 +14,15 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/crc16.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/syntax_trace.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/syntax_trace.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 namespace ac3::io {
 

@@ -1,4 +1,4 @@
-#include "ac3/audio/monitor.hpp"
+#include "iclforge/audio/monitor.hpp"
 
 // The Windows monitor backend. CMake compiles this directory's monitor.cpp on
 // Windows and another platform directory's everywhere else, so there is no
@@ -22,9 +22,9 @@
 #include <optional>
 #include <thread>
 
-#include "ac3/audio/playback_counter.hpp"
-#include "ac3/audio/ring_buffer.hpp"
-#include "ac3/audio/speakers.hpp"
+#include "iclforge/audio/playback_counter.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
+#include "iclforge/audio/speakers.hpp"
 #include "windows_support.hpp"
 
 namespace ac3::audio {

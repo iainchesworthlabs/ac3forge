@@ -1,10 +1,10 @@
-#include "dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 
 #include <cstddef>
 
-#include "ac4/detail/profiling.hpp"
-#include "dsp/qmf_kernels.hpp"
-#include "dsp/qmf_vector.hpp"
+#include "iclforge/ac4core/detail/profiling.hpp"
+#include "iclforge/ac4core/dsp/qmf_kernels.hpp"
+#include "iclforge/ac4core/dsp/qmf_vector.hpp"
 
 namespace ac4::detail::dsp {
 namespace {

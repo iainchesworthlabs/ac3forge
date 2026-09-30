@@ -6,9 +6,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/render/layout.hpp"
-#include "ac3/render/render.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/render.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 // An AC-4 presentation's objects rendered to speakers by the renderer Hearth
 // plays E-AC-3's objects through, ac3::render::LayoutRenderer. The AC-4

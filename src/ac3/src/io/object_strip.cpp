@@ -1,4 +1,4 @@
-#include "ac3/io/object_strip.hpp"
+#include "iclforge/ac3/io/object_strip.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/crc16.hpp"
-#include "ac3/emdf/frame_layout.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/emdf/frame_layout.hpp"
 
 namespace ac3::io {
 

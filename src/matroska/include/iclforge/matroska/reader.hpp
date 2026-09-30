@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-#include "matroska/export.hpp"
+#include "iclforge/matroska/export.hpp"
 
 // The read side of matroska::mux()/matroska::Writer: pulling one audio
 // track's frames back out of a Matroska file.

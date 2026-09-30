@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 
 // ac3::io::scan is the first thing that touches a stream nobody has looked at
 // yet: format-sniffing for AC-3 vs E-AC-3 vs garbage, called before any

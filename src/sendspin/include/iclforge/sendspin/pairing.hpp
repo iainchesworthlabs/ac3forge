@@ -8,9 +8,9 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 // The values Sendspin's pairing flows compute around CPace (pairing.md): pairing
 // tokens, the dynamic pairing code, the commitment to nonce_B, the CPace session

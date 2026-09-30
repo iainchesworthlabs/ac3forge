@@ -8,10 +8,10 @@
 #include <string>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/export.hpp"
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 
 // The encode-then-decode-then-compare driver over ac3/verify/mirror.hpp.
 //
@@ -44,7 +44,7 @@ struct CheckedFrame {
     [[nodiscard]] bool ok() const { return mismatches.empty() && !decode_error.has_value(); }
 };
 
-class AC3FORGE_EXPORT MirrorEncoder {
+class ICLFORGE_AC3_EXPORT MirrorEncoder {
    public:
     // `config` is taken by value and its trace pointer overwritten - a caller
     // has no use for setting one here, and letting one through would silently

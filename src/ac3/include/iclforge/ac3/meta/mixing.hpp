@@ -5,8 +5,8 @@
 #include <optional>
 #include <span>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Mixing and downmix metadata, and the §7.8 downmix the values feed.
 //
@@ -331,7 +331,7 @@ inline constexpr int kPgmScaleMax = 63;
 // a surround level is one of the reserved codes. Same reasoning as
 // valid_bsi_info(): a value one bit too wide does not record the wrong level,
 // it moves every field after it and the frame stops decoding as itself.
-[[nodiscard]] AC3FORGE_EXPORT bool valid_mix_metadata(const MixMetadata& value);
+[[nodiscard]] ICLFORGE_AC3_EXPORT bool valid_mix_metadata(const MixMetadata& value);
 
 // --- §7.8 downmixing -------------------------------------------------------
 
@@ -346,7 +346,7 @@ struct DownmixCoefficients {
 };
 
 // Lo/Ro: the plain stereo fold-down, and the one a mono sum is taken from.
-[[nodiscard]] AC3FORGE_EXPORT DownmixCoefficients stereo_downmix(Acmod acmod, double clev,
+[[nodiscard]] ICLFORGE_AC3_EXPORT DownmixCoefficients stereo_downmix(Acmod acmod, double clev,
                                                                  double slev);
 
 // §7.8.2's Dolby Surround compatible fold: Lt = L + clev·C − slev·S,
@@ -368,13 +368,13 @@ struct LtRtCoefficients {
     std::array<double, 5> surround{};
 };
 
-[[nodiscard]] AC3FORGE_EXPORT LtRtCoefficients ltrt_downmix(Acmod acmod, double clev,
+[[nodiscard]] ICLFORGE_AC3_EXPORT LtRtCoefficients ltrt_downmix(Acmod acmod, double clev,
                                                             double slev);
 
 // §7.8's "output_mode == 1/0" branch: left and right at −3 dB, centre at
 // clev + 3 dB, each surround at slev − 3 dB, then normalised. This is the
 // signal §7.7.2 promises to keep under a ceiling.
-[[nodiscard]] AC3FORGE_EXPORT std::array<double, 5> mono_downmix(Acmod acmod, double clev,
+[[nodiscard]] ICLFORGE_AC3_EXPORT std::array<double, 5> mono_downmix(Acmod acmod, double clev,
                                                                  double slev);
 
 // True peak of the mono downmix, in dBFS. channels holds the full-bandwidth
@@ -387,18 +387,18 @@ struct LtRtCoefficients {
 // frame that has just gone quiet carries a generous gain over a block that
 // still holds the loud tail. Pass an empty span when there is no history to
 // account for (the first frame, or a caller that only wants this frame).
-[[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
+[[nodiscard]] ICLFORGE_AC3_EXPORT double mono_downmix_peak_dbfs(
     std::span<const std::array<double, 256>> history,
     std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
 
 // The same, for a history the caller keeps in float - the encoders' analysis
 // front end under ac3/internal/encode_scalar.hpp's float variant. The sum is
 // double either way.
-[[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
+[[nodiscard]] ICLFORGE_AC3_EXPORT double mono_downmix_peak_dbfs(
     std::span<const std::array<float, 256>> history,
     std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
 
-[[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
+[[nodiscard]] ICLFORGE_AC3_EXPORT double mono_downmix_peak_dbfs(
     std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
 
 // --- §7.7/§7.8 output-stage levels -----------------------------------------
@@ -410,12 +410,12 @@ struct LtRtCoefficients {
 // only ever reduce level. The reserved value 0 is treated as 31 (no change) -
 // §5.4.2.8 forbids emitting it and a decoder has no better reading of it than
 // "no information", which is what leaving the audio alone says.
-[[nodiscard]] AC3FORGE_EXPORT double dialnorm_gain(int dialnorm);
+[[nodiscard]] ICLFORGE_AC3_EXPORT double dialnorm_gain(int dialnorm);
 inline constexpr int kReferenceDialnorm = 31;
 
 // The linear gain of §E2.3.1.11's LFE mix level, for the §7.8 LFE
 // contribution a decoder may fold in. lfe_mix_level_db(kLfeMixLevelIdeal) is
 // §7.8's stated ideal of +10 dB relative to left and right.
-[[nodiscard]] AC3FORGE_EXPORT double lfe_mix_gain(double level_db);
+[[nodiscard]] ICLFORGE_AC3_EXPORT double lfe_mix_gain(double level_db);
 
 }  // namespace ac3::meta

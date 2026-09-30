@@ -1,8 +1,8 @@
-#include "ac3/verify/selfcheck.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/verify/mirror.hpp"
+#include "iclforge/ac3/verify/selfcheck.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/verify/mirror.hpp"
 #include <expected>
 #include <span>
 #include <string>

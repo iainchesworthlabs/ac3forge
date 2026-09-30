@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-#include "mpegts/mpegts.hpp"
-#include "mpegts/reader.hpp"
+#include "iclforge/mpegts/mpegts.hpp"
+#include "iclforge/mpegts/reader.hpp"
 
 // The same two halves the Matroska and MP4 reader tests have.
 //

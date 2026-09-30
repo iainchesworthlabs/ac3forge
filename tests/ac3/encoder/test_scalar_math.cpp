@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <limits>
 
-#include "ac3/internal/scalar_math.hpp"
+#include "iclforge/arithmetic/scalar_math.hpp"
 
 using ac3::internal::scalar_exp;
 using ac3::internal::scalar_exp2;

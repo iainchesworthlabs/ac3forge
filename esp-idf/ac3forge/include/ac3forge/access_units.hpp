@@ -5,8 +5,8 @@
 #include <optional>
 #include <span>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 
 // Two things a player that is handed whole access units needs before it
 // decodes them, as the Sendspin burst player is (burst_player.hpp): where one

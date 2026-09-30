@@ -1,4 +1,4 @@
-#include "ac3/oba/joc.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
 
 #include <algorithm>
 #include <array>
@@ -13,14 +13,14 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/bitreader.hpp"
-#include "ac3/core/bitwriter.hpp"
-#include "ac3/core/mdct.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/dsp/qmf.hpp"
-#include "ac3/internal/decode_scalar.hpp"
-#include "ac3/internal/profiling.hpp"
-#include "ac3/oba/joc_tables.hpp"
+#include "iclforge/base/bitreader.hpp"
+#include "iclforge/base/bitwriter.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/dsp/qmf.hpp"
+#include "iclforge/ac3/detail/decode_scalar.hpp"
+#include "iclforge/base/detail/profiling.hpp"
+#include "iclforge/ac3/oba/joc_tables.hpp"
 
 namespace ac3::oba::joc {
 

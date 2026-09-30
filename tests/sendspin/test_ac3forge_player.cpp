@@ -7,10 +7,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/chunks.hpp"
-#include "ac3/sendspin/frames.hpp"
-#include "ac3/sendspin/json.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/sendspin/frames.hpp"
+#include "iclforge/sendspin/json.hpp"
 
 // _ac3forge_player@v1's objects (planning/hearth-sendspin-extension.md, The role
 // _ac3forge_player@v1): each writer's text byte for byte against the page's tables, each reader

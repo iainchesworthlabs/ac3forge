@@ -9,8 +9,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/io/stream_accumulator.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/io/stream_accumulator.hpp"
 
 // The plumbing, not a player.
 //

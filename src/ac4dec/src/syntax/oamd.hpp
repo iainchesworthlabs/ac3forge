@@ -6,7 +6,7 @@
 #include <optional>
 #include <vector>
 
-#include "ac4/ac4.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "bit_reader.hpp"
 #include "syntax/context.hpp"
 

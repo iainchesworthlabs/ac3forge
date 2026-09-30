@@ -3,8 +3,8 @@
 #include <array>
 #include <span>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
 
 // Transient detection (A/52 §8.2.2): the basic-encoder recipe that decides
 // blksw[ch], the one-bit-per-channel-per-block flag driving block switching.
@@ -32,7 +32,7 @@ namespace ac3 {
 // The recipe is the same in both; only the rounding differs, and with it,
 // now and then, a decision that sits on a threshold.
 template <typename Scalar>
-class AC3FORGE_TEMPLATE_CLASS BasicTransientDetector {
+class ICLFORGE_AC3_TEMPLATE_CLASS BasicTransientDetector {
    public:
     explicit BasicTransientDetector(SampleRate sample_rate);
 
@@ -89,14 +89,14 @@ class AC3FORGE_TEMPLATE_CLASS BasicTransientDetector {
 // Both instantiations live in transient.cpp; neither is instantiated by a
 // consumer. Exported both, so a test can hold the float one to the double
 // one's decisions through the shared library. Three macros from the generated
-// export header rather than AC3FORGE_EXPORT, because the compilers disagree
+// export header rather than ICLFORGE_AC3_EXPORT, because the compilers disagree
 // about where the attribute goes: MSVC imports through this declaration
-// (AC3FORGE_TEMPLATE_IMPORT) and exports the definitions in transient.cpp
-// (AC3FORGE_TEMPLATE_INSTANTIATE); GCC and Clang take the visibility on the
-// class template itself (AC3FORGE_TEMPLATE_CLASS, above) and nothing here.
+// (ICLFORGE_AC3_TEMPLATE_IMPORT) and exports the definitions in transient.cpp
+// (ICLFORGE_AC3_TEMPLATE_INSTANTIATE); GCC and Clang take the visibility on the
+// class template itself (ICLFORGE_AC3_TEMPLATE_CLASS, above) and nothing here.
 // src/forge/CMakeLists.txt has the details.
-extern template class AC3FORGE_TEMPLATE_IMPORT BasicTransientDetector<double>;
-extern template class AC3FORGE_TEMPLATE_IMPORT BasicTransientDetector<float>;
+extern template class ICLFORGE_AC3_TEMPLATE_IMPORT BasicTransientDetector<double>;
+extern template class ICLFORGE_AC3_TEMPLATE_IMPORT BasicTransientDetector<float>;
 
 using TransientDetector = BasicTransientDetector<double>;
 

@@ -8,10 +8,10 @@
 #include <optional>
 #include <string>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/noise.hpp"
-#include "ac3/sendspin/server_store.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/noise.hpp"
+#include "iclforge/sendspin/server_store.hpp"
 
 // What the test server keeps between runs, in its state directory: its X25519 identity and its
 // pairing records, so that a board paired once plays again without pairing (pairing.md, Pairing

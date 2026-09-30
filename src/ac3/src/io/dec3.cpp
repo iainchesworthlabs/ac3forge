@@ -1,4 +1,4 @@
-#include "ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/bitwriter.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/meta/bsi.hpp"
+#include "iclforge/base/bitwriter.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
 
 namespace ac3::io {
 

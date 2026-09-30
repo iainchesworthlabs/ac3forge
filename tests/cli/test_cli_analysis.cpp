@@ -16,7 +16,7 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // The measurement and carrier commands (apps/cli/commands/analysis.cpp:
 // levels, loudness, qc, spdif, unspdif) at the level a user meets them: the

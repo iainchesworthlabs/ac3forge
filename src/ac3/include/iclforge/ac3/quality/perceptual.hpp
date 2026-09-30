@@ -5,9 +5,9 @@
 #include <memory>
 #include <span>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/export.hpp"
-#include "ac3/quality/distortion.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/quality/distortion.hpp"
 
 // A psychoacoustic model for the AC-3 encoder's transmitted knobs.
 //
@@ -130,7 +130,7 @@ struct BlockAnalysis {
 // good as blocks 2-5 - without it the first two blocks of every frame would
 // have no predecessor to extrapolate from and would read as noise, which on
 // tonal material is exactly backwards.
-class AC3FORGE_EXPORT PerceptualModel {
+class ICLFORGE_AC3_EXPORT PerceptualModel {
    public:
     PerceptualModel(SampleRate sample_rate, int channels, PerceptualConfig config = {});
     ~PerceptualModel();
@@ -221,7 +221,7 @@ struct NoiseToMask {
 
 // `threshold` is normally a sum of BlockAnalysis::threshold over the same
 // blocks BandNoise accumulated, so the two describe the same span of audio.
-[[nodiscard]] AC3FORGE_EXPORT NoiseToMask noise_to_mask(const BandNoise& measured,
+[[nodiscard]] ICLFORGE_AC3_EXPORT NoiseToMask noise_to_mask(const BandNoise& measured,
                                                         std::span<const double> threshold);
 
 }  // namespace ac3::quality

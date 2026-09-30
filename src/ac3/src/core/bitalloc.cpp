@@ -1,4 +1,4 @@
-#include "ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
 
 #include <algorithm>
 #include <array>
@@ -11,13 +11,13 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/aht_tables.hpp"
-#include "ac3/core/bitalloc_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/internal/arch/simd.hpp"
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/ac3/core/aht_tables.hpp"
+#include "iclforge/ac3/core/bitalloc_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/arithmetic/detail/simd.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 #include "bitalloc_internal.hpp"
-#include "ac3/internal/scalar_math.hpp"
+#include "iclforge/arithmetic/scalar_math.hpp"
 
 namespace ac3 {
 

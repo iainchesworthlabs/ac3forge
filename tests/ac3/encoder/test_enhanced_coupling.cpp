@@ -10,8 +10,8 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tools.hpp"
-#include "ac3/core/fft.hpp"
+#include "iclforge/ac3/core/eac3_tools.hpp"
+#include "iclforge/dsp/fft.hpp"
 
 using namespace ac3::eac3;
 

@@ -1,4 +1,4 @@
-#include "ac3/core/exponents.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -7,9 +7,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/internal/arch/simd.hpp"
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/arithmetic/detail/simd.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 namespace ac3 {
 

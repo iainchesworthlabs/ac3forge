@@ -1,4 +1,4 @@
-#include "ac3/dsp/qmf.hpp"
+#include "iclforge/dsp/qmf.hpp"
 
 #include <array>
 #include <cmath>
@@ -6,7 +6,7 @@
 #include <numbers>
 #include <span>
 
-#include "../core/fft_kernel.hpp"
+#include "iclforge/dsp/detail/fft_kernel.hpp"
 #include "qmf_prototype.hpp"
 
 namespace ac3::dsp {
