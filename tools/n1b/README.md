@@ -90,11 +90,19 @@ lines added and 756 removed):
   include pass cannot know.
 - Five comment lines that the rewrites made longer than 100 columns.
 
-It goes stale as `main` moves. On a `main` that has changed a file it touches, `git apply --3way` merges
-where the repository has the blobs it was made from and otherwise stops, changing nothing, with the
-files that do not fit; `git apply --reject tools/n1b/s2-hand.patch` applies every hunk that fits and
-leaves each one that does not in a `.rej` beside its file, and the hunk's own lines say what the edit was
-for. What the patch leaves, and the scripts list: variant directories that became
+It goes stale as `main` moves. On a `main` that has changed a file it touches, `git apply --3way`
+merges where the repository has the blobs it was made from and otherwise stops, changing nothing, with
+the files that do not fit; `git apply --reject tools/n1b/s2-hand.patch` applies every hunk that fits and
+leaves each one that does not in a `.rej` beside its file, and the hunk's own lines say what the edit
+was for. To make it again on a later `main`: run the four steps, apply the old patch with `--reject`,
+settle the `.rej` files by hand, commit, and write
+
+    git diff --binary -M <scripts> HEAD -- . ':!tools/n1b' --output=tools/n1b/s2-hand.patch
+
+where `<scripts>` is the commit "S2: build files and paths in text" (`--output`, not a shell redirect,
+which would not write the file as bytes). Applying it to the script
+output alone (`git read-tree` into a scratch index, then `git apply --cached`) must give the tree of
+the commit. What the patch leaves, and the scripts list: variant directories that became
 `variants/<axis>-<choice>/` and are still named in comments, and the comments and pages that name a
 library file by its old name (`libac3forge.so`), which S4 and S5 rewrite.
 
