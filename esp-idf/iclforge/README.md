@@ -14,7 +14,7 @@ so the library is built from the same target definitions every other platform us
 here can drift from `src/ac3/minimal.cmake`. What it adds of its own is the layer that cannot
 live in the library because it is made of FreeRTOS:
 
-- **`ac3forge::Player`** ([`include/ac3forge/player.hpp`](include/ac3forge/player.hpp)): a fetch
+- **`ac3forge::Player`** ([`include/iclforge/player.hpp`](include/iclforge/player.hpp)): a fetch
   task reading a `ByteSource` into a ring buffer, a decode task draining it through the
   incremental framer and both decoders a block at a time, rendering each block onto the
   configured speaker layout, and a `PcmSink` taking one block of planar float per output slot.
@@ -22,7 +22,7 @@ live in the library because it is made of FreeRTOS:
   whether it sits in PSRAM are `PlayerConfig`. It reports frames, decode time, the worst frame,
   how low the ring ran, and why a run ended. An integrator implements the two seams for their
   transport and their DAC and gets the rest.
-- **`ac3forge::Control`** ([`include/ac3forge/control.hpp`](include/ac3forge/control.hpp)): a REST
+- **`ac3forge::Control`** ([`include/iclforge/control.hpp`](include/iclforge/control.hpp)): a REST
   surface over whatever owns a player - `GET /status`, `GET /hardware`, `POST /play` with a
   location, `POST /stop`, `POST /volume`, `GET`/`PUT /layout` - on `esp_http_server`, with
   callbacks the owner supplies so the server's task never touches the player itself. The board's
@@ -37,7 +37,7 @@ live in the library because it is made of FreeRTOS:
 - **`ac3forge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
   free of ESP-IDF and tested on the host. Library code with a temporary home; see the plan below.
 - **`ac3forge::DacQueueModel`**
-  ([`include/ac3forge/dac_queue_model.hpp`](include/ac3forge/dac_queue_model.hpp)): what an I2S
+  ([`include/iclforge/dac_queue_model.hpp`](include/iclforge/dac_queue_model.hpp)): what an I2S
   DAC heard, worked out from the one fact the hardware guarantees - its DMA drains at exactly
   the sample rate. A sink tells it when each block arrives and when its write has returned, by a
   clock the sink passes in, and it counts, per play, the blocks that arrived to an empty queue,
