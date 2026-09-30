@@ -328,8 +328,10 @@ class SubstreamPcm {
     std::optional<int> decoded_mode_;
     std::optional<int> applied_mode_;
     // The sample rate converter's filter, which every channel's converter
-    // shares, and the phase of the last frame converted.
-    std::shared_ptr<const dsp::ResamplerFilter> converter_filter_;
+    // shares, and the phase of the last frame converted. Its table is kept in
+    // Real (designed in double, rounded once), for the dot product to run in
+    // Real.
+    std::shared_ptr<const dsp::BasicResamplerFilter<Real>> converter_filter_;
     std::optional<int> converter_phase_;
     DeStage de_;
     DrcStage drc_;

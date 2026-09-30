@@ -110,13 +110,20 @@ target_compile_features(ac4dec_objects PUBLIC cxx_std_23)
 # The inspector's and the core's usage requirements, compiled with and not
 # linked: the libraries above link them (see there). ac4::ac4 is the one
 # BUILD_SHARED_LIBS picks, as ac3::signing's objects take ac3::forge.
-# $<BUILD_INTERFACE:...> on all four for the reason src/ac4/CMakeLists.txt
+# $<BUILD_INTERFACE:...> on all five for the reason src/ac4/CMakeLists.txt
 # gives, and because nothing that uses the installed package compiles these
-# objects.
+# objects. ac3::arithmetic is the header-only target that carries
+# ac3/internal/scalar_math.hpp, which src/ac4core's dsp/real_functions.hpp
+# includes: the float transcendentals that give the same float on every
+# platform, called by pcm/aspx.cpp and pcm/companding.cpp through that header
+# (src/ac4dec includes from src/ac4core and not from src/arithmetic,
+# tools/checks/layering.json; planning/ac4.md, D14a4). Compile-only, so the
+# include directory reaches these objects and nothing is linked.
 target_link_libraries(ac4dec_objects
     PRIVATE
         "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac4::ac4>>"
         "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac4::core>>"
+        "$<BUILD_INTERFACE:ac3::arithmetic>"
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")
 

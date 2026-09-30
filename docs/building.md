@@ -568,7 +568,7 @@ tools/checks/run_baremetal_probe.sh --ac4 --host       # natively
 tools/checks/run_baremetal_probe.sh --ac4 --icount     # instructions per frame, gated
 ```
 
-The presets are the ones above with `-ac4` after `minimal`. The probe decodes five committed
+The presets are the ones above with `-ac4` after `minimal`. The probe decodes six committed
 streams, gates each channel's level, the image, the peak heap (each fixture's own ceiling), the
 stack a decode used (read by painting a window of it before the decode and looking for what changed
 after), the allocations per frame and, under `--icount`, the instructions per frame; the

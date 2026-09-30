@@ -46,6 +46,21 @@ template <typename Real>
     }
 }
 
+// Pseudocode 87's limit on a prediction coefficient, |alpha| >= 4. At Real =
+// double it takes the complex magnitude, std::hypot, as it always did. At
+// Real = float it compares the squared magnitude with 16, which is float
+// multiplies and an add: hypotf differs in the last bit between C libraries, and
+// a coefficient that one platform finds just under the limit and another at it
+// zeroes a subband's prediction on the second only (planning/ac4.md, D14a4).
+template <typename Real>
+[[nodiscard]] bool reaches_limit(dsp::Complex<Real> alpha) noexcept {
+    if constexpr (std::is_same_v<Real, double>) {
+        return abs(alpha) >= Real{4};
+    } else {
+        return norm(alpha) >= Real{16};
+    }
+}
+
 constexpr std::size_t kSubbands = 64;
 
 [[nodiscard]] std::size_t at(int index) noexcept {
@@ -175,7 +190,7 @@ void prediction_coefficients(std::span<const dsp::Complex<Real>> q_low_ext, int 
         if (cov[1][1] != Complex{}) {
             a0 = -(cov[0][1] + a1 * conj(cov[1][2])) / cov[1][1];
         }
-        if (abs(a0) >= Real{4} || abs(a1) >= Real{4}) {
+        if (reaches_limit(a0) || reaches_limit(a1)) {
             a0 = Complex{};
             a1 = Complex{};
         }
