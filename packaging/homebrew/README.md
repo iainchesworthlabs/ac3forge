@@ -14,7 +14,8 @@ brew install --cask iainchesworthlabs/ac3forge/ac3gui     # ac3gui.app, prebuilt
 The formula and the cask are named `iclforge` from the first release made after the rename of
 the family (`planning/ac4.md`, decision 41). `tap_migrations.json` here maps the old names
 (`ac3forge`, `ac3gui`) to them, and goes to the root of the tap, which `manifest-bump.yml`
-copies it to with the formula and the cask.
+copies it to with the formula and the cask, removing `Formula/ac3forge.rb` and `Casks/ac3gui.rb`
+in the same pull request (Homebrew reads the map for a name that has no file).
 
 After a release, [`manifest-bump.yml`](../../.github/workflows/manifest-bump.yml) rewrites both
 files for the new tag and, when `HOMEBREW_TAP_TOKEN` is set, opens a pull request on the tap. The
