@@ -3,7 +3,7 @@
 // The type the ENCODERS run their analysis front end in - the transient
 // detector, the block gather, the analysis window and the forward transform -
 // in the DOUBLE variant, which every ordinary build resolves to
-// (AC3FORGE_ENCODE_SCALAR=double, the default). The coefficients the
+// (ICLFORGE_ENCODE_SCALAR=double, the default). The coefficients the
 // transform hands the rest of the encoder are double in either variant; what
 // this seam selects is the arithmetic in front of them.
 //

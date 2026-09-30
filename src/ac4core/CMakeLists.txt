@@ -20,7 +20,7 @@
 # their exported targets name it as a link-only dependency and a consumer links
 # it with them. The archive is libac4core_static.a, with the suffix every
 # static archive the package installs has, by which
-# tools/checks/check_install_consumer.sh and ac3forge_install_pkgconfig()
+# tools/checks/check_install_consumer.sh and iclforge_install_pkgconfig()
 # (cmake/PkgConfig.cmake) tell an archive. It has no headers to install.
 # ---------------------------------------------------------------------------
 add_library(iclforge_ac4core STATIC)
@@ -53,7 +53,7 @@ target_include_directories(iclforge_ac4core
 target_compile_features(iclforge_ac4core PUBLIC cxx_std_23)
 
 # The scalar ac4core's kernels are explicitly instantiated at (planning/ac4.md,
-# D14a: "AC-4 joins AC3FORGE_DECODE_SCALAR"). The same cache variable
+# D14a: "AC-4 joins ICLFORGE_DECODE_SCALAR"). The same cache variable
 # src/ac3/CMakeLists.txt declares and resolves its own decode_scalar_t from -
 # declared again here with the identical default/STRINGS (CMake's set(...
 # CACHE ...) only takes effect the first time it runs in a configure, so
@@ -64,13 +64,13 @@ target_compile_features(iclforge_ac4core PUBLIC cxx_std_23)
 # "fixed" maps to the double directory rather than its own for now: AC-4's
 # fixed-point tier (planning/ac4.md, D14d) has not instantiated these kernels
 # at ac3::internal::Fixed32 yet, so there is nothing for a fixed32/ directory
-# here to hold; a build configured AC3FORGE_DECODE_SCALAR=fixed still needs
+# here to hold; a build configured ICLFORGE_DECODE_SCALAR=fixed still needs
 # iclforge_ac4core to produce something, and double is the correct fallback (it is
 # what every non-float build already used before this option existed).
-set(AC3FORGE_DECODE_SCALAR "double" CACHE STRING
+set(ICLFORGE_DECODE_SCALAR "double" CACHE STRING
     "Scalar the decoder carries coefficients in: double (default), float, or fixed (Q7.24 in an int32, for parts with no FPU)")
-set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
-if(AC3FORGE_DECODE_SCALAR STREQUAL "float")
+set_property(CACHE ICLFORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
+if(ICLFORGE_DECODE_SCALAR STREQUAL "float")
     set(_ac4core_scalar_dir "float")
 else()
     set(_ac4core_scalar_dir "double")
@@ -80,9 +80,9 @@ endif()
 # of these same kernels (Mdct, QmfAnalysis, QmfSynthesis, Resampler,
 # ajoc::Reconstruction, aspx::generate_high_band) always at double - decision
 # 34 (planning/ac4.md), the encoder never runs on an ESP32 and has no float
-# or fixed-point tier of its own, so it does not follow AC3FORGE_DECODE_SCALAR.
+# or fixed-point tier of its own, so it does not follow ICLFORGE_DECODE_SCALAR.
 # iclforge::ac3 avoids this by compiling its encoder's and decoder's DSP
-# separately (AC3FORGE_ENCODE_SCALAR beside AC3FORGE_DECODE_SCALAR,
+# separately (ICLFORGE_ENCODE_SCALAR beside ICLFORGE_DECODE_SCALAR,
 # src/ac3/CMakeLists.txt); iclforge_ac4core is one static library both ac4dec and
 # ac4enc link (this file's own header comment), so when Real is not already
 # double, each of those kernels' .cpp files also explicitly instantiates
@@ -109,13 +109,13 @@ target_include_directories(iclforge_ac4core PUBLIC
 # Which "ac4/detail/profiling.hpp" the kernels' AC4_ZONE_SCOPED_N() markers see
 # (planning/ac4.md, D14b): none/, where they expand to nothing, or stage_timers/,
 # where they call the two functions the application supplies, as iclforge::ac3's
-# own zone markers do under AC3FORGE_STAGE_TIMERS - which the root allows only in
+# own zone markers do under ICLFORGE_STAGE_TIMERS - which the root allows only in
 # the minimum-footprint profile, so no other build ever takes the second. A
 # directory choice, the way the scalar just above is, for the platform-tree rule
 # (tools/checks/check_platform_macros.ps1). PUBLIC for the same reason as the
 # scalar's: the decoder's own translation units carry markers too, and compile
 # against this target without linking it.
-if(AC3FORGE_STAGE_TIMERS)
+if(ICLFORGE_STAGE_TIMERS)
     set(_ac4core_profiling_dir "stage_timers")
 else()
     set(_ac4core_profiling_dir "none")
@@ -149,19 +149,19 @@ endif()
 # names that second one as a known gap, not yet closed).
 target_link_libraries(iclforge_ac4core
     PRIVATE
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>"
+        "$<BUILD_INTERFACE:iclforge::warnings>"
+        "$<BUILD_INTERFACE:iclforge::coverage>"
         "$<BUILD_INTERFACE:iclforge::arithmetic>")
 
 # The kernels of a frame's transform and filter work at -O2 under the profile's
-# AC3FORGE_MINIMAL_HOT_O2, as src/ac3/minimal.cmake does for the AC-3 and
+# ICLFORGE_MINIMAL_HOT_O2, as src/ac3/minimal.cmake does for the AC-3 and
 # E-AC-3 decoders' (docs/platforms/bare-metal/esp32-p4.md has what it bought on
 # a board). A size-optimised build is what the profile is; these are the files a
 # stage timer showed the optimiser paying for, and it costs flash and not SRAM.
 # The decoder's own files (src/ac4dec) gained nothing measurable from it and
 # stay at -Os. The option is that file's own, declared before this directory is
 # added.
-if(AC3FORGE_MINIMAL_DECODER AND AC3FORGE_MINIMAL_HOT_O2)
+if(ICLFORGE_MINIMAL_DECODER AND ICLFORGE_MINIMAL_HOT_O2)
     set_source_files_properties(
         src/dsp/fft.cpp
         src/dsp/mdct.cpp
@@ -173,15 +173,15 @@ if(AC3FORGE_MINIMAL_DECODER AND AC3FORGE_MINIMAL_HOT_O2)
         PROPERTIES COMPILE_OPTIONS "-O2")
 endif()
 
-# In the minimum-footprint profile (AC3FORGE_MINIMAL_AC4, planning/ac4.md, D14b):
+# In the minimum-footprint profile (ICLFORGE_MINIMAL_AC4, planning/ac4.md, D14b):
 # the profile's own compile options - no exceptions, no RTTI, a section for each
 # function and datum - PUBLIC, as iclforge::ac3_minimal links them, since a
 # consumer has to share whether a call can throw; and code that is not
 # position-independent, which a static archive linked into one firmware image
 # has no use for and which costs a RISC-V part an indirection to each global.
 # The archive is nothing an install or an export sees in that profile.
-if(AC3FORGE_MINIMAL_DECODER)
-    target_link_libraries(iclforge_ac4core PUBLIC ac3::minimal_profile)
+if(ICLFORGE_MINIMAL_DECODER)
+    target_link_libraries(iclforge_ac4core PUBLIC iclforge::minimal_profile)
     set(_ac4core_pic OFF)
 else()
     set(_ac4core_pic ON)

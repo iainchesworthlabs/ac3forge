@@ -23,7 +23,7 @@ const char* scratch_dir() {
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-    std::string path = std::string(scratch_dir()) + "/ac3forge-fuzz-wav-XXXXXX";
+    std::string path = std::string(scratch_dir()) + "/iclforge-fuzz-wav-XXXXXX";
     const int fd = ::mkstemp(path.data());
     if (fd < 0) {
         return 0;

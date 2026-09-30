@@ -32,7 +32,7 @@
 // _sendspin._tcp, pairs by its pairing PSK and a dynamic or static code, admits servers as the
 // specification ranks them, and decodes each stream it plays to a WAV file with a play-time log:
 // PCM, FLAC or Opus over player@v1, and AC-3 or E-AC-3, objects included, or AC-4, over
-// _ac3forge_player@v1 (planning/hearth-sendspin-extension.md), rendered to its speaker layout. It
+// _iclforge_player@v1 (planning/hearth-sendspin-extension.md), rendered to its speaker layout. It
 // can list the other roles too, keeping what a server sends them and sending controller commands.
 //
 // Several sinks run side by side in one process or several, with distinct names, ports and state
@@ -59,7 +59,7 @@ struct SinkOptions {
     // also at 44.1 kHz 16-bit and 48 kHz 24-bit.
     std::vector<sendspin::messages::Codec> codecs{sendspin::messages::Codec::kPcm, sendspin::messages::Codec::kFlac,
                                                   sendspin::messages::Codec::kOpus};
-    // Offer _ac3forge_player@v1 before player@v1, as a Hearth sink does.
+    // Offer _iclforge_player@v1 before player@v1, as a Hearth sink does.
     bool extension_role = true;
     // Lists the Settings command in the extension role's state and applies
     // a settings command by reporting its revision (logged "settings N
@@ -125,7 +125,7 @@ class Sink {
         std::uint32_t streams = 0;
         std::uint64_t chunks = 0;
         std::uint64_t frames = 0;
-        // _ac3forge_player@v1's.
+        // _iclforge_player@v1's.
         std::uint32_t burst_streams = 0;
         std::uint64_t bursts = 0;
         std::uint64_t burst_frames = 0;

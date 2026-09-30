@@ -132,8 +132,8 @@ TestCase {
     // nothing without one; a file that cannot be read is refused, with why.
     function test_everyFirmwareActionIsASafeNoOpWithNoSinkSelected() {
         NetworkController.watchSinkFirmware(true);
-        NetworkController.chooseSinkFirmwareFile("file:///no/such/ac3forge_hearth_sink.bin");
-        compare(NetworkController.sinkFirmwareCandidate.name, "ac3forge_hearth_sink.bin");
+        NetworkController.chooseSinkFirmwareFile("file:///no/such/iclforge_hearth_sink.bin");
+        compare(NetworkController.sinkFirmwareCandidate.name, "iclforge_hearth_sink.bin");
         verify(NetworkController.sinkFirmwareCandidate.refusal.length > 0);
         NetworkController.updateSinkFirmware();
         compare(Object.keys(NetworkController.sinkFirmwareCandidate).length, 0);

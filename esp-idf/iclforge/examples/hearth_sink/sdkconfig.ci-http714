@@ -8,21 +8,21 @@
 # so that every play's twelve levels can be held to the host's in
 # www/streams.json. The workflow serves www/ on port 8000 for the run, and the
 # boot play is the set's walk: one speaker at a time, all twelve.
-CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1
-CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS=12
-CONFIG_AC3FORGE_EXAMPLE_LAYOUT="7.1.4"
-CONFIG_AC3FORGE_EXAMPLE_HTTP_URL="http://10.0.2.2:8000/714-walk.ec3"
+CONFIG_ICLFORGE_EXAMPLE_CAPTURE_TDM=1
+CONFIG_ICLFORGE_EXAMPLE_TDM_SLOTS=12
+CONFIG_ICLFORGE_EXAMPLE_LAYOUT="7.1.4"
+CONFIG_ICLFORGE_EXAMPLE_HTTP_URL="http://10.0.2.2:8000/714-walk.ec3"
 
 # As coded, with no dialnorm normalisation and no DRC: the manifest's levels are
 # the host's decode measured that way (tools/generators/gen_device_streams.py).
-CONFIG_AC3FORGE_EXAMPLE_DRC_MODE=2
+CONFIG_ICLFORGE_EXAMPLE_DRC_MODE=2
 
 # Objects as their bed. Placing them was measured under QEMU on 2026-09-11 and
 # does not fit this shape's internal RAM: the reconstruction's allocations failed
 # with no free block large enough, and demo.ec3, which did place its objects,
 # left 1,872 bytes of the decode task's stack. sdkconfig.ci-render places objects
 # from FAT, where there is no network sharing the heap.
-CONFIG_AC3FORGE_EXAMPLE_OBJECTS=1
+CONFIG_ICLFORGE_EXAMPLE_OBJECTS=1
 
 # Neither of O4's diagnostics (planning/esp32-ota.md): the widest shape CI
 # plays has no internal RAM to spare above its free-heap floor, and each would
@@ -30,4 +30,4 @@ CONFIG_AC3FORGE_EXAMPLE_OBJECTS=1
 # ring its buffer. The other QEMU shapes keep both; sdkconfig.ci-ota's update
 # test reads them back.
 CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y
-CONFIG_AC3FORGE_LOG_BYTES=0
+CONFIG_ICLFORGE_LOG_BYTES=0

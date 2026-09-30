@@ -1,4 +1,4 @@
-//! Atmos/JOC object encode — `ac3::oba::AtmosEncoder` via `ac3forge_atmos_encoder_t`.
+//! Atmos/JOC object encode — `ac3::oba::AtmosEncoder` via `iclforge_atmos_encoder_t`.
 //!
 //! Objects in, one ordinary-looking 5.1 E-AC-3 access unit out: the objects are panned into a
 //! 5.1 bed a legacy decoder plays unchanged, and OAMD (where each object is) plus JOC (how to
@@ -7,15 +7,15 @@
 //! covered here because a binding that stops at channel beds misses the one capability that
 //! distinguishes this codec surface.
 
-use ac3forge_sys as sys;
+use iclforge_sys as sys;
 use std::ptr;
 
 use crate::bytes::Bytes;
 use crate::error::Error;
 use crate::types::{Latency, SampleRate};
 
-/// Mirrors `ac3forge_atmos_config_t`. Construct with [`AtmosConfig::default`] (which calls the
-/// raw `ac3forge_atmos_config_init()`) and override only what you need.
+/// Mirrors `iclforge_atmos_config_t`. Construct with [`AtmosConfig::default`] (which calls the
+/// raw `iclforge_atmos_config_init()`) and override only what you need.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AtmosConfig {
     pub sample_rate: SampleRate,
@@ -37,8 +37,8 @@ pub struct AtmosConfig {
 impl Default for AtmosConfig {
     fn default() -> Self {
         // SAFETY: config_init fills every field; the zeroed value is never read.
-        let mut raw: sys::ac3forge_atmos_config_t = unsafe { std::mem::zeroed() };
-        unsafe { sys::ac3forge_atmos_config_init(&mut raw) };
+        let mut raw: sys::iclforge_atmos_config_t = unsafe { std::mem::zeroed() };
+        unsafe { sys::iclforge_atmos_config_init(&mut raw) };
         AtmosConfig {
             sample_rate: SampleRate::from_raw(raw.sample_rate).unwrap_or(SampleRate::Hz48000),
             bitrate_kbps: raw.bitrate_kbps,
@@ -52,8 +52,8 @@ impl Default for AtmosConfig {
 }
 
 impl AtmosConfig {
-    fn to_raw(&self) -> sys::ac3forge_atmos_config_t {
-        sys::ac3forge_atmos_config_t {
+    fn to_raw(&self) -> sys::iclforge_atmos_config_t {
+        sys::iclforge_atmos_config_t {
             sample_rate: self.sample_rate.to_raw(),
             bitrate_kbps: self.bitrate_kbps,
             dialnorm: self.dialnorm,
@@ -66,10 +66,10 @@ impl AtmosConfig {
 }
 
 /// One object's placement for one frame — `ac3::oba::ObjectPlacement` via
-/// `ac3forge_object_placement_t`. Position is §4.2.1's room-anchored system (`x`/`y` in
+/// `iclforge_object_placement_t`. Position is §4.2.1's room-anchored system (`x`/`y` in
 /// `[0, 1]`, `z` in `[-1, 1]`).
 ///
-/// [`ObjectPlacement::default`] calls the raw `ac3forge_object_placement_init()` — room centre,
+/// [`ObjectPlacement::default`] calls the raw `iclforge_object_placement_init()` — room centre,
 /// unity gain, no LFE send. That C initializer exists because this crate's first pass found a
 /// zero-initialized placement silently encoding a MUTED object (`rust/README.md`, header
 /// defects, item 1); deriving `Default` from zeroes here would reintroduce exactly that bug in
@@ -88,8 +88,8 @@ pub struct ObjectPlacement {
 impl Default for ObjectPlacement {
     fn default() -> Self {
         // SAFETY: placement_init fills every field; the zeroed value is never read.
-        let mut raw: sys::ac3forge_object_placement_t = unsafe { std::mem::zeroed() };
-        unsafe { sys::ac3forge_object_placement_init(&mut raw) };
+        let mut raw: sys::iclforge_object_placement_t = unsafe { std::mem::zeroed() };
+        unsafe { sys::iclforge_object_placement_init(&mut raw) };
         ObjectPlacement {
             x: raw.x,
             y: raw.y,
@@ -101,8 +101,8 @@ impl Default for ObjectPlacement {
 }
 
 impl ObjectPlacement {
-    fn to_raw(self) -> sys::ac3forge_object_placement_t {
-        sys::ac3forge_object_placement_t {
+    fn to_raw(self) -> sys::iclforge_object_placement_t {
+        sys::iclforge_object_placement_t {
             x: self.x,
             y: self.y,
             z: self.z,
@@ -115,7 +115,7 @@ impl ObjectPlacement {
 /// The object encoder itself. `object_count` mono essences in, one E-AC-3 access unit out per
 /// frame.
 pub struct AtmosEncoder {
-    raw: ptr::NonNull<sys::ac3forge_atmos_encoder_t>,
+    raw: ptr::NonNull<sys::iclforge_atmos_encoder_t>,
     object_count: usize,
 }
 
@@ -124,17 +124,17 @@ unsafe impl Send for AtmosEncoder {}
 impl AtmosEncoder {
     pub fn new(config: &AtmosConfig, object_count: usize) -> Result<Self, Error> {
         let raw_config = config.to_raw();
-        let mut out: *mut sys::ac3forge_atmos_encoder_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_atmos_encoder_t = ptr::null_mut();
         let count = i32::try_from(object_count).map_err(|_| Error::InvalidArgument)?;
-        let status = unsafe { sys::ac3forge_atmos_encoder_create(&raw_config, count, &mut out) };
+        let status = unsafe { sys::iclforge_atmos_encoder_create(&raw_config, count, &mut out) };
         Error::check(status)?;
         let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_atmos_encoder_create returned OK with a null encoder");
+            .expect("iclforge_atmos_encoder_create returned OK with a null encoder");
         Ok(AtmosEncoder { raw, object_count })
     }
 
     pub fn dynamic_object_count(&self) -> usize {
-        let count = unsafe { sys::ac3forge_atmos_encoder_dynamic_object_count(self.raw.as_ptr()) };
+        let count = unsafe { sys::iclforge_atmos_encoder_dynamic_object_count(self.raw.as_ptr()) };
         usize::try_from(count).unwrap_or(0)
     }
 
@@ -142,21 +142,21 @@ impl AtmosEncoder {
     /// JOC's reconstruction runs there. With `emit_object_metadata` off this collapses to
     /// [`AtmosEncoder::bed_latency`].
     pub fn latency(&self) -> Latency {
-        // SAFETY: zero is a valid ac3forge_latency_t and the C call overwrites it.
-        let mut raw: sys::ac3forge_latency_t = unsafe { std::mem::zeroed() };
-        unsafe { sys::ac3forge_atmos_encoder_latency(self.raw.as_ptr(), &mut raw) };
+        // SAFETY: zero is a valid iclforge_latency_t and the C call overwrites it.
+        let mut raw: sys::iclforge_latency_t = unsafe { std::mem::zeroed() };
+        unsafe { sys::iclforge_atmos_encoder_latency(self.raw.as_ptr(), &mut raw) };
         Latency::from_raw(raw)
     }
 
     pub fn latency_samples(&self) -> i32 {
-        unsafe { sys::ac3forge_atmos_encoder_latency_samples(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_atmos_encoder_latency_samples(self.raw.as_ptr()) }
     }
 
     /// The 5.1 BED's budget: what a legacy decoder that ignores the container hears.
     pub fn bed_latency(&self) -> Latency {
-        // SAFETY: zero is a valid ac3forge_latency_t and the C call overwrites it.
-        let mut raw: sys::ac3forge_latency_t = unsafe { std::mem::zeroed() };
-        unsafe { sys::ac3forge_atmos_encoder_bed_latency(self.raw.as_ptr(), &mut raw) };
+        // SAFETY: zero is a valid iclforge_latency_t and the C call overwrites it.
+        let mut raw: sys::iclforge_latency_t = unsafe { std::mem::zeroed() };
+        unsafe { sys::iclforge_atmos_encoder_bed_latency(self.raw.as_ptr(), &mut raw) };
         Latency::from_raw(raw)
     }
 
@@ -177,11 +177,11 @@ impl AtmosEncoder {
             return Err(Error::InvalidArgument);
         }
         let pointers: Vec<*const f32> = objects.iter().map(|o| o.as_ptr()).collect();
-        let raw_placements: Vec<sys::ac3forge_object_placement_t> =
+        let raw_placements: Vec<sys::iclforge_object_placement_t> =
             placements.iter().map(|p| p.to_raw()).collect();
-        let mut out: *mut sys::ac3forge_bytes_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_bytes_t = ptr::null_mut();
         let status = unsafe {
-            sys::ac3forge_atmos_encoder_encode_frame(
+            sys::iclforge_atmos_encoder_encode_frame(
                 self.raw.as_ptr(),
                 pointers.as_ptr(),
                 pointers.len(),
@@ -198,6 +198,6 @@ impl AtmosEncoder {
 
 impl Drop for AtmosEncoder {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_atmos_encoder_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_atmos_encoder_destroy(self.raw.as_ptr()) };
     }
 }

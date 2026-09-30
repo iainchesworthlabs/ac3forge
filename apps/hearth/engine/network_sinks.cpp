@@ -397,7 +397,7 @@ bool NetworkSinks::push_sink_settings(const std::string& id, ss::player::Setting
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = sinks_.find(id);
         if (it == sinks_.end() || !it->second.client.has_value() ||
-            !it->second.client->ac3forge_support.has_value()) {
+            !it->second.client->iclforge_support.has_value()) {
             return false;
         }
         client_id = it->second.client_id;
@@ -413,7 +413,7 @@ bool NetworkSinks::push_sink_settings(const std::string& id, ss::player::Setting
     ss::player::CommandMessage message;
     message.command = ss::player::Command::kSettings;
     message.settings = settings;
-    const bool sent = host_->ac3forge_command(client_id, message);
+    const bool sent = host_->iclforge_command(client_id, message);
     if (sent) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = sinks_.find(id);
@@ -431,7 +431,7 @@ bool NetworkSinks::push_sink_identify(const std::string& id, std::optional<ss::p
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = sinks_.find(id);
         if (it == sinks_.end() || !it->second.client.has_value() ||
-            !it->second.client->ac3forge_support.has_value()) {
+            !it->second.client->iclforge_support.has_value()) {
             return false;
         }
         client_id = it->second.client_id;
@@ -442,7 +442,7 @@ bool NetworkSinks::push_sink_identify(const std::string& id, std::optional<ss::p
     ss::player::CommandMessage message;
     message.command = ss::player::Command::kIdentify;
     message.identify = identify;
-    const bool sent = host_->ac3forge_command(client_id, message);
+    const bool sent = host_->iclforge_command(client_id, message);
     if (sent) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = sinks_.find(id);
@@ -670,15 +670,15 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
         facts.roles = client.supported_roles;
         facts.hardware = client.device_info.product_name;
         facts.firmware = client.device_info.software_version;
-        facts.ac3forge_support = client.ac3forge_support;
+        facts.iclforge_support = client.iclforge_support;
 
-        if (client.ac3forge_support.has_value()) {
+        if (client.iclforge_support.has_value()) {
             facts.kind = SinkKind::kHearthSink;
-            for (const ss::player::DataType type : client.ac3forge_support->data_types) {
+            for (const ss::player::DataType type : client.iclforge_support->data_types) {
                 facts.data_types.emplace_back(ss::player::data_type_name(type));
             }
-            facts.output_slots = static_cast<std::uint32_t>(client.ac3forge_support->outputs.count);
-            facts.output_bit_depth = static_cast<std::uint32_t>(client.ac3forge_support->outputs.bit_depth);
+            facts.output_slots = static_cast<std::uint32_t>(client.iclforge_support->outputs.count);
+            facts.output_bit_depth = static_cast<std::uint32_t>(client.iclforge_support->outputs.bit_depth);
         }
         if (client.player_support.has_value()) {
             if (facts.kind != SinkKind::kHearthSink) {
@@ -700,9 +700,9 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
     // pairing on it stands.
     if (entry.client.has_value()) {
         const ss::ClientView& client = *entry.client;
-        facts.ac3forge_state = client.ac3forge_state;
-        if (client.ac3forge_state.has_value()) {
-            facts.required_lead_time_ms = static_cast<std::uint32_t>(client.ac3forge_state->required_lead_time_ms);
+        facts.iclforge_state = client.iclforge_state;
+        if (client.iclforge_state.has_value()) {
+            facts.required_lead_time_ms = static_cast<std::uint32_t>(client.iclforge_state->required_lead_time_ms);
         } else if (client.player_state.has_value() && client.player_state->required_lead_time_ms.has_value()) {
             facts.required_lead_time_ms = static_cast<std::uint32_t>(*client.player_state->required_lead_time_ms);
         }

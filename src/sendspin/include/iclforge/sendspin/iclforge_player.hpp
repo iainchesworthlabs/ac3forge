@@ -11,10 +11,10 @@
 #include "iclforge/sendspin/chunks.hpp"
 #include "iclforge/sendspin/json.hpp"
 
-// _ac3forge_player@v1 (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1): the
+// _iclforge_player@v1 (planning/hearth-sendspin-extension.md, The role _iclforge_player@v1): the
 // objects the role adds to client/hello, client/state, stream/start and server/command, each a
 // struct with a writer that appends it as the value of a key the caller has written, and a reader.
-// Its burst chunk, ID 192 (message_id::kAc3forgeBurst), is chunks.hpp's; the messages that carry
+// Its burst chunk, ID 192 (message_id::kIclforgeBurst), is chunks.hpp's; the messages that carry
 // these objects are messages.hpp's.
 //
 // Readers ignore unknown fields, as the specification says for every message (E14). A settings
@@ -26,11 +26,11 @@
 
 namespace iclforge::sendspin::player {
 
-inline constexpr std::string_view kRole = "_ac3forge_player@v1";
-inline constexpr std::string_view kSupportKey = "_ac3forge_player@v1_support";
+inline constexpr std::string_view kRole = "_iclforge_player@v1";
+inline constexpr std::string_view kSupportKey = "_iclforge_player@v1_support";
 // The key of the role's object in client/state, server/command and stream/start, and its name in
 // the roles of stream/clear and stream/end.
-inline constexpr std::string_view kObjectKey = "_ac3forge_player";
+inline constexpr std::string_view kObjectKey = "_iclforge_player";
 
 enum class DataType : std::uint8_t {
     kAc3,

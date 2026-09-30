@@ -1,6 +1,6 @@
 # Overlay triplet: x64 Windows, MSVC.
 #
-# Linkage policy: dynamic CRT, static dependency libraries. ac3forge takes only
+# Linkage policy: dynamic CRT, static dependency libraries. iclforge takes only
 # test/tooling packages from vcpkg (Catch2), so linking them statically keeps
 # ac3tests.exe self-contained and removes a whole class of "DLL not found"
 # failures at test-discovery time. The CRT stays dynamic (/MD) because the
@@ -22,6 +22,6 @@ set(VCPKG_LIBRARY_LINKAGE static)
 # same port binaries link into either Windows preset.
 #
 # No VCPKG_ENV_PASSTHROUGH here (the reference project needs it for nmake-based
-# ports such as OpenSSL). ac3forge's only port is Catch2, a plain CMake build,
+# ports such as OpenSSL). iclforge's only port is Catch2, a plain CMake build,
 # and passthrough variables feed the ABI hash - passing PATH through would
 # invalidate the binary cache every time PATH changed.

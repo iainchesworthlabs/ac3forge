@@ -14,7 +14,7 @@
 // the seam as a click.
 //
 // It does no buffering of its own beyond one read, and does not need to: the
-// player it feeds (ac3forge::Player) reads it from a fetch task into a ring, so
+// player it feeds (iclforge::Player) reads it from a fetch task into a ring, so
 // a slow network stalls that task and nothing else.
 
 #include "byte_source.hpp"
@@ -38,7 +38,7 @@ char g_url[512] = {};
 
 void default_url() {
     if (g_url[0] == '\0') {
-        std::strncpy(g_url, CONFIG_AC3FORGE_EXAMPLE_HTTP_URL, sizeof(g_url) - 1);
+        std::strncpy(g_url, CONFIG_ICLFORGE_EXAMPLE_HTTP_URL, sizeof(g_url) - 1);
     }
 }
 

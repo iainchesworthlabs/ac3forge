@@ -142,17 +142,17 @@ void operator delete[](void* p, std::size_t) noexcept {
 namespace {
 
 // --- the stack -------------------------------------------------------------
-// The window painted below the probe's frame, in bytes (AC3FORGE_PROBE_STACK_WINDOW_BYTES,
+// The window painted below the probe's frame, in bytes (ICLFORGE_PROBE_STACK_WINDOW_BYTES,
 // from CMake, never defaulted here: the target decides how much stack it can spare).
 // Painted a slice at a time by recursion, one array of kSliceBytes a level, so that no
 // single stack object is larger than the 4 KiB the library's own code is held to.
-constexpr std::size_t kStackWindowBytes = AC3FORGE_PROBE_STACK_WINDOW_BYTES;
+constexpr std::size_t kStackWindowBytes = ICLFORGE_PROBE_STACK_WINDOW_BYTES;
 constexpr std::size_t kSliceBytes = 1024;
 constexpr std::size_t kSliceWords = kSliceBytes / sizeof(std::uint32_t);
 constexpr std::size_t kSlices = kStackWindowBytes / kSliceBytes;
 constexpr std::uint32_t kPaint = 0xA5C3'5A3CU;
 
-static_assert(kSlices >= 1, "AC3FORGE_PROBE_STACK_WINDOW_BYTES holds no slice");
+static_assert(kSlices >= 1, "ICLFORGE_PROBE_STACK_WINDOW_BYTES holds no slice");
 
 // Where each level of paint() put its array. Level 0 is the shallowest, nearest the frame
 // that called it, at the highest address; the last level is the deepest.
@@ -243,7 +243,7 @@ struct PcmHash {
 
 // What this part can give the decode in bytes, or zero for whatever it asks for: a fixture
 // whose peak is above it is named and skipped. From CMake, as in probe.cpp.
-constexpr std::size_t kHeapBudgetBytes = AC3FORGE_PROBE_HEAP_BUDGET_BYTES;
+constexpr std::size_t kHeapBudgetBytes = ICLFORGE_PROBE_HEAP_BUDGET_BYTES;
 
 bool g_failed = false;
 

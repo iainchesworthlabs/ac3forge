@@ -44,7 +44,7 @@ std::string scratch_pid_suffix() {
 }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_inspect_edges_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_inspect_edges_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }
@@ -267,7 +267,7 @@ TEST_CASE("probe reports an AC-4 stream cut mid-frame and one with a failed CRC"
           "[cli][probe][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "probe_ac4.log";
-    const fs::path ac4{std::string{AC3FORGE_EXTERNAL_BASELINE_DIR} + "/ac4-stereo-64/dee.ac4"};
+    const fs::path ac4{std::string{ICLFORGE_EXTERNAL_BASELINE_DIR} + "/ac4-stereo-64/dee.ac4"};
     const auto bytes = read_raw(ac4);
     REQUIRE(bytes.size() > 3000);
 
@@ -382,7 +382,7 @@ TEST_CASE("decode refuses an output, census or object directory it cannot write"
 // lives in tests/cli/test_cli_decode_adm.cpp, not here: decode.cpp's run_decode_eac3 checks
 // ac3cli::adm_capability() before it can even tell whether the programme has an object layer, so
 // that path only reaches these warnings (rather than exiting 2 with "this build was not configured
-// with -DAC3FORGE_BUILD_ADM=ON") when ADM support was actually built. Plain AC-3 has no such
+// with -DICLFORGE_BUILD_ADM=ON") when ADM support was actually built. Plain AC-3 has no such
 // check - it cannot have an object layer at all, on any build - so it stays here.
 TEST_CASE("decode warns when object or ADM output is asked of a stream with no object layer",
           "[cli][decode]") {

@@ -63,7 +63,7 @@ TEST_CASE("json: a Sendspin message reads member by member", "[sendspin][json]")
         "payload": {
             "server_transmitted": 1234567890,
             "player": {"codec": "opus", "sample_rate": 48000, "channels": 2, "bit_depth": 16},
-            "_ac3forge_player": {"data_type": "eac3", "sample_rate": 48000}
+            "_iclforge_player": {"data_type": "eac3", "sample_rate": 48000}
         }
     })");
     REQUIRE(parsed.result);
@@ -73,7 +73,7 @@ TEST_CASE("json: a Sendspin message reads member by member", "[sendspin][json]")
     CHECK(payload["server_transmitted"].as_int() == 1234567890);
     CHECK(payload["player"]["codec"].equals("opus"));
     CHECK(payload["player"]["sample_rate"].as_int() == 48000);
-    CHECK(payload["_ac3forge_player"]["data_type"].equals("eac3"));
+    CHECK(payload["_iclforge_player"]["data_type"].equals("eac3"));
     CHECK(payload.size() == 3);
 }
 
@@ -93,13 +93,13 @@ TEST_CASE("json: missing members and wrong types read as absent", "[sendspin][js
 }
 
 TEST_CASE("json: arrays and objects iterate in document order", "[sendspin][json]") {
-    const Parsed parsed(R"({"roles": ["_ac3forge_player@v1", "player@v1"], "n": {"x": 1, "y": [2]}})");
+    const Parsed parsed(R"({"roles": ["_iclforge_player@v1", "player@v1"], "n": {"x": 1, "y": [2]}})");
     REQUIRE(parsed.result);
     std::vector<std::string> roles;
     for (const Value role : parsed.doc.root()["roles"].elements()) {
         roles.push_back(role.as_string().value_or(""));
     }
-    CHECK(roles == std::vector<std::string>{"_ac3forge_player@v1", "player@v1"});
+    CHECK(roles == std::vector<std::string>{"_iclforge_player@v1", "player@v1"});
 
     std::vector<std::string> keys;
     for (const Member member : parsed.doc.root()["n"].members()) {
@@ -340,7 +340,7 @@ TEST_CASE("json: writer produces what the reader reads back", "[sendspin][json]"
         .member("name", "Kitchen \"sink\"")
         .key("supported_roles")
         .begin_array()
-        .string("_ac3forge_player@v1")
+        .string("_iclforge_player@v1")
         .string("player@v1")
         .end_array()
         .member("available", true)
@@ -356,7 +356,7 @@ TEST_CASE("json: writer produces what the reader reads back", "[sendspin][json]"
         .end_object();
     CHECK(w.complete());
     CHECK(out ==
-          R"({"type":"client/hello","payload":{"name":"Kitchen \"sink\"","supported_roles":["_ac3forge_player@v1","player@v1"],"available":true,"volume":100,"nothing":null,"empty":[],"peak_db":-12.3}})");
+          R"({"type":"client/hello","payload":{"name":"Kitchen \"sink\"","supported_roles":["_iclforge_player@v1","player@v1"],"available":true,"volume":100,"nothing":null,"empty":[],"peak_db":-12.3}})");
 
     const Parsed parsed(out);
     REQUIRE(parsed.result);

@@ -19,13 +19,13 @@
 //
 // A6's second slice (a Hearth sink's own speaker and decoder settings pages,
 // planning/hearth-reference-player.md#a6-network-outputs-in-the-application)
-// reads SinkFacts' ac3forge_support/ac3forge_state directly rather than through
+// reads SinkFacts' iclforge_support/iclforge_state directly rather than through
 // a new to_map()-style function here: unlike SinkRow/SinkDetail's plain display
 // strings, the settings pages need editable numeric fields QML binds to, and
 // HearthController's own decoder_settings_to_map()/from_map() (hearth_
 // controller.cpp) already sets the precedent of doing that conversion in the
 // Qt controller itself, not a separate hand-tested view layer - network_
-// controller.cpp follows the same pattern for the same reason. ac3forge_player.hpp
+// controller.cpp follows the same pattern for the same reason. iclforge_player.hpp
 // is a lightweight, dependency-free header (no Qt, no iclforge::render), the same
 // reason network_sinks.hpp already includes sendspin headers directly.
 //
@@ -37,7 +37,7 @@
 namespace iclforge::hearth {
 
 enum class SinkKind : std::uint8_t {
-    // Offers `_ac3forge_player@v1`: takes the bitstream itself, rendered on
+    // Offers `_iclforge_player@v1`: takes the bitstream itself, rendered on
     // the sink to its own layout.
     kHearthSink,
     // `player@v1` only: takes stereo PCM, FLAC or Opus decoded here.
@@ -71,7 +71,7 @@ enum class SinkLink : std::uint8_t {
 };
 
 // What NetworkSinks knows about one discovered player, gathered from mDNS and,
-// once dialled, `client/hello` and `_ac3forge_player@v1_support`/
+// once dialled, `client/hello` and `_iclforge_player@v1_support`/
 // `player@v1_support`. A field the sink has not told this run about yet is
 // left at its default rather than guessed.
 struct SinkFacts {
@@ -92,15 +92,15 @@ struct SinkFacts {
     // hardware.
     std::string firmware{};
     // client/hello's own roles, in its own order (e.g.
-    // {"_ac3forge_player@v1", "player@v1"}); empty before the sink has said.
+    // {"_iclforge_player@v1", "player@v1"}); empty before the sink has said.
     std::vector<std::string> roles{};
-    // `_ac3forge_player@v1_support.data_types`, or empty for a standard
+    // `_iclforge_player@v1_support.data_types`, or empty for a standard
     // player - {"ac3", "eac3"} becomes "AC-3 and E-AC-3" in that order.
     std::vector<std::string> data_types{};
     // Codecs from whichever support object the sink offers, most preferred
     // first (`supported_formats`' own order).
     std::vector<std::string> codecs{};
-    // `_ac3forge_player@v1_support.outputs`, when the role is offered.
+    // `_iclforge_player@v1_support.outputs`, when the role is offered.
     std::optional<std::uint32_t> output_slots{};
     std::optional<std::uint32_t> output_bit_depth{};
     // `required_lead_time_ms` from `client/state`, once the sink has sent
@@ -148,21 +148,21 @@ struct SinkFacts {
     bool offers_code_pairing = true;
 
     // --- a Hearth sink's own settings pages -----------------------------
-    // The sink's own support object (client/hello's `_ac3forge_player@v1_
+    // The sink's own support object (client/hello's `_iclforge_player@v1_
     // support`), when it offers the role: layout grammar, management ranges
     // (trim/delay/crossover, whether it takes routing or identify) and which
     // of the 11 decoder keys it accepts - what the settings pages gate their
     // controls on.
-    std::optional<sendspin::player::Support> ac3forge_support{};
+    std::optional<sendspin::player::Support> iclforge_support{};
     // The sink's own most recently reported client/state object: settings_
     // revision/settings_error (whether intended_settings below has actually
     // reached it), its decoder report, levels and counters - the "what the
     // sink reports" panel. Absent before the sink has sent one.
-    std::optional<sendspin::player::State> ac3forge_state{};
+    std::optional<sendspin::player::State> iclforge_state{};
     // This app's own record of the last settings command it successfully
-    // sent this sink - NOT a read-back (ac3forge_player.hpp's own comment:
+    // sent this sink - NOT a read-back (iclforge_player.hpp's own comment:
     // the command is set-only). The settings pages show this, not
-    // ac3forge_state, as each control's "current" value.
+    // iclforge_state, as each control's "current" value.
     std::optional<sendspin::player::Settings> intended_settings{};
     // The output slot this app last told the sink to sound the identify tone
     // on, or nothing - this app's own intent again, for the same reason as

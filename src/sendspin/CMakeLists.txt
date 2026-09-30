@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # iclforge::sendspin - the Sendspin protocol for Hearth (planning/hearth-reference-player.md,
 # A4): the server half ac3hearth's engine uses, and the player half the test sink and
-# the ESP32 sinks use, with the _ac3forge_player@v1 role on both
+# the ESP32 sinks use, with the _iclforge_player@v1 role on both
 # (planning/hearth-sendspin-extension.md).
 #
 # Two layers. The core needs nothing: JSON, base64url, the transport-mode framing, the
@@ -10,13 +10,13 @@
 # dependencies from vcpkg's "hearth" feature on a computer: mbedTLS for the crypto seam over
 # the PSA Crypto API and the Noise, PSK, CPace and pairing code above it, cpp-httplib for the
 # WebSocket transport, mdns for discovery, and libFLAC and Opus for player@v1's codecs.
-# AC3FORGE_SENDSPIN_CORE_ONLY builds the core alone, which is what fuzz/run.sh does so the
+# ICLFORGE_SENDSPIN_CORE_ONLY builds the core alone, which is what fuzz/run.sh does so the
 # fuzz build keeps no vcpkg dependency.
 #
-# AC3FORGE_SENDSPIN_PLAYER_ONLY builds the core and the player half, which is what a board
+# ICLFORGE_SENDSPIN_PLAYER_ONLY builds the core and the player half, which is what a board
 # runs (planning/hearth-reference-player.md, B3): the Noise responder, pairing, the clock and
 # the player session, with the crypto seam over whichever mbedTLS the board's SDK provides,
-# named by AC3FORGE_SENDSPIN_MBEDTLS_TARGET. The ESP-IDF component sets both
+# named by ICLFORGE_SENDSPIN_MBEDTLS_TARGET. The ESP-IDF component sets both
 # (esp-idf/iclforge/CMakeLists.txt) and brings its own WebSocket and mDNS. No vcpkg.
 #
 # Written for the player half's hardest host, an ESP32 inside an HTTP server task:
@@ -25,24 +25,24 @@
 # WebSocket transport over cpp-httplib is the exception, since only a computer builds it.
 #
 # Always STATIC and never installed, like ac3::audio: no export annotations, and not
-# part of the ac3forge-dev package.
+# part of the iclforge-dev package.
 # ---------------------------------------------------------------------------
-option(AC3FORGE_SENDSPIN_CORE_ONLY
+option(ICLFORGE_SENDSPIN_CORE_ONLY
     "Build only iclforge::sendspin's dependency-free core, leaving out the parts that need vcpkg's \"hearth\" feature"
     OFF)
-option(AC3FORGE_SENDSPIN_PLAYER_ONLY
-    "Build iclforge::sendspin's core and player half only, for a board, with the crypto seam over AC3FORGE_SENDSPIN_MBEDTLS_TARGET"
+option(ICLFORGE_SENDSPIN_PLAYER_ONLY
+    "Build iclforge::sendspin's core and player half only, for a board, with the crypto seam over ICLFORGE_SENDSPIN_MBEDTLS_TARGET"
     OFF)
-set(AC3FORGE_SENDSPIN_MBEDTLS_TARGET "" CACHE STRING
-    "With AC3FORGE_SENDSPIN_PLAYER_ONLY, the CMake target that provides mbedTLS's PSA Crypto API (idf::mbedtls on ESP-IDF); empty to find MbedTLS as a package")
-if(AC3FORGE_SENDSPIN_CORE_ONLY AND AC3FORGE_SENDSPIN_PLAYER_ONLY)
-    message(FATAL_ERROR "AC3FORGE_SENDSPIN_CORE_ONLY and AC3FORGE_SENDSPIN_PLAYER_ONLY are exclusive: "
+set(ICLFORGE_SENDSPIN_MBEDTLS_TARGET "" CACHE STRING
+    "With ICLFORGE_SENDSPIN_PLAYER_ONLY, the CMake target that provides mbedTLS's PSA Crypto API (idf::mbedtls on ESP-IDF); empty to find MbedTLS as a package")
+if(ICLFORGE_SENDSPIN_CORE_ONLY AND ICLFORGE_SENDSPIN_PLAYER_ONLY)
+    message(FATAL_ERROR "ICLFORGE_SENDSPIN_CORE_ONLY and ICLFORGE_SENDSPIN_PLAYER_ONLY are exclusive: "
                         "the player half is the core and more")
 endif()
 
 # A board's build is position-dependent, as the minimum-footprint library beside it is; a
 # computer's links these archives into executables and shared test binaries alike.
-if(AC3FORGE_SENDSPIN_PLAYER_ONLY)
+if(ICLFORGE_SENDSPIN_PLAYER_ONLY)
     set(_ac3_sendspin_pic OFF)
 else()
     set(_ac3_sendspin_pic ON)
@@ -64,7 +64,7 @@ add_library(iclforge::sendspin ALIAS iclforge_sendspin)
 
 target_sources(iclforge_sendspin
     PRIVATE
-        src/ac3forge_player.cpp
+        src/iclforge_player.cpp
         src/arbiter.cpp
         src/base64.cpp
         src/base64url.cpp
@@ -98,7 +98,7 @@ set(_ac3_sendspin_player_sources
     src/psk.cpp)
 set(_ac3_sendspin_crypto_sources src/crypto/psa/crypto.cpp)
 
-if(AC3FORGE_SENDSPIN_PLAYER_ONLY)
+if(ICLFORGE_SENDSPIN_PLAYER_ONLY)
     target_sources(iclforge_sendspin PRIVATE ${_ac3_sendspin_player_sources})
     # The backend is an archive of its own there, compiled against the SDK's mbedTLS without
     # the project's warning set: the SDK's headers, and the C library headers they bring, were
@@ -106,8 +106,8 @@ if(AC3FORGE_SENDSPIN_PLAYER_ONLY)
     add_library(iclforge_sendspin_crypto STATIC ${_ac3_sendspin_crypto_sources})
     target_include_directories(iclforge_sendspin_crypto PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_features(iclforge_sendspin_crypto PRIVATE cxx_std_23)
-    if(AC3FORGE_SENDSPIN_MBEDTLS_TARGET)
-        target_link_libraries(iclforge_sendspin_crypto PRIVATE ${AC3FORGE_SENDSPIN_MBEDTLS_TARGET})
+    if(ICLFORGE_SENDSPIN_MBEDTLS_TARGET)
+        target_link_libraries(iclforge_sendspin_crypto PRIVATE ${ICLFORGE_SENDSPIN_MBEDTLS_TARGET})
     else()
         find_package(MbedTLS CONFIG REQUIRED)
         target_link_libraries(iclforge_sendspin_crypto PRIVATE MbedTLS::mbedcrypto)
@@ -115,19 +115,19 @@ if(AC3FORGE_SENDSPIN_PLAYER_ONLY)
     target_link_libraries(iclforge_sendspin PRIVATE iclforge_sendspin_crypto)
     # A board's library is built with the minimum-footprint profile's options, where there is
     # one: no exceptions, no RTTI, a section per function. The board's code shares them.
-    if(TARGET ac3::minimal_profile)
-        target_link_libraries(iclforge_sendspin PUBLIC ac3::minimal_profile)
-        target_link_libraries(iclforge_sendspin_time_filter PRIVATE ac3::minimal_profile)
-        target_link_libraries(iclforge_sendspin_crypto PRIVATE ac3::minimal_profile)
+    if(TARGET iclforge::minimal_profile)
+        target_link_libraries(iclforge_sendspin PUBLIC iclforge::minimal_profile)
+        target_link_libraries(iclforge_sendspin_time_filter PRIVATE iclforge::minimal_profile)
+        target_link_libraries(iclforge_sendspin_crypto PRIVATE iclforge::minimal_profile)
     endif()
-elseif(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+elseif(NOT ICLFORGE_SENDSPIN_CORE_ONLY)
     find_package(MbedTLS CONFIG REQUIRED)
     find_package(httplib CONFIG REQUIRED)
     find_package(FLAC CONFIG REQUIRED)
     find_package(Opus CONFIG REQUIRED)
     # mdns is one C header. Its package's target asks for a C99 compiler, which this C++-only
     # project does not enable, so the header is found directly, as the port's usage says.
-    find_path(AC3FORGE_MDNS_INCLUDE_DIR "mdns.h" REQUIRED)
+    find_path(ICLFORGE_MDNS_INCLUDE_DIR "mdns.h" REQUIRED)
     # The seams' other backends: one directory per backend, chosen here rather than by a
     # preprocessor branch. transport/httplib/ is the WebSocket transport over cpp-httplib, and
     # discovery/mdns/ DNS-SD over mjansson's mdns, both for a computer (a board brings its
@@ -163,7 +163,7 @@ elseif(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
                 src/platform/firewall_posix.cpp
                 src/transport/httplib/listen_socket_posix.cpp)
     endif()
-    target_include_directories(iclforge_sendspin SYSTEM PRIVATE "${AC3FORGE_MDNS_INCLUDE_DIR}")
+    target_include_directories(iclforge_sendspin SYSTEM PRIVATE "${ICLFORGE_MDNS_INCLUDE_DIR}")
     # cpp-httplib is configured by macros, which must have the same values in every file of a
     # program that includes it, since its inline functions would otherwise differ between them.
     # So every target that includes it links iclforge_sendspin_httplib rather than httplib::httplib:
@@ -189,6 +189,6 @@ target_include_directories(iclforge_sendspin
 target_compile_features(iclforge_sendspin PUBLIC cxx_std_23)
 
 target_link_libraries(iclforge_sendspin PUBLIC iclforge_sendspin_time_filter)
-target_link_libraries(iclforge_sendspin PRIVATE ac3::warnings ac3::coverage)
+target_link_libraries(iclforge_sendspin PRIVATE iclforge::warnings iclforge::coverage)
 
 set_target_properties(iclforge_sendspin PROPERTIES POSITION_INDEPENDENT_CODE ${_ac3_sendspin_pic})

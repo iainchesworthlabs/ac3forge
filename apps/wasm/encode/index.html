@@ -131,7 +131,7 @@
     <p class="hint">
       The preview decodes the stream this page just produced through the same WASM decode module
       the <a href="https://iainchesworthlabs.github.io/ac3forge/wasm-demo/">decode demo</a> uses
-      (<code>ac3forge_decode.js/.wasm</code>, copied alongside this page's own build output) -
+      (<code>iclforge_decode.js/.wasm</code>, copied alongside this page's own build output) -
       real playback of the real encoded bytes, not the source audio played back directly.
     </p>
   </div>
@@ -162,13 +162,13 @@
   </footer>
 </div>
 
-<script src="ac3forge_encode.js"></script>
-<!-- Directory-local on purpose: ac3forge_decode.js/.wasm are copied in next
+<script src="iclforge_encode.js"></script>
+<!-- Directory-local on purpose: iclforge_decode.js/.wasm are copied in next
      to this page (apps/wasm/CMakeLists.txt POST_BUILD) so the demo works
      from any mount point. A "../" here resolves outside the demo directory
      and 404s wherever the page is served from a subdirectory, as the docs
      site serves it (docs/assets/wasm-encode-demo/). -->
-<script src="ac3forge_decode.js"></script>
+<script src="iclforge_decode.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

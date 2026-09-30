@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3forge's Hearth sink example: decode AC-3 or E-AC-3 from a flash
+# iclforge's Hearth sink example: decode AC-3 or E-AC-3 from a flash
 # partition (the default), a FAT volume in flash, an SD card or an HTTP body.
 #
 #   . $IDF_PATH/export.sh
@@ -13,7 +13,7 @@
 # The sibling of i2s_player, differing in one thing: where the audio comes from.
 # That one decodes a bitstream linked into its own image; this one reads the
 # stream a piece at a time, through a ring between the player's fetch and
-# decode tasks (32 KB by default, CONFIG_AC3FORGE_EXAMPLE_RING_BYTES) and a
+# decode tasks (32 KB by default, CONFIG_ICLFORGE_EXAMPLE_RING_BYTES) and a
 # 16 KB framing buffer. See main/hearth_sink.cpp and
 # esp-idf/iclforge/include/iclforge/player.hpp.
 #
@@ -24,27 +24,27 @@
 #
 # which is the first of the four shapes CI runs under QEMU. sdkconfig.ci selects
 # the capture sink, which converts with the code the sinks share
-# (ac3forge/interleave.hpp) and checks the result with no peripheral behind it;
+# (iclforge/interleave.hpp) and checks the result with no peripheral behind it;
 # see main/audio_sink.hpp. The other three are sdkconfig.ci-tdm,
 # sdkconfig.ci-render and sdkconfig.ci-http.
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28)
 
-get_filename_component(AC3FORGE_ESP_COMPONENTS "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
-set(EXTRA_COMPONENT_DIRS "${AC3FORGE_ESP_COMPONENTS}")
-set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING "")
+get_filename_component(ICLFORGE_ESP_COMPONENTS "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+set(EXTRA_COMPONENT_DIRS "${ICLFORGE_ESP_COMPONENTS}")
+set(ICLFORGE_ESP_PROFILE "decoder" CACHE STRING "")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-project(ac3forge_hearth_sink LANGUAGES C CXX)
+project(iclforge_hearth_sink LANGUAGES C CXX)
 
-# lwIP's IPv4 input hook from the ac3forge component, so the Sendspin player
+# lwIP's IPv4 input hook from the iclforge component, so the Sendspin player
 # dates a clock reply by when it arrived rather than by when its task read it
-# (ac3forge/tcp_arrivals.hpp).
+# (iclforge/tcp_arrivals.hpp).
 idf_component_get_property(lwip_lib lwip COMPONENT_LIB)
-idf_component_get_property(ac3forge_dir ac3forge COMPONENT_DIR)
-target_compile_options(${lwip_lib} PRIVATE "-I${ac3forge_dir}/lwip_hooks")
-target_compile_definitions(${lwip_lib} PRIVATE "ESP_IDF_LWIP_HOOK_FILENAME=\"ac3forge_lwip_hooks.h\"")
+idf_component_get_property(iclforge_dir iclforge COMPONENT_DIR)
+target_compile_options(${lwip_lib} PRIVATE "-I${iclforge_dir}/lwip_hooks")
+target_compile_definitions(${lwip_lib} PRIVATE "ESP_IDF_LWIP_HOOK_FILENAME=\"iclforge_lwip_hooks.h\"")
 
 # The audio, into the partition named in partitions.csv. Done here rather than
 # through a separate esptool invocation so `idf.py flash` puts everything the

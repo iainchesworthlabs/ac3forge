@@ -1,5 +1,5 @@
 {
-  "name": "ac3forge-wasm-decoder",
+  "name": "iclforge-wasm-decoder",
   "version": "0.0.0-dev",
   "description": "Streaming AC-3/E-AC-3 (Dolby Digital/Digital Plus) decoder for the browser, compiled from iclforge::ac3 to WebAssembly - a push-frame API, an AudioWorklet pipeline, and an hls.js/MSE bridge for playing EC-3 where Chrome cannot decode it natively. The ./ac4 export decodes and encodes AC-4.",
   "type": "module",
@@ -24,7 +24,7 @@
     "directory": "js"
   },
   "bugs": "https://github.com/iainchesworthlabs/ac3forge/issues",
-  "author": "ac3forge contributors",
+  "author": "iclforge contributors",
   "files": [
     "dist"
   ],

@@ -1,10 +1,10 @@
-menu "ac3forge"
+menu "iclforge"
 
-# THE SENDSPIN PLAYER - include/ac3forge/sendspin_host.hpp and
-# include/ac3forge/burst_player.hpp, over src/sendspin's player half
+# THE SENDSPIN PLAYER - include/iclforge/sendspin_host.hpp and
+# include/iclforge/burst_player.hpp, over src/sendspin's player half
 # (planning/hearth-reference-player.md, B3). Off by default: a firmware that
 # only decodes from its own storage carries none of it.
-config AC3FORGE_SENDSPIN
+config ICLFORGE_SENDSPIN
     bool "Sendspin player"
     default n
     select HTTPD_WS_SUPPORT
@@ -29,7 +29,7 @@ config AC3FORGE_SENDSPIN
 # reading of AC-4 streams (src/ac4_bridge.hpp; planning/ac4.md, D14b). Off by
 # default: a firmware that plays AC-3 and E-AC-3 carries none of it, and its
 # build is what it was without this option.
-config AC3FORGE_AC4
+config ICLFORGE_AC4
     bool "AC-4 decoder"
     depends on SOC_CPU_HAS_FPU
     default n
@@ -55,9 +55,9 @@ config AC3FORGE_AC4
 
 # An int rather than a choice, so it reaches C++ as a plain constant: the
 # component reads no configuration through the preprocessor.
-config AC3FORGE_SENDSPIN_SUITE
+config ICLFORGE_SENDSPIN_SUITE
     int "Noise suite the player asks for: ChaCha20-Poly1305 (0) or AES-256-GCM (1)"
-    depends on AC3FORGE_SENDSPIN
+    depends on ICLFORGE_SENDSPIN
     default 0
     range 0 1
     help
@@ -66,10 +66,10 @@ config AC3FORGE_SENDSPIN_SUITE
         25519_ChaChaPoly_SHA256 is software on every part;
         25519_AESGCM_SHA256 uses the part's AES accelerator where it has one.
 
-# UPDATES OVER THE NETWORK - include/ac3forge/firmware.hpp and
+# UPDATES OVER THE NETWORK - include/iclforge/firmware.hpp and
 # planning/esp32-ota.md. Ints rather than bools, so they reach C++ as plain
 # constants.
-config AC3FORGE_FIRMWARE_TRIAL_HOLD_S
+config ICLFORGE_FIRMWARE_TRIAL_HOLD_S
     int "Seconds an updated image has to stay healthy before it is accepted"
     default 30
     range 1 3600
@@ -79,7 +79,7 @@ config AC3FORGE_FIRMWARE_TRIAL_HOLD_S
         HTTP server and the Sendspin player) has held this long without a
         break.
 
-config AC3FORGE_FIRMWARE_TRIAL_DEADLINE_S
+config ICLFORGE_FIRMWARE_TRIAL_DEADLINE_S
     int "Seconds after boot an updated image has to get there"
     default 300
     range 10 3600
@@ -88,14 +88,14 @@ config AC3FORGE_FIRMWARE_TRIAL_DEADLINE_S
         bootloader boots the image before it. So does any reset before then:
         a panic, a watchdog, a power cut.
 
-config AC3FORGE_FIRMWARE_FLASH_MODE_IDLE_S
+config ICLFORGE_FIRMWARE_FLASH_MODE_IDLE_S
     int "Seconds in flash mode with no upload before the board restarts"
     default 600
     range 30 86400
 
-# DIAGNOSTICS WITHOUT A CABLE - include/ac3forge/log.hpp and
+# DIAGNOSTICS WITHOUT A CABLE - include/iclforge/log.hpp and
 # planning/esp32-ota.md (O4).
-config AC3FORGE_LOG_BYTES
+config ICLFORGE_LOG_BYTES
     int "Bytes of recent console output kept for GET /log"
     default 16384 if SPIRAM
     default 2048

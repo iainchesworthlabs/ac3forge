@@ -240,7 +240,7 @@ HEADING_INLINE_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 HEADING_REFERENCE_LINK = re.compile(r"\[([^\]]*)\]\[[^\]]*\]")
 HEADING_HTML_TAG = re.compile(r"<[^>]+>")
 HEADING_STARS = re.compile(r"\*{1,3}")
-# `_` is a word character, so the slugifier keeps the one in AC3FORGE_STAGE_TIMERS
+# `_` is a word character, so the slugifier keeps the one in ICLFORGE_STAGE_TIMERS
 # and drops the pair around _emphasis_. Markdown draws that line at word
 # boundaries, and so does this: a run of underscores goes only where it opens or
 # closes emphasis rather than sitting inside an identifier.

@@ -59,7 +59,7 @@ using iclforge::crucible::StreamFacts;
 
 namespace {
 
-// A /proc of this case's own. AC3FORGE_TEST_SCRATCH_DIR (see
+// A /proc of this case's own. ICLFORGE_TEST_SCRATCH_DIR (see
 // tests/CMakeLists.txt for why it is a build-tree path) is the whole suite's
 // root, and it is emptied on each use so a previous run's pids cannot pass a
 // case. `name` is per CASE and not per file, deliberately: catch_discover_tests
@@ -73,7 +73,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path fake_proc(const std::string& name) {
-    const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_proc_" + name + "_" + scratch_pid_suffix());
+    const auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("crucible_proc_" + name + "_" + scratch_pid_suffix());
     fs::remove_all(dir);
     fs::create_directories(dir);
     return dir;

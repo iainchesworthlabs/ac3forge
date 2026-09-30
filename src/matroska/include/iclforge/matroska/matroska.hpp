@@ -39,7 +39,7 @@ enum class MuxError : std::uint8_t {
     kFrameTooLarge,  // a single frame beyond what one SimpleBlock can carry
 };
 
-[[nodiscard]] MATROSKA_EXPORT std::string_view describe(MuxError error);
+[[nodiscard]] ICLFORGE_MATROSKA_EXPORT std::string_view describe(MuxError error);
 
 struct AudioTrack {
     std::string codec_id{kCodecEac3};
@@ -57,20 +57,20 @@ struct MuxOptions {
     // generous this is. One second is the conventional choice and keeps a
     // truncated file mostly playable.
     std::uint32_t cluster_ms = 1000;
-    std::string writing_app{"ac3forge"};
+    std::string writing_app{"iclforge"};
 };
 
 // Mux frames into a complete .mkv, returned as bytes. No file I/O here, so
 // this stays testable without touching a disk. Frames arrive as views, so
 // io::scan's access units pass straight through - the owned copies the old
 // vector-list parameter forced on every slicing caller are gone.
-[[nodiscard]] MATROSKA_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
+[[nodiscard]] ICLFORGE_MATROSKA_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
     const AudioTrack& track, std::span<const std::span<const std::byte>> frames,
     const MuxOptions& options = {});
 
 // Owned-frame-list convenience, forwarding as views - for a caller that
 // built its frames (an encode loop) rather than sliced them from a stream.
-[[nodiscard]] MATROSKA_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
+[[nodiscard]] ICLFORGE_MATROSKA_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
     const AudioTrack& track, std::span<const std::vector<std::byte>> frames,
     const MuxOptions& options = {});
 
@@ -95,7 +95,7 @@ struct MuxOptions {
 // No file I/O here either, matching mux() above: header(), push() and
 // finalize() hand back bytes for the caller to write; this class never
 // touches a disk, which is what keeps it testable without one.
-class MATROSKA_EXPORT Writer {
+class ICLFORGE_MATROSKA_EXPORT Writer {
 public:
     // Validates the track the same way mux() does. On success, header()
     // already holds the EBML header through Tracks - everything before the

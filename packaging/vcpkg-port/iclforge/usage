@@ -1,6 +1,6 @@
-ac3forge provides CMake targets via find_package(ac3forge):
+iclforge provides CMake targets via find_package(iclforge):
 
-    find_package(ac3forge CONFIG REQUIRED)
+    find_package(iclforge CONFIG REQUIRED)
     target_link_libraries(main PRIVATE ac3::forge)
 
 Every other library is a separate, opt-in feature - none installed by default, since each adds its
@@ -18,8 +18,8 @@ own public API, CMake targets and binaries. When present, their own targets are 
 
 To install the three container writers alongside the codec:
 
-    vcpkg install ac3forge[matroska,mp4,mpegts]
+    vcpkg install iclforge[matroska,mp4,mpegts]
 
 Or pick any subset, e.g. AC-4 only:
 
-    vcpkg install ac3forge[ac4]
+    vcpkg install iclforge[ac4]

@@ -17,7 +17,7 @@
 //                  (the ESP32-S3, the ESP32-C6). Standard I2S or TDM,
 //                  reconfiguring its own mode and slot count to whatever a
 //                  layout needs (up to a hardware ceiling -
-//                  ac3forge/sink_plan.hpp), across one or two of the part's
+//                  iclforge/sink_plan.hpp), across one or two of the part's
 //                  I2S lines.
 //   sink/i2s_wide/ the same arithmetic for a part whose one controller
 //                  reaches the product's full channel target alone, at a
@@ -45,7 +45,7 @@
 // Standard I2S carries one or two slots. Anything wider out of an ESP32-S3
 // means TDM (driver/i2s_tdm.h): one data line packs at most 128 bits a frame -
 // 4 slots at 32 bits - and the real sink reconfigures between the two modes
-// itself as the layout asks for more or fewer channels (ac3forge/sink_plan.hpp),
+// itself as the layout asks for more or fewer channels (iclforge/sink_plan.hpp),
 // rather than a build picking one mode and staying there. The DAC has to
 // speak whichever it gets; a PCM3168A speaks TDM, a SigmaDSP does on its
 // serial inputs, the common stereo breakouts (MAX98357A, PCM5102) do not.
@@ -56,7 +56,7 @@
 // between them would have meant changing the seam, and changing a seam is how
 // the implementations behind it drift apart. Handing over planar float and
 // letting the sink convert costs one pass over the samples
-// (ac3forge/interleave.hpp) and settles the question.
+// (iclforge/interleave.hpp) and settles the question.
 //
 // --- WHAT A WRITE IS ---------------------------------------------------------
 //
@@ -108,7 +108,7 @@ namespace player {
 // and say so.
 //
 // Callable more than once: the real sink reconfigures its mode and slot count
-// to whatever `channels` needs (ac3forge/sink_plan.hpp), between plays, so a
+// to whatever `channels` needs (iclforge/sink_plan.hpp), between plays, so a
 // layout change over the control surface never needs a rebuild. Not safe to
 // call while a play is in progress - see hearth_sink.cpp's begin_play.
 [[nodiscard]] bool sink_open(std::uint32_t sample_rate, int channels);
@@ -130,7 +130,7 @@ namespace player {
 
 // The slot width sink_max_slots()'s own figure is reached at - 16 or 32 - for
 // GET /hardware to report the two together rather than a bare count a reader
-// cannot place (ac3forge::HardwareFacts::sink_max_slots_bits). 0 for a sink
+// cannot place (iclforge::HardwareFacts::sink_max_slots_bits). 0 for a sink
 // whose ceiling is not a function of slot width at all (capture, null): the
 // report then falls back to the plain count, no qualifier guessed.
 [[nodiscard]] int sink_max_slots_bit_width();
@@ -163,7 +163,7 @@ namespace player {
 // sink_frames_written() goes on counting from sink_open.
 //
 // For the two sinks with a DAC it restarts the model of the DMA queue
-// (ac3forge/dac_queue_model.hpp), and the play's first block is exempt from
+// (iclforge/dac_queue_model.hpp), and the play's first block is exempt from
 // its underrun count, as the first block after sink_open always was: the
 // queue has been draining since the last play ended, and the time between two
 // plays is not a gap in either of them. sink/capture/ checks the new play's
@@ -177,14 +177,14 @@ void sink_write(std::span<const std::span<const float>> channels);
 
 // One block of exactly iclforge::kSamplesPerBlock samples a slot, as sink_write,
 // for a player that times its output (the Sendspin player,
-// ac3forge/playout.hpp): when the block's first sample leaves the audio port,
+// iclforge/playout.hpp): when the block's first sample leaves the audio port,
 // by the sink's own clock, whether the block was written too late to play
 // whole, and whether the queue ran dry before it. The i2s sink reads that
 // from its DMA ring's end-of-frame interrupts. The capture sink has no ring,
-// so it says nothing unless CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED asks it to
+// so it says nothing unless CONFIG_ICLFORGE_EXAMPLE_CAPTURE_PACED asks it to
 // pace itself as one would and report its times, which under QEMU are the
 // emulator's; the null sink always does. Nothing when the sink is not open.
-[[nodiscard]] std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels);
+[[nodiscard]] std::optional<iclforge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels);
 
 // For the log line, so a run says which sink produced its numbers.
 [[nodiscard]] const char* sink_name();
@@ -206,7 +206,7 @@ void sink_close();
 // end of a play, and with each progress line.
 //
 // The two sinks with a DAC say whether the samples reached it in time, from
-// the queue model in ac3forge/dac_queue_model.hpp; what the DAC then did with
+// the queue model in iclforge/dac_queue_model.hpp; what the DAC then did with
 // them is not something this side of the wire can report. sink/capture/ is
 // where this earns its place - it runs the same conversion the real sinks run
 // and then checks the result, so CI has something to gate on that is about

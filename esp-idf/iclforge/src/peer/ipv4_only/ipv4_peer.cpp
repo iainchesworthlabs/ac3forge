@@ -7,7 +7,7 @@
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 
-namespace ac3forge {
+namespace iclforge {
 
 std::optional<Ipv4Peer> ipv4_peer(int fd) {
     sockaddr_in peer{};
@@ -19,4 +19,4 @@ std::optional<Ipv4Peer> ipv4_peer(int fd) {
     return Ipv4Peer{.address = peer.sin_addr.s_addr, .port = ntohs(peer.sin_port)};
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

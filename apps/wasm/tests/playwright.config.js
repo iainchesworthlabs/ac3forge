@@ -28,7 +28,7 @@ const serveScript = path.join(__dirname, 'serve.js');
 // as docs/assets/wasm-*-demo/ subdirectories) rather than the
 // demo-dir-as-server-root layout of the local serve instructions. Root
 // serving masks a whole bug class: a parent-relative asset path (the
-// "../ac3forge_decode.js" the encode page once used) clamps at the origin
+// "../iclforge_decode.js" the encode page once used) clamps at the origin
 // when the demo dir is the root, so it resolves anyway - and only 404s, as
 // on the docs site, once the page actually sits in a subdirectory.
 const decodeBase = `http://127.0.0.1:${decodePort}/${path.basename(decodeDemoDir)}/`;

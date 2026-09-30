@@ -31,7 +31,7 @@
 // Both lived in bindings.cpp's anonymous namespace while that file WAS the
 // extension. The optional submodules - signing/ and containers/, each present
 // only when the configure that built this also built the library behind it -
-// used to be `#ifdef AC3FORGE_PY_HAVE_SIGNING` / `AC3FORGE_PY_HAVE_CONTAINERS`
+// used to be `#ifdef ICLFORGE_PY_HAVE_SIGNING` / `ICLFORGE_PY_HAVE_CONTAINERS`
 // blocks inside the same PYBIND11_MODULE body, and so had these to hand. They
 // are now their own directory-selected translation units (see
 // optional_modules.hpp and python/CMakeLists.txt), which is what makes this a

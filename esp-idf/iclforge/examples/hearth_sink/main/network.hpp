@@ -61,7 +61,7 @@ namespace player {
 // console line that says where the page is.
 [[nodiscard]] std::string network_address();
 
-// What the board's network is, for GET /status (ac3forge::ControlNetwork):
+// What the board's network is, for GET /status (iclforge::ControlNetwork):
 // "wifi" or "ethernet", and on WiFi, while the station is associated, the
 // access point's SSID and the signal from it. `kind` is null in a build with
 // no network. Safe from any task.
@@ -74,7 +74,7 @@ struct NetworkLink {
 
 // Where the network this board joins comes from, for GET /firmware
 // (planning/esp32-ota.md): "stored" in NVS, "built-in" to this image alone
-// (CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID), "wired" for a network that needs
+// (CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID), "wired" for a network that needs
 // nothing stored (QEMU's Ethernet), or "none". An image with no network
 // built in - every image CI publishes - cannot rejoin a "built-in" one.
 [[nodiscard]] const char* network_source();

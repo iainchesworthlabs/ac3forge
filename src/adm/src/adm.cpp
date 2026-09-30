@@ -259,7 +259,7 @@ std::expected<AdmModel, AdmError> read_adm_model(const bw64::Bw64Reader& reader)
 // It exists because libbw64 materialises every chunk it reads EXCEPT <data>
 // into a std::vector sized straight from the chunk header (chunks.hpp's
 // UnknownChunk does `data_.resize(size); stream.read(...)`, and the axml and
-// chna chunks do the same), during readFile() itself - before any ac3forge
+// chna chunks do the same), during readFile() itself - before any iclforge
 // code gets a say. A 99-byte file whose <axml> header claims four gigabytes
 // asks for four gigabytes. fuzz_adm_parse reported exactly that, twice, at
 // two different chunk ids. On a real system the std::bad_alloc that usually

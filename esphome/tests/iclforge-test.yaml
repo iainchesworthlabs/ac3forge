@@ -5,7 +5,7 @@
 # A git source would fetch whatever is on the branch this PR has not merged to
 # and pass no matter what the PR did.
 esphome:
-  name: ac3forge-test
+  name: iclforge-test
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -16,10 +16,10 @@ external_components:
   - source:
       type: local
       path: ../components
-    components: [ac3forge]
+    components: [iclforge]
 
 logger:
 
-ac3forge:
+iclforge:
   version: main
   buffer_size: 16384

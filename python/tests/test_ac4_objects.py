@@ -11,7 +11,7 @@ within what each field's code can hold, with its own tone, and a metadata update
 input sample comes out. tests/capi/test_capi.cpp holds the C API to ac4::Encoder byte for byte.
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

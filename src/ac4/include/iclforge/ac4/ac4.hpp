@@ -79,7 +79,7 @@ enum class Error : std::uint8_t {
     kUnsupportedBitstreamVersion,  // > 2; TS 103 190-2 §6.3.2.1.1
 };
 
-[[nodiscard]] AC4_EXPORT std::string_view describe(Error error);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::string_view describe(Error error);
 
 // Annex G.3.1 ac4_syncframe(). `raw_ac4_frame` is the frame_size-bounded
 // span passed to parse_raw_frame() - everything between the frame_size
@@ -107,7 +107,7 @@ struct ScanResult {
 // Walks ac4_syncframe() elements back to back. Never throws; a malformed
 // tail is reported via ScanResult::stopped_at rather than losing whatever
 // parsed cleanly before it.
-[[nodiscard]] AC4_EXPORT ScanResult scan(std::span<const std::byte> data);
+[[nodiscard]] ICLFORGE_AC4_EXPORT ScanResult scan(std::span<const std::byte> data);
 
 // The storage a SyncFrameSplitter needs for a stream whose frames are all
 // shorter than 64 KiB: every AC-4 frame this project has seen is, the largest
@@ -140,7 +140,7 @@ inline constexpr std::size_t kSplitterRecommendedBuffer = 65536 + 16;
 // bytes it skipped; a frame found that way is handed over only once a sync
 // word follows it (or the stream ends there), so that a sync word's bit
 // pattern inside a frame is not taken for one.
-class AC4_EXPORT SyncFrameSplitter {
+class ICLFORGE_AC4_EXPORT SyncFrameSplitter {
    public:
     enum class Status : std::uint8_t {
         // `frame` is one whole sync frame, its offset counted from the
@@ -603,7 +603,7 @@ struct RawFrame {
 // §4.2.1 raw_ac4_frame(): ac4_toc() then n_substreams substream payloads,
 // located via payload_base and substream_index_table()'s sizes
 // (§4.3.3.12.4's Pseudocode 1) rather than by parsing through audio_data.
-[[nodiscard]] AC4_EXPORT std::expected<RawFrame, Error> parse_raw_frame(
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::expected<RawFrame, Error> parse_raw_frame(
     std::span<const std::byte> raw_ac4_frame);
 
 // --- Carriage (AC-4 bitstream inspector's separable slice) -------------------------------
@@ -639,11 +639,11 @@ struct RawFrame {
 //
 // Empty where the Toc holds something this cannot describe whole, which
 // dac4_refusal() names: a writer then has no complete box to carry.
-[[nodiscard]] AC4_EXPORT std::vector<std::byte> build_dac4(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::vector<std::byte> build_dac4(const Toc& toc);
 
 // Why build_dac4() writes nothing for `toc`, a string literal naming what it
 // cannot describe; empty where it describes every presentation whole.
-[[nodiscard]] AC4_EXPORT std::string_view dac4_refusal(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::string_view dac4_refusal(const Toc& toc);
 
 // Why a CMAF track (TS 103 190-2 Annex H.1.2.1) cannot carry the stream `toc`
 // describes, a string literal naming the first rule it breaks; empty where it
@@ -654,7 +654,7 @@ struct RawFrame {
 // fragmented carries it (build_dac4()). The rules for a presentation whose
 // groups several tracks carry (H.1.2.2 and H.1.2.3), and for the samples'
 // equivalent configurations (H.1.2.4), are the muxer's to keep.
-[[nodiscard]] AC4_EXPORT std::string_view cmaf_refusal(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::string_view cmaf_refusal(const Toc& toc);
 
 // Samples per AC-4 frame at the stream's own sample rate - what
 // iclforge::mp4::AudioTrack::samples_per_frame and an MPEG-TS PTS cadence need.
@@ -664,7 +664,7 @@ struct RawFrame {
 // media_timing() below gives an ISOBMFF track the time scale in which they
 // have one. At 44.1 kHz only frame_rate_index 13 (the 2048-sample frame) is
 // defined at all (Table 83).
-[[nodiscard]] AC4_EXPORT std::optional<std::uint32_t> samples_per_frame(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::optional<std::uint32_t> samples_per_frame(const Toc& toc);
 
 // TS 103 190-2 Table E.1: the media time scale an ISOBMFF track of the stream
 // counts in, and each sample's duration in it (sample_delta). Where a frame
@@ -677,7 +677,7 @@ struct MediaTiming {
     std::uint32_t timescale = 0;
     std::uint32_t sample_delta = 0;
 };
-[[nodiscard]] AC4_EXPORT std::optional<MediaTiming> media_timing(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::optional<MediaTiming> media_timing(const Toc& toc);
 
 // Part 1 Tables 83 and 84 for the stream's frame_rate_index and sample rate:
 // frames a second (24 000 / 1 001 at 23.976 fps, 48 000 / 2 048 at index 13),
@@ -690,13 +690,13 @@ struct FrameRate {
     int frame_length = 0;
     double internal_rate_hz = 0.0;
 };
-[[nodiscard]] AC4_EXPORT std::optional<FrameRate> frame_rate(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::optional<FrameRate> frame_rate(const Toc& toc);
 
 // RFC 6381 codec string per Annex E.13: "ac-4.AA.BB.CC" with two lowercase
 // hex digits each of bitstream_version, presentation_version and mdcompat,
 // taken from signalled_presentation(), which a manifest describes a track by.
 // An absent md_compat reads as 0.
-[[nodiscard]] AC4_EXPORT std::string rfc6381_codec_string(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::string rfc6381_codec_string(const Toc& toc);
 
 // --- Manifests (TS 103 190-2 Annex G, and HLS) ------------------------------
 //
@@ -710,7 +710,7 @@ struct FrameRate {
 // disable, the first of them where several share it (src/ac4enc/ERRATA.md,
 // "Manifests"). The first presentation where none carries audio; nothing for
 // a table of contents without presentations.
-[[nodiscard]] AC4_EXPORT std::optional<std::size_t> signalled_presentation(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::optional<std::size_t> signalled_presentation(const Toc& toc);
 
 // A DASH descriptor: the scheme it names, and its value there.
 struct ManifestDescriptor {
@@ -727,7 +727,7 @@ struct ManifestDescriptor {
 // object audio (src/ac4enc/ERRATA.md, "Manifests", on G.3.3.2's bit order).
 // Nothing for a bitstream_version below 2, or a presentation whose substreams
 // the table of contents does not describe whole.
-[[nodiscard]] AC4_EXPORT std::optional<ManifestDescriptor> dash_channel_configuration(
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::optional<ManifestDescriptor> dash_channel_configuration(
     const Toc& toc);
 
 // The SupplementalProperty descriptors Annex G.3 asks of a Representation for
@@ -738,14 +738,14 @@ struct ManifestDescriptor {
 // (tag:dolby.com,2016:dash:virtualized_content:2016, "1") where
 // b_pre_virtualized is set. Nothing for a frame rate Tables 83 and 84 do not
 // define.
-[[nodiscard]] AC4_EXPORT std::vector<ManifestDescriptor> dash_supplemental_properties(
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::vector<ManifestDescriptor> dash_supplemental_properties(
     const Toc& toc);
 
 // How many channels signalled_presentation() has: the speakers of its audio
 // channel groups (Table A.27), which is what HLS's CHANNELS attribute counts.
 // Nothing for object audio, or a presentation whose substreams the table of
 // contents does not describe whole.
-[[nodiscard]] AC4_EXPORT std::optional<int> presentation_channel_count(const Toc& toc);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::optional<int> presentation_channel_count(const Toc& toc);
 
 // Annex H.1.2.4: whether two tables of contents have equivalent
 // configurations, which every sample of a CMAF track must: the same
@@ -754,6 +754,6 @@ struct ManifestDescriptor {
 // content_classifier, b_language_indicator and the language tag's primary
 // subtag, and each of its substreams' channel_mode and sf_multiplier. Empty
 // where they are, else a string literal naming the first that differs.
-[[nodiscard]] AC4_EXPORT std::string_view configuration_difference(const Toc& a, const Toc& b);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::string_view configuration_difference(const Toc& a, const Toc& b);
 
 }  // namespace iclforge::ac4

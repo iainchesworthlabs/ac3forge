@@ -47,14 +47,14 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// Rooted at AC3FORGE_TEST_SCRATCH_DIR rather than fs::temp_directory_path() -
+// Rooted at ICLFORGE_TEST_SCRATCH_DIR rather than fs::temp_directory_path() -
 // see tests/CMakeLists.txt's comment on that define for why. The leaf also
 // carries this process's own PID - see tests/cli/test_cli.cpp's own
 // scratch_dir comment for why that is needed on top of the build-tree root.
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_stream_tools_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_stream_tools_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }

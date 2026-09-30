@@ -1,15 +1,15 @@
-//! `Error`: every variant's `Display` goes through `ac3forge_status_message()` with the right raw
+//! `Error`: every variant's `Display` goes through `iclforge_status_message()` with the right raw
 //! code, the unknown-code fallback stays representable, and the C status codes the library
 //! really returns land on the matching Rust variant (not on `Other`, not on a neighbour).
 
 mod common;
 
-use ac3forge::ac3;
-use ac3forge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
-use ac3forge::eac3;
-use ac3forge::stream;
-use ac3forge::types::{Acmod, DecoderConfig};
-use ac3forge::Error;
+use iclforge::ac3;
+use iclforge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
+use iclforge::eac3;
+use iclforge::stream;
+use iclforge::types::{Acmod, DecoderConfig};
+use iclforge::Error;
 use common::tone;
 
 /// Every named variant paired with the exact string `src/capi/src/common.cpp` gives its raw
@@ -43,7 +43,7 @@ fn every_variant_displays_its_c_status_message() {
 
 #[test]
 fn other_carries_raw_codes_including_ones_the_library_itself_does_not_know() {
-    // 0 is AC3FORGE_OK: representable through Other, and the C side still names it.
+    // 0 is ICLFORGE_OK: representable through Other, and the C side still names it.
     assert_eq!(Error::Other(0).to_string(), "ok");
     // The scan-specific codes (50..=55) have no named Rust variant; they surface as Other and
     // still print the library's own message.
@@ -67,7 +67,7 @@ fn error_is_a_well_behaved_value_type() {
     assert!(boxed.source().is_none());
 }
 
-fn stereo_frame(config: &ac3::EncoderConfig) -> Result<ac3forge::Bytes, Error> {
+fn stereo_frame(config: &ac3::EncoderConfig) -> Result<iclforge::Bytes, Error> {
     let mut encoder = ac3::Encoder::new(config)?;
     let left = tone(440.0, 48_000.0, 0.3, 1);
     let right = tone(660.0, 48_000.0, 0.3, 1);
@@ -222,7 +222,7 @@ fn scan_status_codes_surface_as_other_with_their_raw_value() {
     let frame = stereo_frame(&ac3::EncoderConfig::default())
         .unwrap()
         .to_vec();
-    // AC3FORGE_ERROR_SCAN_EMPTY / _LOST_SYNC / _TRUNCATED: no named Rust variant exists for the
+    // ICLFORGE_ERROR_SCAN_EMPTY / _LOST_SYNC / _TRUNCATED: no named Rust variant exists for the
     // scan family, so they must come through as Other(raw), never as a wrong named variant.
     let empty = stream::scan(&[]).err().unwrap();
     assert_eq!(empty, Error::Other(50));

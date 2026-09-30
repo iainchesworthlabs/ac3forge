@@ -1,6 +1,6 @@
 [package]
-name = "ac3forge"
-description = "Safe, idiomatic Rust bindings for ac3forge's C API - AC-3, E-AC-3 and AC-4 encode and decode"
+name = "iclforge"
+description = "Safe, idiomatic Rust bindings for iclforge's C API - AC-3, E-AC-3 and AC-4 encode and decode"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,4 +9,4 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-ac3forge-sys = { path = "../ac3forge-sys", version = "0.1.0" }
+iclforge-sys = { path = "../iclforge-sys", version = "0.1.0" }

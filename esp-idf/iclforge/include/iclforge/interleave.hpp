@@ -35,13 +35,13 @@
 // this file) compute the same integers from the float's IEEE-754 bits with
 // integer operations only. Every interleave here takes the conversion as a
 // template argument, FloatConversion or BitConversion, and defaults to
-// SlotConversion, which ac3forge/slot_conversion.hpp names. There are two copies
+// SlotConversion, which iclforge/slot_conversion.hpp names. There are two copies
 // of that header, under conversion/float/ and conversion/bits/, and the
 // component's CMakeLists.txt puts one of them on the include path from
 // CONFIG_SOC_CPU_HAS_FPU. A sink calls interleave_16in16 and gets its part's
 // conversion; the host tests name each one.
 
-namespace ac3forge {
+namespace iclforge {
 
 // 24-bit in a 32-bit slot, which is what a TDM DAC (a PCM3168A, say) expects and
 // what the ESP32-S3's I2S produces with a 32-bit slot width.
@@ -135,7 +135,7 @@ inline void interleave_16(std::span<const std::span<const float>> channels, std:
 // the rest zeroed, for the reason the top of this file gives.
 //
 // The width that puts eight channels on one line. An ESP32-S3 or ESP32-C6 TDM
-// frame holds at most 128 bits (ac3forge/sink_plan.hpp), which is four 32-bit
+// frame holds at most 128 bits (iclforge/sink_plan.hpp), which is four 32-bit
 // slots or eight of these, at 16 bits a sample where the 32-bit slots carry 24.
 //
 // `out` must hold frames * slots entries and each span in `channels` at least
@@ -237,7 +237,7 @@ template <int ScaleBits>
 }
 
 // The interleaves' template argument: one per way of converting, named by
-// ac3forge/slot_conversion.hpp for the part being built.
+// iclforge/slot_conversion.hpp for the part being built.
 struct FloatConversion {
     [[nodiscard]] static std::int16_t pcm16(float sample) { return to_pcm16(sample); }
     [[nodiscard]] static std::int32_t slot_24in32(float sample) { return to_slot_24in32(sample); }
@@ -252,4 +252,4 @@ struct BitConversion {
     }
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

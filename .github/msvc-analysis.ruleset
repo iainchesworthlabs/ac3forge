@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ac3forge's /analyze rule set: NativeRecommendedRules minus the rules
+  iclforge's /analyze rule set: NativeRecommendedRules minus the rules
   whose entire history in this repository is dismissed false positives, or
   fires exclusively on generated (non-project) code.
 
@@ -58,7 +58,7 @@
   /analyze:rulesetdirectory for Visual Studio's own rule-set directory
   precisely so a repository rule set can layer on an official one.
 -->
-<RuleSet Name="ac3forge" Description="NativeRecommendedRules minus rules with a false-positive-only history in this repository" ToolsVersion="17.0">
+<RuleSet Name="iclforge" Description="NativeRecommendedRules minus rules with a false-positive-only history in this repository" ToolsVersion="17.0">
   <Include Path="NativeRecommendedRules.ruleset" Action="Default" />
   <Rules AnalyzerId="Microsoft.Analyzers.NativeCodeAnalysis" RuleNamespace="Microsoft.Rules.Native">
     <Rule Id="C26829" Action="None" />

@@ -5,7 +5,7 @@ receive from it.
 
     python tools/generators/gen_device_streams.py --ac3cli <path to ac3cli>
 
-writes esp-idf/ac3forge/examples/hearth_sink/www/. The set covers the
+writes esp-idf/iclforge/examples/hearth_sink/www/. The set covers the
 output layouts the player renders onto, both codecs, dependent substreams,
 two programmes in one stream, dual mono, the Annex E coding tools, short
 frames, VBR, DRC metadata, other encoders' streams and object audio. Most of
@@ -14,7 +14,7 @@ synthesises; the rest is copied from streams already in the tree.
 
 The levels in streams.json are the host's: each stream decoded by ac3cli as
 coded - no dialnorm normalisation and no DRC, which is the player's
-CONFIG_AC3FORGE_EXAMPLE_DRC_MODE=2 - with each decoded channel's RMS x 1e6
+CONFIG_ICLFORGE_EXAMPLE_DRC_MODE=2 - with each decoded channel's RMS x 1e6
 placed on the slot of the same location in the 7.1.4 layout, in the
 layout's slot order. A stream with objects is decoded bed-only, because the
 CI shape that checks these plays objects as their bed. A slot whose level is

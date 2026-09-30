@@ -6,14 +6,14 @@
 # tests it, less its pairing records. The test sink, the test server and the
 # window all need more than that core (the window needs Qt and, once
 # packaged, notices for what it bundles; A7's packaging targets neither a
-# fuzz build nor AC3FORGE_SENDSPIN_CORE_ONLY has ever meant to reach), so an
-# AC3FORGE_SENDSPIN_CORE_ONLY build (fuzz/run.sh, the only thing that sets it)
+# fuzz build nor ICLFORGE_SENDSPIN_CORE_ONLY has ever meant to reach), so an
+# ICLFORGE_SENDSPIN_CORE_ONLY build (fuzz/run.sh, the only thing that sets it)
 # leaves all three out, along with the notices for what they link, and
 # ac3hearth-render with them: it needs only the engine, but it is a tool for
 # the checks, which a fuzz build does not run.
 add_subdirectory(engine)
 
-if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+if(NOT ICLFORGE_SENDSPIN_CORE_ONLY)
     # The eventual NOTICES.txt path - defined here, not inside notices.cmake,
     # so ui/'s own install() rules (below) can reference it before that
     # file's content is actually generated. This breaks what would otherwise

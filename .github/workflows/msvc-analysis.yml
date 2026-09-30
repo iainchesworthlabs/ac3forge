@@ -123,7 +123,7 @@ jobs:
       - name: Setup Python (for install-qt-action)
         uses: ./.github/actions/setup-embeddable-python
 
-      # windows-msvc defaults AC3FORGE_BUILD_GUI to ON (CMakePresets.json),
+      # windows-msvc defaults ICLFORGE_BUILD_GUI to ON (CMakePresets.json),
       # and Qt is a prebuilt dependency (cmake/FindQt6.cmake), never a vcpkg
       # port - see _build.yml's own precedent for this exact install step.
       - name: Install Qt (prebuilt)

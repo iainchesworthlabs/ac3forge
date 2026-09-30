@@ -28,7 +28,7 @@
 //
 // Free of ESP-IDF, so tests/ac3/io/test_unit_hold.cpp checks it on the host.
 
-namespace ac3forge {
+namespace iclforge {
 
 class UnitHold {
    public:
@@ -170,4 +170,4 @@ class UnitHold {
     bool armed_ = false;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

@@ -30,7 +30,7 @@ using iclforge::crucible::ui::xdg_data_dirs;
 
 namespace {
 
-// Scratch space for this file's own tests. AC3FORGE_TEST_SCRATCH_DIR (see
+// Scratch space for this file's own tests. ICLFORGE_TEST_SCRATCH_DIR (see
 // tests/CMakeLists.txt for why it is a build-tree path) is the whole
 // suite's root; the leaf below is this file's own, emptied on each use so a
 // previous run's files cannot pass a case. The leaf also carries this
@@ -39,7 +39,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_icons_" + scratch_pid_suffix());
+    const auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("crucible_icons_" + scratch_pid_suffix());
     fs::remove_all(dir);
     fs::create_directories(dir);
     return dir;

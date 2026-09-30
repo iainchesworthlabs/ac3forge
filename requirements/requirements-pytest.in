@@ -4,10 +4,10 @@
 # is gcovr for ci.yml's C++ coverage job, and the two jobs run on different
 # workflows with nothing in common but the word "coverage".
 #
-# numpy is here because the ac3forge wheel declares it as a runtime dependency
+# numpy is here because the iclforge wheel declares it as a runtime dependency
 # and that job installs the wheel with --no-index. Without the index there is
 # nowhere for pip to resolve numpy from, and WITH the index pip would be free
-# to prefer a released ac3forge from PyPI over the locally built wheel the job
+# to prefer a released iclforge from PyPI over the locally built wheel the job
 # exists to measure - a version comparison between a PEP 440 release and a
 # setuptools_scm dev version that should not be left to chance. Satisfying the
 # dependency from this lock first, then installing the wheel offline, makes

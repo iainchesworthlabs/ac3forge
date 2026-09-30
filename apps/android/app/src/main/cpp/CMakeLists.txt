@@ -32,27 +32,27 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 # Pre-seed the repo root's option()s before pulling it in: option() only sets
 # a cache variable if one is not already present, so FORCE-ing these first
-# means the root CMakeLists.txt's own `option(AC3FORGE_BUILD_CLI ... ON)`
+# means the root CMakeLists.txt's own `option(ICLFORGE_BUILD_CLI ... ON)`
 # etc. see these values already set and leave them alone. This app needs
 # none of the desktop-only targets or Catch2/examples - only the two
 # libraries add_subdirectory() below builds regardless of these options.
-set(AC3FORGE_BUILD_CLI OFF CACHE BOOL "" FORCE)
-set(AC3FORGE_BUILD_GUI OFF CACHE BOOL "" FORCE)
-set(AC3FORGE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(AC3FORGE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(AC3FORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_CLI OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_GUI OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
 # Defaults ON (root CMakeLists.txt) and add_subdirectory()s src/sendspin, which hard-requires
 # MbedTLS/httplib/FLAC/Opus/mdns via find_package(... REQUIRED) - packages that exist nowhere
 # in an NDK cross-compile (no vcpkg toolchain here, see setup-vcpkg's own desktop-only scope).
 # Same gap python/pyproject.toml and rust/iclforge-sys/build.rs had for the same reason.
-set(AC3FORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
 
 # ac3forge_jni's own target_link_libraries below is iclforge::ac3/iclforge::audio/iclforge::signing only
 # (see the comment above the MATROSKA/MP4/MPEGTS block just below) - this app never links
 # iclforge::c, so there is no reason to compile src/capi at all here. Off explicitly rather
 # than relying on the root CMakeLists.txt's default ON: leaving it on would silently compile
 # iclforge_capi_objects/forge_c_static/forge_c_shared into every Shield build for nothing.
-set(AC3FORGE_BUILD_CAPI OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_CAPI OFF CACHE BOOL "" FORCE)
 
 # The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) build at the root
 # CMakeLists.txt's own default (ON, plan phase I4): unlike Hearth above, they depend on
@@ -79,15 +79,15 @@ set(AC3FORGE_BUILD_CAPI OFF CACHE BOOL "" FORCE)
 # std::format/std::print everywhere (see cmake/Fmt.cmake and
 # docs/platforms/android.md), which has no such gap. iclforge::mp4 would build for
 # Android today if this app linked it; it simply has no use for it.
-set(AC3FORGE_BUILD_MATROSKA OFF CACHE BOOL "" FORCE)
-set(AC3FORGE_BUILD_MP4 OFF CACHE BOOL "" FORCE)
-set(AC3FORGE_BUILD_MPEGTS OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_MATROSKA OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_MP4 OFF CACHE BOOL "" FORCE)
+set(ICLFORGE_BUILD_MPEGTS OFF CACHE BOOL "" FORCE)
 
 # The binary directory name is arbitrary but must be given explicitly: with
 # a source directory this far outside CMAKE_SOURCE_DIR (the wrapper's own
 # directory, per project() above), CMake cannot derive a binary dir by
 # mirroring the relative path the way it does for an in-tree subdirectory.
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../.." ac3forge_build)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../.." iclforge_build)
 
 add_library(ac3forge_jni SHARED
     jni_entry.cpp

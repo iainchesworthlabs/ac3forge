@@ -37,7 +37,7 @@
 
 // iclforge::hearth's media information (apps/hearth/engine/media_info.cpp and
 // media_inspector.cpp): what a queue item's file says about itself, read on a
-// thread of its own and written out as ac3forge.hearth.media/1.
+// thread of its own and written out as iclforge.hearth.media/1.
 
 namespace {
 
@@ -201,7 +201,7 @@ TEST_CASE("media info: an AC-3 stream's bitstream information and probe", "[hear
 
     const Parsed parsed{media_info_json(info)};
     const auto root = parsed.root();
-    CHECK(root["schema"].equals("ac3forge.hearth.media/1"));
+    CHECK(root["schema"].equals("iclforge.hearth.media/1"));
     CHECK(root["file"].equals("music.ac3"));
     CHECK(root["codec"].equals("ac3"));
     CHECK(root["error"].is_null());
@@ -225,7 +225,7 @@ TEST_CASE("media info: an AC-3 stream's bitstream information and probe", "[hear
     CHECK(bits["fold_levels"]["lfe_db"].as_double() == Catch::Approx(10.0));
     // The probe object is the one ac3cli probe json=1 writes.
     const auto probe = root["probe"];
-    CHECK(probe["schema"].equals("ac3forge.probe/1"));
+    CHECK(probe["schema"].equals("iclforge.probe/1"));
     CHECK(probe["stream"]["codec"].equals("ac3"));
     CHECK(probe["stream"]["nominal_bitrate_kbps"].as_int() == 192);
     CHECK(probe["stream"]["metadata"]["dialnorm_db"]["min"].as_int() == -24);
@@ -509,7 +509,7 @@ TEST_CASE("media info: objects, and whether they are signed", "[hearth][media-in
 }
 
 TEST_CASE("media info: an AC-4 stream's table of contents", "[hearth][media-info]") {
-    const std::string path = AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac4-stereo-64/dee.ac4";
+    const std::string path = ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac4-stereo-64/dee.ac4";
     std::ifstream in{path, std::ios::binary};
     REQUIRE(in.good());
     const std::vector<char> raw{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};

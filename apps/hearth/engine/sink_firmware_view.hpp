@@ -66,7 +66,7 @@ struct FirmwarePanel {
 // An image file chosen for a sink, as the dialog that asks first shows it.
 struct FirmwareCandidate {
     std::string version{};
-    // "ac3forge_hearth_sink v0.10.0-…, for an ESP32-S3, 1,480,768 bytes"
+    // "iclforge_hearth_sink v0.10.0-…, for an ESP32-S3, 1,480,768 bytes"
     std::string text{};
     // Why the sink would not take it, from what it last said; empty when it
     // would. The update checks again with what the board says then.

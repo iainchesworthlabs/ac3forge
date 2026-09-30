@@ -5,12 +5,12 @@
 
 mod common;
 
-use ac3forge::eac3::{
+use iclforge::eac3::{
     AccessUnitEncoder, DecodedSubstream, Eac3Decoder, Eac3Encoder, Eac3FrameConfig,
     Eac3FrameMetadata, StreamType,
 };
-use ac3forge::types::{Acmod, DecoderConfig, SampleRate};
-use ac3forge::{Error, SAMPLES_PER_FRAME};
+use iclforge::types::{Acmod, DecoderConfig, SampleRate};
+use iclforge::{Error, SAMPLES_PER_FRAME};
 use common::{best_lag, rms, snr_db, tone};
 
 fn stereo(bitrate_kbps: u32) -> Eac3FrameConfig {
@@ -194,7 +194,7 @@ fn substream_identity() {
     // A standalone Dependent substream is legal to emit and decodes as not-independent.
     let dependent = Eac3FrameConfig {
         strmtyp: StreamType::Dependent,
-        chanmap: Some(ac3forge_sys::AC3FORGE_CHANMAP_512_HEIGHT as u16),
+        chanmap: Some(iclforge_sys::ICLFORGE_CHANMAP_512_HEIGHT as u16),
         ..stereo(192)
     };
     let decoded = round_trip(&dependent, 48_000.0, 1);
@@ -280,7 +280,7 @@ fn latency_reports_holdback_only_with_transient_prenoise() {
 ///
 /// `flush()` then hands over the frame still held back at end of stream. That call is the
 /// regression test for a double free: `flush()` used to wrap each returned handle in a
-/// `DecodedSubstream` AND pass the full count to `ac3forge_decoded_substream_array_destroy()`,
+/// `DecodedSubstream` AND pass the full count to `iclforge_decoded_substream_array_destroy()`,
 /// which destroys the elements too - so dropping the Vec freed every substream a second time.
 #[test]
 fn transient_prenoise_holds_back_one_frame() {
@@ -449,7 +449,7 @@ fn decoded_substream_object_audio_out_of_range_panics() {
 
 #[test]
 fn eac3_decoder_also_decodes_plain_ac3() {
-    let mut encoder = ac3forge::ac3::Encoder::new(&Default::default()).unwrap();
+    let mut encoder = iclforge::ac3::Encoder::new(&Default::default()).unwrap();
     let s = tone(440.0, 48_000.0, 0.3, 0);
     let frame = encoder.encode_frame(&[&s, &s]).unwrap();
     let mut decoder = Eac3Decoder::new(&DecoderConfig::default()).unwrap();
@@ -467,8 +467,8 @@ fn handles_are_send() {
     assert_send::<Eac3Decoder>();
     assert_send::<DecodedSubstream>();
     assert_send::<AccessUnitEncoder>();
-    assert_send::<ac3forge::eac3::AccessUnit>();
-    assert_send::<ac3forge::eac3::DecodedAccessUnit>();
+    assert_send::<iclforge::eac3::AccessUnit>();
+    assert_send::<iclforge::eac3::DecodedAccessUnit>();
 
     // An access unit outlives its encoder and crosses threads intact.
     let unit = {

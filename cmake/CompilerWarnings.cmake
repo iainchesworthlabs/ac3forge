@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # CompilerWarnings.cmake
 #
-# Defines an INTERFACE target `ac3::warnings` that turns on a strict,
+# Defines an INTERFACE target `iclforge::warnings` that turns on a strict,
 # cross-compiler warning set with "warnings as errors". Link it PRIVATE-ly
 # into every first-party target (library, apps, tests). Third-party code (Qt,
 # Catch2) is pulled in as SYSTEM headers by their package configs, so these
@@ -16,8 +16,8 @@
 # but not for C") rather than silently ignoring the C++-specific flags.
 # ---------------------------------------------------------------------------
 
-add_library(ac3_warnings INTERFACE)
-add_library(ac3::warnings ALIAS ac3_warnings)
+add_library(iclforge_warnings INTERFACE)
+add_library(iclforge::warnings ALIAS iclforge_warnings)
 
 set(AC3_GNU_CLANG_WARNINGS
     -Wall
@@ -74,11 +74,11 @@ set(AC3_CLANG_CL_CXX_ONLY_WARNINGS
     -Wold-style-cast)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-    target_compile_options(ac3_warnings INTERFACE
+    target_compile_options(iclforge_warnings INTERFACE
         ${AC3_CLANG_CL_WARNINGS}
         "$<$<COMPILE_LANGUAGE:CXX>:${AC3_CLANG_CL_CXX_ONLY_WARNINGS}>")
 else()
-    target_compile_options(ac3_warnings INTERFACE
+    target_compile_options(iclforge_warnings INTERFACE
         "$<$<CXX_COMPILER_ID:MSVC>:${AC3_MSVC_WARNINGS}>"
         "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:${AC3_MSVC_CXX_ONLY_WARNINGS}>"
         "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:${AC3_GNU_CLANG_WARNINGS}>"
@@ -109,7 +109,7 @@ endif()
 # does not vary per-config the way COMPILER_ID conceivably could.
 if(CMAKE_CXX_COMPILER_ID MATCHES "^(Clang|AppleClang)$" AND
    CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 20)
-    target_compile_options(ac3_warnings INTERFACE -Wno-c2y-extensions)
+    target_compile_options(iclforge_warnings INTERFACE -Wno-c2y-extensions)
 endif()
 
 # -Wnull-dereference false-positives inside libstdc++'s own headers under GCC
@@ -135,7 +135,7 @@ endif()
 # quietly weakening the check on the toolchain this project actually gates
 # on - it only helps machines (like this Pi) resolving an older distro GCC.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
-    target_compile_options(ac3_warnings INTERFACE -Wno-null-dereference)
+    target_compile_options(iclforge_warnings INTERFACE -Wno-null-dereference)
 endif()
 
 # -Warray-bounds false positive under GCC 16 at -O2/-O3 (Release), the same
@@ -158,7 +158,7 @@ endif()
 # specifically, mirroring the < 15 scoping above, so this stays a no-op on
 # any compiler that does not exhibit it.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
-    target_compile_options(ac3_warnings INTERFACE -Wno-array-bounds)
+    target_compile_options(iclforge_warnings INTERFACE -Wno-array-bounds)
 endif()
 
 # -Wmaybe-uninitialized false positive under GCC 16 at -O2/-O3 (Release), on
@@ -182,7 +182,7 @@ endif()
 # is only reliable post-toolchain-file, which runs after this file - so a
 # no-op on x86_64 costs nothing and keeps this one condition to maintain.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
-    target_compile_options(ac3_warnings INTERFACE -Wno-maybe-uninitialized)
+    target_compile_options(iclforge_warnings INTERFACE -Wno-maybe-uninitialized)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ endif()
 # The note above is true for third-party *headers*, but not for third-party
 # code generators. Qt's moc, rcc, qmltyperegistrar and qmlcachegen emit C++
 # into the build tree and add it to our own target, where it inherits
-# ac3::warnings - so a warning in a file nobody here wrote becomes a build
+# iclforge::warnings - so a warning in a file nobody here wrote becomes a build
 # failure under -Werror. It is not ours to fix, so it is not ours to warn
 # about: see how apps/gui/CMakeLists.txt applies this to the generated sources.
 #

@@ -21,9 +21,9 @@
 //       -Isrc/audio/include -Isrc/forge/include -Ibuild-pw/src/forge/generated
 //       -Isrc/signing/include -Ibuild-pw/src/signing/generated
 //       -Iapps/crucible/engine $(pkg-config --cflags libpipewire-0.3)
-//       -DAC3FORGE_STATIC_DEFINE -DAC3SIGNING_STATIC_DEFINE
+//       -DICLFORGE_AC3_STATIC_DEFINE -DICLFORGE_SIGNING_STATIC_DEFINE
 //       build-pw/apps/crucible/libac3crucible_engine.a
-//       build-pw/src/audio/libac3audio.a build-pw/src/forge/libac3forge_static.a
+//       build-pw/src/audio/libac3audio.a build-pw/src/forge/libiclforge_ac3_static.a
 //       build-pw/src/signing/libac3signing_static.a
 //       $(pkg-config --libs libpipewire-0.3) $(pkg-config --libs xcb) -lpthread
 //

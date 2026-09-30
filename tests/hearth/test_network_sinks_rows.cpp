@@ -103,10 +103,10 @@ TEST_CASE("network sinks rows: a Hearth sink's own lead time wins over its playe
     ss::player::Support support;
     support.data_types = {ss::player::DataType::kEac3};
     support.outputs = {.count = 12, .bit_depth = 24, .bit_depths = {24}};
-    client.ac3forge_support = support;
-    ss::player::State ac3forge_state;
-    ac3forge_state.required_lead_time_ms = 300;
-    client.ac3forge_state = ac3forge_state;
+    client.iclforge_support = support;
+    ss::player::State iclforge_state;
+    iclforge_state.required_lead_time_ms = 300;
+    client.iclforge_state = iclforge_state;
     ss::messages::PlayerState player_state;
     player_state.required_lead_time_ms = 900;
     client.player_state = player_state;
@@ -316,7 +316,7 @@ TEST_CASE("network sinks rows: settings and identify for a Hearth sink with no l
     const auto service = service_named("cinema");
     rig.sinks->on_found(service);
     auto client = connected(service, "client-cinema");
-    client.ac3forge_support = ss::player::Support{};
+    client.iclforge_support = ss::player::Support{};
     rig.sinks->on_client(client);
 
     ss::player::Settings settings;

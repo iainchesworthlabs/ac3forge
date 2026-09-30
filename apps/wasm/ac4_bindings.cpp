@@ -44,7 +44,7 @@
 //     C++ struct's default, so the defaults live here in one place: js/src/
 //     ac4.ts passes the caller's options as given. An enumerator the C++
 //     header does not define is refused at construction (constructionError()
-//     says so), as ac3forge_ac4_encoder_create() refuses one.
+//     says so), as iclforge_ac4_encoder_create() refuses one.
 //
 // Every return shape is a hand-built emscripten::val::object()/val::array(),
 // the same technique decoder_bindings.cpp and encoder_bindings.cpp both use
@@ -729,7 +729,7 @@ emscripten::val syncFrame(const emscripten::val& js_bytes, bool crc) {
     return make_uint8_array(iclforge::ac4::sync_frame(bytes, crc));
 }
 
-EMSCRIPTEN_BINDINGS(ac3forge_wasm_ac4) {
+EMSCRIPTEN_BINDINGS(iclforge_wasm_ac4) {
     emscripten::function("syncFrame", &syncFrame);
 
     emscripten::class_<Ac4Decoder>("Ac4Decoder")

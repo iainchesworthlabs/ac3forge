@@ -37,7 +37,7 @@ int g_channels = 0;
 // is the one kind of pacing this sink does: a board with nothing wired to its
 // pins still plays a Sendspin stream at the rate the server sends it.
 constexpr std::uint32_t kVirtualDescriptors = 12;
-ac3forge::VirtualDac g_dac;
+iclforge::VirtualDac g_dac;
 // Summed but never read back. It exists so the decode has an observable
 // consumer: a sink that touched nothing would let the compiler delete work the
 // run is supposed to be doing.
@@ -70,9 +70,9 @@ bool sink_second_line_possible() { return false; }
 
 // Nothing here is interleaved into slots at all, so the width is only what a
 // caller asking gets told, and changing it would describe nothing.
-int sink_slot_bits() { return CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
+int sink_slot_bits() { return CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS; }
 
-bool sink_set_slot_bits(int bits) { return bits == CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
+bool sink_set_slot_bits(int bits) { return bits == CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS; }
 
 void sink_write(std::span<const std::span<const float>> channels) {
     // Summed in float per channel and block, and added in double once: a
@@ -88,17 +88,17 @@ void sink_write(std::span<const std::span<const float>> channels) {
     ++g_frames;
 }
 
-std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels) {
+std::optional<iclforge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels) {
     if (g_channels == 0) {
         return std::nullopt;
     }
     sink_write(channels);
-    const ac3forge::VirtualDac::Write written = g_dac.write(esp_timer_get_time());
+    const iclforge::VirtualDac::Write written = g_dac.write(esp_timer_get_time());
     const std::int64_t wait_us = written.return_us - esp_timer_get_time();
     if (wait_us > 0) {
         vTaskDelay(std::max<TickType_t>(1, pdMS_TO_TICKS((wait_us + 999) / 1000)));
     }
-    return ac3forge::PlayoutWrite{.play_us = written.play_us, .late = false, .gap = written.gap};
+    return iclforge::PlayoutWrite{.play_us = written.play_us, .late = false, .gap = written.gap};
 }
 
 const char* sink_name() { return "null"; }

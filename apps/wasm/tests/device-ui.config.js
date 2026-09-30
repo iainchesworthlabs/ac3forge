@@ -11,7 +11,7 @@ const { defineConfig } = require('@playwright/test');
 //   host   the page against device-ui/stub.js, a stand-in for the firmware's
 //          REST routes that each test starts for itself, with coverage of the
 //          page's script collected for c8 (package.json's coverage:device-ui)
-//   board  the page as a device serves it, at AC3FORGE_DEVICE_URL: CI's
+//   board  the page as a device serves it, at ICLFORGE_DEVICE_URL: CI's
 //          ESP32 job points it at the emulated board through QEMU's port
 //          forward
 module.exports = defineConfig({
@@ -30,7 +30,7 @@ module.exports = defineConfig({
             testMatch: 'board/*.spec.js',
             // QEMU decodes slowly and the smoke waits for a whole play.
             timeout: 240_000,
-            use: { baseURL: process.env.AC3FORGE_DEVICE_URL },
+            use: { baseURL: process.env.ICLFORGE_DEVICE_URL },
         },
     ],
 });

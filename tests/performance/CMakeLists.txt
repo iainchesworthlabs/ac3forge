@@ -10,15 +10,15 @@
 add_executable(ac3perf test_performance.cpp)
 
 # The AC-4 cases need no guard: the root CMakeLists.txt refuses
-# AC3FORGE_BUILD_TESTS without AC3FORGE_BUILD_AC4, so the AC-4 libraries exist
+# ICLFORGE_BUILD_TESTS without ICLFORGE_BUILD_AC4, so the AC-4 libraries exist
 # wherever this directory is built. The same holds for the three targets below.
 target_link_libraries(ac3perf
     PRIVATE
         iclforge::ac3
         iclforge::ac4enc
         iclforge::ac4dec
-        ac3::warnings
-        ac3::fmt
+        iclforge::warnings
+        iclforge::fmt
         Catch2::Catch2WithMain)
 
 target_include_directories(ac3perf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -28,7 +28,7 @@ target_include_directories(ac3perf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # from - see that header for why a synthetic tone is not an acceptable
 # substitute for it.
 target_compile_definitions(ac3perf PRIVATE
-    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+    "ICLFORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
 # TEST_PREFIX so `ctest -R '^Performance::'`/`-E` can target this target's
 # cases specifically without a fragile name-based guess, and
@@ -50,7 +50,7 @@ catch_discover_tests(ac3perf
 # ---------------------------------------------------------------------------
 add_executable(ac3bench bench_encoder.cpp)
 
-target_link_libraries(ac3bench PRIVATE iclforge::ac3 iclforge::ac4enc iclforge::ac4dec ac3::warnings ac3::fmt)
+target_link_libraries(ac3bench PRIVATE iclforge::ac3 iclforge::ac4enc iclforge::ac4dec iclforge::warnings iclforge::fmt)
 
 target_include_directories(ac3bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -58,7 +58,7 @@ target_include_directories(ac3bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # reason: a 440 Hz tone leaves the SNR search, coupling, rematrixing and the
 # block-switched transform out of the measurement entirely.
 target_compile_definitions(ac3bench PRIVATE
-    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+    "ICLFORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
 # ---------------------------------------------------------------------------
 # ac3membench - heap-churn and footprint numbers for the same workloads as
@@ -91,7 +91,7 @@ target_compile_definitions(ac3bench PRIVATE
 # (tools/ci/append_memory_history.py), and a count taken through a
 # sanitizer's intercepting allocator would not be the codec's number anyway -
 # the same reason the sanitizer legs are exempt from performance gating.
-if((WIN32 OR LINUX) AND NOT AC3FORGE_SANITIZERS MATCHES "thread")
+if((WIN32 OR LINUX) AND NOT ICLFORGE_SANITIZERS MATCHES "thread")
     add_executable(ac3membench bench_memory.cpp)
 
     if(WIN32)
@@ -105,11 +105,11 @@ if((WIN32 OR LINUX) AND NOT AC3FORGE_SANITIZERS MATCHES "thread")
     # The AC-4 libraries' static builds, for the same reason as
     # ac3::forge_static: a DLL's allocations would not reach the counters.
     target_link_libraries(ac3membench PRIVATE
-        iclforge::ac3_static iclforge::ac4enc_static iclforge::ac4dec_static ac3::warnings ac3::fmt)
+        iclforge::ac3_static iclforge::ac4enc_static iclforge::ac4dec_static iclforge::warnings iclforge::fmt)
 
     # The AC-4 workloads read the real-audio fixture (real_audio.hpp).
     target_compile_definitions(ac3membench PRIVATE
-        "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+        "ICLFORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ add_executable(ac3kernelbench kernel_bench.cpp)
 
 # iclforge::ac4core (static in every build) brings src/ac4core/include/iclforge/ac4core's transform headers,
 # as it does for tests/ac4core.
-target_link_libraries(ac3kernelbench PRIVATE iclforge::ac3 iclforge::ac4core ac3::warnings ac3::fmt)
+target_link_libraries(ac3kernelbench PRIVATE iclforge::ac3 iclforge::ac4core iclforge::warnings iclforge::fmt)
 
 target_include_directories(ac3kernelbench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -137,4 +137,4 @@ target_include_directories(ac3kernelbench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # from silence or a single tone give misleadingly tidy bit-allocation/
 # mantissa-cost numbers real program material never produces.
 target_compile_definitions(ac3kernelbench PRIVATE
-    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+    "ICLFORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")

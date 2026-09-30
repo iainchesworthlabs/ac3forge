@@ -27,7 +27,7 @@
 // consumer that finds it empty, does something else. That keeps it free of
 // ESP-IDF, so tests/ac3/io/test_block_ring.cpp checks the arithmetic on the host.
 
-namespace ac3forge {
+namespace iclforge {
 
 class BlockRing {
    public:
@@ -111,4 +111,4 @@ class BlockRing {
     std::atomic<std::uint32_t> released_{0};   // written by the consumer only
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

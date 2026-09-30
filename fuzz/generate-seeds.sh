@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fuzz/generate-seeds.sh - grow a fuzzing corpus from ac3forge's own valid
+# fuzz/generate-seeds.sh - grow a fuzzing corpus from iclforge's own valid
 # output, by running ac3cli across the layout/codec/tool matrix this project
 # already supports. Cheaper and more representative than hand-written corpus
 # files: every seed here is a real, self-consistent stream this project can
@@ -126,8 +126,8 @@ add_seed "fuzz_scan,fuzz_eac3_decode" "$WORK/atmos-encode.ec3"
 
 echo "==> Third-party structure: the committed external-baseline bitstreams"
 echo "    (Dolby Encoding Engine 6.5.4 and FFmpeg 8.0.1 - third-party decode interop)"
-# Everything above this point is ac3forge's own output, so every seed shares
-# ac3forge's own encoder choices: frame-hoisted exponent strategies, coupling
+# Everything above this point is iclforge's own output, so every seed shares
+# iclforge's own encoder choices: frame-hoisted exponent strategies, coupling
 # either on for all six blocks or off, snroffststr 0, frmfgaincode 0, geometry
 # sent once in block 0 and never resent. A mutation starting from one of those
 # explores the neighbourhood of THIS encoder's syntax, and no amount of it

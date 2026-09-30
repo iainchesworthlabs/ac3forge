@@ -3,13 +3,13 @@ requires = ["scikit-build-core>=0.10", "pybind11>=2.13", "setuptools_scm>=8"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "ac3forge"
+name = "iclforge"
 dynamic = ["version"]
 description = "Clean-room AC-3/E-AC-3 (Dolby Digital/Digital Plus) and AC-4 encoder and decoder, with Atmos object encode/decode"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.10"
-authors = [{ name = "ac3forge contributors" }]
+authors = [{ name = "iclforge contributors" }]
 keywords = ["ac3", "eac3", "ac4", "dolby-digital", "atmos", "audio", "codec"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -31,16 +31,16 @@ test = ["pytest>=7"]
 
 [tool.scikit-build]
 # The repo root, not this directory - python/CMakeLists.txt is add_subdirectory()'d from there
-# (see the root CMakeLists.txt's AC3FORGE_BUILD_PYTHON block) the same way every other optional
+# (see the root CMakeLists.txt's ICLFORGE_BUILD_PYTHON block) the same way every other optional
 # component is, rather than standing up a second, independent top-level CMake project that would
 # have to re-derive the version/compiler-warnings/sanitizer setup the real root already owns.
 cmake.source-dir = ".."
 cmake.build-type = "Release"
-wheel.packages = ["src/ac3forge"]
+wheel.packages = ["src/iclforge"]
 minimum-version = "0.10"
 build-dir = "build/{wheel_tag}"
 # Restricts `cmake --install` to python/CMakeLists.txt's own COMPONENT python - see that file's
-# comment on install(TARGETS _ac3forge ...) for why this is needed at all: without it, the
+# comment on install(TARGETS _iclforge ...) for why this is needed at all: without it, the
 # unconditional SDK install() rules in cmake/InstallLibrary.cmake (headers, .lib/.dll, CMake
 # package config) ride along into the wheel too.
 install.components = ["python"]
@@ -49,31 +49,31 @@ install.components = ["python"]
 # Only iclforge::ac3 and this extension - everything else this tree can build is irrelevant to a
 # Python wheel and would only cost build time (CLI/GUI need Qt; tests need Catch2; the container
 # writers/ADM parser are for muxing/ADM ingest, no part of the F2 binding surface).
-AC3FORGE_BUILD_PYTHON = "ON"
-AC3FORGE_BUILD_CLI = "OFF"
-AC3FORGE_BUILD_GUI = "OFF"
-AC3FORGE_BUILD_TESTS = "OFF"
-AC3FORGE_BUILD_EXAMPLES = "OFF"
-AC3FORGE_BUILD_FUZZERS = "OFF"
-AC3FORGE_BUILD_ADM = "OFF"
+ICLFORGE_BUILD_PYTHON = "ON"
+ICLFORGE_BUILD_CLI = "OFF"
+ICLFORGE_BUILD_GUI = "OFF"
+ICLFORGE_BUILD_TESTS = "OFF"
+ICLFORGE_BUILD_EXAMPLES = "OFF"
+ICLFORGE_BUILD_FUZZERS = "OFF"
+ICLFORGE_BUILD_ADM = "OFF"
 # Off for the same reason as the rest of this list: Hearth (src/sendspin, apps/hearth) is no part
 # of the F2 binding surface, and this option's default is ON (root CMakeLists.txt), so leaving it
 # unset here tries to find_package() cpp-httplib/mbedTLS/libFLAC/Opus/mdns that cibuildwheel's
 # manylinux/musllinux/macOS/Windows images never install - see that option's own comment.
-AC3FORGE_BUILD_HEARTH = "OFF"
+ICLFORGE_BUILD_HEARTH = "OFF"
 # The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) default ON - ON here too since
-# plan phase I4 binds them (planning/ac4.md): the wheel carries ac3forge.ac4 (ac4::Decoder/
+# plan phase I4 binds them (planning/ac4.md): the wheel carries iclforge.ac4 (ac4::Decoder/
 # ac4::Encoder bound directly, python/src/iclforge_ext/ac4/present/ac4_module.cpp), the same
 # "wheel always carries the full surface" reasoning as the matroska/mp4/mpegts/signing targets
 # below.
-AC3FORGE_BUILD_AC4 = "ON"
+ICLFORGE_BUILD_AC4 = "ON"
 # ON since Python bindings completeness: the wheel carries the container muxers/demuxers
-# (ac3forge.containers) and object signing (ac3forge.signing) - the
+# (iclforge.containers) and object signing (iclforge.signing) - the
 # "no containers, no signing" gap its record used to name.
-AC3FORGE_BUILD_MATROSKA = "ON"
-AC3FORGE_BUILD_MP4 = "ON"
-AC3FORGE_BUILD_MPEGTS = "ON"
-# One self-contained extension module in the wheel, no side-by-side ac3forge.dll/.so to
+ICLFORGE_BUILD_MATROSKA = "ON"
+ICLFORGE_BUILD_MP4 = "ON"
+ICLFORGE_BUILD_MPEGTS = "ON"
+# One self-contained extension module in the wheel, no side-by-side iclforge_ac3.dll/.so to
 # redistribute - see python/CMakeLists.txt's own comment on iclforge::ac3 resolving to iclforge_ac3_static.
 BUILD_SHARED_LIBS = "OFF"
 

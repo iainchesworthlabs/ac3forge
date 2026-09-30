@@ -261,9 +261,9 @@ jobs:
       # Configure / build / test
       # ---------------------------------------------------------------------
       # Toolchain assert, vcpkg setup, Configure (presets carry generator,
-      # compiler, Release, AC3FORGE_BUILD_GUI=OFF - `cmake --preset
+      # compiler, Release, ICLFORGE_BUILD_GUI=OFF - `cmake --preset
       # config-<leg>` locally reproduces this exactly except for the
-      # QT_ROOT_DIR/-DAC3FORGE_BUILD_GUI overrides the action bolts on),
+      # QT_ROOT_DIR/-DICLFORGE_BUILD_GUI overrides the action bolts on),
       # Build (-k 0, warnings-as-errors) and Test - extracted into
       # ./.github/actions/build-leg (docs/ci-lanes.md, CI lane partitions
       # plan) so splitting this file into one reusable workflow per platform
@@ -338,7 +338,7 @@ jobs:
 
       # A third run of the same gate, against a decoder built float32 rather
       # than double (minimum-footprint decoder profile). Unlike mode=reference above this cannot be a
-      # token: AC3FORGE_DECODE_SCALAR is a BUILD option
+      # token: ICLFORGE_DECODE_SCALAR is a BUILD option
       # (src/ac3/variants/), so it needs its own binary.
       #
       # Why it is worth a second build. Every fixture both bare-metal legs
@@ -362,7 +362,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset "config-${MATRIX_PRESET}" -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
+          cmake --preset "config-${MATRIX_PRESET}" -B build/decode-scalar-float                 -DICLFORGE_DECODE_SCALAR=float
           cmake --build build/decode-scalar-float --target ac3cli
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
@@ -409,7 +409,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset "config-${MATRIX_PRESET}" -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
+          cmake --preset "config-${MATRIX_PRESET}" -B build/decode-scalar-fixed -DICLFORGE_DECODE_SCALAR=fixed
           cmake --build build/decode-scalar-fixed --target ac3cli
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
@@ -462,7 +462,7 @@ jobs:
           ./tools/checks/run_baremetal_probe.sh --ac4 --host | tee "$RUNNER_TEMP/ac4-host.txt"
           python3 tools/checks/check_probe_hashes.py --expected tests/golden/ac4-probe-pcm-hashes.json "$RUNNER_TEMP/ac4-host.txt"
 
-      # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
+      # The same two questions for the ENCODE path's scalar. ICLFORGE_ENCODE_SCALAR
       # (src/ac3/variants/encode-scalar-{float64,float32}/) is the axis the minimum-footprint
       # profile encodes on for the ESP32-S3, and a float encoder is a different
       # thing from a float decoder: it makes its own decisions at its own
@@ -479,7 +479,7 @@ jobs:
         run: |
           set -euo pipefail
           cmake --preset "config-${MATRIX_PRESET}" -B build/encode-scalar-float \
-                -DAC3FORGE_ENCODE_SCALAR=float
+                -DICLFORGE_ENCODE_SCALAR=float
           cmake --build build/encode-scalar-float --target ac3cli
         env:
           MATRIX_PRESET: ${{ matrix.preset }}
@@ -607,10 +607,10 @@ jobs:
       # would not reach on its own. ASAN_OPTIONS/UBSAN_OPTIONS mirror what the
       # ctest preset already sets for the Test step above.
       #
-      # AC3FORGE_CROSS_TIER_CHECK runs this same matrix twice more, under
-      # AC3FORGE_SIMD_TIER=sse2 then =avx2, byte-diffing the two output
+      # ICLFORGE_CROSS_TIER_CHECK runs this same matrix twice more, under
+      # ICLFORGE_SIMD_TIER=sse2 then =avx2, byte-diffing the two output
       # trees (see run_codec_matrix.sh's own header comment) - gated the
-      # same way AC3FORGE_REQUIRE_AVX2 is above, to the one leg pinned to a
+      # same way ICLFORGE_REQUIRE_AVX2 is above, to the one leg pinned to a
       # GitHub-hosted (therefore AVX2-capable) runner rather than the
       # dynamic self-hosted/GitHub-hosted labels most legs use.
       - name: Codec matrix (sanitizer build)
@@ -619,7 +619,7 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1
-          AC3FORGE_CROSS_TIER_CHECK: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '0' }}
+          ICLFORGE_CROSS_TIER_CHECK: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '0' }}
           MATRIX_PRESET: ${{ matrix.preset }}
         run: bash tools/ci/run_codec_matrix.sh "build/config-${MATRIX_PRESET}/bin/ac3cli"
 
@@ -674,7 +674,7 @@ jobs:
           fi
           # Word-split on purpose: $extra is either empty or two flags.
           # shellcheck disable=SC2086
-          python3 tools/generators/gen_conformance_vectors.py --cli "$cli" --out "dist/ac3forge-conformance-vectors-${version}" $extra
+          python3 tools/generators/gen_conformance_vectors.py --cli "$cli" --out "dist/iclforge-conformance-vectors-${version}" $extra
 
       - name: Upload conformance vectors
         if: matrix.conformance_vectors && inputs.publish_conformance_vectors
@@ -690,7 +690,7 @@ jobs:
       # of the dependency being optional, and it is a claim that rots silently
       # unless something checks it.
       #
-      # CMAKE_DISABLE_FIND_PACKAGE_ALSA rather than -DAC3FORGE_WITH_ALSA=OFF,
+      # CMAKE_DISABLE_FIND_PACKAGE_ALSA rather than -DICLFORGE_WITH_ALSA=OFF,
       # because OFF skips find_package() altogether: this way the AUTO path
       # runs and genuinely fails to find ALSA, which is what a machine missing
       # the package actually does. The assertion afterwards is the point of the
@@ -770,7 +770,7 @@ jobs:
           if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
           export DEBIAN_FRONTEND=noninteractive
           # libpipewire for the engine, libxcb for its X11 full-screen check
-          # (apps/crucible/CMakeLists.txt, AC3FORGE_CRUCIBLE_X11; asserted on
+          # (apps/crucible/CMakeLists.txt, ICLFORGE_CRUCIBLE_X11; asserted on
           # below, since AUTO would quietly leave it out), dpkg-dev for the
           # .deb's shlibdeps,
           # and distro Qt for the window and its Qt Quick tests - the same
@@ -810,8 +810,8 @@ jobs:
           # through to `git describe` when it is, which is what every ordinary
           # CI run wants.
           cmake --preset "config-${MATRIX_PRESET}" -B build/crucible \
-            -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_BUILD_TESTS=ON \
-            -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
+            -DICLFORGE_BUILD_CRUCIBLE=ON -DICLFORGE_BUILD_TESTS=ON \
+            -DICLFORGE_WITH_ALSA=OFF -DICLFORGE_WITH_PIPEWIRE=ON \
             -DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT" \
             2>&1 | tee /tmp/crucible-configure.log
           grep -q 'Audio backend  : pipewire' /tmp/crucible-configure.log || {
@@ -1006,7 +1006,7 @@ jobs:
       # the same claim as every in-tree consumer actually linking and
       # running against the real .so - ac3cli/ac3tests/every example,
       # including mux_mkv, the one that needs libmatroska.so alongside
-      # libac3forge.so. On linux-llvm only, the same "one extra pass inside
+      # libiclforge_ac3.so. On linux-llvm only, the same "one extra pass inside
       # an existing leg, not a new matrix entry" shape as the ALSA fallback
       # step above - confirmed locally in WSL2 Ubuntu before landing here,
       # not assumed: 304/304 tests passed, and `ldd bin/ac3cli` showed both
@@ -1027,7 +1027,7 @@ jobs:
       # characteristic of this configuration, not runner noise, and not a
       # regression in the codec itself.
       #
-      # ctest alone cannot say whether ac3tests ran against libac3forge.so, and
+      # ctest alone cannot say whether ac3tests ran against libiclforge_ac3.so, and
       # at one point it did not: the C API library embeds the codec as a static
       # archive, exported its C++ symbols, and put the archive on the link line
       # of everything that linked it, all of which beat the .so. Every test
@@ -1056,18 +1056,18 @@ jobs:
 
       # A build tree is not an installed package. tests/capi and the C examples compile against
       # the build tree, where every generated header is already on the include path whether or
-      # not an install rule copies it, so `cmake --install` shipped an ac3forge_c/ac3forge.h that
-      # #included an ac3forge_c/version.h it never installed, and nothing here noticed. This
+      # not an install rule copies it, so `cmake --install` shipped an iclforge_c/iclforge.h that
+      # #included an iclforge_c/version.h it never installed, and nothing here noticed. This
       # installs the two trees this leg has just built (linux-llvm: Release, both linkages
       # installed; the shared pass above: Debug, BUILD_SHARED_LIBS=ON) and builds and runs a C
-      # program against each prefix through find_package(ac3forge), and again through pkg-config,
+      # program against each prefix through find_package(iclforge), and again through pkg-config,
       # and C++ programs that decode an AC-4 stream with the installed AC-4 decoder and encode one
       # with the installed AC-4 encoder, both ways.
       #
-      # A vcpkg or Conan package installs one linkage only (AC3FORGE_INSTALL_BOTH_LINKAGES=OFF),
+      # A vcpkg or Conan package installs one linkage only (ICLFORGE_INSTALL_BOTH_LINKAGES=OFF),
       # which neither tree above does, and two defects showed only there: static archives that
-      # left {fmt} symbols undefined (cmake/Fmt.cmake) and a static ac3forge_c.pc that named neither
-      # libac3forge_static.a nor the C++ runtime (cmake/PkgConfig.cmake). The .pc files of both
+      # left {fmt} symbols undefined (cmake/Fmt.cmake) and a static iclforge_c.pc that named neither
+      # libiclforge_ac3_static.a nor the C++ runtime (cmake/PkgConfig.cmake). The .pc files of both
       # trees above name the shared library, so a third tree is configured with one linkage. It
       # builds only what the install holds, so no tests, examples, CLI or Hearth. The AC-4
       # libraries are in the install since phases D8 and E7 of planning/ac4.md, and so in this
@@ -1078,9 +1078,9 @@ jobs:
         run: |
           set -euo pipefail
           cmake --preset config-linux-llvm -B build/install-consumer-static \
-            -DAC3FORGE_BUILD_TESTS=OFF -DAC3FORGE_BUILD_CLI=OFF -DAC3FORGE_BUILD_EXAMPLES=OFF \
-            -DAC3FORGE_BUILD_HEARTH=OFF -DVCPKG_MANIFEST_FEATURES= \
-            -DAC3FORGE_INSTALL_BOTH_LINKAGES=OFF
+            -DICLFORGE_BUILD_TESTS=OFF -DICLFORGE_BUILD_CLI=OFF -DICLFORGE_BUILD_EXAMPLES=OFF \
+            -DICLFORGE_BUILD_HEARTH=OFF -DVCPKG_MANIFEST_FEATURES= \
+            -DICLFORGE_INSTALL_BOTH_LINKAGES=OFF
           cmake --build build/install-consumer-static
           bash tools/checks/check_install_consumer.sh \
             build/config-linux-llvm \
@@ -1168,18 +1168,18 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           # The runtime component's own archive. The [0-9] is what keeps this
-          # off the sibling ac3forge-dev-* and ac3forge-crucible-* archives,
+          # off the sibling iclforge-dev-* and ac3forge-crucible-* archives,
           # which are different components with different contents and are
           # not expected to carry these files (cmake/Packaging.cmake names
           # all three). Linux gets a TGZ, macOS only ever a ZIP - see that
           # file's own APPLE/UNIX generator branches.
           if [ "$RUNNER_OS" = "Linux" ]; then
-            archives=(packages/ac3forge-[0-9]*.tar.gz)
+            archives=(packages/iclforge-[0-9]*.tar.gz)
           else
-            archives=(packages/ac3forge-[0-9]*.zip)
+            archives=(packages/iclforge-[0-9]*.zip)
           fi
           if [ ${#archives[@]} -eq 0 ]; then
-            echo "::error::no runtime archive in packages/ - the runtime component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake), or CPACK_ARCHIVE_RUNTIME_FILE_NAME no longer produces the ac3forge-<version>-<system> name this looks for."
+            echo "::error::no runtime archive in packages/ - the runtime component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake), or CPACK_ARCHIVE_RUNTIME_FILE_NAME no longer produces the iclforge-<version>-<system> name this looks for."
             ls -1 packages/ || true
             exit 1
           fi

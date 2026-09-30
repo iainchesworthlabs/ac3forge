@@ -153,7 +153,7 @@ FORBIDDEN_LINUX = ("driver/install.ps1", "driver/remove.ps1", "driver/NullSinkDe
 # installed beside it at the archive root, the same "bin/" GNUInstallDirs
 # gives every platform and the same place ac3cli sits beside ac3gui.app in
 # the runtime archive. Confirmed against a real packages-macos-llvm CI
-# artifact's ac3forge-<version>-Darwin.zip (the runtime component's own
+# artifact's iclforge-<version>-Darwin.zip (the runtime component's own
 # archive, which goes through the identical qt_generate_deploy_qml_app_script()
 # apps/crucible uses) for the bundle's internal shape; the crucible archive
 # itself did not exist yet to download directly - see check_macos()'s own

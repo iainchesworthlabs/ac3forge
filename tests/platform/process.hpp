@@ -25,7 +25,7 @@ namespace iclforge::test::platform {
 // This process's OS-assigned id, rendered as a string.
 //
 // Every test that writes a file puts its artefacts under a leaf of
-// AC3FORGE_TEST_SCRATCH_DIR (see tests/CMakeLists.txt), and that root is
+// ICLFORGE_TEST_SCRATCH_DIR (see tests/CMakeLists.txt), and that root is
 // keyed to the build tree rather than to the process - so two ac3tests
 // runs against one build tree (a concurrent re-run, or two sessions sharing
 // a tree) would otherwise race on the same directory, one's

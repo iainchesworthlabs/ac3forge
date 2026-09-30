@@ -8,7 +8,7 @@ Same discipline as the rest of python/tests: real tones, several frames, specifi
 
 import math
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

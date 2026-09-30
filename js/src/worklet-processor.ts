@@ -12,20 +12,20 @@
 import { RingBufferReader } from "./ring-buffer.js";
 import type { RingBufferLayout } from "./ring-buffer.js";
 
-export interface Ac3ForgeProcessorOptions {
+export interface IclForgeProcessorOptions {
   sab: SharedArrayBuffer;
   layout: RingBufferLayout;
 }
 
-class Ac3ForgeSourceProcessor extends AudioWorkletProcessor {
+class IclForgeSourceProcessor extends AudioWorkletProcessor {
   readonly #reader: RingBufferReader;
 
   constructor(options?: AudioWorkletNodeOptions) {
     super(options);
     if (!options?.processorOptions) {
-      throw new Error("ac3forge-pcm-source requires processorOptions: { sab, layout }");
+      throw new Error("iclforge-pcm-source requires processorOptions: { sab, layout }");
     }
-    const { sab, layout } = options.processorOptions as Ac3ForgeProcessorOptions;
+    const { sab, layout } = options.processorOptions as IclForgeProcessorOptions;
     this.#reader = new RingBufferReader(sab, layout);
   }
 
@@ -43,4 +43,4 @@ class Ac3ForgeSourceProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor("ac3forge-pcm-source", Ac3ForgeSourceProcessor);
+registerProcessor("iclforge-pcm-source", IclForgeSourceProcessor);

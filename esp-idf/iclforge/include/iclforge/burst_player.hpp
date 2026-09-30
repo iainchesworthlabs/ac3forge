@@ -25,7 +25,7 @@
 // the server sends arrives here with the time it should play, and leaves for
 // the sink at that time.
 //
-//   _ac3forge_player@v1's bursts (planning/hearth-sendspin-extension.md, Burst
+//   _iclforge_player@v1's bursts (planning/hearth-sendspin-extension.md, Burst
 //   chunks) are decoded, AC-3 or E-AC-3 with any object layer, and rendered
 //   onto the board's layout by iclforge::render;
 //   player@v1's PCM, which is what Music Assistant sends, is rendered onto the
@@ -54,7 +54,7 @@
 // and the decoder's own - are checked when they arrive and applied by the
 // decode task at the next burst boundary.
 
-namespace ac3forge {
+namespace iclforge {
 
 // Where a burst player writes: a PlayoutSink that can also be opened for a
 // number of outputs. The i2s sink is one; the capture sink is the other.
@@ -221,4 +221,4 @@ class BurstPlayer {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

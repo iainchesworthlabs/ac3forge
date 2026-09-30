@@ -15,7 +15,7 @@
 # -KeyFile copies the key to the guest (C:\Users\atmos\signing.key, never
 # written to this repo) and points ac3crucible's own signing/keyPath setting at
 # it directly in the guest's registry, so every ac3crucible process this script
-# starts loads it and Atmos mode shows. (AC3FORGE_SIGNING_KEY_FILE would be
+# starts loads it and Atmos mode shows. (ICLFORGE_SIGNING_KEY_FILE would be
 # the documented alternative, but runProgramInGuest has no reliable way to
 # set an env var for the process it launches on this guest - a cmd.exe /c
 # "set X=Y&& program" wrapper fails outright, even without the key: plain
@@ -112,9 +112,9 @@ if ($KeyFile) {
     # ac3crucible's QSettings organisation/application ("ac3forge"/"Crucible",
     # set with the four-argument QSettings constructor in
     # crucible_controller.cpp) is where
-    # signing/keyPath lives on Windows: HKCU\Software\ac3forge\Crucible.
+    # signing/keyPath lives on Windows: HKCU\Software\iclforge\Crucible.
     Invoke-Guest @"
-`$regPath = 'HKCU:\Software\ac3forge\Crucible\signing'
+`$regPath = 'HKCU:\Software\iclforge\Crucible\signing'
 New-Item -Path `$regPath -Force | Out-Null
 Set-ItemProperty -Path `$regPath -Name 'keyPath' -Value '$guestKeyPath'
 "@ 'setkey' | ForEach-Object { "  $_" }

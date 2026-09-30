@@ -130,8 +130,8 @@ void settings_load() {
     // (source/http/net/wifi/network.cpp) and an unprovisioned board simply
     // has no network here.
     default_name(g_settings.name);
-    g_settings.slot_bits = CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS;
-    g_settings.second_line = CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE != 0;
+    g_settings.slot_bits = CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS;
+    g_settings.second_line = CONFIG_ICLFORGE_EXAMPLE_I2S_SECOND_LINE != 0;
 
     nvs_handle_t handle = 0;
     if (nvs_open(kNamespace, NVS_READONLY, &handle) != ESP_OK) {

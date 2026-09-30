@@ -3,7 +3,7 @@
 #include <string>
 #include <string_view>
 
-// Compiled only when AC3FORGE_BUILD_ADM did NOT turn iclforge::iab/iclforge::admbridge's IAB
+// Compiled only when ICLFORGE_BUILD_ADM did NOT turn iclforge::iab/iclforge::admbridge's IAB
 // mapping on (see apps/cli/CMakeLists.txt) - see ../atmos_iab.hpp's own top comment for why this
 // file, rather than a preprocessor conditional inside main.cpp, is the mechanism. This translation
 // unit links neither iclforge::admbridge nor its IAB mapping and includes neither of their headers.
@@ -19,7 +19,7 @@ std::expected<IabAtmosSource, std::string> load_iab_atmos_source(std::string_vie
     // ever bypassed or this function gains another caller - the same "never silently do nothing"
     // standard this project's other refusal paths hold themselves to.
     return std::unexpected(std::string(
-        "this build was not configured with -DAC3FORGE_BUILD_ADM=ON "
+        "this build was not configured with -DICLFORGE_BUILD_ADM=ON "
         "(iclforge::iab's IAB mapping / iclforge::admbridge were not linked in)"));
 }
 

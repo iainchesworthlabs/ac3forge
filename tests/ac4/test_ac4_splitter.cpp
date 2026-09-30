@@ -22,7 +22,7 @@ namespace {
 namespace fs = std::filesystem;
 
 std::vector<std::byte> read_leg(const std::string& leg) {
-    const fs::path path = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
+    const fs::path path = fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
     std::ifstream in(path, std::ios::binary);
     const std::vector<char> raw((std::istreambuf_iterator<char>(in)),
                                 std::istreambuf_iterator<char>());

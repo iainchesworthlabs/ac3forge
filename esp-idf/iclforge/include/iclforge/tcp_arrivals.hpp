@@ -29,7 +29,7 @@
 // date earlier than the bytes came, so a clock sample it dates can only look
 // slower than it was, which the clock's filter is built to leave out.
 
-namespace ac3forge {
+namespace iclforge {
 
 class ArrivalLog {
    public:
@@ -126,7 +126,7 @@ void watch(std::uint16_t port);
 
 // The logged stream on the connected socket `fd`, held for its reader until
 // release(): a handle, or -1 when the hook did not see it begin, as when the
-// project has not installed the hook (lwip_hooks/ac3forge_lwip_hooks.h) or
+// project has not installed the hook (lwip_hooks/iclforge_lwip_hooks.h) or
 // the peer is on IPv6.
 [[nodiscard]] int claim(int fd);
 void release(int handle);
@@ -136,4 +136,4 @@ void release(int handle);
 
 }  // namespace tcp_arrivals
 
-}  // namespace ac3forge
+}  // namespace iclforge

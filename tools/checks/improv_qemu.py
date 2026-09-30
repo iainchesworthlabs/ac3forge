@@ -70,7 +70,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# The packet format: ac3forge/improv.hpp, byte for byte.
+# The packet format: iclforge/improv.hpp, byte for byte.
 # ---------------------------------------------------------------------------
 
 HEADER = b"IMPROV"

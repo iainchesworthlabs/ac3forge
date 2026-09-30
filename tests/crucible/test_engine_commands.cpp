@@ -131,7 +131,7 @@ void unset_env(const char* name) { iclforge::test::platform::unset_environment(n
 
 // A scratch directory of this process's own, for key files.
 std::filesystem::path scratch() {
-    const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} /
+    const auto dir = std::filesystem::path{ICLFORGE_TEST_SCRATCH_DIR} /
                      ("crucible_engine_" + scratch_pid_suffix());
     std::filesystem::create_directories(dir);
     return dir;
@@ -427,32 +427,32 @@ TEST_CASE("crucible engine commands: an empty key path takes the key from the en
     Rig rig;
     // Only this process's environment, and only for this case: the variables
     // are put back as they were before the case ends.
-    const char* had_inline = std::getenv("AC3FORGE_SIGNING_KEY");
+    const char* had_inline = std::getenv("ICLFORGE_SIGNING_KEY");
     const std::optional<std::string> saved_inline =
         had_inline != nullptr ? std::optional<std::string>{had_inline} : std::nullopt;
-    const char* had_file = std::getenv("AC3FORGE_SIGNING_KEY_FILE");
+    const char* had_file = std::getenv("ICLFORGE_SIGNING_KEY_FILE");
     const std::optional<std::string> saved_file =
         had_file != nullptr ? std::optional<std::string>{had_file} : std::nullopt;
-    unset_env("AC3FORGE_SIGNING_KEY_FILE");
-    unset_env("AC3FORGE_SIGNING_KEY");
+    unset_env("ICLFORGE_SIGNING_KEY_FILE");
+    unset_env("ICLFORGE_SIGNING_KEY");
 
     Engine engine(rig.config());
     REQUIRE(engine.start().has_value());
     REQUIRE(wait_for([&] { return rig.noted("signing: no key, 5.1 bed only"); }));
 
-    set_env("AC3FORGE_SIGNING_KEY", "AAECA/8=");
+    set_env("ICLFORGE_SIGNING_KEY", "AAECA/8=");
     engine.load_signing_key("");
     REQUIRE(wait_for([&] { return engine.status().objects_enabled; }));
     CHECK(rig.noted("signing: objects on (key from the environment)"));
     CHECK(engine.status().signing == "signing key loaded from environment: object container will be signed");
     engine.stop();
 
-    unset_env("AC3FORGE_SIGNING_KEY");
+    unset_env("ICLFORGE_SIGNING_KEY");
     if (saved_inline) {
-        set_env("AC3FORGE_SIGNING_KEY", saved_inline->c_str());
+        set_env("ICLFORGE_SIGNING_KEY", saved_inline->c_str());
     }
     if (saved_file) {
-        set_env("AC3FORGE_SIGNING_KEY_FILE", saved_file->c_str());
+        set_env("ICLFORGE_SIGNING_KEY_FILE", saved_file->c_str());
     }
 }
 

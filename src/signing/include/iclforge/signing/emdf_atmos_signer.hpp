@@ -2,7 +2,7 @@
 
 // EMDF Atmos object-signing - clean-room.
 //
-// Computes the keyed EMDF-protection primary tag over an ac3forge Atmos
+// Computes the keyed EMDF-protection primary tag over an iclforge Atmos
 // syncframe and writes it into protection_bits_primary (recomputing crc2), so a
 // decoder that validates the emdf_protection field will accept the frame's JOC
 // object container instead of falling back to the 5.1 bed. See
@@ -40,17 +40,17 @@ namespace iclforge::signing {
 // container (OAMD payload), using `key`. Frames without a container are left
 // untouched. Returns the number of frames signed.
 //
-// Scope: the ac3forge "atmos" output - a single independent 5.1 substream,
+// Scope: the iclforge "atmos" output - a single independent 5.1 substream,
 // frame-level exponent strategy and SNR, no coupling. A frame outside that
 // subset is left unsigned rather than signed wrong - the same "nothing to
 // do here" answer every entry point in this file gives a frame it does not
 // recognise, not a caller error - iclforge::emdf::walk_frame's own `supported`
 // field (ac3/emdf/frame_layout.hpp) is what draws that scope.
-[[nodiscard]] AC3SIGNING_EXPORT int sign_atmos_stream(std::span<std::byte> stream,
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT int sign_atmos_stream(std::span<std::byte> stream,
                                                        const SigningKey& key);
 
 // One syncframe. Returns true if it carried a container and was signed.
-[[nodiscard]] AC3SIGNING_EXPORT bool sign_atmos_frame(std::span<std::byte> frame,
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT bool sign_atmos_frame(std::span<std::byte> frame,
                                                        const SigningKey& key);
 
 // Whether this syncframe carries a non-zero authenticity tag - that is,
@@ -67,7 +67,7 @@ namespace iclforge::signing {
 //
 // Note what this does NOT claim: a true here says a tag is present, never
 // that it is valid. Only verify_atmos_frame below, with the key, says that.
-[[nodiscard]] AC3SIGNING_EXPORT bool has_authenticity_tag(std::span<const std::byte> frame);
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT bool has_authenticity_tag(std::span<const std::byte> frame);
 
 // A frame with no EMDF object container is neither "verified" nor "failed" -
 // there is nothing in it to check - so that case is its own outcome
@@ -96,7 +96,7 @@ struct VerifySummary {
 // E-AC-3 frame is an ordinary input here, answered with kNoContainer, not a
 // caller error - see sign_atmos_stream's own comment above for where that
 // tolerance actually lives.
-[[nodiscard]] AC3SIGNING_EXPORT VerifySummary verify_atmos_stream(std::span<const std::byte> stream,
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT VerifySummary verify_atmos_stream(std::span<const std::byte> stream,
                                                                    const SigningKey& key);
 
 // One syncframe. Mirrors sign_atmos_frame's exact construction (excise the
@@ -104,7 +104,7 @@ struct VerifySummary {
 // container to build message B, HMAC(key, A||B) truncated to the primary
 // protection field's width) but reads the existing protection_bits_primary
 // bits instead of writing computed ones, and compares.
-[[nodiscard]] AC3SIGNING_EXPORT VerifyResult verify_atmos_frame(std::span<const std::byte> frame,
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT VerifyResult verify_atmos_frame(std::span<const std::byte> frame,
                                                                  const SigningKey& key);
 
 }  // namespace iclforge::signing

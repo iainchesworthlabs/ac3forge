@@ -657,7 +657,7 @@ TEST_CASE("awkward doubles survive the serialised form", "[oba][scene]") {
 TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
     SECTION("a minimal scene needs only the version, one object and its points") {
         const auto scene = iclforge::oba::scene_from_json(
-            R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
+            R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
         REQUIRE(scene.has_value());
         CHECK(scene->object_count() == 1);
         CHECK(scene->objects()[0].name.empty());
@@ -668,7 +668,7 @@ TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
 
     SECTION("an orientation may be given in degrees instead of radians") {
         const auto scene = iclforge::oba::scene_from_json(
-            R"({"ac3forge_scene":1,"orientation":{"yaw_deg":90},)"
+            R"({"iclforge_scene":1,"orientation":{"yaw_deg":90},)"
             R"("objects":[{"automation":[{"t":0,"x":0.5,"y":0,"z":0}]}]})");
         REQUIRE(scene.has_value());
         CHECK_THAT(scene->orientation().yaw_rad, WithinRel(std::numbers::pi / 2.0, 1e-15));
@@ -677,7 +677,7 @@ TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
 
     SECTION("bed labels name TS 103 420 Table 12's channels") {
         const auto scene = iclforge::oba::scene_from_json(
-            R"({"ac3forge_scene":1,"objects":[{"bed":["lr","c","lfe","ls_rs"],)"
+            R"({"iclforge_scene":1,"objects":[{"bed":["lr","c","lfe","ls_rs"],)"
             R"("automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
         REQUIRE(scene.has_value());
         CHECK(scene->objects()[0].bed == iclforge::oba::bed::k51);
@@ -685,7 +685,7 @@ TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
 
     SECTION("string escapes and numeric forms are read as JSON defines them") {
         const auto scene = iclforge::oba::scene_from_json(
-            R"({"ac3forge_scene":1,"objects":[{"name":"aé\t\"b\"",)"
+            R"({"iclforge_scene":1,"objects":[{"name":"aé\t\"b\"",)"
             R"("automation":[{"t":1e-3,"x":5E-1,"y":-0.0,"z":0,"gain":2}]}]})");
         REQUIRE(scene.has_value());
         CHECK(scene->objects()[0].name == "aé\t\"b\"");
@@ -695,7 +695,7 @@ TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
     }
 
     SECTION("an empty objects array is a legal empty scene") {
-        const auto scene = iclforge::oba::scene_from_json(R"({"ac3forge_scene":1,"objects":[]})");
+        const auto scene = iclforge::oba::scene_from_json(R"({"iclforge_scene":1,"objects":[]})");
         REQUIRE(scene.has_value());
         CHECK(scene->object_count() == 0);
     }
@@ -720,7 +720,7 @@ TEST_CASE("every string escape and every empty form reads as JSON defines it",
     // width this format writes, and a lone surrogate replaced rather than
     // passed through as ill-formed UTF-8.
     const auto read = iclforge::oba::scene_from_json(
-        R"({"ac3forge_scene":1,"orientation":{},"objects":[{"name":"\/\b\f\rAé€\ud800",)"
+        R"({"iclforge_scene":1,"orientation":{},"objects":[{"name":"\/\b\f\rAé€\ud800",)"
         R"("bed":[],"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
     REQUIRE(read.has_value());
     CHECK(read->objects()[0].name == "/\b\f\rA\xc3\xa9\xe2\x82\xac\xef\xbf\xbd");
@@ -729,7 +729,7 @@ TEST_CASE("every string escape and every empty form reads as JSON defines it",
 
     // Degrees are accepted for all three angles, not only yaw.
     const auto turned = iclforge::oba::scene_from_json(
-        R"({"ac3forge_scene":1,"orientation":{"pitch_deg":-90,"roll_deg":180},)"
+        R"({"iclforge_scene":1,"orientation":{"pitch_deg":-90,"roll_deg":180},)"
         R"("objects":[{"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
     REQUIRE(turned.has_value());
     CHECK_THAT(turned->orientation().pitch_rad, WithinRel(-std::numbers::pi / 2.0, 1e-15));
@@ -747,47 +747,47 @@ TEST_CASE("the JSON reader refuses malformed escapes, numbers and empty members"
         CHECK(scene.error().message.find(message) != std::string::npos);
     };
     using iclforge::oba::SceneErrorKind;
-    const std::string head = R"({"ac3forge_scene":1,"objects":[{"name":)";
+    const std::string head = R"({"iclforge_scene":1,"objects":[{"name":)";
     const std::string tail = R"(,"automation":[{"t":0,"x":0,"y":0,"z":0}]}]})";
 
     refuses(head + R"("\q")" + tail, SceneErrorKind::kSyntax, "unknown string escape");
     refuses(head + R"("\u00zz")" + tail, SceneErrorKind::kSyntax, "malformed \\u escape");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"name":"\u00)", SceneErrorKind::kSyntax,
+    refuses(R"({"iclforge_scene":1,"objects":[{"name":"\u00)", SceneErrorKind::kSyntax,
             "truncated \\u escape");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"name":"\)", SceneErrorKind::kSyntax,
+    refuses(R"({"iclforge_scene":1,"objects":[{"name":"\)", SceneErrorKind::kSyntax,
             "unterminated string");
     // A number too large for a double is not a number this format carries:
     // it is refused where it stands rather than read as infinity.
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":1e999,"x":0,"y":0,"z":0}]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{"t":1e999,"x":0,"y":0,"z":0}]}]})",
             SceneErrorKind::kSyntax, "expected a number");
-    refuses(R"({"ac3forge_scene":"1","objects":[]})", SceneErrorKind::kSyntax, "expected a number");
+    refuses(R"({"iclforge_scene":"1","objects":[]})", SceneErrorKind::kSyntax, "expected a number");
     // Empty braces where members are required are diagnosed as the missing
     // member, not as a syntax error somewhere after them.
-    refuses(R"({"ac3forge_scene":1,"objects":[{}]})", SceneErrorKind::kBadField,
+    refuses(R"({"iclforge_scene":1,"objects":[{}]})", SceneErrorKind::kBadField,
             "needs an 'automation' array");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{}]}]})", SceneErrorKind::kBadField,
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{}]}]})", SceneErrorKind::kBadField,
             "needs at least 't', 'x', 'y' and 'z'");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":{}}]})", SceneErrorKind::kSyntax,
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":{}}]})", SceneErrorKind::kSyntax,
             "expected '['");
-    refuses(R"({"ac3forge_scene":1,"objects":{}})", SceneErrorKind::kSyntax, "expected '['");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"bed":"lr","automation":[]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":{}})", SceneErrorKind::kSyntax, "expected '['");
+    refuses(R"({"iclforge_scene":1,"objects":[{"bed":"lr","automation":[]}]})",
             SceneErrorKind::kSyntax, "expected '['");
-    refuses(R"({"ac3forge_scene":1,"orientation":[],"objects":[]})", SceneErrorKind::kSyntax,
+    refuses(R"({"iclforge_scene":1,"orientation":[],"objects":[]})", SceneErrorKind::kSyntax,
             "expected '{'");
-    refuses(R"({"ac3forge_scene":1,"orientation":{"roll_rad":1,"roll_rad":2},"objects":[]})",
+    refuses(R"({"iclforge_scene":1,"orientation":{"roll_rad":1,"roll_rad":2},"objects":[]})",
             SceneErrorKind::kBadField, "twice");
-    refuses(R"({"ac3forge_scene" 1,"objects":[]})", SceneErrorKind::kSyntax, "expected ':'");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0} {}]}]})",
+    refuses(R"({"iclforge_scene" 1,"objects":[]})", SceneErrorKind::kSyntax, "expected ':'");
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0} {}]}]})",
             SceneErrorKind::kSyntax, "expected ']'");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0 "x":0}]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0 "x":0}]}]})",
             SceneErrorKind::kSyntax, "expected '}'");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"name":"a" "automation":[]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"name":"a" "automation":[]}]})",
             SceneErrorKind::kSyntax, "expected '}'");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0}]} {}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0}]} {}]})",
             SceneErrorKind::kSyntax, "expected ']'");
-    refuses(R"({"ac3forge_scene":1,"objects":[{"name":7,"automation":[]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"name":7,"automation":[]}]})",
             SceneErrorKind::kSyntax, "expected '\"'");
-    refuses(R"({"ac3forge_scene":1,"orientation":{"yaw_rad":x},"objects":[]})",
+    refuses(R"({"iclforge_scene":1,"orientation":{"yaw_rad":x},"objects":[]})",
             SceneErrorKind::kSyntax, "expected a number");
 }
 
@@ -803,38 +803,38 @@ TEST_CASE("the JSON reader refuses what it should", "[oba][scene]") {
     refuses("", SceneErrorKind::kSyntax);
     refuses("[]", SceneErrorKind::kSyntax);
     refuses(R"({"objects":[]})", SceneErrorKind::kBadField);
-    refuses(R"({"ac3forge_scene":1})", SceneErrorKind::kBadField);
-    refuses(R"({"ac3forge_scene":2,"objects":[]})", SceneErrorKind::kBadValue);
-    refuses(R"({"ac3forge_scene":1,"objects":[]} trailing)", SceneErrorKind::kSyntax);
-    refuses(R"({"ac3forge_scene":1,"objects":[],"nonsense":1})", SceneErrorKind::kBadField);
+    refuses(R"({"iclforge_scene":1})", SceneErrorKind::kBadField);
+    refuses(R"({"iclforge_scene":2,"objects":[]})", SceneErrorKind::kBadValue);
+    refuses(R"({"iclforge_scene":1,"objects":[]} trailing)", SceneErrorKind::kSyntax);
+    refuses(R"({"iclforge_scene":1,"objects":[],"nonsense":1})", SceneErrorKind::kBadField);
     // A misspelled member is an error, not a silent default - the whole reason
     // the reader is strict.
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0,"gian":2}]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0,"gian":2}]}]})",
             SceneErrorKind::kBadField);
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0}]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0}]}]})",
             SceneErrorKind::kBadField);
-    refuses(R"({"ac3forge_scene":1,"objects":[{"name":"x"}]})", SceneErrorKind::kBadField);
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"name":"x"}]})", SceneErrorKind::kBadField);
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[]}]})",
             SceneErrorKind::kEmptyObject);
     refuses(
-        R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0,"interp":"ease"}]}]})",
+        R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0,"interp":"ease"}]}]})",
         SceneErrorKind::kBadValue);
-    refuses(R"({"ac3forge_scene":1,"objects":[{"bed":["middle"],)"
+    refuses(R"({"iclforge_scene":1,"objects":[{"bed":["middle"],)"
             R"("automation":[{"t":0,"x":0,"y":0,"z":0}]}]})",
             SceneErrorKind::kBadValue);
-    refuses(R"({"ac3forge_scene":1,"orientation":{"yaw_rad":0,"yaw_deg":90},"objects":[]})",
+    refuses(R"({"iclforge_scene":1,"orientation":{"yaw_rad":0,"yaw_deg":90},"objects":[]})",
             SceneErrorKind::kBadField);
-    refuses(R"({"ac3forge_scene":1,"orientation":{"tilt":1},"objects":[]})",
+    refuses(R"({"iclforge_scene":1,"orientation":{"tilt":1},"objects":[]})",
             SceneErrorKind::kBadField);
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":nan}]}]})",
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":nan}]}]})",
             SceneErrorKind::kSyntax);
-    refuses(R"({"ac3forge_scene":1,"objects":[{"name":"unterminated})", SceneErrorKind::kSyntax);
-    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0}]}])",
+    refuses(R"({"iclforge_scene":1,"objects":[{"name":"unterminated})", SceneErrorKind::kSyntax);
+    refuses(R"({"iclforge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0}]}])",
             SceneErrorKind::kSyntax);
 
     SECTION("an error points at the line it is on") {
         const auto scene = iclforge::oba::scene_from_json(
-            "{\n  \"ac3forge_scene\": 1,\n  \"objects\": [\n    { \"wrong\": 1 }\n  ]\n}\n");
+            "{\n  \"iclforge_scene\": 1,\n  \"objects\": [\n    { \"wrong\": 1 }\n  ]\n}\n");
         REQUIRE_FALSE(scene.has_value());
         CHECK(scene.error().line == 4);
     }

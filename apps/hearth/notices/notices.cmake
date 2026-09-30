@@ -14,7 +14,7 @@
 # include()d from apps/hearth/CMakeLists.txt for a full Sendspin build only, AFTER that file's
 # add_subdirectory(ui) - this file's Qt section needs ui/'s own PARENT_SCOPE exports
 # (AC3HEARTH_UI_QT_FOUND, AC3HEARTH_UI_QT_VERSION), which only exist once ui/ has run. A
-# core-only build (AC3FORGE_SENDSPIN_CORE_ONLY) skips ui/ along with this file entirely, so
+# core-only build (ICLFORGE_SENDSPIN_CORE_ONLY) skips ui/ along with this file entirely, so
 # neither var is ever read there.
 # ---------------------------------------------------------------------------
 include(Notices)
@@ -92,16 +92,16 @@ if(AC3HEARTH_UI_QT_FOUND AND (WIN32 OR APPLE))
     endif()
 endif()
 # {fmt}'s version, from its package or the pinned FetchContent fallback
-# (cmake/Fmt.cmake) - the same fmt_VERSION/AC3FORGE_FMT_VERSION choice
+# (cmake/Fmt.cmake) - the same fmt_VERSION/ICLFORGE_FMT_VERSION choice
 # apps/crucible/notices/notices.cmake makes for the identical shared fragment.
 if(fmt_VERSION)
     set(AC3HEARTH_FMT_VERSION "${fmt_VERSION}")
 else()
-    set(AC3HEARTH_FMT_VERSION "${AC3FORGE_FMT_VERSION}")
+    set(AC3HEARTH_FMT_VERSION "${ICLFORGE_FMT_VERSION}")
 endif()
 # Tracy's version, from its package - the same Tracy_VERSION/"not reported" choice
 # apps/crucible/notices/notices.cmake makes for the identical shared fragment (see the
-# AC3FORGE_ENABLE_TRACY block below for why this is computed unconditionally).
+# ICLFORGE_ENABLE_TRACY block below for why this is computed unconditionally).
 if(Tracy_VERSION)
     set(AC3HEARTH_TRACY_VERSION "${Tracy_VERSION}")
 else()
@@ -127,13 +127,13 @@ if(EXISTS "${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
     list(APPEND AC3HEARTH_NOTICE_FILES "LIBOGG_COPYRIGHT=${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
 endif()
 list(APPEND AC3HEARTH_NOTICE_FRAGMENTS opus time-filter fmt fonts material-symbols trademarks)
-# Tracy's client library: ac3hearth_engine (engine/CMakeLists.txt) links ac3::tracy
+# Tracy's client library: ac3hearth_engine (engine/CMakeLists.txt) links iclforge::tracy
 # unconditionally, which only pulls in Tracy::TracyClient - and so is only worth
-# disclosing - when AC3FORGE_ENABLE_TRACY is on (cmake/Tracy.cmake). Same fact,
+# disclosing - when ICLFORGE_ENABLE_TRACY is on (cmake/Tracy.cmake). Same fact,
 # same fragment (found via the apps/crucible/notices/fragments FRAGMENT_DIR entry
 # below, not copied) and same conditional as apps/crucible/notices/notices.cmake's
 # own tracy section.
-if(AC3FORGE_ENABLE_TRACY)
+if(ICLFORGE_ENABLE_TRACY)
     list(APPEND AC3HEARTH_NOTICE_FRAGMENTS tracy)
 endif()
 list(APPEND AC3HEARTH_NOTICE_TOKENS
@@ -152,9 +152,9 @@ list(APPEND AC3HEARTH_NOTICE_TOKENS
 # LGPL3 is read only when qt-bundled is actually in the fragment list above; FMT_MIT
 # and OFL are read by the unconditional fmt/fonts fragments just added; MATERIAL_SYMBOLS_
 # LICENSE by the unconditional material-symbols fragment; TRACY_BSD only when
-# AC3FORGE_ENABLE_TRACY added tracy above. ac3_generate_notices ignores a {{FILE:...}}
+# ICLFORGE_ENABLE_TRACY added tracy above. ac3_generate_notices ignores a {{FILE:...}}
 # marker no fragment mentions, so passing all five here unconditionally is safe
-# regardless of platform, Qt-bundling or AC3FORGE_ENABLE_TRACY.
+# regardless of platform, Qt-bundling or ICLFORGE_ENABLE_TRACY.
 list(APPEND AC3HEARTH_NOTICE_FILES
     "LGPL3=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/LGPL-3.0.txt"
     "FMT_MIT=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/MIT-fmt.txt"

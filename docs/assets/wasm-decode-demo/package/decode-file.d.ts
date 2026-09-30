@@ -1,4 +1,4 @@
-import type { Ac3ForgeEmbindModule, FoldOptions } from "./types.js";
+import type { IclForgeEmbindModule, FoldOptions } from "./types.js";
 export interface DecodedProgram {
     streamKind: string;
     sampleRate: number;
@@ -25,5 +25,5 @@ export interface DecodedProgram {
 export interface DecodeFileOptions {
     fold?: FoldOptions;
 }
-export declare function decodeFile(module: Ac3ForgeEmbindModule, bytes: Uint8Array, options?: DecodeFileOptions): DecodedProgram;
+export declare function decodeFile(module: IclForgeEmbindModule, bytes: Uint8Array, options?: DecodeFileOptions): DecodedProgram;
 //# sourceMappingURL=decode-file.d.ts.map

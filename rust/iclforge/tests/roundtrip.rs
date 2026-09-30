@@ -3,10 +3,10 @@
 //! no mantissa data and exercises almost none of the encoder, and the MDCT overlap buffer starts
 //! at zero, so frame 0's transform is a special case that would hide a real overlap/layout bug.
 
-use ac3forge::ac3;
-use ac3forge::eac3;
-use ac3forge::types::{Acmod, DecoderConfig, SampleRate};
-use ac3forge::SAMPLES_PER_FRAME;
+use iclforge::ac3;
+use iclforge::eac3;
+use iclforge::types::{Acmod, DecoderConfig, SampleRate};
+use iclforge::SAMPLES_PER_FRAME;
 
 const FRAME_COUNT: usize = 5;
 

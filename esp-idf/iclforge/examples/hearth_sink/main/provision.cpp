@@ -25,7 +25,7 @@
 namespace player {
 namespace {
 
-namespace improv = ac3forge::improv;
+namespace improv = iclforge::improv;
 
 // The console is shared with everything the player prints, which is what the
 // specification's serial transport is: a client picks its packets out of
@@ -50,12 +50,12 @@ namespace improv = ac3forge::improv;
 // measurements; tools/checks/run_improv_qemu.sh holds the board to it.
 //
 // And not text for GET /log either, which keeps the console's lines
-// (ac3forge/log.hpp).
+// (iclforge/log.hpp).
 void send(std::span<const std::uint8_t> packet) {
     if (packet.empty()) {
         return;
     }
-    const ac3forge::ConsoleOnly console_only;
+    const iclforge::ConsoleOnly console_only;
     (void)std::fwrite(packet.data(), 1, packet.size(), stdout);
     (void)std::fflush(stdout);
     (void)fsync(fileno(stdout));

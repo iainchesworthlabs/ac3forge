@@ -72,7 +72,7 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 #
 # Raised from 32,768 after PR #698 (legacy-core downmix levels) grew
 # DecodedSubstream/DecodedAccessUnit by bsid/cmixlev/surmixlev/alternate_bsi -
-# see run_esp32s3_probe.sh's own comment on AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES
+# see run_esp32s3_probe.sh's own comment on ICLFORGE_ESP32S3_MIN_STACK_FREE_BYTES
 # for the measured shortfall this fixes.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=40960
 

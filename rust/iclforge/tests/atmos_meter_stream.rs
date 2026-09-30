@@ -4,12 +4,12 @@
 
 mod common;
 
-use ac3forge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
-use ac3forge::eac3::{Eac3Decoder, Eac3Encoder, Eac3FrameConfig, StreamType};
-use ac3forge::meter::{dialnorm_from_lkfs, LoudnessMeter};
-use ac3forge::stream::{self, StreamKind};
-use ac3forge::types::{Acmod, DecoderConfig, SampleRate};
-use ac3forge::{Error, SAMPLES_PER_FRAME};
+use iclforge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
+use iclforge::eac3::{Eac3Decoder, Eac3Encoder, Eac3FrameConfig, StreamType};
+use iclforge::meter::{dialnorm_from_lkfs, LoudnessMeter};
+use iclforge::stream::{self, StreamKind};
+use iclforge::types::{Acmod, DecoderConfig, SampleRate};
+use iclforge::{Error, SAMPLES_PER_FRAME};
 use common::{rms, tone};
 
 // --- Atmos ------------------------------------------------------------------------------------
@@ -283,7 +283,7 @@ fn meter_channel_counts_follow_the_layout() {
     }
     let height = LoudnessMeter::for_chanmap(
         SampleRate::Hz48000,
-        ac3forge_sys::AC3FORGE_CHANMAP_512_HEIGHT as u16,
+        iclforge_sys::ICLFORGE_CHANMAP_512_HEIGHT as u16,
     )
     .unwrap();
     assert_eq!(height.channel_count(), 2);
@@ -372,7 +372,7 @@ fn dialnorm_from_lkfs_clamps_into_the_legal_range() {
 // --- Stream helpers -------------------------------------------------------------------------
 
 fn ac3_stream(frames: usize) -> Vec<u8> {
-    let mut encoder = ac3forge::ac3::Encoder::new(&Default::default()).unwrap();
+    let mut encoder = iclforge::ac3::Encoder::new(&Default::default()).unwrap();
     let mut out = Vec::new();
     for frame_index in 0..frames {
         let s = tone(440.0, 48_000.0, 0.3, frame_index);
@@ -430,7 +430,7 @@ fn ac3_stream_splits_and_scans_as_ac3() {
 /// that widens it to 7.1.
 #[test]
 fn ac3_core_with_eac3_extension_is_detected() {
-    let mut core = ac3forge::ac3::Encoder::new(&ac3forge::ac3::EncoderConfig {
+    let mut core = iclforge::ac3::Encoder::new(&iclforge::ac3::EncoderConfig {
         acmod: Acmod::Channels3_2,
         lfe: true,
         bitrate_kbps: 448,
@@ -441,7 +441,7 @@ fn ac3_core_with_eac3_extension_is_detected() {
         acmod: Acmod::Channels2_2,
         bitrate_kbps: 192,
         strmtyp: StreamType::Dependent,
-        chanmap: Some(ac3forge_sys::AC3FORGE_CHANMAP_71_REAR as u16),
+        chanmap: Some(iclforge_sys::ICLFORGE_CHANMAP_71_REAR as u16),
         ..Default::default()
     })
     .unwrap();
@@ -487,7 +487,7 @@ fn scanned_access_unit_samples_out_of_range_panics() {
 
 #[test]
 fn version_is_consistent() {
-    let version = ac3forge::version();
+    let version = iclforge::version();
     assert!(version.major >= 0 && version.minor >= 0 && version.patch >= 0);
     let prefix = format!("{}.{}.{}", version.major, version.minor, version.patch);
     assert!(
@@ -495,5 +495,5 @@ fn version_is_consistent() {
         "{} vs {prefix}",
         version.full
     );
-    assert_eq!(ac3forge::version(), version.clone());
+    assert_eq!(iclforge::version(), version.clone());
 }

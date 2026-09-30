@@ -37,7 +37,7 @@ constexpr int kMaxFbwChannels = 5;
 // numblkscod 3 (the only value in scope below) is six blocks per syncframe.
 constexpr std::size_t kBlocksPerFrame = 6;
 
-// The one frame shape this walker maps - ac3forge's Atmos output. See the
+// The one frame shape this walker maps - iclforge's Atmos output. See the
 // header's SCOPE note for why anything else comes back unsupported rather
 // than approximated.
 constexpr int kSupportedStrmtyp = 0;  // independent
@@ -215,7 +215,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
         }
     }
     bool infomdate = false;
-    {  // infomdate flag: a hole whether set or not (ac3forge sends 0)
+    {  // infomdate flag: a hole whether set or not (iclforge sends 0)
         const std::size_t p = r.bit_position();
         infomdate = r.read(1) != 0;
         put_hole(p, p);  // the flag bit
@@ -799,7 +799,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
         (void)cr.read(16);  // sync
         out.container_len = static_cast<int>(cr.read(16));
         (void)cr.read(2);  // version
-        (void)cr.read(3);  // key_id (ac3forge writes 0)
+        (void)cr.read(3);  // key_id (iclforge writes 0)
         // Bounded by cr.overflowed(): a misparsed payload_config or a
         // corrupt/unexpected container shape can desync this reader from the
         // real field boundaries, which lets a garbage `size` value - up to
@@ -815,7 +815,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
             if (pid == 0) {
                 break;
             }
-            // payload config (fixed shape TS 103 420 Table 56, ac3forge)
+            // payload config (fixed shape TS 103 420 Table 56, iclforge)
             (void)cr.read(1);  // smploffste=0
             (void)cr.read(1);  // duratione=0
             if (cr.read(1)) {  // groupide, variable_bits(2)

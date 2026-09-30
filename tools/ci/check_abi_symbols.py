@@ -3,15 +3,15 @@ checked-in allowlist (legacy item AP4).
 
 Every library here already builds with CXX_VISIBILITY_PRESET hidden, so
 nm -D --defined-only is the exact set a consumer can link against - anything
-NOT AC3FORGE_EXPORT (or one of the sibling macros) never reaches the dynamic
+NOT ICLFORGE_AC3_EXPORT (or one of the sibling macros) never reaches the dynamic
 symbol table at all. This script does not re-derive that set from the source;
 it just proves the .so's ACTUAL export set matches what was last reviewed and
-committed, so an accidental new export (a missing AC3FORGE_EXPORT removed, a
+committed, so an accidental new export (a missing ICLFORGE_AC3_EXPORT removed, a
 template instantiation that leaked, a symbol visibility regression) is a
 diff a human sees rather than a silent widening of the ABI surface.
 
 One allowlist file per library, named after the .so's basename
-(libac3forge.so.txt), one demangled symbol per line, sorted. `--update`
+(libiclforge_ac3.so.txt), one demangled symbol per line, sorted. `--update`
 regenerates them from the libraries passed on the command line instead of
 checking; run it once to seed a new library or after a deliberate, reviewed
 export-set change.
@@ -54,7 +54,7 @@ import sys
 from pathlib import Path
 
 # Itanium-mangled prefixes for namespaces that are compiler/libstdc++
-# implementation detail, not anything AC3FORGE_EXPORT controls. Which
+# implementation detail, not anything ICLFORGE_AC3_EXPORT controls. Which
 # template gets instantiated - and therefore lands in the dynamic table at
 # all, since CXX_VISIBILITY_PRESET hidden does not extend to system-header
 # templates - shifts with every compiler/libstdc++ version, unrelated to

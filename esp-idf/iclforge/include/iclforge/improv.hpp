@@ -6,7 +6,7 @@
 // network without being rebuilt: planning/hearth-reference-player.md, B2.
 //
 // Header only, free of ESP-IDF and of this project's own audio types, for the
-// same reason ac3forge/interleave.hpp and ac3forge/sink_plan.hpp are: the
+// same reason iclforge/interleave.hpp and iclforge/sink_plan.hpp are: the
 // arithmetic is exactly the kind a host test can hold to a byte, and the
 // peripheral around it is not. tests/ac3/io/test_improv.cpp builds it on the host.
 //
@@ -35,7 +35,7 @@
 #include <span>
 #include <string_view>
 
-namespace ac3forge::improv {
+namespace iclforge::improv {
 
 inline constexpr std::array<std::uint8_t, 6> kHeader{'I', 'M', 'P', 'R', 'O', 'V'};
 inline constexpr std::uint8_t kVersion = 1;
@@ -236,4 +236,4 @@ class Reader {
     return write_packet(PacketType::rpc_result, std::span<const std::uint8_t>(data.data(), at), out);
 }
 
-}  // namespace ac3forge::improv
+}  // namespace iclforge::improv

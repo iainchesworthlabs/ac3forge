@@ -56,7 +56,7 @@ Modes:
                FFmpeg's nor DEE's own encoder. Compute-only, no gate; see
                race_trend(). `--json-out PATH` writes the rows as JSON.
                `--spectrogram-dir PATH` additionally renders one PNG per leg
-               (original/ac3forge/FFmpeg/DEE spectrograms) via
+               (original/iclforge/FFmpeg/DEE spectrograms) via
                render_spectrograms() - this part DOES need an `ffmpeg`
                binary, only ever to decode the already-committed
                tests/golden/external-baseline/ bitstreams, never to encode.
@@ -452,7 +452,7 @@ def spectral_scores(o, d):
 # confirming the number actually moves with quality rather than being a
 # stub.
 #
-# Optional exactly like AC3FORGE_WITH_ALSA (src/audio/CMakeLists.txt): a
+# Optional exactly like ICLFORGE_WITH_ALSA (src/audio/CMakeLists.txt): a
 # missing `visqol-python` install skips this column with one clear message,
 # printed once, and never fails the run. Nobody running a quality race
 # locally should be forced to install it, and CI does not either - see
@@ -1104,7 +1104,7 @@ def race_vbr(original, source, seconds, json_out=None):
               f"{lsd:>6.2f} | {_fmt_mos(mos):>4} | {snr - cbr_snr:>+7.2f}")
 
     print()
-    print("gap columns are positive when ac3forge VBR/ABR beats the comparison at the")
+    print("gap columns are positive when iclforge VBR/ABR beats the comparison at the")
     print("SAME measured rate. MOS-LQO (ViSQOL audio mode, 1-4.75): '-' means")
     print("visqol-python isn't installed - see perceptual_score()'s own docstring.")
     if json_out is not None:
@@ -1661,7 +1661,7 @@ def race_trend(json_out=None):
 
 # --- Spectrogram images (docs/landscape.md's visual supplement) -------------
 #
-# Renders one PNG per TREND_LEGS entry - stacked original/ac3forge/FFmpeg/DEE
+# Renders one PNG per TREND_LEGS entry - stacked original/iclforge/FFmpeg/DEE
 # panels - for CI to persist to the quality-history branch alongside the
 # JSON trend numbers above. Deliberately a separate function, called only
 # when a caller passes `trend --spectrogram-dir`, not part of race_trend's
@@ -1700,7 +1700,7 @@ def _plot_spectrogram(ax, mono, title):
 
 
 def render_spectrograms(out_dir):
-    """One PNG per TREND_LEGS entry: original / ac3forge / FFmpeg / DEE
+    """One PNG per TREND_LEGS entry: original / iclforge / FFmpeg / DEE
     spectrograms stacked. Must run after race_trend()'s own per-leg loop has
     already produced BUILD/trend_<leg>_landscape.wav - this reads that file
     rather than re-encoding.
@@ -1735,7 +1735,7 @@ def render_spectrograms(out_dir):
                               f"race_trend()'s own encode/decode loop for this leg")
 
         _, d_ours, _ = align(original, read_wav_f32(ours_wav), **FIXED_ALIGN)
-        panels = [("original", original), ("ac3forge", d_ours)]
+        panels = [("original", original), ("iclforge", d_ours)]
 
         if name not in manifest["legs"]:
             raise SystemExit(

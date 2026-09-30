@@ -44,8 +44,8 @@
 
 namespace {
 
-// The demo stored its settings under ac3forge/DesktopAtmos; the product
-// stores them under ac3forge/Crucible (Crucible cross-platform promotion, Phase 1). Copy the old
+// The demo stored its settings under iclforge/DesktopAtmos; the product
+// stores them under iclforge/Crucible (Crucible cross-platform promotion, Phase 1). Copy the old
 // tree across the first time the new one is empty, so a machine that ran the
 // demo keeps its signing-key path, endpoint choice and appearance. The old
 // tree is left where it is rather than deleted: nothing here is large enough
@@ -106,7 +106,7 @@ void forward_to_diagnostics(QtMsgType type, const QMessageLogContext& context, c
 }
 
 // Ties Tracy's frame view to real Qt Quick presentation - "UI", not the bare
-// AC3_FRAME_MARK(), because the engine loop (engine.cpp) already marks the
+// ICLFORGE_FRAME_MARK(), because the engine loop (engine.cpp) already marks the
 // default frame set once per captured/encoded audio frame; two unrelated
 // cadences on one frame set would interleave into a single meaningless graph.
 // Direct, not queued: frameSwapped can fire on the scene graph's own render
@@ -117,7 +117,7 @@ void forward_to_diagnostics(QtMsgType type, const QMessageLogContext& context, c
 // frame, matching how the engine loop already calls it off the GUI thread.
 void mark_frames_for_tracy(QQuickWindow* window) {
     QObject::connect(window, &QQuickWindow::frameSwapped, window,
-                     [] { AC3_FRAME_MARK_NAMED("UI"); }, Qt::DirectConnection);
+                     [] { ICLFORGE_FRAME_MARK_NAMED("UI"); }, Qt::DirectConnection);
 }
 
 }  // namespace

@@ -7,10 +7,10 @@ target_compile_features(ac3hearth_testsink PUBLIC cxx_std_23)
 # iclforge::ac4dec and iclforge::ac4 for the extension role's AC-4 bursts (planning/ac4.md, D11): the
 # decoder, and the inspector's sync-frame scan in front of it.
 target_link_libraries(ac3hearth_testsink PUBLIC iclforge::sendspin iclforge::ac3 iclforge::ac4dec iclforge::ac4)
-# ac3::coverage: this library's sources are also linked straight into ac3tests (tests/CMakeLists.txt),
+# iclforge::coverage: this library's sources are also linked straight into ac3tests (tests/CMakeLists.txt),
 # and need their own instrumentation for the same reason apps/hearth/engine's own link does -
 # --coverage is compile-time, not inherited from whatever later links this archive.
-target_link_libraries(ac3hearth_testsink PRIVATE ac3::warnings ac3::coverage)
+target_link_libraries(ac3hearth_testsink PRIVATE iclforge::warnings iclforge::coverage)
 
 add_executable(ac3hearth-testsink main.cpp)
-target_link_libraries(ac3hearth-testsink PRIVATE ac3hearth_testsink ac3::warnings)
+target_link_libraries(ac3hearth-testsink PRIVATE ac3hearth_testsink iclforge::warnings)

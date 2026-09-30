@@ -1,9 +1,9 @@
-"""ac3forge as an ESPHome external component.
+"""iclforge as an ESPHome external component.
 
 What this does and does not do, because the difference matters to anyone reading
 the YAML.
 
-DOES: pull the ac3forge ESP-IDF component into the build, and expose a small C++
+DOES: pull the iclforge ESP-IDF component into the build, and expose a small C++
 object that owns a decoder and the streaming framer, so another component can
 feed it bytes and get PCM back.
 
@@ -13,7 +13,7 @@ obvious next step - but it is a component in its own right, and shipping the
 plumbing first is what lets it be built against something that already works.
 
 The library is fetched as a GIT dependency rather than from the ESP Component
-Registry, because ac3forge is not published there yet (see
+Registry, because iclforge is not published there yet (see
 .github/workflows/esp-component.yml for why that is deliberately not armed).
 ESPHome's add_idf_component writes `git:`, `version:` and `path:` straight into
 the generated idf_component.yml, which is exactly the form the IDF component
@@ -25,9 +25,9 @@ manager wants for a component living in a subdirectory of a repository.
           url: https://github.com/iainchesworthlabs/ac3forge
           ref: main
           path: esphome/components
-        components: [ac3forge]
+        components: [iclforge]
 
-    ac3forge:
+    iclforge:
       version: v0.10.0-beta.1
 """
 
@@ -45,8 +45,8 @@ DEPENDENCIES = ["esp32"]
 CONF_VERSION = "version"
 CONF_BUFFER_SIZE = "buffer_size"
 
-ac3forge_ns = cg.esphome_ns.namespace("ac3forge")
-Ac3ForgeComponent = ac3forge_ns.class_("Ac3ForgeComponent", cg.Component)
+iclforge_ns = cg.esphome_ns.namespace("iclforge")
+IclForgeComponent = iclforge_ns.class_("IclForgeComponent", cg.Component)
 
 # The repository the IDF component manager clones, and where the component sits
 # inside it. Both are here rather than in the schema because a user overriding
@@ -65,7 +65,7 @@ MAX_BUFFER = 65536
 
 CONFIG_SCHEMA = cv.Schema(
     {
-        cv.GenerateID(): cv.declare_id(Ac3ForgeComponent),
+        cv.GenerateID(): cv.declare_id(IclForgeComponent),
         # A git ref: a tag for anything you intend to keep working, a branch if
         # you want to track development and are prepared for it to move.
         cv.Optional(CONF_VERSION, default="main"): cv.string_strict,
@@ -78,7 +78,7 @@ CONFIG_SCHEMA = cv.Schema(
 
 async def to_code(config):
     esp32.add_idf_component(
-        name="ac3forge",
+        name="iclforge",
         repo=REPO,
         ref=config[CONF_VERSION],
         path=COMPONENT_PATH,

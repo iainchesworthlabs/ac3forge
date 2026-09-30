@@ -6,7 +6,7 @@
 // decode-file.ts, the AudioWorklet pipeline in decoder-worker.ts) is built
 // on top of THIS class, not a second decode path.
 
-import type { Ac3ForgeEmbindModule, FoldOptions, NativePushDecoder, ObjectFrame, PushOutcome, ScanOutcome } from "./types.js";
+import type { IclForgeEmbindModule, FoldOptions, NativePushDecoder, ObjectFrame, PushOutcome, ScanOutcome } from "./types.js";
 import { DownmixTarget } from "./types.js";
 
 /**
@@ -15,7 +15,7 @@ import { DownmixTarget } from "./types.js";
  * demuxer, the hls.js bridge) already has its own access-unit boundaries and
  * has no reason to call this.
  */
-export function scanStream(module: Ac3ForgeEmbindModule, bytes: Uint8Array): ScanOutcome {
+export function scanStream(module: IclForgeEmbindModule, bytes: Uint8Array): ScanOutcome {
   const raw = module.scanStream(bytes);
   if (!raw.ok) {
     return { ok: false, error: raw.error ?? "scan failed" };
@@ -29,7 +29,7 @@ export class PushDecoder {
   readonly #native: NativePushDecoder;
   #closed = false;
 
-  constructor(module: Ac3ForgeEmbindModule, fold: FoldOptions = DEFAULT_FOLD_OPTIONS) {
+  constructor(module: IclForgeEmbindModule, fold: FoldOptions = DEFAULT_FOLD_OPTIONS) {
     this.#native = new module.PushDecoder(fold.target, fold.applyDialnorm ?? false, fold.mixLfe ?? false);
   }
 

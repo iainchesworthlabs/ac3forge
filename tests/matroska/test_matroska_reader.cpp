@@ -254,7 +254,7 @@ TEST_CASE("Matroska reads back a Writer's unknown-size Segment", "[matroska][rea
                              .channels = 2,
                              .samples_per_frame = 1536,
                              .language = "und"},
-        iclforge::matroska::MuxOptions{.cluster_ms = 100, .writing_app = "ac3forge"});
+        iclforge::matroska::MuxOptions{.cluster_ms = 100, .writing_app = "iclforge"});
     REQUIRE(writer.has_value());
 
     Bytes file = writer->header();
@@ -285,7 +285,7 @@ TEST_CASE("Matroska Reader over arbitrary chunk boundaries matches demux()",
                                        .samples_per_frame = 1536,
                                        .language = "und"},
         views_of(frames),
-        iclforge::matroska::MuxOptions{.cluster_ms = 50, .writing_app = "ac3forge"});
+        iclforge::matroska::MuxOptions{.cluster_ms = 50, .writing_app = "iclforge"});
     REQUIRE(file.has_value());
 
     // 1 byte at a time splits every id, every size vint and every frame;

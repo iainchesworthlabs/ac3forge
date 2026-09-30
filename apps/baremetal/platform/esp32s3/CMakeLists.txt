@@ -4,14 +4,14 @@
 # An ESP-IDF project, driven by idf.py rather than by this repo's presets, for
 # the same reason apps/android is a Gradle project: the SDK owns the top-level
 # build. IDF is reached from the other direction - esp-idf/iclforge/
-# add_subdirectory()s the repo root - so there is no ac3forge preset for this
+# add_subdirectory()s the repo root - so there is no iclforge preset for this
 # target and no entry in cmake/toolchains/.
 #
 # Build it with the IDF environment exported:
 #
 #   idf.py set-target esp32s3
 #   idf.py build                                  # decode
-#   idf.py -DAC3FORGE_ESP_PROFILE=encoder build   # encode
+#   idf.py -DICLFORGE_ESP_PROFILE=encoder build   # encode
 #   idf.py -p <PORT> flash monitor                # a real board
 #   idf.py qemu                                   # no board; see the PSRAM note below
 #
@@ -30,7 +30,7 @@
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28)
 
-# The ac3forge component lives at the repo root, beside the other bindings, not
+# The iclforge component lives at the repo root, beside the other bindings, not
 # under this project. Four directories up: esp32s3 -> platform -> baremetal ->
 # apps -> root, then esp-idf. IDF wants the directory CONTAINING components.
 #
@@ -38,18 +38,18 @@ cmake_minimum_required(VERSION 3.28)
 # reason the component moved out: if the published shape breaks, this build -
 # the one CI runs - breaks with it, rather than continuing to work through a
 # private path no integrator has.
-get_filename_component(AC3FORGE_ESP_COMPONENTS
+get_filename_component(ICLFORGE_ESP_COMPONENTS
                        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../esp-idf" ABSOLUTE)
-set(EXTRA_COMPONENT_DIRS "${AC3FORGE_ESP_COMPONENTS}")
+set(EXTRA_COMPONENT_DIRS "${ICLFORGE_ESP_COMPONENTS}")
 
 # Decode or encode. Declared here, before project(), because the component
 # reads it during IDF's component scan - which project() performs.
 #
 # The default differs from the arm-none-eabi leg's, which has none:
-# tools/checks/run_baremetal_probe.sh passes AC3FORGE_MINIMAL_DECODER or
-# AC3FORGE_MINIMAL_ENCODER explicitly on every invocation there. Here a bare
+# tools/checks/run_baremetal_probe.sh passes ICLFORGE_MINIMAL_DECODER or
+# ICLFORGE_MINIMAL_ENCODER explicitly on every invocation there. Here a bare
 # `idf.py build` has to mean something, and decode is the useful something.
-set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
+set(ICLFORGE_ESP_PROFILE "decoder" CACHE STRING
     "Which probe to build: decoder or encoder")
 
 # The decode-critical sources at -O2 (src/ac3/minimal.cmake has the list
@@ -59,7 +59,7 @@ set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
 # guard is untouched by it. What it costs and buys is measured in
 # docs/platforms/bare-metal/esp32-s3.md's Timing section, and the Atmos objects fixture
 # reaches real time only with it.
-set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
+set(ICLFORGE_MINIMAL_HOT_O2 ON CACHE BOOL
     "Decode-critical sources at -O2; see src/ac3/minimal.cmake")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

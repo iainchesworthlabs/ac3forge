@@ -44,33 +44,33 @@ target_compile_features(iclforge_mpegts_objects PUBLIC cxx_std_23)
 
 # $<BUILD_INTERFACE:...> wrapping - see src/ac3/CMakeLists.txt's identical
 # iclforge_ac3_objects treatment for why a plain PRIVATE link isn't enough for
-# an OBJECT library that's part of an install(EXPORT) set. ac3::coverage is a
-# no-op unless AC3FORGE_ENABLE_COVERAGE is on (see cmake/Coverage.cmake).
+# an OBJECT library that's part of an install(EXPORT) set. iclforge::coverage is a
+# no-op unless ICLFORGE_ENABLE_COVERAGE is on (see cmake/Coverage.cmake).
 target_link_libraries(iclforge_mpegts_objects PRIVATE
-    "$<BUILD_INTERFACE:ac3::warnings>"
-    "$<BUILD_INTERFACE:ac3::coverage>")
+    "$<BUILD_INTERFACE:iclforge::warnings>"
+    "$<BUILD_INTERFACE:iclforge::coverage>")
 
 set_target_properties(iclforge_mpegts_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
-# MSVC's C4251 for the PRIVATE STL-typed members of MPEGTS_EXPORT classes
+# MSVC's C4251 for the PRIVATE STL-typed members of ICLFORGE_MPEGTS_EXPORT classes
 # (mpegts::Writer's PSI section buffers) - the identical, identically-reasoned
 # suppression src/matroska/CMakeLists.txt applies for matroska::Writer; see
 # its comment for why PUBLIC and why here rather than header pragmas.
 target_compile_options(iclforge_mpegts_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_mpegts_shared PROPERTIES DEFINE_SYMBOL "MPEGTS_BUILDING_SHARED")
+set_target_properties(iclforge_mpegts_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_MPEGTS_BUILDING_SHARED")
 generate_export_header(iclforge_mpegts_shared
-    BASE_NAME MPEGTS
-    EXPORT_MACRO_NAME MPEGTS_EXPORT
+    BASE_NAME ICLFORGE_MPEGTS
+    EXPORT_MACRO_NAME ICLFORGE_MPEGTS_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/mpegts/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE MPEGTS_STATIC_DEFINE)
-target_compile_definitions(iclforge_mpegts_objects PRIVATE MPEGTS_BUILDING_SHARED)
-target_compile_definitions(iclforge_mpegts_static PUBLIC MPEGTS_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_MPEGTS_STATIC_DEFINE)
+target_compile_definitions(iclforge_mpegts_objects PRIVATE ICLFORGE_MPEGTS_BUILDING_SHARED)
+target_compile_definitions(iclforge_mpegts_static PUBLIC ICLFORGE_MPEGTS_STATIC_DEFINE)
 
 set_target_properties(iclforge_mpegts_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

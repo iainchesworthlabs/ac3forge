@@ -1,4 +1,4 @@
-# ac3forge fuzzing. Six jobs. Five of them share the libFuzzer harnesses in
+# iclforge fuzzing. Six jobs. Five of them share the libFuzzer harnesses in
 # fuzz/, and all but fuzz-adm-nightly mutate an ALREADY-ENCODED bitstream -
 # they ask whether the DECODER survives corrupt input. The sixth
 # (encoder-space-nightly) asks the opposite question, about the ENCODER, and
@@ -17,7 +17,7 @@
 #   fuzz-differential  Same mutation approach, over the two differential
 #                      harnesses only (fuzz_differential_ac3_decode,
 #                      fuzz_differential_eac3_decode - differential decoder fuzzing): decodes
-#                      each mutated frame with BOTH ac3forge's own decoder
+#                      each mutated frame with BOTH iclforge's own decoder
 #                      and FFmpeg, and diffs the PCM, instead of only
 #                      checking for a crash. Push only, its own 60s/target
 #                      budget - see fuzz/differential_oracle.hpp for what
@@ -96,7 +96,7 @@
 # builds and runs, with no sanitizer checks or coverage inside that library.
 #
 # All five run in the same ubuntu:26.04 + LLVM 22 container ci.yml's
-# linux-llvm leg uses. The harnesses build under the same strict `ac3::warnings`
+# linux-llvm leg uses. The harnesses build under the same strict `iclforge::warnings`
 # set (-Werror included) as every other target - the fuzz build used to be the
 # one exception, on the assumption it carried a sign-conversion/double-promotion
 # debt, but a recount found zero such sites and the exemption was removed.
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     env:
-      AC3FORGE_FUZZ_SECONDS: 60
+      ICLFORGE_FUZZ_SECONDS: 60
     steps:
       - name: Bootstrap container
         run: |
@@ -270,13 +270,13 @@ jobs:
           if-no-files-found: ignore
 
   fuzz-differential:
-    name: Fuzz Differential (ac3forge vs FFmpeg PCM diff, bounded mutation, push only)
+    name: Fuzz Differential (iclforge vs FFmpeg PCM diff, bounded mutation, push only)
     if: github.event_name == 'push'
     needs: fuzz-regress
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     env:
-      AC3FORGE_FUZZ_SECONDS: 60
+      ICLFORGE_FUZZ_SECONDS: 60
     steps:
       - name: Bootstrap container
         run: |
@@ -339,7 +339,7 @@ jobs:
     container: ubuntu:26.04
     continue-on-error: true  # experimental - see the header comment
     env:
-      AC3FORGE_FUZZ_SECONDS: ${{ github.event.inputs.seconds_per_target || 600 }}
+      ICLFORGE_FUZZ_SECONDS: ${{ github.event.inputs.seconds_per_target || 600 }}
     steps:
       - name: Bootstrap container
         run: |
@@ -425,8 +425,8 @@ jobs:
   # folded into fuzz-short/fuzz-nightly. Toolchain-wise it is those jobs plus
   # vcpkg: the same ubuntu:26.04 + LLVM 22 + sanitizer runtime archives, with
   # the vcpkg pin encoder-space-nightly already uses added so libadm's Boost
-  # headers resolve. AC3FORGE_FUZZ_ADM makes fuzz/run.sh turn
-  # AC3FORGE_BUILD_ADM and -DVCPKG_MANIFEST_FEATURES=adm on and append the
+  # headers resolve. ICLFORGE_FUZZ_ADM makes fuzz/run.sh turn
+  # ICLFORGE_BUILD_ADM and -DVCPKG_MANIFEST_FEATURES=adm on and append the
   # harness to its default list; naming the harness explicitly here as well
   # keeps this job to that one target regardless.
   #
@@ -443,8 +443,8 @@ jobs:
     container: ubuntu:26.04
     continue-on-error: true  # experimental - see the header comment
     env:
-      AC3FORGE_FUZZ_ADM: 1
-      AC3FORGE_FUZZ_SECONDS: ${{ github.event.inputs.seconds_per_target || 600 }}
+      ICLFORGE_FUZZ_ADM: 1
+      ICLFORGE_FUZZ_SECONDS: ${{ github.event.inputs.seconds_per_target || 600 }}
     steps:
       - name: Bootstrap container
         run: |

@@ -53,11 +53,11 @@ namespace {
 
 // The 7.1 access-unit fixture is a SWITCH, not a default - see the block in
 // run() and encode_fixture.hpp for the measurement that made it one.
-// AC3FORGE_PROBE_SEVEN_ONE is 0 or 1 from CMake, defined by every build of
+// ICLFORGE_PROBE_SEVEN_ONE is 0 or 1 from CMake, defined by every build of
 // this file (apps/baremetal/CMakeLists.txt, platform/esp32s3/main/
 // CMakeLists.txt) - a value, not a conditional, per the platform-tree rule
 // tools/checks/check_platform_macros.ps1 enforces.
-constexpr bool kProbeSevenOne = AC3FORGE_PROBE_SEVEN_ONE != 0;
+constexpr bool kProbeSevenOne = ICLFORGE_PROBE_SEVEN_ONE != 0;
 
 // --- heap accounting -------------------------------------------------------
 // The same global replacement probe.cpp uses, and for the same reason: PF7's
@@ -251,7 +251,7 @@ void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes
     std::printf("%s.peak_bytes=%lu\n", codec, static_cast<unsigned long>(r.peak_bytes));
     report_timing(codec, r);
     // Where the time above went, when the library was built to say
-    // (AC3FORGE_STAGE_TIMERS); silent otherwise. probe.cpp's own note applies.
+    // (ICLFORGE_STAGE_TIMERS); silent otherwise. probe.cpp's own note applies.
     ac3probe::report_stages(codec, ac3probe::kEncodeFrames);
     if (r.bytes != expected_bytes) {
         fail("bytes", r.bytes, expected_bytes);
@@ -299,7 +299,7 @@ EncodeResult encode_all(Encoder& encoder,
     // stage_timers.cpp sits in the application's archive, and an archive
     // member nothing references is never pulled in - which left the
     // library's zone_enter/zone_leave undefined the first time this probe
-    // was built with AC3FORGE_STAGE_TIMERS.
+    // was built with ICLFORGE_STAGE_TIMERS.
     ac3probe::reset_stages();
     std::size_t before = g_alloc_calls;
     for (int frame = 0; frame < ac3probe::kEncodeFrames; ++frame) {
@@ -427,7 +427,7 @@ int ac3probe::run() {
     // part's internal SRAM; PSRAM is the question that remains, and QEMU
     // cannot ask it.
     //
-    // Opt-in (-DAC3FORGE_PROBE_SEVEN_ONE=ON) for exactly that reason: a default
+    // Opt-in (-DICLFORGE_PROBE_SEVEN_ONE=ON) for exactly that reason: a default
     // fixture that cannot pass on one leg is not a fixture, and the two legs'
     // heap ceilings are statements about what fits. Off, the block is
     // discarded and the image is the one the ceilings hold.

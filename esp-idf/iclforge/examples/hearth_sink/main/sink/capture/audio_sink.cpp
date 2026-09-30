@@ -3,7 +3,7 @@
 // WHY THIS IS NOT THE NULL SINK. The null sink counts blocks; it establishes
 // that the player looped and the decode did not error. This one runs the SAME
 // conversion the real sinks run - interleave_16 and interleave_24in32 from
-// ac3forge/interleave.hpp, not copies of them - into a buffer, and then checks
+// iclforge/interleave.hpp, not copies of them - into a buffer, and then checks
 // what came out.
 //
 // That is the difference between mocking a boundary and skipping it. The
@@ -13,7 +13,7 @@
 // target at all - the conversion was host-tested only, and the sinks' own use
 // of it (slot counts, buffer sizing, channel indexing) was not tested anywhere.
 //
-// Its TDM frame follows CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS as the i2s sink's
+// Its TDM frame follows CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS as the i2s sink's
 // does: 24-in-32 slots through interleave_24in32 at 32, 16-bit slots through
 // interleave_16in16 at 16.
 //
@@ -56,17 +56,17 @@ std::size_t g_slots = 0;
 
 // A timed write (a Sendspin stream) either says nothing about time, and runs
 // as fast as it is given blocks, or is paced by a DAC that is not there
-// (CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED). Unpaced is what CI compares levels
+// (CONFIG_ICLFORGE_EXAMPLE_CAPTURE_PACED). Unpaced is what CI compares levels
 // with: every decoded sample is written, none padded, skipped or slewed, and
 // the emulator's speed cannot make a burst late.
-constexpr bool kPaced = CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED != 0;
+constexpr bool kPaced = CONFIG_ICLFORGE_EXAMPLE_CAPTURE_PACED != 0;
 // The ring a paced write stands in for: twelve buffers of 256 frames, the
 // depth the board's network shape runs its I2S sink at.
 constexpr std::uint32_t kVirtualDescriptors = 12;
-ac3forge::VirtualDac g_dac;
+iclforge::VirtualDac g_dac;
 
-constexpr bool kTdm = CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM != 0;
-constexpr bool kSlotBits16 = CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS == 16;
+constexpr bool kTdm = CONFIG_ICLFORGE_EXAMPLE_CAPTURE_TDM != 0;
+constexpr bool kSlotBits16 = CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS == 16;
 // Standing in for the stereo sink, convert the way it is configured to: 32-bit
 // slots through the same 24-in-32 path the TDM bus uses, two slots wide, or
 // 16-bit. The default is 32, so the default CI shape checks the conversion
@@ -102,12 +102,12 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
     }
     if (!kTdm && channels > 2) {
         std::printf("error: the stereo capture takes 1 or 2 channels, asked for %d - set "
-                    "CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1 for a wider layout\n",
+                    "CONFIG_ICLFORGE_EXAMPLE_CAPTURE_TDM=1 for a wider layout\n",
                     channels);
         return false;
     }
     g_channels = channels;
-    g_slots = kTdm ? static_cast<std::size_t>(CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS) : 2;
+    g_slots = kTdm ? static_cast<std::size_t>(CONFIG_ICLFORGE_EXAMPLE_TDM_SLOTS) : 2;
     if (g_slots > kMaxSlots || static_cast<std::size_t>(channels) > g_slots) {
         std::printf("error: %d channels do not fit %u slots\n", channels,
                     static_cast<unsigned>(g_slots));
@@ -136,7 +136,7 @@ void sink_write(std::span<const std::span<const float>> channels) {
     std::int64_t block_sum = 0;
     if (kTdm && !kWide) {
         // 16-bit TDM: the same padding and level checks on 16-bit slots.
-        const auto padding = ac3forge::interleave_16in16(
+        const auto padding = iclforge::interleave_16in16(
             channels, g_slots, frames, std::span<std::int16_t>{g_narrow.data(), frames * g_slots});
         for (std::size_t frame = 0; frame < frames; ++frame) {
             const std::size_t base = frame * g_slots;
@@ -157,7 +157,7 @@ void sink_write(std::span<const std::span<const float>> channels) {
         }
         g_sum_squares += static_cast<double>(block_sum) / (32767.0 * 32767.0);
     } else if (kTdm) {
-        const auto padding = ac3forge::interleave_24in32(
+        const auto padding = iclforge::interleave_24in32(
             channels, g_slots, frames, std::span<std::int32_t>{g_tdm.data(), frames * g_slots});
         for (std::size_t frame = 0; frame < frames; ++frame) {
             const std::size_t base = frame * g_slots;
@@ -181,7 +181,7 @@ void sink_write(std::span<const std::span<const float>> channels) {
                 }
             }
         }
-        constexpr double kFullScale = static_cast<double>(ac3forge::kPcm24Max);
+        constexpr double kFullScale = static_cast<double>(iclforge::kPcm24Max);
         g_sum_squares += static_cast<double>(block_sum) / (kFullScale * kFullScale);
     } else {
         // A mono layout to both slots, as the i2s sink does, converted the way
@@ -192,7 +192,7 @@ void sink_write(std::span<const std::span<const float>> channels) {
         const std::array<std::span<const float>, 2> pair = {
             channels[0], channels.size() > 1 ? channels[1] : channels[0]};
         if (kWide) {
-            ac3forge::interleave_24in32(pair, 2, frames,
+            iclforge::interleave_24in32(pair, 2, frames,
                                         std::span<std::int32_t>{g_tdm.data(), frames * 2});
             for (std::size_t i = 0; i < frames * 2; ++i) {
                 const std::int32_t value = g_tdm[i];
@@ -206,10 +206,10 @@ void sink_write(std::span<const std::span<const float>> channels) {
                 block_sum += sample * sample;
                 ++g_samples;
             }
-            constexpr double kFullScale = static_cast<double>(ac3forge::kPcm24Max);
+            constexpr double kFullScale = static_cast<double>(iclforge::kPcm24Max);
             g_sum_squares += static_cast<double>(block_sum) / (kFullScale * kFullScale);
         } else {
-            ac3forge::interleave_16(pair, frames,
+            iclforge::interleave_16(pair, frames,
                                     std::span<std::int16_t>{g_narrow.data(), frames * 2});
             for (std::size_t i = 0; i < frames * 2; ++i) {
                 const std::int16_t value = g_narrow[i];
@@ -226,7 +226,7 @@ void sink_write(std::span<const std::span<const float>> channels) {
     ++g_writes;
 }
 
-std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels) {
+std::optional<iclforge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels) {
     if (g_channels == 0) {
         return std::nullopt;
     }
@@ -234,12 +234,12 @@ std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span
     if (!kPaced) {
         return std::nullopt;
     }
-    const ac3forge::VirtualDac::Write written = g_dac.write(esp_timer_get_time());
+    const iclforge::VirtualDac::Write written = g_dac.write(esp_timer_get_time());
     const std::int64_t wait_us = written.return_us - esp_timer_get_time();
     if (wait_us > 0) {
         vTaskDelay(std::max<TickType_t>(1, pdMS_TO_TICKS((wait_us + 999) / 1000)));
     }
-    return ac3forge::PlayoutWrite{.play_us = written.play_us, .late = false, .gap = written.gap};
+    return iclforge::PlayoutWrite{.play_us = written.play_us, .late = false, .gap = written.gap};
 }
 
 const char* sink_name() { return kTdm ? "capture-tdm" : "capture-i2s"; }
@@ -247,7 +247,7 @@ const char* sink_name() { return kTdm ? "capture-tdm" : "capture-i2s"; }
 // The bus this sink stands in for, open or not: a player asks before its
 // first stream how many outputs it may use.
 int sink_slots() {
-    return static_cast<int>(kTdm ? std::min<std::size_t>(CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS, kMaxSlots) : 2);
+    return static_cast<int>(kTdm ? std::min<std::size_t>(CONFIG_ICLFORGE_EXAMPLE_TDM_SLOTS, kMaxSlots) : 2);
 }
 
 // Its slots are fixed by the build, and it has no second line to wire.
@@ -262,9 +262,9 @@ bool sink_second_line_possible() { return false; }
 // Built for one width and checked against it (kWide above): this sink's whole
 // job is to convert exactly as the i2s sink does and check the result, so the
 // width is a property of the shape CI built, not something to change under it.
-int sink_slot_bits() { return CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
+int sink_slot_bits() { return CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS; }
 
-bool sink_set_slot_bits(int bits) { return bits == CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
+bool sink_set_slot_bits(int bits) { return bits == CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS; }
 
 std::uint64_t sink_frames_written() { return g_writes; }
 

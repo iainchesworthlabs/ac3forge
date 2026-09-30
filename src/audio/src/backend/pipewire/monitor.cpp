@@ -448,7 +448,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     }
 
     Stream stream{pw_stream_new_simple(pw_thread_loop_get_loop(impl_->loop.get()),
-                                        "ac3forge monitor", props, &Impl::stream_events(),
+                                        "iclforge monitor", props, &Impl::stream_events(),
                                         impl_.get())};
     if (!stream) {
         pw_thread_loop_unlock(impl_->loop.get());

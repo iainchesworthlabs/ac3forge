@@ -3,7 +3,7 @@ plus the named-layout convenience (ac3.eac3.access_unit_config_for_layout) and t
 KwargBinder/FrameError give every other encoder here.
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

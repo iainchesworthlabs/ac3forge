@@ -1,6 +1,6 @@
 #pragma once
 
-// The conversion ac3forge/interleave.hpp's interleaves use by default, for a
+// The conversion iclforge/interleave.hpp's interleaves use by default, for a
 // part with a floating-point unit: FloatConversion, which is to_pcm16 and
 // to_slot_24in32 scaling, clipping and truncating in float.
 //
@@ -11,9 +11,9 @@
 // the other. interleave.hpp says what the two compute and why a part without an
 // FPU wants the other one.
 
-namespace ac3forge {
+namespace iclforge {
 
 struct FloatConversion;
 using SlotConversion = FloatConversion;
 
-}  // namespace ac3forge
+}  // namespace iclforge

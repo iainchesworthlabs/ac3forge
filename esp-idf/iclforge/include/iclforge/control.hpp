@@ -63,7 +63,7 @@
 // publishes. The one exception is `stats`, which is a snapshot the Player
 // already makes safe from any task.
 
-namespace ac3forge {
+namespace iclforge {
 
 class Firmware;
 
@@ -289,4 +289,4 @@ class Control {
     Impl* impl_ = nullptr;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

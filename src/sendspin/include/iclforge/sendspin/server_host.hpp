@@ -32,12 +32,12 @@
 // client, or an approved one on the Sentinel that offers unpaired access, gets playback with
 // player@v1; a client whose token the operator entered is re-handshaken to its pairing PSK and
 // paired by it; any other waits with no activities until the operator pairs or approves it. A
-// paired client that offers _ac3forge_player@v1 gets that role instead of player@v1
-// (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1).
+// paired client that offers _iclforge_player@v1 gets that role instead of player@v1
+// (planning/hearth-sendspin-extension.md, The role _iclforge_player@v1).
 //
 // Groups play one programme to several clients: a member playing player@v1 gets the programme's
 // PCM in the first of its formats the group can produce from it (PCM or FLAC at any depth, Opus at
-// 48 kHz), and a member playing _ac3forge_player@v1 gets the coded stream's bursts, all on one
+// 48 kHz), and a member playing _iclforge_player@v1 gets the coded stream's bursts, all on one
 // timeline started far enough ahead for the member that needs the most lead.
 //
 // The other roles are activated by policy (planning/hearth-sendspin-extension.md, Other roles):
@@ -92,14 +92,14 @@ struct ClientView {
     // (pairing.md, rounds). A code entered and then another request means it did not match -
     // whichever of the two a caller hears about first.
     std::uint32_t code_requests = 0;
-    // A playback role is active: player@v1, or _ac3forge_player@v1 when `bursts`.
+    // A playback role is active: player@v1, or _iclforge_player@v1 when `bursts`.
     bool playing = false;
     bool bursts = false;
     bool available = false;
     std::optional<messages::PlayerState> player_state;
     std::optional<messages::PlayerSupport> player_support;
-    std::optional<player::State> ac3forge_state;
-    std::optional<player::Support> ac3forge_support;
+    std::optional<player::State> iclforge_state;
+    std::optional<player::Support> iclforge_support;
     // The roles the client lists and the roles active on its connection, with the other roles'
     // support and client/state objects.
     std::vector<std::string> supported_roles;
@@ -195,10 +195,10 @@ class ServerHost {
     bool pair(const std::string& client_id, messages::PairMethod method, std::optional<messages::CodeFormat> format);
     bool enter_code(const std::string& client_id, const pairing_flow::Code& code);
     bool cancel_pairing(const std::string& client_id);
-    // Sends a client playing _ac3forge_player@v1 a command its state lists, settings checked
-    // against its support object first (ServerSession::ac3forge_command). False when the client is
+    // Sends a client playing _iclforge_player@v1 a command its state lists, settings checked
+    // against its support object first (ServerSession::iclforge_command). False when the client is
     // not connected or the session refuses it.
-    bool ac3forge_command(const std::string& client_id, const player::CommandMessage& command);
+    bool iclforge_command(const std::string& client_id, const player::CommandMessage& command);
     // Approves a client for unpaired access, or withdraws the approval.
     bool approve(const std::string& client_id, bool approved);
     bool unpair(const std::string& client_id);
@@ -262,9 +262,9 @@ class Group {
 
     struct Programme {
         // The PCM push() takes, for members playing player@v1: interleaved at its bit depth, in
-        // 32 bits. Nothing for a programme only members playing _ac3forge_player@v1 can play.
+        // 32 bits. Nothing for a programme only members playing _iclforge_player@v1 can play.
         std::optional<messages::AudioFormat> pcm;
-        // The coded stream push_burst() takes, for members playing _ac3forge_player@v1.
+        // The coded stream push_burst() takes, for members playing _iclforge_player@v1.
         std::optional<player::StreamStart> bursts;
         // A source that can be read ahead, which may start with more lead.
         bool buffered = false;
@@ -290,7 +290,7 @@ class Group {
         // frame's length, which follows its frame rate.
         std::int64_t frames = 1536;
     };
-    // Sends one burst to every member playing _ac3forge_player@v1; false, taking nothing, on the
+    // Sends one burst to every member playing _iclforge_player@v1; false, taking nothing, on the
     // same terms as push().
     [[nodiscard]] bool push_burst(const Burst& burst);
     // Ends the programme: the last units, then stream/end.

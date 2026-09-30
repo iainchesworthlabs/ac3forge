@@ -3,14 +3,14 @@
 # SBOM, and publishes a GitHub Release. Modelled on aqualink-automate's
 # .github/workflows/release.yml, with three things deliberately left out:
 # APT/DNF repository publishing, a Docker image, and a Home Assistant add-on
-# wrapper - none of which apply to ac3forge. If ac3forge ever grows a package
+# wrapper - none of which apply to iclforge. If iclforge ever grows a package
 # repository the way aqualink-automate has, that job is the precedent to
 # copy, not to reinvent.
 #
 # ---------------------------------------------------------------------------
 # Versioning: the tag IS the version, same as aqualink-automate
 # ---------------------------------------------------------------------------
-# cmake/GitVersionDerivation.cmake derives `project(ac3forge VERSION ...)`
+# cmake/GitVersionDerivation.cmake derives `project(iclforge VERSION ...)`
 # from the nearest reachable v* git tag at configure time, before project()
 # runs - see that file. Nothing in the tree hardcodes a version to keep in
 # sync with the tag anymore, so `resolve-version` below only validates the
@@ -301,7 +301,7 @@ jobs:
       # a real failure mode this repo has already shipped once (Windows NSIS installer,
       # the installer-less Windows releases).
       #
-      # Deliberately NOT required: the macOS `ac3forge-dev-*` archive, which
+      # Deliberately NOT required: the macOS `iclforge-dev-*` archive, which
       # package-macos-universal documents as best-effort; and the Linux
       # AC3Forge Crucible package, whose leg skips itself whole on a runner
       # with too old a Qt (see _build.yml's own comment on that upload).
@@ -312,28 +312,28 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
 
-          # ac3forge-[0-9]*, not ac3forge-*, wherever the runtime package is
+          # iclforge-[0-9]*, not iclforge-*, wherever the runtime package is
           # meant: cmake/Packaging.cmake's CPACK_PACKAGE_FILE_NAME is
-          # ac3forge-<M>.<m>.<p>-<system>, so a digit follows the hyphen, and
-          # the looser glob would also match ac3forge-dev-* and
+          # iclforge-<M>.<m>.<p>-<system>, so a digit follows the hyphen, and
+          # the looser glob would also match iclforge-dev-* and
           # ac3forge-crucible-* - letting one of those stand in for a runtime
           # package that never got built, which is the failure this whole step
           # exists to catch.
           expected=(
-            "release-artifacts/ac3forge-[0-9]*-win64.zip|Windows x64 archive (windows-msvc)"
-            "release-artifacts/ac3forge-[0-9]*-win64.exe|Windows x64 NSIS installer (windows-msvc)"
-            "release-artifacts/ac3forge-dev-*-win64.zip|Windows x64 library archive (windows-msvc)"
-            "release-artifacts/ac3forge-[0-9]*-win-arm64.zip|Windows arm64 archive (windows-msvc-arm64, experimental)"
-            "release-artifacts/ac3forge-[0-9]*-win-arm64.exe|Windows arm64 NSIS installer (windows-msvc-arm64, experimental)"
-            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64.tar.gz|Linux x86_64 archive (linux-gcc)"
-            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64-runtime.deb|Linux x86_64 .deb (linux-gcc)"
-            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64-runtime.rpm|Linux x86_64 .rpm (linux-gcc)"
-            "release-artifacts/ac3forge-dev-*-Linux-x86_64.tar.gz|Linux x86_64 library archive (linux-gcc)"
-            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64.tar.gz|Linux aarch64 archive (linux-gcc-arm64)"
-            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64-runtime.deb|Linux aarch64 .deb (linux-gcc-arm64)"
-            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64-runtime.rpm|Linux aarch64 .rpm (linux-gcc-arm64)"
-            "release-artifacts/ac3forge-dev-*-Linux-aarch64.tar.gz|Linux aarch64 library archive (linux-gcc-arm64)"
-            "release-artifacts/ac3forge-[0-9]*-Darwin.dmg|macOS universal disk image (package-macos-universal)"
+            "release-artifacts/iclforge-[0-9]*-win64.zip|Windows x64 archive (windows-msvc)"
+            "release-artifacts/iclforge-[0-9]*-win64.exe|Windows x64 NSIS installer (windows-msvc)"
+            "release-artifacts/iclforge-dev-*-win64.zip|Windows x64 library archive (windows-msvc)"
+            "release-artifacts/iclforge-[0-9]*-win-arm64.zip|Windows arm64 archive (windows-msvc-arm64, experimental)"
+            "release-artifacts/iclforge-[0-9]*-win-arm64.exe|Windows arm64 NSIS installer (windows-msvc-arm64, experimental)"
+            "release-artifacts/iclforge-[0-9]*-Linux-x86_64.tar.gz|Linux x86_64 archive (linux-gcc)"
+            "release-artifacts/iclforge-[0-9]*-Linux-x86_64-runtime.deb|Linux x86_64 .deb (linux-gcc)"
+            "release-artifacts/iclforge-[0-9]*-Linux-x86_64-runtime.rpm|Linux x86_64 .rpm (linux-gcc)"
+            "release-artifacts/iclforge-dev-*-Linux-x86_64.tar.gz|Linux x86_64 library archive (linux-gcc)"
+            "release-artifacts/iclforge-[0-9]*-Linux-aarch64.tar.gz|Linux aarch64 archive (linux-gcc-arm64)"
+            "release-artifacts/iclforge-[0-9]*-Linux-aarch64-runtime.deb|Linux aarch64 .deb (linux-gcc-arm64)"
+            "release-artifacts/iclforge-[0-9]*-Linux-aarch64-runtime.rpm|Linux aarch64 .rpm (linux-gcc-arm64)"
+            "release-artifacts/iclforge-dev-*-Linux-aarch64.tar.gz|Linux aarch64 library archive (linux-gcc-arm64)"
+            "release-artifacts/iclforge-[0-9]*-Darwin.dmg|macOS universal disk image (package-macos-universal)"
             "release-artifacts/ac3gui-*.AppImage|Linux AppImage (linux-appimage)"
             "release-artifacts/*.apk|Android APK (build-android)"
             # The sink firmware (package-esp32-firmware, planning/esp32-ota.md O8):
@@ -459,7 +459,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gpg --armor --export "$GPG_KEYID" > release-artifacts/ac3forge-signing-key.asc
+          gpg --armor --export "$GPG_KEYID" > release-artifacts/iclforge-signing-key.asc
 
           shopt -s nullglob
           artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
@@ -484,7 +484,7 @@ jobs:
         with:
           path: release-artifacts
           format: spdx-json
-          output-file: release-artifacts/ac3forge-${{ needs.resolve-version.outputs.version }}.spdx.json
+          output-file: release-artifacts/iclforge-${{ needs.resolve-version.outputs.version }}.spdx.json
           upload-artifact: false
 
       # Keyless: signed via Sigstore/Fulcio using this job's own GitHub OIDC
@@ -560,7 +560,7 @@ jobs:
             release-artifacts/*.apk
             release-artifacts/*.bin
             release-artifacts/hearth-sink-manifest.json
-          sbom-path: release-artifacts/ac3forge-${{ needs.resolve-version.outputs.version }}.spdx.json
+          sbom-path: release-artifacts/iclforge-${{ needs.resolve-version.outputs.version }}.spdx.json
 
       # Only for workflow_dispatch: a tag-push run already has its tag (that
       # is what triggered it). Pushed here, after build/package/sign/attest

@@ -14,7 +14,7 @@
 // without them; the wheel build (python/pyproject.toml) turns every one of
 // those targets ON, so a published wheel always carries the full surface.
 //
-// That used to be two `#ifdef AC3FORGE_PY_HAVE_*` blocks, about three hundred
+// That used to be two `#ifdef ICLFORGE_PY_HAVE_*` blocks, about three hundred
 // lines of them, inside bindings.cpp's module body. Each is now its own
 // translation unit in a {present,absent} directory pair, selected by CMake on
 // exactly the same condition that decides the compile definition did - which

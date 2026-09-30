@@ -29,7 +29,7 @@ namespace fs = std::filesystem;
 using iclforge::test::kSanitized;
 
 std::vector<std::byte> read_stream(const std::string& leg) {
-    const fs::path path = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
+    const fs::path path = fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
     std::ifstream in(path, std::ios::binary);
     const std::vector<char> raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     std::vector<std::byte> bytes(raw.size());

@@ -34,7 +34,7 @@
 // tests/cli/test_cli_atmos_adm.cpp and test_cli_decode_adm.cpp use, and for the same reason (their
 // own top comments: main.cpp compiles run_atmos_adm/run_decode_ac4 into one anonymous-namespace
 // binary this test binary cannot link directly). Separate file, same two-part
-// AC3FORGE_BUILD_ADM-and-ac3cli gate as those two files (tests/CMakeLists.txt); the fixture below
+// ICLFORGE_BUILD_ADM-and-ac3cli gate as those two files (tests/CMakeLists.txt); the fixture below
 // is a byte-identical copy of test_cli_atmos_adm.cpp's own (bed L/R at +-30 degrees, one object
 // held at azimuth -110 (SR) for 0.096s then jumping to dead ahead) - "the committed fixtures the
 // E-AC-3 object tests use", per the exit criterion's own wording, rather than a new one.
@@ -57,7 +57,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_adm_ac4_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_adm_ac4_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }

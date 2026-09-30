@@ -9,6 +9,6 @@
 # to one boot with the control surface up, and asks it over Improv what it is.
 # It never gives it a network: QEMU has no radio, and esp_wifi_start() does
 # not return from RF calibration there.
-CONFIG_AC3FORGE_EXAMPLE_NETWORK_WIFI=y
-CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID=""
-CONFIG_AC3FORGE_EXAMPLE_HTTP_URL=""
+CONFIG_ICLFORGE_EXAMPLE_NETWORK_WIFI=y
+CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID=""
+CONFIG_ICLFORGE_EXAMPLE_HTTP_URL=""

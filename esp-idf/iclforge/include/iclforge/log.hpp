@@ -10,9 +10,9 @@
 // board updated over its network usually has no cable on it, and its console
 // is where it says what went wrong.
 
-namespace ac3forge {
+namespace iclforge {
 
-// Starts keeping the console's last `bytes` bytes (CONFIG_AC3FORGE_LOG_BYTES),
+// Starts keeping the console's last `bytes` bytes (CONFIG_ICLFORGE_LOG_BYTES),
 // in PSRAM where the board has it and in internal RAM otherwise. Call it first
 // thing in app_main, so that the boot's own lines are kept. False, keeping
 // nothing, when `bytes` is 0 or the memory is not there.
@@ -34,4 +34,4 @@ class ConsoleOnly {
     ConsoleOnly& operator=(const ConsoleOnly&) = delete;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

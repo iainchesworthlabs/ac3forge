@@ -100,11 +100,11 @@ TEST_CASE("network sinks: hello fills in a Hearth sink's capabilities", "[hearth
     client.url = *service.url();
     client.psk = ss::handshake::PskCategory::kSentinel;
     client.hello = true;
-    client.supported_roles = {"_ac3forge_player@v1", "player@v1"};
+    client.supported_roles = {"_iclforge_player@v1", "player@v1"};
     ss::player::Support support;
     support.data_types = {ss::player::DataType::kAc3, ss::player::DataType::kEac3};
     support.outputs = {.count = 8, .bit_depth = 32, .bit_depths = {16, 32}};
-    client.ac3forge_support = support;
+    client.iclforge_support = support;
     sinks.on_client(client);
 
     const auto status = sinks.status();
@@ -206,7 +206,7 @@ TEST_CASE("network sinks: commands on an id nothing has ever found are quietly r
     CHECK(sinks.status().sinks.empty());
 }
 
-TEST_CASE("network sinks: push_sink_settings refuses a sink with no _ac3forge_player@v1 support",
+TEST_CASE("network sinks: push_sink_settings refuses a sink with no _iclforge_player@v1 support",
           "[hearth][network-sinks]") {
     MemorySettingsStore settings;
     PairingStore store{settings, today};
@@ -220,7 +220,7 @@ TEST_CASE("network sinks: push_sink_settings refuses a sink with no _ac3forge_pl
     client.client_id = "client-jkl";
     client.url = *service.url();
     client.hello = true;
-    // No ac3forge_support: a standard Sendspin player, not a Hearth sink -
+    // No iclforge_support: a standard Sendspin player, not a Hearth sink -
     // there is no settings command for it to take at all.
     sinks.on_client(client);
 
@@ -292,10 +292,10 @@ TEST_CASE("network sinks: only a connected sink can be added to a group", "[hear
     client.name = "hearth-s3-kitchen";
     client.url = *service.url();
     client.hello = true;
-    client.supported_roles = {"_ac3forge_player@v1"};
+    client.supported_roles = {"_iclforge_player@v1"};
     ss::player::Support support;
     support.data_types = {ss::player::DataType::kEac3};
-    client.ac3forge_support = support;
+    client.iclforge_support = support;
     sinks.on_client(client);
 
     sinks.add_group_member(group_id, "hearth-s3-kitchen");
@@ -404,7 +404,7 @@ TEST_CASE("network sinks: selecting a group clears a sink selection and back aga
     CHECK(sinks.status().selected_id.empty());
 }
 
-TEST_CASE("network sinks: push_sink_settings reaches ac3forge_command for a sink that offers the role",
+TEST_CASE("network sinks: push_sink_settings reaches iclforge_command for a sink that offers the role",
           "[hearth][network-sinks]") {
     MemorySettingsStore settings;
     PairingStore store{settings, today};
@@ -421,7 +421,7 @@ TEST_CASE("network sinks: push_sink_settings reaches ac3forge_command for a sink
     ss::player::Support support;
     support.data_types = {ss::player::DataType::kEac3};
     support.outputs = {.count = 2, .bit_depth = 24, .bit_depths = {24}};
-    client.ac3forge_support = support;
+    client.iclforge_support = support;
     sinks.on_client(client);
 
     ss::player::Settings out;
@@ -430,7 +430,7 @@ TEST_CASE("network sinks: push_sink_settings reaches ac3forge_command for a sink
     out.delay_ms = {0.0, 0.0};
     // "client-mno" was never a real accepted connection (this slice's
     // ServerHost never listens - this file's own header comment), so
-    // ServerHost::ac3forge_command() finds no session to send through and
+    // ServerHost::iclforge_command() finds no session to send through and
     // this returns false. What this proves is that push_sink_settings()
     // reaches that call, past its own capability gate, for a sink that DOES
     // offer the role - not that a real sink applies it, which test_group.cpp
@@ -543,7 +543,7 @@ TEST_CASE("network sinks: a client going away keeps its row, and it is dialled a
     ss::player::Support support;
     support.data_types = {ss::player::DataType::kEac3};
     support.outputs = {.count = 6, .bit_depth = 32, .bit_depths = {32}};
-    client.ac3forge_support = support;
+    client.iclforge_support = support;
     sinks.on_client(client);
     REQUIRE(sinks.status().sinks.size() == 1);
     CHECK(sinks.status().sinks.front().link == iclforge::hearth::SinkLink::kConnected);
@@ -591,7 +591,7 @@ TEST_CASE("network sinks: a sink kept through a firmware update keeps its row un
     ss::player::Support support;
     support.data_types = {ss::player::DataType::kEac3};
     support.outputs = {.count = 2, .bit_depth = 32, .bit_depths = {32}};
-    client.ac3forge_support = support;
+    client.iclforge_support = support;
     sinks.on_client(client);
     sinks.select_sink("hearth-s3-den");
 

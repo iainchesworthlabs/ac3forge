@@ -19,7 +19,7 @@
 #include "iclforge/sendspin/frames.hpp"
 
 // The audio chunks, including planning/hearth-sendspin-extension.md's test
-// vectors for _ac3forge_player@v1: a burst chunk from wrap_frame for
+// vectors for _iclforge_player@v1: a burst chunk from wrap_frame for
 // tests/golden's AC-3 5.1 fixture and one from Eac3BurstPacker for the
 // encoder's E-AC-3 syncframes of two blocks, checked field by field against the
 // burst the library packs for a receiver, beside the same checks on a silent
@@ -205,7 +205,7 @@ TEST_CASE("chunks: an AC-3 burst chunk carries wrap_frame's Pc, Pd and frame",
 
     const std::vector<std::uint8_t> message = burst_chunk(1000000, 180000, pc, pd, *frame);
     CHECK(message.size() == iclforge::sendspin::kBurstChunkHeaderBytes + frame->size());
-    CHECK(message[0] == iclforge::sendspin::message_id::kAc3forgeBurst);
+    CHECK(message[0] == iclforge::sendspin::message_id::kIclforgeBurst);
 
     const auto chunk = iclforge::sendspin::parse_burst_chunk(message);
     REQUIRE(chunk.has_value());
@@ -264,7 +264,7 @@ TEST_CASE("chunks: an E-AC-3 burst chunk carries Eac3BurstPacker's six blocks",
 
 TEST_CASE("chunks: a burst chunk for the first syncframe of tests/golden's AC-3 5.1 fixture",
           "[sendspin][chunks]") {
-    const std::vector<std::byte> stream = read_file(AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac3-51-448/ffmpeg.ac3");
+    const std::vector<std::byte> stream = read_file(ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac3-51-448/ffmpeg.ac3");
     const auto frames = iclforge::split_frames(stream);
     REQUIRE(frames.has_value());
     REQUIRE_FALSE(frames->empty());

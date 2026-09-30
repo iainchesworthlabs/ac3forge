@@ -208,7 +208,7 @@ std::expected<SigningKey, KeyLoadError> key_from_content(std::string_view conten
         return std::unexpected(KeyLoadError{
             KeyErrorKind::kMalformed,
             std::string{"signing key from "} + std::string{source} +
-                " looks like a botched hex/byte-array export ac3forge could not parse - "
+                " looks like a botched hex/byte-array export iclforge could not parse - "
                 "provide raw binary bytes, base64, or a comma-separated 0xHH byte list"});
     }
     return std::move(*key);
@@ -244,24 +244,24 @@ std::expected<SigningKey, KeyLoadError> load_signing_key(std::string_view explic
                                 std::string{"file '"} + std::string{explicit_path} + "'");
     }
 
-    // 2. $AC3FORGE_SIGNING_KEY_FILE (a path)
-    if (const char* env_path = std::getenv("AC3FORGE_SIGNING_KEY_FILE");
+    // 2. $ICLFORGE_SIGNING_KEY_FILE (a path)
+    if (const char* env_path = std::getenv("ICLFORGE_SIGNING_KEY_FILE");
         env_path != nullptr && env_path[0] != '\0') {
         auto content = read_file(env_path);
         if (!content) {
             return std::unexpected(KeyLoadError{
                 KeyErrorKind::kUnreadable,
                 std::string{"cannot read signing key file '"} + env_path +
-                    "' (from AC3FORGE_SIGNING_KEY_FILE)"});
+                    "' (from ICLFORGE_SIGNING_KEY_FILE)"});
         }
-        return key_from_content(*content, std::string{"AC3FORGE_SIGNING_KEY_FILE ('"} + env_path +
+        return key_from_content(*content, std::string{"ICLFORGE_SIGNING_KEY_FILE ('"} + env_path +
                                               "')");
     }
 
-    // 3. $AC3FORGE_SIGNING_KEY (inline base64 or raw)
-    if (const char* env_inline = std::getenv("AC3FORGE_SIGNING_KEY");
+    // 3. $ICLFORGE_SIGNING_KEY (inline base64 or raw)
+    if (const char* env_inline = std::getenv("ICLFORGE_SIGNING_KEY");
         env_inline != nullptr && env_inline[0] != '\0') {
-        return key_from_content(env_inline, "AC3FORGE_SIGNING_KEY");
+        return key_from_content(env_inline, "ICLFORGE_SIGNING_KEY");
     }
 
     return std::unexpected(KeyLoadError{KeyErrorKind::kAbsent, "no signing key provided"});

@@ -1,4 +1,4 @@
-// The Sendspin player's audio. See ../include/ac3forge/burst_player.hpp.
+// The Sendspin player's audio. See ../include/iclforge/burst_player.hpp.
 
 #include "iclforge/burst_player.hpp"
 
@@ -38,7 +38,7 @@
 
 #include "iclforge/access_units.hpp"
 
-namespace ac3forge {
+namespace iclforge {
 namespace {
 
 namespace ss = iclforge::sendspin;
@@ -1412,4 +1412,4 @@ BurstPlayerStatus BurstPlayer::status() const {
 
 bool BurstPlayer::active() const { return impl_->active.load(); }
 
-}  // namespace ac3forge
+}  // namespace iclforge

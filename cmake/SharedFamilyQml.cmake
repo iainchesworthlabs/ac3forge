@@ -38,11 +38,11 @@
 # out_dir:       where the rewritten copies are written, e.g. .../ui/qml/shared
 # out_files_var: name of a variable (in the caller's scope) to receive the
 #                list of generated file paths
-function(ac3forge_stage_shared_qml module_uri out_dir out_files_var)
+function(iclforge_stage_shared_qml module_uri out_dir out_files_var)
     set(names Theme.qml Card.qml SectionHeader.qml StatTile.qml AppButton.qml AppCheckBox.qml
               IconButton.qml AppSlider.qml AppTextField.qml AppComboBox.qml RailBlock.qml SegmentedControl.qml FocusRing.qml)
     file(MAKE_DIRECTORY "${out_dir}")
-    get_property(tracked GLOBAL PROPERTY AC3FORGE_SHARED_QML_CONFIGURE_DEPENDS)
+    get_property(tracked GLOBAL PROPERTY ICLFORGE_SHARED_QML_CONFIGURE_DEPENDS)
     set(generated)
     foreach(name IN LISTS names)
         set(src "${CMAKE_SOURCE_DIR}/apps/gui/qml/${name}")
@@ -56,7 +56,7 @@ function(ac3forge_stage_shared_qml module_uri out_dir out_files_var)
             # this file's header for why that matters here).
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${src}")
             list(APPEND tracked "${src}")
-            set_property(GLOBAL PROPERTY AC3FORGE_SHARED_QML_CONFIGURE_DEPENDS "${tracked}")
+            set_property(GLOBAL PROPERTY ICLFORGE_SHARED_QML_CONFIGURE_DEPENDS "${tracked}")
         endif()
         list(APPEND generated "${dst}")
     endforeach()

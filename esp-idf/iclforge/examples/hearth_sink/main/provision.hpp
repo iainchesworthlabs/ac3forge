@@ -9,7 +9,7 @@
 // the console prints on, asks the board what it is, and hands it an SSID and a
 // password. The board stores them (settings.hpp) and brings its network up.
 // Nothing here is Hearth's own invention: the packet format is
-// ac3forge/improv.hpp, tested on the host, and the transport is the console.
+// iclforge/improv.hpp, tested on the host, and the transport is the console.
 //
 // SERIAL, NOT BLUETOOTH. The specification has a BLE transport too, and the
 // plan leaves it out until the memory it costs has been measured: a board that

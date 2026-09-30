@@ -11,12 +11,12 @@
 
 #include "iclforge/sink_plan.hpp"
 
-using ac3forge::line_ceiling;
-using ac3forge::plan_sink;
-using ac3forge::sink_ceiling;
-using ac3forge::SinkFrame;
-using ac3forge::SinkLinePlan;
-using ac3forge::SinkPlan;
+using iclforge::line_ceiling;
+using iclforge::plan_sink;
+using iclforge::sink_ceiling;
+using iclforge::SinkFrame;
+using iclforge::SinkLinePlan;
+using iclforge::SinkPlan;
 
 namespace {
 

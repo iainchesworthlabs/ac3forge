@@ -10,10 +10,10 @@
 # frame holds 512 bits, sixteen 32-bit slots, in one line - see
 # main/sink/i2s_wide/audio_sink.cpp for why that is a fork of sink/i2s rather
 # than the second line the S3 and C6 overlays reach for
-# (AC3FORGE_EXAMPLE_I2S_SECOND_LINE stays meaningless here: i2s_wide never
+# (ICLFORGE_EXAMPLE_I2S_SECOND_LINE stays meaningless here: i2s_wide never
 # reads it, and sink_second_line_possible() is hardcoded false).
 CONFIG_IDF_TARGET="esp32p4"
-CONFIG_AC3FORGE_EXAMPLE_SINK_I2S_WIDE=y
+CONFIG_ICLFORGE_EXAMPLE_SINK_I2S_WIDE=y
 
 # The chip revision and clock. This board carries pre-production ESP32-P4
 # silicon, revision v1.3 - a different hardware generation from ESP-IDF v6.1's
@@ -105,7 +105,7 @@ CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
 # THE WIDE LINE'S PINS. Not yet checked against the FireBeetle 2's own
 # silkscreened header - unlike the SDIO pins below, which this board's own
 # esp_hosted Wi-Fi join already exercised - so these are placeholder-safe
-# only in the sense AC3FORGE_EXAMPLE_I2S_BCLK_GPIO's own Kconfig help text
+# only in the sense ICLFORGE_EXAMPLE_I2S_BCLK_GPIO's own Kconfig help text
 # means it: ordinary GPIOs, not a match to any particular DAC board. Chosen
 # clear of every pin range this board is confirmed to use for something else:
 # GPIO14-19 (SDIO to the onboard C6 - main/idf_component.yml, confirmed by a
@@ -119,6 +119,6 @@ CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
 # though: that one is confirmed open and playing on these three pins
 # (sink/i2s_wide/audio_sink.cpp's own comment has why TDM mode - three
 # channels or more - cannot be checked on this exact chip revision at all).
-CONFIG_AC3FORGE_EXAMPLE_I2S_BCLK_GPIO=20
-CONFIG_AC3FORGE_EXAMPLE_I2S_WS_GPIO=21
-CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT_GPIO=22
+CONFIG_ICLFORGE_EXAMPLE_I2S_BCLK_GPIO=20
+CONFIG_ICLFORGE_EXAMPLE_I2S_WS_GPIO=21
+CONFIG_ICLFORGE_EXAMPLE_I2S_DOUT_GPIO=22

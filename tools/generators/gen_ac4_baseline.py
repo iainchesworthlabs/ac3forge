@@ -2118,7 +2118,7 @@ def main():
                         help="with --gold-set: an Atmos ADM BWF master to try the A-JOC and "
                              "immersive stereo encoders on, as G0 did; repeatable")
     parser.add_argument("--cli", type=Path, metavar="AC3CLI",
-                        help="with --gold-set: an ac3cli built with -DAC3FORGE_BUILD_ADM=ON, which "
+                        help="with --gold-set: an ac3cli built with -DICLFORGE_BUILD_ADM=ON, which "
                              "writes the objects group's masters and whose probe and decode are "
                              "recorded for every G1 leg")
     parser.add_argument("--jobs", type=int, default=4,

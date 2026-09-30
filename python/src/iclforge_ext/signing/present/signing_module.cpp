@@ -8,7 +8,7 @@
 // The variant of the `ac3.signing` submodule compiled when iclforge::signing is in this build.
 //
 // This is the body that used to sit inside bindings.cpp's PYBIND11_MODULE
-// behind `#ifdef AC3FORGE_PY_HAVE_SIGNING`, moved verbatim. See
+// behind `#ifdef ICLFORGE_PY_HAVE_SIGNING`, moved verbatim. See
 // optional_modules.hpp for why it is a translation unit now, and
 // python/CMakeLists.txt for the selection that picks this file over the
 // absent/ one beside it.
@@ -52,8 +52,8 @@ void register_signing(py::module_& m) {
             return *key;
         },
         py::arg("path") = std::string{},
-        "Resolve a key from `path` if given, else $AC3FORGE_SIGNING_KEY_FILE, else "
-        "$AC3FORGE_SIGNING_KEY - the CLI's own resolution order. Raises ValueError with the "
+        "Resolve a key from `path` if given, else $ICLFORGE_SIGNING_KEY_FILE, else "
+        "$ICLFORGE_SIGNING_KEY - the CLI's own resolution order. Raises ValueError with the "
         "loader's message when nothing usable was found.");
 
     signing.def(

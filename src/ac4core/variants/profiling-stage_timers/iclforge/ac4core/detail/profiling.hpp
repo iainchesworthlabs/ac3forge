@@ -1,7 +1,7 @@
 #pragma once
 
 // Zone markers for the AC-4 kernels, stage-timer variant: selected by
-// AC3FORGE_STAGE_TIMERS (src/ac4core/CMakeLists.txt), which the minimum-footprint
+// ICLFORGE_STAGE_TIMERS (src/ac4core/CMakeLists.txt), which the minimum-footprint
 // profile has and no other build does. See the none/ sibling for the default and
 // for why a directory, not a preprocessor test, chooses between them.
 //

@@ -1,4 +1,4 @@
-// ac3forge/improv.hpp: the Improv Wi-Fi serial packet format, on the host.
+// iclforge/improv.hpp: the Improv Wi-Fi serial packet format, on the host.
 //
 // The board this runs on has no serial client attached in CI, and the bytes
 // are the whole of the interoperability: a checksum computed over the wrong
@@ -18,7 +18,7 @@
 
 namespace {
 
-namespace improv = ac3forge::improv;
+namespace improv = iclforge::improv;
 
 // A packet as a client would send it: header, version, type, length, data,
 // and the checksum over everything before it.

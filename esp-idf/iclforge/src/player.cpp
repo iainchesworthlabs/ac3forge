@@ -1,5 +1,5 @@
 // The player's two tasks and the ring between them. See
-// ../include/ac3forge/player.hpp for what this is and why it is here.
+// ../include/iclforge/player.hpp for what this is and why it is here.
 
 #include "iclforge/player.hpp"
 
@@ -30,11 +30,11 @@
 
 #include "iclforge/unit_hold.hpp"
 
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
 #include "ac4_bridge.hpp"
 #endif
 
-namespace ac3forge {
+namespace iclforge {
 namespace {
 
 using iclforge::render::LayoutRenderer;
@@ -188,7 +188,7 @@ struct Player::Impl {
     std::optional<iclforge::FrameDecoder> ac3_decoder;
     std::optional<iclforge::Eac3Decoder> eac3_decoder;
 
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     // The AC-4 decoder, constructed when the play's first bytes say the stream
     // is AC-4 (decode_loop), and what its blocks are placed by. A play is one
     // codec throughout.
@@ -242,7 +242,7 @@ struct Player::Impl {
     std::atomic<int> error{0};
     std::atomic<float> volume{1.0F};
     std::atomic<std::size_t> decode_stack_free{0};
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     std::atomic<std::uint64_t> ac4_samples{0};
     std::atomic<std::uint64_t> ac4_hash_us{0};
     std::atomic<std::uint64_t> ac4_pcm_hash{0};
@@ -326,7 +326,7 @@ struct Player::Impl {
         s.decode_stack_free = decode_stack_free.load();
         s.finished = finished.load();
         s.failed = failed.load();
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
         s.ac4_samples = ac4_samples.load();
         s.ac4_hash_us = ac4_hash_us.load();
         s.ac4_pcm_hash = ac4_pcm_hash.load();
@@ -690,7 +690,7 @@ struct Player::Impl {
         return delivered;
     }
 
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     // --- AC-4 ------------------------------------------------------------------
 
     // One block from the AC-4 decoder onto the layout and into the sink: the
@@ -883,7 +883,7 @@ struct Player::Impl {
             resync_bytes.store(resync_before + splitter.resynchronised_bytes());
         }
     }
-#endif  // CONFIG_AC3FORGE_AC4
+#endif  // CONFIG_ICLFORGE_AC4
 
     void decode_loop() {
         using Status = iclforge::io::AccessUnitAccumulator::Status;
@@ -892,7 +892,7 @@ struct Player::Impl {
         // survives the re-arm at each pass.
         std::uint64_t resync_before = 0;
 
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
         // AC-4's sync word tells its streams from AC-3's and E-AC-3's, and a play
         // is one codec throughout: the first two bytes of the stream decide which
         // framer and decoder read it. They are taken from the ring to be looked
@@ -1244,4 +1244,4 @@ bool Player::wait(TickType_t ticks) {
     return finished();
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

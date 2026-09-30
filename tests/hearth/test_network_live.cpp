@@ -268,7 +268,7 @@ TEST_CASE("network sinks live: the sinks on this network are found, paired, play
                 return facts != nullptr &&
                        facts->pair_state == iclforge::hearth::PairState::kPaired &&
                        facts->link == iclforge::hearth::SinkLink::kConnected &&
-                       facts->ac3forge_support.has_value();
+                       facts->iclforge_support.has_value();
             },
             45s));
     }
@@ -332,7 +332,7 @@ TEST_CASE("network sinks live: the sinks on this network are found, paired, play
     const auto counters = [&](const iclforge::hearth::NetworkStatus& status,
                               const std::string& id) {
         const iclforge::hearth::SinkFacts* facts = row(status, id);
-        return facts != nullptr && facts->ac3forge_state ? std::optional(facts->ac3forge_state->counters) : std::nullopt;
+        return facts != nullptr && facts->iclforge_state ? std::optional(facts->iclforge_state->counters) : std::nullopt;
     };
     (void)drive(
         sinks,

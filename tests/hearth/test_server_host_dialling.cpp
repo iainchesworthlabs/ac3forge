@@ -188,7 +188,7 @@ TEST_CASE("server host: a dial nothing answers is reported as failed", "[hearth]
 
 TEST_CASE("server host: a second connection to a client it already holds leaves the client connected",
           "[hearth][server-host][websocket]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("server_host_second_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("server_host_second_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     CodeLog log;
     std::unique_ptr<testsink::Sink> sink = start_sink(scratch, log);
@@ -226,7 +226,7 @@ TEST_CASE("server host: a second connection to a client it already holds leaves 
 
 TEST_CASE("server host: a pairing attempt cancelled can be asked for again on the same connection",
           "[hearth][server-host][websocket]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("server_host_again_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("server_host_again_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     CodeLog log;
     const std::unique_ptr<testsink::Sink> sink = start_sink(scratch, log);
@@ -287,7 +287,7 @@ TEST_CASE("server host: a pairing attempt cancelled can be asked for again on th
 
 TEST_CASE("server host: a code that does not match is asked for again, and the view counts each request",
           "[hearth][server-host][websocket]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("server_host_rounds_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("server_host_rounds_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     CodeLog log;
     const std::unique_ptr<testsink::Sink> sink = start_sink(scratch, log);
@@ -336,7 +336,7 @@ TEST_CASE("server host: a code that does not match is asked for again, and the v
 
 TEST_CASE("server host: a sink another server holds refuses a waiting connection and admits a dial to pair",
           "[hearth][server-host][websocket]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("server_host_held_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("server_host_held_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     CodeLog log;
     const std::unique_ptr<testsink::Sink> sink = start_sink(scratch, log);

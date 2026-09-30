@@ -20,7 +20,7 @@
 #      meant to stop here and be explained in docs/performance-trend.md's
 #      footprint table rather than land silently. Raise them WITH the table.
 #
-# Set AC3FORGE_FOOTPRINT_SUMMARY to a path to also write the probe's key=value
+# Set ICLFORGE_FOOTPRINT_SUMMARY to a path to also write the probe's key=value
 # output there, which is what the CI leg feeds to
 # tools/checks/footprint_report.py.
 set -euo pipefail
@@ -36,7 +36,7 @@ DIRECTION=decoder
 # --ac4: the third profile, the AC-4 decoder (planning/ac4.md, D14a) in float, with its own
 # probe (apps/baremetal/ac4_probe.cpp) and its own presets, since AC-4 shares nothing with
 # iclforge::ac3 and an image carries one probe.
-# --stage-timers: build the library with AC3FORGE_STAGE_TIMERS, so the probe
+# --stage-timers: build the library with ICLFORGE_STAGE_TIMERS, so the probe
 # prints where each fixture's decode time goes stage by stage. On this leg
 # that is shape only - QEMU's clock describes the host, and the host shape's
 # describes a desktop - but it is the same build a board run uses, and this
@@ -45,7 +45,7 @@ DIRECTION=decoder
 STAGE_TIMERS=OFF
 # --icount: the one timing figure on this leg that means anything. The probe
 # is built with its clock on the mps2-an385's 25 MHz CMSDK timer
-# (AC3FORGE_BAREMETAL_CLOCK=timer, apps/baremetal/platform/baremetal/
+# (ICLFORGE_BAREMETAL_CLOCK=timer, apps/baremetal/platform/baremetal/
 # clock_timer.cpp) and QEMU runs with -icount shift=0, under which the guest
 # clock advances one nanosecond per executed instruction. Every microsecond
 # the probe prints is then a thousand Thumb-2 instructions, deterministic on
@@ -82,7 +82,7 @@ fi
 # a change that pushes past one stops here and is explained in that table.
 # Counts are deterministic, so a move of one per cent is visible in the run's
 # own lines long before a ceiling is; the ceilings catch the silent ones.
-# Override one for a run with AC3FORGE_MAX_INSTRUCTIONS_PER_FRAME_<fixture>.
+# Override one for a run with ICLFORGE_MAX_INSTRUCTIONS_PER_FRAME_<fixture>.
 declare -A ICOUNT_CEILING=(
     [ac3_mono]=2000000
     [ac3_stereo]=4500000
@@ -179,7 +179,7 @@ declare -A PEAK_CEILING_AC4=(
 # probe's own peak heap on either. See docs/performance-trend.md's footprint
 # table for the measured values these leave headroom over.
 #
-# AC3FORGE_MAX_IMAGE_BYTES was re-based from 400,000 to 465,000 after PF7's own
+# ICLFORGE_MAX_IMAGE_BYTES was re-based from 400,000 to 465,000 after PF7's own
 # feature branch (bare-metal probe harness/PF7, PR #351) picked up several mid-flight merges
 # from `develop` - most significantly DC10's QMF-domain JOC reconstruction,
 # which the decode path now needs (src/dsp/src/qmf.cpp and
@@ -188,7 +188,7 @@ declare -A PEAK_CEILING_AC4=(
 # first measured and when the PR actually merged. The image had already
 # reached 412,516 bytes at that point; nobody re-measured before merging.
 # See docs/performance-trend.md's footprint table for the current breakdown.
-: "${AC3FORGE_MAX_IMAGE_BYTES:=465000}"
+: "${ICLFORGE_MAX_IMAGE_BYTES:=465000}"
 # Measured on main at be71f454, 2026-09-09, arm-none-eabi GCC 14.2.1 under QEMU
 # 10.2.1: image 320,940 of 465,000 (31% headroom) and peak heap 236,391 of
 # 300,000 (21%). Both fell after the float32 decode path and the thread_local
@@ -199,7 +199,7 @@ declare -A PEAK_CEILING_AC4=(
 # left where it is. This peak is deterministic for these fixed fixtures, so the
 # margin only ever has to absorb a deliberate change, never run-to-run noise.
 # See docs/performance-trend.md's footprint table.
-: "${AC3FORGE_MAX_HEAP_BYTES:=300000}"
+: "${ICLFORGE_MAX_HEAP_BYTES:=300000}"
 # Allocations per frame in the steady state, whichever fixture is worst. The
 # requirement PF7 states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
@@ -231,7 +231,7 @@ declare -A PEAK_CEILING_AC4=(
 # decoders' frame-scope buffers moved onto the decoder. eac3_ecpl now measures
 # 12, level with plain eac3 - which is the answer to the question the exemption
 # was really asking, and it is no.
-: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
+: "${ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed. 12 - one __cxa_thread_atexit registration record, for the pointer
 # to enhanced coupling's spectrum scratch, the one thread_local the library
@@ -250,7 +250,7 @@ declare -A PEAK_CEILING_AC4=(
 # grows a little; either the scratch is being handed back or it is not, and the
 # difference is five figures. A ceiling with room for half of it would report
 # nothing useful.
-: "${AC3FORGE_MAX_RETAINED_BYTES:=1024}"
+: "${ICLFORGE_MAX_RETAINED_BYTES:=1024}"
 
 if [[ "$HOST" == "1" ]]; then
     PRESET=config-linux-gcc-minimal
@@ -279,7 +279,7 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # gating against the decode ceiling. Nothing failed as a result - the
     # measured peak is 218,560 - but the number in this file was not the number
     # being enforced, which is the part worth not repeating.
-    AC3FORGE_MAX_HEAP_BYTES=${AC3FORGE_MAX_HEAP_BYTES_ENCODE:-250000}
+    ICLFORGE_MAX_HEAP_BYTES=${ICLFORGE_MAX_HEAP_BYTES_ENCODE:-250000}
 fi
 if [[ "$DIRECTION" == "ac4" ]]; then
     PRESET="${PRESET}-ac4"
@@ -289,14 +289,14 @@ if [[ "$DIRECTION" == "ac4" ]]; then
     # .bss); peak heap 1,931,680 (the 5.1.4 fixture); 0 retained; the stack a decode used, read
     # by painting, 19,456 bytes on the Cortex-M3 and 25,968 on the x86-64 host, whose frames
     # are larger. Every ceiling a tenth or so over its figure.
-    AC3FORGE_MAX_IMAGE_BYTES=${AC3FORGE_MAX_IMAGE_BYTES_AC4:-535000}
-    AC3FORGE_MAX_HEAP_BYTES=${AC3FORGE_MAX_HEAP_BYTES_AC4:-2130000}
-    AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME=${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_AC4:-210}
-    AC3FORGE_MAX_RETAINED_BYTES=${AC3FORGE_MAX_RETAINED_BYTES_AC4:-1024}
+    ICLFORGE_MAX_IMAGE_BYTES=${ICLFORGE_MAX_IMAGE_BYTES_AC4:-535000}
+    ICLFORGE_MAX_HEAP_BYTES=${ICLFORGE_MAX_HEAP_BYTES_AC4:-2130000}
+    ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME_AC4:-210}
+    ICLFORGE_MAX_RETAINED_BYTES=${ICLFORGE_MAX_RETAINED_BYTES_AC4:-1024}
     if [[ "$HOST" == "1" ]]; then
-        AC3FORGE_MAX_STACK_BYTES=${AC3FORGE_MAX_STACK_BYTES_AC4:-28500}
+        ICLFORGE_MAX_STACK_BYTES=${ICLFORGE_MAX_STACK_BYTES_AC4:-28500}
     else
-        AC3FORGE_MAX_STACK_BYTES=${AC3FORGE_MAX_STACK_BYTES_AC4:-21500}
+        ICLFORGE_MAX_STACK_BYTES=${ICLFORGE_MAX_STACK_BYTES_AC4:-21500}
     fi
 fi
 # Its own preset and build directory, so a plain run and an --icount run
@@ -318,10 +318,10 @@ fi
 BUILD_DIR="build/$PRESET"
 if [[ -n "${SCALAR:-}" ]]; then
     BUILD_DIR="build/$PRESET-$SCALAR"
-    cmake --preset "$PRESET" -B "$BUILD_DIR" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS" -DAC3FORGE_DECODE_SCALAR="$SCALAR"
+    cmake --preset "$PRESET" -B "$BUILD_DIR" -DICLFORGE_STAGE_TIMERS="$STAGE_TIMERS" -DICLFORGE_DECODE_SCALAR="$SCALAR"
     cmake --build "$BUILD_DIR" --parallel
 else
-    cmake --preset "$PRESET" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS"
+    cmake --preset "$PRESET" -DICLFORGE_STAGE_TIMERS="$STAGE_TIMERS"
     cmake --build --preset "$BUILD_PRESET"
 fi
 
@@ -357,8 +357,8 @@ else
     arm-none-eabi-size "$BIN"
     IMAGE=$(arm-none-eabi-size "$BIN" | awk 'NR==2 {print $4}')
     echo "image.total_bytes=$IMAGE" | tee -a "$OUTPUT"
-    if (( IMAGE > AC3FORGE_MAX_IMAGE_BYTES )); then
-        echo "::error title=Footprint regression::linked image is $IMAGE bytes, ceiling is $AC3FORGE_MAX_IMAGE_BYTES (see docs/performance-trend.md's footprint table)" >&2
+    if (( IMAGE > ICLFORGE_MAX_IMAGE_BYTES )); then
+        echo "::error title=Footprint regression::linked image is $IMAGE bytes, ceiling is $ICLFORGE_MAX_IMAGE_BYTES (see docs/performance-trend.md's footprint table)" >&2
         exit 1
     fi
 fi
@@ -373,8 +373,8 @@ if [[ -z "$heap" ]]; then
     echo "error: the probe reported no heap.peak_bytes line" >&2
     exit 1
 fi
-if (( heap > AC3FORGE_MAX_HEAP_BYTES )); then
-    echo "::error title=Footprint regression::peak heap is $heap bytes, ceiling is $AC3FORGE_MAX_HEAP_BYTES (see docs/performance-trend.md's footprint table)" >&2
+if (( heap > ICLFORGE_MAX_HEAP_BYTES )); then
+    echo "::error title=Footprint regression::peak heap is $heap bytes, ceiling is $ICLFORGE_MAX_HEAP_BYTES (see docs/performance-trend.md's footprint table)" >&2
     exit 1
 fi
 
@@ -383,9 +383,9 @@ if [[ -z "$retained" ]]; then
     echo "error: the probe reported no heap.retained_bytes line" >&2
     exit 1
 fi
-echo "retained after teardown: $retained bytes (ceiling $AC3FORGE_MAX_RETAINED_BYTES)"
-if (( retained > AC3FORGE_MAX_RETAINED_BYTES )); then
-    echo "::error title=Footprint regression::$retained bytes are still live after every decoder was destroyed, ceiling is $AC3FORGE_MAX_RETAINED_BYTES - see the heap.retained_bucket lines for which buffer" >&2
+echo "retained after teardown: $retained bytes (ceiling $ICLFORGE_MAX_RETAINED_BYTES)"
+if (( retained > ICLFORGE_MAX_RETAINED_BYTES )); then
+    echo "::error title=Footprint regression::$retained bytes are still live after every decoder was destroyed, ceiling is $ICLFORGE_MAX_RETAINED_BYTES - see the heap.retained_bucket lines for which buffer" >&2
     exit 1
 fi
 
@@ -397,9 +397,9 @@ if [[ "$DIRECTION" == "ac4" ]]; then
         echo "error: the probe reported no stack.peak_bytes line" >&2
         exit 1
     fi
-    echo "stack: ${stack} bytes (ceiling ${AC3FORGE_MAX_STACK_BYTES})"
-    if (( stack > AC3FORGE_MAX_STACK_BYTES )); then
-        echo "::error title=Footprint regression::a decode used $stack bytes of stack, ceiling is $AC3FORGE_MAX_STACK_BYTES" >&2
+    echo "stack: ${stack} bytes (ceiling ${ICLFORGE_MAX_STACK_BYTES})"
+    if (( stack > ICLFORGE_MAX_STACK_BYTES )); then
+        echo "::error title=Footprint regression::a decode used $stack bytes of stack, ceiling is $ICLFORGE_MAX_STACK_BYTES" >&2
         exit 1
     fi
     # The fixtures' own lines: heap.peak_bytes and stack.peak_bytes end the same way.
@@ -439,14 +439,14 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # is PF7's zero-heap gap seen from the encode side, and it is wider here.
     # Holding this to the decoder's number would gate a difference nothing in
     # this profile can currently close.
-    AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME=${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
+    ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
 fi
 if [[ -z "$CHURN" ]]; then
     echo "error: the probe reported no <fixture>.steady_allocs_per_frame line" >&2
     exit 1
 fi
 while read -r codec per_frame; do
-    ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME
+    ceiling=$ICLFORGE_MAX_STEADY_ALLOCS_PER_FRAME
     # The AC-4 rows each have their own, from the table above.
     if [[ "$DIRECTION" == "ac4" ]]; then
         ceiling=${CHURN_CEILING_AC4[$codec]:-$ceiling}
@@ -475,7 +475,7 @@ if [[ "$ICOUNT" == "1" ]]; then
     fi
     while read -r codec us; do
         instr=$(( us * 1000 ))
-        override="AC3FORGE_MAX_INSTRUCTIONS_PER_FRAME_${codec}"
+        override="ICLFORGE_MAX_INSTRUCTIONS_PER_FRAME_${codec}"
         if [[ "$DIRECTION" == "encoder" ]]; then
             table_ceiling=${ICOUNT_CEILING_ENCODE[$codec]:-}
             table_name=ICOUNT_CEILING_ENCODE
@@ -500,8 +500,8 @@ if [[ "$ICOUNT" == "1" ]]; then
     done <<< "$INSTR"
 fi
 
-if [[ -n "${AC3FORGE_FOOTPRINT_SUMMARY:-}" ]]; then
-    cp "$OUTPUT" "$AC3FORGE_FOOTPRINT_SUMMARY"
+if [[ -n "${ICLFORGE_FOOTPRINT_SUMMARY:-}" ]]; then
+    cp "$OUTPUT" "$ICLFORGE_FOOTPRINT_SUMMARY"
 fi
 
 echo "minimum-footprint ${DIRECTION} probe: pass"

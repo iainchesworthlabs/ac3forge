@@ -119,15 +119,15 @@ class InstallerSite(unittest.TestCase):
                 (0x2000, "hearth-sink-esp32p4-rev1/bootloader.bin"),
                 (0x8000, "hearth-sink-esp32p4-rev1/partition-table.bin"),
                 (0x10000, "hearth-sink-esp32p4-rev1/ota_data_initial.bin"),
-                (0x20000, "hearth-sink-esp32p4-rev1/ac3forge_hearth_sink.bin"),
+                (0x20000, "hearth-sink-esp32p4-rev1/iclforge_hearth_sink.bin"),
                 (0x830000, "hearth-sink-esp32p4-rev1/sample.ac3"),
                 (0x870000, "hearth-sink-esp32p4-rev1/storage.bin"),
             ],
         )
         build = self.builds["hearth-sink-esp32p4-rev1"]
         self.assertEqual(
-            (self.out / "hearth-sink-esp32p4-rev1" / "ac3forge_hearth_sink.bin").read_bytes(),
-            (build / "ac3forge_hearth_sink.bin").read_bytes(),
+            (self.out / "hearth-sink-esp32p4-rev1" / "iclforge_hearth_sink.bin").read_bytes(),
+            (build / "iclforge_hearth_sink.bin").read_bytes(),
         )
         c6 = json.loads((self.out / "hearth-sink-esp32c6.json").read_text("utf-8"))
         self.assertEqual(c6["builds"][0]["chipFamily"], "ESP32-C6")
@@ -161,8 +161,8 @@ class InstallerSite(unittest.TestCase):
         self.assertEqual((index["tag"], index["page"], index["published"]), ("", "", ""))
         build = self.builds["hearth-sink-esp32s3"]
         self.assertEqual(
-            (self.out / "hearth-sink-esp32s3" / "ac3forge_hearth_sink.bin").read_bytes(),
-            (build / "ac3forge_hearth_sink.bin").read_bytes(),
+            (self.out / "hearth-sink-esp32s3" / "iclforge_hearth_sink.bin").read_bytes(),
+            (build / "iclforge_hearth_sink.bin").read_bytes(),
         )
 
     def test_a_directory_whose_parts_do_not_check_out_fails(self) -> None:

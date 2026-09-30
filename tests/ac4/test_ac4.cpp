@@ -35,7 +35,7 @@ std::vector<std::byte> read_file(const std::filesystem::path& path) {
 // not a stream this project's own tooling produced - see docs/verification.md's
 // AC-4 section and CONTRIBUTING.md's Oracles list, #3.
 std::filesystem::path fixture_path() {
-    return AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac4-stereo-64/dee.ac4";
+    return ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac4-stereo-64/dee.ac4";
 }
 
 }  // namespace
@@ -1604,7 +1604,7 @@ TEST_CASE("build_dac4 writes the dac4 DEE's MP4 muxer writes for DEE's streams",
     for (const Leg& leg : legs) {
         CAPTURE(leg.name);
         const auto data =
-            read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg.name / "dee.ac4");
+            read_file(std::filesystem::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg.name / "dee.ac4");
         const auto scanned = iclforge::ac4::scan(data);
         REQUIRE_FALSE(scanned.frames.empty());
         auto frame = iclforge::ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
@@ -2327,7 +2327,7 @@ TEST_CASE("build_dac4 describes every presentation of the encoder's committed pr
          {"encoder-broadcast", "encoder-hybrid", "encoder-emdf", "encoder-three-zero"}) {
         CAPTURE(name);
         const auto raw =
-            read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." /
+            read_file(std::filesystem::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." /
                       "ac4dec" / "presentations" / (std::string{name} + ".ac4"));
         const auto scanned = iclforge::ac4::scan(raw);
         REQUIRE_FALSE(scanned.frames.empty());
@@ -2734,7 +2734,7 @@ TEST_CASE("cmaf_refusal names the rule of Part 2 Annex H.1.2.1 a stream breaks",
 
     // The encoder's EMDF stream: an MP4 carries its presentation of
     // configuration 6, and a CMAF track cannot.
-    const auto raw = read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." /
+    const auto raw = read_file(std::filesystem::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." /
                                "ac4dec" / "presentations" / "encoder-emdf.ac4");
     const auto scanned = iclforge::ac4::scan(raw);
     REQUIRE_FALSE(scanned.frames.empty());

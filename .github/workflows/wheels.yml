@@ -1,4 +1,4 @@
-# Python wheels for the ac3forge PyPI package (Python on PyPI, python/) - separate from
+# Python wheels for the iclforge PyPI package (Python on PyPI, python/) - separate from
 # _build.yml/ci.yml's C++ matrix, which knows nothing about Python packaging. Builds via
 # cibuildwheel, configured from python/pyproject.toml's own [tool.cibuildwheel] table so a local
 # `cibuildwheel python` run matches this workflow exactly rather than drifting from workflow-only
@@ -9,7 +9,7 @@
 # artifact - "buildable and testable" is checked the same way _build.yml's continuous windows-msvc
 # packaging smoke test checks "packageable". Publishing to PyPI is a second job, gated on a v* tag
 # push - see docs/releasing.md's "Publishing to PyPI" for how it's provisioned (already done;
-# ac3forge is live on PyPI).
+# iclforge is live on PyPI).
 name: Python Wheels
 
 on:
@@ -244,11 +244,11 @@ jobs:
           # the project and pointing pip at the directory lets it pick the one
           # that matches, whichever that turns out to be. --no-index so it can
           # only ever pick from wheelhouse/ - with the index reachable, pip
-          # would be free to prefer a released ac3forge from PyPI over the
+          # would be free to prefer a released iclforge from PyPI over the
           # locally built wheel this job exists to measure.
           .pyvenv/bin/python -m pip install --quiet --no-index \
-            --find-links wheelhouse ac3forge
-          .pyvenv/bin/python -c "import ac3forge; print(ac3forge.__version__)"
+            --find-links wheelhouse iclforge
+          .pyvenv/bin/python -c "import iclforge; print(iclforge.__version__)"
 
       # --cov-fail-under is the gate. The floor is deliberately well under the
       # measurement for the same reason every floor in
@@ -260,7 +260,7 @@ jobs:
         run: |
           set -euo pipefail
           .pyvenv/bin/python -m pytest python/tests \
-            --cov=ac3forge --cov-report=term-missing --cov-fail-under=85
+            --cov=iclforge --cov-report=term-missing --cov-fail-under=85
 
       # The hand-written .pyi against the wheel's actual runtime surface
       # (Python bindings completeness): every function the stub promises must exist with a
@@ -274,7 +274,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          .pyvenv/bin/python -m mypy.stubtest ac3forge             --allowlist python/tests/stubtest-allowlist.txt
+          .pyvenv/bin/python -m mypy.stubtest iclforge             --allowlist python/tests/stubtest-allowlist.txt
 
   # Publishes via PyPI trusted publishing (OIDC) against the `pypi` GitHub environment - both are
   # provisioned; see docs/releasing.md's "Publishing to PyPI". Gated on a v* tag push, same as

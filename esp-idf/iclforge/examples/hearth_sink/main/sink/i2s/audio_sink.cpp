@@ -3,30 +3,30 @@
 //
 // Selected by default. See ../../audio_sink.hpp for why this is a directory
 // CMake picks rather than a branch in the player, and
-// ../../../../include/ac3forge/sink_plan.hpp for the mode/slot-count
+// ../../../../include/iclforge/sink_plan.hpp for the mode/slot-count
 // arithmetic this file only calls, and for why a second line has to share
 // line 0's bit clock and word select rather than free-run on its own.
 //
 // 1-2 channels: standard I2S, mono or stereo slot mode. 3 or more: TDM, up to
 // one line's own ceiling (4 slots at 32-bit slots, 8 at 16: a TDM frame holds
 // 128 bits). Past one line's ceiling, at 32-bit slots, a second line -
-// AC3FORGE_EXAMPLE_I2S_SECOND_LINE - takes the overflow,
+// ICLFORGE_EXAMPLE_I2S_SECOND_LINE - takes the overflow,
 // sharing line 0's BCLK/WS pins as inputs (the GPIO matrix routes a pad's
 // input side per peripheral independently of who drives it as an output, so
 // this needs no external jumper) and running as a slave in TDM mode at the
 // same width line 0 runs, real channels filling from line 0 first.
 //
-// CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME=1 opens TDM at the full width for
+// CONFIG_ICLFORGE_EXAMPLE_I2S_FIXED_FRAME=1 opens TDM at the full width for
 // 1-2 channels too, for a TDM DAC set up for one frame shape (an ES9080), and
 // keeps a second line, when there is one, running zeroed slots for every
-// layout (ac3forge::SinkFrame::fixed). Every play then finds its lines
+// layout (iclforge::SinkFrame::fixed). Every play then finds its lines
 // already in the shape it needs, and the bit clock does not stop between plays.
 //
 // Slot width and sample rate are 32-bit-slots-at-32-bit-samples by default
-// (CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; 16 is the other answer): 32-bit
+// (CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS; 16 is the other answer): 32-bit
 // slots carry the 24-bit samples every DAC here accepts and a SigmaDSP
 // requires, and cost nothing but bit clock. Line 0 is master by default;
-// CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE hands its clocks to the DAC instead, which
+// CONFIG_ICLFORGE_EXAMPLE_I2S_SLAVE hands its clocks to the DAC instead, which
 // is how an ADAU1452 or ADAU1467 wants it when the DSP is the house's clock -
 // line 1, when it exists, is always a slave to whichever end drives those
 // pins, since its own job is only to read them.
@@ -78,11 +78,11 @@ namespace {
 // slot width over I2C, a SigmaDSP wants 32 - and the same image now serves
 // both: Kconfig gives the width the sink starts at, sink_set_slot_bits()
 // changes it between plays, and the next sink_open() opens the lines for it.
-int g_slot_bits = CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS;
-static_assert(CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS == 16 ||
-                  CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS == 32,
-              "CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS is 16 or 32");
-constexpr bool kSlave = CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE != 0;
+int g_slot_bits = CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS;
+static_assert(CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS == 16 ||
+                  CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS == 32,
+              "CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS is 16 or 32");
+constexpr bool kSlave = CONFIG_ICLFORGE_EXAMPLE_I2S_SLAVE != 0;
 
 // Whether a second line is wired to anything is the board's, not the image's,
 // and is stored beside the slot width (settings.hpp): both describe what the
@@ -94,9 +94,9 @@ constexpr bool kSlave = CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE != 0;
 // low-level layer (I2S_LL_INST_NUM) and no longer in soc_caps.h.
 constexpr bool kSecondController = I2S_LL_INST_NUM > 1;
 [[nodiscard]] bool second_line_wired() { return kSecondController && settings().second_line; }
-constexpr ac3forge::SinkFrame kFrame = CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME != 0
-                                           ? ac3forge::SinkFrame::fixed
-                                           : ac3forge::SinkFrame::follow_layout;
+constexpr iclforge::SinkFrame kFrame = CONFIG_ICLFORGE_EXAMPLE_I2S_FIXED_FRAME != 0
+                                           ? iclforge::SinkFrame::fixed
+                                           : iclforge::SinkFrame::follow_layout;
 
 [[nodiscard]] std::size_t bytes_per_slot() { return static_cast<std::size_t>(g_slot_bits) / 8; }
 
@@ -111,7 +111,7 @@ constexpr ac3forge::SinkFrame kFrame = CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME !
 // part) passed explicitly, since sink_plan.hpp no longer assumes any one
 // target's frame width; see esp-idf/iclforge/include/iclforge/sink_plan.hpp.
 [[nodiscard]] std::size_t ceiling() {
-    return ac3forge::sink_ceiling(g_slot_bits, second_line_wired(), I2S_LL_SLOT_FRAME_BIT_MAX);
+    return iclforge::sink_ceiling(g_slot_bits, second_line_wired(), I2S_LL_SLOT_FRAME_BIT_MAX);
 }
 
 // One line's hardware state. GPIO numbers and role are fixed for the run
@@ -132,9 +132,9 @@ struct LineGpio {
 };
 
 const LineGpio kLine0Gpio{
-    static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_I2S_BCLK_GPIO),
-    static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_I2S_WS_GPIO),
-    static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT_GPIO),
+    static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_I2S_BCLK_GPIO),
+    static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_I2S_WS_GPIO),
+    static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_I2S_DOUT_GPIO),
     kSlave,
 };
 // BCLK/WS are line 0's own pins, read here as a second input rather than
@@ -143,20 +143,20 @@ const LineGpio kLine0Gpio{
 const LineGpio kLine1Gpio{
     kLine0Gpio.bclk,
     kLine0Gpio.ws,
-    static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT2_GPIO),
+    static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_I2S_DOUT2_GPIO),
     true,
 };
 
 Line g_line0;
 Line g_line1;
-ac3forge::DacQueueModel g_model;
+iclforge::DacQueueModel g_model;
 
 // When line 0's DMA buffers play, for the timed writes a Sendspin stream
-// makes (ac3forge/playout.hpp): its end-of-frame interrupts, and the line
+// makes (iclforge/playout.hpp): its end-of-frame interrupts, and the line
 // fitted through them. Line 1 shares line 0's clocks, so line 0's ring times
 // both.
-ac3forge::DmaRing g_ring;
-ac3forge::DmaClock g_clock;
+iclforge::DmaRing g_ring;
+iclforge::DmaClock g_clock;
 
 // Line 0's on_sent callback. The channel's interrupt is not IRAM-safe here
 // (CONFIG_I2S_ISR_IRAM_SAFE is off), so it never runs while the flash cache is
@@ -190,8 +190,8 @@ LineBuffer g_buffer1{};
 // stay the same across every reconfigure that stays within one mode; see the
 // top-of-file comment on why that matters and what is not yet confirmed
 // about it.
-constexpr int kDmaDescriptors = CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS;
-constexpr int kDmaFrames = CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES;
+constexpr int kDmaDescriptors = CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_DESCRIPTORS;
+constexpr int kDmaFrames = CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_FRAMES;
 // 16 bytes a frame at either slot width, so the plan does not move when the
 // width does: dma_frame_num has to keep dividing every write (ESP-IDF v6.1's
 // i2s_channel_write abandons a partly filled DMA buffer), and a plan that
@@ -255,7 +255,7 @@ void close_line(Line& line) {
     line.channels = 0;
 }
 
-bool configure_line(Line& line, const ac3forge::SinkLinePlan& plan, const LineGpio& gpio,
+bool configure_line(Line& line, const iclforge::SinkLinePlan& plan, const LineGpio& gpio,
                     std::uint32_t sample_rate) {
     line.channels = plan.channels;
 
@@ -368,7 +368,7 @@ std::size_t write_line(const Line& line, std::span<const std::span<const float>>
     std::size_t bytes = 0;
     const void* data = nullptr;
     if (g_slot_bits == 16 && line.tdm) {
-        ac3forge::interleave_16in16(channels, line.slots, frames,
+        iclforge::interleave_16in16(channels, line.slots, frames,
                                     std::span<std::int16_t>(buffer.narrow)
                                         .first(frames * line.slots));
         bytes = frames * line.slots * sizeof(std::int16_t);
@@ -378,11 +378,11 @@ std::size_t write_line(const Line& line, std::span<const std::span<const float>>
         // layout to both - see std_slot_mode's comment.
         const std::array<std::span<const float>, 2> pair = {
             channels[0], channels.size() > 1 ? channels[1] : channels[0]};
-        ac3forge::interleave_16(pair, frames, std::span<std::int16_t>(buffer.narrow).first(frames * 2));
+        iclforge::interleave_16(pair, frames, std::span<std::int16_t>(buffer.narrow).first(frames * 2));
         bytes = frames * 2 * sizeof(std::int16_t);
         data = buffer.narrow.data();
     } else {
-        ac3forge::interleave_24in32(channels, line.slots, frames,
+        iclforge::interleave_24in32(channels, line.slots, frames,
                                     std::span<std::int32_t>(buffer.wide).first(frames * line.slots));
         bytes = frames * line.slots * sizeof(std::int32_t);
         data = buffer.wide.data();
@@ -399,7 +399,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
         std::printf("error: %d channels is not a sink to open\n", channels);
         return false;
     }
-    const auto plan = ac3forge::plan_sink(static_cast<std::size_t>(channels), g_slot_bits,
+    const auto plan = iclforge::plan_sink(static_cast<std::size_t>(channels), g_slot_bits,
                                           second_line_wired(), kFrame, I2S_LL_SLOT_FRAME_BIT_MAX);
     if (!plan.has_value()) {
         std::printf("error: %d channels do not fit this sink's %u-slot ceiling (%d-bit slots, "
@@ -415,7 +415,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
     // always opens stereo at this width and write_line duplicates a mono
     // channel onto both by hand, as the pre-dynamic sink always did. TDM at
     // 16 bits opens at the plan's own width, as at 32.
-    ac3forge::SinkLinePlan line0_plan = plan->line0;
+    iclforge::SinkLinePlan line0_plan = plan->line0;
     if (g_slot_bits == 16 && !line0_plan.tdm && line0_plan.slots > 0) {
         line0_plan.slots = 2;
     }
@@ -430,7 +430,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
                                   static_cast<std::size_t>(g_dma_plan.frames) * bytes_per_frame;
     g_model.open(sample_rate * static_cast<std::uint32_t>(bytes_per_frame), dma_bytes);
 
-    const bool fixed = kFrame == ac3forge::SinkFrame::fixed;
+    const bool fixed = kFrame == iclforge::SinkFrame::fixed;
     const char* line0_mode = "";
     if (g_line0.tdm) {
         line0_mode = fixed ? " (tdm, fixed frame)" : " (tdm)";
@@ -462,7 +462,7 @@ void sink_write(std::span<const std::span<const float>> channels) {
     std::size_t bytes_for_model = 0;
 
     // Per line, in either width, each with its own buffers: a second line is
-    // planned at both widths now (ac3forge::line_ceiling), so line 1 carries
+    // planned at both widths now (iclforge::line_ceiling), so line 1 carries
     // slots 8-15 of a sixteen-channel layout at 16 bits as it carries slots
     // 4-7 at 32. In a fixed frame line 1 is written for every layout, with no
     // channels at all while line 0 holds the whole layout, which writes a
@@ -481,7 +481,7 @@ void sink_write(std::span<const std::span<const float>> channels) {
     g_model.queued(bytes_for_model, esp_timer_get_time());
 }
 
-std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels) {
+std::optional<iclforge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels) {
     if (g_line0.slots == 0 || channels.empty()) {
         return std::nullopt;
     }
@@ -489,11 +489,11 @@ std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span
     // A block is exactly the player's 256 frames, which the DMA plan's
     // descriptor divides: this many buffers of line 0's ring took it.
     const auto buffers = static_cast<std::uint32_t>(iclforge::kSamplesPerBlock / static_cast<std::size_t>(g_dma_plan.frames));
-    const std::optional<ac3forge::DmaClock::Taken> taken = g_clock.took(g_ring, esp_timer_get_time(), buffers);
+    const std::optional<iclforge::DmaClock::Taken> taken = g_clock.took(g_ring, esp_timer_get_time(), buffers);
     if (!taken) {
         return std::nullopt;
     }
-    return ac3forge::PlayoutWrite{.play_us = taken->play_us, .late = taken->late, .gap = taken->skipped > 0};
+    return iclforge::PlayoutWrite{.play_us = taken->play_us, .late = taken->late, .gap = taken->skipped > 0};
 }
 
 const char* sink_name() { return "i2s"; }
@@ -502,8 +502,8 @@ int sink_slots() { return static_cast<int>(ceiling()); }
 
 int sink_max_slots() {
     return static_cast<int>(std::max(
-        ac3forge::sink_ceiling(16, kSecondController, I2S_LL_SLOT_FRAME_BIT_MAX),
-        ac3forge::sink_ceiling(32, kSecondController, I2S_LL_SLOT_FRAME_BIT_MAX)));
+        iclforge::sink_ceiling(16, kSecondController, I2S_LL_SLOT_FRAME_BIT_MAX),
+        iclforge::sink_ceiling(32, kSecondController, I2S_LL_SLOT_FRAME_BIT_MAX)));
 }
 
 // sink_ceiling()'s own arithmetic (sink_plan.hpp: slots = frame_bit_max /
@@ -550,7 +550,7 @@ void sink_close() {
 // What the DAC did with the samples is not visible from this side of the wire -
 // sink/capture/ is the one that checks the conversion, and it runs the same
 // interleave this does. What IS visible is whether the samples got there in
-// time, and that is what this reports: see ac3forge/dac_queue_model.hpp.
+// time, and that is what this reports: see iclforge/dac_queue_model.hpp.
 void sink_report() { g_model.report(); }
 
 }  // namespace player

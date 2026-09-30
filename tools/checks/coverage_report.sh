@@ -2,7 +2,7 @@
 #
 # Coverage report + per-component statement/branch gate.
 #
-# One gcov extraction pass over an AC3FORGE_ENABLE_COVERAGE build (the
+# One gcov extraction pass over an ICLFORGE_ENABLE_COVERAGE build (the
 # config-linux-gcc-coverage preset - see CMakePresets.json), then one cheap
 # gate pass per component off the shared JSON trace. Line and branch coverage
 # are gated PER COMPONENT rather than as one blended number: src/ac3 is an
@@ -43,8 +43,8 @@
 #
 # src/sendspin and apps/hearth (Hearth, planning/hearth-reference-player.md) ARE gated here,
 # unlike apps/crucible above: config-linux-gcc-coverage is the one coverage preset that turns
-# AC3FORGE_BUILD_HEARTH on (CMakePresets.json), and both iclforge::sendspin and ac3hearth_engine link
-# ac3::coverage themselves for exactly the reason apps/cli's own link does - see their
+# ICLFORGE_BUILD_HEARTH on (CMakePresets.json), and both iclforge::sendspin and ac3hearth_engine link
+# iclforge::coverage themselves for exactly the reason apps/cli's own link does - see their
 # CMakeLists.txt. apps/hearth/testsink joins the apps/hearth row (its sources link into ac3tests
 # too); apps/hearth/testserver does not, since nothing on this leg ever runs that executable, and
 # apps/hearth/ui is Qt - same reason apps/gui is out of scope above, no Qt kit on this leg.
@@ -234,13 +234,13 @@ while read -r comp line_min branch_min; do
 
     # A component with zero files in the trace is a broken measurement (built
     # without instrumentation, or not built at all - e.g. a coverage preset
-    # that lost AC3FORGE_BUILD_ADM=ON or AC3FORGE_BUILD_CLI=ON), not a
+    # that lost ICLFORGE_BUILD_ADM=ON or ICLFORGE_BUILD_CLI=ON), not a
     # 0%-covered component. Fail loudly rather than letting a silent no-data
     # "pass" or a misleading 0% stand in for the real answer. This is exactly
     # what caught apps/cli linking an instrumented library without being
     # instrumented itself - see cmake/Coverage.cmake's own note.
     if ! grep -q "$comp/" "$json"; then
-        echo "::error::coverage: no data for $comp - was it built with AC3FORGE_ENABLE_COVERAGE on?"
+        echo "::error::coverage: no data for $comp - was it built with ICLFORGE_ENABLE_COVERAGE on?"
         fail=1
         continue
     fi

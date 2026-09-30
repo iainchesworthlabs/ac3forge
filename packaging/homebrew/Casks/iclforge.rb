@@ -1,11 +1,11 @@
-# Homebrew Cask for ac3gui, ac3forge's Qt6 GUI front end.
+# Homebrew Cask for ac3gui, iclforge's Qt6 GUI front end.
 #
 # A Cask, not a Formula, is the right shape here: ac3gui ships as a prebuilt
 # .app bundle inside each release's DragNDrop .dmg (cmake/Packaging.cmake),
 # not as something a user builds from source - the same reasoning
-# Formula/ac3forge.rb's own header comment and packaging/homebrew/README.md
-# already gave for deferring this file. Formula/ac3forge.rb stays the
-# CLI-only, build-from-source package (AC3FORGE_BUILD_CLI=ON); this Cask is
+# Formula/iclforge.rb's own header comment and packaging/homebrew/README.md
+# already gave for deferring this file. Formula/iclforge.rb stays the
+# CLI-only, build-from-source package (ICLFORGE_BUILD_CLI=ON); this Cask is
 # the GUI-only, prebuilt-binary package - two independent installs, matching
 # Homebrew's own Formula-vs-Cask split (build-from-source end-user tool vs.
 # bundled .app), not a replacement for the Formula.
@@ -16,12 +16,12 @@
 # each bump - see packaging/homebrew/README.md.
 #
 # v0.8.0-beta.2 was the first tagged release whose macos-llvm leg builds
-# AC3FORGE_BUILD_GUI=ON (see docs/platforms/macos.md#gui-on-macos), so it was
-# the first release whose ac3forge-*-Darwin.dmg actually contained
+# ICLFORGE_BUILD_GUI=ON (see docs/platforms/macos.md#gui-on-macos), so it was
+# the first release whose iclforge-*-Darwin.dmg actually contained
 # ac3gui.app. **Every release tag** needs the same follow-up update "Every
 # release tag" in docs/releasing.md#homebrew-formula-and-cask already
 # documents for the sibling Formula: bump version, recompute sha256 from
-# that release's own ac3forge-*-Darwin.dmg, validate locally, then copy into
+# that release's own iclforge-*-Darwin.dmg, validate locally, then copy into
 # the tap.
 #
 # DR8: the .dmg this Cask installs is universal (arm64 + x86_64) as of the
@@ -35,7 +35,7 @@
 cask "ac3gui" do
   version "0.10.0-beta.1"
   # Pinned from the release's actual .dmg asset (GitHub's own reported digest
-  # for ac3forge-<MAJOR.MINOR.PATCH>-Darwin.dmg - the same CPACK_PACKAGE_CHECKSUM
+  # for iclforge-<MAJOR.MINOR.PATCH>-Darwin.dmg - the same CPACK_PACKAGE_CHECKSUM
   # SHA512 cmake/Packaging.cmake also computes and publishes alongside it,
   # just a different digest algorithm; Homebrew Casks pin sha256). If
   # `brew install` reports a mismatch, trust brew's reported hash over this
@@ -45,13 +45,13 @@ cask "ac3gui" do
   # CPack's dmg filename carries only MAJOR.MINOR.PATCH
   # (cmake/Packaging.cmake's CPACK_PACKAGE_FILE_NAME), dropping any
   # "-beta.N" pre-release suffix the git tag itself carries - the same split
-  # Formula/ac3forge.rb's install block works around for the source tarball
+  # Formula/iclforge.rb's install block works around for the source tarball
   # (there via DERIVED_VERSION_OVERRIDE=v#{version}), just read the other
   # way here since the Cask consumes a prebuilt filename instead of naming
   # its own.
   dmg_version = version.major_minor_patch
 
-  url "https://github.com/iainchesworthlabs/ac3forge/releases/download/v#{version}/ac3forge-#{dmg_version}-Darwin.dmg"
+  url "https://github.com/iainchesworthlabs/ac3forge/releases/download/v#{version}/iclforge-#{dmg_version}-Darwin.dmg"
   name "ac3gui"
   desc "GUI to encode, decode, play and check AC-3, E-AC-3 and AC-4 streams"
   homepage "https://github.com/iainchesworthlabs/ac3forge"

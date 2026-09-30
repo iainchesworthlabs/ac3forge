@@ -44,7 +44,7 @@ namespace {
 namespace fs = std::filesystem;
 
 constexpr const char* kGoldenDir = AC4DEC_GOLDEN_DIR;
-constexpr const char* kStreamDir = AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR;
+constexpr const char* kStreamDir = ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR;
 
 struct Directories {
     fs::path golden;

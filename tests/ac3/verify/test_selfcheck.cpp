@@ -338,7 +338,7 @@ std::string mirror_encode(const iclforge::EncoderConfig& config,
 }
 
 std::vector<std::vector<float>> golden_audio(const std::string& name) {
-    auto wav = iclforge::io::read_wav(std::string{AC3FORGE_GOLDEN_AUDIO_DIR} + "/" + name);
+    auto wav = iclforge::io::read_wav(std::string{ICLFORGE_GOLDEN_AUDIO_DIR} + "/" + name);
     REQUIRE(wav.has_value());
     return wav->channels;
 }

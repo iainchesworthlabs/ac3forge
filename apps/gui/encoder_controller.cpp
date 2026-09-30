@@ -4404,7 +4404,7 @@ void EncoderController::clearLayout() {
 }
 
 void EncoderController::publishLevels(std::span<const iclforge::analysis::ChannelLevel> levels) {
-    AC3_ZONE_SCOPED_N("encoder publish");
+    ICLFORGE_ZONE_SCOPED_N("encoder publish");
     // Grow-or-shrink only - resize() never touches a surviving element's
     // value, which is exactly what a latch needs: it must not un-set itself
     // just because another snapshot arrived. Only clearClipLatches()
@@ -6505,7 +6505,7 @@ void EncoderController::loadBundledTestSignal() {
                 envelope * edge * std::sin(w * static_cast<double>(i)));
         }
     }
-    const QString path = QDir::temp().filePath(QStringLiteral("ac3forge-test-51.wav"));
+    const QString path = QDir::temp().filePath(QStringLiteral("iclforge-test-51.wav"));
     if (const auto written = iclforge::io::write_wav_f32(path.toStdString(), channels, rate);
         !written) {
         setStatus(QStringLiteral("Could not write the test signal: %1")
@@ -8058,8 +8058,8 @@ ac3gui::Secrets EncoderController::diagnosticsSecrets() const {
         }
     };
     // Read here so they can be REMOVED from the text, and nowhere else.
-    add_path(qEnvironmentVariable("AC3FORGE_SIGNING_KEY_FILE"));
-    add(qEnvironmentVariable("AC3FORGE_SIGNING_KEY"));
+    add_path(qEnvironmentVariable("ICLFORGE_SIGNING_KEY_FILE"));
+    add(qEnvironmentVariable("ICLFORGE_SIGNING_KEY"));
     return out;
 }
 
@@ -8090,8 +8090,8 @@ ac3gui::ReportFacts EncoderController::buildReportFacts() const {
     platform_row("output devices", QString::number(outputDevices().size()));
 
     // Whether the variables are set is read; their values never are.
-    facts.env_key_file_set = qEnvironmentVariableIsSet("AC3FORGE_SIGNING_KEY_FILE");
-    facts.env_key_inline_set = qEnvironmentVariableIsSet("AC3FORGE_SIGNING_KEY");
+    facts.env_key_file_set = qEnvironmentVariableIsSet("ICLFORGE_SIGNING_KEY_FILE");
+    facts.env_key_inline_set = qEnvironmentVariableIsSet("ICLFORGE_SIGNING_KEY");
 
     // Built from sourceModel(), the same list the input rail draws, so the
     // report cannot describe a different set of sources from the window - and

@@ -49,7 +49,7 @@ endif()
 target_sources(ac3cli PRIVATE ../common/probe_json.cpp)
 
 # main.cpp's 'atmos-adm' command (ADM BWF reader phase 3) needs iclforge::adm/iclforge::admbridge - this
-# project's one optional, non-default library dependency (AC3FORGE_BUILD_ADM, default OFF - see
+# project's one optional, non-default library dependency (ICLFORGE_BUILD_ADM, default OFF - see
 # the root CMakeLists.txt's own option() for why: libadm's Boost dependency). Unlike
 # iclforge::matroska/iclforge::mp4/iclforge::mpegts below (default ON, and a FATAL_ERROR guard in the
 # root CMakeLists.txt refuses to build this target at all without them), ac3cli builds and works
@@ -69,15 +69,15 @@ target_sources(ac3cli PRIVATE ../common/probe_json.cpp)
 # anywhere in this target's sources. See adm/atmos_adm.hpp's own top comment for the full
 # reasoning, including why this replaced an earlier #ifdef-based design once
 # tools/checks/check_platform_macros.ps1 was actually run against it.
-# 'atmos-iab' (IAB reader phase 3) rides the exact same AC3FORGE_BUILD_ADM gate as 'atmos-adm'
+# 'atmos-iab' (IAB reader phase 3) rides the exact same ICLFORGE_BUILD_ADM gate as 'atmos-adm'
 # above, for the reason adm/atmos_iab.hpp's own top comment gives: iclforge::iab by itself
-# (AC3FORGE_BUILD_IAB, default ON) has nothing that can drive AtmosEncoder - only
-# iclforge::admbridge's own build_iab() does that, and admbridge only exists when AC3FORGE_BUILD_ADM
+# (ICLFORGE_BUILD_IAB, default ON) has nothing that can drive AtmosEncoder - only
+# iclforge::admbridge's own build_iab() does that, and admbridge only exists when ICLFORGE_BUILD_ADM
 # turned it on. adm/enabled/atmos_iab.cpp additionally needs iclforge::iab directly (to sniff and
 # parse the input container), already linked unconditionally elsewhere in this target - see the
-# root CMakeLists.txt's own AC3FORGE_BUILD_ADM-requires-AC3FORGE_BUILD_IAB guard for why that
+# root CMakeLists.txt's own ICLFORGE_BUILD_ADM-requires-ICLFORGE_BUILD_IAB guard for why that
 # combination cannot actually diverge.
-if(AC3FORGE_BUILD_ADM)
+if(ICLFORGE_BUILD_ADM)
     target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp adm/enabled/decode_adm.cpp
                                   adm/enabled/atmos_iab.cpp)
     target_link_libraries(ac3cli PRIVATE iclforge::adm iclforge::admbridge)
@@ -86,12 +86,12 @@ else()
                                   adm/disabled/atmos_iab.cpp)
 endif()
 
-# ac3::coverage (coverage floors) instruments this target's OWN sources. Linking
+# iclforge::coverage (coverage floors) instruments this target's OWN sources. Linking
 # an instrumented library is not enough and never was: --coverage is
 # target-scoped, so before this line every .cpp under apps/cli compiled
 # uninstrumented and produced no .gcno at all - a gcovr filter for apps/cli
 # came back with zero files rather than a low percentage. It is an INTERFACE
-# target that adds nothing when AC3FORGE_ENABLE_COVERAGE is off (the default),
+# target that adds nothing when ICLFORGE_ENABLE_COVERAGE is off (the default),
 # so this costs every other configuration nothing.
 target_link_libraries(ac3cli
     PRIVATE
@@ -104,21 +104,21 @@ target_link_libraries(ac3cli
         iclforge::ac4
         iclforge::ac4dec
         iclforge::ac4enc
-        ac3::warnings
-        ac3::fmt
-        ac3::coverage)
+        iclforge::warnings
+        iclforge::fmt
+        iclforge::coverage)
 
 # iclforge::ac3, iclforge::matroska, iclforge::mp4 and iclforge::mpegts are link-only here, but
 # installed and packaged in their own right elsewhere - see
 # cmake/InstallLibrary.cmake and cmake/Packaging.cmake's `library` CPack
 # component, and docs/library/index.md for how a third party consumes them
-# via find_package(ac3forge). iclforge::audio stays link-only and unpackaged
+# via find_package(iclforge). iclforge::audio stays link-only and unpackaged
 # always - a CLI/GUI implementation detail, not part of the distributed
 # library.
 #
-# iclforge::mp4/iclforge::mpegts are only ever unavailable when AC3FORGE_BUILD_MP4=OFF/
-# AC3FORGE_BUILD_MPEGTS=OFF, which the root CMakeLists.txt's own FATAL_ERROR guards
-# already refuse to combine with AC3FORGE_BUILD_CLI=ON - so unlike iclforge::audio's
+# iclforge::mp4/iclforge::mpegts are only ever unavailable when ICLFORGE_BUILD_MP4=OFF/
+# ICLFORGE_BUILD_MPEGTS=OFF, which the root CMakeLists.txt's own FATAL_ERROR guards
+# already refuse to combine with ICLFORGE_BUILD_CLI=ON - so unlike iclforge::audio's
 # Needs::kCapture/kPassthrough/kMonitor runtime-availability checks (main.cpp), the
 # `mp4`/`ts` commands below need no such check: this target is simply never configured
 # at all in a build where either would be missing.
@@ -254,7 +254,7 @@ else()
         "${CMAKE_INSTALL_DATAROOTDIR}/bash-completion/completions"
         "${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions"
         "${CMAKE_INSTALL_DATAROOTDIR}/fish/vendor_completions.d"
-        "${CMAKE_INSTALL_DATAROOTDIR}/ac3forge/completions")
+        "${CMAKE_INSTALL_DATAROOTDIR}/iclforge/completions")
 
     set(AC3CLI_GENERATED_DOCS "${AC3CLI_DOC_DIR}/ac3cli.1")
     foreach(index RANGE 3)

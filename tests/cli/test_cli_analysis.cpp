@@ -41,7 +41,7 @@ std::string scratch_pid_suffix() {
 }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_analysis_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_analysis_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }

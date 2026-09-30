@@ -81,7 +81,7 @@ if ($testExit -ne 0) {
 }
 
 $raw = Get-ChildItem $profiles -Filter '*.profraw'
-if (-not $raw) { throw "no .profraw written under ${profiles}: is this an AC3FORGE_ENABLE_COVERAGE build, and did any test matching '$Labels' run?" }
+if (-not $raw) { throw "no .profraw written under ${profiles}: is this an ICLFORGE_ENABLE_COVERAGE build, and did any test matching '$Labels' run?" }
 $merged = Join-Path $profiles 'crucible.profdata'
 & $profdata merge -sparse -o $merged @($raw.FullName)
 if ($LASTEXITCODE -ne 0) { throw "llvm-profdata merge failed ($LASTEXITCODE)" }
@@ -184,7 +184,7 @@ foreach ($floor in $componentFloors) {
     # earlier version of the Linux CI step passed without running anything
     # (.github/workflows/_build.yml says so at the Crucible pass).
     if ($null -eq $measured -or $measured.files.Count -eq 0) {
-        Write-Host "::error::coverage: no data for $($floor.Path) - was this an AC3FORGE_ENABLE_COVERAGE build, and did the '$Labels' labels match anything?"
+        Write-Host "::error::coverage: no data for $($floor.Path) - was this an ICLFORGE_ENABLE_COVERAGE build, and did the '$Labels' labels match anything?"
         $fail = 1
         continue
     }

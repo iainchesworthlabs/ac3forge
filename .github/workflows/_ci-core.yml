@@ -82,7 +82,7 @@ permissions:
 jobs:
   # ac3tests coverage over every library component: src/ac3 plus audio,
   # signing, matroska, mp4, mpegts, capi, and - via the coverage preset's
-  # AC3FORGE_BUILD_ADM=ON with vcpkg's 'adm' feature, the same pair
+  # ICLFORGE_BUILD_ADM=ON with vcpkg's 'adm' feature, the same pair
   # adm-validate passes by hand - ac3adm/admbridge. Originally src/ac3 only
   # ("the library is what was asked for"); extended once the rest of the
   # library surface existed and was already being EXERCISED by this same
@@ -91,7 +91,7 @@ jobs:
   # preset builds neither.
   #
   # config-linux-gcc-coverage (CMakePresets.json) builds just the library
-  # components and their test suite - AC3FORGE_BUILD_CLI/EXAMPLES are off
+  # components and their test suite - ICLFORGE_BUILD_CLI/EXAMPLES are off
   # there purely to save build time: ac3cli and the example executables
   # would link fine against the instrumented libraries (the gcov runtime
   # propagates to consumers automatically - see cmake/Coverage.cmake), but
@@ -263,11 +263,11 @@ jobs:
         env:
           STATUS: ${{ job.status }}
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
-  # iclforge::adm (src/adm) is opt-in - AC3FORGE_BUILD_ADM defaults OFF, unlike every other
+  # iclforge::adm (src/adm) is opt-in - ICLFORGE_BUILD_ADM defaults OFF, unlike every other
   # library component (see the root CMakeLists.txt's own option() and src/adm/CMakeLists.txt's
   # header comment for why: libadm needs Boost header libraries, a third-party dependency that
   # only -DVCPKG_MANIFEST_FEATURES=adm resolves). No leg in
-  # build-and-test's matrix (_build.yml) ever passes -DAC3FORGE_BUILD_ADM=ON; besides this job,
+  # build-and-test's matrix (_build.yml) ever passes -DICLFORGE_BUILD_ADM=ON; besides this job,
   # the only other build with it on is the coverage job's instrumented Debug preset, which turns
   # the CLI and examples OFF - so without this job, ADM BWF reader phase 3's CLI command and example
   # (see below) would still have zero CI builds, and a change to the module or to its vendored
@@ -290,14 +290,14 @@ jobs:
   # before landing (see the PR that introduced it, branch feature/adm-bw64-parser: Windows MSVC,
   # WSL2 gcc-15, WSL2 clang++-21, all green).
   #
-  # -DAC3FORGE_BUILD_HEARTH=OFF: that option now defaults ON (CMakeLists.txt's own comment),
+  # -DICLFORGE_BUILD_HEARTH=OFF: that option now defaults ON (CMakeLists.txt's own comment),
   # and without this override this job's plain "adm" manifest feature never installs mbedTLS/
   # cpp-httplib/libFLAC/Opus/mdns, so add_subdirectory(src/sendspin) failed configuring at
   # find_package(MbedTLS) - a real regression this job hit on main, not something this job's
-  # own change caused; the root CMakeLists.txt's own comment on AC3FORGE_BUILD_HEARTH's default
+  # own change caused; the root CMakeLists.txt's own comment on ICLFORGE_BUILD_HEARTH's default
   # named three legs that needed this same override and missed this one.
   #
-  # AC3FORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): ADM BWF reader phase 3 (the
+  # ICLFORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): ADM BWF reader phase 3 (the
   # 'atmos-adm' ac3cli command, apps/cli/main.cpp's run_atmos_adm, and examples/encode_adm.cpp) is
   # the first code outside tests/ to link iclforge::adm/iclforge::admbridge at all, so unlike phases 1
   # and 2 (when neither the CLI nor the examples touched this module, hence this job originally
@@ -307,8 +307,8 @@ jobs:
   # (examples/CMakeLists.txt), so `ctest --preset test-linux-gcc` below already exercises
   # encode_adm's own standalone fixture-driven run alongside adm/test_adm.cpp/admbridge/test_adm_bridge.cpp/
   # test_cli_atmos_adm.cpp (tests/CMakeLists.txt only compiles that last one in when
-  # AC3FORGE_BUILD_ADM AND ac3cli are both present, exactly the combination this job now builds).
-  # AC3FORGE_BUILD_GUI already defaults OFF on this preset.
+  # ICLFORGE_BUILD_ADM AND ac3cli are both present, exactly the combination this job now builds).
+  # ICLFORGE_BUILD_GUI already defaults OFF on this preset.
   adm-validate:
     name: ADM Module (Linux, GCC)
     runs-on: ${{ fromJSON(inputs.runner) }}
@@ -366,7 +366,7 @@ jobs:
       # died instead of coin-flipping from zero. Three attempts covered the
       # worst observed run (2026-08-31: attempt 1 died at 31/43 on main).
       #
-      # AC3FORGE_BUILD_HEARTH=OFF: root CMakeLists.txt defaults it ON now
+      # ICLFORGE_BUILD_HEARTH=OFF: root CMakeLists.txt defaults it ON now
       # (config-linux-gcc's own "core" preset fragment sets VCPKG_MANIFEST_
       # FEATURES to "hearth" to match), but this job's own -D above replaces
       # that with "adm" alone rather than adding to it - so without turning
@@ -380,7 +380,7 @@ jobs:
         run: |
           set -uo pipefail
           for attempt in 1 2 3; do
-            # -DAC3FORGE_BUILD_HEARTH=OFF is required here, not optional: AC3FORGE_BUILD_HEARTH
+            # -DICLFORGE_BUILD_HEARTH=OFF is required here, not optional: ICLFORGE_BUILD_HEARTH
             # defaults ON now (root CMakeLists.txt), but -DVCPKG_MANIFEST_FEATURES=adm above
             # REPLACES CMakePresets.json's own default ("hearth") rather than extending it, so
             # vcpkg never installs Hearth's ports here while CMakeLists.txt would still try to
@@ -391,8 +391,8 @@ jobs:
             # config-windows-llvm-coverage each turn it off in CMakePresets.json.
             if cmake --preset config-linux-gcc \
                  -DVCPKG_MANIFEST_FEATURES=adm \
-                 -DAC3FORGE_BUILD_ADM=ON \
-                 -DAC3FORGE_BUILD_HEARTH=OFF; then
+                 -DICLFORGE_BUILD_ADM=ON \
+                 -DICLFORGE_BUILD_HEARTH=OFF; then
               exit 0
             fi
             rm -rf build/config-linux-gcc/CMakeCache.txt
@@ -444,7 +444,7 @@ jobs:
         env:
           STATUS: ${{ job.status }}
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
-  # iclforge::sendspin (src/sendspin, planning/hearth-reference-player.md A4): AC3FORGE_BUILD_HEARTH
+  # iclforge::sendspin (src/sendspin, planning/hearth-reference-player.md A4): ICLFORGE_BUILD_HEARTH
   # defaults ON (root CMakeLists.txt), with vcpkg's "hearth" feature - cpp-httplib, mdns, mbedTLS,
   # libFLAC and Opus - selected by default too, via CMakePresets.json's "core" fragment. Every
   # build-and-test leg builds and tests it without being asked, so the [sendspin] and [hearth]
@@ -501,8 +501,8 @@ jobs:
         run: >-
           cmake --preset config-linux-gcc
           -DVCPKG_MANIFEST_FEATURES=hearth
-          -DAC3FORGE_BUILD_HEARTH=ON
-          -DAC3FORGE_BUILD_EXAMPLES=OFF
+          -DICLFORGE_BUILD_HEARTH=ON
+          -DICLFORGE_BUILD_EXAMPLES=OFF
 
       # ac3cli and ac3hearth-render for the AC-4 gains through the engine, the last step.
       - name: Build
@@ -751,7 +751,7 @@ jobs:
       # bare, unversioned libFOO.so symlink (alongside the real, version-suffixed libFOO.so.X.Y.Z)
       # directly in the build tree under src/<component>/, with no install step needed to see it.
       # Scoped to .../src specifically - not the whole build tree - so a FetchContent'd
-      # third-party dependency's own .so (e.g. a hypothetical libadm.so, if AC3FORGE_BUILD_ADM
+      # third-party dependency's own .so (e.g. a hypothetical libadm.so, if ICLFORGE_BUILD_ADM
       # were ever turned on for this preset) is never picked up: those build under .../_deps/,
       # a disjoint subtree, and this project never install()s them in their own right regardless.
       # A hardcoded list is exactly what let libac3iab.so go uncovered by both steps below (and
@@ -1087,14 +1087,14 @@ jobs:
         run: python3 tools/checks/score_ac4_encode.py --cli build/config-linux-llvm/bin/ac3cli
 
       # The AC-4 decoder in float (planning/ac4.md, D14a): the two scorers above
-      # again with a decoder built AC3FORGE_DECODE_SCALAR=float, at the same pins,
+      # again with a decoder built ICLFORGE_DECODE_SCALAR=float, at the same pins,
       # and the float decode against the double one on every committed stream,
       # below and above A-SPX's crossover, at the floors pinned in
       # tests/golden/ac4dec/scalar-agreement.json. The AC-4 encoder is double in
       # every build (decision 34); its streams are decoded by the float decoder.
       - name: Build a float32 ac3cli
         run: |
-          cmake --preset config-linux-llvm -B build/decode-scalar-float -DAC3FORGE_DECODE_SCALAR=float
+          cmake --preset config-linux-llvm -B build/decode-scalar-float -DICLFORGE_DECODE_SCALAR=float
           cmake --build build/decode-scalar-float --target ac3cli -- -k 0
 
       - name: AC-4 decode against DEE's sources, float32 decoder
@@ -1239,7 +1239,7 @@ jobs:
       # per-run before that lands.
       #
       # --spectrogram-dir renders docs/landscape.md's visual supplement
-      # (one PNG per leg: original/ac3forge/FFmpeg/DEE spectrograms stacked)
+      # (one PNG per leg: original/iclforge/FFmpeg/DEE spectrograms stacked)
       # in the same invocation, straight off the encode/decode this step is
       # already doing - see render_spectrograms()'s own docstring for why
       # this is a second flag on this call, not a separate step that would

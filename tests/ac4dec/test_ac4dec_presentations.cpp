@@ -96,7 +96,7 @@ MuxSource source(const fs::path& path) {
 }
 
 MuxSource dee(const char* leg) {
-    return source(fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4");
+    return source(fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4");
 }
 
 MuxSource encoded(const char* name) {

@@ -13,6 +13,6 @@
 # location line names only LICENSE.txt because ac3gui.app may not be in the
 # image at all: the macos-llvm preset has the GUI off by default
 # (CMakePresets.json), so a CLI-only .dmg is the ordinary local case.
-set(AC3FORGE_NOTICES_PLATFORM "macOS")
-set(AC3FORGE_NOTICES_LOCATION "NOTICES.txt at the root of the disk image, beside LICENSE.txt")
-set(AC3FORGE_NOTICE_FRAGMENTS header qt-macos fmt fonts trademarks)
+set(ICLFORGE_NOTICES_PLATFORM "macOS")
+set(ICLFORGE_NOTICES_LOCATION "NOTICES.txt at the root of the disk image, beside LICENSE.txt")
+set(ICLFORGE_NOTICE_FRAGMENTS header qt-macos fmt fonts trademarks)

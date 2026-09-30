@@ -23,26 +23,26 @@
 # improvement with no allocation failure seen. See docs/platforms/bare-metal/esp32-c6.md.
 # 4 KB takes an AC-3 burst at 640 kbit/s. The decode task used 12.9 KB of its stack. No
 # delay lines: a server that sets a delay is refused.
-CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES=49152
-CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES=4096
-CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES=24576
-CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS=0
+CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_RING_BYTES=49152
+CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES=4096
+CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES=24576
+CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS=0
 
 # 2.0 played every fixture measured on this board; AC-3 and E-AC-3 5.1 each aborted
 # within about 10 to 12 seconds, the decoder's own scratch failing an allocation the
 # heap no longer had room for. Past 2 coded channels a syncframe is refused before a
 # decoder opens for it - the console says why, once per stream - instead.
-CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS=2
+CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS=2
 
 # 16-bit slots, the width an ES9080 on this part runs, and half the bytes a frame a
 # 32-bit stereo pair takes. A board can still take 32 (PUT /slot-width).
-CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16
+CONFIG_ICLFORGE_EXAMPLE_I2S_SLOT_BITS=16
 
 # 24 DMA buffers of 128 frames, 64 ms: a burst's decode and render took 22.7 ms on
 # average and up to 46 ms, and a 21 ms queue ran dry behind the slow ones. That is
 # 12 KB for a 16-bit stereo pair, and 49 KB for eight 16-bit TDM slots.
-CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
-CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256
+CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
+CONFIG_ICLFORGE_EXAMPLE_I2S_DMA_FRAMES=256
 
 # WiFi's code in flash rather than internal RAM: 45 KB more heap, which is what stopped
 # 1,848-byte receive-buffer allocations failing in a fragmented heap and the late

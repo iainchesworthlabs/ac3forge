@@ -1,10 +1,10 @@
-# Homebrew formula for ac3cli, ac3forge's command-line encoder/decoder.
+# Homebrew formula for ac3cli, iclforge's command-line encoder/decoder.
 #
-# Builds the CLI only (AC3FORGE_BUILD_CLI=ON, everything else the library
+# Builds the CLI only (ICLFORGE_BUILD_CLI=ON, everything else the library
 # doesn't need for that off) - same reasoning as the vcpkg port
 # (packaging/vcpkg-port/iclforge/) staying library-only, just the other way
 # round: Homebrew formulae are for end-user tools, so this ships the tool
-# vcpkg deliberately does not, and skips find_package(ac3forge) dev files
+# vcpkg deliberately does not, and skips find_package(iclforge) dev files
 # vcpkg already covers. The Qt6 GUI (ac3gui) is not packaged here - a Homebrew
 # Cask, not a Formula, is the right shape for a bundled .app. That cask
 # (../Casks/ac3gui.rb) installs the prebuilt ac3gui.app from each release's
@@ -13,8 +13,8 @@
 # Staged here (packaging/homebrew/Formula/iclforge.rb) for local
 # `brew install --build-from-source` validation against this repo, and
 # copied into the live personal tap (iainchesworthlabs/homebrew-ac3forge) as
-# Formula/ac3forge.rb after each bump - see docs/releasing.md.
-class Ac3forge < Formula
+# Formula/iclforge.rb after each bump - see docs/releasing.md.
+class Iclforge < Formula
   desc "Clean-room AC-3/E-AC-3/AC-4 encoder, decoder and Atmos object-layer CLI"
   homepage "https://github.com/iainchesworthlabs/ac3forge"
   url "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.10.0-beta.1.tar.gz"
@@ -36,12 +36,12 @@ class Ac3forge < Formula
     # the "v" prefix recovers the real tag - same technique
     # packaging/vcpkg-port/iclforge/portfile.cmake uses for the same reason.
     system "cmake", "-S", ".", "-B", "build",
-                     "-DAC3FORGE_BUILD_CLI=ON",
-                     "-DAC3FORGE_BUILD_GUI=OFF",
-                     "-DAC3FORGE_BUILD_TESTS=OFF",
-                     "-DAC3FORGE_BUILD_EXAMPLES=OFF",
-                     "-DAC3FORGE_BUILD_FUZZERS=OFF",
-                     "-DAC3FORGE_FETCH_CATCH2=OFF",
+                     "-DICLFORGE_BUILD_CLI=ON",
+                     "-DICLFORGE_BUILD_GUI=OFF",
+                     "-DICLFORGE_BUILD_TESTS=OFF",
+                     "-DICLFORGE_BUILD_EXAMPLES=OFF",
+                     "-DICLFORGE_BUILD_FUZZERS=OFF",
+                     "-DICLFORGE_FETCH_CATCH2=OFF",
                      "-DDERIVED_VERSION_OVERRIDE=v#{version}",
                      *std_cmake_args
     system "cmake", "--build", "build"
@@ -54,7 +54,7 @@ class Ac3forge < Formula
     # share/zsh/site-functions itself, so those two need nothing here. bash
     # and fish are the two it expects a formula to place through its own
     # helpers, so those move into place. The PowerShell script stays where
-    # CMake put it, under share/ac3forge/completions: it has no
+    # CMake put it, under share/iclforge/completions: it has no
     # convention-driven search path to be linked into, and `ac3cli
     # completions powershell` says so itself.
     bash_completion.install share/"bash-completion/completions/ac3cli"
@@ -62,7 +62,7 @@ class Ac3forge < Formula
   end
 
   test do
-    assert_match "ac3forge #{version}", shell_output("#{bin}/ac3cli --version")
+    assert_match "iclforge #{version}", shell_output("#{bin}/ac3cli --version")
     # The generated artefacts, checked as installed files: a formula that
     # silently stops shipping them is the failure worth catching here.
     assert_path_exists man1/"ac3cli.1"

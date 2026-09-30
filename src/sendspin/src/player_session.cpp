@@ -95,7 +95,7 @@ PlayerSession::PlayerSession(PlayerConfig config, const handshake::ClientKeyring
       connection_(pairing.next_connection++),
       pairing_events_(std::make_unique<PairingEvents>(*this)),
       state_(config_.player_state),
-      ac3forge_state_(config_.ac3forge_state),
+      iclforge_state_(config_.iclforge_state),
       source_state_(config_.source_state),
       artwork_state_(config_.artwork_state),
       visualizer_state_(config_.visualizer_state) {}
@@ -227,9 +227,9 @@ SessionOutput PlayerSession::on_message(std::span<const std::uint8_t> message, s
         deliver_audio(chunk->timestamp_us, chunk->data);
         return {};
     }
-    if (id == message_id::kAc3forgeBurst) {
+    if (id == message_id::kIclforgeBurst) {
         // As player@v1's audio (planning/hearth-sendspin-extension.md, Burst chunks).
-        if (!ac3forge_active() || !burst_stream_ || external_source_ || clock_.updates() == 0) {
+        if (!iclforge_active() || !burst_stream_ || external_source_ || clock_.updates() == 0) {
             return {};
         }
         const auto chunk = parse_burst_chunk(message);
@@ -237,7 +237,7 @@ SessionOutput PlayerSession::on_message(std::span<const std::uint8_t> message, s
             listener_->on_invalid_burst();
             return {};
         }
-        const std::int64_t delay = static_cast<std::int64_t>(ac3forge_state_.output_delay_ms) * 1000;
+        const std::int64_t delay = static_cast<std::int64_t>(iclforge_state_.output_delay_ms) * 1000;
         listener_->on_burst(*chunk, clock_.to_local(chunk->chunk.timestamp_us) - delay);
         return {};
     }
@@ -334,7 +334,7 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             .device_info = config_.device_info,
             .supported_roles = config_.supported_roles,
             .player_support = config_.player_support,
-            .ac3forge_support = config_.ac3forge_support,
+            .iclforge_support = config_.iclforge_support,
             .pair_methods = config_.pair_methods,
             .unpaired_access = config_.unpaired_access,
             .trusts_server = category_ == PskCategory::kLongTerm,
@@ -399,8 +399,8 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             stream_ = start->player;
             listener_->on_stream_start(*stream_);
         }
-        if (start->ac3forge && ac3forge_active() && lists(*start->ac3forge)) {
-            burst_stream_ = start->ac3forge;
+        if (start->iclforge && iclforge_active() && lists(*start->iclforge)) {
+            burst_stream_ = start->iclforge;
             listener_->on_burst_stream_start(*burst_stream_);
         }
         if (start->artwork && role_active(artwork::kRole)) {
@@ -501,17 +501,17 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
                 listener_->on_command(*command->player);
             }
         }
-        if (ac3forge_active()) {
+        if (iclforge_active()) {
             // As player@v1: a command the role's latest state does not list is ignored.
-            const std::vector<player::Command>& listed = ac3forge_state_.supported_commands;
+            const std::vector<player::Command>& listed = iclforge_state_.supported_commands;
             const auto lists_command = [&](player::Command which) {
                 return std::find(listed.begin(), listed.end(), which) != listed.end();
             };
-            if (command->ac3forge && lists_command(command->ac3forge->command)) {
-                listener_->on_ac3forge_command(*command->ac3forge);
+            if (command->iclforge && lists_command(command->iclforge->command)) {
+                listener_->on_iclforge_command(*command->iclforge);
             }
-            if (command->ac3forge_refused && lists_command(player::Command::kSettings)) {
-                listener_->on_settings_refused(*command->ac3forge_refused);
+            if (command->iclforge_refused && lists_command(player::Command::kSettings)) {
+                listener_->on_settings_refused(*command->iclforge_refused);
             }
         }
         if (command->source && role_active(source::kRole)) {
@@ -601,7 +601,7 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
     }
 
     const bool had_player = player_active();
-    const bool had_ac3forge = ac3forge_active();
+    const bool had_iclforge = iclforge_active();
     const std::vector<std::string> previous = phase_ == Phase::kActive ? active_roles_ : std::vector<std::string>{};
     activities_ = activate.activities;
     active_roles_ = std::move(roles);
@@ -616,7 +616,7 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
         end_audio();
         listener_->on_stream_end();
     }
-    if (had_ac3forge && !ac3forge_active() && burst_stream_) {
+    if (had_iclforge && !iclforge_active() && burst_stream_) {
         burst_stream_.reset();
         listener_->on_burst_stream_end();
     }
@@ -655,7 +655,7 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
     }
     // A role with a state object that becomes active owes the server that object (messaging.md,
     // client/state).
-    if (!active_roles_.empty() && (first || (player_active() && !had_player) || (ac3forge_active() && !had_ac3forge) ||
+    if (!active_roles_.empty() && (first || (player_active() && !had_player) || (iclforge_active() && !had_iclforge) ||
                                    added(artwork::kRole) || added(visualizer::kRole) || added(source::kRole) ||
                                    !sent_state_)) {
         send_state(out);
@@ -773,8 +773,8 @@ bool PlayerSession::player_active() const {
            std::find(active_roles_.begin(), active_roles_.end(), kPlayerRole) != active_roles_.end();
 }
 
-bool PlayerSession::ac3forge_active() const {
-    return phase_ == Phase::kActive && config_.ac3forge_support &&
+bool PlayerSession::iclforge_active() const {
+    return phase_ == Phase::kActive && config_.iclforge_support &&
            std::find(active_roles_.begin(), active_roles_.end(), player::kRole) != active_roles_.end();
 }
 
@@ -783,10 +783,10 @@ bool PlayerSession::role_active(std::string_view role) const {
 }
 
 bool PlayerSession::lists(const player::StreamStart& stream) const {
-    if (!config_.ac3forge_support) {
+    if (!config_.iclforge_support) {
         return false;
     }
-    const player::Support& support = *config_.ac3forge_support;
+    const player::Support& support = *config_.iclforge_support;
     return std::find(support.data_types.begin(), support.data_types.end(), stream.data_type) !=
                support.data_types.end() &&
            std::find(support.sample_rates.begin(), support.sample_rates.end(), stream.sample_rate) !=
@@ -842,8 +842,8 @@ void PlayerSession::send_state(SessionOutput& out) {
     if (player_active()) {
         state.player = state_;
     }
-    if (ac3forge_active()) {
-        state.ac3forge = ac3forge_state_;
+    if (iclforge_active()) {
+        state.iclforge = iclforge_state_;
     }
     if (role_active(source::kRole)) {
         state.source = source_state_;
@@ -939,10 +939,10 @@ SessionOutput PlayerSession::set_state(const m::PlayerState& state) {
     return out;
 }
 
-SessionOutput PlayerSession::set_ac3forge_state(const player::State& state) {
-    ac3forge_state_ = state;
+SessionOutput PlayerSession::set_iclforge_state(const player::State& state) {
+    iclforge_state_ = state;
     SessionOutput out;
-    if (ac3forge_active() && sent_state_) {
+    if (iclforge_active() && sent_state_) {
         send_state(out);
     }
     return out;

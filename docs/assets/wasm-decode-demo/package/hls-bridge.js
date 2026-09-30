@@ -13,7 +13,7 @@
 // hls.js believes the codec is supported and keeps demuxing/scheduling audio
 // normally, handing a `FakeSourceBuffer` real bytes get appended to instead
 // of a real one - which this module extracts (via fmp4.ts) and feeds to an
-// Ac3ForgeDecoderNode.
+// IclForgeDecoderNode.
 //
 // Known limitation, stated plainly rather than left to be discovered: A/V
 // sync here is `syncTo()`'s clock alignment against the host media element,
@@ -110,7 +110,7 @@ export function installMediaSourceShim(options) {
     };
 }
 /**
- * Wires {@link installMediaSourceShim} to an {@link Ac3ForgeDecoderNode}:
+ * Wires {@link installMediaSourceShim} to an {@link IclForgeDecoderNode}:
  * every captured segment is run through fmp4.ts - an init segment (no
  * `moof`) just records the track's timescale, a media segment's samples are
  * each pushed to the decoder node as their own access unit.

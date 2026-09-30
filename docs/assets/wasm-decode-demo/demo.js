@@ -1,4 +1,4 @@
-// ac3forge WASM decode demo - a consumer of the bundled ac3forge-wasm-decoder
+// iclforge WASM decode demo - a consumer of the bundled iclforge-wasm-decoder
 // bindings from js/. This file owns the page
 // (Web Audio playback of already-decoded PCM, the Canvas visualizations ported
 // from apps/gui/qml/SoundfieldView.qml and Main.qml's Objects tab, scrub/solo
@@ -8,12 +8,12 @@
 // `./package/` is `js/dist/` copied in alongside the
 // Emscripten build output (see apps/wasm/CMakeLists.txt's build docs in
 // docs/platforms/wasm.md) - a self-contained servable directory needs both.
-// `ac3forge_decode.js` (loaded as a plain classic <script> in index.html,
-// exactly as before) supplies the `createAc3ForgeModule` factory the bindings
+// `iclforge_decode.js` (loaded as a plain classic <script> in index.html,
+// exactly as before) supplies the `createIclForgeModule` factory the bindings
 // itself takes as a parameter rather than embedding a compiled binary of its
 // own - see js/README.md's "Loading the WASM module" section.
 
-import { decodeFile, DownmixTarget, Ac3ForgeDecoderNode, scanStream } from './package/index.js';
+import { decodeFile, DownmixTarget, IclForgeDecoderNode, scanStream } from './package/index.js';
 
 // Ear-level ring: ac3::spatial's kSpeakerAzimuthDeg
 // (src/render/include/iclforge/render/spatial.hpp), ITU-R BS.775, degrees CCW from
@@ -50,9 +50,9 @@ function setStatus(text, isError) {
 }
 
 async function loadModule() {
-    // createAc3ForgeModule is the global factory MODULARIZE+EXPORT_NAME
+    // createIclForgeModule is the global factory MODULARIZE+EXPORT_NAME
     // produces (see wasm_decode_demo/CMakeLists.txt's link options).
-    return await createAc3ForgeModule();
+    return await createIclForgeModule();
 }
 
 // The §7.8 Lo/Ro fold the decoder produced, ready to play. The matrix, the
@@ -505,10 +505,10 @@ async function startRealtime() {
         if (!scanned.ok) throw new Error(scanned.error);
 
         realtimeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        realtimeNode = await Ac3ForgeDecoderNode.create(realtimeAudioCtx, {
+        realtimeNode = await IclForgeDecoderNode.create(realtimeAudioCtx, {
             workletProcessorUrl: new URL('./package/worklet-processor.js', location.href),
             workerUrl: new URL('./package/decoder-worker.js', location.href),
-            wasmGlueUrl: new URL('./ac3forge_decode.js', location.href),
+            wasmGlueUrl: new URL('./iclforge_decode.js', location.href),
             fold: { target: DownmixTarget.LoRo, applyDialnorm: true },
         });
         realtimeNode.addEventListener('streaminfo', (event) => {

@@ -5,12 +5,12 @@
 
 mod common;
 
-use ac3forge::ac3::{Decoder, Encoder, EncoderConfig};
-use ac3forge::types::{
+use iclforge::ac3::{Decoder, Encoder, EncoderConfig};
+use iclforge::types::{
     Acmod, CentreMixLevel, DecoderConfig, DrcProfile, HeavyConfig, Latency, SampleRate,
     SurroundMixLevel,
 };
-use ac3forge::{Error, SAMPLES_PER_FRAME};
+use iclforge::{Error, SAMPLES_PER_FRAME};
 use common::{best_lag, rms, snr_db, tone};
 
 const ALL_ACMODS: [Acmod; 8] = [
@@ -56,22 +56,22 @@ fn encoder_config_default_mirrors_the_c_initializer() {
 }
 
 /// `CentreMixLevel::default()`/`SurroundMixLevel::default()` are the library's own downmix
-/// defaults - -4.5 dB and -6 dB, what `ac3forge_encoder_config_init()` (and so the C++
+/// defaults - -4.5 dB and -6 dB, what `iclforge_encoder_config_init()` (and so the C++
 /// `ac3::EncoderConfig`, docs/library/encoding-ac3.md) sets - not merely the first variant.
 /// They used to derive `Minus3Db` for both, so a config built field-by-field with
 /// `..Default::default()` on the enum disagreed with `EncoderConfig::default()`.
 #[test]
 fn mix_level_defaults_match_the_c_initializer() {
     // SAFETY: config_init fills every field; the zeroed value is never read.
-    let mut raw: ac3forge_sys::ac3forge_encoder_config_t = unsafe { std::mem::zeroed() };
-    unsafe { ac3forge_sys::ac3forge_encoder_config_init(&mut raw) };
+    let mut raw: iclforge_sys::iclforge_encoder_config_t = unsafe { std::mem::zeroed() };
+    unsafe { iclforge_sys::iclforge_encoder_config_init(&mut raw) };
     assert_eq!(
         raw.cmixlev,
-        ac3forge_sys::ac3forge_centre_mix_level_AC3FORGE_CMIXLEV_MINUS_4_5DB
+        iclforge_sys::iclforge_centre_mix_level_ICLFORGE_CMIXLEV_MINUS_4_5DB
     );
     assert_eq!(
         raw.surmixlev,
-        ac3forge_sys::ac3forge_surround_mix_level_AC3FORGE_SURMIXLEV_MINUS_6DB
+        iclforge_sys::iclforge_surround_mix_level_ICLFORGE_SURMIXLEV_MINUS_6DB
     );
     assert_eq!(CentreMixLevel::default(), CentreMixLevel::Minus4_5Db);
     assert_eq!(SurroundMixLevel::default(), SurroundMixLevel::Minus6Db);
@@ -459,8 +459,8 @@ fn handles_are_send_and_outlive_their_creators() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send::<Encoder>();
     assert_send::<Decoder>();
-    assert_send::<ac3forge::ac3::DecodedFrame>();
-    assert_send_sync::<ac3forge::Bytes>();
+    assert_send::<iclforge::ac3::DecodedFrame>();
+    assert_send_sync::<iclforge::Bytes>();
 
     // Frames and decoded frames own their storage: dropping the encoder and decoder first must
     // leave both fully readable (Drop order independence), including across a thread hop.

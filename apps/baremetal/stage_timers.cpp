@@ -1,5 +1,5 @@
 // Where a frame's microseconds go, stage by stage - the application half of
-// the AC3FORGE_STAGE_TIMERS zone backend. See stage_timers.hpp for the
+// the ICLFORGE_STAGE_TIMERS zone backend. See stage_timers.hpp for the
 // contract and src/base/variants/profiling-stage_timers/ for the other
 // half.
 //

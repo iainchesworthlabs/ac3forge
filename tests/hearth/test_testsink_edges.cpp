@@ -55,7 +55,7 @@ std::string scratch_pid_suffix() {
 // A fresh scratch directory for one case.
 fs::path scratch(std::string_view leaf) {
     const fs::path dir =
-        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_testsink_edges_" + scratch_pid_suffix()) / std::string(leaf);
+        fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_testsink_edges_" + scratch_pid_suffix()) / std::string(leaf);
     fs::remove_all(dir);
     return dir;
 }
@@ -401,20 +401,20 @@ TEST_CASE("test sink edges: the extension role's stream cleared and its commands
     ac::CommandMessage volume;
     volume.command = ac::Command::kVolume;
     volume.volume = 17;
-    REQUIRE(server.call([&] { return server.server.ac3forge_command(volume); }));
+    REQUIRE(server.call([&] { return server.server.iclforge_command(volume); }));
     CHECK(log.wait("volume 17"));
     ac::CommandMessage mute;
     mute.command = ac::Command::kMute;
     mute.mute = true;
-    REQUIRE(server.call([&] { return server.server.ac3forge_command(mute); }));
+    REQUIRE(server.call([&] { return server.server.iclforge_command(mute); }));
     CHECK(log.wait("] muted"));
     mute.mute = false;
-    REQUIRE(server.call([&] { return server.server.ac3forge_command(mute); }));
+    REQUIRE(server.call([&] { return server.server.iclforge_command(mute); }));
     CHECK(log.wait("unmuted"));
     ac::CommandMessage delay;
     delay.command = ac::Command::kSetOutputDelay;
     delay.output_delay_ms = 20;
-    CHECK_FALSE(server.call([&] { return server.server.ac3forge_command(delay); }));  // not listed
+    CHECK_FALSE(server.call([&] { return server.server.iclforge_command(delay); }));  // not listed
 }
 
 TEST_CASE("test sink edges: a second server taking the sink for playback displaces the first",

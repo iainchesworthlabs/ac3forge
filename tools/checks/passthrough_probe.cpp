@@ -22,8 +22,8 @@
 //
 //   g++ -std=c++23 -O1 -o /tmp/ptprobe tools/checks/passthrough_probe.cpp
 //       -Isrc/audio/include -Isrc/forge/include -Ibuild-pw/src/forge/generated
-//       $(pkg-config --cflags libpipewire-0.3) -DAC3FORGE_STATIC_DEFINE
-//       build-pw/src/audio/libac3audio.a build-pw/src/forge/libac3forge_static.a
+//       $(pkg-config --cflags libpipewire-0.3) -DICLFORGE_AC3_STATIC_DEFINE
+//       build-pw/src/audio/libac3audio.a build-pw/src/forge/libiclforge_ac3_static.a
 //       build-pw/vcpkg_installed/arm64-linux/lib/libfmt.a
 //       $(pkg-config --libs libpipewire-0.3) -lpthread
 //

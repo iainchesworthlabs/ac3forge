@@ -57,7 +57,7 @@ TEST_CASE("appending the CRC drives the register to zero", "[crc16]") {
 }
 
 TEST_CASE("incremental computation matches one-shot", "[crc16]") {
-    const auto msg = to_bytes("ac3forge incremental crc check");
+    const auto msg = to_bytes("iclforge incremental crc check");
     const std::span<const std::byte> all{msg};
     const auto split = msg.size() / 2;
     const std::uint16_t incremental =

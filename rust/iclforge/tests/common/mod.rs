@@ -2,7 +2,7 @@
 //! the blanket `dead_code` allow.
 #![allow(dead_code)]
 
-use ac3forge::SAMPLES_PER_FRAME;
+use iclforge::SAMPLES_PER_FRAME;
 
 /// One frame of a sine tone, phase-continuous across `frame_index`.
 pub fn tone(

@@ -43,7 +43,7 @@ std::string scratch_path(std::string_view name) {
     static const std::string run = std::to_string(
         (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
         static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
-    const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
+    const std::string leaf = "iclforge_" + run + "_" + std::string(name);
     return (std::filesystem::temp_directory_path() / leaf).string();
 }
 

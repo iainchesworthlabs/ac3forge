@@ -1,4 +1,4 @@
-// Updates over the network. See ../include/ac3forge/firmware.hpp and
+// Updates over the network. See ../include/iclforge/firmware.hpp and
 // planning/esp32-ota.md.
 
 #include "iclforge/firmware.hpp"
@@ -43,7 +43,7 @@
 #include "iclforge/firmware_image.hpp"
 #include "iclforge/firmware_status.hpp"
 
-namespace ac3forge {
+namespace iclforge {
 namespace {
 
 // How the last update ended, and the image an update wrote until its trial
@@ -711,7 +711,7 @@ void Firmware::Impl::on_trial(void* arg) {
         }
     }
     if (im->config.test_unhealthy) {
-        waiting.emplace_back("nothing (AC3FORGE_FIRMWARE_TEST_UNHEALTHY)");
+        waiting.emplace_back("nothing (ICLFORGE_FIRMWARE_TEST_UNHEALTHY)");
     }
     TrialStep step = TrialStep::kWait;
     {
@@ -1327,7 +1327,7 @@ bool Firmware::start(FirmwareHooks hooks, FirmwareConfig config) {
                     static_cast<unsigned>(config.trial.deadline_ms / 1000),
                     static_cast<unsigned>(config.trial.hold_ms / 1000));
         if (config.test_panic_at_trial) {
-            std::printf("firmware: AC3FORGE_FIRMWARE_TEST_PANIC_ON_TRIAL - panicking so the bootloader goes back\n");
+            std::printf("firmware: ICLFORGE_FIRMWARE_TEST_PANIC_ON_TRIAL - panicking so the bootloader goes back\n");
             std::abort();
         }
         im->trial.emplace(config.trial, now_ms());
@@ -1678,4 +1678,4 @@ int Firmware::on_coredump_erase(httpd_req* req) {
 #endif
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

@@ -23,7 +23,7 @@
 // iclforge::adm (src/adm, codec-blind by design - see its own header comments) and
 // iclforge::ac3/iclforge::oba (src/ac3, always built, no dependency on the opt-in, Boost-requiring
 // ac3adm). This module is the one place both are allowed to meet, and - like iclforge::adm
-// itself - it is gated behind AC3FORGE_BUILD_ADM: it is meaningless without ac3adm, and
+// itself - it is gated behind ICLFORGE_BUILD_ADM: it is meaningless without ac3adm, and
 // iclforge::ac3 is unconditionally available regardless of whether this module is built at all. See
 // src/admbridge/CMakeLists.txt's own header comment for the full reasoning, including why this
 // is a new standalone module rather than folded into either side.
@@ -109,7 +109,7 @@ enum class BridgeError : std::uint8_t {
                               // silence (§10.3.6) and is not this error.
 };
 
-[[nodiscard]] AC3ADMBRIDGE_EXPORT std::string_view describe(BridgeError error);
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT std::string_view describe(BridgeError error);
 
 // Builds one channel's iclforge::oba::ObjectPath from its audioBlockFormat sequence.
 //
@@ -151,7 +151,7 @@ enum class BridgeError : std::uint8_t {
 // Exposed (not file-local) specifically so this state machine can be tested directly against
 // hand-built iclforge::adm::AudioChannelFormat fixtures, independent of a full BW64
 // file/<chna>/pack resolution round trip.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<iclforge::oba::ObjectPath, BridgeError>
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT std::expected<iclforge::oba::ObjectPath, BridgeError>
 build_channel_path(const iclforge::adm::AudioChannelFormat& channel, double object_start_s,
                     bool force_lfe);
 
@@ -208,7 +208,7 @@ struct BridgeResult {
 // objects only, with the bed's own LFE bookkeeping as an implicit, always-present 16th (TS 103
 // 420 §8.3.2.2 caps the total at 16) - the exact cap apps/cli/main.cpp's run_atmos_encode/
 // run_atmos_path already enforce for the same reason, reused here rather than re-derived.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<BridgeResult, BridgeError> build(
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT std::expected<BridgeResult, BridgeError> build(
     const iclforge::adm::AdmDocument& document, std::string_view programme_id = {});
 
 // --- Write direction: roadmap item IM2 ("JOC -> ADM BWF writer") ---------------------------
@@ -232,7 +232,7 @@ struct BridgeResult {
 // iclforge::oba::DecodedProgram::UpdateBlock (oamd.hpp) a caller assembles by walking every decoded
 // access unit's own object_metadata->blocks in file order and adding each block's own
 // sample_offset to a running total of samples already emitted.
-struct AC3ADMBRIDGE_EXPORT WriteObjectUpdate {
+struct ICLFORGE_ADMBRIDGE_EXPORT WriteObjectUpdate {
     std::uint64_t sample_offset = 0;
     // iclforge::oba::UpdateBlock::ramp_duration verbatim - samples, or -1 for the one
     // ramp_duration_bits codeword TS 103 420's own table does not name (oamd.hpp's own comment);
@@ -250,14 +250,14 @@ struct AC3ADMBRIDGE_EXPORT WriteObjectUpdate {
 // increasing `sample_offset` order (a caller emitting them in decode order already satisfies this;
 // see build_block_formats()'s own comment on why a non-increasing entry is folded into its
 // predecessor rather than rejected).
-struct AC3ADMBRIDGE_EXPORT WriteChannel {
+struct ICLFORGE_ADMBRIDGE_EXPORT WriteChannel {
     std::string name;
     std::span<const float> pcm;                       // this channel's whole-file mono audio
     std::optional<iclforge::oba::BedLabel> bed_label{};     // set: bed/LFE channel; empty: dynamic object
     std::span<const WriteObjectUpdate> updates{};      // dynamic objects only
 };
 
-struct AC3ADMBRIDGE_EXPORT WriteInput {
+struct ICLFORGE_ADMBRIDGE_EXPORT WriteInput {
     std::uint32_t sample_rate = 0;
     std::vector<WriteChannel> channels;
 };
@@ -267,7 +267,7 @@ struct AC3ADMBRIDGE_EXPORT WriteInput {
 // copied into the returned document's own `audio.channels[i]` (unlike build()'s own
 // BridgeResult::pcm, which borrows - there is no caller-owned buffer here for the result to borrow
 // from once this function returns, since the document is the thing about to be written to disk).
-[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<iclforge::adm::AdmDocument, BridgeError> write(
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT std::expected<iclforge::adm::AdmDocument, BridgeError> write(
     const WriteInput& input);
 
 }  // namespace iclforge::admbridge

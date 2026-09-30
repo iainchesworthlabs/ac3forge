@@ -22,7 +22,7 @@
 // outright. The one genuinely platform-specific piece - the raw hardware
 // probe itself, CPUID+XGETBV on real MSVC vs __builtin_cpu_supports
 // elsewhere - is the only part selected by directory (see this file's own
-// .cpp and src/ac3/CMakeLists.txt's AC3FORGE_AVX2 block); everything
+// .cpp and src/ac3/CMakeLists.txt's ICLFORGE_AVX2 block); everything
 // else here (caching, the debug override, the abort-not-fault guarantee)
 // is ordinary portable C++, so it lives once instead of being duplicated
 // per platform the way the arch seam's own primitives sometimes have to be.
@@ -36,14 +36,14 @@ namespace iclforge::internal::cpu {
 // compiler in this project's matrix); every call after the first is a load
 // of an already-computed bool, not a CPUID instruction.
 //
-// Honours AC3FORGE_SIMD_TIER=auto|sse2|avx2 (read once, inside the same
+// Honours ICLFORGE_SIMD_TIER=auto|sse2|avx2 (read once, inside the same
 // static initialisation) so a build with the AVX2 tier compiled in can be
 // forced down to SSE2 for a reproducibility comparison, or forced up to
 // prove the AVX2 kernels execute (and are compared bit-for-bit against the
 // SSE2 baseline) on a machine that actually has it - see
 // tests/ac3/core/test_simd_kernels.cpp and tools/ci/run_codec_matrix.sh. Forcing
 // up on a CPU that cannot actually run AVX2, or on a build with no AVX2
-// tier compiled in at all (AC3FORGE_AVX2=OFF, or a non-x86-64 target),
+// tier compiled in at all (ICLFORGE_AVX2=OFF, or a non-x86-64 target),
 // aborts with a clear message rather than ever letting an illegal
 // instruction fault stand in for one.
 [[nodiscard]] ICLFORGE_BASE_EXPORT bool has_avx2() noexcept;

@@ -3,7 +3,7 @@
 // handler). The bridge is driven with the real fMP4 fixture from
 // fmp4.test.js, split where hls.js would split it - the init segment (ftyp +
 // moov) appended first, then the media segments - and a recording stand-in for
-// Ac3ForgeDecoderNode, so the assertions are about which access units reach
+// IclForgeDecoderNode, so the assertions are about which access units reach
 // the decoder and what buffered range hls.js is told about.
 
 import { test } from "node:test";

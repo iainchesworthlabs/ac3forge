@@ -54,7 +54,7 @@ namespace {
 // signed, or nullopt if signing was requested but the key could not be loaded
 // (the message is already printed). Not requested -> 0, units untouched. The
 // key comes from the operator at runtime (signing-key=<path> or the
-// AC3FORGE_SIGNING_KEY[_FILE] env vars) and is never stored - see
+// ICLFORGE_SIGNING_KEY[_FILE] env vars) and is never stored - see
 // docs/concepts/object-signing.md.
 std::optional<int> apply_object_signing(std::vector<std::vector<std::byte>>& units,
                                         const Options& meta) {
@@ -66,7 +66,7 @@ std::optional<int> apply_object_signing(std::vector<std::vector<std::byte>>& uni
         if (key.error().kind == iclforge::signing::KeyErrorKind::kAbsent) {
             fmt::println(stderr,
                          "error: sign-objects needs a key — pass signing-key=<path>, or set "
-                         "AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY");
+                         "ICLFORGE_SIGNING_KEY_FILE / ICLFORGE_SIGNING_KEY");
         } else {
             fmt::println(stderr, "error: {}", key.error().message);
         }

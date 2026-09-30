@@ -485,9 +485,9 @@ std::string write_client_hello(const ClientHello& hello, Dialect dialect) {
             }
             w.end_object();
         }
-        if (hello.ac3forge_support) {
+        if (hello.iclforge_support) {
             w.key(player::kSupportKey);
-            player::write_support(w, *hello.ac3forge_support);
+            player::write_support(w, *hello.iclforge_support);
         }
         if (hello.source_support) {
             w.key(source::kSupportKey);
@@ -553,7 +553,7 @@ std::expected<ClientHello, MessageError> read_client_hello(json::Value payload, 
         hello.player_support = std::move(player);
     }
     if (const json::Value support = payload[player::kSupportKey]; support.exists()) {
-        hello.ac3forge_support = player::read_support(support);
+        hello.iclforge_support = player::read_support(support);
     }
     if (const json::Value support = payload[source::kSupportKey]; support.exists()) {
         hello.source_support = source::read_support(support);
@@ -755,9 +755,9 @@ std::string write_client_state(const ClientState& state, Dialect dialect) {
             w.key("visualizer");
             visualizer::write_state(w, *state.visualizer);
         }
-        if (state.ac3forge) {
+        if (state.iclforge) {
             w.key(player::kObjectKey);
-            player::write_state(w, *state.ac3forge);
+            player::write_state(w, *state.iclforge);
         }
     });
 }
@@ -772,8 +772,8 @@ std::expected<ClientState, MessageError> read_client_state(json::Value payload, 
     state.available = available.value_or(false);
 
     if (const json::Value extension = payload[player::kObjectKey]; extension.exists()) {
-        state.ac3forge = player::read_state(extension);
-        if (!state.ac3forge) {
+        state.iclforge = player::read_state(extension);
+        if (!state.iclforge) {
             return malformed();
         }
     }
@@ -877,9 +877,9 @@ std::string write_server_command(const ServerCommand& command, Dialect dialect) 
             w.key("source");
             source::write_command(w, *command.source);
         }
-        if (command.ac3forge) {
+        if (command.iclforge) {
             w.key(player::kObjectKey);
-            player::write_command(w, *command.ac3forge);
+            player::write_command(w, *command.iclforge);
         }
     });
 }
@@ -889,9 +889,9 @@ std::expected<ServerCommand, MessageError> read_server_command(json::Value paylo
     if (const json::Value extension = payload[player::kObjectKey]; extension.exists()) {
         std::expected<player::CommandMessage, player::CommandFailure> read = player::read_command(extension);
         if (read) {
-            command.ac3forge = std::move(*read);
+            command.iclforge = std::move(*read);
         } else if (read.error().error == player::CommandError::kSettingsRefused) {
-            command.ac3forge_refused = std::move(read.error().settings);
+            command.iclforge_refused = std::move(read.error().settings);
         } else {
             return malformed();
         }
@@ -1046,9 +1046,9 @@ std::string write_stream_start(const StreamStart& start) {
             w.key("visualizer");
             visualizer::write_stream_start(w, *start.visualizer);
         }
-        if (start.ac3forge) {
+        if (start.iclforge) {
             w.key(player::kObjectKey);
-            player::write_stream_start(w, *start.ac3forge);
+            player::write_stream_start(w, *start.iclforge);
         }
     });
 }
@@ -1061,8 +1061,8 @@ std::expected<StreamStart, MessageError> read_stream_start(json::Value payload) 
     StreamStart start;
     start.server_transmitted = *transmitted;
     if (const json::Value extension = payload[player::kObjectKey]; extension.exists()) {
-        start.ac3forge = player::read_stream_start(extension);
-        if (!start.ac3forge) {
+        start.iclforge = player::read_stream_start(extension);
+        if (!start.iclforge) {
             return malformed();
         }
     }

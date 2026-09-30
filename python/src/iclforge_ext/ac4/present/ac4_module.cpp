@@ -221,7 +221,7 @@ using detail::to_bytes;
 void register_ac4(py::module_& m) {
     // --- exceptions ----------------------------------------------------------
     // Defined on the extension module itself, beside Ac3Error and its subclasses
-    // (ac3forge/__init__.py re-exports them). Ac4Error is a ValueError, which
+    // (iclforge/__init__.py re-exports them). Ac4Error is a ValueError, which
     // is what AC-4 failures raised before they had types of their own.
     static py::exception<std::runtime_error> ac4_error(m, "Ac4Error", PyExc_ValueError);
     static py::exception<std::runtime_error> decode_error(m, "Ac4DecodeError", ac4_error.ptr());

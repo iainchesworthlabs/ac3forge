@@ -71,7 +71,7 @@ enum class DemuxError : std::uint8_t {
     kLimitExceeded,       // a PES or section beyond ReadOptions
 };
 
-[[nodiscard]] MPEGTS_EXPORT std::string_view describe(DemuxError error);
+[[nodiscard]] ICLFORGE_MPEGTS_EXPORT std::string_view describe(DemuxError error);
 
 // How the PMT named the codec. Reported rather than resolved because the
 // three are not interchangeable claims: an ATSC stream_type is a statement
@@ -153,7 +153,7 @@ struct Demuxed {
 };
 
 // Reads a complete transport stream held in one buffer.
-[[nodiscard]] MPEGTS_EXPORT std::expected<Demuxed, DemuxError> demux(
+[[nodiscard]] ICLFORGE_MPEGTS_EXPORT std::expected<Demuxed, DemuxError> demux(
     std::span<const std::byte> file, const ReadOptions& options = {});
 
 // Incrementally reads payloads out of a transport stream as its bytes
@@ -162,7 +162,7 @@ struct Demuxed {
 // place.
 //
 // Move-only: the parse state lives behind a pointer.
-class MPEGTS_EXPORT Reader {
+class ICLFORGE_MPEGTS_EXPORT Reader {
    public:
     using PayloadFn = std::function<void(std::span<const std::byte>)>;
 

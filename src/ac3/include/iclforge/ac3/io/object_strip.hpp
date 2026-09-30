@@ -71,7 +71,7 @@ enum class StripError : std::uint8_t {
     kUnsupportedFrame,
     // A frame whose blkstrtinfo field is present. Its own width is derived
     // from frmsiz (§E2.3.3.2), and frmsiz necessarily changes here, so the
-    // field would have to be re-encoded rather than copied. ac3forge never
+    // field would have to be re-encoded rather than copied. iclforge never
     // writes one (eac3_frame.cpp sends blkstrtinfoe = 0).
     kFrameSizeDependentField,
 };

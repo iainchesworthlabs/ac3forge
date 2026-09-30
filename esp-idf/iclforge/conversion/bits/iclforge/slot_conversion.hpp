@@ -1,6 +1,6 @@
 #pragma once
 
-// The conversion ac3forge/interleave.hpp's interleaves use by default, for a
+// The conversion iclforge/interleave.hpp's interleaves use by default, for a
 // part with no floating-point unit: BitConversion, which computes to_pcm16's
 // and to_slot_24in32's results from the float's bits in integer arithmetic.
 //
@@ -10,9 +10,9 @@
 // ESP32-C6, and conversion/float/ otherwise.
 // interleave.hpp says what the two compute and why they give the same integers.
 
-namespace ac3forge {
+namespace iclforge {
 
 struct BitConversion;
 using SlotConversion = BitConversion;
 
-}  // namespace ac3forge
+}  // namespace iclforge

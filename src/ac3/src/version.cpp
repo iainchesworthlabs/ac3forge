@@ -18,7 +18,7 @@ std::string version_details() {
         headline += fmt::format("+{}", git_commits_since_tag);
     }
     std::string out = fmt::format(
-        "ac3forge {}\n  release: {}\n  commit:  {}\n  branch:  {}\n  target:  {}", headline,
+        "iclforge {}\n  release: {}\n  commit:  {}\n  branch:  {}\n  target:  {}", headline,
         git_describe, git_commit_full, git_branch, build_target);
     // Which src/arithmetic/arch/ directory the codec's vector
     // kernels were compiled from (SIMD kernels). Read from the selected

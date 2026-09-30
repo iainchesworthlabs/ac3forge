@@ -4,7 +4,7 @@
 
 // What the I2S sink needs and does not share with anything else: the shape
 // of the DMA queue. The mode/slot-count planning it also needs is
-// ac3forge/sink_plan.hpp, in the component rather than here, because that
+// iclforge/sink_plan.hpp, in the component rather than here, because that
 // part is pure enough to host-test the same way interleave.hpp and
 // dac_queue_model.hpp already are - this file has no path into tests/
 // CMakeLists.txt's include list, and gaining one for a single function

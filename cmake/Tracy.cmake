@@ -1,11 +1,11 @@
 # ---------------------------------------------------------------------------
 # Tracy.cmake
 #
-# Defines an INTERFACE target `ac3::tracy` that, when AC3FORGE_ENABLE_TRACY is
-# on, links Tracy's client library and defines AC3FORGE_TRACY_ENABLED, which
+# Defines an INTERFACE target `iclforge::tracy` that, when ICLFORGE_ENABLE_TRACY is
+# on, links Tracy's client library and defines ICLFORGE_TRACY_ENABLED, which
 # the ac3/internal/profiling.hpp variant selected by src/ac3/CMakeLists.txt
 # (src/base/variants/profiling-tracy_enabled/, chosen over its tracy_disabled/
-# sibling by an include-dir switch, not an #ifdef) uses to turn AC3_ZONE_SCOPED()
+# sibling by an include-dir switch, not an #ifdef) uses to turn ICLFORGE_ZONE_SCOPED()
 # etc. into real Tracy zones instead of no-ops. Off by default, matching
 # Coverage.cmake's shape: normal dev/CI builds pay no instrumentation cost and
 # do not even need Tracy present.
@@ -19,13 +19,13 @@
 # this was used to find the encode_frame() hotspot.
 # ---------------------------------------------------------------------------
 
-option(AC3FORGE_ENABLE_TRACY "Enable Tracy profiler instrumentation" OFF)
+option(ICLFORGE_ENABLE_TRACY "Enable Tracy profiler instrumentation" OFF)
 
-add_library(ac3_tracy INTERFACE)
-add_library(ac3::tracy ALIAS ac3_tracy)
+add_library(iclforge_tracy INTERFACE)
+add_library(iclforge::tracy ALIAS iclforge_tracy)
 
-if(AC3FORGE_ENABLE_TRACY)
+if(ICLFORGE_ENABLE_TRACY)
     find_package(Tracy CONFIG REQUIRED)
-    target_link_libraries(ac3_tracy INTERFACE Tracy::TracyClient)
-    target_compile_definitions(ac3_tracy INTERFACE AC3FORGE_TRACY_ENABLED)
+    target_link_libraries(iclforge_tracy INTERFACE Tracy::TracyClient)
+    target_compile_definitions(iclforge_tracy INTERFACE ICLFORGE_TRACY_ENABLED)
 endif()

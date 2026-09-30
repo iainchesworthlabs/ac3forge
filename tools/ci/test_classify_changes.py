@@ -186,7 +186,7 @@ class SatellitesDirectTest(unittest.TestCase):
             ("apps/android/app/build.gradle.kts", "android"),
             ("esp-idf/iclforge/CMakeLists.txt", "esp"),
             ("rust/iclforge/src/lib.rs", "rust"),
-            ("python/ac3forge/__init__.py", "python"),
+            ("python/iclforge/__init__.py", "python"),
             ("apps/wasm/src/main.cpp", "wasm"),
         ):
             with self.subTest(path=path):

@@ -6,14 +6,14 @@
 # Requires: Java 17+, curl, unzip.
 #
 # The Android SDK is installed under the WSL native filesystem by default
-# ($HOME/.local/share/ac3forge/android-sdk), NOT under the repo on /mnt/c/...
+# ($HOME/.local/share/iclforge/android-sdk), NOT under the repo on /mnt/c/...
 # — sdkmanager and Gradle I/O on the Windows drive mount are painfully slow.
-# Override with AC3FORGE_ANDROID_SDK or ANDROID_HOME if you already have one.
+# Override with ICLFORGE_ANDROID_SDK or ANDROID_HOME if you already have one.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 android_dir="$repo_root/apps/android"
-sdk="${AC3FORGE_ANDROID_SDK:-${ANDROID_HOME:-$HOME/.local/share/ac3forge/android-sdk}}"
+sdk="${ICLFORGE_ANDROID_SDK:-${ANDROID_HOME:-$HOME/.local/share/iclforge/android-sdk}}"
 sm="$sdk/cmdline-tools/latest/bin/sdkmanager"
 
 if [[ "$repo_root" == /mnt/* ]]; then

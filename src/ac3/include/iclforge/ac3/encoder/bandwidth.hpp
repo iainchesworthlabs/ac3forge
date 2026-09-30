@@ -45,7 +45,7 @@ namespace iclforge::encoder {
 ICLFORGE_AC3_EXPORT void accumulate_peak_exponents(std::span<const double> coefficients,
                                                std::span<std::uint8_t> peak_exponents);
 
-// The float form, for the float encode path (AC3FORGE_ENCODE_SCALAR): the
+// The float form, for the float encode path (ICLFORGE_ENCODE_SCALAR): the
 // same pair, rounding the float coefficient itself.
 ICLFORGE_AC3_EXPORT void accumulate_peak_exponents(std::span<const float> coefficients,
                                                std::span<std::uint8_t> peak_exponents);

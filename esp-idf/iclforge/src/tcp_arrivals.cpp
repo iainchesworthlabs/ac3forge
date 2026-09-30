@@ -1,4 +1,4 @@
-// The board's side of ../include/ac3forge/tcp_arrivals.hpp: the IPv4 input
+// The board's side of ../include/iclforge/tcp_arrivals.hpp: the IPv4 input
 // hook that logs the watched port's streams, and their readers' calls.
 
 #include "iclforge/tcp_arrivals.hpp"
@@ -14,10 +14,10 @@
 #include "freertos/FreeRTOS.h"
 #include "lwip/pbuf.h"
 
-#include "ac3forge_lwip_hooks.h"
+#include "iclforge_lwip_hooks.h"
 #include "peer/ipv4_peer.hpp"
 
-namespace ac3forge::tcp_arrivals {
+namespace iclforge::tcp_arrivals {
 namespace {
 
 // Streams logged at once: SendspinHost's four connections, and one that
@@ -120,12 +120,12 @@ std::optional<std::int64_t> arrival(int handle, std::uint64_t end) {
     return at;
 }
 
-}  // namespace ac3forge::tcp_arrivals
+}  // namespace iclforge::tcp_arrivals
 
 // lwIP calls this for every IPv4 packet, on its own task, before it has
 // checked the packet: every length is checked here. 0 lets lwIP carry on.
-int ac3forge_lwip_ip4_input(struct pbuf* p, struct netif* /*inp*/) {
-    namespace ta = ac3forge::tcp_arrivals;
+int iclforge_lwip_ip4_input(struct pbuf* p, struct netif* /*inp*/) {
+    namespace ta = iclforge::tcp_arrivals;
     const std::uint16_t port = ta::g_port.load(std::memory_order_relaxed);
     if (port == 0 || p == nullptr || p->len < 40) {
         return 0;

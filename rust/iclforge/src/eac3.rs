@@ -3,14 +3,14 @@
 //! ([`AccessUnitEncoder`]/[`DecodedAccessUnit`]), and the OAMD/JOC object-audio accessors on
 //! both decoded types. The object ENCODER lives in [`crate::atmos`].
 
-use ac3forge_sys as sys;
+use iclforge_sys as sys;
 use std::ptr;
 
 use crate::bytes::Bytes;
 use crate::error::Error;
 use crate::types::{Acmod, DecoderConfig, Latency, SampleRate};
 
-/// Mirrors `ac3forge_stream_type_t` (Table E1.2, §E2.3.1.2). This crate's [`Eac3Encoder`] only
+/// Mirrors `iclforge_stream_type_t` (Table E1.2, §E2.3.1.2). This crate's [`Eac3Encoder`] only
 /// ever emits `Independent` in practice (a standalone substream); `Dependent`/`Convertible`/
 /// `Reserved` are mirrored for completeness against the raw type, matching the C header's own
 /// "accepted here for a faithful mirror" stance.
@@ -24,32 +24,32 @@ pub enum StreamType {
 }
 
 impl StreamType {
-    fn to_raw(self) -> sys::ac3forge_stream_type_t {
+    fn to_raw(self) -> sys::iclforge_stream_type_t {
         match self {
-            StreamType::Independent => sys::ac3forge_stream_type_AC3FORGE_STREAM_TYPE_INDEPENDENT,
-            StreamType::Dependent => sys::ac3forge_stream_type_AC3FORGE_STREAM_TYPE_DEPENDENT,
-            StreamType::Convertible => sys::ac3forge_stream_type_AC3FORGE_STREAM_TYPE_CONVERTIBLE,
-            StreamType::Reserved => sys::ac3forge_stream_type_AC3FORGE_STREAM_TYPE_RESERVED,
+            StreamType::Independent => sys::iclforge_stream_type_ICLFORGE_STREAM_TYPE_INDEPENDENT,
+            StreamType::Dependent => sys::iclforge_stream_type_ICLFORGE_STREAM_TYPE_DEPENDENT,
+            StreamType::Convertible => sys::iclforge_stream_type_ICLFORGE_STREAM_TYPE_CONVERTIBLE,
+            StreamType::Reserved => sys::iclforge_stream_type_ICLFORGE_STREAM_TYPE_RESERVED,
         }
     }
 
-    fn from_raw(raw: sys::ac3forge_stream_type_t) -> Option<Self> {
+    fn from_raw(raw: sys::iclforge_stream_type_t) -> Option<Self> {
         #[allow(non_upper_case_globals)]
         Some(match raw {
-            sys::ac3forge_stream_type_AC3FORGE_STREAM_TYPE_INDEPENDENT => StreamType::Independent,
-            sys::ac3forge_stream_type_AC3FORGE_STREAM_TYPE_DEPENDENT => StreamType::Dependent,
-            sys::ac3forge_stream_type_AC3FORGE_STREAM_TYPE_CONVERTIBLE => StreamType::Convertible,
-            sys::ac3forge_stream_type_AC3FORGE_STREAM_TYPE_RESERVED => StreamType::Reserved,
+            sys::iclforge_stream_type_ICLFORGE_STREAM_TYPE_INDEPENDENT => StreamType::Independent,
+            sys::iclforge_stream_type_ICLFORGE_STREAM_TYPE_DEPENDENT => StreamType::Dependent,
+            sys::iclforge_stream_type_ICLFORGE_STREAM_TYPE_CONVERTIBLE => StreamType::Convertible,
+            sys::iclforge_stream_type_ICLFORGE_STREAM_TYPE_RESERVED => StreamType::Reserved,
             _ => return None,
         })
     }
 }
 
-/// Mirrors `ac3forge_eac3_frame_config_t`'s core surface. Construct with
-/// [`Eac3FrameConfig::default`] (calls the raw `ac3forge_eac3_frame_config_init()`) and override
+/// Mirrors `iclforge_eac3_frame_config_t`'s core surface. Construct with
+/// [`Eac3FrameConfig::default`] (calls the raw `iclforge_eac3_frame_config_init()`) and override
 /// only what you need — see [`crate::ac3::EncoderConfig`]'s identical convention.
 ///
-/// Not mirrored (see `ac3forge.h`'s own "What is deliberately out of scope" list, and
+/// Not mirrored (see `iclforge.h`'s own "What is deliberately out of scope" list, and
 /// `docs/library/c-api.md`'s "E-AC-3 encoding" section): the `mixmdate`/`infomdat` metadata
 /// groups, `dialnorm2`/`drc`/`heavy`, `vbr`/`numblkscod`.
 #[derive(Debug, Clone, PartialEq)]
@@ -83,7 +83,7 @@ pub struct Eac3FrameConfig {
     pub transient_prenoise: bool,
     pub fast_mdct: bool,
     /// Substream identity (Table E1.2) — only meaningful when hand-assembling a multi-substream
-    /// access unit out of several standalone encoders; see `ac3forge.h`'s own comment.
+    /// access unit out of several standalone encoders; see `iclforge.h`'s own comment.
     pub strmtyp: StreamType,
     pub substreamid: i32,
     /// Dependent substreams only.
@@ -91,8 +91,8 @@ pub struct Eac3FrameConfig {
 }
 
 impl Eac3FrameConfig {
-    pub(crate) fn to_raw(&self) -> sys::ac3forge_eac3_frame_config_t {
-        sys::ac3forge_eac3_frame_config_t {
+    pub(crate) fn to_raw(&self) -> sys::iclforge_eac3_frame_config_t {
+        sys::iclforge_eac3_frame_config_t {
             sample_rate: self.sample_rate.to_raw(),
             bitrate_kbps: self.bitrate_kbps,
             dialnorm: self.dialnorm,
@@ -117,7 +117,7 @@ impl Eac3FrameConfig {
         }
     }
 
-    fn from_raw(raw: &sys::ac3forge_eac3_frame_config_t) -> Self {
+    fn from_raw(raw: &sys::iclforge_eac3_frame_config_t) -> Self {
         Eac3FrameConfig {
             sample_rate: SampleRate::from_raw(raw.sample_rate)
                 .expect("unrecognized sample_rate in eac3 default"),
@@ -150,27 +150,27 @@ impl Default for Eac3FrameConfig {
         let mut raw = unsafe { std::mem::zeroed() };
         // SAFETY: see EncoderConfig::default()'s identical comment - full-assignment init,
         // never read before written.
-        unsafe { sys::ac3forge_eac3_frame_config_init(&mut raw) };
+        unsafe { sys::iclforge_eac3_frame_config_init(&mut raw) };
         Eac3FrameConfig::from_raw(&raw)
     }
 }
 
-/// §7.7 metadata words for one frame — `ac3forge_eac3_frame_metadata_t`. All-zero `dynrng`
+/// §7.7 metadata words for one frame — `iclforge_eac3_frame_metadata_t`. All-zero `dynrng`
 /// (§7.7.1's "no change"), no `compr` by default, same as `Default::default()` would already
 /// give (a plain POD value type with no growth story, unlike the `_config_init` structs — see
-/// `ac3forge_eac3_frame_metadata_init()`'s own comment on why it exists purely for symmetry).
+/// `iclforge_eac3_frame_metadata_init()`'s own comment on why it exists purely for symmetry).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Eac3FrameMetadata {
-    pub dynrng: [u8; sys::AC3FORGE_BLOCKS_PER_FRAME as usize],
+    pub dynrng: [u8; sys::ICLFORGE_BLOCKS_PER_FRAME as usize],
     pub compr: Option<u8>,
     /// Meaningful only when `acmod` is `Acmod::DualMono`.
-    pub dynrng2: [u8; sys::AC3FORGE_BLOCKS_PER_FRAME as usize],
+    pub dynrng2: [u8; sys::ICLFORGE_BLOCKS_PER_FRAME as usize],
     pub compr2: Option<u8>,
 }
 
 impl Eac3FrameMetadata {
-    fn to_raw(self) -> sys::ac3forge_eac3_frame_metadata_t {
-        sys::ac3forge_eac3_frame_metadata_t {
+    fn to_raw(self) -> sys::iclforge_eac3_frame_metadata_t {
+        sys::iclforge_eac3_frame_metadata_t {
             dynrng: self.dynrng,
             has_compr: self.compr.is_some() as i32,
             compr: self.compr.unwrap_or_default(),
@@ -182,9 +182,9 @@ impl Eac3FrameMetadata {
 }
 
 /// An E-AC-3 encoder (single, standalone substream) — `ac3::eac3::FrameEncoder` via
-/// `ac3forge_eac3_encoder_t`.
+/// `iclforge_eac3_encoder_t`.
 pub struct Eac3Encoder {
-    raw: ptr::NonNull<sys::ac3forge_eac3_encoder_t>,
+    raw: ptr::NonNull<sys::iclforge_eac3_encoder_t>,
     channel_count: usize,
     samples_per_frame: usize,
 }
@@ -194,14 +194,14 @@ unsafe impl Send for Eac3Encoder {}
 impl Eac3Encoder {
     pub fn new(config: &Eac3FrameConfig) -> Result<Self, Error> {
         let raw_config = config.to_raw();
-        let mut out: *mut sys::ac3forge_eac3_encoder_t = ptr::null_mut();
-        let status = unsafe { sys::ac3forge_eac3_encoder_create(&raw_config, &mut out) };
+        let mut out: *mut sys::iclforge_eac3_encoder_t = ptr::null_mut();
+        let status = unsafe { sys::iclforge_eac3_encoder_create(&raw_config, &mut out) };
         Error::check(status)?;
         let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_eac3_encoder_create returned OK with a null encoder");
-        let channel_count = unsafe { sys::ac3forge_eac3_encoder_channel_count(raw.as_ptr()) };
+            .expect("iclforge_eac3_encoder_create returned OK with a null encoder");
+        let channel_count = unsafe { sys::iclforge_eac3_encoder_channel_count(raw.as_ptr()) };
         let samples_per_frame =
-            unsafe { sys::ac3forge_eac3_encoder_samples_per_frame(raw.as_ptr()) };
+            unsafe { sys::iclforge_eac3_encoder_samples_per_frame(raw.as_ptr()) };
         Ok(Eac3Encoder {
             raw,
             channel_count,
@@ -213,15 +213,15 @@ impl Eac3Encoder {
         self.channel_count
     }
 
-    /// `AC3FORGE_SAMPLES_PER_FRAME` today — see `ac3forge_eac3_encoder_samples_per_frame()`'s own
+    /// `ICLFORGE_SAMPLES_PER_FRAME` today — see `iclforge_eac3_encoder_samples_per_frame()`'s own
     /// comment on why this is its own accessor rather than an assumed constant.
     pub fn samples_per_frame(&self) -> usize {
         self.samples_per_frame
     }
 
     pub fn latency(&self) -> Latency {
-        let mut raw = sys::ac3forge_latency_t::default();
-        unsafe { sys::ac3forge_eac3_encoder_latency(self.raw.as_ptr(), &mut raw) };
+        let mut raw = sys::iclforge_latency_t::default();
+        unsafe { sys::iclforge_eac3_encoder_latency(self.raw.as_ptr(), &mut raw) };
         Latency::from_raw(raw)
     }
 
@@ -245,15 +245,15 @@ impl Eac3Encoder {
         let pointers: Vec<*const f32> = channels.iter().map(|c| c.as_ptr()).collect();
         let raw_metadata = metadata.map(|m| m.to_raw());
         let metadata_ptr = raw_metadata.as_ref().map_or(ptr::null(), |m| {
-            m as *const sys::ac3forge_eac3_frame_metadata_t
+            m as *const sys::iclforge_eac3_frame_metadata_t
         });
         let (aux_ptr, aux_len) = aux.map_or((ptr::null(), 0), |a| (a.as_ptr(), a.len()));
 
-        let mut out: *mut sys::ac3forge_bytes_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_bytes_t = ptr::null_mut();
         // SAFETY: `pointers`/`metadata_ptr`/`aux_ptr` are all valid for the duration of this
         // call; `out` is a valid out-parameter.
         let status = unsafe {
-            sys::ac3forge_eac3_encoder_encode_frame(
+            sys::iclforge_eac3_encoder_encode_frame(
                 self.raw.as_ptr(),
                 pointers.as_ptr(),
                 pointers.len(),
@@ -271,13 +271,13 @@ impl Eac3Encoder {
 
 impl Drop for Eac3Encoder {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_eac3_encoder_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_eac3_encoder_destroy(self.raw.as_ptr()) };
     }
 }
 
-/// An E-AC-3/Atmos decoder — `ac3::Eac3Decoder` via `ac3forge_eac3_decoder_t`.
+/// An E-AC-3/Atmos decoder — `ac3::Eac3Decoder` via `iclforge_eac3_decoder_t`.
 pub struct Eac3Decoder {
-    raw: ptr::NonNull<sys::ac3forge_eac3_decoder_t>,
+    raw: ptr::NonNull<sys::iclforge_eac3_decoder_t>,
 }
 
 unsafe impl Send for Eac3Decoder {}
@@ -285,30 +285,30 @@ unsafe impl Send for Eac3Decoder {}
 impl Eac3Decoder {
     pub fn new(config: &DecoderConfig) -> Result<Self, Error> {
         let raw_config = config.to_raw();
-        let mut out: *mut sys::ac3forge_eac3_decoder_t = ptr::null_mut();
-        let status = unsafe { sys::ac3forge_eac3_decoder_create(&raw_config, &mut out) };
+        let mut out: *mut sys::iclforge_eac3_decoder_t = ptr::null_mut();
+        let status = unsafe { sys::iclforge_eac3_decoder_create(&raw_config, &mut out) };
         Error::check(status)?;
         let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_eac3_decoder_create returned OK with a null decoder");
+            .expect("iclforge_eac3_decoder_create returned OK with a null decoder");
         Ok(Eac3Decoder { raw })
     }
 
     /// The delay this decoder adds, same contract as [`crate::ac3::Decoder::latency_samples`] —
     /// 0 until some substream's frame engages transient pre-noise processing (§3.7), then
-    /// `AC3FORGE_SAMPLES_PER_FRAME` for the rest of the stream.
+    /// `ICLFORGE_SAMPLES_PER_FRAME` for the rest of the stream.
     pub fn latency_samples(&self) -> i32 {
-        unsafe { sys::ac3forge_eac3_decoder_latency_samples(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_eac3_decoder_latency_samples(self.raw.as_ptr()) }
     }
 
     /// Decodes one substream's syncframe. Returns `Ok(None)` — not an error — when this frame's
     /// PCM is being held back pending transient pre-noise processing (§3.7); call
     /// [`Eac3Decoder::flush`] at end of stream to collect it. This is the one place a Rust
     /// wrapper is a strictly better fit than the C convention it mirrors: the C API's
-    /// `AC3FORGE_OK` + null-out-parameter pairing collapses onto `Result<Option<_>, _>` exactly.
+    /// `ICLFORGE_OK` + null-out-parameter pairing collapses onto `Result<Option<_>, _>` exactly.
     pub fn decode_substream(&mut self, frame: &[u8]) -> Result<Option<DecodedSubstream>, Error> {
-        let mut out: *mut sys::ac3forge_decoded_substream_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_decoded_substream_t = ptr::null_mut();
         let status = unsafe {
-            sys::ac3forge_eac3_decoder_decode_substream(
+            sys::iclforge_eac3_decoder_decode_substream(
                 self.raw.as_ptr(),
                 frame.as_ptr(),
                 frame.len(),
@@ -321,88 +321,88 @@ impl Eac3Decoder {
 
     /// Releases whichever frames transient pre-noise processing is still holding back, in order.
     pub fn flush(&mut self) -> Result<Vec<DecodedSubstream>, Error> {
-        let mut out_substreams: *mut *mut sys::ac3forge_decoded_substream_t = ptr::null_mut();
+        let mut out_substreams: *mut *mut sys::iclforge_decoded_substream_t = ptr::null_mut();
         let mut out_count: usize = 0;
         let status = unsafe {
-            sys::ac3forge_eac3_decoder_flush(self.raw.as_ptr(), &mut out_substreams, &mut out_count)
+            sys::iclforge_eac3_decoder_flush(self.raw.as_ptr(), &mut out_substreams, &mut out_count)
         };
         Error::check(status)?;
         if out_count == 0 || out_substreams.is_null() {
             return Ok(Vec::new());
         }
-        // SAFETY: AC3FORGE_OK with a non-null array and out_count > 0 guarantees `out_count`
-        // valid, library-owned handles at `out_substreams[0..out_count]` (ac3forge.h's own
-        // comment on ac3forge_eac3_decoder_flush).
+        // SAFETY: ICLFORGE_OK with a non-null array and out_count > 0 guarantees `out_count`
+        // valid, library-owned handles at `out_substreams[0..out_count]` (iclforge.h's own
+        // comment on iclforge_eac3_decoder_flush).
         let handles = unsafe { std::slice::from_raw_parts(out_substreams, out_count) };
         let result = handles
             .iter()
             .map(|&h| DecodedSubstream {
                 raw: ptr::NonNull::new(h)
-                    .expect("ac3forge_eac3_decoder_flush returned a null substream handle"),
+                    .expect("iclforge_eac3_decoder_flush returned a null substream handle"),
             })
             .collect();
-        // ac3forge_decoded_substream_array_destroy(array, count) destroys the first `count`
+        // iclforge_decoded_substream_array_destroy(array, count) destroys the first `count`
         // elements AND the array. Ownership of every element has just moved into `result`
         // (each DecodedSubstream's Drop destroys its own handle), so pass a count of 0: that
         // frees only the array. Passing `out_count` here would free every substream now, before
         // the caller ever reads it, and again when the Vec drops.
-        unsafe { sys::ac3forge_decoded_substream_array_destroy(out_substreams, 0) };
+        unsafe { sys::iclforge_decoded_substream_array_destroy(out_substreams, 0) };
         Ok(result)
     }
 }
 
 impl Drop for Eac3Decoder {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_eac3_decoder_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_eac3_decoder_destroy(self.raw.as_ptr()) };
     }
 }
 
-/// One decoded E-AC-3 substream — `ac3::DecodedSubstream` via `ac3forge_decoded_substream_t`.
+/// One decoded E-AC-3 substream — `ac3::DecodedSubstream` via `iclforge_decoded_substream_t`.
 pub struct DecodedSubstream {
-    raw: ptr::NonNull<sys::ac3forge_decoded_substream_t>,
+    raw: ptr::NonNull<sys::iclforge_decoded_substream_t>,
 }
 
 unsafe impl Send for DecodedSubstream {}
 
 impl DecodedSubstream {
     pub fn is_independent(&self) -> bool {
-        unsafe { sys::ac3forge_decoded_substream_is_independent(self.raw.as_ptr()) != 0 }
+        unsafe { sys::iclforge_decoded_substream_is_independent(self.raw.as_ptr()) != 0 }
     }
 
     pub fn id(&self) -> i32 {
-        unsafe { sys::ac3forge_decoded_substream_id(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_substream_id(self.raw.as_ptr()) }
     }
 
     pub fn sample_rate(&self) -> Option<SampleRate> {
         SampleRate::from_raw(unsafe {
-            sys::ac3forge_decoded_substream_sample_rate(self.raw.as_ptr())
+            sys::iclforge_decoded_substream_sample_rate(self.raw.as_ptr())
         })
     }
 
     pub fn acmod(&self) -> Option<Acmod> {
-        Acmod::from_raw(unsafe { sys::ac3forge_decoded_substream_acmod(self.raw.as_ptr()) })
+        Acmod::from_raw(unsafe { sys::iclforge_decoded_substream_acmod(self.raw.as_ptr()) })
     }
 
     pub fn lfe(&self) -> bool {
-        unsafe { sys::ac3forge_decoded_substream_lfe(self.raw.as_ptr()) != 0 }
+        unsafe { sys::iclforge_decoded_substream_lfe(self.raw.as_ptr()) != 0 }
     }
 
     pub fn dialnorm(&self) -> i32 {
-        unsafe { sys::ac3forge_decoded_substream_dialnorm(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_substream_dialnorm(self.raw.as_ptr()) }
     }
 
     pub fn channel_count(&self) -> usize {
-        unsafe { sys::ac3forge_decoded_substream_channel_count(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_substream_channel_count(self.raw.as_ptr()) }
     }
 
     pub fn samples_per_channel(&self) -> usize {
-        unsafe { sys::ac3forge_decoded_substream_samples_per_channel(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_substream_samples_per_channel(self.raw.as_ptr()) }
     }
 
     /// `channel_index` in `[0, channel_count())`. Panics if out of range.
     ///
     /// The header does not document this pointer's lifetime the way
-    /// `ac3forge_decoded_frame_channel_samples()` does for the AC-3 side (see
+    /// `iclforge_decoded_frame_channel_samples()` does for the AC-3 side (see
     /// `rust/README.md`'s "header defects found" section, item 2) — this crate assumes the same
     /// "valid until the owner is destroyed" convention every other handle in the header follows,
     /// and ties the returned slice to `&self`'s lifetime regardless, so a wrong assumption here
@@ -415,14 +415,14 @@ impl DecodedSubstream {
         );
         unsafe {
             let ptr =
-                sys::ac3forge_decoded_substream_channel_samples(self.raw.as_ptr(), channel_index);
+                sys::iclforge_decoded_substream_channel_samples(self.raw.as_ptr(), channel_index);
             std::slice::from_raw_parts(ptr, self.samples_per_channel())
         }
     }
 
     pub fn block_switched(&self, channel_index: usize, block_index: usize) -> bool {
         unsafe {
-            sys::ac3forge_decoded_substream_block_switched(
+            sys::iclforge_decoded_substream_block_switched(
                 self.raw.as_ptr(),
                 channel_index,
                 block_index as i32,
@@ -433,7 +433,7 @@ impl DecodedSubstream {
 
 impl Drop for DecodedSubstream {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_decoded_substream_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_decoded_substream_destroy(self.raw.as_ptr()) };
     }
 }
 
@@ -451,18 +451,18 @@ pub struct DynamicObject {
 impl DecodedSubstream {
     /// Whether an OAMD object-metadata payload rode alongside this substream's audio.
     pub fn has_object_metadata(&self) -> bool {
-        unsafe { sys::ac3forge_decoded_substream_has_object_metadata(self.raw.as_ptr()) != 0 }
+        unsafe { sys::iclforge_decoded_substream_has_object_metadata(self.raw.as_ptr()) != 0 }
     }
 
-    /// Table 12's bed-instance channel-assignment bits (`AC3FORGE_BED_*`), 0 for a
+    /// Table 12's bed-instance channel-assignment bits (`ICLFORGE_BED_*`), 0 for a
     /// dynamic-object-only program.
     pub fn program_bed(&self) -> u16 {
-        unsafe { sys::ac3forge_decoded_substream_program_bed(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_substream_program_bed(self.raw.as_ptr()) }
     }
 
     pub fn dynamic_object_count(&self) -> usize {
         let count = unsafe {
-            sys::ac3forge_decoded_substream_program_dynamic_object_count(self.raw.as_ptr())
+            sys::iclforge_decoded_substream_program_dynamic_object_count(self.raw.as_ptr())
         };
         usize::try_from(count).unwrap_or(0)
     }
@@ -476,7 +476,7 @@ impl DecodedSubstream {
         );
         let mut object = DynamicObject::default();
         unsafe {
-            sys::ac3forge_decoded_substream_dynamic_object(
+            sys::iclforge_decoded_substream_dynamic_object(
                 self.raw.as_ptr(),
                 object_index as i32,
                 &mut object.x,
@@ -492,7 +492,7 @@ impl DecodedSubstream {
     /// OAMD one, and parallel to [`DecodedSubstream::dynamic_object`] otherwise (same index,
     /// same object).
     pub fn object_audio_count(&self) -> usize {
-        unsafe { sys::ac3forge_decoded_substream_object_audio_count(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_substream_object_audio_count(self.raw.as_ptr()) }
     }
 
     /// Object `object_index`'s reconstructed waveform, [`DecodedSubstream::samples_per_channel`]
@@ -503,17 +503,17 @@ impl DecodedSubstream {
             "object index out of range"
         );
         unsafe {
-            let ptr = sys::ac3forge_decoded_substream_object_audio(self.raw.as_ptr(), object_index);
+            let ptr = sys::iclforge_decoded_substream_object_audio(self.raw.as_ptr(), object_index);
             std::slice::from_raw_parts(ptr, self.samples_per_channel())
         }
     }
 }
 
-/// One encoded access unit — `ac3::eac3::AccessUnit` via `ac3forge_eac3_access_unit_t`: the
+/// One encoded access unit — `ac3::eac3::AccessUnit` via `iclforge_eac3_access_unit_t`: the
 /// bytes plus per-substream boundaries, which a caller demuxing substreams individually (or
 /// re-deriving crc2) needs and a plain byte buffer cannot carry.
 pub struct AccessUnit {
-    raw: ptr::NonNull<sys::ac3forge_eac3_access_unit_t>,
+    raw: ptr::NonNull<sys::iclforge_eac3_access_unit_t>,
 }
 
 unsafe impl Send for AccessUnit {}
@@ -521,14 +521,14 @@ unsafe impl Send for AccessUnit {}
 impl AccessUnit {
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
-            let data = sys::ac3forge_eac3_access_unit_data(self.raw.as_ptr());
-            let size = sys::ac3forge_eac3_access_unit_size(self.raw.as_ptr());
+            let data = sys::iclforge_eac3_access_unit_data(self.raw.as_ptr());
+            let size = sys::iclforge_eac3_access_unit_size(self.raw.as_ptr());
             std::slice::from_raw_parts(data, size)
         }
     }
 
     pub fn substream_count(&self) -> usize {
-        unsafe { sys::ac3forge_eac3_access_unit_substream_count(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_eac3_access_unit_substream_count(self.raw.as_ptr()) }
     }
 
     /// Byte length of substream `index` (independent first). The lengths sum to
@@ -538,7 +538,7 @@ impl AccessUnit {
             index < self.substream_count(),
             "substream index out of range"
         );
-        unsafe { sys::ac3forge_eac3_access_unit_substream_bytes(self.raw.as_ptr(), index) }
+        unsafe { sys::iclforge_eac3_access_unit_substream_bytes(self.raw.as_ptr(), index) }
     }
 }
 
@@ -551,11 +551,11 @@ impl std::ops::Deref for AccessUnit {
 
 impl Drop for AccessUnit {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_eac3_access_unit_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_eac3_access_unit_destroy(self.raw.as_ptr()) };
     }
 }
 
-/// Wide layouts — `ac3::eac3::AccessUnitEncoder` via `ac3forge_eac3_access_unit_encoder_t`: one
+/// Wide layouts — `ac3::eac3::AccessUnitEncoder` via `iclforge_eac3_access_unit_encoder_t`: one
 /// independent substream (the bed) plus up to eight dependents that widen it (7.1, 5.1.2,
 /// 5.1.4, 7.1.4...), encoded together into one access unit per frame.
 ///
@@ -563,7 +563,7 @@ impl Drop for AccessUnit {
 /// does — whatever the caller set there is not read; only a dependent's `chanmap` matters
 /// (Table E2.5).
 pub struct AccessUnitEncoder {
-    raw: ptr::NonNull<sys::ac3forge_eac3_access_unit_encoder_t>,
+    raw: ptr::NonNull<sys::iclforge_eac3_access_unit_encoder_t>,
     channel_count: usize,
 }
 
@@ -575,11 +575,11 @@ impl AccessUnitEncoder {
         dependents: &[Eac3FrameConfig],
     ) -> Result<Self, Error> {
         let raw_independent = independent.to_raw();
-        let raw_dependents: Vec<sys::ac3forge_eac3_frame_config_t> =
+        let raw_dependents: Vec<sys::iclforge_eac3_frame_config_t> =
             dependents.iter().map(|d| d.to_raw()).collect();
-        let mut out: *mut sys::ac3forge_eac3_access_unit_encoder_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_eac3_access_unit_encoder_t = ptr::null_mut();
         let status = unsafe {
-            sys::ac3forge_eac3_access_unit_encoder_create(
+            sys::iclforge_eac3_access_unit_encoder_create(
                 &raw_independent,
                 if raw_dependents.is_empty() {
                     ptr::null()
@@ -592,9 +592,9 @@ impl AccessUnitEncoder {
         };
         Error::check(status)?;
         let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_eac3_access_unit_encoder_create returned OK with a null encoder");
+            .expect("iclforge_eac3_access_unit_encoder_create returned OK with a null encoder");
         let channel_count =
-            unsafe { sys::ac3forge_eac3_access_unit_encoder_channel_count(raw.as_ptr()) };
+            unsafe { sys::iclforge_eac3_access_unit_encoder_channel_count(raw.as_ptr()) };
         Ok(AccessUnitEncoder { raw, channel_count })
     }
 
@@ -606,14 +606,14 @@ impl AccessUnitEncoder {
     }
 
     pub fn latency(&self) -> Latency {
-        // SAFETY: zero is a valid ac3forge_latency_t and the C call overwrites it.
-        let mut raw: sys::ac3forge_latency_t = unsafe { std::mem::zeroed() };
-        unsafe { sys::ac3forge_eac3_access_unit_encoder_latency(self.raw.as_ptr(), &mut raw) };
+        // SAFETY: zero is a valid iclforge_latency_t and the C call overwrites it.
+        let mut raw: sys::iclforge_latency_t = unsafe { std::mem::zeroed() };
+        unsafe { sys::iclforge_eac3_access_unit_encoder_latency(self.raw.as_ptr(), &mut raw) };
         Latency::from_raw(raw)
     }
 
     pub fn latency_samples(&self) -> i32 {
-        unsafe { sys::ac3forge_eac3_access_unit_encoder_latency_samples(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_eac3_access_unit_encoder_latency_samples(self.raw.as_ptr()) }
     }
 
     /// `channels`: every channel of the access unit grouped by substream in transmission order —
@@ -629,9 +629,9 @@ impl AccessUnitEncoder {
         }
         let pointers: Vec<*const f32> = channels.iter().map(|c| c.as_ptr()).collect();
         let (aux_ptr, aux_len) = aux.map_or((ptr::null(), 0), |a| (a.as_ptr(), a.len()));
-        let mut out: *mut sys::ac3forge_eac3_access_unit_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_eac3_access_unit_t = ptr::null_mut();
         let status = unsafe {
-            sys::ac3forge_eac3_access_unit_encoder_encode(
+            sys::iclforge_eac3_access_unit_encoder_encode(
                 self.raw.as_ptr(),
                 if pointers.is_empty() {
                     ptr::null()
@@ -647,34 +647,34 @@ impl AccessUnitEncoder {
         };
         Error::check(status)?;
         let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_eac3_access_unit_encoder_encode returned OK with a null unit");
+            .expect("iclforge_eac3_access_unit_encoder_encode returned OK with a null unit");
         Ok(AccessUnit { raw })
     }
 }
 
 impl Drop for AccessUnitEncoder {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_eac3_access_unit_encoder_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_eac3_access_unit_encoder_destroy(self.raw.as_ptr()) };
     }
 }
 
 /// One decoded, fully-rendered programme — `ac3::DecodedAccessUnit` via
-/// `ac3forge_decoded_access_unit_t`: the bed plus every dependent's channels rendered into one
+/// `iclforge_decoded_access_unit_t`: the bed plus every dependent's channels rendered into one
 /// layout, which is what [`Eac3Decoder::decode_access_unit`] produces for a multi-substream
 /// unit and what a wide-layout round trip has to be checked against.
 pub struct DecodedAccessUnit {
-    raw: ptr::NonNull<sys::ac3forge_decoded_access_unit_t>,
+    raw: ptr::NonNull<sys::iclforge_decoded_access_unit_t>,
 }
 
 unsafe impl Send for DecodedAccessUnit {}
 
 impl DecodedAccessUnit {
     pub fn channel_count(&self) -> usize {
-        unsafe { sys::ac3forge_decoded_access_unit_channel_count(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_access_unit_channel_count(self.raw.as_ptr()) }
     }
 
     pub fn samples_per_channel(&self) -> usize {
-        unsafe { sys::ac3forge_decoded_access_unit_samples_per_channel(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_access_unit_samples_per_channel(self.raw.as_ptr()) }
     }
 
     /// Rendered-layout slot order (coded order for dual mono). Panics if out of range;
@@ -686,18 +686,18 @@ impl DecodedAccessUnit {
         );
         unsafe {
             let ptr =
-                sys::ac3forge_decoded_access_unit_channel_samples(self.raw.as_ptr(), channel_index);
+                sys::iclforge_decoded_access_unit_channel_samples(self.raw.as_ptr(), channel_index);
             std::slice::from_raw_parts(ptr, self.samples_per_channel())
         }
     }
 
     pub fn has_object_metadata(&self) -> bool {
-        unsafe { sys::ac3forge_decoded_access_unit_has_object_metadata(self.raw.as_ptr()) != 0 }
+        unsafe { sys::iclforge_decoded_access_unit_has_object_metadata(self.raw.as_ptr()) != 0 }
     }
 
     pub fn dynamic_object_count(&self) -> usize {
         let count = unsafe {
-            sys::ac3forge_decoded_access_unit_program_dynamic_object_count(self.raw.as_ptr())
+            sys::iclforge_decoded_access_unit_program_dynamic_object_count(self.raw.as_ptr())
         };
         usize::try_from(count).unwrap_or(0)
     }
@@ -709,7 +709,7 @@ impl DecodedAccessUnit {
         );
         let mut object = DynamicObject::default();
         unsafe {
-            sys::ac3forge_decoded_access_unit_dynamic_object(
+            sys::iclforge_decoded_access_unit_dynamic_object(
                 self.raw.as_ptr(),
                 object_index as i32,
                 &mut object.x,
@@ -722,7 +722,7 @@ impl DecodedAccessUnit {
     }
 
     pub fn object_audio_count(&self) -> usize {
-        unsafe { sys::ac3forge_decoded_access_unit_object_audio_count(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_access_unit_object_audio_count(self.raw.as_ptr()) }
     }
 
     pub fn object_audio(&self, object_index: usize) -> &[f32] {
@@ -732,7 +732,7 @@ impl DecodedAccessUnit {
         );
         unsafe {
             let ptr =
-                sys::ac3forge_decoded_access_unit_object_audio(self.raw.as_ptr(), object_index);
+                sys::iclforge_decoded_access_unit_object_audio(self.raw.as_ptr(), object_index);
             std::slice::from_raw_parts(ptr, self.samples_per_channel())
         }
     }
@@ -740,7 +740,7 @@ impl DecodedAccessUnit {
 
 impl Drop for DecodedAccessUnit {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_decoded_access_unit_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_decoded_access_unit_destroy(self.raw.as_ptr()) };
     }
 }
 
@@ -750,9 +750,9 @@ impl Eac3Decoder {
     /// would delimit it. Same `Ok(None)` hold-back convention as
     /// [`Eac3Decoder::decode_substream`].
     pub fn decode_access_unit(&mut self, unit: &[u8]) -> Result<Option<DecodedAccessUnit>, Error> {
-        let mut out: *mut sys::ac3forge_decoded_access_unit_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_decoded_access_unit_t = ptr::null_mut();
         let status = unsafe {
-            sys::ac3forge_eac3_decoder_decode_access_unit(
+            sys::iclforge_eac3_decoder_decode_access_unit(
                 self.raw.as_ptr(),
                 unit.as_ptr(),
                 unit.len(),

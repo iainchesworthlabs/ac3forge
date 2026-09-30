@@ -113,7 +113,7 @@ detail::DrcCompressionCurve transmitted(int nullband_low, int nullband_high, int
 
 std::vector<std::byte> read_stream(const std::string& leg) {
     const std::filesystem::path path =
-        std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
+        std::filesystem::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
     std::ifstream in(path, std::ios::binary);
     const std::vector<char> raw((std::istreambuf_iterator<char>(in)),
                                 std::istreambuf_iterator<char>());

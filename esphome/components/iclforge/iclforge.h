@@ -14,7 +14,7 @@
 
 // The plumbing, not a player.
 //
-// This owns the two things any ESPHome integration of ac3forge needs and that
+// This owns the two things any ESPHome integration of iclforge needs and that
 // are awkward to own from a media_player: a decoder, and the streaming framer
 // that turns arriving bytes into whole access units. Another component feeds it
 // bytes and takes PCM back; nothing here touches an output device, because
@@ -23,11 +23,11 @@
 // See __init__.py for what is deliberately absent.
 
 namespace esphome {
-namespace ac3forge {
+namespace iclforge {
 
-class Ac3ForgeComponent : public Component {
+class IclForgeComponent : public Component {
  public:
-  explicit Ac3ForgeComponent(std::size_t buffer_size) : buffer_size_(buffer_size) {}
+  explicit IclForgeComponent(std::size_t buffer_size) : buffer_size_(buffer_size) {}
 
   void setup() override;
   void dump_config() override;
@@ -67,5 +67,5 @@ class Ac3ForgeComponent : public Component {
   bool failed_{false};
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge
 }  // namespace esphome

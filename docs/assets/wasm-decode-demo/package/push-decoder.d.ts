@@ -1,14 +1,14 @@
-import type { Ac3ForgeEmbindModule, FoldOptions, ObjectFrame, PushOutcome, ScanOutcome } from "./types.js";
+import type { IclForgeEmbindModule, FoldOptions, ObjectFrame, PushOutcome, ScanOutcome } from "./types.js";
 /**
  * Splits a whole elementary-stream byte blob into the access units
  * {@link PushDecoder.push} expects. A live/streaming caller (a container
  * demuxer, the hls.js bridge) already has its own access-unit boundaries and
  * has no reason to call this.
  */
-export declare function scanStream(module: Ac3ForgeEmbindModule, bytes: Uint8Array): ScanOutcome;
+export declare function scanStream(module: IclForgeEmbindModule, bytes: Uint8Array): ScanOutcome;
 export declare class PushDecoder {
     #private;
-    constructor(module: Ac3ForgeEmbindModule, fold?: FoldOptions);
+    constructor(module: IclForgeEmbindModule, fold?: FoldOptions);
     /**
      * Decodes one access unit (one AC-3 syncframe, or an E-AC-3 independent
      * substream with its dependents - exactly what {@link scanStream}'s

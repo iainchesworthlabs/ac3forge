@@ -65,7 +65,7 @@ enum class DemuxError : std::uint8_t {
     kLimitExceeded,  // an element size or nesting depth beyond ReadOptions
 };
 
-[[nodiscard]] MATROSKA_EXPORT std::string_view describe(DemuxError error);
+[[nodiscard]] ICLFORGE_MATROSKA_EXPORT std::string_view describe(DemuxError error);
 
 // What the container itself declares about the track - the read-side twin of
 // AudioTrack, minus the fields Matroska has nowhere to put
@@ -125,7 +125,7 @@ struct Demuxed {
 // returned rather than an error, because a truncated capture is the normal
 // way a live recording ends. A cut BEFORE the track is described has nothing
 // to return and is kTruncated.
-[[nodiscard]] MATROSKA_EXPORT std::expected<Demuxed, DemuxError> demux(
+[[nodiscard]] ICLFORGE_MATROSKA_EXPORT std::expected<Demuxed, DemuxError> demux(
     std::span<const std::byte> file, const ReadOptions& options = {});
 
 // Incrementally reads frames out of a Matroska file as its bytes arrive -
@@ -144,7 +144,7 @@ struct Demuxed {
 //
 // Move-only: the parse state lives behind a pointer (a partially-parsed
 // container is not a value worth copying).
-class MATROSKA_EXPORT Reader {
+class ICLFORGE_MATROSKA_EXPORT Reader {
    public:
     using FrameFn = std::function<void(std::span<const std::byte>)>;
 

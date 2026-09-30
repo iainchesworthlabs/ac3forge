@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hold the float encode path against the double one, decoded by one decoder.
 
-`AC3FORGE_ENCODE_SCALAR=float` builds the encoders' analysis front end - and,
+`ICLFORGE_ENCODE_SCALAR=float` builds the encoders' analysis front end - and,
 as the conversion proceeds, more of them - in float: the arithmetic the
 minimum-footprint profile runs on an ESP32-S3. Unlike the decoder's float path,
 which reproduces the double decode to ~139 dB, a float ENCODER makes different

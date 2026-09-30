@@ -1,7 +1,7 @@
 // The block ring, tested on the host: the storage the player keeps a play's
-// first unit in (ac3forge/unit_hold.hpp).
+// first unit in (iclforge/unit_hold.hpp).
 //
-// ac3forge/block_ring.hpp is the index arithmetic and the storage layout of a
+// iclforge/block_ring.hpp is the index arithmetic and the storage layout of a
 // ring with at most one producer and one consumer; nothing in it waits. What
 // can be wrong here is an off-by-one between slots, a slot overwritten before
 // it is released, or a span that overlaps its neighbour - all silent in audio
@@ -17,7 +17,7 @@
 
 #include "iclforge/block_ring.hpp"
 
-using ac3forge::BlockRing;
+using iclforge::BlockRing;
 
 TEST_CASE("an empty ring has nothing to read and every slot to write", "[io][block_ring]") {
     std::vector<float> storage(BlockRing::storage_floats(4, 2, 8));

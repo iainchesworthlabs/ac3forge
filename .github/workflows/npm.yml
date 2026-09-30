@@ -1,4 +1,4 @@
-# ac3forge-wasm-decoder, the browser streaming decoder package (WASM streaming decoder package, js/) - separate
+# iclforge-wasm-decoder, the browser streaming decoder package (WASM streaming decoder package, js/) - separate
 # from _build.yml/ci.yml's C++ matrix and from build-wasm's Emscripten build, neither of which
 # this needs: js/'s own build (tsc) and test suite (node:test - the fMP4 box walker against a
 # committed fixture, the ring buffer, the MediaSource shim) are pure TypeScript/JavaScript with
@@ -80,7 +80,7 @@ jobs:
   publish:
     name: Publish to npm
     needs: build
-    # Publishing is deliberately NOT armed on tag push yet. ac3forge-wasm-decoder
+    # Publishing is deliberately NOT armed on tag push yet. iclforge-wasm-decoder
     # has never been published to npm, and trusted publishing is not configured
     # for it, so a v* tag would create a brand-new PUBLIC package as a side effect
     # of cutting a release - effectively irreversible, since npm's unpublish window

@@ -44,10 +44,10 @@ bool source_open() {
 
         sdmmc_host_t host = SDMMC_HOST_DEFAULT();
         sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-        slot_config.width = CONFIG_AC3FORGE_EXAMPLE_SD_BUS_WIDTH;
-        slot_config.clk = static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_SD_CLK_GPIO);
-        slot_config.cmd = static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_SD_CMD_GPIO);
-        slot_config.d0 = static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_SD_D0_GPIO);
+        slot_config.width = CONFIG_ICLFORGE_EXAMPLE_SD_BUS_WIDTH;
+        slot_config.clk = static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_SD_CLK_GPIO);
+        slot_config.cmd = static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_SD_CMD_GPIO);
+        slot_config.d0 = static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_SD_D0_GPIO);
         // The card's own pull-ups are usually absent on breakout wiring, and
         // the symptom is a card that enumerates intermittently rather than one
         // that fails cleanly.
@@ -65,7 +65,7 @@ bool source_open() {
     // therefore runs under QEMU. That is what gives this file's read path
     // coverage it could not otherwise have: only the SDMMC host above goes
     // untested, and that is Espressif's driver rather than ours.
-    file_source::set_default_path(CONFIG_AC3FORGE_EXAMPLE_SD_PATH);
+    file_source::set_default_path(CONFIG_ICLFORGE_EXAMPLE_SD_PATH);
     if (!file_source::open()) {
         return false;
     }
@@ -77,7 +77,7 @@ bool source_open() {
 bool source_set_location(const char* location) { return file_source::set_path(location); }
 
 const char* source_location() {
-    file_source::set_default_path(CONFIG_AC3FORGE_EXAMPLE_SD_PATH);
+    file_source::set_default_path(CONFIG_ICLFORGE_EXAMPLE_SD_PATH);
     return file_source::path();
 }
 

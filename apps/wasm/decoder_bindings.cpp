@@ -401,7 +401,7 @@ class PushDecoder {
     std::vector<iclforge::DecodedSubstream> flushed_;
 };
 
-EMSCRIPTEN_BINDINGS(ac3forge_wasm_push_decode) {
+EMSCRIPTEN_BINDINGS(iclforge_wasm_push_decode) {
     emscripten::function("scanStream", &scanStream);
     emscripten::class_<PushDecoder>("PushDecoder")
         .constructor<int, bool, bool>()

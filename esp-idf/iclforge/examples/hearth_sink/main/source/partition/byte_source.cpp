@@ -26,7 +26,7 @@ std::size_t g_offset = 0;
 // the whole 256 KB partition while the framer skips a quarter of a megabyte of
 // erased flash looking for a sync word, on every lap. It "works", and reports
 // 251,392 bytes of resynchronisation to say how well.
-constexpr std::size_t kStreamBytes = AC3FORGE_STREAM_BYTES;
+constexpr std::size_t kStreamBytes = ICLFORGE_STREAM_BYTES;
 
 std::size_t limit() {
     if (g_audio == nullptr) {

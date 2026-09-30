@@ -1,6 +1,6 @@
 // The streaming example's model of its DAC's DMA queue, on the host.
 //
-// The model (ac3forge/dac_queue_model.hpp) lives in the ESP-IDF component and
+// The model (iclforge/dac_queue_model.hpp) lives in the ESP-IDF component and
 // includes nothing from ESP-IDF - the arrangement test_interleave.cpp and
 // test_layout.cpp have. The i2s and tdm sinks give it esp_timer_get_time();
 // this gives it the clock of the DMA below, which is what the model assumes of
@@ -137,7 +137,7 @@ struct Sink {
 
     std::int64_t frame_bytes;
     SimulatedDma dma;
-    ac3forge::DacQueueModel model;
+    iclforge::DacQueueModel model;
     std::int64_t back_us = 0;  // when the last write returned
 };
 

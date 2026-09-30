@@ -1,5 +1,5 @@
 // The AC-4 consumer of an installed package, built by tools/checks/check_install_consumer.sh twice
-// over: through find_package(ac3forge) for each exported decoder target (CMakeLists.txt here), and
+// over: through find_package(iclforge) for each exported decoder target (CMakeLists.txt here), and
 // through `pkg-config --cflags --libs ac4dec` alone. It sees the installed headers and libraries
 // and nothing of the build tree, so a header the decoder's includes and the install leave out, an
 // archive a static decoder calls into and the package does not name, or a symbol the shared

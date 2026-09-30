@@ -3,14 +3,14 @@
 version = 4
 
 [[package]]
-name = "ac3forge"
+name = "iclforge"
 version = "0.1.0"
 dependencies = [
- "ac3forge-sys",
+ "iclforge-sys",
 ]
 
 [[package]]
-name = "ac3forge-sys"
+name = "iclforge-sys"
 version = "0.1.0"
 dependencies = [
  "bindgen",

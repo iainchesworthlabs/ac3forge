@@ -17,7 +17,7 @@
 # depend on this one small target instead - "no copies" made structural
 # rather than a rule to remember.
 #
-# Not installed and not exported: like ac3::warnings and the other interface
+# Not installed and not exported: like iclforge::warnings and the other interface
 # targets iclforge_ac3_objects links $<BUILD_INTERFACE:...>-wrapped, this is
 # in-tree build plumbing, not part of what a downstream consumer of the
 # installed package needs to reach.
@@ -53,25 +53,25 @@ target_compile_features(iclforge_arithmetic INTERFACE cxx_std_23)
 # so that case gets its own name and lands on generic below rather than
 # guessing at whichever slice happens to be listed first.
 if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-    list(LENGTH CMAKE_OSX_ARCHITECTURES AC3FORGE_OSX_ARCH_COUNT)
-    if(AC3FORGE_OSX_ARCH_COUNT GREATER 1)
-        set(AC3FORGE_TARGET_PROCESSOR "universal")
+    list(LENGTH CMAKE_OSX_ARCHITECTURES ICLFORGE_OSX_ARCH_COUNT)
+    if(ICLFORGE_OSX_ARCH_COUNT GREATER 1)
+        set(ICLFORGE_TARGET_PROCESSOR "universal")
     else()
-        set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_OSX_ARCHITECTURES}")
+        set(ICLFORGE_TARGET_PROCESSOR "${CMAKE_OSX_ARCHITECTURES}")
     endif()
-    unset(AC3FORGE_OSX_ARCH_COUNT)
+    unset(ICLFORGE_OSX_ARCH_COUNT)
 else()
-    set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
+    set(ICLFORGE_TARGET_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
-if(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86_64|AMD64)$")
-    set(AC3FORGE_BUILD_ARCH "x86_64")
-elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
-    set(AC3FORGE_BUILD_ARCH "arm64")
-elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86|i686|X86)$")
-    set(AC3FORGE_BUILD_ARCH "x86")
+if(ICLFORGE_TARGET_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    set(ICLFORGE_BUILD_ARCH "x86_64")
+elseif(ICLFORGE_TARGET_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
+    set(ICLFORGE_BUILD_ARCH "arm64")
+elseif(ICLFORGE_TARGET_PROCESSOR MATCHES "^(x86|i686|X86)$")
+    set(ICLFORGE_BUILD_ARCH "x86")
 else()
-    set(AC3FORGE_BUILD_ARCH "${AC3FORGE_TARGET_PROCESSOR}")
+    set(ICLFORGE_BUILD_ARCH "${ICLFORGE_TARGET_PROCESSOR}")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -97,17 +97,17 @@ endif()
 # "the vector types" in a header-only target both consumers link): this target
 # carries the include path, so linking iclforge::arithmetic is all a consumer does.
 #
-# AC3FORGE_SIMD forces a directory. `generic` in particular is what a
+# ICLFORGE_SIMD forces a directory. `generic` in particular is what a
 # reproducibility comparison wants (is a difference between two machines the
 # vector kernels or something else?), and is the reference
 # tests/ac3/core/test_simd_kernels.cpp's scalar side is written to match.
 # ---------------------------------------------------------------------------
-set(AC3FORGE_SIMD "auto" CACHE STRING
+set(ICLFORGE_SIMD "auto" CACHE STRING
     "SIMD kernel directory: auto (from the effective target architecture), generic, x86_64, or aarch64")
-set_property(CACHE AC3FORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
+set_property(CACHE ICLFORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
 
-if(AC3FORGE_SIMD STREQUAL "auto")
-    # AC3FORGE_BUILD_ARCH is resolved above, from the effective target
+if(ICLFORGE_SIMD STREQUAL "auto")
+    # ICLFORGE_BUILD_ARCH is resolved above, from the effective target
     # architecture (CMAKE_SYSTEM_PROCESSOR, or CMAKE_OSX_ARCHITECTURES where a
     # cross-build sets one); reuse it rather than spelling the platform regexes a
     # second time and letting the two drift - and rather than reading
@@ -118,22 +118,22 @@ if(AC3FORGE_SIMD STREQUAL "auto")
     # 32-bit x86, WebAssembly (Emscripten reports "x86"), a macOS universal
     # binary, a soft-float embedded target - lands on generic, which is a
     # complete implementation and not a stub.
-    if(AC3FORGE_BUILD_ARCH STREQUAL "x86_64")
-        set(AC3FORGE_SIMD_RESOLVED "x86_64")
-    elseif(AC3FORGE_BUILD_ARCH STREQUAL "arm64")
-        set(AC3FORGE_SIMD_RESOLVED "aarch64")
+    if(ICLFORGE_BUILD_ARCH STREQUAL "x86_64")
+        set(ICLFORGE_SIMD_RESOLVED "x86_64")
+    elseif(ICLFORGE_BUILD_ARCH STREQUAL "arm64")
+        set(ICLFORGE_SIMD_RESOLVED "aarch64")
     else()
-        set(AC3FORGE_SIMD_RESOLVED "generic")
+        set(ICLFORGE_SIMD_RESOLVED "generic")
     endif()
 else()
-    set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD}")
+    set(ICLFORGE_SIMD_RESOLVED "${ICLFORGE_SIMD}")
 endif()
 
-set(AC3FORGE_ARCH_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/variants/arch-${AC3FORGE_SIMD_RESOLVED}")
-if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
+set(ICLFORGE_ARCH_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/variants/arch-${ICLFORGE_SIMD_RESOLVED}")
+if(NOT IS_DIRECTORY "${ICLFORGE_ARCH_INCLUDE_DIR}")
     message(FATAL_ERROR
-        "AC3FORGE_SIMD=${AC3FORGE_SIMD} resolved to '${AC3FORGE_SIMD_RESOLVED}', which has no "
+        "ICLFORGE_SIMD=${ICLFORGE_SIMD} resolved to '${ICLFORGE_SIMD_RESOLVED}', which has no "
         "directory under src/arithmetic/variants/. Add "
         "src/arithmetic/variants/arch-<name>/iclforge/arithmetic/detail/simd.hpp - the arch-generic "
         "copy is the portable implementation and is a working starting point.")
@@ -141,16 +141,16 @@ endif()
 
 # Every consumer of iclforge::arithmetic (iclforge::ac3, iclforge_ac3_minimal, src/ac4core) gets the
 # one directory through the target.
-target_include_directories(iclforge_arithmetic INTERFACE "$<BUILD_INTERFACE:${AC3FORGE_ARCH_INCLUDE_DIR}>")
+target_include_directories(iclforge_arithmetic INTERFACE "$<BUILD_INTERFACE:${ICLFORGE_ARCH_INCLUDE_DIR}>")
 
 # tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
 # simd.hpp the library was built with - the same white-box arrangement
-# src/signing/src and AC3FORGE_AUDIO_BACKEND_DIR already have there.
-set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
+# src/signing/src and ICLFORGE_AUDIO_BACKEND_DIR already have there.
+set(ICLFORGE_ARCH_INCLUDE_DIR "${ICLFORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
 # For the configure summary at the end of the top-level CMakeLists.txt - which
 # a minimum-footprint configure reaches too, so that summary names the
 # directory that build actually compiled rather than assuming generic.
-set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
+set(ICLFORGE_SIMD_RESOLVED "${ICLFORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 # For iclforge::ac3's version strings and its AVX2 tier, which keyed on the same answer
 # before this file resolved it.
-set(AC3FORGE_BUILD_ARCH "${AC3FORGE_BUILD_ARCH}" PARENT_SCOPE)
+set(ICLFORGE_BUILD_ARCH "${ICLFORGE_BUILD_ARCH}" PARENT_SCOPE)

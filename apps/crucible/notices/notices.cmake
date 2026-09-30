@@ -11,7 +11,7 @@
 # rule as engine/platform/ and ui/platform/: no fragment, QML or C++ file
 # tests the operating system. The two fragments inserted here depend on a
 # build option, not a platform, and are gated by the same variables that
-# already gate Room3DView.qml and ac3::tracy.
+# already gate Room3DView.qml and iclforge::tracy.
 # ---------------------------------------------------------------------------
 include(Notices)
 
@@ -40,7 +40,7 @@ if(Qt6Quick3D_FOUND)
         list(INSERT AC3CRUCIBLE_NOTICE_FRAGMENTS ${AC3CRUCIBLE_NOTICES_INSERT_AT} qt-quick3d)
     endif()
 endif()
-if(AC3FORGE_ENABLE_TRACY)
+if(ICLFORGE_ENABLE_TRACY)
     list(APPEND AC3CRUCIBLE_NOTICE_FRAGMENTS tracy)
 endif()
 # An engine-and-runner build: no window, so no Qt, no fonts, and nothing the
@@ -55,7 +55,7 @@ endif()
 if(fmt_VERSION)
     set(AC3CRUCIBLE_FMT_VERSION "${fmt_VERSION}")
 else()
-    set(AC3CRUCIBLE_FMT_VERSION "${AC3FORGE_FMT_VERSION}")
+    set(AC3CRUCIBLE_FMT_VERSION "${ICLFORGE_FMT_VERSION}")
 endif()
 if(Tracy_VERSION)
     set(AC3CRUCIBLE_TRACY_VERSION "${Tracy_VERSION}")

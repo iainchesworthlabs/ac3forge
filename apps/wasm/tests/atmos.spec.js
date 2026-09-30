@@ -18,9 +18,9 @@ test('AtmosBedEncoder authors a moving object and it round-trip decodes', async 
     const result = await page.evaluate(async () => {
         // @ts-ignore - the Emscripten MODULARIZE factories the page's own
         // <script> tags load (from the parent demo directory).
-        const encodeModule = await window.createAc3ForgeEncodeModule();
+        const encodeModule = await window.createIclForgeEncodeModule();
         // @ts-ignore
-        const decodeModule = await window.createAc3ForgeModule();
+        const decodeModule = await window.createIclForgeModule();
 
         const sampleRate = 48000;
         const frameSamples = 1536;

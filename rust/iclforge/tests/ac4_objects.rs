@@ -1,21 +1,21 @@
 //! The AC-4 encoder's object substream (A-JOC and direct-coded), its I-frame lists and
 //! experimental flags, and the decoder's update ramps, through the safe crate.
 //!
-//! An object scene is encoded through `ac3forge::ac4` and, independently, through the raw
-//! `ac3forge_sys` calls with structs this file builds by hand (never through the crate's own
+//! An object scene is encoded through `iclforge::ac4` and, independently, through the raw
+//! `iclforge_sys` calls with structs this file builds by hand (never through the crate's own
 //! conversions): the two streams have to be the same bytes, so a field the wrapper drops or
 //! misplaces shows. `tests/capi/test_capi.cpp` holds the raw C API to `ac4::Encoder` byte for
 //! byte, so the three agree. The crate's decoder then reads the scene back with every object's
 //! metadata within what each field's code can hold, its own tone, and a metadata update at the
 //! sample its input sample comes out.
 
-use ac3forge::ac4::{
+use iclforge::ac4::{
     AdditionalPair, AjocDownmix, BedChannel, CodecMode, Decoder, DecoderConfig, Encoder,
     EncoderConfig, Experimental, ObjectCoding, ObjectConfig, ObjectKind, ObjectMetadataUpdate,
     ObjectProperties, ObjectsConfig, Speaker,
 };
-use ac3forge::Error;
-use ac3forge_sys as sys;
+use iclforge::Error;
+use iclforge_sys as sys;
 
 const RATE: f64 = 48_000.0;
 const FRAME: usize = 2048;
@@ -172,9 +172,9 @@ fn encode_with_crate(scene: &Scene, input: &[Vec<f32>]) -> (Vec<Vec<u8>>, i64) {
     (frames.iter().map(|f| f.data().to_vec()).collect(), lag)
 }
 
-fn raw_properties(p: &ObjectProperties) -> sys::ac3forge_ac4_object_properties_t {
-    let mut raw: sys::ac3forge_ac4_object_properties_t = unsafe { std::mem::zeroed() };
-    unsafe { sys::ac3forge_ac4_object_properties_init(&mut raw) };
+fn raw_properties(p: &ObjectProperties) -> sys::iclforge_ac4_object_properties_t {
+    let mut raw: sys::iclforge_ac4_object_properties_t = unsafe { std::mem::zeroed() };
+    unsafe { sys::iclforge_ac4_object_properties_init(&mut raw) };
     raw.active = i32::from(p.active);
     raw.gain_db = p.gain_db;
     raw.priority = p.priority;
@@ -201,13 +201,13 @@ fn raw_properties(p: &ObjectProperties) -> sys::ac3forge_ac4_object_properties_t
 
 /// The scene through the raw C API, structs built by hand: every frame's bytes.
 fn encode_with_raw_c_api(scene: &Scene, input: &[Vec<f32>]) -> Vec<Vec<u8>> {
-    let objects: Vec<sys::ac3forge_ac4_object_config_t> = scene
+    let objects: Vec<sys::iclforge_ac4_object_config_t> = scene
         .objects
         .objects
         .iter()
         .map(|o| {
-            let mut raw: sys::ac3forge_ac4_object_config_t = unsafe { std::mem::zeroed() };
-            unsafe { sys::ac3forge_ac4_object_config_init(&mut raw) };
+            let mut raw: sys::iclforge_ac4_object_config_t = unsafe { std::mem::zeroed() };
+            unsafe { sys::iclforge_ac4_object_config_init(&mut raw) };
             if let Some(bed) = o.bed {
                 assert_eq!(
                     bed,
@@ -222,8 +222,8 @@ fn encode_with_raw_c_api(scene: &Scene, input: &[Vec<f32>]) -> Vec<Vec<u8>> {
             raw
         })
         .collect();
-    let mut objects_config: sys::ac3forge_ac4_objects_config_t = unsafe { std::mem::zeroed() };
-    unsafe { sys::ac3forge_ac4_objects_config_init(&mut objects_config) };
+    let mut objects_config: sys::iclforge_ac4_objects_config_t = unsafe { std::mem::zeroed() };
+    unsafe { sys::iclforge_ac4_objects_config_init(&mut objects_config) };
     objects_config.objects = objects.as_ptr();
     objects_config.object_count = objects.len();
     objects_config.coding = match scene.objects.coding {
@@ -234,41 +234,41 @@ fn encode_with_raw_c_api(scene: &Scene, input: &[Vec<f32>]) -> Vec<Vec<u8>> {
         objects_config.has_downmix_signals = 1;
         objects_config.downmix_signals = signals;
     }
-    let mut config: sys::ac3forge_ac4_encoder_config_t = unsafe { std::mem::zeroed() };
-    unsafe { sys::ac3forge_ac4_encoder_config_init(&mut config) };
+    let mut config: sys::iclforge_ac4_encoder_config_t = unsafe { std::mem::zeroed() };
+    unsafe { sys::iclforge_ac4_encoder_config_init(&mut config) };
     config.bitrate_kbps = 256;
     config.experimental.objects = 1;
     config.objects = &objects_config;
 
-    let mut encoder: *mut sys::ac3forge_ac4_encoder_t = std::ptr::null_mut();
-    let status = unsafe { sys::ac3forge_ac4_encoder_create(&config, &mut encoder) };
-    assert_eq!(status, sys::ac3forge_status_AC3FORGE_OK);
-    let mut update: sys::ac3forge_ac4_object_metadata_update_t = unsafe { std::mem::zeroed() };
-    unsafe { sys::ac3forge_ac4_object_metadata_update_init(&mut update) };
+    let mut encoder: *mut sys::iclforge_ac4_encoder_t = std::ptr::null_mut();
+    let status = unsafe { sys::iclforge_ac4_encoder_create(&config, &mut encoder) };
+    assert_eq!(status, sys::iclforge_status_ICLFORGE_OK);
+    let mut update: sys::iclforge_ac4_object_metadata_update_t = unsafe { std::mem::zeroed() };
+    unsafe { sys::iclforge_ac4_object_metadata_update_init(&mut update) };
     update.object = scene.update.object;
     update.sample = scene.update.sample;
     update.ramp_samples = scene.update.ramp_samples;
     update.properties = raw_properties(&scene.update.properties);
 
     let pointers: Vec<*const f32> = input.iter().map(|c| c.as_ptr()).collect();
-    let mut frames: *mut *mut sys::ac3forge_ac4_encoded_frame_t = std::ptr::null_mut();
+    let mut frames: *mut *mut sys::iclforge_ac4_encoded_frame_t = std::ptr::null_mut();
     let mut count = 0usize;
     let mut out = Vec::new();
-    let mut take = |frames: *mut *mut sys::ac3forge_ac4_encoded_frame_t, count: usize| {
+    let mut take = |frames: *mut *mut sys::iclforge_ac4_encoded_frame_t, count: usize| {
         for i in 0..count {
             let frame = unsafe { *frames.add(i) };
             let bytes = unsafe {
                 std::slice::from_raw_parts(
-                    sys::ac3forge_ac4_encoded_frame_data(frame),
-                    sys::ac3forge_ac4_encoded_frame_size(frame),
+                    sys::iclforge_ac4_encoded_frame_data(frame),
+                    sys::iclforge_ac4_encoded_frame_size(frame),
                 )
             };
             out.push(bytes.to_vec());
         }
-        unsafe { sys::ac3forge_ac4_encoded_frame_array_destroy(frames, count) };
+        unsafe { sys::iclforge_ac4_encoded_frame_array_destroy(frames, count) };
     };
     let status = unsafe {
-        sys::ac3forge_ac4_encoder_encode_objects(
+        sys::iclforge_ac4_encoder_encode_objects(
             encoder,
             pointers.as_ptr(),
             pointers.len(),
@@ -279,21 +279,21 @@ fn encode_with_raw_c_api(scene: &Scene, input: &[Vec<f32>]) -> Vec<Vec<u8>> {
             &mut count,
         )
     };
-    assert_eq!(status, sys::ac3forge_status_AC3FORGE_OK);
+    assert_eq!(status, sys::iclforge_status_ICLFORGE_OK);
     take(frames, count);
     frames = std::ptr::null_mut();
     count = 0;
-    let status = unsafe { sys::ac3forge_ac4_encoder_flush(encoder, &mut frames, &mut count) };
-    assert_eq!(status, sys::ac3forge_status_AC3FORGE_OK);
+    let status = unsafe { sys::iclforge_ac4_encoder_flush(encoder, &mut frames, &mut count) };
+    assert_eq!(status, sys::iclforge_status_ICLFORGE_OK);
     take(frames, count);
-    unsafe { sys::ac3forge_ac4_encoder_destroy(encoder) };
+    unsafe { sys::iclforge_ac4_encoder_destroy(encoder) };
     out
 }
 
 /// The decoded objects in the decoder's order, the samples of each end to end, and every update
 /// at its sample of the decoder's output: (object, sample, ramp, properties).
 struct Decoded {
-    objects: Vec<ac3forge::ac4::DecodedObject>,
+    objects: Vec<iclforge::ac4::DecodedObject>,
     samples: Vec<Vec<f32>>,
     updates: Vec<(usize, i64, i32, ObjectProperties)>,
 }
@@ -538,7 +538,7 @@ fn the_limits_and_refusals_are_the_encoders() {
         config.bitrate_kbps = kbps;
         config
     };
-    let most = sys::AC3FORGE_AC4_MAX_OBJECTS as usize;
+    let most = sys::ICLFORGE_AC4_MAX_OBJECTS as usize;
     assert_eq!(Encoder::refusal_reason(&many(most, 384, None)), "");
     assert!(Encoder::new(&many(most, 384, None)).is_ok());
     assert_eq!(
@@ -549,7 +549,7 @@ fn the_limits_and_refusals_are_the_encoders() {
         Encoder::new(&many(most + 1, 384, None)).err(),
         Some(Error::Ac4EncodeInvalidConfig)
     );
-    let signals = sys::AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS as i32;
+    let signals = sys::ICLFORGE_AC4_MAX_DOWNMIX_SIGNALS as i32;
     assert_eq!(
         Encoder::refusal_reason(&many(signals as usize, 512, Some(signals))),
         ""

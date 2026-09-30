@@ -152,9 +152,9 @@ bool start_i2s() {
     std_cfg.slot_cfg =
         I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
     std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
-    std_cfg.gpio_cfg.bclk = static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_I2S_BCLK_GPIO);
-    std_cfg.gpio_cfg.ws = static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_I2S_WS_GPIO);
-    std_cfg.gpio_cfg.dout = static_cast<gpio_num_t>(CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT_GPIO);
+    std_cfg.gpio_cfg.bclk = static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_I2S_BCLK_GPIO);
+    std_cfg.gpio_cfg.ws = static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_I2S_WS_GPIO);
+    std_cfg.gpio_cfg.dout = static_cast<gpio_num_t>(CONFIG_ICLFORGE_EXAMPLE_I2S_DOUT_GPIO);
     std_cfg.gpio_cfg.din = I2S_GPIO_UNUSED;
 
     if (i2s_channel_init_std_mode(g_tx, &std_cfg) != ESP_OK) {
@@ -174,15 +174,15 @@ bool start_i2s() {
         return false;
     }
     std::printf("i2s: 48000 Hz, 16-bit stereo, bclk=%d ws=%d dout=%d\n",
-                CONFIG_AC3FORGE_EXAMPLE_I2S_BCLK_GPIO, CONFIG_AC3FORGE_EXAMPLE_I2S_WS_GPIO,
-                CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT_GPIO);
+                CONFIG_ICLFORGE_EXAMPLE_I2S_BCLK_GPIO, CONFIG_ICLFORGE_EXAMPLE_I2S_WS_GPIO,
+                CONFIG_ICLFORGE_EXAMPLE_I2S_DOUT_GPIO);
     return true;
 }
 
 }  // namespace
 
 extern "C" void app_main() {
-    std::printf("ac3forge i2s_player: AC-3 5.1 folded to stereo\n");
+    std::printf("iclforge i2s_player: AC-3 5.1 folded to stereo\n");
 
     for (std::size_t ch = 0; ch < kCodedChannels; ++ch) {
         g_pcm_spans[ch] = std::span<float>(g_pcm[ch]);

@@ -67,11 +67,11 @@ constexpr std::array<TargetChip, 10> kTargets{{
     return number && *number > 0 ? static_cast<std::uint64_t>(*number) : 0;
 }
 
-[[nodiscard]] std::optional<ac3forge::FirmwareSlot> slot_from(const json::Value& value) {
+[[nodiscard]] std::optional<iclforge::FirmwareSlot> slot_from(const json::Value& value) {
     if (!value.is_object()) {
         return std::nullopt;
     }
-    ac3forge::FirmwareSlot slot;
+    iclforge::FirmwareSlot slot;
     slot.label = text_at(value, "label");
     slot.state = text_at(value, "state");
     slot.version = text_at(value, "version");
@@ -143,13 +143,13 @@ constexpr std::array<TargetChip, 10> kTargets{{
     return iclforge::sendspin::crypto::sha256({bytes}, out);
 }
 
-[[nodiscard]] bool is_new_image(const ac3forge::FirmwareSlot* running, const FirmwareFile& file,
+[[nodiscard]] bool is_new_image(const iclforge::FirmwareSlot* running, const FirmwareFile& file,
                                 std::string_view slot) {
     return running != nullptr && lower(running->elf_sha256) == file.elf_sha256 &&
            (slot.empty() || running->label == slot);
 }
 
-[[nodiscard]] std::string updated_text(const ac3forge::FirmwareSlot& running, const FirmwareFile& file) {
+[[nodiscard]] std::string updated_text(const iclforge::FirmwareSlot& running, const FirmwareFile& file) {
     std::string text = fmt::format("updated: runs {} from {}, accepted", running.version, running.label);
     if (running.intact == false) {
         return text + "; but the board's own check of the running slot does not check out";
@@ -165,8 +165,8 @@ constexpr std::array<TargetChip, 10> kTargets{{
                               file.image_sha256);
 }
 
-[[nodiscard]] bool same_last_update(const std::optional<ac3forge::FirmwareLastUpdate>& a,
-                                    const std::optional<ac3forge::FirmwareLastUpdate>& b) {
+[[nodiscard]] bool same_last_update(const std::optional<iclforge::FirmwareLastUpdate>& a,
+                                    const std::optional<iclforge::FirmwareLastUpdate>& b) {
     if (a.has_value() != b.has_value()) {
         return false;
     }
@@ -218,7 +218,7 @@ std::string grouped_number(std::uint64_t value) {
     return digits;
 }
 
-std::string trial_words(const ac3forge::FirmwareTrial& trial) {
+std::string trial_words(const iclforge::FirmwareTrial& trial) {
     std::string text = fmt::format("healthy for {}s of {}s", trial.healthy_for_ms / 1000, trial.hold_ms / 1000);
     if (!trial.waiting_for.empty()) {
         text += ", waiting for ";
@@ -248,7 +248,7 @@ std::optional<SinkHardware> parse_sink_hardware(std::string_view text) {
     };
 }
 
-std::optional<ac3forge::FirmwareStatus> parse_firmware_status(std::string_view text) {
+std::optional<iclforge::FirmwareStatus> parse_firmware_status(std::string_view text) {
     std::vector<json::Token> tokens;
     json::Document document;
     if (!document.parse(text, tokens, kMaxJsonTokens)) {
@@ -258,12 +258,12 @@ std::optional<ac3forge::FirmwareStatus> parse_firmware_status(std::string_view t
     if (!root.is_object() || !root["mode"].is_string()) {
         return std::nullopt;
     }
-    ac3forge::FirmwareStatus status;
+    iclforge::FirmwareStatus status;
     status.mode = text_at(root, "mode");
     status.running = slot_from(root["running"]);
     status.other = slot_from(root["other"]);
     if (const json::Value value = root["trial"]; value.is_object()) {
-        ac3forge::FirmwareTrial trial;
+        iclforge::FirmwareTrial trial;
         trial.healthy_for_ms = static_cast<std::uint32_t>(number_at(value, "healthy_for_ms"));
         trial.hold_ms = static_cast<std::uint32_t>(number_at(value, "hold_ms"));
         trial.remaining_ms = static_cast<std::uint32_t>(number_at(value, "remaining_ms"));
@@ -275,21 +275,21 @@ std::optional<ac3forge::FirmwareStatus> parse_firmware_status(std::string_view t
         status.trial = std::move(trial);
     }
     if (const json::Value value = root["upload"]; value.is_object()) {
-        status.upload = ac3forge::FirmwareUpload{
+        status.upload = iclforge::FirmwareUpload{
             .received = static_cast<std::size_t>(number_at(value, "received")),
             .total = static_cast<std::size_t>(number_at(value, "total")),
             .stage = text_at(value, "stage"),
         };
     }
     if (const json::Value value = root["last_update"]; value.is_object()) {
-        status.last_update = ac3forge::FirmwareLastUpdate{
+        status.last_update = iclforge::FirmwareLastUpdate{
             .version = text_at(value, "version"),
             .result = text_at(value, "result"),
             .reason = text_at(value, "reason"),
         };
     }
     if (const json::Value value = root["coredump"]; value.is_object()) {
-        status.coredump = ac3forge::FirmwareCoredump{
+        status.coredump = iclforge::FirmwareCoredump{
             .bytes = static_cast<std::size_t>(number_at(value, "bytes")),
             .intact = value["intact"].as_bool().value_or(false),
             .task = text_at(value, "task"),
@@ -302,7 +302,7 @@ std::optional<ac3forge::FirmwareStatus> parse_firmware_status(std::string_view t
     status.slot_bytes = static_cast<std::size_t>(number_at(root, "slot_bytes"));
     status.flash_bytes = static_cast<std::size_t>(number_at(root, "flash_bytes"));
     for (const json::Value entry : root["partitions"].elements()) {
-        status.partitions.push_back(ac3forge::FirmwarePartition{
+        status.partitions.push_back(iclforge::FirmwarePartition{
             .label = text_at(entry, "label"),
             .type = static_cast<unsigned>(number_at(entry, "type")),
             .subtype = static_cast<unsigned>(number_at(entry, "subtype")),
@@ -317,24 +317,24 @@ std::optional<ac3forge::FirmwareStatus> parse_firmware_status(std::string_view t
 }
 
 ReadFirmwareFile read_firmware_file(std::vector<std::uint8_t> bytes) {
-    if (bytes.size() < ac3forge::kImageHeadBytes) {
+    if (bytes.size() < iclforge::kImageHeadBytes) {
         return {std::nullopt, fmt::format("it is {} bytes, too short to be an application image", bytes.size())};
     }
-    ac3forge::ParsedHead parsed = ac3forge::parse_image_head(bytes);
+    iclforge::ParsedHead parsed = iclforge::parse_image_head(bytes);
     if (!parsed.head) {
         return {std::nullopt, std::move(parsed.why)};
     }
     const std::span<const std::uint8_t> data(bytes);
-    std::size_t at = ac3forge::kImageHeaderBytes;
+    std::size_t at = iclforge::kImageHeaderBytes;
     std::uint8_t checksum = kChecksumSeed;
     const std::uint8_t segments = data[1];
     for (std::uint8_t index = 0; index < segments; ++index) {
-        if (data.size() - at < ac3forge::kSegmentHeaderBytes) {
+        if (data.size() - at < iclforge::kSegmentHeaderBytes) {
             return {std::nullopt,
                     fmt::format("it ends before segment {}'s header: it is cut short or damaged", index)};
         }
-        const std::uint32_t length = ac3forge::detail::u32_at(data, at + 4);
-        at += ac3forge::kSegmentHeaderBytes;
+        const std::uint32_t length = iclforge::detail::u32_at(data, at + 4);
+        at += iclforge::kSegmentHeaderBytes;
         if (length % 4 != 0) {
             return {std::nullopt, fmt::format("segment {} is {} bytes, not a whole number of words", index, length)};
         }
@@ -383,7 +383,7 @@ ReadFirmwareFile read_firmware_file(std::vector<std::uint8_t> bytes) {
 }
 
 std::optional<std::string> refuse_update(const FirmwareFile& file, const SinkHardware& hardware,
-                                         const ac3forge::FirmwareStatus& firmware) {
+                                         const iclforge::FirmwareStatus& firmware) {
     const std::optional<std::uint16_t> board_chip = chip_id_of(hardware.target);
     if (!board_chip) {
         return fmt::format("the board reports its chip as {}, which this app does not know",
@@ -393,7 +393,7 @@ std::optional<std::string> refuse_update(const FirmwareFile& file, const SinkHar
     if (!revision) {
         return fmt::format("the board reports its chip revision as '{}', not as M.m", hardware.revision);
     }
-    ac3forge::BoardFacts board;
+    iclforge::BoardFacts board;
     board.chip_id = *board_chip;
     board.revision_full = *revision;
     // A board that does not report its flash size is not held to one, as
@@ -402,7 +402,7 @@ std::optional<std::string> refuse_update(const FirmwareFile& file, const SinkHar
                                                  : file.head.flash_size;
     // An older board that does not name its project is not held to one either.
     board.project = hardware.project.empty() ? file.head.project : hardware.project;
-    if (std::optional<std::string> why = ac3forge::refuse_image(file.head, board)) {
+    if (std::optional<std::string> why = iclforge::refuse_image(file.head, board)) {
         return why;
     }
     if (firmware.slot_bytes != 0 && file.data.size() > firmware.slot_bytes) {
@@ -427,13 +427,13 @@ std::optional<std::string> refuse_update(const FirmwareFile& file, const SinkHar
     return std::nullopt;
 }
 
-WaitVerdict judge_wait(const ac3forge::FirmwareStatus* firmware, const FirmwareFile& file,
+WaitVerdict judge_wait(const iclforge::FirmwareStatus* firmware, const FirmwareFile& file,
                        const WaitContext& context) {
     if (firmware == nullptr) {
         return {UpdateOutcome::kNone, "no answer yet: restarting"};
     }
-    const ac3forge::FirmwareSlot* running = firmware->running ? &*firmware->running : nullptr;
-    const std::optional<ac3forge::FirmwareLastUpdate>& last = firmware->last_update;
+    const iclforge::FirmwareSlot* running = firmware->running ? &*firmware->running : nullptr;
+    const std::optional<iclforge::FirmwareLastUpdate>& last = firmware->last_update;
     if (firmware->mode == "flash") {
         if (context.reply_lost && !firmware->upload) {
             const std::string reason = last && !last->reason.empty() ? last->reason : "the board did not say why";
@@ -470,10 +470,10 @@ WaitVerdict judge_wait(const ac3forge::FirmwareStatus* firmware, const FirmwareF
     return {UpdateOutcome::kNone, "restarting"};
 }
 
-std::string silent_text(const ac3forge::FirmwareStatus* last, const FirmwareFile& file, const WaitContext& context,
+std::string silent_text(const iclforge::FirmwareStatus* last, const FirmwareFile& file, const WaitContext& context,
                         std::chrono::seconds waited) {
     const long long seconds = waited.count();
-    const ac3forge::FirmwareSlot* running = last != nullptr && last->running ? &*last->running : nullptr;
+    const iclforge::FirmwareSlot* running = last != nullptr && last->running ? &*last->running : nullptr;
     std::string head;
     if (last == nullptr) {
         head = fmt::format("did not come back within {} s.", seconds);
@@ -495,7 +495,7 @@ std::string silent_text(const ac3forge::FirmwareStatus* last, const FirmwareFile
            "flash it over USB.";
 }
 
-BreakVerdict judge_break(const ac3forge::FirmwareStatus* firmware, std::chrono::milliseconds since_upload,
+BreakVerdict judge_break(const iclforge::FirmwareStatus* firmware, std::chrono::milliseconds since_upload,
                          bool wait_over) {
     // The board may be reading out a timeout, or restarting: it is asked
     // until it answers with no upload running.
@@ -512,7 +512,7 @@ BreakVerdict judge_break(const ac3forge::FirmwareStatus* firmware, std::chrono::
                 .flash_mode = true};
     }
     // In flash mode it gave the upload up, and says why.
-    const std::optional<ac3forge::FirmwareLastUpdate>& last = firmware->last_update;
+    const std::optional<iclforge::FirmwareLastUpdate>& last = firmware->last_update;
     if (firmware->mode == "flash") {
         if (last && (last->result == "refused" || last->result == "failed") && !last->reason.empty()) {
             const bool connection_lost =
@@ -658,7 +658,7 @@ class SinkFirmware::Worker {
     [[nodiscard]] std::string leave_flash_mode_if_waiting();
     // GET /firmware, published to the snapshot as a poll would be; nothing
     // when it was not answered with one.
-    std::optional<ac3forge::FirmwareStatus> read_firmware();
+    std::optional<iclforge::FirmwareStatus> read_firmware();
     // PUT /firmware with `file`, and the board's answer; `sent` follows how
     // much of the image went.
     [[nodiscard]] Answer put_image(const FirmwareFile& file, std::size_t& sent);
@@ -667,7 +667,7 @@ class SinkFirmware::Worker {
     // to stop first.
     [[nodiscard]] BreakVerdict after_break(std::chrono::steady_clock::time_point started);
     void set_update(const Update& update);
-    void publish_poll(std::optional<SinkHardware> hardware, std::optional<ac3forge::FirmwareStatus> firmware,
+    void publish_poll(std::optional<SinkHardware> hardware, std::optional<iclforge::FirmwareStatus> firmware,
                       bool answered, std::string error);
     // Waits `delay`, or less if the thread is to stop; true when it is.
     bool sleep_for(std::chrono::milliseconds delay) {
@@ -794,7 +794,7 @@ std::string SinkFirmware::Worker::leave_flash_mode() {
 }
 
 std::string SinkFirmware::Worker::leave_flash_mode_if_waiting() {
-    const std::optional<ac3forge::FirmwareStatus> firmware = read_firmware();
+    const std::optional<iclforge::FirmwareStatus> firmware = read_firmware();
     if (firmware && firmware->mode == "flash" && !firmware->upload) {
         return leave_flash_mode();
     }
@@ -802,7 +802,7 @@ std::string SinkFirmware::Worker::leave_flash_mode_if_waiting() {
 }
 
 void SinkFirmware::Worker::publish_poll(std::optional<SinkHardware> hardware,
-                                        std::optional<ac3forge::FirmwareStatus> firmware, bool answered,
+                                        std::optional<iclforge::FirmwareStatus> firmware, bool answered,
                                         std::string error) {
     const std::lock_guard<std::mutex> lock(mutex_);
     snapshot_.asked = true;
@@ -817,7 +817,7 @@ void SinkFirmware::Worker::publish_poll(std::optional<SinkHardware> hardware,
     ++snapshot_.generation;
 }
 
-std::optional<ac3forge::FirmwareStatus> SinkFirmware::Worker::read_firmware() {
+std::optional<iclforge::FirmwareStatus> SinkFirmware::Worker::read_firmware() {
     const Answer answer = get("/firmware");
     if (answer.status == 0) {
         publish_poll(std::nullopt, std::nullopt, false, fmt::format("no answer: {}", answer.error));
@@ -828,7 +828,7 @@ std::optional<ac3forge::FirmwareStatus> SinkFirmware::Worker::read_firmware() {
                      "the firmware it runs takes no updates over the network: it has no GET /firmware");
         return std::nullopt;
     }
-    std::optional<ac3forge::FirmwareStatus> status =
+    std::optional<iclforge::FirmwareStatus> status =
         answer.status == 200 ? parse_firmware_status(answer.body) : std::nullopt;
     if (!status) {
         publish_poll(std::nullopt, std::nullopt, false,
@@ -896,7 +896,7 @@ SinkFirmware::Worker::Answer SinkFirmware::Worker::put_image(const FirmwareFile&
 BreakVerdict SinkFirmware::Worker::after_break(std::chrono::steady_clock::time_point started) {
     const auto deadline = std::chrono::steady_clock::now() + timing_.refusal_wait;
     while (true) {
-        const std::optional<ac3forge::FirmwareStatus> firmware = read_firmware();
+        const std::optional<iclforge::FirmwareStatus> firmware = read_firmware();
         const auto now = std::chrono::steady_clock::now();
         BreakVerdict verdict = judge_break(firmware ? &*firmware : nullptr,
                                            std::chrono::duration_cast<std::chrono::milliseconds>(now - started),
@@ -934,7 +934,7 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
         }
         publish_poll(hardware, std::nullopt, true, {});
     }
-    const std::optional<ac3forge::FirmwareStatus> before = read_firmware();
+    const std::optional<iclforge::FirmwareStatus> before = read_firmware();
     if (!before) {
         finish(UpdateOutcome::kRefused, "refused: " + snapshot().error);
         return;
@@ -1029,9 +1029,9 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
     set_update(update);
     const auto deadline = std::chrono::steady_clock::now() + timing_.wait;
     std::optional<std::chrono::steady_clock::time_point> sha_deadline;
-    std::optional<ac3forge::FirmwareStatus> last;
+    std::optional<iclforge::FirmwareStatus> last;
     while (true) {
-        const std::optional<ac3forge::FirmwareStatus> firmware = read_firmware();
+        const std::optional<iclforge::FirmwareStatus> firmware = read_firmware();
         if (stopping()) {
             return;
         }

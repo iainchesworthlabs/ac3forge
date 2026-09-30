@@ -127,9 +127,9 @@ async def exercise(codec: str, ac3tests: Path, directory: Path) -> list[str]:
     await player.start()
     environment = dict(
         os.environ,
-        AC3FORGE_AIOSENDSPIN_URL=player.url,
-        AC3FORGE_AIOSENDSPIN_TOKEN=player.token,
-        AC3FORGE_AIOSENDSPIN_OUT=str(directory),
+        ICLFORGE_AIOSENDSPIN_URL=player.url,
+        ICLFORGE_AIOSENDSPIN_TOKEN=player.token,
+        ICLFORGE_AIOSENDSPIN_OUT=str(directory),
     )
     process = await asyncio.create_subprocess_exec(
         str(ac3tests),

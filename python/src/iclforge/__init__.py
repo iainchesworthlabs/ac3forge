@@ -1,11 +1,11 @@
-"""Python bindings for ac3forge - a clean-room AC-3/E-AC-3 encoder and decoder in C++23,
+"""Python bindings for iclforge - a clean-room AC-3/E-AC-3 encoder and decoder in C++23,
 including the Atmos-in-DD+ object layer (OAMD + JOC).
 
-Everything here is a thin wrapper over the compiled ``_ac3forge`` extension - see
-docs/library/python-api.md in the ac3forge repository for the full surface and worked examples.
+Everything here is a thin wrapper over the compiled ``_iclforge`` extension - see
+docs/library/python-api.md in the iclforge repository for the full surface and worked examples.
 """
 
-from ._ac3forge import (
+from ._iclforge import (
     BLOCKS_PER_FRAME,
     MAX_AC3_CHANNELS,
     SAMPLES_PER_FRAME,
@@ -79,7 +79,7 @@ try:
     from importlib.metadata import PackageNotFoundError
     from importlib.metadata import version as _pkg_version
 
-    __version__ = _pkg_version("ac3forge")
+    __version__ = _pkg_version("iclforge")
 except PackageNotFoundError:  # pragma: no cover - an editable/unbuilt checkout
     __version__ = "0.0.0"
 

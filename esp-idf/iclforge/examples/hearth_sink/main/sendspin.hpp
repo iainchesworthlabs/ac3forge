@@ -13,11 +13,11 @@
 //   sendspin/player/  the component's Sendspin player
 //                     (esp-idf/iclforge/include/iclforge/sendspin_host.hpp and
 //                     burst_player.hpp), for a build with a network and
-//                     CONFIG_AC3FORGE_SENDSPIN;
+//                     CONFIG_ICLFORGE_SENDSPIN;
 //   sendspin/none/    everything else, where each of these does nothing.
 //
 // A server connects to the board, pairs with it and plays to it: bursts over
-// _ac3forge_player@v1 from ac3hearth, PCM over player@v1 from Music
+// _iclforge_player@v1 from ac3hearth, PCM over player@v1 from Music
 // Assistant. The player owns the sink while a stream plays; a play from the
 // control surface (POST /play, kept for debugging) owns it otherwise, and the
 // two never run at once.
@@ -69,7 +69,7 @@ void sendspin_board_changed();
 void sendspin_leave();
 
 // GET /status's "sendspin" object, or nothing without a player.
-[[nodiscard]] std::optional<ac3forge::ControlSendspin> sendspin_status();
+[[nodiscard]] std::optional<iclforge::ControlSendspin> sendspin_status();
 
 // POST /pairing's actions: "reset", "cancel" or "forget". False for anything
 // else, or without a player.
@@ -77,7 +77,7 @@ void sendspin_leave();
 
 // GET /pairing: the servers this board is paired with, or nothing without a
 // player.
-[[nodiscard]] std::optional<ac3forge::ControlPairings> sendspin_pairings();
+[[nodiscard]] std::optional<iclforge::ControlPairings> sendspin_pairings();
 
 // POST /pairing's "forget " and a server_id: that one server's pairing. False
 // when the board has none with it, nothing without a player.

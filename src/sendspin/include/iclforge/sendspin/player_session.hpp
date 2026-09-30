@@ -47,7 +47,7 @@
 // before acting on it, refuses one the owner rejects, and leaves when displace() says another
 // server has taken the client.
 //
-// _ac3forge_player@v1 (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1) runs
+// _iclforge_player@v1 (planning/hearth-sendspin-extension.md, The role _iclforge_player@v1) runs
 // as player@v1 does, when the player lists it: its stream, its burst chunks on the same clock,
 // its commands and its state object. A chunk of a data type other than the stream's, or one
 // whose header does not fit its payload, goes to the listener to be counted in invalid_chunks.
@@ -66,10 +66,10 @@ struct PlayerConfig {
     std::string name;
     messages::DeviceInfo device_info;
     // Written to client/hello as they are, in order; player@v1 must be among them, and
-    // _ac3forge_player@v1 first when `ac3forge_support` is set.
+    // _iclforge_player@v1 first when `iclforge_support` is set.
     std::vector<std::string> supported_roles{"player@v1"};
     messages::PlayerSupport player_support;
-    std::optional<player::Support> ac3forge_support;
+    std::optional<player::Support> iclforge_support;
     // The pairing methods offered: pairing_psk, and at most one code method.
     std::vector<messages::PairMethodDescriptor> pair_methods;
     // The static pairing code, eight ASCII digits, when pair_methods offers static_code.
@@ -78,8 +78,8 @@ struct PlayerConfig {
     // The player state reported while nothing has changed it: volume, mute, delay, timing
     // and commands.
     messages::PlayerState player_state;
-    // _ac3forge_player@v1's, likewise.
-    player::State ac3forge_state;
+    // _iclforge_player@v1's, likewise.
+    player::State iclforge_state;
     // Bounds one reassembled message, ID included.
     std::size_t max_message_bytes = 4 * 1024 * 1024;
     // The other roles' support objects, offered with the roles listed, and their states reported
@@ -142,7 +142,7 @@ class PlayerListener {
     // connection.
     virtual void on_pairing_ended(std::optional<pairing_messages::AbortReason> reason) = 0;
 
-    // _ac3forge_player@v1, which a player that does not list the role never hears from.
+    // _iclforge_player@v1, which a player that does not list the role never hears from.
     //
     // The role's stream began, or changed in place: a data type and sample rate the player listed.
     virtual void on_burst_stream_start(const player::StreamStart& /*stream*/) {}
@@ -157,8 +157,8 @@ class PlayerListener {
     // A chunk the player rejects, dropped without closing: counted in invalid_chunks.
     virtual void on_invalid_burst() {}
     // A command the role's state listed. The listener applies it and reports the new state through
-    // PlayerSession::set_ac3forge_state(); a settings command at the next burst boundary.
-    virtual void on_ac3forge_command(const player::CommandMessage& /*command*/) {}
+    // PlayerSession::set_iclforge_state(); a settings command at the next burst boundary.
+    virtual void on_iclforge_command(const player::CommandMessage& /*command*/) {}
     // A settings command the reader refused, with the revision it named: report settings_error.
     virtual void on_settings_refused(const player::SettingsError& /*error*/) {}
 
@@ -207,8 +207,8 @@ class PlayerSession {
 
     // The player's own state changed, or a command was applied: report it.
     [[nodiscard]] SessionOutput set_state(const messages::PlayerState& state);
-    // The same for _ac3forge_player@v1. A sink sends fresh levels at most ten times a second.
-    [[nodiscard]] SessionOutput set_ac3forge_state(const player::State& state);
+    // The same for _iclforge_player@v1. A sink sends fresh levels at most ten times a second.
+    [[nodiscard]] SessionOutput set_iclforge_state(const player::State& state);
     // The other roles' states, reported at once while the role is active.
     [[nodiscard]] SessionOutput set_artwork_state(const artwork::Channels& channels);
     [[nodiscard]] SessionOutput set_visualizer_state(const visualizer::State& state);
@@ -259,7 +259,7 @@ class PlayerSession {
     // B3).
     [[nodiscard]] const ClockSync& clock() const { return clock_; }
     [[nodiscard]] bool streaming() const { return stream_.has_value(); }
-    // An _ac3forge_player@v1 stream is running.
+    // An _iclforge_player@v1 stream is running.
     [[nodiscard]] bool burst_streaming() const { return burst_stream_.has_value(); }
     [[nodiscard]] bool artwork_streaming() const { return artwork_stream_.has_value(); }
     [[nodiscard]] bool visualizer_streaming() const { return visualizer_stream_.has_value(); }
@@ -301,7 +301,7 @@ class PlayerSession {
     void end_audio();
     void send_clock(SessionOutput& out);
     [[nodiscard]] bool player_active() const;
-    [[nodiscard]] bool ac3forge_active() const;
+    [[nodiscard]] bool iclforge_active() const;
     [[nodiscard]] bool role_active(std::string_view role) const;
     // Whether the player listed `stream`'s data type and sample rate.
     [[nodiscard]] bool lists(const player::StreamStart& stream) const;
@@ -350,7 +350,7 @@ class PlayerSession {
     std::vector<std::pair<std::int64_t, std::vector<std::uint8_t>>> held_audio_;
     std::uint64_t held_audio_bytes_ = 0;
     std::optional<std::int64_t> last_audio_timestamp_;
-    player::State ac3forge_state_;
+    player::State iclforge_state_;
     std::optional<player::StreamStart> burst_stream_;
 
     source::State source_state_;

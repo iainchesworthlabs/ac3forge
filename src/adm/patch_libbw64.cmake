@@ -74,7 +74,7 @@ ac3adm_patch_libbw64(reader.hpp
         }
         fileStream_.seekg(chunk_size, std::ios::cur);"
     "        if (chunk_end > end) {
-          // ac3forge's own patch (src/adm/patch_libbw64.cmake): a recording
+          // iclforge's own patch (src/adm/patch_libbw64.cmake): a recording
           // truncated mid-<data> is an ordinary file, not a malformed one -
           // clamp to what is actually there instead of refusing it. Every
           // other chunk still throws.
@@ -98,5 +98,5 @@ ac3adm_patch_libbw64(chunks.hpp
     "      if (bitsPerSample_ != 16u && bitsPerSample_ != 24u &&
           bitsPerSample_ != 32u) {"
     "      if (bitsPerSample_ != 16u && bitsPerSample_ != 24u &&
-          bitsPerSample_ != 32u && bitsPerSample_ != 64u) {  // ac3forge's own patch: 64-bit float"
+          bitsPerSample_ != 32u && bitsPerSample_ != 64u) {  // iclforge's own patch: 64-bit float"
     1)

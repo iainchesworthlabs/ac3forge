@@ -25,7 +25,7 @@
 // and tests/cli/test_cli.cpp's own atmos-encode tests use, and for the same reason - see
 // test_cli_atmos_adm.cpp's own top comment on why decode.cpp's own logic cannot be linked into this
 // test binary and called directly. A separate file for the same two-part reason as that file's own top
-// comment: this only makes sense with AC3FORGE_BUILD_ADM AND ac3cli both on - see tests/CMakeLists.txt's
+// comment: this only makes sense with ICLFORGE_BUILD_ADM AND ac3cli both on - see tests/CMakeLists.txt's
 // own gating comment on the block this file's source is added to.
 //
 // What this proves: a JOC-reconstructed object comes out of decode_access_unit
@@ -51,7 +51,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_decode_adm_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_decode_adm_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }
@@ -255,8 +255,8 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
 // plain-AC-3 case. decode.cpp's run_decode_eac3 checks ac3cli::adm_capability() up front, before it
 // can tell whether this specific programme has an object layer, so an E-AC-3 stream only reaches
 // these two warnings (rather than exiting 2 with "this build was not configured with
-// -DAC3FORGE_BUILD_ADM=ON") when ADM support was actually built - which is exactly this file's own
-// gate (tests/CMakeLists.txt's AC3FORGE_BUILD_ADM block).
+// -DICLFORGE_BUILD_ADM=ON") when ADM support was actually built - which is exactly this file's own
+// gate (tests/CMakeLists.txt's ICLFORGE_BUILD_ADM block).
 TEST_CASE("decode warns when ADM output is asked of an E-AC-3 stream with no object layer",
           "[cli][decode]") {
     const auto dir = scratch_dir();

@@ -3,7 +3,7 @@
 // Zone macros, stage-timer variant - the third answer to
 // "ac3/internal/profiling.hpp", beside tracy_enabled/ and tracy_disabled/,
 // and selected the same way: CMake puts this directory on the include path
-// (src/ac3/minimal.cmake, under AC3FORGE_STAGE_TIMERS) rather than any
+// (src/ac3/minimal.cmake, under ICLFORGE_STAGE_TIMERS) rather than any
 // source asking with an #ifdef.
 //
 // What it is for. Tracy needs a host with a socket and a build with the
@@ -11,7 +11,7 @@
 // neither, and the question that profile eventually has to answer - "where
 // do the microseconds of one frame go on this silicon?" - cannot be answered
 // from the emulator (docs/platforms/bare-metal/esp32-s3.md's Timing section). So the same
-// AC3_ZONE_SCOPED_N() markers the Tracy build uses are routed here to two
+// ICLFORGE_ZONE_SCOPED_N() markers the Tracy build uses are routed here to two
 // plain functions the APPLICATION supplies: one at zone entry, one at exit.
 // The library carries no clock, no table and no output of its own, because a
 // clock is exactly the thing that differs per platform (esp_timer on
@@ -39,7 +39,7 @@ void zone_enter(const char* name);
 void zone_leave();
 
 // Enters on construction, leaves on destruction - the lexically-scoped form
-// every AC3_ZONE_SCOPED*() site relies on, matching ZoneScoped's semantics.
+// every ICLFORGE_ZONE_SCOPED*() site relies on, matching ZoneScoped's semantics.
 class ZoneScope {
    public:
     explicit ZoneScope(const char* name) { zone_enter(name); }
@@ -54,21 +54,21 @@ class ZoneScope {
 
 // Two-step expansion so __LINE__ is substituted before the paste, giving
 // each zone in a function its own local.
-#define AC3_PROFILING_ZONE_NAME_2(prefix, line) prefix##line
-#define AC3_PROFILING_ZONE_NAME(prefix, line) AC3_PROFILING_ZONE_NAME_2(prefix, line)
+#define ICLFORGE_PROFILING_ZONE_NAME_2(prefix, line) prefix##line
+#define ICLFORGE_PROFILING_ZONE_NAME(prefix, line) ICLFORGE_PROFILING_ZONE_NAME_2(prefix, line)
 
-#define AC3_ZONE_SCOPED()                                                                     \
-    ::iclforge::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__) { \
+#define ICLFORGE_ZONE_SCOPED()                                                                     \
+    ::iclforge::internal::profiling::ZoneScope ICLFORGE_PROFILING_ZONE_NAME(ac3_zone_, __LINE__) { \
         __func__                                                                              \
     }
-#define AC3_ZONE_SCOPED_N(name) \
-    ::iclforge::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){name}
+#define ICLFORGE_ZONE_SCOPED_N(name) \
+    ::iclforge::internal::profiling::ZoneScope ICLFORGE_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){name}
 // The manual pair. `var` is Tracy's context handle and means nothing here:
 // the stack in the application pairs each leave with the innermost open
 // zone, which is what a correctly nested begin/end pair is.
-#define AC3_ZONE_BEGIN(var, name) ::iclforge::internal::profiling::zone_enter(name)
-#define AC3_ZONE_END(var) ::iclforge::internal::profiling::zone_leave()
+#define ICLFORGE_ZONE_BEGIN(var, name) ::iclforge::internal::profiling::zone_enter(name)
+#define ICLFORGE_ZONE_END(var) ::iclforge::internal::profiling::zone_leave()
 // Frame marks are for Tracy's frame view; the probe already knows where its
 // frames are, since it is the thing calling decode_frame_into.
-#define AC3_FRAME_MARK()
-#define AC3_FRAME_MARK_NAMED(name)
+#define ICLFORGE_FRAME_MARK()
+#define ICLFORGE_FRAME_MARK_NAMED(name)

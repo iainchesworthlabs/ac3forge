@@ -43,7 +43,7 @@
       "ccache": true,
       "parallel_tests": true,
       // Hearth (planning/hearth-reference-player.md, A7): src/sendspin and apps/hearth,
-      // with the [sendspin] and [hearth] cases ctest runs below. AC3FORGE_BUILD_HEARTH
+      // with the [sendspin] and [hearth] cases ctest runs below. ICLFORGE_BUILD_HEARTH
       // defaults ON (root CMakeLists.txt) and CMakePresets.json's "core" fragment selects
       // vcpkg's "hearth" feature by default too, so every leg here builds and tests it
       // without a matrix field asking for it - hearth-validate (_ci-core.yml) is the only
@@ -322,7 +322,7 @@
       // combination (qtpaths.bat pointing at the wrong x64 setup) - real
       // complexity this leg's native-ARM64-host build doesn't need to
       // take on for a first pass. CMakePresets.json's windows-msvc-arm64
-      // preset defaults AC3FORGE_BUILD_GUI off for exactly this reason
+      // preset defaults ICLFORGE_BUILD_GUI off for exactly this reason
       // (see its own description) - the same "Qt kit not assumed present"
       // shape linux-gcc/linux-llvm/macos-llvm already use below, not a new
       // pattern. See docs/platforms/windows.md's ARM64 section.

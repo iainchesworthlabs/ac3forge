@@ -4,7 +4,7 @@
 // overlap-add history in (minimum-footprint decoder profile's float32 gap), in the DOUBLE variant.
 // The float variant is the identically-pathed header under
 // src/internal/scalar/float32/; src/ac3/CMakeLists.txt picks the directory
-// from AC3FORGE_DECODE_SCALAR, so no source file asks which it is with a
+// from ICLFORGE_DECODE_SCALAR, so no source file asks which it is with a
 // preprocessor conditional (tools/checks/check_platform_macros.ps1's rule).
 //
 // This lives beside ac3/internal/profile.hpp rather than in it, and the split

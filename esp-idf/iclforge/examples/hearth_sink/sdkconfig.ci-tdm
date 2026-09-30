@@ -6,15 +6,15 @@
 # observable from a float comparison - a sample scaled to 32 bits rather
 # than shifted sounds identical in a host test and is wrong on the wire -
 # so the capture sink checks the integers themselves.
-CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE=y
-CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1
-CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS=8
+CONFIG_ICLFORGE_EXAMPLE_SINK_CAPTURE=y
+CONFIG_ICLFORGE_EXAMPLE_CAPTURE_TDM=1
+CONFIG_ICLFORGE_EXAMPLE_TDM_SLOTS=8
 
 # And the FAT-in-flash source, which is how the SD source's file layer gets
 # exercised at all: QEMU has no SD host, but FATFS does not care what block
 # device it sits on. Both sources go through main/source/file_common.hpp, so
 # running this runs source/sd/'s fopen, fread, ftell and rewind. Only the
 # SDMMC host stays untested, and that is Espressif's driver rather than ours.
-CONFIG_AC3FORGE_EXAMPLE_SOURCE_FATFS=y
+CONFIG_ICLFORGE_EXAMPLE_SOURCE_FATFS=y
 
-CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS=2
+CONFIG_ICLFORGE_EXAMPLE_MAX_LAPS=2

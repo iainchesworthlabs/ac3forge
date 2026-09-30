@@ -9,12 +9,12 @@
 // takes each. Each still runs every code path it covers at least once, to the
 // same tolerances; a normal build runs every case at full length.
 //
-// tests/CMakeLists.txt defines AC3FORGE_TEST_SANITIZED as 1 when
-// AC3FORGE_SANITIZERS names any and as 0 when it does not, so that no test
+// tests/CMakeLists.txt defines ICLFORGE_TEST_SANITIZED as 1 when
+// ICLFORGE_SANITIZERS names any and as 0 when it does not, so that no test
 // asks the preprocessor which it is.
 
 namespace iclforge::test {
 
-inline constexpr bool kSanitized = AC3FORGE_TEST_SANITIZED != 0;
+inline constexpr bool kSanitized = ICLFORGE_TEST_SANITIZED != 0;
 
 }  // namespace iclforge::test

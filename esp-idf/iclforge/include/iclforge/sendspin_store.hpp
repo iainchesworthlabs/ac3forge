@@ -40,7 +40,7 @@
 // Thread-safe: a handshake on the Sendspin server's task looks a PSK up while
 // the control surface's task lists the records.
 
-namespace ac3forge {
+namespace iclforge {
 
 class SendspinStore final : public iclforge::sendspin::handshake::ClientKeyring {
    public:
@@ -116,4 +116,4 @@ class SendspinStore final : public iclforge::sendspin::handshake::ClientKeyring 
     std::optional<Key32> last_playback_;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

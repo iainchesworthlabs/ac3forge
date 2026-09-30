@@ -1,5 +1,5 @@
 // A Sendspin player's pairing records and its servers' names, tested on the
-// host (ac3forge/pairing_records.hpp): the order a board keeps its records in,
+// host (iclforge/pairing_records.hpp): the order a board keeps its records in,
 // which record a new pairing evicts, and the two blobs NVS holds.
 //
 // What can be wrong here is silent on a board until the day it matters: the
@@ -19,9 +19,9 @@
 
 #include "iclforge/pairing_records.hpp"
 
-using ac3forge::PairingKey;
-using ac3forge::PairingRecords;
-using ac3forge::ServerNames;
+using iclforge::PairingKey;
+using iclforge::PairingRecords;
+using iclforge::ServerNames;
 
 namespace {
 
@@ -225,15 +225,15 @@ TEST_CASE("server names: the blob, and what another firmware might have written 
 
 TEST_CASE("server names: a name is cut between characters, without control characters", "[io][pairing_records]") {
     std::array<char, 8> out{};
-    CHECK(ac3forge::fit_server_name("abc", out) == 3);
+    CHECK(iclforge::fit_server_name("abc", out) == 3);
     // A tab and a newline are left out; so are bytes that begin no whole
     // character.
-    CHECK(ac3forge::fit_server_name("a\tb\nc", out) == 3);
+    CHECK(iclforge::fit_server_name("a\tb\nc", out) == 3);
     CHECK(std::string_view(out.data(), 3) == "abc");
-    CHECK(ac3forge::fit_server_name("a\x80\xC3", out) == 1);
+    CHECK(iclforge::fit_server_name("a\x80\xC3", out) == 1);
     // Eight bytes of room: "Küche" is six, and "é" would need two more after
     // "Küche ", so the name stops before it rather than split it.
-    const std::size_t n = ac3forge::fit_server_name("K\xC3\xBC" "che \xC3\xA9t\xC3\xA9", out);
+    const std::size_t n = iclforge::fit_server_name("K\xC3\xBC" "che \xC3\xA9t\xC3\xA9", out);
     CHECK(std::string_view(out.data(), n) == "K\xC3\xBC" "che ");
     // A stored name leaves a byte for its NUL: 47 characters of 50.
     ServerNames<1> names;

@@ -9,7 +9,7 @@
 // dual_stack/, where esp_http_server listens on an IPv6 socket and an IPv4
 // peer comes mapped into IPv6. Nothing for a peer on IPv6.
 
-namespace ac3forge {
+namespace iclforge {
 
 struct Ipv4Peer {
     std::uint32_t address = 0;
@@ -18,4 +18,4 @@ struct Ipv4Peer {
 
 [[nodiscard]] std::optional<Ipv4Peer> ipv4_peer(int fd);
 
-}  // namespace ac3forge
+}  // namespace iclforge

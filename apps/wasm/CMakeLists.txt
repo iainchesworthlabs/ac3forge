@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # The Shield app (apps/android) is a full Gradle/NDK project outside the
-# ac3forge CMake configure entirely, reached from the other direction (its own
+# iclforge CMake configure entirely, reached from the other direction (its own
 # CMakeLists.txt add_subdirectory()s the repo root). This platform doesn't
 # need that indirection - there's no non-CMake build system in the way, so
 # it's a normal add_subdirectory() from root CMakeLists.txt, gated on
@@ -18,12 +18,12 @@
 # and fetch() need http(s), not file://) is the entire "run the demo" story.
 # ---------------------------------------------------------------------------
 
-add_executable(ac3forge_wasm_decode decoder_bindings.cpp)
-target_link_libraries(ac3forge_wasm_decode PRIVATE iclforge::ac3 ac3::warnings)
+add_executable(iclforge_wasm_decode decoder_bindings.cpp)
+target_link_libraries(iclforge_wasm_decode PRIVATE iclforge::ac3 iclforge::warnings)
 
 # --bind: Embind, the JS<->C++ binding generator decoder_bindings.cpp's
 # EMSCRIPTEN_BINDINGS macro uses. MODULARIZE+EXPORT_NAME: the loader becomes a
-# plain factory function (createAc3ForgeModule()) rather than a global that
+# plain factory function (createIclForgeModule()) rather than a global that
 # would collide with a second WASM module on the same page - see index.html's
 # import. ALLOW_MEMORY_GROWTH: an uploaded stream's decoded PCM size is not
 # known ahead of time, unlike the bundled demo fixture. ENVIRONMENT=web: this
@@ -35,12 +35,12 @@ target_link_libraries(ac3forge_wasm_decode PRIVATE iclforge::ac3 ac3::warnings)
 # such throw into an immediate hard abort rather than the ordinary unwind a
 # desktop build gets, which is a worse failure mode for a page a stranger's
 # browser is running than the modest code-size/perf cost of leaving them on.
-target_compile_options(ac3forge_wasm_decode PRIVATE "-fexceptions")
-target_link_options(ac3forge_wasm_decode PRIVATE
+target_compile_options(iclforge_wasm_decode PRIVATE "-fexceptions")
+target_link_options(iclforge_wasm_decode PRIVATE
     "-fexceptions"
     "--bind"
     "-sMODULARIZE=1"
-    "-sEXPORT_NAME=createAc3ForgeModule"
+    "-sEXPORT_NAME=createIclForgeModule"
     "-sALLOW_MEMORY_GROWTH=1"
     # Growth needs a ceiling: without MAXIMUM_MEMORY the heap can climb to
     # wasm32's ~2 GB limit and the failure mode is the browser killing the
@@ -54,11 +54,11 @@ target_link_options(ac3forge_wasm_decode PRIVATE
     "-sENVIRONMENT=web"
     "-sNO_EXIT_RUNTIME=1")
 
-set_target_properties(ac3forge_wasm_decode PROPERTIES
-    OUTPUT_NAME "ac3forge_decode"
+set_target_properties(iclforge_wasm_decode PROPERTIES
+    OUTPUT_NAME "iclforge_decode"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo")
 
-add_custom_command(TARGET ac3forge_wasm_decode POST_BUILD
+add_custom_command(TARGET iclforge_wasm_decode POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/index.html"
         "${CMAKE_CURRENT_SOURCE_DIR}/demo.js"
@@ -75,7 +75,7 @@ add_custom_command(TARGET ac3forge_wasm_decode POST_BUILD
 # ---------------------------------------------------------------------------
 # in-browser encoding: the browser ENCODE page - a sibling module to the decode
 # target above, not a bigger version of it. Kept as a second .wasm/.js
-# rather than folded into ac3forge_wasm_decode so a page that only needs one
+# rather than folded into iclforge_wasm_decode so a page that only needs one
 # direction never pays for the other; see docs/platforms/wasm.md's "Encode
 # module" section for the measured size/real-time numbers that motivated
 # this split (a combined AC-3 + E-AC-3 + Atmos/JOC + QC module measured
@@ -85,10 +85,10 @@ add_custom_command(TARGET ac3forge_wasm_decode POST_BUILD
 # "any static file server" story as wasm_decode_demo/.
 # ---------------------------------------------------------------------------
 
-add_executable(ac3forge_wasm_encode encoder_bindings.cpp)
-target_link_libraries(ac3forge_wasm_encode PRIVATE iclforge::ac3 ac3::warnings)
+add_executable(iclforge_wasm_encode encoder_bindings.cpp)
+target_link_libraries(iclforge_wasm_encode PRIVATE iclforge::ac3 iclforge::warnings)
 
-# Same reasoning as ac3forge_wasm_decode's own comment on every flag below -
+# Same reasoning as iclforge_wasm_decode's own comment on every flag below -
 # -fexceptions, MODULARIZE+EXPORT_NAME (a distinct name so this module and
 # the decode one can load on the same page without colliding), a memory
 # ceiling turning exhaustion into an ordinary error path instead of a dead
@@ -96,50 +96,50 @@ target_link_libraries(ac3forge_wasm_encode PRIVATE iclforge::ac3 ac3::warnings)
 # AudioContext.decodeAudioData - see encode/app.js) is bounded client-side
 # before it ever reaches this module, the same way an uploaded stream is
 # bounded before reaching the decode module.
-target_compile_options(ac3forge_wasm_encode PRIVATE "-fexceptions")
-target_link_options(ac3forge_wasm_encode PRIVATE
+target_compile_options(iclforge_wasm_encode PRIVATE "-fexceptions")
+target_link_options(iclforge_wasm_encode PRIVATE
     "-fexceptions"
     "--bind"
     "-sMODULARIZE=1"
-    "-sEXPORT_NAME=createAc3ForgeEncodeModule"
+    "-sEXPORT_NAME=createIclForgeEncodeModule"
     "-sALLOW_MEMORY_GROWTH=1"
     "-sINITIAL_MEMORY=67108864"
     "-sMAXIMUM_MEMORY=1073741824"
     "-sENVIRONMENT=web"
     "-sNO_EXIT_RUNTIME=1")
 
-set_target_properties(ac3forge_wasm_encode PROPERTIES
-    OUTPUT_NAME "ac3forge_encode"
+set_target_properties(iclforge_wasm_encode PROPERTIES
+    OUTPUT_NAME "iclforge_encode"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo")
 
 # The round-trip preview (encode/app.js) loads the DECODE module too, and
 # wasm_encode_demo/ has to be independently servable ("cd .../wasm_encode_demo
 # && python3 -m http.server", the same story wasm_decode_demo/ has) rather
-# than assuming a sibling directory exists - so ac3forge_decode.js/.wasm are
+# than assuming a sibling directory exists - so iclforge_decode.js/.wasm are
 # copied in here as well, not referenced across directories. That means this
-# target's POST_BUILD step depends on ac3forge_wasm_decode's own output
+# target's POST_BUILD step depends on iclforge_wasm_decode's own output
 # already existing, hence the explicit add_dependencies: Ninja would
 # otherwise happily run both targets' link steps in parallel with no
 # ordering guarantee.
-add_dependencies(ac3forge_wasm_encode ac3forge_wasm_decode)
+add_dependencies(iclforge_wasm_encode iclforge_wasm_decode)
 
-add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
+add_custom_command(TARGET iclforge_wasm_encode POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/encode/index.html"
         "${CMAKE_CURRENT_SOURCE_DIR}/encode/app.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
-        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.js"
-        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.wasm"
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/iclforge_decode.js"
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/iclforge_decode.wasm"
         "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo"
     COMMENT "Assembling the servable wasm_encode_demo/ directory")
 
 # The Atmos object-authoring page (apps/wasm/atmos/) ships as a SUBDIRECTORY
 # of the encode demo rather than a third top-level demo: it loads the very
-# same ac3forge_encode.js/.wasm via "../", so wasm_encode_demo/ stays the one
+# same iclforge_encode.js/.wasm via "../", so wasm_encode_demo/ stays the one
 # directory that is copied around (docs site, local serving) with the
 # authoring page inside it for free.
-add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
+add_custom_command(TARGET iclforge_wasm_encode POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory
         "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -154,7 +154,7 @@ add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
 # AC-4 (src/ac4, src/ac4dec, src/ac4enc): one combined decode+encode embind
 # module, unlike the AC-3 decode/encode split above - see ac4_bindings.cpp's
 # own header comment for why one module suits AC-4 here. Guarded on
-# AC3FORGE_BUILD_AC4 (root CMakeLists.txt option(), default ON; the
+# ICLFORGE_BUILD_AC4 (root CMakeLists.txt option(), default ON; the
 # wasm-emscripten preset no longer forces it OFF - CMakePresets.json) so a
 # future minimal-footprint WASM variant that turns AC-4 back off still
 # configures cleanly.
@@ -162,32 +162,32 @@ add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
 # No servable demo page is assembled here (unlike wasm_decode_demo/ and
 # wasm_encode_demo/ above): apps/wasm/ac4/ does not exist yet, and a minimal
 # AC-4 demo page is optional polish this task's brief left to a later pass -
-# the compiled ac3forge_ac4.js/.wasm still land in their own output
+# the compiled iclforge_ac4.js/.wasm still land in their own output
 # directory below, ready for one for whoever adds it.
 # ---------------------------------------------------------------------------
 
-if(AC3FORGE_BUILD_AC4)
-    add_executable(ac3forge_wasm_ac4 ac4_bindings.cpp)
-    target_link_libraries(ac3forge_wasm_ac4 PRIVATE iclforge::ac4 iclforge::ac4dec iclforge::ac4enc ac3::warnings)
+if(ICLFORGE_BUILD_AC4)
+    add_executable(iclforge_wasm_ac4 ac4_bindings.cpp)
+    target_link_libraries(iclforge_wasm_ac4 PRIVATE iclforge::ac4 iclforge::ac4dec iclforge::ac4enc iclforge::warnings)
 
-    # Same reasoning as ac3forge_wasm_decode's own comment on every flag
+    # Same reasoning as iclforge_wasm_decode's own comment on every flag
     # below - -fexceptions, MODULARIZE+EXPORT_NAME (a third distinct name so
     # this module and the two AC-3 ones can all load on the same page
     # without colliding), a memory ceiling turning exhaustion into an
     # ordinary error path instead of a dead tab.
-    target_compile_options(ac3forge_wasm_ac4 PRIVATE "-fexceptions")
-    target_link_options(ac3forge_wasm_ac4 PRIVATE
+    target_compile_options(iclforge_wasm_ac4 PRIVATE "-fexceptions")
+    target_link_options(iclforge_wasm_ac4 PRIVATE
         "-fexceptions"
         "--bind"
         "-sMODULARIZE=1"
-        "-sEXPORT_NAME=createAc3ForgeAc4Module"
+        "-sEXPORT_NAME=createIclForgeAc4Module"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sINITIAL_MEMORY=67108864"
         "-sMAXIMUM_MEMORY=1073741824"
         "-sENVIRONMENT=web"
         "-sNO_EXIT_RUNTIME=1")
 
-    set_target_properties(ac3forge_wasm_ac4 PROPERTIES
-        OUTPUT_NAME "ac3forge_ac4"
+    set_target_properties(iclforge_wasm_ac4 PROPERTIES
+        OUTPUT_NAME "iclforge_ac4"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_ac4_demo")
 endif()

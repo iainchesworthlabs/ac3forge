@@ -25,12 +25,12 @@
 
 namespace {
 
-using ac3forge::DmaClock;
-using ac3forge::DmaRing;
-using ac3forge::Playout;
-using ac3forge::PlayoutSink;
-using ac3forge::PlayoutWrite;
-using ac3forge::VirtualDac;
+using iclforge::DmaClock;
+using iclforge::DmaRing;
+using iclforge::Playout;
+using iclforge::PlayoutSink;
+using iclforge::PlayoutWrite;
+using iclforge::VirtualDac;
 
 constexpr std::uint32_t kRate = 48'000;
 constexpr std::size_t kBlock = Playout::kBlockFrames;

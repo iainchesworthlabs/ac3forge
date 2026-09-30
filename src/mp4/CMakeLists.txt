@@ -51,14 +51,14 @@ target_compile_features(iclforge_mp4_objects PUBLIC cxx_std_23)
 
 # $<BUILD_INTERFACE:...> wrapping - see src/ac3/CMakeLists.txt's identical
 # iclforge_ac3_objects treatment for why a plain PRIVATE link isn't enough for
-# an OBJECT library that's part of an install(EXPORT) set. ac3::coverage is a
-# no-op unless AC3FORGE_ENABLE_COVERAGE is on (see cmake/Coverage.cmake).
-# ac3::fmt_private compiles {fmt} into hls.cpp and dash.cpp instead of linking it, so
+# an OBJECT library that's part of an install(EXPORT) set. iclforge::coverage is a
+# no-op unless ICLFORGE_ENABLE_COVERAGE is on (see cmake/Coverage.cmake).
+# iclforge::fmt_private compiles {fmt} into hls.cpp and dash.cpp instead of linking it, so
 # iclforge_mp4_static carries no undefined {fmt} reference into a consumer's link - see cmake/Fmt.cmake.
 target_link_libraries(iclforge_mp4_objects PRIVATE
-    "$<BUILD_INTERFACE:ac3::warnings>"
-    "$<BUILD_INTERFACE:ac3::coverage>"
-    "$<BUILD_INTERFACE:ac3::fmt_private>")
+    "$<BUILD_INTERFACE:iclforge::warnings>"
+    "$<BUILD_INTERFACE:iclforge::coverage>"
+    "$<BUILD_INTERFACE:iclforge::fmt_private>")
 
 set_target_properties(iclforge_mp4_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -66,7 +66,7 @@ set_target_properties(iclforge_mp4_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 # MSVC's C4251 ("class X needs to have dll-interface...") fires for every
-# PRIVATE STL-typed member of an MP4_EXPORT class - mp4::Reader's
+# PRIVATE STL-typed member of an ICLFORGE_MP4_EXPORT class - mp4::Reader's
 # std::unique_ptr to its parse state, and mp4::FragmentWriter's own
 # std::vector buffers and segment window - pure implementation detail, never
 # touched by a caller except through the class's own (exported) methods.
@@ -81,15 +81,15 @@ set_target_properties(iclforge_mp4_objects PROPERTIES
 target_compile_options(iclforge_mp4_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_mp4_shared PROPERTIES DEFINE_SYMBOL "MP4_BUILDING_SHARED")
+set_target_properties(iclforge_mp4_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_MP4_BUILDING_SHARED")
 generate_export_header(iclforge_mp4_shared
-    BASE_NAME MP4
-    EXPORT_MACRO_NAME MP4_EXPORT
+    BASE_NAME ICLFORGE_MP4
+    EXPORT_MACRO_NAME ICLFORGE_MP4_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/mp4/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE MP4_STATIC_DEFINE)
-target_compile_definitions(iclforge_mp4_objects PRIVATE MP4_BUILDING_SHARED)
-target_compile_definitions(iclforge_mp4_static PUBLIC MP4_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_MP4_STATIC_DEFINE)
+target_compile_definitions(iclforge_mp4_objects PRIVATE ICLFORGE_MP4_BUILDING_SHARED)
+target_compile_definitions(iclforge_mp4_static PUBLIC ICLFORGE_MP4_STATIC_DEFINE)
 
 set_target_properties(iclforge_mp4_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

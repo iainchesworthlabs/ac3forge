@@ -38,7 +38,7 @@
 // the model read esp_timer itself it ran only on a board - QEMU has no I2S, so
 // CI's shapes use the capture sink - and nothing in CI executed it.
 
-namespace ac3forge {
+namespace iclforge {
 
 class DacQueueModel {
    public:
@@ -155,4 +155,4 @@ class DacQueueModel {
     Play play_;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

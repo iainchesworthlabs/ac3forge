@@ -16,7 +16,7 @@ namespace iclforge::internal {
 // that is bit-identical on every platform, integer arithmetic having no
 // rounding mode or C library to differ by.
 //
-// Selectable in a full build with AC3FORGE_DECODE_SCALAR=fixed, which is how
+// Selectable in a full build with ICLFORGE_DECODE_SCALAR=fixed, which is how
 // it is measured: the same CLI, diffed against the double one by
 // tools/checks/check_decode_scalar_snr.py and run through the gold-reference
 // gate.

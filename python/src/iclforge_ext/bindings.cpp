@@ -1,4 +1,4 @@
-// pybind11 bindings for ac3forge (Python on PyPI) - wraps iclforge::FrameEncoder,
+// pybind11 bindings for iclforge (Python on PyPI) - wraps iclforge::FrameEncoder,
 // iclforge::FrameDecoder, iclforge::Eac3Decoder and iclforge::oba::AtmosEncoder directly
 // (pybind11-direct, per the roadmap's own dependency note - no intermediate C API). Every C++ class
 // kept here is exactly the one declared in
@@ -86,21 +86,21 @@ constexpr std::size_t kMaxEac3RenderChannels = 16;
 struct EncodeFailure : std::runtime_error {
     iclforge::FrameError code;
     explicit EncodeFailure(iclforge::FrameError c)
-        : std::runtime_error("ac3forge encode failed: " + std::string(iclforge::describe(c))),
+        : std::runtime_error("iclforge encode failed: " + std::string(iclforge::describe(c))),
           code(c) {}
 };
 
 struct DecodeFailure : std::runtime_error {
     iclforge::DecodeError code;
     explicit DecodeFailure(iclforge::DecodeError c)
-        : std::runtime_error("ac3forge decode failed: " + std::string(iclforge::describe(c))),
+        : std::runtime_error("iclforge decode failed: " + std::string(iclforge::describe(c))),
           code(c) {}
 };
 
 struct ScanFailure : std::runtime_error {
     iclforge::io::ScanError code;
     explicit ScanFailure(iclforge::io::ScanError c)
-        : std::runtime_error("ac3forge scan failed: " + std::string(iclforge::io::describe(c))), code(c) {}
+        : std::runtime_error("iclforge scan failed: " + std::string(iclforge::io::describe(c))), code(c) {}
 };
 
 // --- buffer / array plumbing -------------------------------------------------
@@ -466,8 +466,8 @@ iclforge::eac3::AccessUnitConfig access_unit_config_for_layout(
 
 }  // namespace
 
-PYBIND11_MODULE(_ac3forge, m) {
-    m.doc() = "pybind11 bindings for ac3forge - AC-3/E-AC-3 encode/decode plus Atmos objects";
+PYBIND11_MODULE(_iclforge, m) {
+    m.doc() = "pybind11 bindings for iclforge - AC-3/E-AC-3 encode/decode plus Atmos objects";
 
     m.attr("SAMPLES_PER_FRAME") = iclforge::kSamplesPerFrame;
     m.attr("BLOCKS_PER_FRAME") = iclforge::kBlocksPerFrame;
@@ -477,7 +477,7 @@ PYBIND11_MODULE(_ac3forge, m) {
 
     // --- exceptions ----------------------------------------------------------
     // Defined here (rather than pure-Python subclasses of RuntimeError) so the extension owns
-    // its own exception identity - ac3forge/__init__.py just re-exports these three names.
+    // its own exception identity - iclforge/__init__.py just re-exports these three names.
     static py::exception<std::runtime_error> ac3_error(m, "Ac3Error", PyExc_RuntimeError);
     static py::exception<std::runtime_error> encode_error(m, "Ac3EncodeError", ac3_error.ptr());
     static py::exception<std::runtime_error> decode_error(m, "Ac3DecodeError", ac3_error.ptr());

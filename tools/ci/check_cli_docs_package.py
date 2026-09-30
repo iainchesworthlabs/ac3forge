@@ -15,8 +15,8 @@ the only test asserting their presence is the `test do` block in
 packaging/homebrew/Formula/iclforge.rb, and a Homebrew build passes no
 toolchain file, so it kept passing. This is the assertion that was missing:
 
-    python3 tools/ci/check_cli_docs_package.py packages/ac3forge-0.7.0-Linux-x86_64.tar.gz
-    python3 tools/ci/check_cli_docs_package.py packages/ac3forge-0.7.0-Darwin.zip
+    python3 tools/ci/check_cli_docs_package.py packages/iclforge-0.7.0-Linux-x86_64.tar.gz
+    python3 tools/ci/check_cli_docs_package.py packages/iclforge-0.7.0-Darwin.zip
     python3 tools/ci/check_cli_docs_package.py merged            # an install tree
 
 Run from .github/workflows/_build.yml on the Linux and macOS legs, and over
@@ -50,7 +50,7 @@ REQUIRED = (
     "share/bash-completion/completions/ac3cli",
     "share/zsh/site-functions/_ac3cli",
     "share/fish/vendor_completions.d/ac3cli.fish",
-    "share/ac3forge/completions/ac3cli.ps1",
+    "share/iclforge/completions/ac3cli.ps1",
 )
 
 # Directories a name relative to the install prefix can start with. Used to

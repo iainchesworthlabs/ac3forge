@@ -2,9 +2,9 @@
 //! as `examples/capi_encode_eac3.c`'s single-substream case, from Rust. Run with
 //! `cargo run --example encode_decode_eac3`.
 
-use ac3forge::eac3::{Eac3Decoder, Eac3Encoder, Eac3FrameConfig};
-use ac3forge::types::{Acmod, DecoderConfig, SampleRate};
-use ac3forge::SAMPLES_PER_FRAME;
+use iclforge::eac3::{Eac3Decoder, Eac3Encoder, Eac3FrameConfig};
+use iclforge::types::{Acmod, DecoderConfig, SampleRate};
+use iclforge::SAMPLES_PER_FRAME;
 
 fn tone(frequency_hz: f32, frame_index: usize) -> Vec<f32> {
     (0..SAMPLES_PER_FRAME)

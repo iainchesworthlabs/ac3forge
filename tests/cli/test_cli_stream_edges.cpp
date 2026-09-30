@@ -48,7 +48,7 @@ std::string scratch_pid_suffix() {
 }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_stream_edges_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_stream_edges_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }
@@ -205,7 +205,7 @@ TEST_CASE("AC-4 input is refused where its signalling does not exist and when it
           "[cli][containers][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_refused.log";
-    const fs::path ac4{std::string{AC3FORGE_EXTERNAL_BASELINE_DIR} + "/ac4-stereo-64/dee.ac4"};
+    const fs::path ac4{std::string{ICLFORGE_EXTERNAL_BASELINE_DIR} + "/ac4-stereo-64/dee.ac4"};
     REQUIRE(fs::exists(ac4));
     // The first 3000 bytes: whole TOCs up to a frame cut part-way through.
     const auto cut = dir / "ac4_cut.ac4";

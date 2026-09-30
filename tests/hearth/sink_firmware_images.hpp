@@ -27,7 +27,7 @@ struct ImageSpec {
     std::uint8_t flash_size = 4;  // 16 MB
     bool hash_appended = true;
     std::string version = "v0.11.0";
-    std::string project = "ac3forge_hearth_sink";
+    std::string project = "iclforge_hearth_sink";
     // Stands in for the ELF SHA-256 in the description: any 32 bytes.
     std::uint8_t elf_seed = 1;
     // The segment's length: the 256-byte description and what follows it.

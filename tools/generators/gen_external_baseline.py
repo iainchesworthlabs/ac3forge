@@ -128,7 +128,7 @@ outside the scored window for every leg alike. Scored across the whole file
 instead, FFmpeg's decode of this fixture is 14.30 dB rather than 33.32 dB,
 and the entire difference is that one frame. The reason the 33.32 dB is
 nonetheless the right number for DEE's ENCODER is independent corroboration,
-not the window: ac3forge's own decoder reads frame 0 correctly (42.30 dB on
+not the window: iclforge's own decoder reads frame 0 correctly (42.30 dB on
 it) and scores the same fixture 33.3236 dB through the same window - 0.005 dB
 from FFmpeg's 33.3186 dB. Two independent decoders agreeing that closely is
 what says this measures DEE's encoder rather than either decoder's
@@ -249,7 +249,7 @@ DECODER_NOTES = {
         "because score_fixed's FIXED_ALIGN skips the first 0.2 s, which is "
         "where that frame sits; scored across the whole file FFmpeg's decode "
         "is 14.30 dB instead. What says 33.32 dB measures DEE's encoder and "
-        "not FFmpeg's concealment is that ac3forge's own decoder reads frame 0 "
+        "not FFmpeg's concealment is that iclforge's own decoder reads frame 0 "
         "correctly and scores this same fixture 33.3236 dB through the same "
         "window, 0.005 dB away - see tools/generators/gen_external_baseline.py's "
         "module docstring."
@@ -412,7 +412,7 @@ def invoke_ours(wav, kbps, is_eac3, out):
     if is_eac3:
         # "auto": a bare `eac3-encode` with no tools argument leaves every
         # Annex E tool off by default (FrameConfig's own defaults - see
-        # docs/library/encoding-eac3.md's table), which would compare ac3forge
+        # docs/library/encoding-eac3.md's table), which would compare iclforge
         # with its hands tied against FFmpeg's/DEE's own automatic best-effort
         # tool selection. "auto" is this encoder's own automatic choice from
         # the per-channel rate, which is the like-for-like answer to theirs.

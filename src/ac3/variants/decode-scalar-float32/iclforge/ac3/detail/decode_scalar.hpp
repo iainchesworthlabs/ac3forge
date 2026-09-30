@@ -21,7 +21,7 @@ namespace iclforge::internal {
 //
 // Selectable independently of the profile now, which is what makes that claim
 // checkable: a full build - CLI, tests, gold references and all - can be
-// configured with AC3FORGE_DECODE_SCALAR=float and diffed against the double
+// configured with ICLFORGE_DECODE_SCALAR=float and diffed against the double
 // one. Before the split this variant existed only inside a build that had no
 // CLI to diff with.
 using decode_scalar_t = float;

@@ -1,6 +1,6 @@
 // A typed wrapper over the AC-4 embind module apps/wasm/ac4_bindings.cpp
-// builds (apps/wasm/CMakeLists.txt's `ac3forge_wasm_ac4` target,
-// `-sEXPORT_NAME=createAc3ForgeAc4Module`) - the AC-4 counterpart of
+// builds (apps/wasm/CMakeLists.txt's `iclforge_wasm_ac4` target,
+// `-sEXPORT_NAME=createIclForgeAc4Module`) - the AC-4 counterpart of
 // push-decoder.ts, not of decoder-worker.ts.
 //
 // NO WORKER PROTOCOL HERE, unlike decoder-worker.ts's realtime AudioWorklet
@@ -417,7 +417,7 @@ export interface NativeAc4Encoder {
   delete(): void;
 }
 
-/** The Embind module `apps/wasm/ac4_bindings.cpp` builds - what `createAc3ForgeAc4Module()` resolves to. */
+/** The Embind module `apps/wasm/ac4_bindings.cpp` builds - what `createIclForgeAc4Module()` resolves to. */
 export interface Ac4EmbindModule {
   Ac4Decoder: new (
     outputLevelDbfs: number,
@@ -434,17 +434,17 @@ export interface Ac4EmbindModule {
   syncFrame(rawFrame: Uint8Array, crc: boolean): Uint8Array;
 }
 
-/** The MODULARIZE factory Emscripten attaches as `createAc3ForgeAc4Module` - see apps/wasm/CMakeLists.txt's link options. */
+/** The MODULARIZE factory Emscripten attaches as `createIclForgeAc4Module` - see apps/wasm/CMakeLists.txt's link options. */
 export type Ac4ModuleFactory = (moduleOverrides?: Record<string, unknown>) => Promise<Ac4EmbindModule>;
 
 async function loadEmscriptenGlue(glueUrl: string): Promise<Ac4ModuleFactory> {
   const source = await (await fetch(glueUrl)).text();
-  // createAc3ForgeAc4Module is the MODULARIZE+EXPORT_NAME global the glue
+  // createIclForgeAc4Module is the MODULARIZE+EXPORT_NAME global the glue
   // defines when evaluated as a plain script (apps/wasm/CMakeLists.txt's
-  // link options for ac3forge_wasm_ac4) - re-exporting it is what makes the
+  // link options for iclforge_wasm_ac4) - re-exporting it is what makes the
   // Blob URL below `import`able, the same technique decoder-worker.ts uses
-  // for createAc3ForgeModule.
-  const blob = new Blob([source, "\nexport default createAc3ForgeAc4Module;\n"], {
+  // for createIclForgeModule.
+  const blob = new Blob([source, "\nexport default createIclForgeAc4Module;\n"], {
     type: "text/javascript",
   });
   const blobUrl = URL.createObjectURL(blob);
@@ -458,7 +458,7 @@ async function loadEmscriptenGlue(glueUrl: string): Promise<Ac4ModuleFactory> {
 
 /**
  * Fetches, loads and instantiates the AC-4 Embind module from `glueUrl`
- * (the compiled `ac3forge_ac4.js`). `locateFile` is set so the glue's own
+ * (the compiled `iclforge_ac4.js`). `locateFile` is set so the glue's own
  * `.wasm` fetch resolves beside `glueUrl` rather than against the Blob URL
  * it was imported from - see this file's header comment.
  */

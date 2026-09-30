@@ -23,7 +23,7 @@ on:
       # needs the demo republished goes through apps/wasm/ (or one of
       # the paths below) too.
       - "apps/wasm/**"
-      # ac3forge-wasm-decoder (WASM streaming decoder package) - the demo embeds js/dist/
+      # iclforge-wasm-decoder (WASM streaming decoder package) - the demo embeds js/dist/
       # alongside the compiled decoder, so a package-only change also has
       # to trigger a redeploy, same reasoning as apps/wasm/** above.
       - "js/**"
@@ -45,7 +45,7 @@ on:
       - "CONTRIBUTING.md"
       - "ROADMAP.md"
       - "apps/wasm/**"
-      # ac3forge-wasm-decoder (WASM streaming decoder package) - the demo embeds js/dist/
+      # iclforge-wasm-decoder (WASM streaming decoder package) - the demo embeds js/dist/
       # alongside the compiled decoder, so a package-only change also has
       # to trigger a redeploy, same reasoning as apps/wasm/** above.
       - "js/**"
@@ -182,7 +182,7 @@ jobs:
 
       - uses: ./.github/actions/setup-emscripten
 
-      # ac3forge-wasm-decoder (WASM streaming decoder package, js/) has to be built before the
+      # iclforge-wasm-decoder (WASM streaming decoder package, js/) has to be built before the
       # Emscripten rebuild below, which copies js/dist/ alongside the
       # compiled decoder into the directory that overwrites docs/assets/
       # wasm-decode-demo/ - the demo is a consumer of the package (see
@@ -193,7 +193,7 @@ jobs:
           cache: npm
           cache-dependency-path: js/package-lock.json
 
-      - name: Build ac3forge-wasm-decoder package
+      - name: Build iclforge-wasm-decoder package
         working-directory: js
         run: |
           set -euo pipefail

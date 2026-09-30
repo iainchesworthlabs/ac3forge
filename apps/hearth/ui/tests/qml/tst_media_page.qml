@@ -131,7 +131,7 @@ TestCase {
         const exported = JSON.parse(TestServices.readTextFile(path));
         compare(exported.codec, "eac3");
         compare(exported.playback.sample_rate_hz, 48000);
-        compare(exported.schema, "ac3forge.hearth.media/1");
+        compare(exported.schema, "iclforge.hearth.media/1");
     }
 
     // An E-AC-3 stream with object metadata: the Media page grows its

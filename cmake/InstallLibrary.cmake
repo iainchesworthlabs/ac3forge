@@ -2,7 +2,7 @@
 # InstallLibrary.cmake
 #
 # install() rules + package config for distributing iclforge::ac3, iclforge::matroska, iclforge::mp4 and
-# the other libraries below independently, consumable via find_package(ac3forge). iclforge::audio
+# the other libraries below independently, consumable via find_package(iclforge). iclforge::audio
 # (src/audio/) is deliberately NOT installed/exported here - it is a CLI/GUI implementation
 # detail, not part of the distributed package; see docs/library/index.md.
 #
@@ -12,8 +12,8 @@
 # what gets install()'d here.
 #
 # iclforge::matroska, iclforge::mp4 and iclforge::mpegts are all optional components, off-able via
-# their own AC3FORGE_BUILD_MATROSKA/AC3FORGE_BUILD_MP4/AC3FORGE_BUILD_MPEGTS option (root
-# CMakeLists.txt) - each its own AC3FORGE_BUILD_<NAME> option, its own guarded
+# their own ICLFORGE_BUILD_MATROSKA/ICLFORGE_BUILD_MP4/ICLFORGE_BUILD_MPEGTS option (root
+# CMakeLists.txt) - each its own ICLFORGE_BUILD_<NAME> option, its own guarded
 # add_subdirectory(), and its own guarded block below, as are iclforge::c, the AC-4 libraries,
 # iclforge::iab and iclforge::iamf. Each maps 1:1 onto its own vcpkg feature
 # (packaging/vcpkg-port/iclforge/vcpkg.json's "matroska"/"mp4"/"mpegts"/"capi"/"ac4"/"iab"/
@@ -29,7 +29,7 @@
 # The LIBRARY DESTINATION rules below additionally carry NAMELINK_COMPONENT
 # library, splitting them from COMPONENT libruntime. On Unix, a versioned
 # shared library install produces two files - the real
-# libac3forge.so.<version> and an unversioned libac3forge.so symlink (the
+# libiclforge_ac3.so.<version> and an unversioned libiclforge_ac3.so symlink (the
 # "namelink") a linker resolves -l against - and NAMELINK_COMPONENT is CMake's
 # own mechanism for filing those two files under different CPack components:
 # COMPONENT names the real .so, NAMELINK_COMPONENT names the symlink. Confirmed
@@ -59,20 +59,20 @@ include(PkgConfig)
 # and their matroska/mp4/mpegts equivalents still get *built* either way - only what gets
 # install()'d/exported is filtered by this option, so nothing above this point in the tree
 # needs touching for it to take effect.
-option(AC3FORGE_INSTALL_BOTH_LINKAGES "Install/export both static and shared library variants (OFF installs only the BUILD_SHARED_LIBS-selected one)" ON)
+option(ICLFORGE_INSTALL_BOTH_LINKAGES "Install/export both static and shared library variants (OFF installs only the BUILD_SHARED_LIBS-selected one)" ON)
 
-if(AC3FORGE_INSTALL_BOTH_LINKAGES)
-    set(_ac3forge_forge_install_targets iclforge_ac3_objects iclforge_ac3_static iclforge_ac3_shared)
-    set(_ac3forge_signing_install_targets iclforge_signing_objects iclforge_signing_static iclforge_signing_shared)
-    set(_ac3forge_matroska_install_targets iclforge_matroska_objects iclforge_matroska_static iclforge_matroska_shared)
-    set(_ac3forge_mp4_install_targets iclforge_mp4_objects iclforge_mp4_static iclforge_mp4_shared)
-    set(_ac3forge_mpegts_install_targets iclforge_mpegts_objects iclforge_mpegts_static iclforge_mpegts_shared)
-    set(_ac3forge_iab_install_targets iclforge_iab_objects iclforge_iab_static iclforge_iab_shared)
-    set(_ac3forge_iamf_install_targets iclforge_iamf_objects iclforge_iamf_static iclforge_iamf_shared)
-    set(_ac3forge_ac4_install_targets iclforge_ac4_objects iclforge_ac4_static iclforge_ac4_shared)
-    set(_ac3forge_ac4dec_install_targets iclforge_ac4dec_objects iclforge_ac4dec_static iclforge_ac4dec_shared)
-    set(_ac3forge_ac4enc_install_targets iclforge_ac4enc_objects iclforge_ac4enc_static iclforge_ac4enc_shared)
-    set(_ac3forge_capi_install_targets iclforge_capi_objects iclforge_capi_static iclforge_capi_shared)
+if(ICLFORGE_INSTALL_BOTH_LINKAGES)
+    set(_iclforge_forge_install_targets iclforge_ac3_objects iclforge_ac3_static iclforge_ac3_shared)
+    set(_iclforge_signing_install_targets iclforge_signing_objects iclforge_signing_static iclforge_signing_shared)
+    set(_iclforge_matroska_install_targets iclforge_matroska_objects iclforge_matroska_static iclforge_matroska_shared)
+    set(_iclforge_mp4_install_targets iclforge_mp4_objects iclforge_mp4_static iclforge_mp4_shared)
+    set(_iclforge_mpegts_install_targets iclforge_mpegts_objects iclforge_mpegts_static iclforge_mpegts_shared)
+    set(_iclforge_iab_install_targets iclforge_iab_objects iclforge_iab_static iclforge_iab_shared)
+    set(_iclforge_iamf_install_targets iclforge_iamf_objects iclforge_iamf_static iclforge_iamf_shared)
+    set(_iclforge_ac4_install_targets iclforge_ac4_objects iclforge_ac4_static iclforge_ac4_shared)
+    set(_iclforge_ac4dec_install_targets iclforge_ac4dec_objects iclforge_ac4dec_static iclforge_ac4dec_shared)
+    set(_iclforge_ac4enc_install_targets iclforge_ac4enc_objects iclforge_ac4enc_static iclforge_ac4enc_shared)
+    set(_iclforge_capi_install_targets iclforge_capi_objects iclforge_capi_static iclforge_capi_shared)
 elseif(BUILD_SHARED_LIBS)
     # iclforge::c (src/capi/CMakeLists.txt) statically embeds iclforge::ac3_static PRIVATE
     # unconditionally, regardless of BUILD_SHARED_LIBS - see that file's header comment for why
@@ -80,62 +80,62 @@ elseif(BUILD_SHARED_LIBS)
     # library). iclforge_ac3_static used to have to be in an export set here: iclforge_capi_objects is an
     # OBJECT library, so the PRIVATE dependency ended up in its own INTERFACE_LINK_LIBRARIES
     # (OBJECT libraries have no link step of their own to hide it behind), and since
-    # iclforge_capi_objects is itself part of capiTargets whenever AC3FORGE_BUILD_CAPI is ON,
+    # iclforge_capi_objects is itself part of capiTargets whenever ICLFORGE_BUILD_CAPI is ON,
     # install(EXPORT capiTargets) failed with "requires target iclforge_ac3_static that is not in any
     # export set." That dependency now sits on iclforge_capi_static and iclforge_capi_shared instead, and a
     # shared library's PRIVATE dependencies are not exported, so nothing in capiTargets names
     # iclforge_ac3_static in this branch any more. It is still installed, so that a package built this
     # way keeps shipping the archive it always has. iclforge_ac3_shared never needed the same treatment.
-    if(AC3FORGE_BUILD_CAPI)
-        set(_ac3forge_forge_install_targets iclforge_ac3_objects iclforge_ac3_static iclforge_ac3_shared)
+    if(ICLFORGE_BUILD_CAPI)
+        set(_iclforge_forge_install_targets iclforge_ac3_objects iclforge_ac3_static iclforge_ac3_shared)
     else()
-        set(_ac3forge_forge_install_targets iclforge_ac3_objects iclforge_ac3_shared)
+        set(_iclforge_forge_install_targets iclforge_ac3_objects iclforge_ac3_shared)
     endif()
-    set(_ac3forge_signing_install_targets iclforge_signing_objects iclforge_signing_shared)
-    set(_ac3forge_matroska_install_targets iclforge_matroska_objects iclforge_matroska_shared)
-    set(_ac3forge_mp4_install_targets iclforge_mp4_objects iclforge_mp4_shared)
-    set(_ac3forge_mpegts_install_targets iclforge_mpegts_objects iclforge_mpegts_shared)
-    set(_ac3forge_iab_install_targets iclforge_iab_objects iclforge_iab_shared)
-    set(_ac3forge_iamf_install_targets iclforge_iamf_objects iclforge_iamf_shared)
-    set(_ac3forge_ac4_install_targets iclforge_ac4_objects iclforge_ac4_shared)
-    set(_ac3forge_ac4dec_install_targets iclforge_ac4dec_objects iclforge_ac4dec_shared)
-    set(_ac3forge_ac4enc_install_targets iclforge_ac4enc_objects iclforge_ac4enc_shared)
-    set(_ac3forge_capi_install_targets iclforge_capi_objects iclforge_capi_shared)
+    set(_iclforge_signing_install_targets iclforge_signing_objects iclforge_signing_shared)
+    set(_iclforge_matroska_install_targets iclforge_matroska_objects iclforge_matroska_shared)
+    set(_iclforge_mp4_install_targets iclforge_mp4_objects iclforge_mp4_shared)
+    set(_iclforge_mpegts_install_targets iclforge_mpegts_objects iclforge_mpegts_shared)
+    set(_iclforge_iab_install_targets iclforge_iab_objects iclforge_iab_shared)
+    set(_iclforge_iamf_install_targets iclforge_iamf_objects iclforge_iamf_shared)
+    set(_iclforge_ac4_install_targets iclforge_ac4_objects iclforge_ac4_shared)
+    set(_iclforge_ac4dec_install_targets iclforge_ac4dec_objects iclforge_ac4dec_shared)
+    set(_iclforge_ac4enc_install_targets iclforge_ac4enc_objects iclforge_ac4enc_shared)
+    set(_iclforge_capi_install_targets iclforge_capi_objects iclforge_capi_shared)
 else()
-    set(_ac3forge_forge_install_targets iclforge_ac3_objects iclforge_ac3_static)
-    set(_ac3forge_signing_install_targets iclforge_signing_objects iclforge_signing_static)
-    set(_ac3forge_matroska_install_targets iclforge_matroska_objects iclforge_matroska_static)
-    set(_ac3forge_mp4_install_targets iclforge_mp4_objects iclforge_mp4_static)
-    set(_ac3forge_mpegts_install_targets iclforge_mpegts_objects iclforge_mpegts_static)
-    set(_ac3forge_iab_install_targets iclforge_iab_objects iclforge_iab_static)
-    set(_ac3forge_iamf_install_targets iclforge_iamf_objects iclforge_iamf_static)
-    set(_ac3forge_ac4_install_targets iclforge_ac4_objects iclforge_ac4_static)
-    set(_ac3forge_ac4dec_install_targets iclforge_ac4dec_objects iclforge_ac4dec_static)
-    set(_ac3forge_ac4enc_install_targets iclforge_ac4enc_objects iclforge_ac4enc_static)
-    set(_ac3forge_capi_install_targets iclforge_capi_objects iclforge_capi_static)
+    set(_iclforge_forge_install_targets iclforge_ac3_objects iclforge_ac3_static)
+    set(_iclforge_signing_install_targets iclforge_signing_objects iclforge_signing_static)
+    set(_iclforge_matroska_install_targets iclforge_matroska_objects iclforge_matroska_static)
+    set(_iclforge_mp4_install_targets iclforge_mp4_objects iclforge_mp4_static)
+    set(_iclforge_mpegts_install_targets iclforge_mpegts_objects iclforge_mpegts_static)
+    set(_iclforge_iab_install_targets iclforge_iab_objects iclforge_iab_static)
+    set(_iclforge_iamf_install_targets iclforge_iamf_objects iclforge_iamf_static)
+    set(_iclforge_ac4_install_targets iclforge_ac4_objects iclforge_ac4_static)
+    set(_iclforge_ac4dec_install_targets iclforge_ac4dec_objects iclforge_ac4dec_static)
+    set(_iclforge_ac4enc_install_targets iclforge_ac4enc_objects iclforge_ac4enc_static)
+    set(_iclforge_capi_install_targets iclforge_capi_objects iclforge_capi_static)
 endif()
 
 # iclforge_ac3_simd_avx2 (runtime SIMD dispatch, x86_64 only,
-# AC3FORGE_AVX2) is PUBLIC-linked into both iclforge_ac3_static and iclforge_ac3_shared
+# ICLFORGE_AVX2) is PUBLIC-linked into both iclforge_ac3_static and iclforge_ac3_shared
 # unconditionally (src/ac3/CMakeLists.txt), so it needs the same
 # export-set membership iclforge_ac3_objects gets just above and for the same
 # reason: install(EXPORT) cannot resolve a usage-requirement dependency
 # that is not itself part of an export set, regardless of which branch
 # above put iclforge_ac3_static/forge_shared in the target list. Does not exist
-# at all when AC3FORGE_AVX2=OFF or the target is not x86_64.
+# at all when ICLFORGE_AVX2=OFF or the target is not x86_64.
 if(TARGET iclforge_ac3_simd_avx2)
-    list(APPEND _ac3forge_forge_install_targets iclforge_ac3_simd_avx2)
+    list(APPEND _iclforge_forge_install_targets iclforge_ac3_simd_avx2)
 endif()
 
-# ac3adm/admbridge deliberately do NOT follow the AC3FORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS
+# ac3adm/admbridge deliberately do NOT follow the ICLFORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS
 # selection above - they are always shared-only, unconditionally, regardless of how the rest of
 # this project is configured. See src/adm/CMakeLists.txt's and src/admbridge/CMakeLists.txt's
 # own header comments for why: ac3adm PRIVATE-embeds the third-party libbw64/libadm (never
 # installed/exported by this project in their own right), which only a self-contained SHARED
 # library can absorb without either re-exporting them or leaving a STATIC archive with genuinely
 # unresolved symbols. admbridge follows suit because it PUBLIC-links iclforge::adm_shared.
-set(_ac3forge_adm_install_targets iclforge_adm_objects iclforge_adm_shared)
-set(_ac3forge_admbridge_install_targets iclforge_admbridge_objects iclforge_admbridge_shared)
+set(_iclforge_adm_install_targets iclforge_adm_objects iclforge_adm_shared)
+set(_iclforge_admbridge_install_targets iclforge_admbridge_objects iclforge_admbridge_shared)
 
 # Raw target names are iclforge_<lib>_<kind>; the export sets prefix the iclforge:: namespace, so the
 # exported names are <lib>_<kind> (iclforge::mp4_static), as iclforge_add_library() sets for its libraries.
@@ -155,12 +155,12 @@ endforeach()
 # plan sketched: install(EXPORT ... NAMESPACE X) applies X uniformly to
 # every target in that export set, and iclforge::ac3_static/iclforge::ac3_shared
 # need a different namespace from iclforge::matroska_static/
-# iclforge::matroska_shared. Both still land in the one ac3forgeConfig.cmake
-# a consumer's find_package(ac3forge) resolves - see ac3forgeConfig.cmake.in,
+# iclforge::matroska_shared. Both still land in the one iclforgeConfig.cmake
+# a consumer's find_package(iclforge) resolves - see iclforgeConfig.cmake.in,
 # which include()s both generated *Targets.cmake files.
 #
-# forgeTargets (not ac3forgeTargets): every other export set here is named
-# after its own AC3FORGE_BUILD_<NAME> component switch (matroskaTargets,
+# forgeTargets (not iclforgeTargets): every other export set here is named
+# after its own ICLFORGE_BUILD_<NAME> component switch (matroskaTargets,
 # mp4Targets, mpegtsTargets, capiTargets) - forge has no such switch, since
 # it's the one mandatory, always-built component, but it still gets named
 # after its own component identity ("forge", matching its raw target names
@@ -172,7 +172,7 @@ endforeach()
 # installed .lib/.dll) - install(EXPORT) otherwise refuses to generate,
 # since it can't resolve a usage-requirement dependency that isn't itself
 # part of any export set.
-install(TARGETS ${_ac3forge_forge_install_targets}
+install(TARGETS ${_iclforge_forge_install_targets}
     EXPORT ac3Targets
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -195,12 +195,12 @@ install(FILES
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/ac3"
     COMPONENT library)
 
-ac3forge_pkgconfig_libname(_ac3forge_forge_pc_libname iclforge_ac3_shared iclforge_ac3 iclforge_ac3_static
-    "${_ac3forge_forge_install_targets}")
-ac3forge_install_pkgconfig(
-    NAME ac3forge
+iclforge_pkgconfig_libname(_iclforge_forge_pc_libname iclforge_ac3_shared iclforge_ac3 iclforge_ac3_static
+    "${_iclforge_forge_install_targets}")
+iclforge_install_pkgconfig(
+    NAME iclforge
     DESCRIPTION "Clean-room AC-3 (ATSC A/52) and E-AC-3 encoder and decoder with a spatial object layer"
-    LIBNAME "${_ac3forge_forge_pc_libname}"
+    LIBNAME "${_iclforge_forge_pc_libname}"
     REQUIRES iclforge_base iclforge_dsp iclforge_objects iclforge_render iclforge_iec61937)
 
 # The codec-blind libraries iclforge::ac3 links (src/base, dsp, objects, render, iec61937): each is a
@@ -216,11 +216,11 @@ iclforge_install_library(render
 iclforge_install_library(iec61937
     DESCRIPTION "IEC 61937 burst packing and unpacking for AC-3, E-AC-3 and AC-4")
 
-# iclforge::signing is mandatory, not an AC3FORGE_BUILD_<NAME>-gated optional component (same as
+# iclforge::signing is mandatory, not an ICLFORGE_BUILD_<NAME>-gated optional component (same as
 # iclforge::ac3 itself, unconditionally add_subdirectory()'d in the root CMakeLists.txt) - so unlike
 # iclforge::matroska/iclforge::mp4/iclforge::mpegts/iclforge::c below, its install/export block carries
-# no if(AC3FORGE_BUILD_...) guard.
-install(TARGETS ${_ac3forge_signing_install_targets}
+# no if(ICLFORGE_BUILD_...) guard.
+install(TARGETS ${_iclforge_signing_install_targets}
     EXPORT signingTargets
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -234,22 +234,22 @@ install(FILES "${CMAKE_BINARY_DIR}/src/signing/generated/iclforge/signing/export
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/signing"
     COMPONENT library)
 
-ac3forge_pkgconfig_libname(_ac3forge_signing_pc_libname iclforge_signing_shared iclforge_signing iclforge_signing_static
-    "${_ac3forge_signing_install_targets}")
-ac3forge_install_pkgconfig(
+iclforge_pkgconfig_libname(_iclforge_signing_pc_libname iclforge_signing_shared iclforge_signing iclforge_signing_static
+    "${_iclforge_signing_install_targets}")
+iclforge_install_pkgconfig(
     NAME ac3signing
-    DESCRIPTION "EMDF Atmos object-signing tag for ac3forge"
-    LIBNAME "${_ac3forge_signing_pc_libname}"
-    REQUIRES ac3forge)
+    DESCRIPTION "EMDF Atmos object-signing tag for iclforge"
+    LIBNAME "${_iclforge_signing_pc_libname}"
+    REQUIRES iclforge)
 
-# iclforge::matroska is an optional component (AC3FORGE_BUILD_MATROSKA, see the root
+# iclforge::matroska is an optional component (ICLFORGE_BUILD_MATROSKA, see the root
 # CMakeLists.txt) - a vcpkg port maps this straight to its own "matroska" feature. Its
 # targets/headers/export set only exist to install when the component was actually built;
-# ac3forgeConfig.cmake.in's include() of matroskaTargets.cmake is itself conditional
+# iclforgeConfig.cmake.in's include() of matroskaTargets.cmake is itself conditional
 # (if(EXISTS)) to match. iclforge::mp4 (below) follows this same shape: its own
-# AC3FORGE_BUILD_<NAME> option, its own guarded block, its own EXPORT set name.
-if(AC3FORGE_BUILD_MATROSKA)
-    install(TARGETS ${_ac3forge_matroska_install_targets}
+# ICLFORGE_BUILD_<NAME> option, its own guarded block, its own EXPORT set name.
+if(ICLFORGE_BUILD_MATROSKA)
+    install(TARGETS ${_iclforge_matroska_install_targets}
         EXPORT matroskaTargets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -263,22 +263,22 @@ if(AC3FORGE_BUILD_MATROSKA)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/matroska"
         COMPONENT library)
 
-    ac3forge_pkgconfig_libname(_ac3forge_matroska_pc_libname iclforge_matroska_shared iclforge_matroska iclforge_matroska_static
-        "${_ac3forge_matroska_install_targets}")
-    ac3forge_install_pkgconfig(
+    iclforge_pkgconfig_libname(_iclforge_matroska_pc_libname iclforge_matroska_shared iclforge_matroska iclforge_matroska_static
+        "${_iclforge_matroska_install_targets}")
+    iclforge_install_pkgconfig(
         NAME matroska
         DESCRIPTION "Standalone Matroska (.mkv) container writer"
-        LIBNAME "${_ac3forge_matroska_pc_libname}")
+        LIBNAME "${_iclforge_matroska_pc_libname}")
 endif()
 
-# iclforge::mp4 is an optional component (AC3FORGE_BUILD_MP4, see the root CMakeLists.txt), same
-# shape as iclforge::matroska above including the AC3FORGE_INSTALL_BOTH_LINKAGES-selected
+# iclforge::mp4 is an optional component (ICLFORGE_BUILD_MP4, see the root CMakeLists.txt), same
+# shape as iclforge::matroska above including the ICLFORGE_INSTALL_BOTH_LINKAGES-selected
 # target list - its targets, headers and export set only exist to install when the component
-# was actually built. ac3forgeConfig.cmake.in's include() of mp4Targets.cmake is itself
+# was actually built. iclforgeConfig.cmake.in's include() of mp4Targets.cmake is itself
 # conditional (if(EXISTS)) to match. Maps onto its own "mp4" vcpkg feature the same way
 # matroska does (packaging/vcpkg-port/iclforge/vcpkg.json).
-if(AC3FORGE_BUILD_MP4)
-    install(TARGETS ${_ac3forge_mp4_install_targets}
+if(ICLFORGE_BUILD_MP4)
+    install(TARGETS ${_iclforge_mp4_install_targets}
         EXPORT mp4Targets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -292,19 +292,19 @@ if(AC3FORGE_BUILD_MP4)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/mp4"
         COMPONENT library)
 
-    ac3forge_pkgconfig_libname(_ac3forge_mp4_pc_libname iclforge_mp4_shared iclforge_mp4 iclforge_mp4_static
-        "${_ac3forge_mp4_install_targets}")
-    ac3forge_install_pkgconfig(
+    iclforge_pkgconfig_libname(_iclforge_mp4_pc_libname iclforge_mp4_shared iclforge_mp4 iclforge_mp4_static
+        "${_iclforge_mp4_install_targets}")
+    iclforge_install_pkgconfig(
         NAME mp4
         DESCRIPTION "Standalone MP4/ISOBMFF container writer, plus fMP4/CMAF and HLS/DASH signaling"
-        LIBNAME "${_ac3forge_mp4_pc_libname}")
+        LIBNAME "${_iclforge_mp4_pc_libname}")
 endif()
 
-# iclforge::mpegts is an optional component (AC3FORGE_BUILD_MPEGTS, see the root
+# iclforge::mpegts is an optional component (ICLFORGE_BUILD_MPEGTS, see the root
 # CMakeLists.txt) - same shape as iclforge::matroska immediately above, including its own
 # "mpegts" vcpkg feature (packaging/vcpkg-port/iclforge/vcpkg.json).
-if(AC3FORGE_BUILD_MPEGTS)
-    install(TARGETS ${_ac3forge_mpegts_install_targets}
+if(ICLFORGE_BUILD_MPEGTS)
+    install(TARGETS ${_iclforge_mpegts_install_targets}
         EXPORT mpegtsTargets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -318,20 +318,20 @@ if(AC3FORGE_BUILD_MPEGTS)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/mpegts"
         COMPONENT library)
 
-    ac3forge_pkgconfig_libname(_ac3forge_mpegts_pc_libname iclforge_mpegts_shared iclforge_mpegts iclforge_mpegts_static
-        "${_ac3forge_mpegts_install_targets}")
-    ac3forge_install_pkgconfig(
+    iclforge_pkgconfig_libname(_iclforge_mpegts_pc_libname iclforge_mpegts_shared iclforge_mpegts iclforge_mpegts_static
+        "${_iclforge_mpegts_install_targets}")
+    iclforge_install_pkgconfig(
         NAME mpegts
         DESCRIPTION "Standalone MPEG-2 Transport Stream container writer"
-        LIBNAME "${_ac3forge_mpegts_pc_libname}")
+        LIBNAME "${_iclforge_mpegts_pc_libname}")
 endif()
 
-# iclforge::iab is an optional component (AC3FORGE_BUILD_IAB, see the root CMakeLists.txt) -
+# iclforge::iab is an optional component (ICLFORGE_BUILD_IAB, see the root CMakeLists.txt) -
 # same shape as iclforge::matroska/iclforge::mp4/iclforge::mpegts above, a reader rather than a
 # writer. The vcpkg port's "iab" feature and the Conan recipe's "iab" option switch it, off unless
 # asked for (packaging/).
-if(AC3FORGE_BUILD_IAB)
-    install(TARGETS ${_ac3forge_iab_install_targets}
+if(ICLFORGE_BUILD_IAB)
+    install(TARGETS ${_iclforge_iab_install_targets}
         EXPORT iabTargets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -345,23 +345,23 @@ if(AC3FORGE_BUILD_IAB)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/iab"
         COMPONENT library)
 
-    ac3forge_pkgconfig_libname(_ac3forge_iab_pc_libname iclforge_iab_shared iclforge_iab iclforge_iab_static
-        "${_ac3forge_iab_install_targets}")
-    ac3forge_install_pkgconfig(
+    iclforge_pkgconfig_libname(_iclforge_iab_pc_libname iclforge_iab_shared iclforge_iab iclforge_iab_static
+        "${_iclforge_iab_install_targets}")
+    iclforge_install_pkgconfig(
         NAME ac3iab
         DESCRIPTION "Standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader"
-        LIBNAME "${_ac3forge_iab_pc_libname}")
+        LIBNAME "${_iclforge_iab_pc_libname}")
 endif()
 
-# iclforge::adm and iclforge::admbridge are optional components (AC3FORGE_BUILD_ADM, see the root
+# iclforge::adm and iclforge::admbridge are optional components (ICLFORGE_BUILD_ADM, see the root
 # CMakeLists.txt - admbridge shares ac3adm's own flag, see src/admbridge/CMakeLists.txt's header
 # comment) - but unlike every other component in this file, each installs/exports SHARED ONLY
-# (${_ac3forge_adm_install_targets}/${_ac3forge_admbridge_install_targets}, set above,
-# unconditionally shared regardless of AC3FORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS) - see
+# (${_iclforge_adm_install_targets}/${_iclforge_admbridge_install_targets}, set above,
+# unconditionally shared regardless of ICLFORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS) - see
 # src/adm/CMakeLists.txt's header comment for why. No vcpkg/Conan feature: ac3adm already has
 # none (needs Boost, see docs/library/index.md), and admbridge transitively depends on it.
-if(AC3FORGE_BUILD_ADM)
-    install(TARGETS ${_ac3forge_adm_install_targets}
+if(ICLFORGE_BUILD_ADM)
+    install(TARGETS ${_iclforge_adm_install_targets}
         EXPORT admTargets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -375,14 +375,14 @@ if(AC3FORGE_BUILD_ADM)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/adm"
         COMPONENT library)
 
-    # LIBNAME hardcoded, not ac3forge_pkgconfig_libname() - ac3adm/admbridge are shared-only, so
+    # LIBNAME hardcoded, not iclforge_pkgconfig_libname() - ac3adm/admbridge are shared-only, so
     # there's no static/shared choice to derive here, unlike every other component above.
-    ac3forge_install_pkgconfig(
+    iclforge_install_pkgconfig(
         NAME ac3adm
         DESCRIPTION "Standalone BW64/RF64 + Audio Definition Model (ADM) parser"
         LIBNAME iclforge_adm)
 
-    install(TARGETS ${_ac3forge_admbridge_install_targets}
+    install(TARGETS ${_iclforge_admbridge_install_targets}
         EXPORT admbridgeTargets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -396,18 +396,18 @@ if(AC3FORGE_BUILD_ADM)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/admbridge"
         COMPONENT library)
 
-    ac3forge_install_pkgconfig(
+    iclforge_install_pkgconfig(
         NAME admbridge
         DESCRIPTION "Maps a parsed ADM object graph onto/from ac3::oba::AtmosEncoder"
         LIBNAME iclforge_admbridge
-        REQUIRES ac3forge ac3adm)
+        REQUIRES iclforge ac3adm)
 endif()
 
-# iclforge::iamf is an optional component (AC3FORGE_BUILD_IAMF, see the root CMakeLists.txt) - same
+# iclforge::iamf is an optional component (ICLFORGE_BUILD_IAMF, see the root CMakeLists.txt) - same
 # shape as ac3iab immediately above, a writer rather than a reader. The vcpkg port's "iamf"
 # feature and the Conan recipe's "iamf" option switch it, off unless asked for (packaging/).
-if(AC3FORGE_BUILD_IAMF)
-    install(TARGETS ${_ac3forge_iamf_install_targets}
+if(ICLFORGE_BUILD_IAMF)
+    install(TARGETS ${_iclforge_iamf_install_targets}
         EXPORT iamfTargets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -421,17 +421,17 @@ if(AC3FORGE_BUILD_IAMF)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/iamf"
         COMPONENT library)
 
-    ac3forge_pkgconfig_libname(_ac3forge_iamf_pc_libname iclforge_iamf_shared iclforge_iamf iclforge_iamf_static
-        "${_ac3forge_iamf_install_targets}")
-    ac3forge_install_pkgconfig(
+    iclforge_pkgconfig_libname(_iclforge_iamf_pc_libname iclforge_iamf_shared iclforge_iamf iclforge_iamf_static
+        "${_iclforge_iamf_install_targets}")
+    iclforge_install_pkgconfig(
         NAME iamf
         DESCRIPTION "IAMF v1.1.0 OBU / ISO-BMFF writer"
-        LIBNAME "${_ac3forge_iamf_pc_libname}")
+        LIBNAME "${_iclforge_iamf_pc_libname}")
 endif()
 
 # The AC-4 inspector (src/ac4, iclforge::ac4), the AC-4 decoder (src/ac4dec, iclforge::ac4dec) and the
 # AC-4 encoder (src/ac4enc, iclforge::ac4enc) are optional components under one switch,
-# AC3FORGE_BUILD_AC4 (see the root CMakeLists.txt), with the core the decoder and the encoder link
+# ICLFORGE_BUILD_AC4 (see the root CMakeLists.txt), with the core the decoder and the encoder link
 # (src/ac4core, iclforge::ac4core). The four share one export set, ac4Targets, installed under the ac4::
 # namespace the tree's own aliases use, each with its own install() and its own .pc file - the
 # pairing tools/checks/check_packaging_versions.sh counts. The decoder's targets are exported as
@@ -445,8 +445,8 @@ endif()
 # vcpkg port's "ac4" feature and the Conan recipe's "ac4" option switch all four, off unless asked
 # for (packaging/): each adds public targets, which a curated vcpkg port's default features may
 # not.
-if(AC3FORGE_BUILD_AC4)
-    install(TARGETS ${_ac3forge_ac4_install_targets}
+if(ICLFORGE_BUILD_AC4)
+    install(TARGETS ${_iclforge_ac4_install_targets}
         EXPORT ac4Targets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -460,14 +460,14 @@ if(AC3FORGE_BUILD_AC4)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge/ac4"
         COMPONENT library)
 
-    ac3forge_pkgconfig_libname(_ac3forge_ac4_pc_libname iclforge_ac4_shared iclforge_ac4 iclforge_ac4_static
-        "${_ac3forge_ac4_install_targets}")
-    ac3forge_install_pkgconfig(
+    iclforge_pkgconfig_libname(_iclforge_ac4_pc_libname iclforge_ac4_shared iclforge_ac4 iclforge_ac4_static
+        "${_iclforge_ac4_install_targets}")
+    iclforge_install_pkgconfig(
         NAME ac4
         DESCRIPTION "AC-4 (ETSI TS 103 190) sync frame, table of contents and presentation reader"
-        LIBNAME "${_ac3forge_ac4_pc_libname}")
+        LIBNAME "${_iclforge_ac4_pc_libname}")
 
-    install(TARGETS ${_ac3forge_ac4dec_install_targets}
+    install(TARGETS ${_iclforge_ac4dec_install_targets}
         EXPORT ac4Targets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -483,17 +483,17 @@ if(AC3FORGE_BUILD_AC4)
 
     # REQUIRES ac4: the decoder's header includes the inspector's, and each decoder library links
     # the inspector of its own kind. STATIC_REQUIRES ac4core: libac4dec_static.a calls into the
-    # core's archive, which only a static-only install names here (ac3forge_install_pkgconfig()).
-    ac3forge_pkgconfig_libname(_ac3forge_ac4dec_pc_libname iclforge_ac4dec_shared iclforge_ac4dec iclforge_ac4dec_static
-        "${_ac3forge_ac4dec_install_targets}")
-    ac3forge_install_pkgconfig(
+    # core's archive, which only a static-only install names here (iclforge_install_pkgconfig()).
+    iclforge_pkgconfig_libname(_iclforge_ac4dec_pc_libname iclforge_ac4dec_shared iclforge_ac4dec iclforge_ac4dec_static
+        "${_iclforge_ac4dec_install_targets}")
+    iclforge_install_pkgconfig(
         NAME ac4dec
         DESCRIPTION "AC-4 decoder (ETSI TS 103 190-1 and TS 103 190-2)"
-        LIBNAME "${_ac3forge_ac4dec_pc_libname}"
+        LIBNAME "${_iclforge_ac4dec_pc_libname}"
         REQUIRES ac4
         STATIC_REQUIRES iclforge_ac4core)
 
-    install(TARGETS ${_ac3forge_ac4enc_install_targets}
+    install(TARGETS ${_iclforge_ac4enc_install_targets}
         EXPORT ac4Targets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -509,35 +509,35 @@ if(AC3FORGE_BUILD_AC4)
 
     # As the decoder's: the encoder's header includes the inspector's, each encoder library links
     # the inspector of its own kind, and libac4enc_static.a calls into the core's archive.
-    ac3forge_pkgconfig_libname(_ac3forge_ac4enc_pc_libname iclforge_ac4enc_shared iclforge_ac4enc iclforge_ac4enc_static
-        "${_ac3forge_ac4enc_install_targets}")
-    ac3forge_install_pkgconfig(
+    iclforge_pkgconfig_libname(_iclforge_ac4enc_pc_libname iclforge_ac4enc_shared iclforge_ac4enc iclforge_ac4enc_static
+        "${_iclforge_ac4enc_install_targets}")
+    iclforge_install_pkgconfig(
         NAME ac4enc
         DESCRIPTION "AC-4 encoder (ETSI TS 103 190-1 and TS 103 190-2)"
-        LIBNAME "${_ac3forge_ac4enc_pc_libname}"
+        LIBNAME "${_iclforge_ac4enc_pc_libname}"
         REQUIRES ac4
         STATIC_REQUIRES iclforge_ac4core)
 
-    if("iclforge_ac4dec_static" IN_LIST _ac3forge_ac4dec_install_targets OR
-       "iclforge_ac4enc_static" IN_LIST _ac3forge_ac4enc_install_targets)
+    if("iclforge_ac4dec_static" IN_LIST _iclforge_ac4dec_install_targets OR
+       "iclforge_ac4enc_static" IN_LIST _iclforge_ac4enc_install_targets)
         install(TARGETS iclforge_ac4core
             EXPORT ac4Targets
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
 
-        ac3forge_install_pkgconfig(
+        iclforge_install_pkgconfig(
             NAME iclforge_ac4core
             DESCRIPTION "The tables and transforms libac4dec_static.a and libac4enc_static.a link (no headers)"
             LIBNAME iclforge_ac4core_static)
     endif()
 endif()
 
-# iclforge::c is an optional component (AC3FORGE_BUILD_CAPI, see the root CMakeLists.txt) - same
+# iclforge::c is an optional component (ICLFORGE_BUILD_CAPI, see the root CMakeLists.txt) - same
 # shape as iclforge::matroska/iclforge::mp4/iclforge::mpegts above. Roadmap item F1's whole point is a
-# stable C-callable surface for OTHER toolchains, so its header (ac3forge_c/ac3forge.h) installs
-# to its own include/ac3forge_c/ subdirectory rather than under include/ac3/ - a C or non-C++
+# stable C-callable surface for OTHER toolchains, so its header (iclforge_c/iclforge.h) installs
+# to its own include/iclforge_c/ subdirectory rather than under include/ac3/ - a C or non-C++
 # consumer has no reason to see (or accidentally #include) any C++ header this package ships.
-if(AC3FORGE_BUILD_CAPI)
-    install(TARGETS ${_ac3forge_capi_install_targets}
+if(ICLFORGE_BUILD_CAPI)
+    install(TARGETS ${_iclforge_capi_install_targets}
         EXPORT capiTargets
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
@@ -547,7 +547,7 @@ if(AC3FORGE_BUILD_CAPI)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
         COMPONENT library)
 
-    # ac3forge.h #includes both of these, and neither is in the source include/ tree the
+    # iclforge.h #includes both of these, and neither is in the source include/ tree the
     # install(DIRECTORY) above copies: export.h is generate_export_header()'s output and
     # version.h is configure_file()'d from version.h.in (which that install does copy, as the
     # template), each into src/capi's own binary dir. Without version.h, every
@@ -559,37 +559,37 @@ if(AC3FORGE_BUILD_CAPI)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iclforge_c"
         COMPONENT library)
 
-    # STATIC_REQUIRES ac3forge: libac3forge_c_static.a calls into libac3forge_static.a (capiTargets
+    # STATIC_REQUIRES iclforge: libiclforge_c_static.a calls into libiclforge_ac3_static.a (capiTargets
     # carries $<LINK_ONLY:iclforge::ac3_static> for it), and only a static-only install names the
-    # archive here. ac3forge_install_pkgconfig() says why that goes to Requires.private:
-    # libac3forge_c.so embeds the codec and needs no libac3forge.so beside it.
-    ac3forge_pkgconfig_libname(_ac3forge_capi_pc_libname iclforge_capi_shared iclforge_c iclforge_c_static
-        "${_ac3forge_capi_install_targets}")
-    # ac3forge.h declares its AC-4 section either way; with AC3FORGE_BUILD_AC4 off those functions
-    # return AC3FORGE_ERROR_UNSUPPORTED (src/capi/src/ac4_absent.cpp). With it on, the archive also
+    # archive here. iclforge_install_pkgconfig() says why that goes to Requires.private:
+    # libiclforge_c.so embeds the codec and needs no libiclforge_ac3.so beside it.
+    iclforge_pkgconfig_libname(_iclforge_capi_pc_libname iclforge_capi_shared iclforge_c iclforge_c_static
+        "${_iclforge_capi_install_targets}")
+    # iclforge.h declares its AC-4 section either way; with ICLFORGE_BUILD_AC4 off those functions
+    # return ICLFORGE_ERROR_UNSUPPORTED (src/capi/src/ac4_absent.cpp). With it on, the archive also
     # calls into the decoder's and the encoder's (capiTargets carries their $<LINK_ONLY:...> archives
     # too), and the .pc of each brings the inspector and the core.
-    if(AC3FORGE_BUILD_AC4)
-        set(_ac3forge_capi_pc_description
+    if(ICLFORGE_BUILD_AC4)
+        set(_iclforge_capi_pc_description
             "Stable C11 API over the AC-3, E-AC-3 and AC-4 encoders and decoders")
-        set(_ac3forge_capi_pc_static_requires ac3forge ac4dec ac4enc)
+        set(_iclforge_capi_pc_static_requires iclforge ac4dec ac4enc)
     else()
-        set(_ac3forge_capi_pc_description
+        set(_iclforge_capi_pc_description
             "Stable C11 API over the AC-3 and E-AC-3 encoders and decoders")
-        set(_ac3forge_capi_pc_static_requires ac3forge)
+        set(_iclforge_capi_pc_static_requires iclforge)
     endif()
-    ac3forge_install_pkgconfig(
-        NAME ac3forge_c
-        DESCRIPTION "${_ac3forge_capi_pc_description}"
-        LIBNAME "${_ac3forge_capi_pc_libname}"
-        STATIC_REQUIRES ${_ac3forge_capi_pc_static_requires})
+    iclforge_install_pkgconfig(
+        NAME iclforge_c
+        DESCRIPTION "${_iclforge_capi_pc_description}"
+        LIBNAME "${_iclforge_capi_pc_libname}"
+        STATIC_REQUIRES ${_iclforge_capi_pc_static_requires})
 endif()
 
-# The config file find_package(ac3forge) actually loads. No find_dependency()
-# calls needed in ac3forgeConfig.cmake.in: the platform-audio code is
+# The config file find_package(iclforge) actually loads. No find_dependency()
+# calls needed in iclforgeConfig.cmake.in: the platform-audio code is
 # physically in a separate, non-exported target (iclforge::audio), and {fmt}, the
 # one third-party library iclforge::ac3 and iclforge::mp4 use, is compiled into their
-# object files as a private copy (ac3::fmt_private, cmake/Fmt.cmake) instead of linked. A
+# object files as a private copy (iclforge::fmt_private, cmake/Fmt.cmake) instead of linked. A
 # shared library absorbs a linked {fmt} at its own link step; a static archive
 # cannot, so a linked {fmt} would leave its consumers an undefined fmt:: symbol
 # that this package names nowhere. tools/checks/check_install_consumer.sh links
@@ -597,76 +597,76 @@ endif()
 # C/C++ runtime supplies fails there.
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/iclforgeConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/ac3forgeConfig.cmake"
-    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge")
+    "${CMAKE_CURRENT_BINARY_DIR}/iclforgeConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge")
 
 # SameMajorVersion, not exact: pre-1.0, there is no ABI-compatibility promise
 # across any two releases (see src/ac3/CMakeLists.txt's SOVERSION comment for
 # the full reasoning), but SameMajorVersion is the conventional default and
 # is what actually governs here - find_package()'s own version matching
-# against a requested `find_package(ac3forge X.Y.Z)`, not the .so's SONAME
+# against a requested `find_package(iclforge X.Y.Z)`, not the .so's SONAME
 # (which is set separately, to the full version, precisely because 0.x has
 # no narrower compatible range to express).
 write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/ac3forgeConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/iclforgeConfigVersion.cmake"
     VERSION "${PROJECT_VERSION}"
     COMPATIBILITY SameMajorVersion)
 
 install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/ac3forgeConfig.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/ac3forgeConfigVersion.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        "${CMAKE_CURRENT_BINARY_DIR}/iclforgeConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/iclforgeConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
     COMPONENT library)
 
 install(EXPORT ac3Targets
     FILE ac3Targets.cmake
     NAMESPACE iclforge::
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
     COMPONENT library)
 
 install(EXPORT signingTargets
     FILE signingTargets.cmake
     NAMESPACE iclforge::
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
     COMPONENT library)
 
-if(AC3FORGE_BUILD_MATROSKA)
+if(ICLFORGE_BUILD_MATROSKA)
     install(EXPORT matroskaTargets
         FILE matroskaTargets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 endif()
 
-if(AC3FORGE_BUILD_MP4)
+if(ICLFORGE_BUILD_MP4)
     install(EXPORT mp4Targets
         FILE mp4Targets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 endif()
 
-if(AC3FORGE_BUILD_MPEGTS)
+if(ICLFORGE_BUILD_MPEGTS)
     install(EXPORT mpegtsTargets
         FILE mpegtsTargets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 endif()
 
-if(AC3FORGE_BUILD_IAB)
+if(ICLFORGE_BUILD_IAB)
     install(EXPORT iabTargets
         FILE iabTargets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 endif()
 
-if(AC3FORGE_BUILD_ADM)
+if(ICLFORGE_BUILD_ADM)
     install(EXPORT admTargets
         FILE admTargets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 
     # ac3:: namespace, not ac3admbridge:: - matches its in-tree alias (iclforge::admbridge_shared,
@@ -674,30 +674,30 @@ if(AC3FORGE_BUILD_ADM)
     install(EXPORT admbridgeTargets
         FILE admbridgeTargets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 endif()
 
-if(AC3FORGE_BUILD_IAMF)
+if(ICLFORGE_BUILD_IAMF)
     install(EXPORT iamfTargets
         FILE iamfTargets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 endif()
 
-if(AC3FORGE_BUILD_AC4)
+if(ICLFORGE_BUILD_AC4)
     install(EXPORT ac4Targets
         FILE ac4Targets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 endif()
 
-if(AC3FORGE_BUILD_CAPI)
+if(ICLFORGE_BUILD_CAPI)
     install(EXPORT capiTargets
         FILE capiTargets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 endif()

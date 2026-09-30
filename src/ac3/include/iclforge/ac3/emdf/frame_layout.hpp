@@ -30,7 +30,7 @@
 // so having two copies of this walk would mean two copies of every one of
 // those subtleties, drifting apart one bug fix at a time.
 //
-// SCOPE. The full map covers the shape ac3forge's own Atmos encoder emits
+// SCOPE. The full map covers the shape iclforge's own Atmos encoder emits
 // (see src/ac3/src/encoder/eac3_frame.cpp): one independent substream, 3/2
 // with LFE, six blocks, frame-level exponent strategy and SNR, no coupling.
 // That is exactly the shape both callers were written against. A frame

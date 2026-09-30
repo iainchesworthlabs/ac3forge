@@ -33,7 +33,7 @@
 
 struct httpd_req;
 
-namespace ac3forge {
+namespace iclforge {
 
 struct FirmwareHooks {
     // Flash mode's teardown (planning/esp32-ota.md, "Flash mode"): end any
@@ -121,4 +121,4 @@ class Firmware {
     Impl* impl_ = nullptr;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

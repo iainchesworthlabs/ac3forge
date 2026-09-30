@@ -14,11 +14,11 @@ namespace {
 
 enum class ForcedTier : std::uint8_t { kAuto, kSse2, kAvx2 };
 
-// AC3FORGE_SIMD_TIER, parsed once. Portable - no platform-specific code -
+// ICLFORGE_SIMD_TIER, parsed once. Portable - no platform-specific code -
 // which is why it lives here rather than in one of the directory-selected
 // hardware_avx2.hpp headers alongside it.
 ForcedTier forced_tier() {
-    const char* const value = std::getenv("AC3FORGE_SIMD_TIER");
+    const char* const value = std::getenv("ICLFORGE_SIMD_TIER");
     if (value == nullptr || std::strcmp(value, "auto") == 0) {
         return ForcedTier::kAuto;
     }
@@ -29,7 +29,7 @@ ForcedTier forced_tier() {
         return ForcedTier::kAvx2;
     }
     fmt::print(stderr,
-              "AC3FORGE_SIMD_TIER='{}' is not one of auto|sse2|avx2 - treating it as unset "
+              "ICLFORGE_SIMD_TIER='{}' is not one of auto|sse2|avx2 - treating it as unset "
               "(auto)\n",
               value);
     return ForcedTier::kAuto;
@@ -54,12 +54,12 @@ bool has_avx2() noexcept {
             if (!hardware_capable) {
                 // Never execute AVX2 on hardware that cannot run it - an
                 // illegal-instruction fault is not an acceptable way to
-                // report this. AC3FORGE_SIMD_TIER=avx2 exists specifically
+                // report this. ICLFORGE_SIMD_TIER=avx2 exists specifically
                 // to PROVE the AVX2 path runs somewhere, so silently
                 // falling back here would defeat the one thing it is for.
                 fmt::print(stderr,
-                          "AC3FORGE_SIMD_TIER=avx2 was forced, but this CPU (or this build, "
-                          "if AC3FORGE_AVX2=OFF or the target is not x86-64) cannot execute "
+                          "ICLFORGE_SIMD_TIER=avx2 was forced, but this CPU (or this build, "
+                          "if ICLFORGE_AVX2=OFF or the target is not x86-64) cannot execute "
                           "AVX2 - refusing to run it rather than risk an illegal-instruction "
                           "fault\n");
                 std::abort();

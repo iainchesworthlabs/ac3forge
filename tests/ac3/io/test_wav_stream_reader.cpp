@@ -24,7 +24,7 @@
 
 namespace {
 
-// Rooted at AC3FORGE_TEST_SCRATCH_DIR rather than
+// Rooted at ICLFORGE_TEST_SCRATCH_DIR rather than
 // std::filesystem::temp_directory_path() for the reason tests/cli/test_cli.cpp's
 // own scratch_dir explains; the leaf is this file's own, with this process's own
 // PID folded on top for the same cross-process reason that file's comment gives.
@@ -37,7 +37,7 @@ struct TempWav {
     std::string path;
     explicit TempWav(const char* name) {
         const auto dir =
-            std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} / ("wav_stream_reader_" + scratch_pid_suffix());
+            std::filesystem::path{ICLFORGE_TEST_SCRATCH_DIR} / ("wav_stream_reader_" + scratch_pid_suffix());
         std::filesystem::create_directories(dir);
         path = (dir / name).string();
     }

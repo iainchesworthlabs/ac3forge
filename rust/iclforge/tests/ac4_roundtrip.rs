@@ -6,7 +6,7 @@
 //! the default configuration's own length (frame_rate_index 13, 2048 samples) explicitly rather
 //! than importing SAMPLES_PER_FRAME.
 
-use ac3forge::ac4::{Decoder, DecoderConfig, Encoder, EncoderConfig};
+use iclforge::ac4::{Decoder, DecoderConfig, Encoder, EncoderConfig};
 
 const FRAME_SAMPLES: usize = 2048; // frame_rate_index 13's frame, this crate's EncoderConfig default
 const FRAME_COUNT: usize = 5;
@@ -99,7 +99,7 @@ fn ac4_51_round_trip_reports_the_right_speakers() {
         for frame in encoder.encode(&refs).unwrap() {
             if let Some(decoded) = decoder.decode(frame.data()).unwrap() {
                 assert_eq!(decoded.channel_count(), 6);
-                use ac3forge::ac4::Speaker;
+                use iclforge::ac4::Speaker;
                 assert_eq!(decoded.speaker(0), Speaker::Left);
                 assert_eq!(decoded.speaker(1), Speaker::Right);
                 assert_eq!(decoded.speaker(2), Speaker::Centre);
@@ -169,12 +169,12 @@ fn ac4_encoder_toc_feeds_build_dac4_and_media_timing() {
 #[test]
 fn ac4_sync_frame_wraps_a_raw_frame() {
     let raw = [0x01u8, 0x02, 0x03, 0x04];
-    let wrapped = ac3forge::ac4::sync_frame(&raw, false).unwrap();
+    let wrapped = iclforge::ac4::sync_frame(&raw, false).unwrap();
     assert!(wrapped.len() > raw.len());
     assert_eq!(wrapped[0], 0xAC);
     assert_eq!(wrapped[1], 0x40);
 
-    let wrapped_crc = ac3forge::ac4::sync_frame(&raw, true).unwrap();
+    let wrapped_crc = iclforge::ac4::sync_frame(&raw, true).unwrap();
     assert_eq!(wrapped_crc[1], 0x41);
     assert_eq!(wrapped_crc.len(), wrapped.len() + 2);
 }
@@ -186,7 +186,7 @@ fn ac4_encoder_create_refuses_an_invalid_channel_count() {
         ..Default::default()
     };
     match Encoder::new(&config) {
-        Err(err) => assert_eq!(err, ac3forge::Error::Ac4EncodeInvalidConfig),
+        Err(err) => assert_eq!(err, iclforge::Error::Ac4EncodeInvalidConfig),
         Ok(_) => panic!("3 channels should have been refused"),
     }
 }

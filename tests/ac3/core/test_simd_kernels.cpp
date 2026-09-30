@@ -53,7 +53,7 @@
 // operations), not a wider-lane one, and carries its own correctness
 // argument in that header's comment.
 //
-// The cross-build check - two builds differing only in AC3FORGE_SIMD
+// The cross-build check - two builds differing only in ICLFORGE_SIMD
 // encoding the corpus to byte-identical streams - is separate from, and
 // stronger than, anything in this file: it covers restructuring a unit test
 // cannot see. Both are described in docs/building.md.
@@ -209,7 +209,7 @@ std::vector<float> adversarial_floats() {
 // Two questions, in order. First, is the AVX2 tier in this binary at all?
 // iclforge::test::avx2::kTierCompiled answers that at compile time
 // (core/avx2/{present,absent}/avx2_tier.hpp, selected by tests/CMakeLists.txt):
-// AC3FORGE_AVX2=OFF, or a target that is not x86_64, means there is nothing
+// ICLFORGE_AVX2=OFF, or a target that is not x86_64, means there is nothing
 // here to run. Second, compile-everywhere/execute-if-capable
 // (docs/building.md): the AVX2 translation units in this same binary already
 // prove the code compiles and links on every x86_64 leg, MSVC/clang-cl/GCC/
@@ -220,7 +220,7 @@ std::vector<float> adversarial_floats() {
 // so this must never assume the current host qualifies.
 //
 // Either way a loud, explicit skip - never a silent pass - unless
-// AC3FORGE_REQUIRE_AVX2=1 asks for a hard failure instead, which is what turns
+// ICLFORGE_REQUIRE_AVX2=1 asks for a hard failure instead, which is what turns
 // "the AVX2 path ran and passed" into a guaranteed, rather than aspirational,
 // statement on whichever CI job sets it (see tools/ci/run_codec_matrix.sh and
 // docs/building.md). That knob speaks to the HARDWARE only: a build that
@@ -232,13 +232,13 @@ std::vector<float> adversarial_floats() {
 // reasoning the other ten had dropped.
 void require_runnable_avx2() {
     if constexpr (!iclforge::test::avx2::kTierCompiled) {
-        SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+        SKIP("ICLFORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
     } else if (!iclforge::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+        const char* const require = std::getenv("ICLFORGE_REQUIRE_AVX2");
         const bool required = require != nullptr && std::strcmp(require, "1") == 0;
         INFO("this CPU does not report AVX2 support - nothing to execute here");
         if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+            FAIL("ICLFORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
                 "it exists to prove - pin this job to hardware that actually has AVX2");
         }
         SKIP("AVX2 not available on this CPU");
@@ -249,7 +249,7 @@ void require_runnable_avx2() {
 
 TEST_CASE("arch seam reports which directory was compiled", "[simd]") {
     // Not an assertion about WHICH one - a generic build is legitimate
-    // everywhere and is what -DAC3FORGE_SIMD=generic asks for. Printed so a
+    // everywhere and is what -DICLFORGE_SIMD=generic asks for. Printed so a
     // CI log records what the rest of this file actually exercised, which is
     // the difference between a meaningful run and a tautological one.
     std::printf("arch seam: %s\n", arch::kSimdName);
@@ -462,7 +462,7 @@ TEST_CASE("to_fixed25_block agrees with to_fixed25 element by element", "[simd]"
 TEST_CASE("cpu::has_avx2 reports a stable answer for this process", "[simd][avx2]") {
     // Not an assertion about which answer - a machine with no AVX2 is a
     // legitimate, common case (has_avx2() answering false there is exactly
-    // correct), and even a build with AC3FORGE_AVX2=OFF or a non-x86_64
+    // correct), and even a build with ICLFORGE_AVX2=OFF or a non-x86_64
     // target must still answer unconditionally false rather than fail to
     // link or crash. Printed so a CI log records what the rest of this
     // file's [avx2] cases actually exercised.

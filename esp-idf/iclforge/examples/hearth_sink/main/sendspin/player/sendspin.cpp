@@ -55,30 +55,30 @@ constexpr std::uint32_t kSampleRate = 48000;
 // src/sendspin.
 static_assert(kSendspinPort == ss::transport::websocket::kClientPort, "a player listens on Sendspin's client port");
 // From Kconfig (main/Kconfig.projbuild), as plain constants.
-constexpr std::size_t kRingBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES;
-constexpr std::size_t kMaxChunkBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES;
-constexpr std::uint32_t kDecodeStackBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES;
-constexpr std::size_t kServerStackBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_SERVER_STACK_BYTES;
-constexpr int kMaxDelayMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS;
-constexpr std::size_t kMaxCodedChannels = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS;
-constexpr std::uint32_t kReportEveryChunks = CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES;
-constexpr std::int32_t kLeadMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_LEAD_MS;
-constexpr std::int32_t kBufferMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_BUFFER_MS;
-constexpr bool kUnpairedAccess = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS != 0;
-constexpr bool kOfferPcm = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_PCM != 0;
-constexpr int kSuite = CONFIG_AC3FORGE_SENDSPIN_SUITE;
-constexpr BaseType_t kDecodeCore = CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE < 0 ? tskNO_AFFINITY
-                                                                           : CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE;
-constexpr iclforge::OperatingMode kMode = CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::OperatingMode::kRf
-                                     : CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::OperatingMode::kCustom
+constexpr std::size_t kRingBytes = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_RING_BYTES;
+constexpr std::size_t kMaxChunkBytes = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES;
+constexpr std::uint32_t kDecodeStackBytes = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES;
+constexpr std::size_t kServerStackBytes = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_SERVER_STACK_BYTES;
+constexpr int kMaxDelayMs = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS;
+constexpr std::size_t kMaxCodedChannels = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS;
+constexpr std::uint32_t kReportEveryChunks = CONFIG_ICLFORGE_EXAMPLE_REPORT_EVERY_FRAMES;
+constexpr std::int32_t kLeadMs = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_LEAD_MS;
+constexpr std::int32_t kBufferMs = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_BUFFER_MS;
+constexpr bool kUnpairedAccess = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS != 0;
+constexpr bool kOfferPcm = CONFIG_ICLFORGE_EXAMPLE_SENDSPIN_PCM != 0;
+constexpr int kSuite = CONFIG_ICLFORGE_SENDSPIN_SUITE;
+constexpr BaseType_t kDecodeCore = CONFIG_ICLFORGE_EXAMPLE_DECODE_CORE < 0 ? tskNO_AFFINITY
+                                                                           : CONFIG_ICLFORGE_EXAMPLE_DECODE_CORE;
+constexpr iclforge::OperatingMode kMode = CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::OperatingMode::kRf
+                                     : CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::OperatingMode::kCustom
                                                                              : iclforge::OperatingMode::kLine;
 constexpr iclforge::DownmixTarget kStereoFold =
-    CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD != 0 ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
-constexpr iclforge::render::ObjectsPolicy kObjects = CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 1   ? iclforge::render::ObjectsPolicy::kNever
-                                                : CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 2 ? iclforge::render::ObjectsPolicy::kAlways
+    CONFIG_ICLFORGE_EXAMPLE_STEREO_FOLD != 0 ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
+constexpr iclforge::render::ObjectsPolicy kObjects = CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 1   ? iclforge::render::ObjectsPolicy::kNever
+                                                : CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 2 ? iclforge::render::ObjectsPolicy::kAlways
                                                                                        : iclforge::render::ObjectsPolicy::kAuto;
 constexpr iclforge::oba::joc::Domain kJocDomain =
-    CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN != 0 ? iclforge::oba::joc::Domain::kMdctBand : iclforge::oba::joc::Domain::kQmf;
+    CONFIG_ICLFORGE_EXAMPLE_JOC_DOMAIN != 0 ? iclforge::oba::joc::Domain::kMdctBand : iclforge::oba::joc::Domain::kQmf;
 
 // The decoder settings this board takes from a server: every one the
 // extension page names that the library has a setting for. drc_cut and
@@ -87,9 +87,9 @@ const std::vector<std::string> kDecoderSettings{"mode",    "heavy_compression", 
                                                 "mix_lfe", "programme",         "objects",    "concealment"};
 
 // The sink seam as the burst player's sink.
-class SeamSink final : public ac3forge::ScheduledSink {
+class SeamSink final : public iclforge::ScheduledSink {
    public:
-    [[nodiscard]] std::optional<ac3forge::PlayoutWrite> write(std::span<const std::span<const float>> outputs) override {
+    [[nodiscard]] std::optional<iclforge::PlayoutWrite> write(std::span<const std::span<const float>> outputs) override {
         return sink_write_timed(outputs);
     }
     [[nodiscard]] bool open(std::uint32_t sample_rate, std::size_t outputs) override {
@@ -117,13 +117,13 @@ SeamSink g_sink;
 // clock have pointers of their own (Events, BurstPlayerConfig::local_time),
 // since both can run before the hand-over.
 struct Running {
-    std::unique_ptr<ac3forge::BurstPlayer> player;
-    std::unique_ptr<ac3forge::SendspinHost> host;
+    std::unique_ptr<iclforge::BurstPlayer> player;
+    std::unique_ptr<iclforge::SendspinHost> host;
 };
 Running g_started;  // start_player's until g_running points at it
 std::atomic<const Running*> g_running{nullptr};
 // The host whose clock the player reads, from when start_player() has made it.
-std::atomic<const ac3forge::SendspinHost*> g_clock{nullptr};
+std::atomic<const iclforge::SendspinHost*> g_clock{nullptr};
 
 std::atomic<bool> g_external{false};
 std::mutex g_mutex;  // guards what follows
@@ -154,7 +154,7 @@ bool g_board_changed = false;
                           .format = std::nullopt};
 }
 
-[[nodiscard]] ac::Support support(const ac3forge::BurstPlayer& player) {
+[[nodiscard]] ac::Support support(const iclforge::BurstPlayer& player) {
     ac::Support s;
     s.data_types = {ac::DataType::kAc3, ac::DataType::kEac3};
     s.sample_rates = {static_cast<std::int32_t>(kSampleRate)};
@@ -191,7 +191,7 @@ bool g_board_changed = false;
     return text.data();
 }
 
-[[nodiscard]] ss::PlayerConfig player_config(const ac3forge::BurstPlayer& player) {
+[[nodiscard]] ss::PlayerConfig player_config(const iclforge::BurstPlayer& player) {
     ss::PlayerConfig config;
     config.suite = kSuite == 1 ? ss::noise::Suite::kAesGcmSha256 : ss::noise::Suite::kChaChaPolySha256;
     config.name = settings().name.data();
@@ -213,7 +213,7 @@ bool g_board_changed = false;
                               {.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 48000, .bit_depth = 16}},
         .buffer_capacity = capacity,
         .commands = {m::PlayerCommand::kVolume, m::PlayerCommand::kMute}};
-    config.ac3forge_support = support(player);
+    config.iclforge_support = support(player);
     config.pair_methods = {
         {.method = m::PairMethod::kPairingPsk,
          .locations = {m::SecretLocation::kOperator},
@@ -231,11 +231,11 @@ bool g_board_changed = false;
         const std::lock_guard lock(g_mutex);
         config.player_state = player_state(g_player_reported);
     }
-    config.ac3forge_state.volume = 100;
-    config.ac3forge_state.muted = false;
-    config.ac3forge_state.required_lead_time_ms = kLeadMs;
-    config.ac3forge_state.min_buffer_ms = kBufferMs;
-    config.ac3forge_state.supported_commands = {ac::Command::kVolume, ac::Command::kMute,
+    config.iclforge_state.volume = 100;
+    config.iclforge_state.muted = false;
+    config.iclforge_state.required_lead_time_ms = kLeadMs;
+    config.iclforge_state.min_buffer_ms = kBufferMs;
+    config.iclforge_state.supported_commands = {ac::Command::kVolume, ac::Command::kMute,
                                                 ac::Command::kSetOutputDelay, ac::Command::kSettings,
                                                 ac::Command::kIdentify};
     config.max_message_bytes = kMaxChunkBytes + 64;
@@ -244,7 +244,7 @@ bool g_board_changed = false;
 
 // The role's client/state, from what the burst player measured and what the
 // board was told.
-[[nodiscard]] ac::State role_state(const ac3forge::BurstPlayerStatus& status, bool with_levels) {
+[[nodiscard]] ac::State role_state(const iclforge::BurstPlayerStatus& status, bool with_levels) {
     ac::State s;
     {
         const std::lock_guard lock(g_mutex);
@@ -284,12 +284,12 @@ bool g_board_changed = false;
            a.counters.invalid_chunks == b.counters.invalid_chunks;
 }
 
-class Events final : public ac3forge::SendspinEvents {
+class Events final : public iclforge::SendspinEvents {
    public:
     // Set by start_player before the host starts, and so before its first
     // event, which can come before the two are handed to the other tasks.
-    ac3forge::BurstPlayer* player = nullptr;
-    ac3forge::SendspinHost* host = nullptr;
+    iclforge::BurstPlayer* player = nullptr;
+    iclforge::SendspinHost* host = nullptr;
 
     void on_stream_start(const m::PlayerStream& stream) override { player->start_pcm(stream.format); }
     void on_stream_clear() override { player->clear(); }
@@ -317,7 +317,7 @@ class Events final : public ac3forge::SendspinEvents {
     void on_burst(const ss::BurstChunk& chunk, std::int64_t local_time) override { player->burst(chunk, local_time); }
     void on_invalid_burst() override { player->invalid_chunk(); }
 
-    void on_ac3forge_command(const ac::CommandMessage& command) override {
+    void on_iclforge_command(const ac::CommandMessage& command) override {
         switch (command.command) {
             case ac::Command::kVolume:
             case ac::Command::kMute:
@@ -387,8 +387,8 @@ class Events final : public ac3forge::SendspinEvents {
 
 Events g_events;
 
-void print_token(const ac3forge::SendspinHost& host) {
-    const ac3forge::SendspinStore& store = host.store();
+void print_token(const iclforge::SendspinHost& host) {
+    const iclforge::SendspinStore& store = host.store();
     std::array<std::uint8_t, 64> payload{};
     std::copy(store.identity().public_key().begin(), store.identity().public_key().end(), payload.begin());
     std::copy(store.pairing_psk().begin(), store.pairing_psk().end(), payload.begin() + 32);
@@ -396,7 +396,7 @@ void print_token(const ac3forge::SendspinHost& host) {
     // board, which is what the token asks of them. So it stays out of GET
     // /log, which anyone on the network can read.
     {
-        const ac3forge::ConsoleOnly console_only;
+        const iclforge::ConsoleOnly console_only;
         std::printf("sendspin: pairing token %s\n",
                     ss::pairing::encode_token(ss::pairing::TokenVersion::kPairingPsk, payload).c_str());
     }
@@ -474,7 +474,7 @@ void start_player(const iclforge::render::OutputLayout& layout) {
     // did not start. The player reads the host's clock only once a server
     // plays to it, which is after the host has started; until then g_clock
     // is null and there is no server time to convert.
-    ac3forge::BurstPlayerConfig config;
+    iclforge::BurstPlayerConfig config;
     config.sample_rate = kSampleRate;
     config.ring_bytes = kRingBytes;
     config.max_chunk_bytes = kMaxChunkBytes;
@@ -483,7 +483,7 @@ void start_player(const iclforge::render::OutputLayout& layout) {
     // sixteen on an ESP32-S3's two lines, eight on an ESP32-C6's one, where
     // every per-output buffer is internal RAM. A sink with no hardware behind
     // it keeps the slots it was built with.
-    config.max_outputs = std::min<std::size_t>(ac3forge::Playout::kMaxOutputs,
+    config.max_outputs = std::min<std::size_t>(iclforge::Playout::kMaxOutputs,
                                                static_cast<std::size_t>(std::max(sink_max_slots(), 1)));
     config.max_delay_ms = static_cast<double>(kMaxDelayMs);
     config.max_coded_channels = kMaxCodedChannels;
@@ -491,7 +491,7 @@ void start_player(const iclforge::render::OutputLayout& layout) {
     config.stack_bytes = kDecodeStackBytes;
     config.report_every_chunks = kReportEveryChunks;
     config.local_time = [](std::int64_t server_us) -> std::optional<std::int64_t> {
-        const ac3forge::SendspinHost* const clock = g_clock.load();
+        const iclforge::SendspinHost* const clock = g_clock.load();
         return clock != nullptr ? clock->local_time(server_us) : std::nullopt;
     };
     config.layout = layout;
@@ -508,16 +508,16 @@ void start_player(const iclforge::render::OutputLayout& layout) {
     config.decoder.joc_domain = kJocDomain;
     config.stereo_fold = kStereoFold;
     config.objects = kObjects;
-    auto player = std::make_unique<ac3forge::BurstPlayer>(config, g_sink);
+    auto player = std::make_unique<iclforge::BurstPlayer>(config, g_sink);
     if (!player->start()) {
         std::printf("sendspin: no player: it could not start (the lines above say why)\n");
         return;
     }
-    auto host = std::make_unique<ac3forge::SendspinHost>();
+    auto host = std::make_unique<iclforge::SendspinHost>();
     g_clock.store(host.get());
     g_events.player = player.get();
     g_events.host = host.get();
-    ac3forge::SendspinHostConfig host_config;
+    iclforge::SendspinHostConfig host_config;
     host_config.port = kSendspinPort;
     host_config.stack_bytes = kServerStackBytes;
     host_config.core = 0;
@@ -629,14 +629,14 @@ void sendspin_board_changed() {
     r->host->set_player_config(player_config(*r->player));
 }
 
-std::optional<ac3forge::ControlSendspin> sendspin_status() {
+std::optional<iclforge::ControlSendspin> sendspin_status() {
     const Running* const r = running();
     if (r == nullptr) {
         return std::nullopt;
     }
-    const ac3forge::SendspinStatus host = r->host->status();
-    const ac3forge::BurstPlayerStatus play = r->player->status();
-    ac3forge::ControlSendspin s;
+    const iclforge::SendspinStatus host = r->host->status();
+    const iclforge::BurstPlayerStatus play = r->player->status();
+    iclforge::ControlSendspin s;
     s.server = host.server_name.data();
     s.server_id = host.server_id.data();
     s.dialect = host.dialect;
@@ -718,18 +718,18 @@ bool sendspin_pairing(std::string_view action) {
     return false;
 }
 
-std::optional<ac3forge::ControlPairings> sendspin_pairings() {
+std::optional<iclforge::ControlPairings> sendspin_pairings() {
     const Running* const r = running();
     if (r == nullptr) {
         return std::nullopt;
     }
-    const ac3forge::SendspinPairings pairings = r->host->pairings();
-    ac3forge::ControlPairings out;
-    out.capacity = static_cast<unsigned>(ac3forge::SendspinStore::kRecordCapacity);
+    const iclforge::SendspinPairings pairings = r->host->pairings();
+    iclforge::ControlPairings out;
+    out.capacity = static_cast<unsigned>(iclforge::SendspinStore::kRecordCapacity);
     out.servers.reserve(pairings.count);
     for (std::size_t i = 0; i < pairings.count; ++i) {
-        const ac3forge::SendspinPairing& p = pairings.servers[i];
-        out.servers.push_back(ac3forge::ControlPairing{.server_id = ss::base64url::encode(p.server_key),
+        const iclforge::SendspinPairing& p = pairings.servers[i];
+        out.servers.push_back(iclforge::ControlPairing{.server_id = ss::base64url::encode(p.server_key),
                                                        .name = p.name.data(),
                                                        .connected = p.connected,
                                                        .last_playback = p.last_playback,
@@ -754,12 +754,12 @@ namespace {
 
 // `pair list`: each record's server_id as the console shows it, its name, and
 // what it is doing.
-void print_pairings(const ac3forge::SendspinHost& host) {
-    const ac3forge::SendspinPairings pairings = host.pairings();
+void print_pairings(const iclforge::SendspinHost& host) {
+    const iclforge::SendspinPairings pairings = host.pairings();
     std::printf("sendspin: %u of %u pairing records, the most recently used first\n",
-                static_cast<unsigned>(pairings.count), static_cast<unsigned>(ac3forge::SendspinStore::kRecordCapacity));
+                static_cast<unsigned>(pairings.count), static_cast<unsigned>(iclforge::SendspinStore::kRecordCapacity));
     for (std::size_t i = 0; i < pairings.count; ++i) {
-        const ac3forge::SendspinPairing& p = pairings.servers[i];
+        const iclforge::SendspinPairing& p = pairings.servers[i];
         std::printf("sendspin:   %s  %s%s%s%s\n", ss::base64url::encode(p.server_key).substr(0, 8).c_str(),
                     p.name[0] != '\0' ? p.name.data() : "(no name yet)", p.connected ? ", connected" : "",
                     p.last_playback ? ", the last to play" : "", p.seen ? "" : ", not seen since the board started");
@@ -769,7 +769,7 @@ void print_pairings(const ac3forge::SendspinHost& host) {
 // `pair forget ID`: the one record whose server_id starts with `id`, which is
 // the whole of it or the first eight or more of its characters, as
 // `pair list` prints them. Nothing when none does, or more than one.
-[[nodiscard]] std::optional<ss::crypto::Key32> record_for(const ac3forge::SendspinPairings& pairings,
+[[nodiscard]] std::optional<ss::crypto::Key32> record_for(const iclforge::SendspinPairings& pairings,
                                                           std::string_view id) {
     if (id.size() < 8) {
         return std::nullopt;
@@ -825,7 +825,7 @@ bool sendspin_console(std::string_view line) {
         return true;
     }
     if (line == "sendspin") {
-        const std::optional<ac3forge::ControlSendspin> s = sendspin_status();
+        const std::optional<iclforge::ControlSendspin> s = sendspin_status();
         if (!s) {
             return true;
         }
@@ -844,7 +844,7 @@ void sendspin_poll() {
     if (r == nullptr) {
         return;
     }
-    const ac3forge::BurstPlayerStatus status = r->player->status();
+    const iclforge::BurstPlayerStatus status = r->player->status();
     const bool playing = status.stream != std::string_view("idle");
     const std::int64_t now = esp_timer_get_time();
     ac::State state = role_state(status, playing);
@@ -864,7 +864,7 @@ void sendspin_poll() {
         }
     }
     if (send) {
-        r->host->set_ac3forge_state(state);
+        r->host->set_iclforge_state(state);
     }
 }
 

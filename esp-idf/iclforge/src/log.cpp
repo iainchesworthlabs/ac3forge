@@ -1,4 +1,4 @@
-// The console's recent output, for GET /log. See ../include/ac3forge/log.hpp
+// The console's recent output, for GET /log. See ../include/iclforge/log.hpp
 // and planning/esp32-ota.md (O4).
 //
 // stdout and stderr are reopened on a device of this file's own, /dev/ac3log,
@@ -31,7 +31,7 @@
 #include "esp_vfs_ops.h"
 #include "freertos/FreeRTOS.h"
 
-namespace ac3forge {
+namespace iclforge {
 namespace {
 
 constexpr const char* kDevice = "/dev/ac3log";
@@ -169,4 +169,4 @@ ConsoleOnly::~ConsoleOnly() {
     t_console_only = false;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

@@ -19,7 +19,7 @@
 //
 //     [4][int64 timestamp µs][one encoded frame]
 //
-// _ac3forge_player@v1 (planning/hearth-sendspin-extension.md, Burst chunks),
+// _iclforge_player@v1 (planning/hearth-sendspin-extension.md, Burst chunks),
 // ID 192: the same header, then one IEC 61937 burst without its sync words,
 // byte-swapping or zero stuffing:
 //
@@ -51,7 +51,7 @@ struct AudioChunk {
     // 0 from a chunk in aiosendspin 9.1.1's form, which carries none: 0 is a
     // saturated value, which a player never samples.
     std::uint32_t send_ahead_us = 0;
-    // The encoded frame (player@v1) or the burst payload (_ac3forge_player@v1).
+    // The encoded frame (player@v1) or the burst payload (_iclforge_player@v1).
     std::span<const std::uint8_t> data;
 };
 
@@ -140,7 +140,7 @@ struct BurstChunk {
     [[nodiscard]] BurstDataType data_type() const { return static_cast<BurstDataType>(pc & 0x7FU); }
 };
 
-// _ac3forge_player@v1's chunk, ID 192.
+// _iclforge_player@v1's chunk, ID 192.
 [[nodiscard]] std::expected<BurstChunk, ChunkError> parse_burst_chunk(
     std::span<const std::uint8_t> message);
 

@@ -7,7 +7,7 @@ const { test, expect } = require('@playwright/test');
 // sample rate, object count and "an object's position differs between two
 // timestamps" as manual-only verification, because build-wasm only proves
 // the module compiles. WASM streaming decoder package replaced the demo's own bespoke Embind
-// Decoder class with the published ac3forge-wasm-decoder package
+// Decoder class with the published iclforge-wasm-decoder package
 // (js/src/decode-file.ts's decodeFile(), built on PushDecoder) - this test
 // now drives THAT, the same call apps/wasm/demo.js itself makes, against the
 // bundled 8-second, 3-object Atmos-in-DD+ fixture, and asserts the same real
@@ -27,10 +27,10 @@ test('decodes the bundled Atmos-in-DD+ fixture with real, moving object position
         // @ts-ignore - ./package/ is js/dist/, copied in alongside the
         // Emscripten build output (see this repo's build-wasm CI job).
         const { decodeFile, DownmixTarget } = await import('./package/index.js');
-        // @ts-ignore - createAc3ForgeModule is the Emscripten MODULARIZE
-        // factory ac3forge_decode.js attaches to window; see index.html's
+        // @ts-ignore - createIclForgeModule is the Emscripten MODULARIZE
+        // factory iclforge_decode.js attaches to window; see index.html's
         // plain <script> tag.
-        const moduleInstance = await window.createAc3ForgeModule();
+        const moduleInstance = await window.createIclForgeModule();
         const response = await fetch('assets/demo.ec3');
         const bytes = new Uint8Array(await response.arrayBuffer());
 

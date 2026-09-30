@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // The GCC/Clang/AppleClang member of the CPU-probe seam - real x86-64
 // hardware, real AVX2 tier compiled in, selected whenever the compiler is
-// NOT MSVC and NOT clang-cl (see src/ac3/CMakeLists.txt's AC3FORGE_AVX2
+// NOT MSVC and NOT clang-cl (see src/ac3/CMakeLists.txt's ICLFORGE_AVX2
 // block, and cpu_features.hpp for what the seam is and why it exists).
 //
 // clang-cl deliberately does NOT use this file even though it is Clang

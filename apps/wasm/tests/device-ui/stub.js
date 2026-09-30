@@ -1,6 +1,6 @@
 'use strict';
 
-// A stand-in for ac3forge::Control (esp-idf/iclforge/src/control.cpp), for the
+// A stand-in for iclforge::Control (esp-idf/iclforge/src/control.cpp), for the
 // web page's tests - planning/esp32-device-ui.md. It serves the page's two
 // files with the headers the firmware sends and answers the REST routes with
 // the firmware's status codes and reply texts, over a model of the streaming
@@ -14,7 +14,7 @@
 // One per test, in the test's own process, on a port of its own: tests reach
 // into it directly to script a reply, hold one back, or read what was sent.
 //
-// The firmware routes are ac3forge::Firmware's (esp-idf/iclforge/src/
+// The firmware routes are iclforge::Firmware's (esp-idf/iclforge/src/
 // firmware.cpp), modelled as far as the page uses them: an upload whose head
 // is an application image is written, and the board restarts into it on
 // trial; a restart, and a rollback. A restart is the next request dropped,
@@ -104,7 +104,7 @@ const FIRMWARE = {
     busy: 'an update is already under way\n',
     underWay: 'an update is under way\n',
     notImage:
-        'this is not an ESP-IDF application image (its first byte is not 0xE9); send ac3forge_hearth_sink.bin, not the merged factory image or the ELF\n',
+        'this is not an ESP-IDF application image (its first byte is not 0xE9); send iclforge_hearth_sink.bin, not the merged factory image or the ELF\n',
     modeBad: 'PUT /firmware/mode wants flash or normal\n',
     flashMode: 'flash mode: nothing plays until the board restarts\n',
     notFlash: 'not in flash mode\n',
@@ -300,7 +300,7 @@ function defaultHardware() {
         psram_bytes: 0,
         sink_max_slots: 8,
         sink_max_slots_bits: 16,
-        project: 'ac3forge_hearth_sink',
+        project: 'iclforge_hearth_sink',
         version: 'v0.10.0-beta.1-42-gee9cf4f',
         idf_version: 'v6.1',
         capabilities: [
@@ -321,7 +321,7 @@ function playingSendspin() {
         dialect: 'specification',
         psk: 'long-term',
         activity: 'playback',
-        role: '_ac3forge_player@v1',
+        role: '_iclforge_player@v1',
         clock_converged: true,
         clock_error_us: 310,
         connections: 1,
@@ -364,7 +364,7 @@ function firmwareSlot(fields) {
         label: 'ota_0',
         state: 'valid',
         version: 'v0.10.0-beta.1-42-gee9cf4f',
-        project: 'ac3forge_hearth_sink',
+        project: 'iclforge_hearth_sink',
         idf_version: 'v6.1',
         elf_sha256: '2366bde995250290d1f5a8c3b7e4f09a61c2d8e3b5f7a9c1d3e5f7a9b1c3d5e7',
         image_sha256: '592201f1a71d62fe0b8c6d4e2f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f70',
@@ -424,7 +424,7 @@ function defaultFirmware() {
 // The head of an application image, as parse_image_head reads it
 // (firmware_image.hpp): its first byte, its chip ID, and its app
 // description's magic word, version and project. `size` bytes in all.
-function appImage({ version = 'v0.11.0', project = 'ac3forge_hearth_sink', chip = 9, size = 4096, magic = 0xe9 } = {}) {
+function appImage({ version = 'v0.11.0', project = 'iclforge_hearth_sink', chip = 9, size = 4096, magic = 0xe9 } = {}) {
     const image = Buffer.alloc(size);
     image[0] = magic;
     image[1] = 4; // segments
@@ -725,9 +725,9 @@ async function startStub() {
         const fw = device.firmware;
         switch (route) {
             case 'GET /':
-                return file(res, 'ac3forge_ui.html', 'text/html; charset=utf-8');
+                return file(res, 'iclforge_ui.html', 'text/html; charset=utf-8');
             case 'GET /ui.js':
-                return file(res, 'ac3forge_ui.js', 'text/javascript; charset=utf-8');
+                return file(res, 'iclforge_ui.js', 'text/javascript; charset=utf-8');
             case 'GET /api':
                 return send(res, 200, REPLIES.api);
             case 'GET /status':

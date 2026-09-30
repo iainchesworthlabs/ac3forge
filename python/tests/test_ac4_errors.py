@@ -5,7 +5,7 @@ catching them. Each carries the C++ enumerator as `.error`, as test_errors.py ch
 hierarchy (Ac3Error is a RuntimeError, which is why these are not under it).
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

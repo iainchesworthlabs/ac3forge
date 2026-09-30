@@ -13,7 +13,7 @@
 
 // ADM BWF reader phase 3 of 3 ("ADM BWF reader feeding the JOC encoder") - the narrow
 // seam between main.cpp's 'atmos-adm' command and iclforge::adm/iclforge::admbridge, this project's
-// one opt-in, non-default library (AC3FORGE_BUILD_ADM, default OFF - see root CMakeLists.txt's
+// one opt-in, non-default library (ICLFORGE_BUILD_ADM, default OFF - see root CMakeLists.txt's
 // own option() for why: libadm's Boost dependency).
 //
 // main.cpp cannot #include "ac3adm/ac3adm.hpp" or "ac3/admbridge/bridge.hpp" itself, not even

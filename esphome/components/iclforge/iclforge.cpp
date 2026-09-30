@@ -5,11 +5,11 @@
 #include <algorithm>
 
 namespace esphome {
-namespace ac3forge {
+namespace iclforge {
 
-static const char *const TAG = "ac3forge";
+static const char *const TAG = "iclforge";
 
-void Ac3ForgeComponent::setup() {
+void IclForgeComponent::setup() {
   // Reserved once, here, rather than grown during playback: the accumulator
   // takes storage the caller owns precisely so that framing never allocates,
   // and a component that allocated it lazily on the first frame would give that
@@ -18,12 +18,12 @@ void Ac3ForgeComponent::setup() {
   accumulator_ = std::make_unique<iclforge::io::AccessUnitAccumulator>(storage_);
 }
 
-void Ac3ForgeComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "ac3forge:");
+void IclForgeComponent::dump_config() {
+  ESP_LOGCONFIG(TAG, "iclforge:");
   ESP_LOGCONFIG(TAG, "  Framing buffer: %u bytes", static_cast<unsigned>(buffer_size_));
 }
 
-std::size_t Ac3ForgeComponent::feed(std::span<const std::byte> bytes) {
+std::size_t IclForgeComponent::feed(std::span<const std::byte> bytes) {
   if (accumulator_ == nullptr) {
     return 0;
   }
@@ -37,13 +37,13 @@ std::size_t Ac3ForgeComponent::feed(std::span<const std::byte> bytes) {
   return taken;
 }
 
-void Ac3ForgeComponent::finish() {
+void IclForgeComponent::finish() {
   if (accumulator_ != nullptr) {
     accumulator_->finish();
   }
 }
 
-const std::vector<std::vector<float>> *Ac3ForgeComponent::decode() {
+const std::vector<std::vector<float>> *IclForgeComponent::decode() {
   if (accumulator_ == nullptr || failed_) {
     return nullptr;
   }
@@ -81,5 +81,5 @@ const std::vector<std::vector<float>> *Ac3ForgeComponent::decode() {
   return &channels_;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge
 }  // namespace esphome

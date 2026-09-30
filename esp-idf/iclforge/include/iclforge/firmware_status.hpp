@@ -17,7 +17,7 @@
 // by tools/hearth/ota.py and the device page without either guessing at it.
 // Every key is always present; a part that does not apply is null.
 
-namespace ac3forge {
+namespace iclforge {
 
 // One application slot.
 struct FirmwareSlot {
@@ -258,4 +258,4 @@ inline void append_slot(std::string& out, const FirmwareSlot& slot) {
     return out;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

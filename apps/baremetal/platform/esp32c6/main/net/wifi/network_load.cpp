@@ -92,7 +92,7 @@ void receive_stream(void*) {
     setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
     sockaddr_in address{};
     address.sin_family = AF_INET;
-    address.sin_port = htons(static_cast<std::uint16_t>(CONFIG_AC3FORGE_PROBE_TCP_PORT));
+    address.sin_port = htons(static_cast<std::uint16_t>(CONFIG_ICLFORGE_PROBE_TCP_PORT));
     address.sin_addr.s_addr = htonl(INADDR_ANY);
     if (listener < 0 ||
         bind(listener, static_cast<sockaddr*>(static_cast<void*>(&address)), sizeof(address)) != 0 ||
@@ -157,9 +157,9 @@ bool network_start() {
 
     wifi_config_t config = {};
     std::strncpy(static_cast<char*>(static_cast<void*>(config.sta.ssid)),
-                 CONFIG_AC3FORGE_PROBE_WIFI_SSID, sizeof(config.sta.ssid) - 1);
+                 CONFIG_ICLFORGE_PROBE_WIFI_SSID, sizeof(config.sta.ssid) - 1);
     std::strncpy(static_cast<char*>(static_cast<void*>(config.sta.password)),
-                 CONFIG_AC3FORGE_PROBE_WIFI_PASSWORD, sizeof(config.sta.password) - 1);
+                 CONFIG_ICLFORGE_PROBE_WIFI_PASSWORD, sizeof(config.sta.password) - 1);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &config));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -186,7 +186,7 @@ bool network_start() {
     }
     // The address, so a host can connect; never the network's name.
     std::printf("net.ip=" IPSTR " net.port=%d\n", IP2STR(&g_address),
-                CONFIG_AC3FORGE_PROBE_TCP_PORT);
+                CONFIG_ICLFORGE_PROBE_TCP_PORT);
     report_internal_sram("network");
 
     // The task's stack comes out of the same heap the decoder draws on;
@@ -198,10 +198,10 @@ bool network_start() {
 
     const EventBits_t arriving =
         xEventGroupWaitBits(g_events, kStreamBit, pdFALSE, pdFALSE,
-                            pdMS_TO_TICKS(CONFIG_AC3FORGE_PROBE_STREAM_WAIT_S * 1000));
+                            pdMS_TO_TICKS(CONFIG_ICLFORGE_PROBE_STREAM_WAIT_S * 1000));
     if ((arriving & kStreamBit) == 0) {
         std::printf("result=fail reason=no_tcp_stream waited_s=%d\n",
-                    CONFIG_AC3FORGE_PROBE_STREAM_WAIT_S);
+                    CONFIG_ICLFORGE_PROBE_STREAM_WAIT_S);
         return false;
     }
     g_bytes_at_start = g_bytes.load();

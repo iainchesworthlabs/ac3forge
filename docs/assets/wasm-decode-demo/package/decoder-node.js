@@ -16,7 +16,7 @@ function resolveChannelCount(options) {
         return options.channelCount;
     if (options.fold && options.fold.target !== DownmixTarget.AsCoded)
         return 2;
-    throw new Error("Ac3ForgeDecoderNode: channelCount is required unless a non-AsCoded fold is given");
+    throw new Error("IclForgeDecoderNode: channelCount is required unless a non-AsCoded fold is given");
 }
 /**
  * Push-frame realtime decode + playback: construct once per stream, call
@@ -25,7 +25,7 @@ function resolveChannelCount(options) {
  * Web Audio graph. Decoding happens in a Worker; only ring-buffer draining
  * happens on the audio rendering thread itself.
  */
-export class Ac3ForgeDecoderNode extends EventTarget {
+export class IclForgeDecoderNode extends EventTarget {
     node;
     #worker;
     #streamInfoSeen = false;
@@ -38,7 +38,7 @@ export class Ac3ForgeDecoderNode extends EventTarget {
     }
     static async create(audioContext, options) {
         if (!crossOriginIsolated) {
-            throw new Error("Ac3ForgeDecoderNode requires cross-origin isolation (COOP: same-origin, COEP: " +
+            throw new Error("IclForgeDecoderNode requires cross-origin isolation (COOP: same-origin, COEP: " +
                 "require-corp) for SharedArrayBuffer - see js/README.md.");
         }
         const channelCount = resolveChannelCount(options);
@@ -46,14 +46,14 @@ export class Ac3ForgeDecoderNode extends EventTarget {
         const layout = { channelCount, capacityFrames };
         const sab = allocateRingBuffer(layout);
         await audioContext.audioWorklet.addModule(options.workletProcessorUrl);
-        const node = new AudioWorkletNode(audioContext, "ac3forge-pcm-source", {
+        const node = new AudioWorkletNode(audioContext, "iclforge-pcm-source", {
             numberOfInputs: 0,
             numberOfOutputs: 1,
             outputChannelCount: [channelCount],
             processorOptions: { sab, layout },
         });
         const worker = new Worker(options.workerUrl, { type: "module" });
-        const instance = new Ac3ForgeDecoderNode(node, worker);
+        const instance = new IclForgeDecoderNode(node, worker);
         worker.addEventListener("message", (event) => instance.#onWorkerMessage(event.data));
         node.port.addEventListener("message", (event) => instance.#onProcessorMessage(event.data));
         node.port.start();

@@ -49,7 +49,7 @@ bool source_open() {
         g_mounted = true;
     }
 
-    file_source::set_default_path(CONFIG_AC3FORGE_EXAMPLE_FATFS_PATH);
+    file_source::set_default_path(CONFIG_ICLFORGE_EXAMPLE_FATFS_PATH);
     if (!file_source::open()) {
         return false;
     }
@@ -61,7 +61,7 @@ bool source_open() {
 bool source_set_location(const char* location) { return file_source::set_path(location); }
 
 const char* source_location() {
-    file_source::set_default_path(CONFIG_AC3FORGE_EXAMPLE_FATFS_PATH);
+    file_source::set_default_path(CONFIG_ICLFORGE_EXAMPLE_FATFS_PATH);
     return file_source::path();
 }
 

@@ -1,6 +1,6 @@
 // The player's hold on a play's first unit, tested on the host.
 //
-// ac3forge/unit_hold.hpp copies a unit's blocks as the decoder delivers them
+// iclforge/unit_hold.hpp copies a unit's blocks as the decoder delivers them
 // and hands them back when the next unit starts or the play ends. What can go
 // wrong is heard and reported nowhere else: a block back out of order, a block
 // of the next unit taken into the hold, or a copy that still points at storage
@@ -14,7 +14,7 @@
 
 #include "iclforge/unit_hold.hpp"
 
-using ac3forge::UnitHold;
+using iclforge::UnitHold;
 
 namespace {
 

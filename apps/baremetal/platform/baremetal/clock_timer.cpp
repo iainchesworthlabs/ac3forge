@@ -1,6 +1,6 @@
 // ac3probe::now_us() for arm-none-eabi on QEMU's mps2-an385, read from the
 // board's CMSDK APB TIMER0 rather than from semihosting's std::clock().
-// Selected by AC3FORGE_BAREMETAL_CLOCK=timer (apps/baremetal/CMakeLists.txt);
+// Selected by ICLFORGE_BAREMETAL_CLOCK=timer (apps/baremetal/CMakeLists.txt);
 // clock.cpp beside this file is the default.
 //
 // WHY A SECOND CLOCK EXISTS. Under `qemu-system-arm -icount shift=0` the

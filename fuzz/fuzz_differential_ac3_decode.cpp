@@ -68,7 +68,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // (apps/cli/main.cpp: run_decode) - see iclforge::io::wav_channel_order's own
     // doc comment.
     const auto map = iclforge::io::wav_channel_order(acmod, lfe);
-    ac3forge::fuzzdiff::run_differential("ac3", bytes, ".ac3", pcm, iclforge::sample_rate_hz(sample_rate),
+    iclforge::fuzzdiff::run_differential("ac3", bytes, ".ac3", pcm, iclforge::sample_rate_hz(sample_rate),
                                           map);
     return 0;
 }

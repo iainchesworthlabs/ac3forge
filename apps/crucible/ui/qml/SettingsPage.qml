@@ -299,7 +299,7 @@ Flickable {
                     Text { Layout.fillWidth: true; text: CrucibleController.signingStatus; color: Theme.text; font.pixelSize: Theme.fontBody; wrapMode: Text.WordWrap }
                 }
                 Note { text: qsTr("An unsigned object container would be refused outright by a validating decoder, so without a key no objects are sent.") }
-                Note { text: qsTr("With no file chosen here, the environment is honoured: AC3FORGE_SIGNING_KEY_FILE names a key file and AC3FORGE_SIGNING_KEY carries the key itself.") }
+                Note { text: qsTr("With no file chosen here, the environment is honoured: ICLFORGE_SIGNING_KEY_FILE names a key file and ICLFORGE_SIGNING_KEY carries the key itself.") }
             }
         }
 

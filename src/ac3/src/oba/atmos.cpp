@@ -183,7 +183,7 @@ constexpr double kExtensionDownmixScale = 0.70710678118654752;  // -3 dB
 // library should need it directly.
 void band_energy(std::span<const float> signal, std::span<const std::uint8_t, 64> mapping,
                  std::span<double> out, bool fast) {
-    AC3_ZONE_SCOPED_N("band_energy");
+    ICLFORGE_ZONE_SCOPED_N("band_energy");
     std::ranges::fill(out, 0.0);
     // The frame's own blocks, without the previous frame's overlap: this is
     // an energy estimate, not a transform that has to reconstruct. Counted
@@ -213,7 +213,7 @@ void band_energy(std::span<const float> signal, std::span<const std::uint8_t, 64
 
 void qmf_band_energy(std::span<const float> signal, std::span<const std::uint8_t, 64> mapping,
                      std::span<double> out, dsp::QmfAnalysis& analysis) {
-    AC3_ZONE_SCOPED_N("qmf_band_energy");
+    ICLFORGE_ZONE_SCOPED_N("qmf_band_energy");
     std::ranges::fill(out, 0.0);
     std::array<double, dsp::kQmfSubbands> real{};
     std::array<double, dsp::kQmfSubbands> imag{};
@@ -475,7 +475,7 @@ void AtmosEncoder::Impl::render_and_reconstruct(
     // leave the reconstruction chasing the downmix. (A CBI caller's target
     // never moves at all - see bed_pan_'s own comment - so this ramp settles
     // to "already there" after frame 1 and costs nothing extra to share.)
-    AC3_ZONE_BEGIN(zone_bed, "step2_bed_render");
+    ICLFORGE_ZONE_BEGIN(zone_bed, "step2_bed_render");
     for (auto& channel : bed_) {
         std::ranges::fill(channel, 0.0f);
     }
@@ -508,7 +508,7 @@ void AtmosEncoder::Impl::render_and_reconstruct(
             }
         }
     }
-    AC3_ZONE_END(zone_bed);
+    ICLFORGE_ZONE_END(zone_bed);
 
     // --- 3. Per-band object energy -----------------------------------------
     std::vector<double> power(count * static_cast<std::size_t>(bands));
@@ -548,7 +548,7 @@ void AtmosEncoder::Impl::render_and_reconstruct(
     // which for well-separated objects is just D's left inverse - exact, not
     // approximate, because this encoder built the downmix and knows D exactly
     // rather than having to estimate it from the signals.
-    AC3_ZONE_BEGIN(zone_joc_invert, "step4_joc_covariance_invert");
+    ICLFORGE_ZONE_BEGIN(zone_joc_invert, "step4_joc_covariance_invert");
     for (int band = 0; band < bands; ++band) {
         std::array<std::array<double, kChannels>, kChannels> covariance{};
         for (std::size_t object = 0; object < count; ++object) {
@@ -601,13 +601,13 @@ void AtmosEncoder::Impl::render_and_reconstruct(
             }
         }
     }
-    AC3_ZONE_END(zone_joc_invert);
+    ICLFORGE_ZONE_END(zone_joc_invert);
 }
 
 std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     std::span<const std::span<const float>> objects,
     std::span<const ObjectPlacement> placement) {
-    AC3_ZONE_SCOPED_N("AtmosEncoder::encode_frame");
+    ICLFORGE_ZONE_SCOPED_N("AtmosEncoder::encode_frame");
     assert(impl_->program_.dynamic_only);
     assert(static_cast<int>(objects.size()) == impl_->objects_);
     assert(static_cast<int>(placement.size()) == impl_->objects_);
@@ -721,7 +721,7 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
 
 std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_bed_frame(
     std::span<const std::span<const float>> channels) {
-    AC3_ZONE_SCOPED_N("AtmosEncoder::encode_bed_frame");
+    ICLFORGE_ZONE_SCOPED_N("AtmosEncoder::encode_bed_frame");
     assert(!impl_->program_.dynamic_only);
     assert(channels.size() == static_cast<std::size_t>(bed_channel_count(impl_->program_)));
 

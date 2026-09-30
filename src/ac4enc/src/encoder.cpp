@@ -3179,22 +3179,22 @@ struct ObjectLayout {
 
 // Nested in an exported class, Impl takes its visibility, so each member
 // function defined out of line below would be exported from libac4enc.so with
-// it. AC4ENC_NO_EXPORT on each keeps them to the library, and the exported set
+// it. ICLFORGE_AC4ENC_NO_EXPORT on each keeps them to the library, and the exported set
 // to the header's API (tools/ci/abi-allowlist/libiclforge_ac4enc.so.txt).
 struct Encoder::Impl {
     // The stream `config` asks for, or why it is not one the encoder writes,
     // or its rate cannot hold its least frame.
-    [[nodiscard]] AC4ENC_NO_EXPORT static std::expected<std::unique_ptr<Impl>, Refusal> make(
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT static std::expected<std::unique_ptr<Impl>, Refusal> make(
         const EncoderConfig& config);
 
     // The object substream `s`'s coders in place of the one substream the
     // stream has so far: an A-JOC substream, or direct-coded substreams and
     // their OAMD substream; or why not.
-    [[nodiscard]] AC4ENC_NO_EXPORT static std::optional<Refusal> make_objects(
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT static std::optional<Refusal> make_objects(
         Impl& impl, const SubstreamConfig& s, const ObjectLayout& layout);
     // The object substream's group in the table of contents, once the
     // substreams' indices are known.
-    [[nodiscard]] AC4ENC_NO_EXPORT static detail::TocGroup object_group(const Impl& impl,
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT static detail::TocGroup object_group(const Impl& impl,
                                                                         const ObjectLayout& layout);
 
     EncoderConfig config{};
@@ -3473,11 +3473,11 @@ struct Encoder::Impl {
         return std::pair{std::move(sizes), *fit};
     }
 
-    [[nodiscard]] AC4ENC_NO_EXPORT EncodedFrame encode_frame(std::int64_t frame);
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT EncodedFrame encode_frame(std::int64_t frame);
 
     // Takes the input, with a stem the dialogue in it and with objects the
     // changes to their metadata, and returns the frames it completes.
-    [[nodiscard]] AC4ENC_NO_EXPORT std::expected<std::vector<EncodedFrame>, EncodeError> push(
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT std::expected<std::vector<EncodedFrame>, EncodeError> push(
         std::span<const std::span<const float>> channels,
         std::span<const std::span<const float>> dialogue,
         std::span<const ObjectMetadataUpdate> updates);
@@ -3486,19 +3486,19 @@ struct Encoder::Impl {
     // each its own channels (and their dialogue), and each dialogue
     // enhancement substream the waveform it derives from the substream it
     // enhances.
-    AC4ENC_NO_EXPORT void take(std::span<const std::vector<std::vector<double>>> programmes,
+    ICLFORGE_AC4ENC_NO_EXPORT void take(std::span<const std::vector<std::vector<double>>> programmes,
                                std::span<const std::vector<std::vector<double>>> stems);
 
     // The dialogue enhancement substream's waveform (DialogueConfig::hybrid)
     // from what arrived for the substream it enhances.
-    [[nodiscard]] AC4ENC_NO_EXPORT std::vector<std::vector<double>> waveform(
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT std::vector<std::vector<double>> waveform(
         StreamSubstream& de, const std::vector<std::vector<double>>& programme,
         const std::vector<std::vector<double>>& dialogue) const;
 
     // The frames the input read so far lets through; after flush(), until the
     // output covers the input, the delays and this project's decoder's
     // converter.
-    [[nodiscard]] AC4ENC_NO_EXPORT std::vector<EncodedFrame> drain();
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT std::vector<EncodedFrame> drain();
 };
 
 std::optional<Refusal> Encoder::Impl::make_objects(Impl& impl, const SubstreamConfig& s,

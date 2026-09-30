@@ -4,7 +4,7 @@ any audio, mirroring ac3::io::scan/read_frame_header/access_unit_timing and frie
 just report plausible-looking numbers but the actual byte ranges a decoder can consume.
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

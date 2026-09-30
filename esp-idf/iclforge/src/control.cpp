@@ -1,5 +1,5 @@
 // The REST control surface, and the web UI it serves. See
-// ../include/ac3forge/control.hpp and planning/esp32-device-ui.md.
+// ../include/iclforge/control.hpp and planning/esp32-device-ui.md.
 
 #include "iclforge/control.hpp"
 
@@ -27,12 +27,12 @@
 // in flash. ESP-IDF names each symbol after the file's base name, which is why
 // the files carry the component's name: a firmware that embeds an index.html of
 // its own would otherwise have two definitions of one symbol.
-extern const char ac3forge_ui_html_start[] asm("_binary_ac3forge_ui_html_start");
-extern const char ac3forge_ui_html_end[] asm("_binary_ac3forge_ui_html_end");
-extern const char ac3forge_ui_js_start[] asm("_binary_ac3forge_ui_js_start");
-extern const char ac3forge_ui_js_end[] asm("_binary_ac3forge_ui_js_end");
+extern const char iclforge_ui_html_start[] asm("_binary_iclforge_ui_html_start");
+extern const char iclforge_ui_html_end[] asm("_binary_iclforge_ui_html_end");
+extern const char iclforge_ui_js_start[] asm("_binary_iclforge_ui_js_start");
+extern const char iclforge_ui_js_end[] asm("_binary_iclforge_ui_js_end");
 
-namespace ac3forge {
+namespace iclforge {
 namespace {
 
 // The most of the log one GET /log sends: its copy is on the server's heap
@@ -411,13 +411,13 @@ struct Control::Impl {
     // The web UI: a page and its script, which read /status and drive the
     // routes below like any other client.
     static esp_err_t on_page(httpd_req_t* req) {
-        return send_file(req, "text/html; charset=utf-8", ac3forge_ui_html_start,
-                         ac3forge_ui_html_end);
+        return send_file(req, "text/html; charset=utf-8", iclforge_ui_html_start,
+                         iclforge_ui_html_end);
     }
 
     static esp_err_t on_script(httpd_req_t* req) {
-        return send_file(req, "text/javascript; charset=utf-8", ac3forge_ui_js_start,
-                         ac3forge_ui_js_end);
+        return send_file(req, "text/javascript; charset=utf-8", iclforge_ui_js_start,
+                         iclforge_ui_js_end);
     }
 
     static esp_err_t on_hardware(httpd_req_t* req) {
@@ -428,7 +428,7 @@ struct Control::Impl {
 
     static esp_err_t on_api(httpd_req_t* req) {
         return send_text(req, "200 OK",
-                         "ac3forge player\n"
+                         "iclforge player\n"
                          "GET  /              a web page that shows and drives the player\n"
                          "GET  /api           this list\n"
                          "GET  /status        what is playing, as JSON\n"
@@ -502,7 +502,7 @@ struct Control::Impl {
             if (const auto info = h.stream()) {
                 out += '{';
                 append_key(out, "codec");
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
                 append_json_string(out, info->ac4 ? "AC-4" : (info->eac3 ? "E-AC-3" : "AC-3"));
 #else
                 append_json_string(out, info->eac3 ? "E-AC-3" : "AC-3");
@@ -999,4 +999,4 @@ void Control::stop() {
     impl_ = nullptr;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

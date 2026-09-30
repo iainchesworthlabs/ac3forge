@@ -4,14 +4,14 @@
 # An ESP-IDF project, driven by idf.py rather than by this repo's presets, for
 # the same reason apps/android is a Gradle project: the SDK owns the top-level
 # build. IDF is reached from the other direction - esp-idf/iclforge/
-# add_subdirectory()s the repo root - so there is no ac3forge preset for this
+# add_subdirectory()s the repo root - so there is no iclforge preset for this
 # target and no entry in cmake/toolchains/.
 #
 # Build it with the IDF environment exported:
 #
 #   idf.py set-target esp32p4
 #   idf.py build                                  # decode
-#   idf.py -DAC3FORGE_ESP_PROFILE=encoder build   # encode
+#   idf.py -DICLFORGE_ESP_PROFILE=encoder build   # encode
 #   idf.py -p <PORT> flash monitor                # a real board
 #
 # There is no QEMU leg: ESP-IDF v6.1's qemu-system-riscv32 emulates the
@@ -53,7 +53,7 @@
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28)
 
-# The ac3forge component lives at the repo root, beside the other bindings, not
+# The iclforge component lives at the repo root, beside the other bindings, not
 # under this project. Four directories up: esp32p4 -> platform -> baremetal ->
 # apps -> root, then esp-idf. IDF wants the directory CONTAINING components.
 #
@@ -61,21 +61,21 @@ cmake_minimum_required(VERSION 3.28)
 # reason the component moved out: if the published shape breaks, this build -
 # the one CI runs - breaks with it, rather than continuing to work through a
 # private path no integrator has.
-get_filename_component(AC3FORGE_ESP_COMPONENTS
+get_filename_component(ICLFORGE_ESP_COMPONENTS
                        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../esp-idf" ABSOLUTE)
-set(EXTRA_COMPONENT_DIRS "${AC3FORGE_ESP_COMPONENTS}")
+set(EXTRA_COMPONENT_DIRS "${ICLFORGE_ESP_COMPONENTS}")
 
 # Decode or encode. Declared here, before project(), because the component
 # reads it during IDF's component scan - which project() performs.
-set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
+set(ICLFORGE_ESP_PROFILE "decoder" CACHE STRING
     "Which probe to build: decoder or encoder")
 
 # The decode-critical sources at -O2 (src/ac3/minimal.cmake has the list
 # and why each file is on it), the same default the S3 and C3 projects set.
-set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
+set(ICLFORGE_MINIMAL_HOT_O2 ON CACHE BOOL
     "Decode-critical sources at -O2; see src/ac3/minimal.cmake")
 
-# No AC3FORGE_DECODE_SCALAR override here, deliberately - unlike the C3 and C6
+# No ICLFORGE_DECODE_SCALAR override here, deliberately - unlike the C3 and C6
 # projects beside this one. The component
 # (esp-idf/iclforge/CMakeLists.txt) picks float where
 # ESP-IDF's SOC_CPU_HAS_FPU capability says the part has a floating-point

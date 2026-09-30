@@ -1,7 +1,7 @@
 //! AC-3 encode and decode — `ac3::FrameEncoder`/`ac3::FrameDecoder` via
-//! `ac3forge_encoder_t`/`ac3forge_decoder_t`.
+//! `iclforge_encoder_t`/`iclforge_decoder_t`.
 
-use ac3forge_sys as sys;
+use iclforge_sys as sys;
 use std::ptr;
 
 use crate::bytes::Bytes;
@@ -11,8 +11,8 @@ use crate::types::{
     SurroundMixLevel,
 };
 
-/// Mirrors `ac3forge_encoder_config_t`. Construct with [`EncoderConfig::default`] (which calls
-/// the raw `ac3forge_encoder_config_init()` — see that function's own doc comment on why a
+/// Mirrors `iclforge_encoder_config_t`. Construct with [`EncoderConfig::default`] (which calls
+/// the raw `iclforge_encoder_config_init()` — see that function's own doc comment on why a
 /// zero-initialized config is *not* equivalent, e.g. `dialnorm` 0 is invalid where the real
 /// default is 31) and override only the fields you need, the same "`_init()` first, then
 /// selective overrides" pattern the C API itself is documented to expect.
@@ -44,8 +44,8 @@ pub struct EncoderConfig {
 }
 
 impl EncoderConfig {
-    pub(crate) fn to_raw(&self) -> sys::ac3forge_encoder_config_t {
-        sys::ac3forge_encoder_config_t {
+    pub(crate) fn to_raw(&self) -> sys::iclforge_encoder_config_t {
+        sys::iclforge_encoder_config_t {
             sample_rate: self.sample_rate.to_raw(),
             bitrate_kbps: self.bitrate_kbps,
             dialnorm: self.dialnorm,
@@ -71,7 +71,7 @@ impl EncoderConfig {
         }
     }
 
-    fn from_raw(raw: &sys::ac3forge_encoder_config_t) -> Self {
+    fn from_raw(raw: &sys::iclforge_encoder_config_t) -> Self {
         EncoderConfig {
             sample_rate: SampleRate::from_raw(raw.sample_rate)
                 .expect("unrecognized sample_rate in encoder default"),
@@ -106,18 +106,18 @@ impl EncoderConfig {
 impl Default for EncoderConfig {
     fn default() -> Self {
         let mut raw = unsafe { std::mem::zeroed() };
-        // SAFETY: ac3forge_encoder_config_init() unconditionally overwrites every field of
+        // SAFETY: iclforge_encoder_config_init() unconditionally overwrites every field of
         // `raw` via a full struct assignment - never read before being written. This is the
         // one sanctioned way to obtain the real EncoderConfig{} defaults (dialnorm 31, etc.)
-        // rather than guessing at them Rust-side, per ac3forge.h's own `_config_init` comment.
-        unsafe { sys::ac3forge_encoder_config_init(&mut raw) };
+        // rather than guessing at them Rust-side, per iclforge.h's own `_config_init` comment.
+        unsafe { sys::iclforge_encoder_config_init(&mut raw) };
         EncoderConfig::from_raw(&raw)
     }
 }
 
-/// An AC-3 encoder — `ac3::FrameEncoder` via `ac3forge_encoder_t`.
+/// An AC-3 encoder — `ac3::FrameEncoder` via `iclforge_encoder_t`.
 pub struct Encoder {
-    raw: ptr::NonNull<sys::ac3forge_encoder_t>,
+    raw: ptr::NonNull<sys::iclforge_encoder_t>,
     channel_count: usize,
 }
 
@@ -128,15 +128,15 @@ unsafe impl Send for Encoder {}
 impl Encoder {
     pub fn new(config: &EncoderConfig) -> Result<Self, Error> {
         let raw_config = config.to_raw();
-        let mut out: *mut sys::ac3forge_encoder_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_encoder_t = ptr::null_mut();
         // SAFETY: `raw_config` is a fully-initialized value (see `to_raw`); `out` is a valid
         // out-parameter.
-        let status = unsafe { sys::ac3forge_encoder_create(&raw_config, &mut out) };
+        let status = unsafe { sys::iclforge_encoder_create(&raw_config, &mut out) };
         Error::check(status)?;
         let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_encoder_create returned OK with a null encoder");
+            .expect("iclforge_encoder_create returned OK with a null encoder");
         // SAFETY: `raw` was just created above and is exclusively owned by this `Encoder`.
-        let channel_count = unsafe { sys::ac3forge_encoder_channel_count(raw.as_ptr()) };
+        let channel_count = unsafe { sys::iclforge_encoder_channel_count(raw.as_ptr()) };
         Ok(Encoder { raw, channel_count })
     }
 
@@ -148,31 +148,31 @@ impl Encoder {
 
     /// This encoder's latency budget - constant for its whole life.
     pub fn latency(&self) -> Latency {
-        let mut raw = sys::ac3forge_latency_t::default();
+        let mut raw = sys::iclforge_latency_t::default();
         // SAFETY: `self.raw` is valid; `raw` is a valid out-parameter.
-        unsafe { sys::ac3forge_encoder_latency(self.raw.as_ptr(), &mut raw) };
+        unsafe { sys::iclforge_encoder_latency(self.raw.as_ptr(), &mut raw) };
         Latency::from_raw(raw)
     }
 
     /// Encodes one syncframe. `channels` must have exactly [`Encoder::channel_count`] entries,
-    /// each exactly `AC3FORGE_SAMPLES_PER_FRAME` (1536) samples nominally in `[-1, 1)`, in AC-3
+    /// each exactly `ICLFORGE_SAMPLES_PER_FRAME` (1536) samples nominally in `[-1, 1)`, in AC-3
     /// channel order (Table 5.8) with LFE last.
     pub fn encode_frame(&mut self, channels: &[&[f32]]) -> Result<Bytes, Error> {
         if channels.len() != self.channel_count {
             return Err(Error::InvalidArgument);
         }
-        let samples_per_channel = sys::AC3FORGE_SAMPLES_PER_FRAME as usize;
+        let samples_per_channel = sys::ICLFORGE_SAMPLES_PER_FRAME as usize;
         if channels.iter().any(|c| c.len() != samples_per_channel) {
             return Err(Error::InvalidArgument);
         }
 
         let pointers: Vec<*const f32> = channels.iter().map(|c| c.as_ptr()).collect();
-        let mut out: *mut sys::ac3forge_bytes_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_bytes_t = ptr::null_mut();
         // SAFETY: `pointers` holds `channel_count` valid pointers, each to
         // `samples_per_channel` live f32s for the duration of this call; `out` is a valid
         // out-parameter.
         let status = unsafe {
-            sys::ac3forge_encoder_encode_frame(
+            sys::iclforge_encoder_encode_frame(
                 self.raw.as_ptr(),
                 pointers.as_ptr(),
                 pointers.len(),
@@ -181,7 +181,7 @@ impl Encoder {
             )
         };
         Error::check(status)?;
-        // SAFETY: AC3FORGE_OK guarantees `out` was written to a valid, exclusively-owned handle.
+        // SAFETY: ICLFORGE_OK guarantees `out` was written to a valid, exclusively-owned handle.
         Ok(unsafe { Bytes::from_raw(out) })
     }
 }
@@ -189,13 +189,13 @@ impl Encoder {
 impl Drop for Encoder {
     fn drop(&mut self) {
         // SAFETY: `self.raw` is owned exclusively by this `Encoder`.
-        unsafe { sys::ac3forge_encoder_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_encoder_destroy(self.raw.as_ptr()) };
     }
 }
 
-/// An AC-3 decoder — `ac3::FrameDecoder` via `ac3forge_decoder_t`.
+/// An AC-3 decoder — `ac3::FrameDecoder` via `iclforge_decoder_t`.
 pub struct Decoder {
-    raw: ptr::NonNull<sys::ac3forge_decoder_t>,
+    raw: ptr::NonNull<sys::iclforge_decoder_t>,
 }
 
 unsafe impl Send for Decoder {}
@@ -203,27 +203,27 @@ unsafe impl Send for Decoder {}
 impl Decoder {
     pub fn new(config: &DecoderConfig) -> Result<Self, Error> {
         let raw_config = config.to_raw();
-        let mut out: *mut sys::ac3forge_decoder_t = ptr::null_mut();
-        let status = unsafe { sys::ac3forge_decoder_create(&raw_config, &mut out) };
+        let mut out: *mut sys::iclforge_decoder_t = ptr::null_mut();
+        let status = unsafe { sys::iclforge_decoder_create(&raw_config, &mut out) };
         Error::check(status)?;
         let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_decoder_create returned OK with a null decoder");
+            .expect("iclforge_decoder_create returned OK with a null decoder");
         Ok(Decoder { raw })
     }
 
     /// The delay this decoder adds on top of the encoder's own budget - always 0 for AC-3 (see
-    /// `ac3forge_decoder_latency_samples`'s own comment).
+    /// `iclforge_decoder_latency_samples`'s own comment).
     pub fn latency_samples(&self) -> i32 {
-        unsafe { sys::ac3forge_decoder_latency_samples(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoder_latency_samples(self.raw.as_ptr()) }
     }
 
     /// Decodes one syncframe. `frame` must be exactly one syncframe's bytes.
     pub fn decode_frame(&mut self, frame: &[u8]) -> Result<DecodedFrame, Error> {
-        let mut out: *mut sys::ac3forge_decoded_frame_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_decoded_frame_t = ptr::null_mut();
         // SAFETY: `frame` is a valid slice for the duration of this call; `out` is a valid
         // out-parameter.
         let status = unsafe {
-            sys::ac3forge_decoder_decode_frame(
+            sys::iclforge_decoder_decode_frame(
                 self.raw.as_ptr(),
                 frame.as_ptr(),
                 frame.len(),
@@ -232,52 +232,52 @@ impl Decoder {
         };
         Error::check(status)?;
         let raw = ptr::NonNull::new(out)
-            .expect("ac3forge_decoder_decode_frame returned OK with a null frame");
+            .expect("iclforge_decoder_decode_frame returned OK with a null frame");
         Ok(DecodedFrame { raw })
     }
 }
 
 impl Drop for Decoder {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_decoder_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_decoder_destroy(self.raw.as_ptr()) };
     }
 }
 
-/// One decoded AC-3 syncframe — `ac3::DecodedFrame` via `ac3forge_decoded_frame_t`. Owns its
+/// One decoded AC-3 syncframe — `ac3::DecodedFrame` via `iclforge_decoded_frame_t`. Owns its
 /// PCM; every accessor borrows from `&self`.
 pub struct DecodedFrame {
-    raw: ptr::NonNull<sys::ac3forge_decoded_frame_t>,
+    raw: ptr::NonNull<sys::iclforge_decoded_frame_t>,
 }
 
 unsafe impl Send for DecodedFrame {}
 
 impl DecodedFrame {
     pub fn sample_rate(&self) -> Option<SampleRate> {
-        SampleRate::from_raw(unsafe { sys::ac3forge_decoded_frame_sample_rate(self.raw.as_ptr()) })
+        SampleRate::from_raw(unsafe { sys::iclforge_decoded_frame_sample_rate(self.raw.as_ptr()) })
     }
 
     pub fn bitrate_kbps(&self) -> u32 {
-        unsafe { sys::ac3forge_decoded_frame_bitrate_kbps(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_frame_bitrate_kbps(self.raw.as_ptr()) }
     }
 
     pub fn acmod(&self) -> Option<Acmod> {
-        Acmod::from_raw(unsafe { sys::ac3forge_decoded_frame_acmod(self.raw.as_ptr()) })
+        Acmod::from_raw(unsafe { sys::iclforge_decoded_frame_acmod(self.raw.as_ptr()) })
     }
 
     pub fn lfe(&self) -> bool {
-        unsafe { sys::ac3forge_decoded_frame_lfe(self.raw.as_ptr()) != 0 }
+        unsafe { sys::iclforge_decoded_frame_lfe(self.raw.as_ptr()) != 0 }
     }
 
     pub fn dialnorm(&self) -> i32 {
-        unsafe { sys::ac3forge_decoded_frame_dialnorm(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_frame_dialnorm(self.raw.as_ptr()) }
     }
 
     pub fn channel_count(&self) -> usize {
-        unsafe { sys::ac3forge_decoded_frame_channel_count(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_frame_channel_count(self.raw.as_ptr()) }
     }
 
     pub fn samples_per_channel(&self) -> usize {
-        unsafe { sys::ac3forge_decoded_frame_samples_per_channel(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_decoded_frame_samples_per_channel(self.raw.as_ptr()) }
     }
 
     /// `channel_index` in `[0, channel_count())`, AC-3 coded order (Table 5.8), LFE last when
@@ -287,11 +287,11 @@ impl DecodedFrame {
             channel_index < self.channel_count(),
             "channel index out of range"
         );
-        // SAFETY: ac3forge_decoded_frame_channel_samples()'s pointer is valid until `frame` is
-        // destroyed (ac3forge.h's own doc comment); it's tied to `&self`'s lifetime here, which
+        // SAFETY: iclforge_decoded_frame_channel_samples()'s pointer is valid until `frame` is
+        // destroyed (iclforge.h's own doc comment); it's tied to `&self`'s lifetime here, which
         // never outlives `self.raw`. samples_per_channel() gives the real length.
         unsafe {
-            let ptr = sys::ac3forge_decoded_frame_channel_samples(self.raw.as_ptr(), channel_index);
+            let ptr = sys::iclforge_decoded_frame_channel_samples(self.raw.as_ptr(), channel_index);
             std::slice::from_raw_parts(ptr, self.samples_per_channel())
         }
     }
@@ -300,7 +300,7 @@ impl DecodedFrame {
     /// ranges over the full-bandwidth channels (no LFE entry).
     pub fn block_switched(&self, channel_index: usize, block_index: usize) -> bool {
         unsafe {
-            sys::ac3forge_decoded_frame_block_switched(
+            sys::iclforge_decoded_frame_block_switched(
                 self.raw.as_ptr(),
                 channel_index,
                 block_index as i32,
@@ -311,6 +311,6 @@ impl DecodedFrame {
 
 impl Drop for DecodedFrame {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_decoded_frame_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_decoded_frame_destroy(self.raw.as_ptr()) };
     }
 }

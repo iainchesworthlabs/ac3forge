@@ -14,10 +14,10 @@
 // come straight from whoever produced the file. It is also the one parser
 // here that is not clean-room - it delegates to the vendored libbw64 and
 // libadm (see src/adm/CMakeLists.txt) - so a report from this harness may
-// land in third-party code rather than in ac3forge's own; that is worth
-// knowing either way, since the bytes reach it through an ac3forge API.
+// land in third-party code rather than in iclforge's own; that is worth
+// knowing either way, since the bytes reach it through an iclforge API.
 //
-// Built only with -DAC3FORGE_BUILD_ADM=ON, which is off by default and
+// Built only with -DICLFORGE_BUILD_ADM=ON, which is off by default and
 // additionally needs vcpkg's "adm" feature for libadm's Boost headers, so
 // this harness is not in fuzz/run.sh's default target list - see fuzz/
 // README.md's "The ADM harness is opt-in".

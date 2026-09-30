@@ -22,8 +22,8 @@
 // key, the path to the key file, or the value of any environment variable.
 // It is held twice. First structurally - the report is composed from named
 // fields, and there is no field for the key bytes, the key path (whether
-// chosen in Settings or given through AC3FORGE_SIGNING_KEY_FILE) or the
-// inline AC3FORGE_SIGNING_KEY value; EngineStatus::signing (which names the
+// chosen in Settings or given through ICLFORGE_SIGNING_KEY_FILE) or the
+// inline ICLFORGE_SIGNING_KEY value; EngineStatus::signing (which names the
 // key file for the Settings page) and AppStatus::image_path (a path inside
 // the person's profile) are never read; the settings section is a fixed list
 // of keys the caller whitelists, and any key under "signing/" is written as
@@ -88,8 +88,8 @@ enum class KeySource : std::uint8_t { kNone, kFile, kEnvironmentFile, kEnvironme
 struct SigningFacts {
     bool objects_enabled = false;
     KeySource source = KeySource::kNone;
-    bool env_key_file_set = false;    // AC3FORGE_SIGNING_KEY_FILE present (its value is never read here)
-    bool env_key_inline_set = false;  // AC3FORGE_SIGNING_KEY present (likewise)
+    bool env_key_file_set = false;    // ICLFORGE_SIGNING_KEY_FILE present (its value is never read here)
+    bool env_key_inline_set = false;  // ICLFORGE_SIGNING_KEY present (likewise)
 };
 
 // Everything the report is composed from, as named fields. There is no
@@ -122,7 +122,7 @@ struct ReportFacts {
 
 // Every spelling of a secret the report must not carry: the key path with
 // native and forward separators and in its canonical form, the
-// AC3FORGE_SIGNING_KEY_FILE value in the same forms, the AC3FORGE_SIGNING_KEY
+// ICLFORGE_SIGNING_KEY_FILE value in the same forms, the ICLFORGE_SIGNING_KEY
 // value. Empty strings are ignored.
 struct Secrets {
     std::vector<std::string> strings;

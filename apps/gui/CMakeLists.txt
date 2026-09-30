@@ -5,7 +5,7 @@
 # Qt is a PREBUILT dependency discovered by cmake/FindQt6.cmake (which widens
 # CMAKE_PREFIX_PATH to the standard install roots on Windows, Linux and
 # macOS), never a vcpkg port. Machines with no Qt kit build the rest of the
-# project with -DAC3FORGE_BUILD_GUI=OFF.
+# project with -DICLFORGE_BUILD_GUI=OFF.
 # ---------------------------------------------------------------------------
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent LinguistTools)
 
@@ -13,10 +13,10 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concu
 # section: that file is include()d from the top-level CMakeLists.txt and cannot
 # read Qt6_VERSION, which find_package set in THIS directory's scope only.
 # PARENT_SCOPE for exactly the reason apps/crucible/CMakeLists.txt exports
-# AC3FORGE_CRUCIBLE_X11_BACKEND the same way. REQUIRED above is what lets the
-# notices treat AC3FORGE_BUILD_GUI=ON as "a Qt kit was found": the two cannot
+# ICLFORGE_CRUCIBLE_X11_BACKEND the same way. REQUIRED above is what lets the
+# notices treat ICLFORGE_BUILD_GUI=ON as "a Qt kit was found": the two cannot
 # disagree, because a missing kit fails the configure on this line.
-set(AC3FORGE_GUI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
+set(ICLFORGE_GUI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -295,7 +295,7 @@ if(AC3_GUI_GENERATED_SOURCES)
 else()
     message(WARNING
         "No Qt-generated sources found on ac3gui. If Qt has changed where it "
-        "writes them, they are now being compiled with ac3::warnings and a "
+        "writes them, they are now being compiled with iclforge::warnings and a "
         "warning in Qt's own output will fail the build.")
 endif()
 
@@ -317,22 +317,22 @@ target_link_libraries(ac3gui
         iclforge::ac4
         iclforge::ac4dec
         iclforge::ac4enc
-        ac3::warnings
-        ac3::fmt
+        iclforge::warnings
+        iclforge::fmt
         # Unlike iclforge::ac3's own PRIVATE, $<BUILD_INTERFACE:...>-wrapped link
         # (src/ac3/CMakeLists.txt), this app has no intermediate engine
         # library of its own to hang the profiling header pair on the way
         # apps/crucible/CMakeLists.txt and apps/hearth/engine/CMakeLists.txt
         # do for their windows - so ac3gui (and ac3gui_qmltests, tests/CMakeLists.txt's
         # identical pair below) links and includes it directly.
-        ac3::tracy
+        iclforge::tracy
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::Concurrent)
 target_include_directories(ac3gui PRIVATE
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
+    "$<IF:$<BOOL:${ICLFORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
 
 # A GUI app rather than a console one. MACOSX_BUNDLE moves the binary to
 # bin/ac3gui.app/Contents/MacOS/ac3gui, which is where --smoke lives on macOS;
@@ -503,7 +503,7 @@ endif()
 # and, more to the point, for why dpkg-shlibdeps cannot work that list out on
 # its own whatever the Qt kit came from. This comment used to say the
 # dependency was not implemented "yet" and could not bite in CI because
-# AC3FORGE_BUILD_GUI defaults OFF on every Linux preset. Both halves had gone
+# ICLFORGE_BUILD_GUI defaults OFF on every Linux preset. Both halves had gone
 # stale: .github/workflows/_build.yml's four Linux legs carry `gui: true`
 # alongside `packageable: true`, so ac3gui has been going into a released .deb
 # with nothing declaring the QML runtime it needs. Do not "fix" the qt.conf
@@ -621,6 +621,6 @@ endif()
 # tests/CMakeLists.txt's own CMAKE_CURRENT_SOURCE_DIR/BINARY_DIR equal to
 # this file's, so every path inside it is written relative to apps/gui, not
 # apps/gui/tests.
-if(AC3FORGE_BUILD_TESTS)
+if(ICLFORGE_BUILD_TESTS)
     include(tests/CMakeLists.txt)
 endif()

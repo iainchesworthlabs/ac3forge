@@ -1,4 +1,4 @@
-# Workspace-local Android SDK bootstrap (legacy; prefer ~/.local/share/ac3forge/android-sdk in WSL).
+# Workspace-local Android SDK bootstrap (legacy; prefer ~/.local/share/iclforge/android-sdk in WSL).
 .tools/
 
 # Build output
@@ -36,7 +36,7 @@ apps/wasm/tests/node_modules/
 apps/wasm/tests/test-results/
 apps/wasm/tests/playwright-report/
 
-# The ac3forge-wasm-decoder package (roadmap UX5). Same package-lock.json
+# The iclforge-wasm-decoder package (roadmap UX5). Same package-lock.json
 # convention as apps/wasm/tests above; js/dist/ is also covered by the
 # blanket dist/ rule below but named here for the same reason python/dist/ is.
 js/node_modules/

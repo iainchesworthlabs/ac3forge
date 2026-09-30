@@ -88,7 +88,7 @@ class HostEvents final : public iclforge::sendspin::ServerHostEvents {
 
 // `unpaired_access` matches test_group.cpp's own two flows: a plain
 // player@v1 sink is approved for unpaired access (needs no pairing to play
-// PCM), while an _ac3forge_player@v1 sink is paired by its token instead
+// PCM), while an _iclforge_player@v1 sink is paired by its token instead
 // (below) - SinkOptions::unpaired_access defaults to false, which
 // test_group.cpp's own paired sinks rely on rather than setting explicitly,
 // so this does too rather than guessing the extension role also works
@@ -132,7 +132,7 @@ std::vector<std::byte> ac3_unit() {
 TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrapper",
          "[hearth][group][websocket]") {
     const fs::path scratch =
-        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_sink_" + scratch_pid_suffix());
+        fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_group_sink_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const std::unique_ptr<testsink::Sink> pcm_sink =
@@ -150,7 +150,7 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
         store, events);
     REQUIRE(host.has_value());
     // burst_sink pairs by its own token, entered before it even connects
-    // (test_group.cpp's own recipe for an _ac3forge_player@v1 sink) - it
+    // (test_group.cpp's own recipe for an _iclforge_player@v1 sink) - it
     // needs no separate approve() below, unlike pcm_sink's unpaired access.
     REQUIRE((*host)->enter_pairing_token(burst_sink->pairing_token()));
     (*host)->dial("ws://127.0.0.1:" + std::to_string(pcm_sink->port()) + "/sendspin");
@@ -169,7 +169,7 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     // Diagnostic: which negotiated the extension role. bursts=false is
     // fine for pcm_sink (extension_role=false forces player@v1 there);
     // burst_sink (extension_role=true, default) is expected to have
-    // negotiated _ac3forge_player@v1 (bursts=true) - if it did not, no
+    // negotiated _iclforge_player@v1 (bursts=true) - if it did not, no
     // burst this test sends can ever reach it, whatever Group does.
     std::size_t clients_with_bursts = 0;
     for (const iclforge::sendspin::ClientView& client : (*host)->clients()) {

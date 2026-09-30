@@ -2,12 +2,12 @@
 
 // The AC-4 decoder as the player uses it (planning/ac4.md, D14b): what reading
 // an AC-4 stream needs that is not the player's own loop. player.cpp includes
-// this only when CONFIG_AC3FORGE_AC4 is on, and with it off none of this is in
+// this only when CONFIG_ICLFORGE_AC4 is on, and with it off none of this is in
 // the build.
 //
 // The decoder itself is src/ac4dec's iclforge::ac4::Decoder, in the float scalar, built as
 // a static archive with the minimum-footprint profile's compile options
-// (AC3FORGE_MINIMAL_AC4, root CMakeLists.txt). It is asked for what a player
+// (ICLFORGE_MINIMAL_AC4, root CMakeLists.txt). It is asked for what a player
 // asks of the AC-3 and E-AC-3 decoders: blocks of 256 samples a channel, handed
 // to a callback as the decoder completes them (iclforge::ac4::Decoder::decode_by_block),
 // so the player holds one block of the audio and not a frame's worth.
@@ -24,7 +24,7 @@
 #include "iclforge/ac4/ac4.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-namespace ac3forge::ac4bridge {
+namespace iclforge::ac4bridge {
 
 // Whether `bytes` opens with an AC-4 sync word, 0xAC40 or 0xAC41 (ETSI TS 103
 // 190-2 Annex G.4.1) where AC-3's and E-AC-3's is 0x0B77: how every front end
@@ -138,4 +138,4 @@ struct PcmHash {
     }
 };
 
-}  // namespace ac3forge::ac4bridge
+}  // namespace iclforge::ac4bridge

@@ -35,7 +35,7 @@ namespace {
 // Per this project's per-file test-helper convention (see
 // tests/cli/test_cli_containers.cpp, whose shapes these copy).
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} /
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} /
                ("cli_ac4_decode_" + iclforge::test::platform::process_id());
     fs::create_directories(dir);
     return dir;
@@ -57,7 +57,7 @@ std::string quoted(const fs::path& path) {
 }
 
 fs::path leg(const std::string& name, const std::string& file = "dee.ac4") {
-    return fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / name / file;
+    return fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / name / file;
 }
 
 fs::path multiplexed() {

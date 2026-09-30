@@ -9,7 +9,7 @@ import Ac3ForgeHearth
 // written to NetworkController.sinkSpeakerSettings/setSink*() instead of
 // HearthController's, over the network rather than this computer's own
 // engine. Two real differences from the local page, both because the wire
-// (ac3forge_player.hpp) says so, not by choice here:
+// (iclforge_player.hpp) says so, not by choice here:
 //   * trim/delay are indexed by SINK OUTPUT, not by render slot - the
 //     "OUT" column below is what ties a speaker's row to which trimDb/
 //     delayMs entry it reads (setSinkTrimDb()'s own comment,

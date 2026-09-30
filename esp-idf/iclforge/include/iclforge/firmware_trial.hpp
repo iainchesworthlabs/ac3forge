@@ -28,7 +28,7 @@
 // owner's conditions hold, and does what it answers.
 // tests/ac3/io/test_firmware_trial.cpp runs the rules on a laptop.
 
-namespace ac3forge {
+namespace iclforge {
 
 struct TrialPolicy {
     // How long every condition has to hold without a break.
@@ -94,4 +94,4 @@ class Trial {
     std::optional<TrialStep> decided_;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

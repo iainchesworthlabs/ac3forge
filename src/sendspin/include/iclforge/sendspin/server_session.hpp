@@ -35,7 +35,7 @@
 // Music Assistant and aiosendspin 9.1.1), answers client/time the moment it arrives, and
 // passes client/state, client/goodbye and client/leave to its listener. Everything else is the
 // engine's to decide and the session's to carry out: the activation, the streams of player@v1 and
-// _ac3forge_player@v1 (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1) and
+// _iclforge_player@v1 (planning/hearth-sendspin-extension.md, The role _iclforge_player@v1) and
 // their chunks, group updates, commands, pairing, unpairing and re-handshakes.
 //
 // The calls that send check what the specification requires of them at that moment - an
@@ -154,7 +154,7 @@ class ServerSession {
     [[nodiscard]] std::expected<SessionOutput, Refusal> update_group(const messages::GroupUpdate& update);
     [[nodiscard]] std::expected<SessionOutput, Refusal> command(const messages::PlayerCommandMessage& command);
 
-    // _ac3forge_player@v1's stream, as player@v1's: a data type and sample rate the client listed.
+    // _iclforge_player@v1's stream, as player@v1's: a data type and sample rate the client listed.
     [[nodiscard]] std::expected<SessionOutput, Refusal> start_burst_stream(const player::StreamStart& stream);
     // One burst of the running stream, to be played from `timestamp_us` on the server clock: its
     // Pc and Pd as iclforge::iec61937 writes them, and the payload they describe. send_ahead is
@@ -166,7 +166,7 @@ class ServerSession {
     [[nodiscard]] std::expected<SessionOutput, Refusal> end_burst_stream();
     // A command the role's state lists; settings also checked against the support object
     // (player::check_settings).
-    [[nodiscard]] std::expected<SessionOutput, Refusal> ac3forge_command(const player::CommandMessage& command);
+    [[nodiscard]] std::expected<SessionOutput, Refusal> iclforge_command(const player::CommandMessage& command);
 
     // metadata@v1, controller@v1 and color@v1: each object present only for an active role. The
     // first state of a role since its activation must not be scheduled in the future (messaging.md,
@@ -269,7 +269,7 @@ class ServerSession {
     void leave_pairing(SessionOutput& out);
     [[nodiscard]] bool attempt_running() const { return attempt_ && !attempt_->finished(); }
     [[nodiscard]] bool player_active() const;
-    [[nodiscard]] bool ac3forge_active() const;
+    [[nodiscard]] bool iclforge_active() const;
     [[nodiscard]] SessionOutput on_source_chunk(std::span<const std::uint8_t> message);
     // What removing roles owes the client before the activation: each removed stream role's
     // stream/end, a cancel before an artwork one, and a null state for each removed state role
@@ -295,7 +295,7 @@ class ServerSession {
     std::optional<messages::ClientHello> hello_;
     std::optional<messages::ClientState> state_;
     bool player_state_received_ = false;
-    bool ac3forge_state_received_ = false;
+    bool iclforge_state_received_ = false;
     std::vector<messages::Activity> activities_;
     std::vector<std::string> active_roles_;
     std::optional<messages::PlayerStream> stream_;

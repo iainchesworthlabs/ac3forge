@@ -22,7 +22,7 @@
 #include "iclforge/sendspin/chunks.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-// A test sink's output for _ac3forge_player@v1 (planning/hearth-sendspin-extension.md): each
+// A test sink's output for _iclforge_player@v1 (planning/hearth-sendspin-extension.md): each
 // stream's bursts decoded, AC-3 or E-AC-3 with any object layer, or AC-4, and rendered to the
 // sink's speaker layout by iclforge::render, to a float WAV file with one channel per slot and a
 // play-time log beside it. The log's lines are `local_time_us,first_frame,frames` for each burst,

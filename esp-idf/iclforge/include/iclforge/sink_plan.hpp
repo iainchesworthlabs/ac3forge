@@ -23,8 +23,8 @@
 // stays free of ESP-IDF itself, and a caller that already includes
 // hal/i2s_ll.h for its own reasons (the streaming example's sink does, for
 // I2S_LL_INST_NUM) passes I2S_LL_SLOT_FRAME_BIT_MAX straight through. At 128
-// bits that is 4 slots at 32 bits (ac3forge::interleave_24in32) or 8 at 16
-// (ac3forge::interleave_16in16); at 512 it is 16 or 32.
+// bits that is 4 slots at 32 bits (iclforge::interleave_24in32) or 8 at 16
+// (iclforge::interleave_16in16); at 512 it is 16 or 32.
 //
 // One line: standard mode for 1-2 channels, sized to them. TDM from 3, and a
 // TDM line always runs at its full ceiling width - with the slots past the
@@ -60,7 +60,7 @@
 // PLL locked to the shared bit clock whatever plays, and a data pin nobody
 // drives gives it no defined samples.
 
-namespace ac3forge {
+namespace iclforge {
 
 struct SinkLinePlan {
     // The frame width this line is opened for - the TDM slot mask's size,
@@ -114,7 +114,7 @@ struct SinkLineCeiling {
 
 // The most slots this line configuration could ever be asked to carry - what
 // the streaming example's sink_slots() reports once that is a runtime
-// ceiling (AC3FORGE_EXAMPLE_I2S_SLOT_BITS, AC3FORGE_EXAMPLE_I2S_SECOND_LINE)
+// ceiling (ICLFORGE_EXAMPLE_I2S_SLOT_BITS, ICLFORGE_EXAMPLE_I2S_SECOND_LINE)
 // rather than a build-time slot count, and what accept_layout() validates a
 // requested layout against before plan_sink ever runs. 0 for a slot width
 // plan_sink also refuses.
@@ -176,4 +176,4 @@ enum class SinkFrame {
     return plan;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

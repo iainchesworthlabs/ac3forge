@@ -12,7 +12,7 @@
 // The variant of the `ac3.containers` submodule compiled when matroska/mp4/mpegts are in this build.
 //
 // This is the body that used to sit inside bindings.cpp's PYBIND11_MODULE
-// behind `#ifdef AC3FORGE_PY_HAVE_CONTAINERS`, moved verbatim. See
+// behind `#ifdef ICLFORGE_PY_HAVE_CONTAINERS`, moved verbatim. See
 // optional_modules.hpp for why it is a translation unit now, and
 // python/CMakeLists.txt for the selection that picks this file over the
 // absent/ one beside it.

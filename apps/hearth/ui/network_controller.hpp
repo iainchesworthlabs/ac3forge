@@ -79,7 +79,7 @@ class NetworkController : public QObject {
     // --- a Hearth sink's own settings pages (A6's second slice) ----------
     // planning/hearth-reference-player.md#a6-network-outputs-in-the-application;
     // docs/hearth/design/screenshots/network-sink-{speakers,decoder}.png.
-    // True for a paired, connected sink offering _ac3forge_player@v1 - what
+    // True for a paired, connected sink offering _iclforge_player@v1 - what
     // Network.qml checks to show these pages instead of the plain "paired"
     // card a standard Sendspin player still gets.
     Q_PROPERTY(bool selectedSinkSettable READ selectedSinkSettable NOTIFY sinksChanged)
@@ -212,7 +212,7 @@ public:
     // 1), not a render slot index: unlike HearthController's own trimDb/
     // delayMs (one entry per slot, applied before routing), the wire's
     // trim_db/delay_ms are sized and checked against support.outputs.count
-    // (ac3forge_player.cpp's check_settings()) - the sink applies them after
+    // (iclforge_player.cpp's check_settings()) - the sink applies them after
     // its own routing, per physical output. sinkSpeakerSettings()'s own
     // levels-table row reads trimDb[routing[slot]]/delayMs[routing[slot]]
     // to show the right value beside each speaker's OUT column.

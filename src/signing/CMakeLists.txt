@@ -62,17 +62,17 @@ target_compile_features(iclforge_signing_objects PUBLIC cxx_std_23)
 # iclforge::ac3 (bare, BUILD_SHARED_LIBS-selected) for the parsing primitives, PRIVATE and compile-time
 # only - iclforge_signing_static/signing_shared above each PUBLICLY link their own matching iclforge_ac3_static/
 # iclforge_ac3_shared variant instead, the same "propagation lives on the wrapper, not the shared object
-# library" split iclforge_ac3_objects/capi_objects's own PRIVATE deps already use. ac3::warnings/
-# ac3::coverage wrapped in $<BUILD_INTERFACE:...> for the same dev-only, never-exported reason
+# library" split iclforge_ac3_objects/capi_objects's own PRIVATE deps already use. iclforge::warnings/
+# iclforge::coverage wrapped in $<BUILD_INTERFACE:...> for the same dev-only, never-exported reason
 # iclforge_ac3_objects's identical treatment documents.
 target_link_libraries(iclforge_signing_objects
     PRIVATE
         iclforge::ac3
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>")
+        "$<BUILD_INTERFACE:iclforge::warnings>"
+        "$<BUILD_INTERFACE:iclforge::coverage>")
 
 # --- Static+shared plumbing -------------------------------------------------
-# Same PIC/hidden-visibility/AC3SIGNING_EXPORT shape as iclforge_ac3_objects's own
+# Same PIC/hidden-visibility/ICLFORGE_SIGNING_EXPORT shape as iclforge_ac3_objects's own
 # identical block - see its header comment for the full reasoning.
 set_target_properties(iclforge_signing_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -82,15 +82,15 @@ set_target_properties(iclforge_signing_objects PROPERTIES
 target_compile_options(iclforge_signing_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_signing_shared PROPERTIES DEFINE_SYMBOL "AC3SIGNING_BUILDING_SHARED")
+set_target_properties(iclforge_signing_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_SIGNING_BUILDING_SHARED")
 generate_export_header(iclforge_signing_shared
-    BASE_NAME AC3SIGNING
-    EXPORT_MACRO_NAME AC3SIGNING_EXPORT
+    BASE_NAME ICLFORGE_SIGNING
+    EXPORT_MACRO_NAME ICLFORGE_SIGNING_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/signing/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC3SIGNING_STATIC_DEFINE)
-target_compile_definitions(iclforge_signing_objects PRIVATE AC3SIGNING_BUILDING_SHARED)
-target_compile_definitions(iclforge_signing_static PUBLIC AC3SIGNING_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_SIGNING_STATIC_DEFINE)
+target_compile_definitions(iclforge_signing_objects PRIVATE ICLFORGE_SIGNING_BUILDING_SHARED)
+target_compile_definitions(iclforge_signing_static PUBLIC ICLFORGE_SIGNING_STATIC_DEFINE)
 
 set_target_properties(iclforge_signing_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

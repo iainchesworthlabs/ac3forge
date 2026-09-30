@@ -209,7 +209,7 @@ std::vector<double> first_frame_times(const fs::path& log) {
 }
 
 // A host with a PCM sink (player@v1, approved unpaired) and a burst sink
-// (_ac3forge_player@v1, paired) both playing, and a group of the two.
+// (_iclforge_player@v1, paired) both playing, and a group of the two.
 struct TwoSinkGroup {
     QuietLog log;
     std::unique_ptr<testsink::Sink> pcm_sink;
@@ -304,7 +304,7 @@ TEST_CASE("engine: from the app, a group of two test sinks plays one programme",
          "[hearth][group][websocket]") {
     constexpr int kFrameCount = 20;  // 640 ms
     const fs::path scratch =
-        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_engine_group_" + scratch_pid_suffix());
+        fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_engine_group_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const std::unique_ptr<testsink::Sink> pcm_sink =
@@ -399,7 +399,7 @@ TEST_CASE("engine: from the app, a group of two test sinks plays one programme",
 // planning/ac4.md, I2: "AC-4 decodes to PCM for every output, and is sent as a
 // bitstream only over the extension role ... to sinks that decode it." One
 // AC-4 item from the Engine to a group of a player@v1 sink and an
-// _ac3forge_player@v1 sink that lists AC-4 (D11's test sink): the first takes
+// _iclforge_player@v1 sink that lists AC-4 (D11's test sink): the first takes
 // the Engine's decode as PCM, and the second the item's own sync frames, a
 // burst each, which it decodes itself - to what iclforge::ac4::Decoder makes of them,
 // sample for sample, every burst's frame placed on the group's one timeline.
@@ -408,10 +408,10 @@ TEST_CASE(
     "[hearth][group][websocket][ac4]") {
     constexpr std::size_t kFrames = 24;  // DEE's 2.0 tones at frame_rate_index 13: 1.05 s
     const fs::path scratch =
-        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_engine_group_ac4_" + scratch_pid_suffix());
+        fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_engine_group_ac4_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     const std::vector<std::byte> programme = ac4_frames(
-        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4", kFrames);
+        fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4", kFrames);
     TwoSinkGroup sinks(scratch);
     const EngineStatus finished =
         play_to_group(sinks.group, programme, iclforge::hearth::DecoderSettings{});
@@ -493,10 +493,10 @@ TEST_CASE(
 
 // A sink decodes the presentation it would choose with no preferences, so a
 // presentation the listener has chosen that it would not reaches the group as
-// PCM alone: the _ac3forge_player@v1 sink is sent nothing.
+// PCM alone: the _iclforge_player@v1 sink is sent nothing.
 TEST_CASE("engine: an AC-4 presentation a sink would not choose reaches a group as PCM alone",
           "[hearth][group][websocket][ac4]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} /
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} /
                              ("hearth_engine_group_ac4_choice_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     // E6's broadcast stream: presentation 2 is music and effects with the

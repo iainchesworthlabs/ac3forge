@@ -85,8 +85,8 @@ target_link_libraries(iclforge_ac4enc_objects
     PRIVATE
         "$<BUILD_INTERFACE:$<COMPILE_ONLY:iclforge::ac4>>"
         "$<BUILD_INTERFACE:$<COMPILE_ONLY:iclforge::ac4core>>"
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>")
+        "$<BUILD_INTERFACE:iclforge::warnings>"
+        "$<BUILD_INTERFACE:iclforge::coverage>")
 
 set_target_properties(iclforge_ac4enc_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -97,15 +97,15 @@ set_target_properties(iclforge_ac4enc_objects PROPERTIES
 target_compile_options(iclforge_ac4enc_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_ac4enc_shared PROPERTIES DEFINE_SYMBOL "AC4ENC_BUILDING_SHARED")
+set_target_properties(iclforge_ac4enc_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_AC4ENC_BUILDING_SHARED")
 generate_export_header(iclforge_ac4enc_shared
-    BASE_NAME AC4ENC
-    EXPORT_MACRO_NAME AC4ENC_EXPORT
+    BASE_NAME ICLFORGE_AC4ENC
+    EXPORT_MACRO_NAME ICLFORGE_AC4ENC_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac4enc/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC4ENC_STATIC_DEFINE)
-target_compile_definitions(iclforge_ac4enc_objects PRIVATE AC4ENC_BUILDING_SHARED)
-target_compile_definitions(iclforge_ac4enc_static PUBLIC AC4ENC_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_AC4ENC_STATIC_DEFINE)
+target_compile_definitions(iclforge_ac4enc_objects PRIVATE ICLFORGE_AC4ENC_BUILDING_SHARED)
+target_compile_definitions(iclforge_ac4enc_static PUBLIC ICLFORGE_AC4ENC_STATIC_DEFINE)
 
 set_target_properties(iclforge_ac4enc_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

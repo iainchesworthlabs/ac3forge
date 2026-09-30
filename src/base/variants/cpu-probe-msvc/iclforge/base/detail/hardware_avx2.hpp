@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 // The MSVC/clang-cl member of the CPU-probe seam - real x86-64 hardware,
 // real AVX2 tier compiled in, selected whenever the compiler is MSVC proper
-// or clang-cl (see src/ac3/CMakeLists.txt's AC3FORGE_AVX2 block, and
+// or clang-cl (see src/ac3/CMakeLists.txt's ICLFORGE_AVX2 block, and
 // cpu_features.hpp for what the seam is and why it exists). clang-cl shares
 // this file rather than the GCC/Clang builtin/ sibling: __builtin_cpu_supports
 // needs compiler-rt's cpu-model support linked in, which this project's

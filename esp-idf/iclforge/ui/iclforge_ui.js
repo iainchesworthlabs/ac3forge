@@ -22,7 +22,7 @@
   const LINK = { 'long-term': 'Paired, encrypted', pairing: 'Pairing, encrypted', sentinel: 'Encrypted, not paired' };
   const PLAYING = { bursts: 'Bursts, decoded here', pcm: 'PCM', idle: 'Nothing' };
   const KINDS = { wifi: 'Wi-Fi', ethernet: 'Ethernet' }; // /status's network.kind
-  // GET /firmware's words (ac3forge/firmware_status.hpp): a slot's state, and
+  // GET /firmware's words (iclforge/firmware_status.hpp): a slot's state, and
   // an upload's stage.
   const SLOT = { valid: 'accepted', trial: 'on trial', new: 'written, not started yet', invalid: 'failed its trial', aborted: 'stopped during its trial' };
   const STAGE = { waiting: 'Stopping the player', erasing: 'Erasing', writing: 'Writing', checking: 'Checking', restarting: 'Restarting' };
@@ -629,7 +629,7 @@
     'Each server this board has paired with has to pair again, and the board takes a new identity.', 'Forget',
     () => pairing('Forget every server', 'forget', 'Every server is forgotten: each has to pair again.')));
 
-  // The image's head, as parse_image_head reads it (ac3forge/firmware_image.hpp):
+  // The image's head, as parse_image_head reads it (iclforge/firmware_image.hpp):
   // its chip, version and project, or null for a file that is not an
   // application image. An upload stops what plays before the board reads a
   // byte of it, so a file the board would refuse on these alone stays here.
@@ -677,7 +677,7 @@
     if (!file) return;
     const h = await head(file);
     const chip = CHIPS[hardware.target];
-    const why = !h ? 'it is not an application image; choose ac3forge_hearth_sink.bin'
+    const why = !h ? 'it is not an application image; choose iclforge_hearth_sink.bin'
       : chip !== undefined && h.chip !== chip ? 'it is for another chip than this ' + hardware.chip
         : hardware.project && h.project !== hardware.project ? 'it is ' + h.project + ', not ' + hardware.project : '';
     if (why) return say(file.name + ' was not sent: ' + why + '.', true);

@@ -1,4 +1,4 @@
-# The ESP Component Registry manifest for ac3forge's minimum-footprint profile.
+# The ESP Component Registry manifest for iclforge's minimum-footprint profile.
 # Read by `idf.py add-dependency` and by the registry's own upload tooling; ignored by a
 # build that reaches this component through EXTRA_COMPONENT_DIRS, which is how this repo's
 # own probe uses it.
@@ -19,7 +19,7 @@ description: >-
   archive built without exceptions or RTTI, decode-only or encode-only, sized to run out of
   internal SRAM with no PSRAM. The decode arithmetic follows the part - single
   precision where there is a floating-point unit, fixed point where there is
-  not. AC-4 decoding is an option for the ESP32-P4 (CONFIG_AC3FORGE_AC4, off by default);
+  not. AC-4 decoding is an option for the ESP32-P4 (CONFIG_ICLFORGE_AC4, off by default);
   it needs PSRAM.
 url: https://github.com/iainchesworthlabs/ac3forge
 repository: https://github.com/iainchesworthlabs/ac3forge.git
@@ -55,7 +55,7 @@ license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
 #     single-precision FPU, so it decodes in the same float tier as the S3,
 #     and 768 KB of L2MEM. No radio of its own; a board wanting one pairs it
 #     with a companion ESP32-C6 over SDIO, which this probe does not touch.
-#     It is the part AC-4 decoding was built for first (CONFIG_AC3FORGE_AC4,
+#     It is the part AC-4 decoding was built for first (CONFIG_ICLFORGE_AC4,
 #     docs/platforms/bare-metal/esp32-p4.md).
 targets:
   - esp32s3

@@ -459,7 +459,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_by_block(
     std::array<std::span<const float>, kChannels> block_views{};
     {
         // Its own zone, so a caller's sink reads as the caller's time.
-        AC3_ZONE_SCOPED_N("ac3_emit");
+        ICLFORGE_ZONE_SCOPED_N("ac3_emit");
         for (int b = 0; b < kBlocksPerFrame; ++b) {
             for (std::size_t s = 0; s < slots; ++s) {
                 block_views[s] = spans[s].subspan(
@@ -582,7 +582,7 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     std::span<const std::byte> frame, std::span<const std::span<float>> external) {
-    AC3_ZONE_SCOPED_N("ac3_decode_frame");
+    ICLFORGE_ZONE_SCOPED_N("ac3_decode_frame");
     // Before the first early return, for the same reason FrameEncoder resets
     // its own: a caller reusing one trace across a file must never read a
     // previous frame's state out of a call that decoded nothing.
@@ -968,7 +968,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     std::array<internal::decode_scalar_t, 512> x;
 
     for (int block = 0; block < kBlocksPerFrame; ++block) {
-        AC3_ZONE_SCOPED_N("ac3_decode_block");
+        ICLFORGE_ZONE_SCOPED_N("ac3_decode_block");
         if (impl_->config_.trace != nullptr) {
             auto& trace = impl_->config_.trace->blocks[static_cast<std::size_t>(block)];
             trace.entered = true;
@@ -1222,7 +1222,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
             }
         }
         {
-            AC3_ZONE_SCOPED_N("ac3_exponents");
+            ICLFORGE_ZONE_SCOPED_N("ac3_exponents");
             for (int ch = 0; ch < nchans; ++ch) {
                 const auto strat = strategy[static_cast<std::size_t>(ch)];
                 if (strat == ExpStrategy::kReuse) {
@@ -1396,7 +1396,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
             snr_all_zero = fsnroffst[static_cast<std::size_t>(s)] == 0;
         }
         {
-            AC3_ZONE_SCOPED_N("ac3_bit_allocation");
+            ICLFORGE_ZONE_SCOPED_N("ac3_bit_allocation");
             if (impl_->bitalloc_memo_.size() < static_cast<std::size_t>(streams)) {
                 impl_->bitalloc_memo_.resize(static_cast<std::size_t>(streams));
             }
@@ -1558,7 +1558,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // Every stream's quantized mantissas off the wire, in the order
         // §5.4.3.28 packs them.
         {
-            AC3_ZONE_SCOPED_N("ac3_mantissas");
+            ICLFORGE_ZONE_SCOPED_N("ac3_mantissas");
             bool read_coupling = false;
             for (int ch = 0; ch < nfchans; ++ch) {
                 read_stream(ch);
@@ -1576,7 +1576,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // channel scaled by that channel's coordinate, times 8 - undoing the
         // encoder's /8 headroom scaling.
         {
-            AC3_ZONE_SCOPED_N("ac3_decoupling");
+            ICLFORGE_ZONE_SCOPED_N("ac3_decoupling");
             if (cplinu) {
                 const auto& shared = coeffs[static_cast<std::size_t>(cpl_stream)];
                 const auto& cpl_bap = bap[static_cast<std::size_t>(cpl_stream)];
@@ -1676,7 +1676,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // programmes, so Ch2 gets its own gain from its own words rather than
         // sharing Ch1's - applying one programme's compression to the other
         // would be exactly the cross-talk 1+1 exists to avoid.
-        AC3_ZONE_BEGIN(drc_zone, "ac3_drc_gain");
+        ICLFORGE_ZONE_BEGIN(drc_zone, "ac3_drc_gain");
         // Resolved once per programme per block rather than once per channel:
         // every channel of a programme takes the same gain, and resolving it
         // is double arithmetic - a run of software floating-point calls on a
@@ -1719,7 +1719,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 value *= scale.scale;
             }
         }
-        AC3_ZONE_END(drc_zone);
+        ICLFORGE_ZONE_END(drc_zone);
         // Everything above this point read the wire; everything below turns
         // what it read into audio. impl_->config_.skip_reconstruction stops here -
         // see its own comment for why an inspection pass wants exactly that
@@ -1732,7 +1732,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // DecoderConfig::fast_imdct's default switched under in 0.9.0. Skipped
         // (zone included) whenever the reconstruction itself is.
         if (!impl_->config_.skip_reconstruction) {
-            AC3_ZONE_SCOPED_N("ac3_imdct_overlap");
+            ICLFORGE_ZONE_SCOPED_N("ac3_imdct_overlap");
             for (int ch = 0; ch < nchans; ++ch) {
                 const bool short_block = ch < nfchans && blksw[static_cast<std::size_t>(ch)];
                 internal::inverse_transform_into(coeffs[static_cast<std::size_t>(ch)], x,
@@ -1805,7 +1805,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // would read - and, for a caller who also asked for a downmix, silently
     // rewrite - buffers this call promised to leave untouched.
     if (!impl_->config_.skip_reconstruction) {
-        AC3_ZONE_SCOPED_N("ac3_output");
+        ICLFORGE_ZONE_SCOPED_N("ac3_output");
         // Annex D's xbsi1 levels when the frame carries them (§D3.1.2), bsi's
         // cmixlev/surmixlev otherwise - see mix_levels()'s own comment.
         const auto levels = mix_levels(acmod, cmixlev, surmixlev, alternate_bsi);

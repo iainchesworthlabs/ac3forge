@@ -1,5 +1,5 @@
 // The Sendspin player's WebSocket server and sessions. See
-// ../include/ac3forge/sendspin_host.hpp.
+// ../include/iclforge/sendspin_host.hpp.
 
 #include "iclforge/sendspin_host.hpp"
 
@@ -43,7 +43,7 @@
 #include "iclforge/sendspin/transport.hpp"
 #include "iclforge/tcp_arrivals.hpp"
 
-namespace ac3forge {
+namespace iclforge {
 namespace {
 
 namespace ss = iclforge::sendspin;
@@ -158,7 +158,7 @@ int recv_counted(httpd_handle_t server, int fd, char* buf, std::size_t buf_len, 
 
 void free_socket_log(void* ctx) {
     auto* log = static_cast<SocketLog*>(ctx);
-    ac3forge::tcp_arrivals::release(log->stream);
+    iclforge::tcp_arrivals::release(log->stream);
     delete log;
 }
 
@@ -186,7 +186,7 @@ struct SendspinHost::Impl {
     // What the sessions report while nothing has changed it, kept up to date
     // so that a session that opens later reports the same.
     m::PlayerState player_state;
-    ac::State ac3forge_state;
+    ac::State iclforge_state;
     bool external = false;
     std::uint32_t config_generation = 0;
 
@@ -196,7 +196,7 @@ struct SendspinHost::Impl {
     ss::PlayerConfig player;  // new sessions' configuration, under the mutex
     std::uint32_t player_generation = 0;
     std::optional<m::PlayerState> pending_player_state;
-    std::optional<ac::State> pending_ac3forge_state;
+    std::optional<ac::State> pending_iclforge_state;
     std::optional<bool> pending_external;
     bool pending_config = false;
     bool pending_reset_rounds = false;
@@ -240,7 +240,7 @@ struct SendspinHost::Impl {
         ss::PlayerConfig copy = player;
         copy.identity = store.identity();
         copy.player_state = player_state;
-        copy.ac3forge_state = ac3forge_state;
+        copy.iclforge_state = iclforge_state;
         return copy;
     }
 
@@ -446,8 +446,8 @@ class HostConnection final : public ss::PlayerListener {
         host_->events->on_burst(chunk, local_time);
     }
     void on_invalid_burst() override { host_->events->on_invalid_burst(); }
-    void on_ac3forge_command(const ac::CommandMessage& command) override {
-        host_->events->on_ac3forge_command(command);
+    void on_iclforge_command(const ac::CommandMessage& command) override {
+        host_->events->on_iclforge_command(command);
     }
     void on_settings_refused(const ac::SettingsError& error) override { host_->events->on_settings_refused(error); }
 
@@ -604,7 +604,7 @@ void SendspinHost::Impl::refresh_status() {
         s.psk = psk_text(session.psk_category());
         const Arbiter::Rank rank = Arbiter::rank_of(session.activities());
         s.activity = rank == Arbiter::Rank::kPlayback ? "playback" : rank == Arbiter::Rank::kPairing ? "pairing" : "none";
-        s.role = has(session.active_roles(), ac::kRole) ? "_ac3forge_player@v1"
+        s.role = has(session.active_roles(), ac::kRole) ? "_iclforge_player@v1"
                  : has(session.active_roles(), "player@v1") ? "player@v1"
                                                              : "";
         s.clock_converged = session.clock_converged();
@@ -638,7 +638,7 @@ void SendspinHost::Impl::after_call() {
 //
 // And the socket's reads counted from its first byte, with its stream's entry
 // in the arrival log, so a message is dated by when it came
-// (ac3forge/tcp_arrivals.hpp). Without either, it is dated by when it is read.
+// (iclforge/tcp_arrivals.hpp). Without either, it is dated by when it is read.
 esp_err_t SendspinHost::Impl::on_open(httpd_handle_t server, int fd) {
     const int on = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) != 0) {
@@ -807,7 +807,7 @@ void SendspinHost::Impl::queue_pending() {
 void SendspinHost::Impl::pending_work(void* arg) {
     auto* host = static_cast<Impl*>(arg);
     std::optional<m::PlayerState> player_state;
-    std::optional<ac::State> ac3forge_state;
+    std::optional<ac::State> iclforge_state;
     std::optional<bool> external;
     bool config = false;
     bool reset_rounds = false;
@@ -818,7 +818,7 @@ void SendspinHost::Impl::pending_work(void* arg) {
     {
         const std::lock_guard lock(host->pending_mutex);
         player_state.swap(host->pending_player_state);
-        ac3forge_state.swap(host->pending_ac3forge_state);
+        iclforge_state.swap(host->pending_iclforge_state);
         external.swap(host->pending_external);
         config = std::exchange(host->pending_config, false);
         reset_rounds = std::exchange(host->pending_reset_rounds, false);
@@ -851,8 +851,8 @@ void SendspinHost::Impl::pending_work(void* arg) {
     if (player_state) {
         host->player_state = *player_state;
     }
-    if (ac3forge_state) {
-        host->ac3forge_state = std::move(*ac3forge_state);
+    if (iclforge_state) {
+        host->iclforge_state = std::move(*iclforge_state);
     }
     if (external) {
         host->external = *external;
@@ -883,8 +883,8 @@ void SendspinHost::Impl::pending_work(void* arg) {
         if (player_state) {
             host->deliver(*connection, session.set_state(host->player_state));
         }
-        if (ac3forge_state) {
-            host->deliver(*connection, session.set_ac3forge_state(host->ac3forge_state));
+        if (iclforge_state) {
+            host->deliver(*connection, session.set_iclforge_state(host->iclforge_state));
         }
         if (external) {
             host->deliver(*connection, session.set_external_source(host->external));
@@ -925,7 +925,7 @@ bool SendspinHost::start(SendspinHostConfig config, SendspinEvents& events) {
         const std::lock_guard lock(im.pending_mutex);
         im.player = config.player;
         im.player_state = config.player.player_state;
-        im.ac3forge_state = config.player.ac3forge_state;
+        im.iclforge_state = config.player.iclforge_state;
     }
     im.config = std::move(config);
     copy_text(im.client_id, ss::base64url::encode(im.store.identity().public_key()));
@@ -1046,10 +1046,10 @@ void SendspinHost::set_player_state(const m::PlayerState& state) {
     impl_->queue_pending();
 }
 
-void SendspinHost::set_ac3forge_state(const ac::State& state) {
+void SendspinHost::set_iclforge_state(const ac::State& state) {
     {
         const std::lock_guard lock(impl_->pending_mutex);
-        impl_->pending_ac3forge_state = state;
+        impl_->pending_iclforge_state = state;
     }
     impl_->queue_pending();
 }
@@ -1182,4 +1182,4 @@ std::optional<std::int64_t> SendspinHost::local_time(std::int64_t server_us) con
     return map.local + (((server_us - map.server) * 1'000'000) / map.per_second);
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

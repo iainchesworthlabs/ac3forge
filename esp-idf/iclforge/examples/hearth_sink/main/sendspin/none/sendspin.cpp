@@ -1,5 +1,5 @@
 // No Sendspin player: a build without a network, or without the component's
-// player (CONFIG_AC3FORGE_SENDSPIN). See ../../sendspin.hpp.
+// player (CONFIG_ICLFORGE_SENDSPIN). See ../../sendspin.hpp.
 
 #include "sendspin.hpp"
 
@@ -24,11 +24,11 @@ void sendspin_board_changed() {}
 
 void sendspin_leave() {}
 
-std::optional<ac3forge::ControlSendspin> sendspin_status() { return std::nullopt; }
+std::optional<iclforge::ControlSendspin> sendspin_status() { return std::nullopt; }
 
 bool sendspin_pairing(std::string_view /*action*/) { return false; }
 
-std::optional<ac3forge::ControlPairings> sendspin_pairings() { return std::nullopt; }
+std::optional<iclforge::ControlPairings> sendspin_pairings() { return std::nullopt; }
 
 std::optional<bool> sendspin_forget_server(std::string_view /*server_id*/) { return std::nullopt; }
 

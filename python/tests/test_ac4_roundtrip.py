@@ -12,7 +12,7 @@ This is a binding smoke test, not a codec correctness suite - that lives in this
 Catch2 suite (tests/ac4). It only has to show the Python surface carries a real signal through.
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

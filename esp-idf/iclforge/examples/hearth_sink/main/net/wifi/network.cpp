@@ -49,7 +49,7 @@ constexpr TickType_t kAddressWait = pdMS_TO_TICKS(kAddressWaitSeconds * 1000U);
 // Never negative, whatever the option says: below zero, a caller waiting in
 // network_up() would never be told the network failed.
 constexpr int kQuickRetries =
-    CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES > 0 ? CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES : 0;
+    CONFIG_ICLFORGE_EXAMPLE_WIFI_RETRIES > 0 ? CONFIG_ICLFORGE_EXAMPLE_WIFI_RETRIES : 0;
 // After those the station waits before each try, longer each time up to the
 // last, and goes on trying for as long as it runs. An access point that
 // restarts is gone for 30 s to two minutes, and a board on the same socket
@@ -419,9 +419,9 @@ bool network_up() {
     // and never provisions anything, and a board provisioned over Improv
     // should not go back to the build's network at the next boot.
     const char* ssid =
-        stored.ssid[0] != '\0' ? stored.ssid.data() : CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID;
+        stored.ssid[0] != '\0' ? stored.ssid.data() : CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID;
     const char* password =
-        stored.ssid[0] != '\0' ? stored.password.data() : CONFIG_AC3FORGE_EXAMPLE_WIFI_PASSWORD;
+        stored.ssid[0] != '\0' ? stored.password.data() : CONFIG_ICLFORGE_EXAMPLE_WIFI_PASSWORD;
     if (ssid[0] == '\0') {
         std::printf("error: no network stored and none built in; provision the board first\n");
         return false;
@@ -472,11 +472,11 @@ const char* network_source() {
     if (settings().ssid[0] != '\0') {
         return "stored";
     }
-    return CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID[0] != '\0' ? "built-in" : "none";
+    return CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID[0] != '\0' ? "built-in" : "none";
 }
 
 void network_adopt_built_in() {
-    if (settings().ssid[0] != '\0' || CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID[0] == '\0') {
+    if (settings().ssid[0] != '\0' || CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID[0] == '\0') {
         return;
     }
     // The board builds on the desk take their network from a local sdkconfig
@@ -484,7 +484,7 @@ void network_adopt_built_in() {
     // moved to a published image would boot with nowhere to join, fail its
     // trial and go back (planning/esp32-ota.md, "A network built into the
     // image").
-    if (settings_set_network(CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID, CONFIG_AC3FORGE_EXAMPLE_WIFI_PASSWORD)) {
+    if (settings_set_network(CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID, CONFIG_ICLFORGE_EXAMPLE_WIFI_PASSWORD)) {
         std::printf("settings: stored the network this image was built with, so an image without one "
                     "still joins it\n");
     }

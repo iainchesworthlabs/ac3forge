@@ -17,8 +17,8 @@
 // and the client's pairing messages) and what a client reads from a server (server/hello,
 // server/activate, server/time, server/state, server/command, stream/start, stream/clear,
 // stream/end, group/update, and the server's pairing messages), each in both dialects, with the
-// objects of the other roles (state_roles.cpp, stream_roles.cpp) and of _ac3forge_player@v1
-// (ac3forge_player.cpp) that they carry. Every reader sees the payload of every input, whatever
+// objects of the other roles (state_roles.cpp, stream_roles.cpp) and of _iclforge_player@v1
+// (iclforge_player.cpp) that they carry. Every reader sees the payload of every input, whatever
 // its type says.
 //
 // Whatever reads must write back out, and that text must read and write back to itself: one

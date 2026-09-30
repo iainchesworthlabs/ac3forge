@@ -4,4 +4,4 @@
 # installed or packaged.
 add_executable(ac3hearth-render main.cpp)
 target_compile_features(ac3hearth-render PRIVATE cxx_std_23)
-target_link_libraries(ac3hearth-render PRIVATE ac3hearth_engine ac3::warnings)
+target_link_libraries(ac3hearth-render PRIVATE ac3hearth_engine iclforge::warnings)

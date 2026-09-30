@@ -606,7 +606,7 @@ class AtmosEncoder:
 
 # ac3::eac3::FrameEncoder/AccessUnitEncoder. A real submodule (m.def_submodule) at
 # runtime, stubbed as a nested-class namespace here rather than a separate eac3.pyi, the way
-# pybind11-stubgen represents one too - `ac3forge.eac3.FrameConfig` resolves through this class the
+# pybind11-stubgen represents one too - `iclforge.eac3.FrameConfig` resolves through this class the
 # same way it resolves through the runtime module.
 class eac3:
     MAX_RENDER_CHANNELS: int

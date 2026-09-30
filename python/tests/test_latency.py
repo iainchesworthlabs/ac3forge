@@ -8,7 +8,7 @@ one term that is a sample-domain shift - that a round trip driven entirely
 from Python really does move the signal by exactly that many samples.
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 
 

@@ -15,7 +15,7 @@
 
 namespace iclforge::internal {
 
-// AC3FORGE_MINIMAL_DECODER. False here: this build carries the whole codec.
+// ICLFORGE_MINIMAL_DECODER. False here: this build carries the whole codec.
 inline constexpr bool kMinimalDecoderProfile = false;
 
 // Whether src/core/reference_transform.hpp's direct-form entry points are

@@ -1,7 +1,7 @@
 name: Setup vcpkg
 description: >-
   Clone and bootstrap vcpkg at a pinned commit, and wire up a cached binary +
-  download cache. ac3forge does not vendor vcpkg as a submodule (unlike
+  download cache. iclforge does not vendor vcpkg as a submodule (unlike
   aqualink-automate), so the checkout happens here rather than in the repo.
 
 inputs:

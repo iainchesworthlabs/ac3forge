@@ -1,5 +1,5 @@
 // Decode AC-3 or E-AC-3 from wherever the bytes are and play it onto whatever
-// speakers the room has - the wiring around ac3forge::Player, which is where
+// speakers the room has - the wiring around iclforge::Player, which is where
 // the work happens.
 //
 // The difference between this and the i2s_player example beside it is where the
@@ -76,7 +76,7 @@
 // bare-metal probe's backend (apps/baremetal/stage_timers.cpp) when the
 // repository is there to provide it; it reads this clock, and its report
 // replaces the stand-ins below, which are what links in a component archive
-// that carries no apps/. Built with AC3FORGE_STAGE_TIMERS, each play ends with a
+// that carries no apps/. Built with ICLFORGE_STAGE_TIMERS, each play ends with a
 // play.stage[<zone>] line per decoder stage; built without, the library enters
 // no zones and the report prints nothing.
 namespace ac3probe {
@@ -97,22 +97,22 @@ constexpr std::size_t kMaxSlots = iclforge::render::OutputLayout::kMaxSlots;
 // a verdict. kReportEveryFrames of 0 reports only at the end of a pass.
 // kControlPort of 0 means no REST surface, and the application returns from
 // app_main when the stream ends, as a CI run needs it to.
-constexpr std::uint32_t kMaxLaps = CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS;
-constexpr std::uint64_t kReportEveryFrames = CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES;
-constexpr std::uint16_t kControlPort = CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT;
-constexpr const char* kLayoutText = CONFIG_AC3FORGE_EXAMPLE_LAYOUT;
-constexpr iclforge::DownmixTarget kStereoFold = CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD != 0
+constexpr std::uint32_t kMaxLaps = CONFIG_ICLFORGE_EXAMPLE_MAX_LAPS;
+constexpr std::uint64_t kReportEveryFrames = CONFIG_ICLFORGE_EXAMPLE_REPORT_EVERY_FRAMES;
+constexpr std::uint16_t kControlPort = CONFIG_ICLFORGE_EXAMPLE_CONTROL_PORT;
+constexpr const char* kLayoutText = CONFIG_ICLFORGE_EXAMPLE_LAYOUT;
+constexpr iclforge::DownmixTarget kStereoFold = CONFIG_ICLFORGE_EXAMPLE_STEREO_FOLD != 0
                                                ? iclforge::DownmixTarget::kLtRt
                                                : iclforge::DownmixTarget::kLoRo;
-constexpr ac3forge::PlayerConfig::Objects kObjects =
-    CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 1   ? ac3forge::PlayerConfig::Objects::kNever
-    : CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 2 ? ac3forge::PlayerConfig::Objects::kAlways
-                                           : ac3forge::PlayerConfig::Objects::kAuto;
-constexpr iclforge::oba::joc::Domain kJocDomain = CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN != 0
+constexpr iclforge::PlayerConfig::Objects kObjects =
+    CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 1   ? iclforge::PlayerConfig::Objects::kNever
+    : CONFIG_ICLFORGE_EXAMPLE_OBJECTS == 2 ? iclforge::PlayerConfig::Objects::kAlways
+                                           : iclforge::PlayerConfig::Objects::kAuto;
+constexpr iclforge::oba::joc::Domain kJocDomain = CONFIG_ICLFORGE_EXAMPLE_JOC_DOMAIN != 0
                                                  ? iclforge::oba::joc::Domain::kMdctBand
                                                  : iclforge::oba::joc::Domain::kQmf;
-constexpr iclforge::OperatingMode kMode = CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::OperatingMode::kRf
-                                     : CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::OperatingMode::kCustom
+constexpr iclforge::OperatingMode kMode = CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::OperatingMode::kRf
+                                     : CONFIG_ICLFORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::OperatingMode::kCustom
                                                                              : iclforge::OperatingMode::kLine;
 
 BaseType_t core_from_kconfig(int value) { return value < 0 ? tskNO_AFFINITY : value; }
@@ -121,7 +121,7 @@ BaseType_t core_from_kconfig(int value) { return value < 0 ? tskNO_AFFINITY : va
 
 // The source seam as the player's ByteSource. The seam's functions are what
 // CMake resolved to a directory; this is the adapter, and it is all of it.
-class SeamSource final : public ac3forge::ByteSource {
+class SeamSource final : public iclforge::ByteSource {
    public:
     std::size_t read(std::span<std::byte> dst) override { return player::source_read(dst); }
     bool rewind() override { return player::source_rewind(); }
@@ -136,7 +136,7 @@ class SeamSource final : public ac3forge::ByteSource {
 // does not judge it; what the levels should be is a property of the stream and
 // the layout, so CI holds the expectation. Written from the decode task, read
 // from app_main after the run has ended.
-class MeteredSink final : public ac3forge::PcmSink {
+class MeteredSink final : public iclforge::PcmSink {
    public:
     void write(std::span<const std::span<const float>> slots) override {
         // Squared and summed in float, sixteen samples at a time, and only the
@@ -211,9 +211,9 @@ struct Command {
 
 QueueHandle_t g_commands = nullptr;
 SemaphoreHandle_t g_player_mutex = nullptr;
-std::unique_ptr<ac3forge::Player> g_player;  // app_main's; read under the mutex by /status
-ac3forge::PlayerStats g_last_stats{};        // of the last run, once it has ended
-std::optional<ac3forge::StreamInfo> g_last_stream;
+std::unique_ptr<iclforge::Player> g_player;  // app_main's; read under the mutex by /status
+iclforge::PlayerStats g_last_stats{};        // of the last run, once it has ended
+std::optional<iclforge::StreamInfo> g_last_stream;
 std::atomic<const char*> g_state{"stopped"};
 std::atomic<float> g_volume{1.0F};
 // The layout the next play uses, and its text for /layout and /status. Written
@@ -224,11 +224,11 @@ iclforge::render::OutputLayout g_layout;
 // least one. Written only from begin_play, on the task that owns the player.
 int g_sink_channels_open = 0;
 
-// Updates over the network (ac3forge/firmware.hpp, planning/esp32-ota.md).
+// Updates over the network (iclforge/firmware.hpp, planning/esp32-ota.md).
 // Its routes are the control surface's; flash mode's teardown runs here, on
 // app_main's task, which owns the player, and the firmware's task waits for
 // it on g_flash_mode_done. g_control_started is one of the trial's conditions.
-ac3forge::Firmware g_firmware;
+iclforge::Firmware g_firmware;
 SemaphoreHandle_t g_flash_mode_done = nullptr;
 std::atomic<bool> g_control_started{false};
 
@@ -237,7 +237,7 @@ std::atomic<bool> g_control_started{false};
 // ring_low prints as "-" until the player has measured it: a stream shorter
 // than the ring, or one that has just begun, has nothing to say about buffering,
 // and a zero there would read as a stall.
-void print_ring_low(const ac3forge::PlayerStats& s) {
+void print_ring_low(const iclforge::PlayerStats& s) {
     if (s.ring_low_valid) {
         std::printf("%lu", static_cast<unsigned long>(s.ring_low_water));
     } else {
@@ -258,7 +258,7 @@ void print_ring_low(const ac3forge::PlayerStats& s) {
 // sink_us_per_frame are the parts of us_per_frame spent placing blocks onto the
 // layout and inside the sink's write (meter included); the rest is the
 // decoder's own.
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
 // An AC-4 play's time against the audio it made. The frame lengths differ by
 // frame rate - 2,048 samples at 23.44 fps, 1,920 at 25, 1,601 or 1,602 at 29.97 -
 // so `us_per_frame` above, whose realtime_permille takes a 32 ms frame, means
@@ -267,7 +267,7 @@ void print_ring_low(const ac3forge::PlayerStats& s) {
 // that is not the decoder's: placing blocks onto the layout, the sink's write
 // (on a paced sink mostly the wait for the DAC) and the PCM hash. The totals are
 // printed as well as the ratios so that two laps' figures can be subtracted.
-void report_ac4(const char* label, unsigned long value, const ac3forge::PlayerStats& s) {
+void report_ac4(const char* label, unsigned long value, const iclforge::PlayerStats& s) {
     if (s.ac4_samples == 0 || s.frames_played == 0) {
         return;
     }
@@ -291,7 +291,7 @@ void report_ac4(const char* label, unsigned long value, const ac3forge::PlayerSt
 }
 #endif
 
-void report_timing(const char* label, unsigned long value, const ac3forge::PlayerStats& s) {
+void report_timing(const char* label, unsigned long value, const iclforge::PlayerStats& s) {
     const auto per_frame = [&s](std::uint64_t us) {
         return static_cast<unsigned long>(s.frames_played > 0 ? us / s.frames_played : 0);
     };
@@ -307,13 +307,13 @@ void report_timing(const char* label, unsigned long value, const ac3forge::Playe
     std::printf(" heap_free=%lu\n",
                 static_cast<unsigned long>(
                     heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     report_ac4(label, value, s);
 #endif
 }
 
-void describe(const ac3forge::StreamInfo& info) {
-#if CONFIG_AC3FORGE_AC4
+void describe(const iclforge::StreamInfo& info) {
+#if CONFIG_ICLFORGE_AC4
     const char* const codec = info.ac4 ? "AC-4" : (info.eac3 ? "E-AC-3" : "AC-3");
 #else
     const char* const codec = info.eac3 ? "E-AC-3" : "AC-3";
@@ -336,13 +336,13 @@ struct Session {
 
 MeteredSink g_sink;
 SeamSource g_source;
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
 std::size_t g_heap_at_start_internal = 0;
 std::size_t g_heap_at_start_psram = 0;
 #endif
 
 void end_play() {
-    std::unique_ptr<ac3forge::Player> finished;
+    std::unique_ptr<iclforge::Player> finished;
     xSemaphoreTake(g_player_mutex, portMAX_DELAY);
     finished = std::move(g_player);
     xSemaphoreGive(g_player_mutex);
@@ -390,7 +390,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     // kTextBytes was held back (see its own comment in layout.hpp) - the
     // struct is copied by value onto a tight FreeRTOS stack either way, so
     // one copy is what the budget allows.
-    ac3forge::PlayerConfig config;
+    iclforge::PlayerConfig config;
     xSemaphoreTake(g_player_mutex, portMAX_DELAY);
     config.layout = g_layout;
     xSemaphoreGive(g_player_mutex);
@@ -427,24 +427,24 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     config.objects = kObjects;
     config.decoder.joc_domain = kJocDomain;
     config.decoder.output.mode = kMode;
-    config.ring_bytes = CONFIG_AC3FORGE_EXAMPLE_RING_BYTES;
-    config.ring_in_psram = CONFIG_AC3FORGE_EXAMPLE_RING_IN_PSRAM != 0;
-    config.fetch_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_FETCH_CORE);
-    config.decode_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE);
-    config.decode_stack_bytes = CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES;
-    config.hold_first_unit = CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT != 0;
+    config.ring_bytes = CONFIG_ICLFORGE_EXAMPLE_RING_BYTES;
+    config.ring_in_psram = CONFIG_ICLFORGE_EXAMPLE_RING_IN_PSRAM != 0;
+    config.fetch_core = core_from_kconfig(CONFIG_ICLFORGE_EXAMPLE_FETCH_CORE);
+    config.decode_core = core_from_kconfig(CONFIG_ICLFORGE_EXAMPLE_DECODE_CORE);
+    config.decode_stack_bytes = CONFIG_ICLFORGE_EXAMPLE_DECODE_STACK_BYTES;
+    config.hold_first_unit = CONFIG_ICLFORGE_EXAMPLE_HOLD_FIRST_UNIT != 0;
     config.max_passes = kMaxLaps;
     config.volume = g_volume.load();
     config.sample_rate_hz = kSampleRate;
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     // The location can ask for what the Kconfig does not: a query of decoding=core
     // is core decoding for this play, and hash=off is no hash, so that one image
     // measures both modes and a run with the hash off is the control for the time
     // the hash is taken to have cost. Read from the location the source was given.
     const std::string_view location{player::source_location()};
-    config.ac4.core = CONFIG_AC3FORGE_EXAMPLE_AC4_CORE != 0 ||
+    config.ac4.core = CONFIG_ICLFORGE_EXAMPLE_AC4_CORE != 0 ||
                       location.find("decoding=core") != std::string_view::npos;
-    config.ac4.pcm_hash = CONFIG_AC3FORGE_EXAMPLE_AC4_PCM_HASH != 0 &&
+    config.ac4.pcm_hash = CONFIG_ICLFORGE_EXAMPLE_AC4_PCM_HASH != 0 &&
                           location.find("hash=off") == std::string_view::npos;
     // The play's own demand on the heap, which report_end prints: what was free
     // as it began, and the least that was free from there to its end, read with
@@ -457,7 +457,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     (void)heap_caps_monitor_local_minimum_free_size_start();
 #endif
 
-    auto player = std::make_unique<ac3forge::Player>(config, g_source, g_sink);
+    auto player = std::make_unique<iclforge::Player>(config, g_source, g_sink);
     if (!player->start()) {
         g_state.store("failed");
         player.reset();
@@ -496,7 +496,7 @@ bool accept_layout(std::string_view text) {
 // lasted, one that stalled spent longer by exactly the silence it inserted,
 // and a sink with no peripheral runs ahead of the clock. The sink's own line
 // says where.
-void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
+void report_end(const Session& session, const iclforge::PlayerStats& stats) {
     if (stats.failed) {
         std::printf("error: %s failed (%d)\n", stats.failure, stats.error);
     } else {
@@ -516,7 +516,7 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
                 static_cast<unsigned long>(stats.fetched_bytes), g_layout.text().data(),
                 static_cast<unsigned long>(stats.layout_mismatches));
     print_ring_low(stats);
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     // An AC-4 play's audio is the samples it decoded; its frames have no one length.
     const std::uint64_t audio_ms = stats.ac4_samples > 0
                                        ? (stats.ac4_samples * 1000) / kSampleRate
@@ -527,7 +527,7 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
     std::printf(" stream.decode_stack_free=%lu stream.audio_ms=%lu stream.wall_ms=%lu\n",
                 static_cast<unsigned long>(stats.decode_stack_free),
                 static_cast<unsigned long>(audio_ms), static_cast<unsigned long>(wall_us / 1000));
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     if (stats.ac4_samples > 0) {
         // Bytes, internal and external: free as the play began, and the least free
         // since. Their difference is what the play asked for at its peak.
@@ -551,15 +551,15 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
     }
 #endif
     // Where the play's frames went, stage by stage, when the library was built
-    // with AC3FORGE_STAGE_TIMERS; nothing otherwise.
+    // with ICLFORGE_STAGE_TIMERS; nothing otherwise.
     ac3probe::report_stages("play", static_cast<int>(stats.frames_played));
     std::printf("result=%s\n", (stats.frames_played > 0 && !stats.failed) ? "pass" : "fail");
 }
 
 // The control surface's view, all of it through the mutex, the queue or an
 // atomic.
-ac3forge::ControlHandlers control_handlers() {
-    ac3forge::ControlHandlers h;
+iclforge::ControlHandlers control_handlers() {
+    iclforge::ControlHandlers h;
     h.play = [](std::string_view location) {
         Command c;
         c.kind = CommandKind::kPlay;
@@ -621,12 +621,12 @@ ac3forge::ControlHandlers control_handlers() {
     h.set_network = [](std::string_view ssid, std::string_view password) {
         return player::settings_set_network(ssid, password);
     };
-    h.network = []() -> std::optional<ac3forge::ControlNetwork> {
+    h.network = []() -> std::optional<iclforge::ControlNetwork> {
         player::NetworkLink link = player::network_link();
         if (link.kind == nullptr) {
             return std::nullopt;
         }
-        return ac3forge::ControlNetwork{.kind = link.kind,
+        return iclforge::ControlNetwork{.kind = link.kind,
                                         .ssid = std::move(link.ssid),
                                         .rssi_dbm = link.rssi_dbm,
                                         .address = player::network_address()};
@@ -658,7 +658,7 @@ ac3forge::ControlHandlers control_handlers() {
     };
     h.stats = []() {
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
-        const ac3forge::PlayerStats s = g_player ? g_player->stats() : g_last_stats;
+        const iclforge::PlayerStats s = g_player ? g_player->stats() : g_last_stats;
         xSemaphoreGive(g_player_mutex);
         return s;
     };
@@ -687,9 +687,9 @@ ac3forge::ControlHandlers control_handlers() {
     return h;
 }
 
-// What only this board knows about an update (ac3forge::FirmwareHooks).
-ac3forge::FirmwareHooks firmware_hooks() {
-    ac3forge::FirmwareHooks hooks;
+// What only this board knows about an update (iclforge::FirmwareHooks).
+iclforge::FirmwareHooks firmware_hooks() {
+    iclforge::FirmwareHooks hooks;
     // On the firmware's task: the teardown itself is app_main's, which owns
     // the player (CommandKind::kFlashMode below).
     // Bounded both ways: this runs on the HTTP server's task for an upload and
@@ -725,14 +725,14 @@ ac3forge::FirmwareHooks firmware_hooks() {
     return hooks;
 }
 
-ac3forge::FirmwareConfig firmware_config() {
-    ac3forge::FirmwareConfig config;
-    config.trial.hold_ms = static_cast<std::uint32_t>(CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S) * 1000U;
-    config.trial.deadline_ms = static_cast<std::uint32_t>(CONFIG_AC3FORGE_FIRMWARE_TRIAL_DEADLINE_S) * 1000U;
-    config.flash_mode_idle_ms = static_cast<std::uint32_t>(CONFIG_AC3FORGE_FIRMWARE_FLASH_MODE_IDLE_S) * 1000U;
-    // CI's rollback tests only: main/CMakeLists.txt's AC3FORGE_FIRMWARE_TEST.
-    config.test_unhealthy = AC3FORGE_FIRMWARE_TEST_UNHEALTHY != 0;
-    config.test_panic_at_trial = AC3FORGE_FIRMWARE_TEST_PANIC_ON_TRIAL != 0;
+iclforge::FirmwareConfig firmware_config() {
+    iclforge::FirmwareConfig config;
+    config.trial.hold_ms = static_cast<std::uint32_t>(CONFIG_ICLFORGE_FIRMWARE_TRIAL_HOLD_S) * 1000U;
+    config.trial.deadline_ms = static_cast<std::uint32_t>(CONFIG_ICLFORGE_FIRMWARE_TRIAL_DEADLINE_S) * 1000U;
+    config.flash_mode_idle_ms = static_cast<std::uint32_t>(CONFIG_ICLFORGE_FIRMWARE_FLASH_MODE_IDLE_S) * 1000U;
+    // CI's rollback tests only: main/CMakeLists.txt's ICLFORGE_FIRMWARE_TEST.
+    config.test_unhealthy = ICLFORGE_FIRMWARE_TEST_UNHEALTHY != 0;
+    config.test_panic_at_trial = ICLFORGE_FIRMWARE_TEST_PANIC_ON_TRIAL != 0;
     return config;
 }
 
@@ -769,8 +769,8 @@ void start_sendspin() {
 extern "C" void app_main() {
     // The console's recent output for GET /log, from the first line on: a
     // board updated over its network usually has no cable on it
-    // (ac3forge/log.hpp).
-    (void)ac3forge::log_start(CONFIG_AC3FORGE_LOG_BYTES);
+    // (iclforge/log.hpp).
+    (void)iclforge::log_start(CONFIG_ICLFORGE_LOG_BYTES);
     (void)heap_caps_register_failed_alloc_callback(on_alloc_failed);
 
     // What this BOARD is, before anything asks: the name it answers to, the
@@ -791,7 +791,7 @@ extern "C" void app_main() {
     player::network_adopt_built_in();
 
     // Updates over the network, before anything else starts: an image on trial
-    // starts its clock here (ac3forge/firmware.hpp).
+    // starts its clock here (iclforge/firmware.hpp).
     g_flash_mode_done = xSemaphoreCreateBinary();
     (void)g_firmware.start(firmware_hooks(), firmware_config());
 
@@ -810,17 +810,17 @@ extern "C" void app_main() {
 
     const auto layout = iclforge::render::OutputLayout::parse(kLayoutText);
     if (!layout.has_value()) {
-        std::printf("error: CONFIG_AC3FORGE_EXAMPLE_LAYOUT \"%s\" is not a layout - a name like "
+        std::printf("error: CONFIG_ICLFORGE_EXAMPLE_LAYOUT \"%s\" is not a layout - a name like "
                     "5.1.4, or a speaker list like L,R,C,LFE,Ls,Rs\n",
                     kLayoutText);
         std::printf("result=fail\n");
         return;
     }
     g_layout = *layout;
-#if CONFIG_AC3FORGE_AC4
-    std::printf("ac3forge hearth_sink: AC-3, E-AC-3 or AC-4 onto %s\n", g_layout.text().data());
+#if CONFIG_ICLFORGE_AC4
+    std::printf("iclforge hearth_sink: AC-3, E-AC-3 or AC-4 onto %s\n", g_layout.text().data());
 #else
-    std::printf("ac3forge hearth_sink: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
+    std::printf("iclforge hearth_sink: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
 #endif
 
     g_commands = xQueueCreate(4, sizeof(Command));
@@ -837,7 +837,7 @@ extern "C" void app_main() {
     // 41 ms after the player, found the largest free block at 3,328 bytes and
     // came up with no control surface. A play that fails before its source
     // opens still gets one afterwards, so that a location can be sent to it.
-    ac3forge::Control control;
+    iclforge::Control control;
     bool control_started = false;
     const auto start_control = [&control, &control_started] {
         if (kControlPort != 0 && !control_started) {
@@ -965,7 +965,7 @@ extern "C" void app_main() {
         }
 
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
-        ac3forge::Player* const current = g_player.get();
+        iclforge::Player* const current = g_player.get();
         xSemaphoreGive(g_player_mutex);
         if (current == nullptr) {
             vTaskDelay(pdMS_TO_TICKS(100));

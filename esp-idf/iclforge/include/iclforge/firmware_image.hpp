@@ -33,7 +33,7 @@
 // wrong image is refused before anything is erased, with a reply that says
 // which check it failed rather than a bare "image invalid".
 
-namespace ac3forge {
+namespace iclforge {
 
 // esp_image_header_t, 24 bytes; esp_image_segment_header_t, 8; and
 // esp_app_desc_t, 256, which the build places at the start of the image's
@@ -157,7 +157,7 @@ namespace detail {
     if (bytes[0] != kImageMagic) {
         return {std::nullopt,
                 "this is not an ESP-IDF application image (its first byte is not 0xE9); send "
-                "ac3forge_hearth_sink.bin, not the merged factory image or the ELF"};
+                "iclforge_hearth_sink.bin, not the merged factory image or the ELF"};
     }
     const std::uint8_t segments = bytes[1];
     if (segments == 0 || segments > kMaxSegments) {
@@ -451,4 +451,4 @@ namespace detail {
     return false;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

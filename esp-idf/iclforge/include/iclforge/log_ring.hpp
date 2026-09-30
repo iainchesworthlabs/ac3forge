@@ -16,7 +16,7 @@
 // console's writes under its own lock. tests/ac3/io/test_log_ring.cpp runs it on a
 // laptop.
 
-namespace ac3forge {
+namespace iclforge {
 
 class LogRing {
    public:
@@ -92,4 +92,4 @@ class LogRing {
     std::uint64_t written_ = 0;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

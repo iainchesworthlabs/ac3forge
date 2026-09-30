@@ -1,9 +1,9 @@
 //! Encodes five frames of a stereo tone to AC-3 and decodes them back — the same walkthrough as
 //! `examples/capi_encode_decode.c`, from Rust. Run with `cargo run --example encode_decode_ac3`.
 
-use ac3forge::ac3::{Decoder, Encoder, EncoderConfig};
-use ac3forge::types::{Acmod, DecoderConfig, SampleRate};
-use ac3forge::SAMPLES_PER_FRAME;
+use iclforge::ac3::{Decoder, Encoder, EncoderConfig};
+use iclforge::types::{Acmod, DecoderConfig, SampleRate};
+use iclforge::SAMPLES_PER_FRAME;
 
 fn tone(frequency_hz: f32, frame_index: usize) -> Vec<f32> {
     (0..SAMPLES_PER_FRAME)

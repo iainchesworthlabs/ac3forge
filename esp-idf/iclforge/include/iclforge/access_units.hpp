@@ -17,7 +17,7 @@
 // (apps/hearth/testsink/burst_output.cpp), for the same reasons, so that a
 // board and a test sink place a stream's channels alike.
 
-namespace ac3forge {
+namespace iclforge {
 
 // The layout an access unit decodes to, from its headers alone: each
 // syncframe's acmod and lfeon, and a dependent's chanmap where it carries one,
@@ -80,4 +80,4 @@ template <class Unit>
     return true;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

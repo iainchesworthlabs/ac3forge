@@ -6,7 +6,7 @@
 //
 // Registers nothing, deliberately. `ac3.signing` is simply absent from the
 // module, so a caller reaching for it gets Python's own AttributeError, which
-// is what the `#ifdef AC3FORGE_PY_HAVE_SIGNING` this replaced also produced -
+// is what the `#ifdef ICLFORGE_PY_HAVE_SIGNING` this replaced also produced -
 // the behaviour is unchanged, only where the decision is written down.
 
 namespace iclforge::python {

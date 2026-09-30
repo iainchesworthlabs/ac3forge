@@ -23,7 +23,7 @@ test("every entry of exports names a file the build wrote, with types before def
 test("./ac4 is exported, loads through the package's own name, and its declarations name its exports", async () => {
   assert.deepEqual(pkg.exports["./ac4"], { types: "./dist/ac4.d.ts", default: "./dist/ac4.js" });
   // A package may import itself by name through its exports map.
-  const ac4 = await import("ac3forge-wasm-decoder/ac4");
+  const ac4 = await import("iclforge-wasm-decoder/ac4");
   const values = [
     "Ac4Decoder",
     "Ac4Encoder",

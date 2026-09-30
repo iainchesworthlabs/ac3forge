@@ -143,7 +143,7 @@ double reconstruction_error(std::int32_t fixed, int exponent, int bap) {
 
 void accumulate_block(std::span<const std::int32_t> fixed, std::span<const std::uint8_t> exps,
                       std::span<const std::uint8_t> bap, int start, int end, BandNoise& out) {
-    AC3_ZONE_SCOPED_N("quality_accumulate_block");
+    ICLFORGE_ZONE_SCOPED_N("quality_accumulate_block");
     assert(start >= 0 && start <= end);
     assert(fixed.size() >= static_cast<std::size_t>(end - start));
     assert(exps.size() >= static_cast<std::size_t>(end));

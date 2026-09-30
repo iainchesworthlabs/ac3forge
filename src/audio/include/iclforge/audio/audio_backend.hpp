@@ -4,7 +4,7 @@
 
 // What this build can do with the machine's audio hardware.
 //
-// Capture, passthrough and monitor playback are the only parts of ac3forge
+// Capture, passthrough and monitor playback are the only parts of iclforge
 // that are not pure file I/O, and they are the only parts a platform can fail
 // to provide. That makes "is this available here?" a question with a
 // per-platform answer, and under the no-#ifdef rule a per-platform answer is

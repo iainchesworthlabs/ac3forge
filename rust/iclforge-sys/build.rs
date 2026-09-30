@@ -2,7 +2,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 fn main() {
-    // This crate lives at <repo>/rust/ac3forge-sys, so two levels up is the CMake source
+    // This crate lives at <repo>/rust/iclforge-sys, so two levels up is the CMake source
     // directory that owns src/capi/ - see rust/README.md for why this crate builds the C
     // library itself (bindgen against a header that was NOT built into the library it links
     // is exactly the drift AP9 exists to catch, so there is no "assume it's preinstalled" path).
@@ -39,24 +39,24 @@ fn main() {
         // CMakeLists.txt sets it explicitly (every desktop preset instead lets that CMake default
         // through), so without this the codec core fails to compile under MSVC with C4530
         // ("C++ exception handler used, but unwind semantics are not enabled") escalated to a
-        // hard error by ac3::warnings' /WX.
+        // hard error by iclforge::warnings' /WX.
         config.cxxflag("/EHsc");
     }
     config
-        .define("AC3FORGE_BUILD_CAPI", "ON")
-        .define("AC3FORGE_BUILD_CLI", "OFF")
-        .define("AC3FORGE_BUILD_GUI", "OFF")
-        .define("AC3FORGE_BUILD_TESTS", "OFF")
-        .define("AC3FORGE_BUILD_EXAMPLES", "OFF")
-        .define("AC3FORGE_BUILD_FUZZERS", "OFF")
-        .define("AC3FORGE_BUILD_ADM", "OFF")
-        .define("AC3FORGE_BUILD_MATROSKA", "OFF")
-        .define("AC3FORGE_BUILD_MP4", "OFF")
-        .define("AC3FORGE_BUILD_MPEGTS", "OFF")
+        .define("ICLFORGE_BUILD_CAPI", "ON")
+        .define("ICLFORGE_BUILD_CLI", "OFF")
+        .define("ICLFORGE_BUILD_GUI", "OFF")
+        .define("ICLFORGE_BUILD_TESTS", "OFF")
+        .define("ICLFORGE_BUILD_EXAMPLES", "OFF")
+        .define("ICLFORGE_BUILD_FUZZERS", "OFF")
+        .define("ICLFORGE_BUILD_ADM", "OFF")
+        .define("ICLFORGE_BUILD_MATROSKA", "OFF")
+        .define("ICLFORGE_BUILD_MP4", "OFF")
+        .define("ICLFORGE_BUILD_MPEGTS", "OFF")
         // Defaults ON (root CMakeLists.txt), and this binding never asks for the "hearth" vcpkg
         // feature that supplies sendspin's cpp-httplib/mbedTLS/libFLAC/Opus/mdns - left unset,
         // configure fails resolving packages this build never installed.
-        .define("AC3FORGE_BUILD_HEARTH", "OFF")
+        .define("ICLFORGE_BUILD_HEARTH", "OFF")
         .build_target("iclforge_capi_shared");
     // `dst` is cmake-rs's own OUT_DIR-rooted prefix; the actual CMake build tree (what a plain
     // `cmake -B <dir>` would call the binary dir) lives at `<dst>/build` by cmake-rs convention.
@@ -120,13 +120,13 @@ fn main() {
         .clang_arg("-std=c11")
         .clang_arg(format!("-I{}", source_include_dir.display()))
         .clang_arg(format!("-I{}", generated_include_dir.display()))
-        .allowlist_function("ac3forge_.*")
-        .allowlist_type("ac3forge_.*")
-        .allowlist_var("AC3FORGE_.*")
+        .allowlist_function("iclforge_.*")
+        .allowlist_type("iclforge_.*")
+        .allowlist_var("ICLFORGE_.*")
         .derive_default(true)
         .derive_debug(true)
         .generate()
-        .expect("bindgen failed to generate ac3forge_c bindings");
+        .expect("bindgen failed to generate iclforge_c bindings");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings

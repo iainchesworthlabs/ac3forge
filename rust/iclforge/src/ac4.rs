@@ -1,8 +1,8 @@
 //! AC-4 encode and decode - `ac4::Decoder`/`ac4::Encoder` via
-//! `ac3forge_ac4_decoder_t`/`ac3forge_ac4_encoder_t` (ETSI TS 103 190-1/-2).
+//! `iclforge_ac4_decoder_t`/`iclforge_ac4_encoder_t` (ETSI TS 103 190-1/-2).
 //!
 //! Mirrors the surface the C API itself mirrors (see
-//! `ac3forge_ac4_encoder_config_t`'s own comment in `ac3forge.h`): channel-based
+//! `iclforge_ac4_encoder_config_t`'s own comment in `iclforge.h`): channel-based
 //! and channel-based-immersive content, or one object substream (A-JOC or
 //! direct-coded, [`ObjectsConfig`]), in one substream and one presentation. The
 //! loudness/DRC/downmix/dialogue-enhancement metadata groups, multi-substream/
@@ -10,16 +10,16 @@
 //! `three_zero` experimental flags are not exposed here either - a caller who
 //! needs them links `ac4enc`/`ac4dec` directly instead of through this crate.
 //!
-//! Present only when the linked `ac3forge_c` was built with `AC3FORGE_BUILD_AC4`
-//! on (the default) - `ac3forge-sys`'s bindgen output simply has no
-//! `ac3forge_ac4_*` items otherwise, so this whole module fails to compile
+//! Present only when the linked `iclforge_c` was built with `ICLFORGE_BUILD_AC4`
+//! on (the default) - `iclforge-sys`'s bindgen output simply has no
+//! `iclforge_ac4_*` items otherwise, so this whole module fails to compile
 //! rather than link. There is no Cargo feature for it (unlike the C library's
-//! own build option): `-sys`'s `build.rs` leaves `AC3FORGE_BUILD_AC4` at its
+//! own build option): `-sys`'s `build.rs` leaves `ICLFORGE_BUILD_AC4` at its
 //! CMake default, so this module is unconditionally available in practice
 //! the same way `atmos` is (also compiled unconditionally, having no matching
 //! CMake option of its own).
 
-use ac3forge_sys as sys;
+use iclforge_sys as sys;
 use std::ffi::{CStr, CString};
 use std::ptr;
 
@@ -28,7 +28,7 @@ use crate::error::Error;
 
 // --- shared enums -----------------------------------------------------------
 
-/// Mirrors `ac3forge_ac4_speaker_t` (Part 1 clause D.1, Part 2 clause A.3).
+/// Mirrors `iclforge_ac4_speaker_t` (Part 1 clause D.1, Part 2 clause A.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Speaker {
     Left,
@@ -51,38 +51,38 @@ pub enum Speaker {
 }
 
 impl Speaker {
-    fn from_raw(raw: sys::ac3forge_ac4_speaker_t) -> Self {
+    fn from_raw(raw: sys::iclforge_ac4_speaker_t) -> Self {
         #[allow(non_upper_case_globals)]
         match raw {
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LEFT => Speaker::Left,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_RIGHT => Speaker::Right,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_CENTRE => Speaker::Centre,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LFE => Speaker::Lfe,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LEFT_SURROUND => Speaker::LeftSurround,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_RIGHT_SURROUND => Speaker::RightSurround,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LEFT_BACK => Speaker::LeftBack,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_RIGHT_BACK => Speaker::RightBack,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LEFT_WIDE => Speaker::LeftWide,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_RIGHT_WIDE => Speaker::RightWide,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_FRONT_LEFT => Speaker::TopFrontLeft,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_FRONT_RIGHT => {
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_LEFT => Speaker::Left,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_RIGHT => Speaker::Right,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_CENTRE => Speaker::Centre,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_LFE => Speaker::Lfe,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_LEFT_SURROUND => Speaker::LeftSurround,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_RIGHT_SURROUND => Speaker::RightSurround,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_LEFT_BACK => Speaker::LeftBack,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_RIGHT_BACK => Speaker::RightBack,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_LEFT_WIDE => Speaker::LeftWide,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_RIGHT_WIDE => Speaker::RightWide,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_TOP_FRONT_LEFT => Speaker::TopFrontLeft,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_TOP_FRONT_RIGHT => {
                 Speaker::TopFrontRight
             }
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_BACK_LEFT => Speaker::TopBackLeft,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT => Speaker::TopBackRight,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_SIDE_LEFT => Speaker::TopSideLeft,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_TOP_SIDE_RIGHT => Speaker::TopSideRight,
-            sys::ac3forge_ac4_speaker_AC3FORGE_AC4_SPEAKER_LFE2 => Speaker::Lfe2,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_TOP_BACK_LEFT => Speaker::TopBackLeft,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_TOP_BACK_RIGHT => Speaker::TopBackRight,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_TOP_SIDE_LEFT => Speaker::TopSideLeft,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_TOP_SIDE_RIGHT => Speaker::TopSideRight,
+            sys::iclforge_ac4_speaker_ICLFORGE_AC4_SPEAKER_LFE2 => Speaker::Lfe2,
             // An unrecognized ordinal cannot happen from this crate's own calls (every
-            // accessor's C side clamps out-of-range indices to AC3FORGE_AC4_SPEAKER_LEFT
-            // rather than an unmapped value) - Left is the same fallback ac3forge.h's own
+            // accessor's C side clamps out-of-range indices to ICLFORGE_AC4_SPEAKER_LEFT
+            // rather than an unmapped value) - Left is the same fallback iclforge.h's own
             // null-safety convention uses.
             _ => Speaker::Left,
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_object_kind_t` (`ac4::ObjectKind`): a bed object, a dynamic
+/// Mirrors `iclforge_ac4_object_kind_t` (`ac4::ObjectKind`): a bed object, a dynamic
 /// object, or an intermediate spatial format object (rendered into channels, not
 /// listed - see [`DecodedFrame::objects`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -93,17 +93,17 @@ pub enum ObjectKind {
 }
 
 impl ObjectKind {
-    fn from_raw(raw: sys::ac3forge_ac4_object_kind_t) -> Self {
+    fn from_raw(raw: sys::iclforge_ac4_object_kind_t) -> Self {
         #[allow(non_upper_case_globals)]
         match raw {
-            sys::ac3forge_ac4_object_kind_AC3FORGE_AC4_OBJECT_BED => ObjectKind::Bed,
-            sys::ac3forge_ac4_object_kind_AC3FORGE_AC4_OBJECT_ISF => ObjectKind::Isf,
+            sys::iclforge_ac4_object_kind_ICLFORGE_AC4_OBJECT_BED => ObjectKind::Bed,
+            sys::iclforge_ac4_object_kind_ICLFORGE_AC4_OBJECT_ISF => ObjectKind::Isf,
             _ => ObjectKind::Dyn,
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_downmix_target_t` (`ac4::DownmixTarget`): the layout
+/// Mirrors `iclforge_ac4_downmix_target_t` (`ac4::DownmixTarget`): the layout
 /// [`Decoder::decode`] renders to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DownmixTarget {
@@ -122,26 +122,26 @@ pub enum DownmixTarget {
 }
 
 impl DownmixTarget {
-    fn to_raw(self) -> sys::ac3forge_ac4_downmix_target_t {
+    fn to_raw(self) -> sys::iclforge_ac4_downmix_target_t {
         match self {
             DownmixTarget::AsCoded => {
-                sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_AS_CODED
+                sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_AS_CODED
             }
-            DownmixTarget::FiveX => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_5X,
-            DownmixTarget::Stereo => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_STEREO,
-            DownmixTarget::LoRo => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_LORO,
-            DownmixTarget::LtRt => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_LTRT,
-            DownmixTarget::Mono => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_MONO,
-            DownmixTarget::SevenX4 => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_7X4,
-            DownmixTarget::SevenX2 => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_7X2,
-            DownmixTarget::SevenX0 => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_7X0,
-            DownmixTarget::FiveX4 => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_5X4,
-            DownmixTarget::FiveX2 => sys::ac3forge_ac4_downmix_target_AC3FORGE_AC4_DOWNMIX_5X2,
+            DownmixTarget::FiveX => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_5X,
+            DownmixTarget::Stereo => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_STEREO,
+            DownmixTarget::LoRo => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_LORO,
+            DownmixTarget::LtRt => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_LTRT,
+            DownmixTarget::Mono => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_MONO,
+            DownmixTarget::SevenX4 => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_7X4,
+            DownmixTarget::SevenX2 => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_7X2,
+            DownmixTarget::SevenX0 => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_7X0,
+            DownmixTarget::FiveX4 => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_5X4,
+            DownmixTarget::FiveX2 => sys::iclforge_ac4_downmix_target_ICLFORGE_AC4_DOWNMIX_5X2,
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_drc_mode_t` (`ac4::DrcMode`, Part 1 Table 161).
+/// Mirrors `iclforge_ac4_drc_mode_t` (`ac4::DrcMode`, Part 1 Table 161).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DrcMode {
     Off,
@@ -154,23 +154,23 @@ pub enum DrcMode {
 }
 
 impl DrcMode {
-    fn to_raw(self) -> sys::ac3forge_ac4_drc_mode_t {
+    fn to_raw(self) -> sys::iclforge_ac4_drc_mode_t {
         match self {
-            DrcMode::Off => sys::ac3forge_ac4_drc_mode_AC3FORGE_AC4_DRC_OFF,
-            DrcMode::Default => sys::ac3forge_ac4_drc_mode_AC3FORGE_AC4_DRC_DEFAULT,
-            DrcMode::HomeTheatre => sys::ac3forge_ac4_drc_mode_AC3FORGE_AC4_DRC_HOME_THEATRE,
-            DrcMode::FlatPanelTv => sys::ac3forge_ac4_drc_mode_AC3FORGE_AC4_DRC_FLAT_PANEL_TV,
+            DrcMode::Off => sys::iclforge_ac4_drc_mode_ICLFORGE_AC4_DRC_OFF,
+            DrcMode::Default => sys::iclforge_ac4_drc_mode_ICLFORGE_AC4_DRC_DEFAULT,
+            DrcMode::HomeTheatre => sys::iclforge_ac4_drc_mode_ICLFORGE_AC4_DRC_HOME_THEATRE,
+            DrcMode::FlatPanelTv => sys::iclforge_ac4_drc_mode_ICLFORGE_AC4_DRC_FLAT_PANEL_TV,
             DrcMode::PortableSpeakers => {
-                sys::ac3forge_ac4_drc_mode_AC3FORGE_AC4_DRC_PORTABLE_SPEAKERS
+                sys::iclforge_ac4_drc_mode_ICLFORGE_AC4_DRC_PORTABLE_SPEAKERS
             }
             DrcMode::PortableHeadphones => {
-                sys::ac3forge_ac4_drc_mode_AC3FORGE_AC4_DRC_PORTABLE_HEADPHONES
+                sys::iclforge_ac4_drc_mode_ICLFORGE_AC4_DRC_PORTABLE_HEADPHONES
             }
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_decoding_mode_t` (`ac4::DecodingMode`, Part 2 clause 4.7).
+/// Mirrors `iclforge_ac4_decoding_mode_t` (`ac4::DecodingMode`, Part 2 clause 4.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DecodingMode {
     #[default]
@@ -179,15 +179,15 @@ pub enum DecodingMode {
 }
 
 impl DecodingMode {
-    fn to_raw(self) -> sys::ac3forge_ac4_decoding_mode_t {
+    fn to_raw(self) -> sys::iclforge_ac4_decoding_mode_t {
         match self {
-            DecodingMode::Full => sys::ac3forge_ac4_decoding_mode_AC3FORGE_AC4_DECODING_FULL,
-            DecodingMode::Core => sys::ac3forge_ac4_decoding_mode_AC3FORGE_AC4_DECODING_CORE,
+            DecodingMode::Full => sys::iclforge_ac4_decoding_mode_ICLFORGE_AC4_DECODING_FULL,
+            DecodingMode::Core => sys::iclforge_ac4_decoding_mode_ICLFORGE_AC4_DECODING_CORE,
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_concealment_policy_t` (`ac4::ConcealmentPolicy`).
+/// Mirrors `iclforge_ac4_concealment_policy_t` (`ac4::ConcealmentPolicy`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ConcealmentPolicy {
     #[default]
@@ -197,22 +197,22 @@ pub enum ConcealmentPolicy {
 }
 
 impl ConcealmentPolicy {
-    fn to_raw(self) -> sys::ac3forge_ac4_concealment_policy_t {
+    fn to_raw(self) -> sys::iclforge_ac4_concealment_policy_t {
         match self {
             ConcealmentPolicy::None => {
-                sys::ac3forge_ac4_concealment_policy_AC3FORGE_AC4_CONCEALMENT_NONE
+                sys::iclforge_ac4_concealment_policy_ICLFORGE_AC4_CONCEALMENT_NONE
             }
             ConcealmentPolicy::RepeatFade => {
-                sys::ac3forge_ac4_concealment_policy_AC3FORGE_AC4_CONCEALMENT_REPEAT_FADE
+                sys::iclforge_ac4_concealment_policy_ICLFORGE_AC4_CONCEALMENT_REPEAT_FADE
             }
             ConcealmentPolicy::Mute => {
-                sys::ac3forge_ac4_concealment_policy_AC3FORGE_AC4_CONCEALMENT_MUTE
+                sys::iclforge_ac4_concealment_policy_ICLFORGE_AC4_CONCEALMENT_MUTE
             }
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_concealment_action_t` (`ac4::ConcealmentAction`): what a
+/// Mirrors `iclforge_ac4_concealment_action_t` (`ac4::ConcealmentAction`): what a
 /// concealed frame actually got.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConcealmentAction {
@@ -221,10 +221,10 @@ pub enum ConcealmentAction {
 }
 
 impl ConcealmentAction {
-    fn from_raw(raw: sys::ac3forge_ac4_concealment_action_t) -> Self {
+    fn from_raw(raw: sys::iclforge_ac4_concealment_action_t) -> Self {
         #[allow(non_upper_case_globals)]
         match raw {
-            sys::ac3forge_ac4_concealment_action_AC3FORGE_AC4_CONCEALMENT_ACTION_REPEAT_FADE => {
+            sys::iclforge_ac4_concealment_action_ICLFORGE_AC4_CONCEALMENT_ACTION_REPEAT_FADE => {
                 ConcealmentAction::RepeatFade
             }
             _ => ConcealmentAction::Mute,
@@ -232,7 +232,7 @@ impl ConcealmentAction {
     }
 }
 
-/// Mirrors `ac3forge_ac4_associated_type_t` (`ac4::AssociatedType`, Part 1 Table 92).
+/// Mirrors `iclforge_ac4_associated_type_t` (`ac4::AssociatedType`, Part 1 Table 92).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AssociatedType {
     #[default]
@@ -244,24 +244,24 @@ pub enum AssociatedType {
 }
 
 impl AssociatedType {
-    fn to_raw(self) -> sys::ac3forge_ac4_associated_type_t {
+    fn to_raw(self) -> sys::iclforge_ac4_associated_type_t {
         match self {
-            AssociatedType::Any => sys::ac3forge_ac4_associated_type_AC3FORGE_AC4_ASSOCIATED_ANY,
+            AssociatedType::Any => sys::iclforge_ac4_associated_type_ICLFORGE_AC4_ASSOCIATED_ANY,
             AssociatedType::AudioDescription => {
-                sys::ac3forge_ac4_associated_type_AC3FORGE_AC4_ASSOCIATED_AUDIO_DESCRIPTION
+                sys::iclforge_ac4_associated_type_ICLFORGE_AC4_ASSOCIATED_AUDIO_DESCRIPTION
             }
-            AssociatedType::AudioDescriptionSubtitles => sys::ac3forge_ac4_associated_type_AC3FORGE_AC4_ASSOCIATED_AUDIO_DESCRIPTION_SUBTITLES,
+            AssociatedType::AudioDescriptionSubtitles => sys::iclforge_ac4_associated_type_ICLFORGE_AC4_ASSOCIATED_AUDIO_DESCRIPTION_SUBTITLES,
             AssociatedType::SpokenSubtitles => {
-                sys::ac3forge_ac4_associated_type_AC3FORGE_AC4_ASSOCIATED_SPOKEN_SUBTITLES
+                sys::iclforge_ac4_associated_type_ICLFORGE_AC4_ASSOCIATED_SPOKEN_SUBTITLES
             }
             AssociatedType::EmergencyInformation => {
-                sys::ac3forge_ac4_associated_type_AC3FORGE_AC4_ASSOCIATED_EMERGENCY_INFORMATION
+                sys::iclforge_ac4_associated_type_ICLFORGE_AC4_ASSOCIATED_EMERGENCY_INFORMATION
             }
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_codec_mode_t` (`ac4::CodecMode`, Part 1 clause 4.3.6.1).
+/// Mirrors `iclforge_ac4_codec_mode_t` (`ac4::CodecMode`, Part 1 clause 4.3.6.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CodecMode {
     #[default]
@@ -277,37 +277,37 @@ pub enum CodecMode {
 }
 
 impl CodecMode {
-    fn to_raw(self) -> sys::ac3forge_ac4_codec_mode_t {
+    fn to_raw(self) -> sys::iclforge_ac4_codec_mode_t {
         match self {
-            CodecMode::Auto => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_AUTO,
-            CodecMode::Simple => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_SIMPLE,
-            CodecMode::Aspx => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX,
-            CodecMode::AspxAcpl1 => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_ACPL1,
-            CodecMode::AspxAcpl2 => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_ACPL2,
-            CodecMode::AspxAcpl3 => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_ACPL3,
-            CodecMode::Scpl => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_SCPL,
-            CodecMode::AspxScpl => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_SCPL,
-            CodecMode::AspxAjcc => sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_AJCC,
+            CodecMode::Auto => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_AUTO,
+            CodecMode::Simple => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_SIMPLE,
+            CodecMode::Aspx => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX,
+            CodecMode::AspxAcpl1 => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_ACPL1,
+            CodecMode::AspxAcpl2 => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_ACPL2,
+            CodecMode::AspxAcpl3 => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_ACPL3,
+            CodecMode::Scpl => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_SCPL,
+            CodecMode::AspxScpl => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_SCPL,
+            CodecMode::AspxAjcc => sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_AJCC,
         }
     }
 
-    fn from_raw(raw: sys::ac3forge_ac4_codec_mode_t) -> Self {
+    fn from_raw(raw: sys::iclforge_ac4_codec_mode_t) -> Self {
         #[allow(non_upper_case_globals)]
         match raw {
-            sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_SIMPLE => CodecMode::Simple,
-            sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX => CodecMode::Aspx,
-            sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_ACPL1 => CodecMode::AspxAcpl1,
-            sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_ACPL2 => CodecMode::AspxAcpl2,
-            sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_ACPL3 => CodecMode::AspxAcpl3,
-            sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_SCPL => CodecMode::Scpl,
-            sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_SCPL => CodecMode::AspxScpl,
-            sys::ac3forge_ac4_codec_mode_AC3FORGE_AC4_CODEC_ASPX_AJCC => CodecMode::AspxAjcc,
+            sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_SIMPLE => CodecMode::Simple,
+            sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX => CodecMode::Aspx,
+            sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_ACPL1 => CodecMode::AspxAcpl1,
+            sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_ACPL2 => CodecMode::AspxAcpl2,
+            sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_ACPL3 => CodecMode::AspxAcpl3,
+            sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_SCPL => CodecMode::Scpl,
+            sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_SCPL => CodecMode::AspxScpl,
+            sys::iclforge_ac4_codec_mode_ICLFORGE_AC4_CODEC_ASPX_AJCC => CodecMode::AspxAjcc,
             _ => CodecMode::Auto,
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_rate_mode_t` (`ac4::RateMode`, Part 1 Table 81's `wait_frames`).
+/// Mirrors `iclforge_ac4_rate_mode_t` (`ac4::RateMode`, Part 1 Table 81's `wait_frames`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum RateMode {
     #[default]
@@ -317,16 +317,16 @@ pub enum RateMode {
 }
 
 impl RateMode {
-    fn to_raw(self) -> sys::ac3forge_ac4_rate_mode_t {
+    fn to_raw(self) -> sys::iclforge_ac4_rate_mode_t {
         match self {
-            RateMode::Constant => sys::ac3forge_ac4_rate_mode_AC3FORGE_AC4_RATE_CONSTANT,
-            RateMode::Average => sys::ac3forge_ac4_rate_mode_AC3FORGE_AC4_RATE_AVERAGE,
-            RateMode::Variable => sys::ac3forge_ac4_rate_mode_AC3FORGE_AC4_RATE_VARIABLE,
+            RateMode::Constant => sys::iclforge_ac4_rate_mode_ICLFORGE_AC4_RATE_CONSTANT,
+            RateMode::Average => sys::iclforge_ac4_rate_mode_ICLFORGE_AC4_RATE_AVERAGE,
+            RateMode::Variable => sys::iclforge_ac4_rate_mode_ICLFORGE_AC4_RATE_VARIABLE,
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_bed_channel_t` (`ac4::BedChannel`): the loudspeaker a bed object plays
+/// Mirrors `iclforge_ac4_bed_channel_t` (`ac4::BedChannel`): the loudspeaker a bed object plays
 /// from (Part 2 Table 66's `nonstd_bed_channel_assignment`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BedChannel {
@@ -348,40 +348,40 @@ pub enum BedChannel {
 }
 
 impl BedChannel {
-    fn to_raw(self) -> sys::ac3forge_ac4_bed_channel_t {
+    fn to_raw(self) -> sys::iclforge_ac4_bed_channel_t {
         match self {
-            BedChannel::Left => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT,
-            BedChannel::Right => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_RIGHT,
-            BedChannel::Centre => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_CENTRE,
+            BedChannel::Left => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_LEFT,
+            BedChannel::Right => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_RIGHT,
+            BedChannel::Centre => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_CENTRE,
             BedChannel::LeftSurround => {
-                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT_SURROUND
+                sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_LEFT_SURROUND
             }
             BedChannel::RightSurround => {
-                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_RIGHT_SURROUND
+                sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_RIGHT_SURROUND
             }
-            BedChannel::LeftBack => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT_BACK,
-            BedChannel::RightBack => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_RIGHT_BACK,
+            BedChannel::LeftBack => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_LEFT_BACK,
+            BedChannel::RightBack => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_RIGHT_BACK,
             BedChannel::TopFrontLeft => {
-                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_FRONT_LEFT
+                sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_TOP_FRONT_LEFT
             }
             BedChannel::TopFrontRight => {
-                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_FRONT_RIGHT
+                sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_TOP_FRONT_RIGHT
             }
-            BedChannel::TopSideLeft => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_SIDE_LEFT,
+            BedChannel::TopSideLeft => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_TOP_SIDE_LEFT,
             BedChannel::TopSideRight => {
-                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_SIDE_RIGHT
+                sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_TOP_SIDE_RIGHT
             }
-            BedChannel::TopBackLeft => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_BACK_LEFT,
+            BedChannel::TopBackLeft => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_TOP_BACK_LEFT,
             BedChannel::TopBackRight => {
-                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_TOP_BACK_RIGHT
+                sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_TOP_BACK_RIGHT
             }
-            BedChannel::LeftWide => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT_WIDE,
-            BedChannel::RightWide => sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_RIGHT_WIDE,
+            BedChannel::LeftWide => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_LEFT_WIDE,
+            BedChannel::RightWide => sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_RIGHT_WIDE,
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_object_coding_t` (`ac4::ObjectCoding`): how an object substream's
+/// Mirrors `iclforge_ac4_object_coding_t` (`ac4::ObjectCoding`): how an object substream's
 /// objects are coded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ObjectCoding {
@@ -395,17 +395,17 @@ pub enum ObjectCoding {
 }
 
 impl ObjectCoding {
-    fn to_raw(self) -> sys::ac3forge_ac4_object_coding_t {
+    fn to_raw(self) -> sys::iclforge_ac4_object_coding_t {
         match self {
-            ObjectCoding::Ajoc => sys::ac3forge_ac4_object_coding_AC3FORGE_AC4_OBJECT_CODING_AJOC,
+            ObjectCoding::Ajoc => sys::iclforge_ac4_object_coding_ICLFORGE_AC4_OBJECT_CODING_AJOC,
             ObjectCoding::Direct => {
-                sys::ac3forge_ac4_object_coding_AC3FORGE_AC4_OBJECT_CODING_DIRECT
+                sys::iclforge_ac4_object_coding_ICLFORGE_AC4_OBJECT_CODING_DIRECT
             }
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_ajoc_downmix_t` (`ac4::AjocDownmix`): A-JOC's downmix, which Part 2
+/// Mirrors `iclforge_ac4_ajoc_downmix_t` (`ac4::AjocDownmix`): A-JOC's downmix, which Part 2
 /// leaves to the encoder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AjocDownmix {
@@ -420,22 +420,22 @@ pub enum AjocDownmix {
 }
 
 impl AjocDownmix {
-    fn to_raw(self) -> sys::ac3forge_ac4_ajoc_downmix_t {
+    fn to_raw(self) -> sys::iclforge_ac4_ajoc_downmix_t {
         match self {
             AjocDownmix::Computed => {
-                sys::ac3forge_ac4_ajoc_downmix_AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED
+                sys::iclforge_ac4_ajoc_downmix_ICLFORGE_AC4_AJOC_DOWNMIX_COMPUTED
             }
             AjocDownmix::Static50 => {
-                sys::ac3forge_ac4_ajoc_downmix_AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_50
+                sys::iclforge_ac4_ajoc_downmix_ICLFORGE_AC4_AJOC_DOWNMIX_STATIC_50
             }
             AjocDownmix::Static51 => {
-                sys::ac3forge_ac4_ajoc_downmix_AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51
+                sys::iclforge_ac4_ajoc_downmix_ICLFORGE_AC4_AJOC_DOWNMIX_STATIC_51
             }
         }
     }
 }
 
-/// Mirrors `ac3forge_ac4_additional_pair_t` (`ac4::AdditionalPair`, Part 1 Table 88): the 7.X
+/// Mirrors `iclforge_ac4_additional_pair_t` (`ac4::AdditionalPair`, Part 1 Table 88): the 7.X
 /// element's pair beyond L, R, C, Ls and Rs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AdditionalPair {
@@ -450,13 +450,13 @@ pub enum AdditionalPair {
 }
 
 impl AdditionalPair {
-    fn to_raw(self) -> sys::ac3forge_ac4_additional_pair_t {
+    fn to_raw(self) -> sys::iclforge_ac4_additional_pair_t {
         match self {
-            AdditionalPair::None => sys::ac3forge_ac4_additional_pair_AC3FORGE_AC4_PAIR_NONE,
-            AdditionalPair::Back => sys::ac3forge_ac4_additional_pair_AC3FORGE_AC4_PAIR_BACK,
-            AdditionalPair::Wide => sys::ac3forge_ac4_additional_pair_AC3FORGE_AC4_PAIR_WIDE,
+            AdditionalPair::None => sys::iclforge_ac4_additional_pair_ICLFORGE_AC4_PAIR_NONE,
+            AdditionalPair::Back => sys::iclforge_ac4_additional_pair_ICLFORGE_AC4_PAIR_BACK,
+            AdditionalPair::Wide => sys::iclforge_ac4_additional_pair_ICLFORGE_AC4_PAIR_WIDE,
             AdditionalPair::TopFront => {
-                sys::ac3forge_ac4_additional_pair_AC3FORGE_AC4_PAIR_TOP_FRONT
+                sys::iclforge_ac4_additional_pair_ICLFORGE_AC4_PAIR_TOP_FRONT
             }
         }
     }
@@ -464,8 +464,8 @@ impl AdditionalPair {
 
 // --- decoder configuration ---------------------------------------------------
 
-/// Mirrors `ac3forge_ac4_output_config_t` (`ac4::OutputConfig`). Construct with
-/// [`OutputConfig::default`] (which calls the raw `ac3forge_ac4_output_config_init()` -
+/// Mirrors `iclforge_ac4_output_config_t` (`ac4::OutputConfig`). Construct with
+/// [`OutputConfig::default`] (which calls the raw `iclforge_ac4_output_config_init()` -
 /// same "call the real _init(), never derive it" reasoning as `ac3::EncoderConfig`) and
 /// override only the fields you need.
 #[derive(Debug, Clone, PartialEq)]
@@ -482,8 +482,8 @@ pub struct OutputConfig {
 }
 
 impl OutputConfig {
-    fn to_raw(&self) -> sys::ac3forge_ac4_output_config_t {
-        sys::ac3forge_ac4_output_config_t {
+    fn to_raw(&self) -> sys::iclforge_ac4_output_config_t {
+        sys::iclforge_ac4_output_config_t {
             has_output_level_dbfs: self.output_level_dbfs.is_some() as i32,
             output_level_dbfs: self.output_level_dbfs.unwrap_or_default(),
             drc: self.drc.to_raw(),
@@ -496,17 +496,17 @@ impl OutputConfig {
         }
     }
 
-    fn from_raw(raw: &sys::ac3forge_ac4_output_config_t) -> Self {
+    fn from_raw(raw: &sys::iclforge_ac4_output_config_t) -> Self {
         OutputConfig {
             output_level_dbfs: (raw.has_output_level_dbfs != 0).then_some(raw.output_level_dbfs),
             drc: match raw.drc {
                 #[allow(non_upper_case_globals)]
-                sys::ac3forge_ac4_drc_mode_AC3FORGE_AC4_DRC_OFF => DrcMode::Off,
+                sys::iclforge_ac4_drc_mode_ICLFORGE_AC4_DRC_OFF => DrcMode::Off,
                 _ => DrcMode::Default,
             },
             headphones: raw.headphones != 0,
             dialogue_enhancement_db: raw.dialogue_enhancement_db,
-            downmix: DownmixTarget::AsCoded, // the only value ac3forge_ac4_output_config_init() sets
+            downmix: DownmixTarget::AsCoded, // the only value iclforge_ac4_output_config_init() sets
             mix_lfe: raw.mix_lfe != 0,
             dialogue_gain_db: raw.dialogue_gain_db,
             associated_gain_db: raw.associated_gain_db,
@@ -517,17 +517,17 @@ impl OutputConfig {
 impl Default for OutputConfig {
     fn default() -> Self {
         let mut raw = unsafe { std::mem::zeroed() };
-        // SAFETY: ac3forge_ac4_output_config_init() unconditionally overwrites every field of
+        // SAFETY: iclforge_ac4_output_config_init() unconditionally overwrites every field of
         // `raw` - the one sanctioned way to obtain the real OutputConfig{} defaults (mix_lfe
         // true, etc.) rather than guessing at them Rust-side.
-        unsafe { sys::ac3forge_ac4_output_config_init(&mut raw) };
+        unsafe { sys::iclforge_ac4_output_config_init(&mut raw) };
         OutputConfig::from_raw(&raw)
     }
 }
 
-/// Mirrors `ac3forge_ac4_presentation_choice_t` (`ac4::PresentationChoice`). Every field's
+/// Mirrors `iclforge_ac4_presentation_choice_t` (`ac4::PresentationChoice`). Every field's
 /// `Default` (`None`/empty/`Any`/`false`) already matches
-/// `ac3forge_ac4_presentation_choice_init()`'s own defaults, so unlike [`OutputConfig`] this
+/// `iclforge_ac4_presentation_choice_init()`'s own defaults, so unlike [`OutputConfig`] this
 /// derives it rather than calling that function - there is no `unsafe` value it would need to
 /// discover that the derive gets wrong.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -549,12 +549,12 @@ impl PresentationChoice {
     /// pointer-free config in this crate is: a `const char*` field cannot outlive the value
     /// that owns its bytes, and this crate's config structs are otherwise always returned by
     /// value (see `EncoderConfig::to_raw` in `ac3.rs`).
-    fn with_raw<R>(&self, f: impl FnOnce(&sys::ac3forge_ac4_presentation_choice_t) -> R) -> R {
+    fn with_raw<R>(&self, f: impl FnOnce(&sys::iclforge_ac4_presentation_choice_t) -> R) -> R {
         // NUL bytes in a BCP 47 tag are not meaningful; drop them rather than fail outright -
-        // this field cannot fail the call it feeds (ac3forge_ac4_presentation_choice_init()
+        // this field cannot fail the call it feeds (iclforge_ac4_presentation_choice_init()
         // treats NULL as "no language" too).
         let language = CString::new(self.language.replace('\0', "")).unwrap_or_default();
-        let raw = sys::ac3forge_ac4_presentation_choice_t {
+        let raw = sys::iclforge_ac4_presentation_choice_t {
             has_presentation_id: self.presentation_id.is_some() as i32,
             presentation_id: self.presentation_id.unwrap_or_default(),
             has_index: self.index.is_some() as i32,
@@ -573,10 +573,10 @@ impl PresentationChoice {
     }
 }
 
-/// Mirrors `ac3forge_ac4_decoder_config_t` (`ac4::DecoderConfig`, less its syntax
+/// Mirrors `iclforge_ac4_decoder_config_t` (`ac4::DecoderConfig`, less its syntax
 /// trace - an internal diagnostic hook with no C surface, same omission as
-/// `ac3forge_ac4_decoder_config_t` itself). Construct with [`DecoderConfig::default`] (which
-/// calls the raw `ac3forge_ac4_decoder_config_init()`, same "never derive a default with a
+/// `iclforge_ac4_decoder_config_t` itself). Construct with [`DecoderConfig::default`] (which
+/// calls the raw `iclforge_ac4_decoder_config_init()`, same "never derive a default with a
 /// non-zero/non-empty field" reasoning as [`OutputConfig`] - `level`'s real default is 3, which
 /// a struct-level `#[derive(Default)]` would silently give as 0).
 #[derive(Debug, Clone, PartialEq)]
@@ -592,31 +592,31 @@ pub struct DecoderConfig {
 impl Default for DecoderConfig {
     fn default() -> Self {
         let mut raw = unsafe { std::mem::zeroed() };
-        // SAFETY: ac3forge_ac4_decoder_config_init() unconditionally overwrites every field of
+        // SAFETY: iclforge_ac4_decoder_config_init() unconditionally overwrites every field of
         // `raw`, output/presentation included (each via the matching _init() function - see
-        // ac3forge.h's own comment on why every _config_init() must run first).
-        unsafe { sys::ac3forge_ac4_decoder_config_init(&mut raw) };
+        // iclforge.h's own comment on why every _config_init() must run first).
+        unsafe { sys::iclforge_ac4_decoder_config_init(&mut raw) };
         DecoderConfig {
             output: OutputConfig::from_raw(&raw.output),
             concealment: match raw.concealment {
                 #[allow(non_upper_case_globals)]
-                sys::ac3forge_ac4_concealment_policy_AC3FORGE_AC4_CONCEALMENT_REPEAT_FADE => {
+                sys::iclforge_ac4_concealment_policy_ICLFORGE_AC4_CONCEALMENT_REPEAT_FADE => {
                     ConcealmentPolicy::RepeatFade
                 }
                 #[allow(non_upper_case_globals)]
-                sys::ac3forge_ac4_concealment_policy_AC3FORGE_AC4_CONCEALMENT_MUTE => {
+                sys::iclforge_ac4_concealment_policy_ICLFORGE_AC4_CONCEALMENT_MUTE => {
                     ConcealmentPolicy::Mute
                 }
                 _ => ConcealmentPolicy::None,
             },
-            // ac3forge_ac4_presentation_choice_init() gives every field the same value
+            // iclforge_ac4_presentation_choice_init() gives every field the same value
             // PresentationChoice::default() already does (see its own doc comment) - no
             // pointer in raw.presentation to read back, so this skips converting it.
             presentation: PresentationChoice::default(),
             level: raw.level,
             decoding: match raw.decoding {
                 #[allow(non_upper_case_globals)]
-                sys::ac3forge_ac4_decoding_mode_AC3FORGE_AC4_DECODING_CORE => DecodingMode::Core,
+                sys::iclforge_ac4_decoding_mode_ICLFORGE_AC4_DECODING_CORE => DecodingMode::Core,
                 _ => DecodingMode::Full,
             },
         }
@@ -624,9 +624,9 @@ impl Default for DecoderConfig {
 }
 
 impl DecoderConfig {
-    fn with_raw<R>(&self, f: impl FnOnce(&sys::ac3forge_ac4_decoder_config_t) -> R) -> R {
+    fn with_raw<R>(&self, f: impl FnOnce(&sys::iclforge_ac4_decoder_config_t) -> R) -> R {
         self.presentation.with_raw(|presentation| {
-            let raw = sys::ac3forge_ac4_decoder_config_t {
+            let raw = sys::iclforge_ac4_decoder_config_t {
                 output: self.output.to_raw(),
                 concealment: self.concealment.to_raw(),
                 presentation: *presentation,
@@ -640,9 +640,9 @@ impl DecoderConfig {
 
 // --- decoder -------------------------------------------------------------
 
-/// An AC-4 decoder - `ac4::Decoder` via `ac3forge_ac4_decoder_t`.
+/// An AC-4 decoder - `ac4::Decoder` via `iclforge_ac4_decoder_t`.
 pub struct Decoder {
-    raw: ptr::NonNull<sys::ac3forge_ac4_decoder_t>,
+    raw: ptr::NonNull<sys::iclforge_ac4_decoder_t>,
 }
 
 unsafe impl Send for Decoder {}
@@ -650,13 +650,13 @@ unsafe impl Send for Decoder {}
 impl Decoder {
     pub fn new(config: &DecoderConfig) -> Result<Self, Error> {
         config.with_raw(|raw_config| {
-            let mut out: *mut sys::ac3forge_ac4_decoder_t = ptr::null_mut();
+            let mut out: *mut sys::iclforge_ac4_decoder_t = ptr::null_mut();
             // SAFETY: `raw_config` is fully initialized for the duration of this call; `out`
             // is a valid out-parameter.
-            let status = unsafe { sys::ac3forge_ac4_decoder_create(raw_config, &mut out) };
+            let status = unsafe { sys::iclforge_ac4_decoder_create(raw_config, &mut out) };
             Error::check(status)?;
             let raw = ptr::NonNull::new(out)
-                .expect("ac3forge_ac4_decoder_create returned OK with a null decoder");
+                .expect("iclforge_ac4_decoder_create returned OK with a null decoder");
             Ok(Decoder { raw })
         })
     }
@@ -665,35 +665,35 @@ impl Decoder {
     pub fn set_output(&mut self, output: &OutputConfig) {
         let raw = output.to_raw();
         // SAFETY: `self.raw` is valid; `raw` lives for the duration of this call.
-        unsafe { sys::ac3forge_ac4_decoder_set_output(self.raw.as_ptr(), &raw) };
+        unsafe { sys::iclforge_ac4_decoder_set_output(self.raw.as_ptr(), &raw) };
     }
 
     /// The presentation choice, from the next frame.
     pub fn set_presentation(&mut self, choice: &PresentationChoice) {
         choice.with_raw(|raw| unsafe {
-            sys::ac3forge_ac4_decoder_set_presentation(self.raw.as_ptr(), raw)
+            sys::iclforge_ac4_decoder_set_presentation(self.raw.as_ptr(), raw)
         });
     }
 
     /// Forgets everything carried between frames.
     pub fn reset(&mut self) {
-        unsafe { sys::ac3forge_ac4_decoder_reset(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_ac4_decoder_reset(self.raw.as_ptr()) };
     }
 
     /// The decoder's own added delay at the output rate, for the stream as last decoded; 0
     /// before a frame has decoded.
     pub fn latency_samples(&self) -> i32 {
-        unsafe { sys::ac3forge_ac4_decoder_latency_samples(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_decoder_latency_samples(self.raw.as_ptr()) }
     }
 
     /// Why the last [`Decoder::decode`] call failed, returned `None`, or returned a
     /// concealed frame; empty after one that decoded normally.
     pub fn refusal_reason(&self) -> String {
-        // SAFETY: ac3forge_ac4_decoder_refusal_reason() returns library-owned storage valid
+        // SAFETY: iclforge_ac4_decoder_refusal_reason() returns library-owned storage valid
         // for the process lifetime, always a valid NUL-terminated C string (never NULL - see
         // its own doc comment on normalizing the empty case).
         unsafe {
-            CStr::from_ptr(sys::ac3forge_ac4_decoder_refusal_reason(self.raw.as_ptr()))
+            CStr::from_ptr(sys::iclforge_ac4_decoder_refusal_reason(self.raw.as_ptr()))
                 .to_string_lossy()
                 .into_owned()
         }
@@ -702,11 +702,11 @@ impl Decoder {
     /// Reads one `raw_ac4_frame`. `None` means this frame has no output yet (its substreams
     /// need configuration no I-frame has sent) - not an error.
     pub fn decode(&mut self, frame: &[u8]) -> Result<Option<DecodedFrame>, Error> {
-        let mut out: *mut sys::ac3forge_ac4_decoded_frame_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_ac4_decoded_frame_t = ptr::null_mut();
         // SAFETY: `frame` is a valid slice for the duration of this call; `out` is a valid
         // out-parameter.
         let status = unsafe {
-            sys::ac3forge_ac4_decoder_decode(
+            sys::iclforge_ac4_decoder_decode(
                 self.raw.as_ptr(),
                 frame.as_ptr(),
                 frame.len(),
@@ -721,19 +721,19 @@ impl Decoder {
     /// before one.
     pub fn presentations(&self) -> Vec<PresentationInfo> {
         // SAFETY: `self.raw` is valid.
-        let count = unsafe { sys::ac3forge_ac4_decoder_presentation_count(self.raw.as_ptr()) };
+        let count = unsafe { sys::iclforge_ac4_decoder_presentation_count(self.raw.as_ptr()) };
         (0..count)
             .map(|index| {
                 // SAFETY: `index` is in `[0, count)`, so every accessor below reads a real
                 // presentation rather than taking its null-safety fallback.
                 unsafe {
-                    let speaker_count = sys::ac3forge_ac4_decoder_presentation_speaker_count(
+                    let speaker_count = sys::iclforge_ac4_decoder_presentation_speaker_count(
                         self.raw.as_ptr(),
                         index,
                     );
                     let speakers = (0..speaker_count)
                         .map(|s| {
-                            Speaker::from_raw(sys::ac3forge_ac4_decoder_presentation_speaker(
+                            Speaker::from_raw(sys::iclforge_ac4_decoder_presentation_speaker(
                                 self.raw.as_ptr(),
                                 index,
                                 s,
@@ -741,56 +741,56 @@ impl Decoder {
                         })
                         .collect();
                     PresentationInfo {
-                        toc_index: sys::ac3forge_ac4_decoder_presentation_toc_index(
+                        toc_index: sys::iclforge_ac4_decoder_presentation_toc_index(
                             self.raw.as_ptr(),
                             index,
                         ),
-                        presentation_id: (sys::ac3forge_ac4_decoder_presentation_has_id(
+                        presentation_id: (sys::iclforge_ac4_decoder_presentation_has_id(
                             self.raw.as_ptr(),
                             index,
                         ) != 0)
                             .then(|| {
-                                sys::ac3forge_ac4_decoder_presentation_id(self.raw.as_ptr(), index)
+                                sys::iclforge_ac4_decoder_presentation_id(self.raw.as_ptr(), index)
                             }),
-                        md_compat: (sys::ac3forge_ac4_decoder_presentation_has_md_compat(
+                        md_compat: (sys::iclforge_ac4_decoder_presentation_has_md_compat(
                             self.raw.as_ptr(),
                             index,
                         ) != 0)
                             .then(|| {
-                                sys::ac3forge_ac4_decoder_presentation_md_compat(
+                                sys::iclforge_ac4_decoder_presentation_md_compat(
                                     self.raw.as_ptr(),
                                     index,
                                 )
                             }),
-                        enabled: sys::ac3forge_ac4_decoder_presentation_enabled(
+                        enabled: sys::iclforge_ac4_decoder_presentation_enabled(
                             self.raw.as_ptr(),
                             index,
                         ) != 0,
-                        alternative: sys::ac3forge_ac4_decoder_presentation_alternative(
+                        alternative: sys::iclforge_ac4_decoder_presentation_alternative(
                             self.raw.as_ptr(),
                             index,
                         ) != 0,
-                        pre_virtualized: sys::ac3forge_ac4_decoder_presentation_pre_virtualized(
+                        pre_virtualized: sys::iclforge_ac4_decoder_presentation_pre_virtualized(
                             self.raw.as_ptr(),
                             index,
                         ) != 0,
-                        name: CStr::from_ptr(sys::ac3forge_ac4_decoder_presentation_name(
+                        name: CStr::from_ptr(sys::iclforge_ac4_decoder_presentation_name(
                             self.raw.as_ptr(),
                             index,
                         ))
                         .to_string_lossy()
                         .into_owned(),
-                        language: CStr::from_ptr(sys::ac3forge_ac4_decoder_presentation_language(
+                        language: CStr::from_ptr(sys::iclforge_ac4_decoder_presentation_language(
                             self.raw.as_ptr(),
                             index,
                         ))
                         .to_string_lossy()
                         .into_owned(),
-                        decodable: sys::ac3forge_ac4_decoder_presentation_decodable(
+                        decodable: sys::iclforge_ac4_decoder_presentation_decodable(
                             self.raw.as_ptr(),
                             index,
                         ) != 0,
-                        selectable: sys::ac3forge_ac4_decoder_presentation_selectable(
+                        selectable: sys::iclforge_ac4_decoder_presentation_selectable(
                             self.raw.as_ptr(),
                             index,
                         ) != 0,
@@ -803,11 +803,11 @@ impl Decoder {
 
     /// The loudness metadata of the presentation the last [`Decoder::decode`] call
     /// selected, as the frames read so far have sent it (`ac4::LoudnessInfo`'s "big four" -
-    /// see `ac3forge_ac4_loudness_info_t`'s own comment on the DRC/dialogue-enhancement/
+    /// see `iclforge_ac4_loudness_info_t`'s own comment on the DRC/dialogue-enhancement/
     /// downmix detail this omits).
     pub fn metadata_loudness(&self) -> LoudnessInfo {
         // SAFETY: `self.raw` is valid.
-        let raw = unsafe { sys::ac3forge_ac4_decoder_metadata_loudness(self.raw.as_ptr()) };
+        let raw = unsafe { sys::iclforge_ac4_decoder_metadata_loudness(self.raw.as_ptr()) };
         LoudnessInfo {
             dialnorm_dbfs: (raw.has_dialnorm_dbfs != 0).then_some(raw.dialnorm_dbfs),
             integrated_lkfs: (raw.has_integrated_lkfs != 0).then_some(raw.integrated_lkfs),
@@ -819,7 +819,7 @@ impl Decoder {
 
 impl Drop for Decoder {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_ac4_decoder_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_ac4_decoder_destroy(self.raw.as_ptr()) };
     }
 }
 
@@ -840,7 +840,7 @@ pub struct PresentationInfo {
     pub speakers: Vec<Speaker>,
 }
 
-/// Mirrors `ac3forge_ac4_loudness_info_t` (`ac4::LoudnessInfo`'s "big four").
+/// Mirrors `iclforge_ac4_loudness_info_t` (`ac4::LoudnessInfo`'s "big four").
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LoudnessInfo {
     pub dialnorm_dbfs: Option<f64>,
@@ -849,12 +849,12 @@ pub struct LoudnessInfo {
     pub loudness_range_lu: Option<f64>,
 }
 
-/// Mirrors `ac3forge_ac4_object_properties_t` (`ac4::ObjectProperties`, Part 2 Annex F.2 to
+/// Mirrors `iclforge_ac4_object_properties_t` (`ac4::ObjectProperties`, Part 2 Annex F.2 to
 /// F.10 and `add_per_object_md()`'s data): what one block update of an object's metadata sets.
-/// The decoder reports it and the encoder takes it in these terms; `ac3forge.h` gives each
+/// The decoder reports it and the encoder takes it in these terms; `iclforge.h` gives each
 /// field's range and the steps its code has (an encoder rounds to the nearest and refuses a
 /// value off its range). Construct with [`ObjectProperties::default`], which calls the raw
-/// `ac3forge_ac4_object_properties_init()`: a zeroed struct is a depth exponent no code holds.
+/// `iclforge_ac4_object_properties_init()`: a zeroed struct is a depth exponent no code holds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjectProperties {
     pub active: bool,
@@ -888,18 +888,18 @@ pub struct ObjectProperties {
 impl Default for ObjectProperties {
     fn default() -> Self {
         let mut raw = unsafe { std::mem::zeroed() };
-        // SAFETY: ac3forge_ac4_object_properties_init() unconditionally overwrites every field
+        // SAFETY: iclforge_ac4_object_properties_init() unconditionally overwrites every field
         // of `raw` with ac4::ObjectProperties{}'s defaults (room centre, unity gain, priority 1,
         // depth exponent 1) - a struct-level derive would give priority 0 and depth exponent 0,
         // which the encoder refuses.
-        unsafe { sys::ac3forge_ac4_object_properties_init(&mut raw) };
+        unsafe { sys::iclforge_ac4_object_properties_init(&mut raw) };
         ObjectProperties::from_raw(raw)
     }
 }
 
 impl ObjectProperties {
-    fn to_raw(self) -> sys::ac3forge_ac4_object_properties_t {
-        sys::ac3forge_ac4_object_properties_t {
+    fn to_raw(self) -> sys::iclforge_ac4_object_properties_t {
+        sys::iclforge_ac4_object_properties_t {
             active: self.active as i32,
             gain_db: self.gain_db,
             priority: self.priority,
@@ -924,7 +924,7 @@ impl ObjectProperties {
         }
     }
 
-    fn from_raw(raw: sys::ac3forge_ac4_object_properties_t) -> Self {
+    fn from_raw(raw: sys::iclforge_ac4_object_properties_t) -> Self {
         ObjectProperties {
             active: raw.active != 0,
             gain_db: raw.gain_db,
@@ -947,7 +947,7 @@ impl ObjectProperties {
 }
 
 /// One block update of an object's metadata within a frame - `ac4::ObjectUpdate` (Part 2 Annex
-/// F.11) via `ac3forge_ac4_object_update_t`.
+/// F.11) via `iclforge_ac4_object_update_t`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjectUpdate {
     /// The output sample of the frame the update takes effect at, counted with the decoder's
@@ -980,43 +980,43 @@ pub struct Concealment {
     pub error: Error,
 }
 
-/// One decoded AC-4 frame - `ac4::DecodedFrame` via `ac3forge_ac4_decoded_frame_t`. Owns its
+/// One decoded AC-4 frame - `ac4::DecodedFrame` via `iclforge_ac4_decoded_frame_t`. Owns its
 /// PCM and object audio; every accessor borrows from `&self`.
 pub struct DecodedFrame {
-    raw: ptr::NonNull<sys::ac3forge_ac4_decoded_frame_t>,
+    raw: ptr::NonNull<sys::iclforge_ac4_decoded_frame_t>,
 }
 
 unsafe impl Send for DecodedFrame {}
 
 impl DecodedFrame {
     pub fn sample_rate_hz(&self) -> i32 {
-        unsafe { sys::ac3forge_ac4_decoded_frame_sample_rate_hz(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_decoded_frame_sample_rate_hz(self.raw.as_ptr()) }
     }
 
     pub fn sequence_counter(&self) -> i32 {
-        unsafe { sys::ac3forge_ac4_decoded_frame_sequence_counter(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_decoded_frame_sequence_counter(self.raw.as_ptr()) }
     }
 
     /// The presentation decoded: its index in the frame's table of contents.
     pub fn presentation_index(&self) -> usize {
-        unsafe { sys::ac3forge_ac4_decoded_frame_presentation_index(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_decoded_frame_presentation_index(self.raw.as_ptr()) }
     }
 
     pub fn presentation_id(&self) -> Option<i32> {
         unsafe {
-            (sys::ac3forge_ac4_decoded_frame_has_presentation_id(self.raw.as_ptr()) != 0)
-                .then(|| sys::ac3forge_ac4_decoded_frame_presentation_id(self.raw.as_ptr()))
+            (sys::iclforge_ac4_decoded_frame_has_presentation_id(self.raw.as_ptr()) != 0)
+                .then(|| sys::iclforge_ac4_decoded_frame_presentation_id(self.raw.as_ptr()))
         }
     }
 
     pub fn channel_count(&self) -> usize {
-        unsafe { sys::ac3forge_ac4_decoded_frame_channel_count(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_decoded_frame_channel_count(self.raw.as_ptr()) }
     }
 
     /// AC-4's frame length varies by frame rate - unlike AC-3/E-AC-3 there is no fixed
     /// constant, so this is a real per-frame accessor.
     pub fn samples_per_channel(&self) -> usize {
-        unsafe { sys::ac3forge_ac4_decoded_frame_samples_per_channel(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_decoded_frame_samples_per_channel(self.raw.as_ptr()) }
     }
 
     /// `channel_index` in `[0, channel_count())`. Panics if out of range.
@@ -1025,11 +1025,11 @@ impl DecodedFrame {
             channel_index < self.channel_count(),
             "channel index out of range"
         );
-        // SAFETY: the pointer is valid until `self` is destroyed (ac3forge.h's own
+        // SAFETY: the pointer is valid until `self` is destroyed (iclforge.h's own
         // convention); samples_per_channel() gives the real length.
         unsafe {
             let ptr =
-                sys::ac3forge_ac4_decoded_frame_channel_samples(self.raw.as_ptr(), channel_index);
+                sys::iclforge_ac4_decoded_frame_channel_samples(self.raw.as_ptr(), channel_index);
             std::slice::from_raw_parts(ptr, self.samples_per_channel())
         }
     }
@@ -1041,7 +1041,7 @@ impl DecodedFrame {
             "channel index out of range"
         );
         Speaker::from_raw(unsafe {
-            sys::ac3forge_ac4_decoded_frame_speaker(self.raw.as_ptr(), channel_index)
+            sys::iclforge_ac4_decoded_frame_speaker(self.raw.as_ptr(), channel_index)
         })
     }
 
@@ -1049,12 +1049,12 @@ impl DecodedFrame {
     /// did not decode.
     pub fn concealed(&self) -> Option<Concealment> {
         unsafe {
-            (sys::ac3forge_ac4_decoded_frame_has_concealed(self.raw.as_ptr()) != 0).then(|| {
+            (sys::iclforge_ac4_decoded_frame_has_concealed(self.raw.as_ptr()) != 0).then(|| {
                 Concealment {
                     action: ConcealmentAction::from_raw(
-                        sys::ac3forge_ac4_decoded_frame_concealment_action(self.raw.as_ptr()),
+                        sys::iclforge_ac4_decoded_frame_concealment_action(self.raw.as_ptr()),
                     ),
-                    error: Error::from_status(sys::ac3forge_ac4_decoded_frame_concealment_error(
+                    error: Error::from_status(sys::iclforge_ac4_decoded_frame_concealment_error(
                         self.raw.as_ptr(),
                     ))
                     .unwrap_or(Error::Internal),
@@ -1069,42 +1069,42 @@ impl DecodedFrame {
     /// content.
     pub fn objects(&self) -> Vec<DecodedObject> {
         // SAFETY: `self.raw` is valid.
-        let count = unsafe { sys::ac3forge_ac4_decoded_frame_object_count(self.raw.as_ptr()) };
+        let count = unsafe { sys::iclforge_ac4_decoded_frame_object_count(self.raw.as_ptr()) };
         let samples_per_channel = self.samples_per_channel();
         (0..count)
             .map(|index| unsafe {
                 let speaker =
-                    (sys::ac3forge_ac4_decoded_frame_object_has_speaker(self.raw.as_ptr(), index)
+                    (sys::iclforge_ac4_decoded_frame_object_has_speaker(self.raw.as_ptr(), index)
                         != 0)
                         .then(|| {
-                            Speaker::from_raw(sys::ac3forge_ac4_decoded_frame_object_speaker(
+                            Speaker::from_raw(sys::iclforge_ac4_decoded_frame_object_speaker(
                                 self.raw.as_ptr(),
                                 index,
                             ))
                         });
-                let ptr = sys::ac3forge_ac4_decoded_frame_object_samples(self.raw.as_ptr(), index);
+                let ptr = sys::iclforge_ac4_decoded_frame_object_samples(self.raw.as_ptr(), index);
                 let samples = if ptr.is_null() {
                     Vec::new()
                 } else {
                     std::slice::from_raw_parts(ptr, samples_per_channel).to_vec()
                 };
                 DecodedObject {
-                    kind: ObjectKind::from_raw(sys::ac3forge_ac4_decoded_frame_object_kind(
+                    kind: ObjectKind::from_raw(sys::iclforge_ac4_decoded_frame_object_kind(
                         self.raw.as_ptr(),
                         index,
                     )),
-                    lfe: sys::ac3forge_ac4_decoded_frame_object_lfe(self.raw.as_ptr(), index) != 0,
+                    lfe: sys::iclforge_ac4_decoded_frame_object_lfe(self.raw.as_ptr(), index) != 0,
                     speaker,
                     samples,
                     properties: ObjectProperties::from_raw(
-                        sys::ac3forge_ac4_decoded_frame_object_properties(self.raw.as_ptr(), index),
+                        sys::iclforge_ac4_decoded_frame_object_properties(self.raw.as_ptr(), index),
                     ),
-                    updates: (0..sys::ac3forge_ac4_decoded_frame_object_update_count(
+                    updates: (0..sys::iclforge_ac4_decoded_frame_object_update_count(
                         self.raw.as_ptr(),
                         index,
                     ))
                         .map(|update_index| {
-                            let update = sys::ac3forge_ac4_decoded_frame_object_update(
+                            let update = sys::iclforge_ac4_decoded_frame_object_update(
                                 self.raw.as_ptr(),
                                 index,
                                 update_index,
@@ -1124,13 +1124,13 @@ impl DecodedFrame {
 
 impl Drop for DecodedFrame {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_ac4_decoded_frame_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_ac4_decoded_frame_destroy(self.raw.as_ptr()) };
     }
 }
 
 // --- encoder -------------------------------------------------------------
 
-/// Mirrors `ac3forge_ac4_object_config_t` (`ac4::ObjectConfig`): one object of an
+/// Mirrors `iclforge_ac4_object_config_t` (`ac4::ObjectConfig`): one object of an
 /// [`ObjectsConfig`], the input channel at its index. Construct with
 /// [`ObjectConfig::default`], a dynamic object at the room's centre.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -1144,11 +1144,11 @@ pub struct ObjectConfig {
 }
 
 impl ObjectConfig {
-    fn to_raw(&self) -> sys::ac3forge_ac4_object_config_t {
-        sys::ac3forge_ac4_object_config_t {
+    fn to_raw(&self) -> sys::iclforge_ac4_object_config_t {
+        sys::iclforge_ac4_object_config_t {
             has_bed: self.bed.is_some() as i32,
             bed: self.bed.map_or(
-                sys::ac3forge_ac4_bed_channel_AC3FORGE_AC4_BED_LEFT,
+                sys::iclforge_ac4_bed_channel_ICLFORGE_AC4_BED_LEFT,
                 BedChannel::to_raw,
             ),
             lfe: self.lfe as i32,
@@ -1157,10 +1157,10 @@ impl ObjectConfig {
     }
 }
 
-/// Mirrors `ac3forge_ac4_objects_config_t` (`ac4::ObjectsConfig`): the objects of the one
+/// Mirrors `iclforge_ac4_objects_config_t` (`ac4::ObjectsConfig`): the objects of the one
 /// object substream a stream can have, and how they are coded. The limits (1 to
-/// `AC3FORGE_AC4_MAX_OBJECTS` objects, at most one the LFE, a computed downmix of at most
-/// `AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS` signals, `frame_rate_index` 13 only, and the rest) are the
+/// `ICLFORGE_AC4_MAX_OBJECTS` objects, at most one the LFE, a computed downmix of at most
+/// `ICLFORGE_AC4_MAX_DOWNMIX_SIGNALS` signals, `frame_rate_index` 13 only, and the rest) are the
 /// encoder's: [`Encoder::refusal_reason`] names the rule a configuration breaks.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ObjectsConfig {
@@ -1183,7 +1183,7 @@ pub struct ObjectsConfig {
     pub bed_object_chan_distribute: bool,
 }
 
-/// Mirrors `ac3forge_ac4_experimental_t` (`ac4::EncoderConfig::Experimental`): syntax only this
+/// Mirrors `iclforge_ac4_experimental_t` (`ac4::EncoderConfig::Experimental`): syntax only this
 /// project's readers have read from this encoder, off unless asked for. Not mirrored:
 /// `drc_gains` and `three_zero`, which need the DRC modes and the substream list this crate does
 /// not carry.
@@ -1210,8 +1210,8 @@ pub struct Experimental {
 }
 
 impl Experimental {
-    fn to_raw(self) -> sys::ac3forge_ac4_experimental_t {
-        sys::ac3forge_ac4_experimental_t {
+    fn to_raw(self) -> sys::iclforge_ac4_experimental_t {
+        sys::iclforge_ac4_experimental_t {
             aspx_balance: self.aspx_balance as i32,
             aspx_varvar: self.aspx_varvar as i32,
             aspx_interleave: self.aspx_interleave as i32,
@@ -1225,7 +1225,7 @@ impl Experimental {
     }
 }
 
-/// Mirrors `ac3forge_ac4_encoder_config_t` (`ac4::EncoderConfig`, less what this module's own doc
+/// Mirrors `iclforge_ac4_encoder_config_t` (`ac4::EncoderConfig`, less what this module's own doc
 /// comment leaves out). Construct with [`EncoderConfig::default`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct EncoderConfig {
@@ -1256,8 +1256,8 @@ pub struct EncoderConfig {
 impl EncoderConfig {
     /// Builds the raw struct - and the arrays it points to, which this function keeps alive on
     /// its own stack frame - and hands it to `f` for the duration of the call.
-    fn with_raw<R>(&self, f: impl FnOnce(&sys::ac3forge_ac4_encoder_config_t) -> R) -> R {
-        let object_configs: Vec<sys::ac3forge_ac4_object_config_t> = self
+    fn with_raw<R>(&self, f: impl FnOnce(&sys::iclforge_ac4_encoder_config_t) -> R) -> R {
+        let object_configs: Vec<sys::iclforge_ac4_object_config_t> = self
             .objects
             .as_ref()
             .map(|objects| objects.objects.iter().map(ObjectConfig::to_raw).collect())
@@ -1265,7 +1265,7 @@ impl EncoderConfig {
         let objects_raw = self
             .objects
             .as_ref()
-            .map(|objects| sys::ac3forge_ac4_objects_config_t {
+            .map(|objects| sys::iclforge_ac4_objects_config_t {
                 objects: if object_configs.is_empty() {
                     ptr::null()
                 } else {
@@ -1285,7 +1285,7 @@ impl EncoderConfig {
                 screen_size_ratio_code: objects.screen_size_ratio_code.unwrap_or_default(),
                 bed_object_chan_distribute: objects.bed_object_chan_distribute as i32,
             });
-        let raw = sys::ac3forge_ac4_encoder_config_t {
+        let raw = sys::iclforge_ac4_encoder_config_t {
             channels: self.channels,
             sample_rate_hz: self.sample_rate_hz,
             frame_rate_index: self.frame_rate_index,
@@ -1318,10 +1318,10 @@ impl EncoderConfig {
 impl Default for EncoderConfig {
     fn default() -> Self {
         let mut raw = unsafe { std::mem::zeroed() };
-        // SAFETY: ac3forge_ac4_encoder_config_init() unconditionally overwrites every field of
+        // SAFETY: iclforge_ac4_encoder_config_init() unconditionally overwrites every field of
         // `raw` - the one sanctioned way to obtain the real EncoderConfig{} defaults, per
         // ac3.rs's identical reasoning for its own EncoderConfig.
-        unsafe { sys::ac3forge_ac4_encoder_config_init(&mut raw) };
+        unsafe { sys::iclforge_ac4_encoder_config_init(&mut raw) };
         EncoderConfig {
             channels: raw.channels,
             sample_rate_hz: raw.sample_rate_hz,
@@ -1329,16 +1329,16 @@ impl Default for EncoderConfig {
             bitrate_kbps: raw.bitrate_kbps,
             rate_mode: match raw.rate_mode {
                 #[allow(non_upper_case_globals)]
-                sys::ac3forge_ac4_rate_mode_AC3FORGE_AC4_RATE_AVERAGE => RateMode::Average,
+                sys::iclforge_ac4_rate_mode_ICLFORGE_AC4_RATE_AVERAGE => RateMode::Average,
                 #[allow(non_upper_case_globals)]
-                sys::ac3forge_ac4_rate_mode_AC3FORGE_AC4_RATE_VARIABLE => RateMode::Variable,
+                sys::iclforge_ac4_rate_mode_ICLFORGE_AC4_RATE_VARIABLE => RateMode::Variable,
                 _ => RateMode::Constant,
             },
             codec_mode: CodecMode::from_raw(raw.codec_mode),
             iframe_interval: raw.iframe_interval,
             dialnorm_db: raw.dialnorm_db,
             // Every flag of ac4::EncoderConfig::Experimental is off by default, as is the
-            // additional pair (ac3forge_ac4_encoder_config_init()), which Experimental::default()
+            // additional pair (iclforge_ac4_encoder_config_init()), which Experimental::default()
             // spells - no value in `raw` a derive would get wrong.
             iframes: Vec::new(),
             fragment_starts: Vec::new(),
@@ -1348,7 +1348,7 @@ impl Default for EncoderConfig {
     }
 }
 
-/// Mirrors `ac3forge_ac4_object_metadata_update_t` (`ac4::ObjectMetadataUpdate`): a change to an
+/// Mirrors `iclforge_ac4_object_metadata_update_t` (`ac4::ObjectMetadataUpdate`): a change to an
 /// object's metadata, given with the input it belongs to (see [`Encoder::encode_objects`]).
 /// Construct with [`ObjectMetadataUpdate::default`].
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -1364,8 +1364,8 @@ pub struct ObjectMetadataUpdate {
 }
 
 impl ObjectMetadataUpdate {
-    fn to_raw(self) -> sys::ac3forge_ac4_object_metadata_update_t {
-        sys::ac3forge_ac4_object_metadata_update_t {
+    fn to_raw(self) -> sys::iclforge_ac4_object_metadata_update_t {
+        sys::iclforge_ac4_object_metadata_update_t {
             object: self.object,
             sample: self.sample,
             ramp_samples: self.ramp_samples,
@@ -1374,10 +1374,10 @@ impl ObjectMetadataUpdate {
     }
 }
 
-/// One encoded AC-4 frame - `ac4::EncodedFrame` via `ac3forge_ac4_encoded_frame_t`. What an
+/// One encoded AC-4 frame - `ac4::EncodedFrame` via `iclforge_ac4_encoded_frame_t`. What an
 /// MP4 sample holds as it is; [`sync_frame`] wraps it for a raw `.ac4` file or MPEG-2 TS.
 pub struct EncodedFrame {
-    raw: ptr::NonNull<sys::ac3forge_ac4_encoded_frame_t>,
+    raw: ptr::NonNull<sys::iclforge_ac4_encoded_frame_t>,
 }
 
 unsafe impl Send for EncodedFrame {}
@@ -1386,8 +1386,8 @@ unsafe impl Sync for EncodedFrame {}
 impl EncodedFrame {
     pub fn data(&self) -> &[u8] {
         unsafe {
-            let ptr = sys::ac3forge_ac4_encoded_frame_data(self.raw.as_ptr());
-            let size = sys::ac3forge_ac4_encoded_frame_size(self.raw.as_ptr());
+            let ptr = sys::iclforge_ac4_encoded_frame_data(self.raw.as_ptr());
+            let size = sys::iclforge_ac4_encoded_frame_size(self.raw.as_ptr());
             if ptr.is_null() || size == 0 {
                 &[]
             } else {
@@ -1398,17 +1398,17 @@ impl EncodedFrame {
 
     /// PCM samples per channel this frame decodes to, at the input's rate.
     pub fn samples(&self) -> i32 {
-        unsafe { sys::ac3forge_ac4_encoded_frame_samples(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_encoded_frame_samples(self.raw.as_ptr()) }
     }
 
     pub fn iframe(&self) -> bool {
-        unsafe { sys::ac3forge_ac4_encoded_frame_iframe(self.raw.as_ptr()) != 0 }
+        unsafe { sys::iclforge_ac4_encoded_frame_iframe(self.raw.as_ptr()) != 0 }
     }
 }
 
 impl Drop for EncodedFrame {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_ac4_encoded_frame_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_ac4_encoded_frame_destroy(self.raw.as_ptr()) };
     }
 }
 
@@ -1420,10 +1420,10 @@ pub struct MediaTiming {
     pub sample_delta: u32,
 }
 
-/// An owned copy of an encoder's table of contents - `ac4::Toc` via `ac3forge_ac4_toc_t`,
+/// An owned copy of an encoder's table of contents - `ac4::Toc` via `iclforge_ac4_toc_t`,
 /// for the dac4 box a container muxer needs.
 pub struct Toc {
-    raw: ptr::NonNull<sys::ac3forge_ac4_toc_t>,
+    raw: ptr::NonNull<sys::iclforge_ac4_toc_t>,
 }
 
 unsafe impl Send for Toc {}
@@ -1432,8 +1432,8 @@ impl Toc {
     /// The 'dac4' box payload (`ac4_dsi_v1`, Annex E.6, box header excluded) - `ac4::build_dac4`.
     /// Empty where [`Toc::dac4_refusal`] names what this cannot describe whole.
     pub fn build_dac4(&self) -> Result<Bytes, Error> {
-        let mut out: *mut sys::ac3forge_bytes_t = ptr::null_mut();
-        let status = unsafe { sys::ac3forge_ac4_build_dac4(self.raw.as_ptr(), &mut out) };
+        let mut out: *mut sys::iclforge_bytes_t = ptr::null_mut();
+        let status = unsafe { sys::iclforge_ac4_build_dac4(self.raw.as_ptr(), &mut out) };
         Error::check(status)?;
         Ok(unsafe { Bytes::from_raw(out) })
     }
@@ -1442,9 +1442,9 @@ impl Toc {
     /// whole.
     pub fn dac4_refusal(&self) -> String {
         // SAFETY: always a valid NUL-terminated C string (never NULL - see
-        // ac3forge_ac4_dac4_refusal()'s own doc comment on normalizing the empty case).
+        // iclforge_ac4_dac4_refusal()'s own doc comment on normalizing the empty case).
         unsafe {
-            CStr::from_ptr(sys::ac3forge_ac4_dac4_refusal(self.raw.as_ptr()))
+            CStr::from_ptr(sys::iclforge_ac4_dac4_refusal(self.raw.as_ptr()))
                 .to_string_lossy()
                 .into_owned()
         }
@@ -1456,7 +1456,7 @@ impl Toc {
         let mut timescale = 0u32;
         let mut sample_delta = 0u32;
         let has_value = unsafe {
-            sys::ac3forge_ac4_media_timing(self.raw.as_ptr(), &mut timescale, &mut sample_delta)
+            sys::iclforge_ac4_media_timing(self.raw.as_ptr(), &mut timescale, &mut sample_delta)
         };
         (has_value != 0).then_some(MediaTiming {
             timescale,
@@ -1469,20 +1469,20 @@ impl Toc {
     pub fn samples_per_frame(&self) -> Option<u32> {
         let mut samples = 0u32;
         let has_value =
-            unsafe { sys::ac3forge_ac4_samples_per_frame(self.raw.as_ptr(), &mut samples) };
+            unsafe { sys::iclforge_ac4_samples_per_frame(self.raw.as_ptr(), &mut samples) };
         (has_value != 0).then_some(samples)
     }
 }
 
 impl Drop for Toc {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_ac4_toc_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_ac4_toc_destroy(self.raw.as_ptr()) };
     }
 }
 
-/// An AC-4 encoder - `ac4::Encoder` via `ac3forge_ac4_encoder_t`.
+/// An AC-4 encoder - `ac4::Encoder` via `iclforge_ac4_encoder_t`.
 pub struct Encoder {
-    raw: ptr::NonNull<sys::ac3forge_ac4_encoder_t>,
+    raw: ptr::NonNull<sys::iclforge_ac4_encoder_t>,
 }
 
 unsafe impl Send for Encoder {}
@@ -1493,13 +1493,13 @@ impl Encoder {
     /// says which rule it breaks.
     pub fn new(config: &EncoderConfig) -> Result<Self, Error> {
         config.with_raw(|raw_config| {
-            let mut out: *mut sys::ac3forge_ac4_encoder_t = ptr::null_mut();
+            let mut out: *mut sys::iclforge_ac4_encoder_t = ptr::null_mut();
             // SAFETY: `raw_config` and the arrays it points to are valid for the duration of
             // this call; `out` is a valid out-parameter.
-            let status = unsafe { sys::ac3forge_ac4_encoder_create(raw_config, &mut out) };
+            let status = unsafe { sys::iclforge_ac4_encoder_create(raw_config, &mut out) };
             Error::check(status)?;
             let raw = ptr::NonNull::new(out)
-                .expect("ac3forge_ac4_encoder_create returned OK with a null encoder");
+                .expect("iclforge_ac4_encoder_create returned OK with a null encoder");
             Ok(Encoder { raw })
         })
     }
@@ -1512,7 +1512,7 @@ impl Encoder {
             // SAFETY: `raw_config` is valid for the duration of this call; the result is
             // library-owned storage, always a valid NUL-terminated C string (never NULL).
             unsafe {
-                CStr::from_ptr(sys::ac3forge_ac4_encoder_refusal_reason(raw_config))
+                CStr::from_ptr(sys::iclforge_ac4_encoder_refusal_reason(raw_config))
                     .to_string_lossy()
                     .into_owned()
             }
@@ -1521,17 +1521,17 @@ impl Encoder {
 
     /// The codec mode the stream is actually coded in - never [`CodecMode::Auto`].
     pub fn codec_mode(&self) -> CodecMode {
-        CodecMode::from_raw(unsafe { sys::ac3forge_ac4_encoder_codec_mode(self.raw.as_ptr()) })
+        CodecMode::from_raw(unsafe { sys::iclforge_ac4_encoder_codec_mode(self.raw.as_ptr()) })
     }
 
     /// Samples of silence the encoder puts before the input, at the input's rate.
     pub fn delay_samples(&self) -> i32 {
-        unsafe { sys::ac3forge_ac4_encoder_delay_samples(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_encoder_delay_samples(self.raw.as_ptr()) }
     }
 
     /// The delay a matching [`Decoder`] adds on top, at the input's rate.
     pub fn decoder_delay_samples(&self) -> i32 {
-        unsafe { sys::ac3forge_ac4_encoder_decoder_delay_samples(self.raw.as_ptr()) }
+        unsafe { sys::iclforge_ac4_encoder_decoder_delay_samples(self.raw.as_ptr()) }
     }
 
     /// Planar samples at full scale 1.0, one span per input channel, all the same length, any
@@ -1569,15 +1569,15 @@ impl Encoder {
             return Err(Error::InvalidArgument);
         }
         let pointers: Vec<*const f32> = objects.iter().map(|c| c.as_ptr()).collect();
-        let raw_updates: Vec<sys::ac3forge_ac4_object_metadata_update_t> =
+        let raw_updates: Vec<sys::iclforge_ac4_object_metadata_update_t> =
             updates.iter().map(|update| update.to_raw()).collect();
-        let mut out: *mut *mut sys::ac3forge_ac4_encoded_frame_t = ptr::null_mut();
+        let mut out: *mut *mut sys::iclforge_ac4_encoded_frame_t = ptr::null_mut();
         let mut count: usize = 0;
         // SAFETY: `pointers` holds one valid pointer per object, each to `samples_per_object`
         // live f32s, and `raw_updates` holds `raw_updates.len()` initialized updates, for the
         // duration of this call; `out`/`count` are valid out-parameters.
         let status = unsafe {
-            sys::ac3forge_ac4_encoder_encode_objects(
+            sys::iclforge_ac4_encoder_encode_objects(
                 self.raw.as_ptr(),
                 pointers.as_ptr(),
                 pointers.len(),
@@ -1599,11 +1599,11 @@ impl Encoder {
     /// Ends the stream: pads the input with silence to the end of its last frame and returns
     /// the frames the delay still held. The encoder takes no input after it.
     pub fn flush(&mut self) -> Result<Vec<EncodedFrame>, Error> {
-        let mut out: *mut *mut sys::ac3forge_ac4_encoded_frame_t = ptr::null_mut();
+        let mut out: *mut *mut sys::iclforge_ac4_encoded_frame_t = ptr::null_mut();
         let mut count: usize = 0;
         // SAFETY: `out`/`count` are valid out-parameters.
         let status =
-            unsafe { sys::ac3forge_ac4_encoder_flush(self.raw.as_ptr(), &mut out, &mut count) };
+            unsafe { sys::iclforge_ac4_encoder_flush(self.raw.as_ptr(), &mut out, &mut count) };
         Error::check(status)?;
         Ok(Self::collect_frames(out, count))
     }
@@ -1611,12 +1611,12 @@ impl Encoder {
     /// The table of contents every frame carries, as it stands after the frames encoded so
     /// far.
     pub fn toc(&self) -> Result<Toc, Error> {
-        let mut out: *mut sys::ac3forge_ac4_toc_t = ptr::null_mut();
+        let mut out: *mut sys::iclforge_ac4_toc_t = ptr::null_mut();
         // SAFETY: `self.raw` is valid; `out` is a valid out-parameter.
-        let status = unsafe { sys::ac3forge_ac4_encoder_toc(self.raw.as_ptr(), &mut out) };
+        let status = unsafe { sys::iclforge_ac4_encoder_toc(self.raw.as_ptr(), &mut out) };
         Error::check(status)?;
         let raw =
-            ptr::NonNull::new(out).expect("ac3forge_ac4_encoder_toc returned OK with a null toc");
+            ptr::NonNull::new(out).expect("iclforge_ac4_encoder_toc returned OK with a null toc");
         Ok(Toc { raw })
     }
 
@@ -1625,13 +1625,13 @@ impl Encoder {
         pointers: &[*const f32],
         samples_per_channel: usize,
     ) -> Result<Vec<EncodedFrame>, Error> {
-        let mut out: *mut *mut sys::ac3forge_ac4_encoded_frame_t = ptr::null_mut();
+        let mut out: *mut *mut sys::iclforge_ac4_encoded_frame_t = ptr::null_mut();
         let mut count: usize = 0;
         // SAFETY: `pointers` holds one valid pointer per channel, each to
         // `samples_per_channel` live f32s for the duration of this call; `out`/`count` are
         // valid out-parameters.
         let status = unsafe {
-            sys::ac3forge_ac4_encoder_encode(
+            sys::iclforge_ac4_encoder_encode(
                 self.raw.as_ptr(),
                 pointers.as_ptr(),
                 pointers.len(),
@@ -1645,14 +1645,14 @@ impl Encoder {
     }
 
     fn collect_frames(
-        out: *mut *mut sys::ac3forge_ac4_encoded_frame_t,
+        out: *mut *mut sys::iclforge_ac4_encoded_frame_t,
         count: usize,
     ) -> Vec<EncodedFrame> {
         if out.is_null() || count == 0 {
             return Vec::new();
         }
-        // SAFETY: AC3FORGE_OK with a non-NULL array guarantees `count` valid, exclusively-
-        // owned handles - ac3forge_ac4_encoder_encode()/_flush()'s own out-parameter contract.
+        // SAFETY: ICLFORGE_OK with a non-NULL array guarantees `count` valid, exclusively-
+        // owned handles - iclforge_ac4_encoder_encode()/_flush()'s own out-parameter contract.
         let frames = unsafe {
             let slice = std::slice::from_raw_parts(out, count);
             let frames: Vec<EncodedFrame> = slice
@@ -1663,11 +1663,11 @@ impl Encoder {
                 .collect();
             // The array itself (not its elements, which `frames` now owns) still needs
             // freeing - a plain array free, not the combined array+elements
-            // ac3forge_ac4_encoded_frame_array_destroy() does, since that would double-free
-            // the elements `frames` now owns. ac3forge.h documents this split for exactly
-            // this reason (see ac3forge_decoded_substream_array_destroy()'s own comment on
+            // iclforge_ac4_encoded_frame_array_destroy() does, since that would double-free
+            // the elements `frames` now owns. iclforge.h documents this split for exactly
+            // this reason (see iclforge_decoded_substream_array_destroy()'s own comment on
             // taking every handle first and passing count 0).
-            sys::ac3forge_ac4_encoded_frame_array_destroy(out, 0);
+            sys::iclforge_ac4_encoded_frame_array_destroy(out, 0);
             frames
         };
         frames
@@ -1676,18 +1676,18 @@ impl Encoder {
 
 impl Drop for Encoder {
     fn drop(&mut self) {
-        unsafe { sys::ac3forge_ac4_encoder_destroy(self.raw.as_ptr()) };
+        unsafe { sys::iclforge_ac4_encoder_destroy(self.raw.as_ptr()) };
     }
 }
 
 /// Part 2 Annex G.3.1's `ac4_syncframe()`: the sync word 0xAC40, or 0xAC41 and a trailing
 /// `crc_word` when `crc` is set, then `frame_size` and `raw_frame`.
 pub fn sync_frame(raw_frame: &[u8], crc: bool) -> Result<Bytes, Error> {
-    let mut out: *mut sys::ac3forge_bytes_t = ptr::null_mut();
+    let mut out: *mut sys::iclforge_bytes_t = ptr::null_mut();
     // SAFETY: `raw_frame` is a valid slice for the duration of this call; `out` is a valid
     // out-parameter.
     let status = unsafe {
-        sys::ac3forge_ac4_sync_frame(raw_frame.as_ptr(), raw_frame.len(), crc as i32, &mut out)
+        sys::iclforge_ac4_sync_frame(raw_frame.as_ptr(), raw_frame.len(), crc as i32, &mut out)
     };
     Error::check(status)?;
     Ok(unsafe { Bytes::from_raw(out) })

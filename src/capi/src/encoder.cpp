@@ -4,17 +4,17 @@
 
 #include "internal.hpp"
 
-using ac3forge_c::guard;
-using ac3forge_c::to_cpp;
+using iclforge_c::guard;
+using iclforge_c::to_cpp;
 
 // Kept outside extern "C" below: a C-linkage function returning a C++ class
 // by value (iclforge::EncoderConfig, here) is diagnosed by Clang
 // (-Wreturn-type-c-linkage) as ABI-incompatible with C, which this helper
 // genuinely is not meant to be - it is a private implementation detail, never
-// declared in ac3forge.h.
+// declared in iclforge.h.
 namespace {
 
-iclforge::EncoderConfig encoder_config_to_cpp(const ac3forge_encoder_config_t& config) {
+iclforge::EncoderConfig encoder_config_to_cpp(const iclforge_encoder_config_t& config) {
     iclforge::EncoderConfig out;
     out.sample_rate = to_cpp(config.sample_rate);
     out.bitrate_kbps = config.bitrate_kbps;
@@ -46,42 +46,42 @@ iclforge::EncoderConfig encoder_config_to_cpp(const ac3forge_encoder_config_t& c
 
 extern "C" {
 
-void ac3forge_encoder_config_init(ac3forge_encoder_config_t* config) {
+void iclforge_encoder_config_init(iclforge_encoder_config_t* config) {
     if (config == nullptr) {
         return;
     }
     const iclforge::EncoderConfig defaults{};
-    *config = ac3forge_encoder_config_t{
-        .sample_rate = ac3forge_c::from_cpp(defaults.sample_rate),
+    *config = iclforge_encoder_config_t{
+        .sample_rate = iclforge_c::from_cpp(defaults.sample_rate),
         .bitrate_kbps = defaults.bitrate_kbps,
         .dialnorm = defaults.dialnorm,
         .has_dialnorm2 = 0,
         .dialnorm2 = 0,
         .chbwcod = defaults.chbwcod,
-        .acmod = ac3forge_c::from_cpp(defaults.acmod),
+        .acmod = iclforge_c::from_cpp(defaults.acmod),
         .lfe = defaults.lfe ? 1 : 0,
         .coupling = defaults.coupling ? 1 : 0,
         .cplbegf = defaults.cplbegf,
         .cplendf = defaults.cplendf,
         .fast_mdct = defaults.fast_mdct ? 1 : 0,
         .has_drc = 0,
-        .drc_profile = AC3FORGE_DRC_FILM_STANDARD,
+        .drc_profile = ICLFORGE_DRC_FILM_STANDARD,
         .has_heavy = 0,
         .heavy = {},
         .has_drc2 = 0,
-        .drc2_profile = AC3FORGE_DRC_FILM_STANDARD,
+        .drc2_profile = ICLFORGE_DRC_FILM_STANDARD,
         .has_heavy2 = 0,
         .heavy2 = {},
-        .cmixlev = ac3forge_c::from_cpp(defaults.cmixlev),
-        .surmixlev = ac3forge_c::from_cpp(defaults.surmixlev)};
-    ac3forge_heavy_config_init(&config->heavy);
-    ac3forge_heavy_config_init(&config->heavy2);
+        .cmixlev = iclforge_c::from_cpp(defaults.cmixlev),
+        .surmixlev = iclforge_c::from_cpp(defaults.surmixlev)};
+    iclforge_heavy_config_init(&config->heavy);
+    iclforge_heavy_config_init(&config->heavy2);
 }
 
-ac3forge_status_t ac3forge_encoder_create(const ac3forge_encoder_config_t* config,
-                                           ac3forge_encoder_t** out_encoder) {
+iclforge_status_t iclforge_encoder_create(const iclforge_encoder_config_t* config,
+                                           iclforge_encoder_t** out_encoder) {
     if (config == nullptr || out_encoder == nullptr) {
-        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+        return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     // chbwcod's legal codes stop at 60 (§5.4.3.24: 61-63 fit its six bits but
     // are reserved); any negative value means "auto". iclforge::FrameEncoder only
@@ -89,81 +89,81 @@ ac3forge_status_t ac3forge_encoder_create(const ac3forge_encoder_config_t* confi
     // must be refused here, where the config is first seen, or it aborts the
     // caller's process at the first encode_frame().
     if (config->chbwcod > 60) {
-        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+        return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&config, &out_encoder] {
-        *out_encoder = new ac3forge_encoder(encoder_config_to_cpp(*config));
-        return AC3FORGE_OK;
+        *out_encoder = new iclforge_encoder(encoder_config_to_cpp(*config));
+        return ICLFORGE_OK;
     });
 }
 
-void ac3forge_encoder_destroy(ac3forge_encoder_t* encoder) { delete encoder; }
+void iclforge_encoder_destroy(iclforge_encoder_t* encoder) { delete encoder; }
 
-size_t ac3forge_encoder_channel_count(const ac3forge_encoder_t* encoder) {
+size_t iclforge_encoder_channel_count(const iclforge_encoder_t* encoder) {
     if (encoder == nullptr) {
         return 0;
     }
     return static_cast<size_t>(encoder->impl.channel_count());
 }
 
-const uint8_t* ac3forge_bytes_data(const ac3forge_bytes_t* bytes) {
+const uint8_t* iclforge_bytes_data(const iclforge_bytes_t* bytes) {
     if (bytes == nullptr || bytes->data.empty()) {
         return nullptr;
     }
     return reinterpret_cast<const uint8_t*>(bytes->data.data());
 }
 
-size_t ac3forge_bytes_size(const ac3forge_bytes_t* bytes) {
+size_t iclforge_bytes_size(const iclforge_bytes_t* bytes) {
     return bytes == nullptr ? 0 : bytes->data.size();
 }
 
-void ac3forge_bytes_destroy(ac3forge_bytes_t* bytes) { delete bytes; }
+void iclforge_bytes_destroy(iclforge_bytes_t* bytes) { delete bytes; }
 
-ac3forge_status_t ac3forge_encoder_encode_frame(ac3forge_encoder_t* encoder,
+iclforge_status_t iclforge_encoder_encode_frame(iclforge_encoder_t* encoder,
                                                  const float* const* channels,
                                                  size_t channel_count, size_t samples_per_channel,
-                                                 ac3forge_bytes_t** out_frame) {
+                                                 iclforge_bytes_t** out_frame) {
     if (encoder == nullptr || channels == nullptr || out_frame == nullptr) {
-        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+        return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
-    if (channel_count != ac3forge_encoder_channel_count(encoder) ||
+    if (channel_count != iclforge_encoder_channel_count(encoder) ||
         samples_per_channel != iclforge::kSamplesPerFrame) {
-        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+        return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&encoder, &channels, &channel_count, &samples_per_channel,
-                  &out_frame]() -> ac3forge_status_t {
+                  &out_frame]() -> iclforge_status_t {
         std::vector<std::span<const float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {
             if (channels[i] == nullptr) {
-                return AC3FORGE_ERROR_INVALID_ARGUMENT;
+                return ICLFORGE_ERROR_INVALID_ARGUMENT;
             }
             spans.emplace_back(channels[i], samples_per_channel);
         }
         auto result = encoder->impl.encode_frame(spans);
         if (!result) {
-            return ac3forge_c::from_cpp(result.error());
+            return iclforge_c::from_cpp(result.error());
         }
-        auto owned = std::make_unique<ac3forge_bytes>();
+        auto owned = std::make_unique<iclforge_bytes>();
         owned->data = std::move(*result);
         *out_frame = owned.release();
-        return AC3FORGE_OK;
+        return ICLFORGE_OK;
     });
 }
 
-int ac3forge_encoder_latency_samples(const ac3forge_encoder_t* encoder) {
+int iclforge_encoder_latency_samples(const iclforge_encoder_t* encoder) {
     return encoder == nullptr ? 0 : encoder->impl.latency_samples();
 }
 
-void ac3forge_encoder_latency(const ac3forge_encoder_t* encoder,
-                              ac3forge_latency_t* out_latency) {
+void iclforge_encoder_latency(const iclforge_encoder_t* encoder,
+                              iclforge_latency_t* out_latency) {
     if (encoder == nullptr || out_latency == nullptr) {
         return;
     }
-    *out_latency = ac3forge_c::from_cpp(encoder->impl.latency());
+    *out_latency = iclforge_c::from_cpp(encoder->impl.latency());
 }
 
-int ac3forge_decoder_latency_samples(const ac3forge_decoder_t* decoder) {
+int iclforge_decoder_latency_samples(const iclforge_decoder_t* decoder) {
     // Not a use of `decoder` beyond the null check, and deliberately so: an
     // AC-3 decoder's own contribution is structurally zero (see the header).
     // Taking the handle anyway keeps the call shape identical to the E-AC-3

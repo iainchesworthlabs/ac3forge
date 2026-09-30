@@ -9,7 +9,7 @@ import Ac3ForgeHearth
 // slice; docs/hearth/design/screenshots/network-sink-{speakers,decoder}.png).
 // Network.qml shows this instead of the plain "paired" card once
 // NetworkController.selectedSinkSettable is true - a sink offering
-// _ac3forge_player@v1, paired and connected.
+// _iclforge_player@v1, paired and connected.
 //
 // The Speakers/Decoder tab switch here (card "02") mirrors the top-level
 // Speakers/Decoder pages' own controls one for one, reading and writing

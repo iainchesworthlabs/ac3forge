@@ -22,7 +22,7 @@
 // a Kconfig symbol or an ESP-IDF header by name, the same discipline
 // sink_plan.hpp's own header comment explains for I2S_LL_SLOT_FRAME_BIT_MAX.
 
-namespace ac3forge {
+namespace iclforge {
 
 // One board's self-report. `target` is CONFIG_IDF_TARGET, verbatim
 // ("esp32p4"): what this firmware was BUILT for. `chip` is esp_chip_info()'s
@@ -211,4 +211,4 @@ namespace detail {
     return report;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

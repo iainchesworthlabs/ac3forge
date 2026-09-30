@@ -36,7 +36,7 @@
 // with the first as the one it evicts. The names blob is 80 bytes a name: the
 // server's key, then the name, NUL-padded.
 
-namespace ac3forge {
+namespace iclforge {
 
 // A server's key or a PSK: iclforge::sendspin::crypto::Key32, which this header
 // names for itself so as to need nothing from src/sendspin.
@@ -345,4 +345,4 @@ class ServerNames {
     std::size_t count_ = 0;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

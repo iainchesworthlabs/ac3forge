@@ -350,7 +350,7 @@ std::expected<void, CaptureError> Capture::Impl::connect_stream(
     }
 
     Stream new_stream{pw_stream_new_simple(pw_thread_loop_get_loop(loop.get()),
-                                        "ac3forge capture", props, &Impl::stream_events(),
+                                        "iclforge capture", props, &Impl::stream_events(),
                                         this)};
     if (!new_stream) {
         pw_thread_loop_unlock(loop.get());

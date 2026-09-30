@@ -37,7 +37,7 @@ namespace iclforge::ac4::detail {
 //
 // `Real` (ac4/detail/real.hpp) is the same CMake-selected scalar
 // src/ac4core's kernels are explicitly instantiated at, resolved by
-// AC3FORGE_DECODE_SCALAR (double or float): one concrete type per build,
+// ICLFORGE_DECODE_SCALAR (double or float): one concrete type per build,
 // used directly here rather than as a template parameter, the way
 // iclforge::ac3's own decode path uses iclforge::internal::decode_scalar_t (that
 // header's own comment explains the distinction). pcm/'s classes and free

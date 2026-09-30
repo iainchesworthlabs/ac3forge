@@ -42,21 +42,21 @@
 //
 // AC3CLI_EXE (see tests/CMakeLists.txt) is the absolute path to that binary,
 // supplied by CMake via $<TARGET_FILE:ac3cli> - these tests do not run at
-// all if AC3FORGE_BUILD_CLI is OFF, the same way the alsa/android platform
+// all if ICLFORGE_BUILD_CLI is OFF, the same way the alsa/android platform
 // tests above do not run outside their own backend.
 
 namespace fs = std::filesystem;
 
 namespace {
 
-// Scratch space for this file's own tests. AC3FORGE_TEST_SCRATCH_DIR (see
+// Scratch space for this file's own tests. ICLFORGE_TEST_SCRATCH_DIR (see
 // tests/CMakeLists.txt for why it is a build-tree path and not
 // fs::temp_directory_path()) is the whole suite's root; the leaf below is this
 // file's own. Duplicated in every test file that needs scratch space rather
 // than shared, per this project's per-file test-helper convention - only the
 // leaf name differs between the copies.
 //
-// The leaf also carries this process's own PID. AC3FORGE_TEST_SCRATCH_DIR is
+// The leaf also carries this process's own PID. ICLFORGE_TEST_SCRATCH_DIR is
 // rooted in the build tree, not per process, so two ac3tests/ac3cli processes
 // pointed at the same build tree at once (a concurrent re-run, or two sessions
 // sharing one tree) would otherwise race on this exact directory - one's
@@ -66,7 +66,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }
@@ -1193,7 +1193,7 @@ TEST_CASE("atmos-path reports a bad scene file without writing one", "[cli][atmo
         const auto path = dir / "scene_bad.json";
         {
             std::ofstream out{path};
-            out << R"({"ac3forge_scene": 1, "objects": [{"automation": [{"t": 0, "gian": 1}]}]})";
+            out << R"({"iclforge_scene": 1, "objects": [{"automation": [{"t": 0, "gian": 1}]}]})";
         }
         const auto ec3 = dir / "scene_bad_json.ec3";
         const auto rc = run_cli("atmos-path \"" + ec3.string() + "\" \"" + path.string() + "\" 1",
@@ -3428,7 +3428,7 @@ TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][
         // Surround EX or Pro Logic IIx/IIz encoded. FFmpeg's encode of the
         // same programme, external-eac3-51-256-ffmpeg.ec3 in the same
         // directory, carries neither and decoded quietly throughout.
-        const auto seed = fs::path{AC3FORGE_FUZZ_SEED_DIR} / "fuzz_eac3_decode" /
+        const auto seed = fs::path{ICLFORGE_FUZZ_SEED_DIR} / "fuzz_eac3_decode" /
                           "external-eac3-51-256-dee.ec3";
         REQUIRE(fs::exists(seed));
         decode_both(seed, "", "copyright asserted", "quiet_dee");

@@ -3,12 +3,12 @@
 //! framing/scan helpers, and the loudness meter. Same real-signal discipline as roundtrip.rs —
 //! synthesized tones, several frames, never silence and never only frame 0.
 
-use ac3forge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
-use ac3forge::eac3;
-use ac3forge::meter::{dialnorm_from_lkfs, LoudnessMeter};
-use ac3forge::stream;
-use ac3forge::types::{Acmod, DecoderConfig, SampleRate};
-use ac3forge::SAMPLES_PER_FRAME;
+use iclforge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
+use iclforge::eac3;
+use iclforge::meter::{dialnorm_from_lkfs, LoudnessMeter};
+use iclforge::stream;
+use iclforge::types::{Acmod, DecoderConfig, SampleRate};
+use iclforge::SAMPLES_PER_FRAME;
 
 const FRAME_COUNT: usize = 6;
 
@@ -26,7 +26,7 @@ fn rms(samples: &[f32]) -> f32 {
 }
 
 /// 5.1.2 = a 5.1 bed plus one dependent substream adding the Vhl/Vhr height pair
-/// (`AC3FORGE_CHANMAP_512_HEIGHT`) - the same recipe tests/capi/test_capi.cpp proves at the C
+/// (`ICLFORGE_CHANMAP_512_HEIGHT`) - the same recipe tests/capi/test_capi.cpp proves at the C
 /// level. A wide layout the single-substream encoder cannot express is exactly what
 /// AccessUnitEncoder exists for.
 #[test]
@@ -42,7 +42,7 @@ fn access_unit_encoder_round_trips_a_wide_layout() {
         sample_rate: SampleRate::Hz48000,
         bitrate_kbps: 192,
         acmod: Acmod::Stereo,
-        chanmap: Some(ac3forge_sys::AC3FORGE_CHANMAP_512_HEIGHT as u16),
+        chanmap: Some(iclforge_sys::ICLFORGE_CHANMAP_512_HEIGHT as u16),
         ..Default::default()
     };
     let mut encoder =
@@ -221,10 +221,10 @@ fn loudness_meter_measures_a_programme_and_derives_dialnorm() {
     assert_eq!(dialnorm, (-integrated).round().clamp(1.0, 31.0) as i32);
 
     // The chanmap constructor reaches the layouts an acmod cannot name - here the
-    // Ls/Rs/Lrs/Rrs rear quad a 7.1 dependent carries (AC3FORGE_CHANMAP_71_REAR).
+    // Ls/Rs/Lrs/Rrs rear quad a 7.1 dependent carries (ICLFORGE_CHANMAP_71_REAR).
     let wide = LoudnessMeter::for_chanmap(
         SampleRate::Hz48000,
-        ac3forge_sys::AC3FORGE_CHANMAP_71_REAR as u16,
+        iclforge_sys::ICLFORGE_CHANMAP_71_REAR as u16,
     )
     .unwrap();
     assert_eq!(wide.channel_count(), 4);

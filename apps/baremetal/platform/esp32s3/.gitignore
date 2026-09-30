@@ -17,7 +17,7 @@ sdkconfig.old
 build-*/
 
 # The IDF component manager's lockfile and download cache. Nothing here
-# declares a managed dependency today - the ac3forge component is local, and
+# declares a managed dependency today - the iclforge component is local, and
 # the codec path deliberately has no third-party runtime dependency - but the
 # moment one is added these appear, and they are build products.
 dependencies.lock

@@ -25,7 +25,7 @@
 // own logic could be linked into this test binary and called directly.
 //
 // A separate file rather than folded into test_cli.cpp, gated the same two-part way
-// test_cli_atmos_adm.cpp is (AC3FORGE_BUILD_ADM AND ac3cli actually built) - see
+// test_cli_atmos_adm.cpp is (ICLFORGE_BUILD_ADM AND ac3cli actually built) - see
 // tests/CMakeLists.txt's own comment.
 //
 // The byte-level IAB fixture below is a copy of tests/admbridge/test_iab_bridge.cpp's own flagship
@@ -45,7 +45,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_iab_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_iab_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }

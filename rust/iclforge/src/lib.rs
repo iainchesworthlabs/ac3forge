@@ -1,11 +1,11 @@
-//! Safe, idiomatic Rust bindings for [`ac3forge_c`](https://docs.rs/ac3forge-sys), ac3forge's C
+//! Safe, idiomatic Rust bindings for [`iclforge_c`](https://docs.rs/iclforge-sys), iclforge's C
 //! API — AC-3, E-AC-3 and AC-4 encode and decode. See `rust/README.md` for build prerequisites, what
 //! this crate covers versus what's explicitly deferred, and the real header defects found while
 //! building it.
 //!
 //! ```no_run
-//! use ac3forge::ac3::{Encoder, EncoderConfig};
-//! use ac3forge::types::{Acmod, SampleRate};
+//! use iclforge::ac3::{Encoder, EncoderConfig};
+//! use iclforge::types::{Acmod, SampleRate};
 //!
 //! let config = EncoderConfig {
 //!     sample_rate: SampleRate::Hz48000,
@@ -36,7 +36,7 @@ pub use error::Error;
 pub use version::{version, Version};
 
 /// One audio block is always 256 samples (A/52 §4.1); one syncframe is always six blocks —
-/// `AC3FORGE_SAMPLES_PER_FRAME`. Both codecs' single-substream encode/decode paths in this crate
+/// `ICLFORGE_SAMPLES_PER_FRAME`. Both codecs' single-substream encode/decode paths in this crate
 /// use this fixed frame size (`numblkscod`/short syncframes aren't exposed by the C API's
 /// `_frame_config_t` structs today — see `rust/README.md`).
-pub const SAMPLES_PER_FRAME: usize = ac3forge_sys::AC3FORGE_SAMPLES_PER_FRAME as usize;
+pub const SAMPLES_PER_FRAME: usize = iclforge_sys::ICLFORGE_SAMPLES_PER_FRAME as usize;

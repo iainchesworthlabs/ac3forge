@@ -26,10 +26,10 @@ set(CMAKE_SYSTEM_PROCESSOR arm)
 # instead.
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-find_program(AC3FORGE_ARM_GCC arm-none-eabi-gcc REQUIRED)
-find_program(AC3FORGE_ARM_GXX arm-none-eabi-g++ REQUIRED)
-set(CMAKE_C_COMPILER "${AC3FORGE_ARM_GCC}")
-set(CMAKE_CXX_COMPILER "${AC3FORGE_ARM_GXX}")
+find_program(ICLFORGE_ARM_GCC arm-none-eabi-gcc REQUIRED)
+find_program(ICLFORGE_ARM_GXX arm-none-eabi-g++ REQUIRED)
+set(CMAKE_C_COMPILER "${ICLFORGE_ARM_GCC}")
+set(CMAKE_CXX_COMPILER "${ICLFORGE_ARM_GXX}")
 
 # Debian/Ubuntu package newlib's specs and libraries under a prefix GCC does
 # not search by default (/usr/lib/arm-none-eabi/newlib), where the ARM-official
@@ -37,12 +37,12 @@ set(CMAKE_CXX_COMPILER "${AC3FORGE_ARM_GXX}")
 # either layout, and only add -B when there is something to add - passing a
 # non-existent -B directory is silently ignored by GCC, which would turn a
 # packaging difference into a confusing "cannot read spec file" later.
-find_file(AC3FORGE_ARM_NANO_SPECS nano.specs
+find_file(ICLFORGE_ARM_NANO_SPECS nano.specs
     PATHS /usr/lib/arm-none-eabi/newlib
     NO_DEFAULT_PATH)
-if(AC3FORGE_ARM_NANO_SPECS)
-    get_filename_component(AC3FORGE_ARM_NEWLIB_DIR "${AC3FORGE_ARM_NANO_SPECS}" DIRECTORY)
-    set(_ac3_arm_prefix "-B ${AC3FORGE_ARM_NEWLIB_DIR}")
+if(ICLFORGE_ARM_NANO_SPECS)
+    get_filename_component(ICLFORGE_ARM_NEWLIB_DIR "${ICLFORGE_ARM_NANO_SPECS}" DIRECTORY)
+    set(_ac3_arm_prefix "-B ${ICLFORGE_ARM_NEWLIB_DIR}")
 else()
     set(_ac3_arm_prefix "")
 endif()
@@ -80,5 +80,5 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 # for, and by the root CMakeLists.txt's own reporting. A plain variable rather
 # than a compile definition: no source file branches on it - the platform
 # split is a directory (apps/baremetal/platform/) as everywhere else here.
-set(AC3FORGE_BAREMETAL_TARGET "mps2-an385" CACHE STRING
+set(ICLFORGE_BAREMETAL_TARGET "mps2-an385" CACHE STRING
     "QEMU machine this bare-metal build targets" FORCE)

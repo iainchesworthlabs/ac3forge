@@ -42,7 +42,7 @@
 // methods below that say they are safe from any task queue their work onto the
 // server's task.
 
-namespace ac3forge {
+namespace iclforge {
 
 class SendspinEvents {
    public:
@@ -64,13 +64,13 @@ class SendspinEvents {
     // applies it and reports the new state with set_player_state().
     virtual void on_player_command(const iclforge::sendspin::messages::PlayerCommandMessage& command) = 0;
 
-    // _ac3forge_player@v1, the same way.
+    // _iclforge_player@v1, the same way.
     virtual void on_burst_stream_start(const iclforge::sendspin::player::StreamStart& stream) = 0;
     virtual void on_burst_stream_clear() = 0;
     virtual void on_burst_stream_end() = 0;
     virtual void on_burst(const iclforge::sendspin::BurstChunk& chunk, std::int64_t local_time) = 0;
     virtual void on_invalid_burst() = 0;
-    virtual void on_ac3forge_command(
+    virtual void on_iclforge_command(
         const iclforge::sendspin::player::CommandMessage& command) = 0;
     virtual void on_settings_refused(const iclforge::sendspin::player::SettingsError& error) = 0;
 
@@ -95,7 +95,7 @@ struct SendspinHostConfig {
     // Below a burst player's decode task (BurstPlayerConfig::priority, 6),
     // which on a part with one core cannot wait for this one. A message this
     // task reads late is still dated by when it arrived, where the project
-    // installs the arrival hook (ac3forge/tcp_arrivals.hpp).
+    // installs the arrival hook (iclforge/tcp_arrivals.hpp).
     UBaseType_t priority = 5;
     BaseType_t core = tskNO_AFFINITY;
     // Connections at once: the one admitted for playback, a pairing
@@ -129,7 +129,7 @@ struct SendspinStatus {
     const char* psk = "";
     // "playback", "pairing" or "none".
     const char* activity = "";
-    // The playback role active on it: "_ac3forge_player@v1", "player@v1", or "".
+    // The playback role active on it: "_iclforge_player@v1", "player@v1", or "".
     const char* role = "";
     bool clock_converged = false;
     std::int64_t clock_error_us = 0;
@@ -203,7 +203,7 @@ class SendspinHost final {
     // The player's own state, or the role's: volume, mute, delay, and for the
     // role its levels, counters and decoder report.
     void set_player_state(const iclforge::sendspin::messages::PlayerState& state);
-    void set_ac3forge_state(const iclforge::sendspin::player::State& state);
+    void set_iclforge_state(const iclforge::sendspin::player::State& state);
     // Something outside Sendspin has the output (a play from the control
     // surface), or has given it back.
     void set_external_source(bool external);
@@ -249,4 +249,4 @@ class SendspinHost final {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

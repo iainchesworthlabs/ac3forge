@@ -375,7 +375,7 @@ class HeadingSlugs(unittest.TestCase):
         "2 `a` 1 `b` 0": "2-a-1-b-0",
         # An underscore inside a word is a word character and stays; a pair
         # around a word is emphasis and goes.
-        "AC3FORGE_STAGE_TIMERS and the stage timers": "ac3forge_stage_timers-and-the-stage-timers",
+        "ICLFORGE_STAGE_TIMERS and the stage timers": "iclforge_stage_timers-and-the-stage-timers",
         "_emphasis_ around a word": "emphasis-around-a-word",
         "**bold** and *italic* together": "bold-and-italic-together",
         # A run of hyphens or spaces collapses to one hyphen. GitHub keeps it.

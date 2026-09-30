@@ -19,7 +19,7 @@ tests/golden/external-baseline/manifest.json so the two never drift apart:
 and, per leg, these conditions:
 
   reference    the source WAV itself, presented as the hidden reference
-  ac3forge     this build's encode (ac3cli, run here)
+  iclforge     this build's encode (ac3cli, run here)
   ffmpeg       the committed tests/golden/external-baseline/<leg>/ffmpeg.*
   dee          the committed .../dee.* - only where the manifest carries a
                real score for it. DEE's own two 5.1 legs are marked
@@ -32,7 +32,7 @@ and, per leg, these conditions:
 
 EVERY stimulus is decoded by FFmpeg, including this project's own encode.
 That is deliberate and it is the opposite of what the trend legs do (which
-score ac3forge through ac3cli's own decoder). A listening test compares
+score iclforge through ac3cli's own decoder). A listening test compares
 ENCODERS; if each encoder's output went through its own decoder, the panel
 would be scoring encoder-and-decoder pairs and no result could be attributed
 to either. One decoder for everything makes the decoder a constant. FFmpeg
@@ -245,12 +245,12 @@ def build_conditions(leg_name, leg, out_dir, args):
     scratch = out_dir / "_scratch"
     scratch.mkdir(parents=True, exist_ok=True)
 
-    # ac3forge's own encode, then every stimulus through FFmpeg's decoder.
-    ours_coded = scratch / f"{leg_name}_ac3forge.{ext}"
+    # iclforge's own encode, then every stimulus through FFmpeg's decoder.
+    ours_coded = scratch / f"{leg_name}_iclforge.{ext}"
     encode_ours(REPO / leg["source_wav"], ours_coded, codec, kbps)
 
     decoded = {}
-    for condition, coded in [("ac3forge", ours_coded),
+    for condition, coded in [("iclforge", ours_coded),
                              ("ffmpeg", BASELINE_DIR / leg_name / f"ffmpeg.{ext}"),
                              ("dee", BASELINE_DIR / leg_name / f"dee.{ext}")]:
         if condition == "dee" and leg["scores"].get("dee", {}).get("snr_db") is None:
@@ -410,8 +410,8 @@ def write_webmushra_config(out_dir, built, labels_by_leg):
     a starting point rather than something guaranteed to load unedited.
     """
     lines = [
-        "testname: ac3forge listening test",
-        "testId: ac3forge-landscape",
+        "testname: iclforge listening test",
+        "testId: iclforge-landscape",
         "bufferSize: 2048",
         "stopOnErrors: true",
         "showButtonPreviousPage: true",
@@ -420,7 +420,7 @@ def write_webmushra_config(out_dir, built, labels_by_leg):
         "pages:",
         "  - type: generic",
         "    id: first",
-        "    name: ac3forge listening test",
+        "    name: iclforge listening test",
         "    content: >-",
         "      Rate each labelled item against the reference on the 0-100 scale.",
         "      One of the labelled items IS the reference; find it and give it 100.",

@@ -5,7 +5,7 @@ use std::ffi::CStr;
 
 #[test]
 fn version_reports_something_sane() {
-    let version = unsafe { ac3forge_sys::ac3forge_version() };
+    let version = unsafe { iclforge_sys::iclforge_version() };
     assert!(version.major >= 0);
     assert!(!version.full.is_null());
     let full = unsafe { CStr::from_ptr(version.full) }.to_str().unwrap();
@@ -15,7 +15,7 @@ fn version_reports_something_sane() {
 #[test]
 fn status_message_round_trips_ok() {
     let message =
-        unsafe { ac3forge_sys::ac3forge_status_message(ac3forge_sys::ac3forge_status_AC3FORGE_OK) };
+        unsafe { iclforge_sys::iclforge_status_message(iclforge_sys::iclforge_status_ICLFORGE_OK) };
     assert!(!message.is_null());
     let message = unsafe { CStr::from_ptr(message) }.to_str().unwrap();
     assert_eq!(message, "ok");

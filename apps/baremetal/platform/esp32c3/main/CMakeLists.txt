@@ -3,18 +3,18 @@
 # arm-none-eabi leg and the S3 build, checking the same fixtures against the
 # same levels and the same hashes. The esp32s3 sibling's copy of this file
 # carries the reasoning; only the paths and the target differ.
-if(AC3FORGE_ESP_PROFILE STREQUAL "encoder")
-    set(AC3FORGE_ESP_PROBE_SRC "../../../encode_probe.cpp")
+if(ICLFORGE_ESP_PROFILE STREQUAL "encoder")
+    set(ICLFORGE_ESP_PROBE_SRC "../../../encode_probe.cpp")
 else()
-    set(AC3FORGE_ESP_PROBE_SRC "../../../probe.cpp")
+    set(ICLFORGE_ESP_PROBE_SRC "../../../probe.cpp")
 endif()
 
 idf_component_register(
     SRCS "main.cpp"
-         "${AC3FORGE_ESP_PROBE_SRC}"
+         "${ICLFORGE_ESP_PROBE_SRC}"
          "../../../stage_timers.cpp"
     INCLUDE_DIRS ""
-    REQUIRES ac3forge esp_timer esp_hw_support esp_rom freertos)
+    REQUIRES iclforge esp_timer esp_hw_support esp_rom freertos)
 
 target_include_directories(${COMPONENT_LIB} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
@@ -30,4 +30,4 @@ target_include_directories(${COMPONENT_LIB} PRIVATE
 # Raising it is a measurement, not an edit: run the leg, see which fixture
 # fails and where, and move this to just under it.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
-    AC3FORGE_PROBE_HEAP_BUDGET_BYTES=230000)
+    ICLFORGE_PROBE_HEAP_BUDGET_BYTES=230000)

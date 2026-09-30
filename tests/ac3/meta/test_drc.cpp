@@ -1676,7 +1676,7 @@ TEST_CASE("a Dolby-encoded stream's RF decode sits 11 dB and its word above line
     constexpr std::uint8_t kDeeWord = 0xFF;
     constexpr double kReferencePlayerRfOverLineDb = 10.984;
     const auto bytes =
-        read_bytes(AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac3-music-stereo-192/dee.ac3");
+        read_bytes(ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac3-music-stereo-192/dee.ac3");
     const auto units = iclforge::split_access_units(bytes);
     REQUIRE(units.has_value());
     // Two seconds of it is plenty for a gain this steady, and keeps a debug

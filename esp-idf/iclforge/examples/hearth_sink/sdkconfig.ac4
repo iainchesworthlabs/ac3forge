@@ -5,19 +5,19 @@
 #
 #   idf.py -DIDF_TARGET=esp32p4 \
 #     "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4" \
-#     -DAC3FORGE_STAGE_TIMERS=ON build
+#     -DICLFORGE_STAGE_TIMERS=ON build
 #
-# -DAC3FORGE_STAGE_TIMERS=ON adds the play.stage[<zone>] lines, one for each part
+# -DICLFORGE_STAGE_TIMERS=ON adds the play.stage[<zone>] lines, one for each part
 # of the decode: the QMF bank, the inverse transform, A-SPX, A-CPL and the
 # sample rate converter. Without it the decode is the same code with no markers.
 #
 # Only for a part with a floating-point unit (the component's Kconfig says so),
 # and in practice for one with PSRAM: a decoder needs more than internal RAM has
 # (docs/platforms/bare-metal/esp32-p4.md, AC-4).
-CONFIG_AC3FORGE_AC4=y
+CONFIG_ICLFORGE_AC4=y
 
 # The decode task's stack: the decoder used about 50 KB of it before D14a's third part
 # (the parser held a stream's element tables as locals) and uses 20 to 24 KB now, so
 # the example's default of 32 KB leaves under 10 KB in the widest mode and this takes
 # 40 KB. stream.decode_stack_free says what a play left.
-CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES=40960
+CONFIG_ICLFORGE_EXAMPLE_DECODE_STACK_BYTES=40960

@@ -209,7 +209,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
                 }
                 view.player_support = session.hello()->player_support;
                 if (contains(session.hello()->supported_roles, player::kRole)) {
-                    view.ac3forge_support = session.hello()->ac3forge_support;
+                    view.iclforge_support = session.hello()->iclforge_support;
                 }
                 view.supported_roles = session.hello()->supported_roles;
                 view.visualizer_support = session.hello()->visualizer_support;
@@ -225,7 +225,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
             if (session.state()) {
                 view.available = session.state()->available;
                 view.player_state = session.state()->player;
-                view.ac3forge_state = session.state()->ac3forge;
+                view.iclforge_state = session.state()->iclforge;
                 view.artwork_state = session.state()->artwork;
                 view.visualizer_state = session.state()->visualizer;
                 view.source_state = session.state()->source;
@@ -312,8 +312,8 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
         if (!activate.activities.empty() && activate.activities.front() == m::Activity::kPlayback) {
             std::vector<std::string> roles;
             // The extension role only on a long-term PSK connection, and never beside player@v1
-            // (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1).
-            if (client.psk == hs::PskCategory::kLongTerm && client.ac3forge_support) {
+            // (planning/hearth-sendspin-extension.md, The role _iclforge_player@v1).
+            if (client.psk == hs::PskCategory::kLongTerm && client.iclforge_support) {
                 roles.emplace_back(player::kRole);
             } else if (client.player_support && contains(client.supported_roles, kPlayerRole)) {
                 roles.emplace_back(kPlayerRole);
@@ -850,10 +850,10 @@ bool ServerHost::cancel_pairing(const std::string& client_id) {
     return true;
 }
 
-bool ServerHost::ac3forge_command(const std::string& client_id, const player::CommandMessage& command) {
+bool ServerHost::iclforge_command(const std::string& client_id, const player::CommandMessage& command) {
     const std::shared_ptr<HostConnection> connection = state_->find(client_id);
     return connection &&
-           connection->driver().call([&] { return connection->session().ac3forge_command(command); }).has_value();
+           connection->driver().call([&] { return connection->session().iclforge_command(command); }).has_value();
 }
 
 bool ServerHost::approve(const std::string& client_id, bool approved) {
@@ -943,7 +943,7 @@ struct Group::State {
     struct Member {
         std::string client_id;
         bool started = false;
-        // Plays _ac3forge_player@v1's bursts rather than player@v1's PCM.
+        // Plays _iclforge_player@v1's bursts rather than player@v1's PCM.
         bool bursts = false;
         std::optional<m::AudioFormat> format;
         std::unique_ptr<codec::Encoder> encoder;
@@ -987,8 +987,8 @@ struct Group::State {
 
     // A member's player as the group volume sees it, from whichever playback role is active.
     [[nodiscard]] static std::optional<controller::Player> player_of(const ClientView& client) {
-        if (client.bursts && client.ac3forge_state) {
-            const player::State& state = *client.ac3forge_state;
+        if (client.bursts && client.iclforge_state) {
+            const player::State& state = *client.iclforge_state;
             const auto lists = [&](player::Command command) {
                 return std::find(state.supported_commands.begin(), state.supported_commands.end(), command) !=
                        state.supported_commands.end();
@@ -1085,7 +1085,7 @@ struct Group::State {
                 message.command = volume ? player::Command::kVolume : player::Command::kMute;
                 message.volume = volume ? volumes[i] : 0;
                 message.mute = command.mute;
-                (void)connection.driver().call([&] { return connection.session().ac3forge_command(message); });
+                (void)connection.driver().call([&] { return connection.session().iclforge_command(message); });
             } else {
                 const m::PlayerCommandMessage message{.command = volume ? m::PlayerCommand::kVolume : m::PlayerCommand::kMute,
                                                       .volume = volume ? volumes[i] : 0,
@@ -1123,7 +1123,7 @@ struct Group::State {
             message.command = command == controller::Command::kVolume ? player::Command::kVolume : player::Command::kMute;
             message.volume = volume;
             message.mute = mute;
-            (void)connection->driver().call([&] { return connection->session().ac3forge_command(message); });
+            (void)connection->driver().call([&] { return connection->session().iclforge_command(message); });
         } else {
             const m::PlayerCommandMessage message{
                 .command = command == controller::Command::kVolume ? m::PlayerCommand::kVolume : m::PlayerCommand::kMute,
@@ -1308,15 +1308,15 @@ struct Group::State {
             return;
         }
         if (client.bursts) {
-            if (!bursts || !client.ac3forge_support || !client.ac3forge_state ||
+            if (!bursts || !client.iclforge_support || !client.iclforge_state ||
                 !connection->driver()
                      .call([&] { return connection->session().start_burst_stream(*bursts); })
                      .has_value()) {
                 return;
             }
-            const player::State& state = *client.ac3forge_state;
+            const player::State& state = *client.iclforge_state;
             member.lead = lead_for(state.output_delay_ms, state.min_buffer_ms, state.required_lead_time_ms);
-            member.capacity = client.ac3forge_support->buffer_capacity;
+            member.capacity = client.iclforge_support->buffer_capacity;
         } else {
             if (!pcm || !client.player_support || !client.player_state) {
                 return;

@@ -1,5 +1,5 @@
 // A Sendspin player's keys and pairing records in NVS. See
-// ../include/ac3forge/sendspin_store.hpp.
+// ../include/iclforge/sendspin_store.hpp.
 
 #include "iclforge/sendspin_store.hpp"
 
@@ -22,7 +22,7 @@
 #include "iclforge/sendspin/handshake.hpp"
 #include "iclforge/sendspin/noise.hpp"
 
-namespace ac3forge {
+namespace iclforge {
 namespace {
 
 namespace hs = iclforge::sendspin::handshake;
@@ -309,4 +309,4 @@ bool SendspinStore::forget() {
            write_blob(kKeyLastPlayback, nullptr, 0);
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

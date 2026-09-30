@@ -54,12 +54,12 @@ TestCase {
         // One of the two forms, whichever this machine is in - the point is
         // that the row is a yes/no about the variable's existence and has no
         // room for a value.
-        const fileRow = report.indexOf("AC3FORGE_SIGNING_KEY_FILE: set") >= 0
-                        || report.indexOf("AC3FORGE_SIGNING_KEY_FILE: not set") >= 0;
-        const inlineRow = report.indexOf("AC3FORGE_SIGNING_KEY: set") >= 0
-                          || report.indexOf("AC3FORGE_SIGNING_KEY: not set") >= 0;
-        verify(fileRow, "no AC3FORGE_SIGNING_KEY_FILE row");
-        verify(inlineRow, "no AC3FORGE_SIGNING_KEY row");
+        const fileRow = report.indexOf("ICLFORGE_SIGNING_KEY_FILE: set") >= 0
+                        || report.indexOf("ICLFORGE_SIGNING_KEY_FILE: not set") >= 0;
+        const inlineRow = report.indexOf("ICLFORGE_SIGNING_KEY: set") >= 0
+                          || report.indexOf("ICLFORGE_SIGNING_KEY: not set") >= 0;
+        verify(fileRow, "no ICLFORGE_SIGNING_KEY_FILE row");
+        verify(inlineRow, "no ICLFORGE_SIGNING_KEY row");
     }
 
     function test_theSettingsSectionIsAFixedListNotTheWholeStore() {

@@ -183,9 +183,9 @@ jobs:
       # Configure / build / test
       # ---------------------------------------------------------------------
       # Toolchain assert, vcpkg setup, Configure (presets carry generator,
-      # compiler, Release, AC3FORGE_BUILD_GUI=OFF - `cmake --preset
+      # compiler, Release, ICLFORGE_BUILD_GUI=OFF - `cmake --preset
       # config-<leg>` locally reproduces this exactly except for the
-      # QT_ROOT_DIR/-DAC3FORGE_BUILD_GUI overrides the action bolts on),
+      # QT_ROOT_DIR/-DICLFORGE_BUILD_GUI overrides the action bolts on),
       # Build (-k 0, warnings-as-errors) and Test - extracted into
       # ./.github/actions/build-leg (docs/ci-lanes.md, CI lane partitions
       # plan) so splitting this file into one reusable workflow per platform
@@ -424,7 +424,7 @@ jobs:
       # pass as Package above, same reasoning as the Crucible assert just
       # above it - this just asserts a second component of that one pass.
       # matrix.packageable alone is enough now: Hearth builds by default on
-      # every leg (AC3FORGE_BUILD_HEARTH, root CMakeLists.txt), the same
+      # every leg (ICLFORGE_BUILD_HEARTH, root CMakeLists.txt), the same
       # condition the Crucible assert just above already uses.
       - name: Assert the AC3Forge Hearth was packaged (macOS)
         if: >-
@@ -482,18 +482,18 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           # The runtime component's own archive. The [0-9] is what keeps this
-          # off the sibling ac3forge-dev-* and ac3forge-crucible-* archives,
+          # off the sibling iclforge-dev-* and ac3forge-crucible-* archives,
           # which are different components with different contents and are
           # not expected to carry these files (cmake/Packaging.cmake names
           # all three). Linux gets a TGZ, macOS only ever a ZIP - see that
           # file's own APPLE/UNIX generator branches.
           if [ "$RUNNER_OS" = "Linux" ]; then
-            archives=(packages/ac3forge-[0-9]*.tar.gz)
+            archives=(packages/iclforge-[0-9]*.tar.gz)
           else
-            archives=(packages/ac3forge-[0-9]*.zip)
+            archives=(packages/iclforge-[0-9]*.zip)
           fi
           if [ ${#archives[@]} -eq 0 ]; then
-            echo "::error::no runtime archive in packages/ - the runtime component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake), or CPACK_ARCHIVE_RUNTIME_FILE_NAME no longer produces the ac3forge-<version>-<system> name this looks for."
+            echo "::error::no runtime archive in packages/ - the runtime component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake), or CPACK_ARCHIVE_RUNTIME_FILE_NAME no longer produces the iclforge-<version>-<system> name this looks for."
             ls -1 packages/ || true
             exit 1
           fi
@@ -578,7 +578,7 @@ jobs:
       # Nice-to-have companion to the runtime tree above: the library SDK
       # (headers, static archives, CMake package config, the versioned
       # .dylib - see cmake/InstallLibrary.cmake) for package-macos-universal
-      # to attempt merging into a universal `ac3forge-dev-*` archive too.
+      # to attempt merging into a universal `iclforge-dev-*` archive too.
       # cmake --install takes one --component per invocation, so this is two
       # calls into the same prefix rather than one. Best-effort: if this
       # step or the merge job's own dev-archive half fails, the runtime .dmg

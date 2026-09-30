@@ -90,7 +90,7 @@ target_link_libraries(ac3hearth_qmltests PRIVATE
     # page's suite plays tones it writes (planning/ac4.md, I2).
     iclforge::ac4enc
     iclforge::matroska iclforge::mp4 iclforge::mpegts
-    ac3::warnings ac3::fmt
+    iclforge::warnings iclforge::fmt
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest
     # QTest::keyClick() on a QWindow, for TestServices.keyClick() (see
     # qml_test_main.cpp).

@@ -406,7 +406,7 @@ void compute_bit_allocation_impl(std::span<const std::uint8_t> exps, SampleRate 
                                  const BitAllocCodes& codes, int csnroffst, int fsnroffst,
                                  std::span<std::uint8_t> bap, const BitAllocRegion& region,
                                  std::array<int, 50>* mask_out) {
-    AC3_ZONE_SCOPED_N("compute_bit_allocation");
+    ICLFORGE_ZONE_SCOPED_N("compute_bit_allocation");
     assert(exps.size() == bap.size());
     // bap is filled rather than left alone: it is the caller's output, and
     // "no allocation" is what an unreadable region gets, the same answer
@@ -444,7 +444,7 @@ void compute_bit_allocation_impl(std::span<const std::uint8_t> exps, SampleRate 
 
 MaskingCurve compute_masking_curve(std::span<const std::uint8_t> exps, SampleRate sample_rate,
                                    const BitAllocCodes& codes, const BitAllocRegion& region) {
-    AC3_ZONE_SCOPED_N("compute_masking_curve");
+    ICLFORGE_ZONE_SCOPED_N("compute_masking_curve");
     MaskingCurve curve;
     if (!region_usable(exps, region)) {
         return curve;
@@ -457,7 +457,7 @@ MaskingCurve compute_masking_curve(std::span<const std::uint8_t> exps, SampleRat
 void allocate_from_curve(std::span<const std::uint8_t> exps, const MaskingCurve& curve,
                          const BitAllocCodes& codes, int csnroffst, int fsnroffst,
                          std::span<std::uint8_t> bap, const BitAllocRegion& region) {
-    AC3_ZONE_SCOPED_N("allocate_from_curve");
+    ICLFORGE_ZONE_SCOPED_N("allocate_from_curve");
     assert(exps.size() == bap.size());
     if (!curve.valid || !region_usable(exps, region) || region.snr_all_zero) {
         std::ranges::fill(bap, std::uint8_t{0});
@@ -481,7 +481,7 @@ namespace {
 template <typename Scalar>
 DeltaSegments choose_delta_segments_over(std::span<const Scalar> coefficients,
                                          std::span<const std::uint8_t> exps, int start) {
-    AC3_ZONE_SCOPED_N("choose_delta_segments");
+    ICLFORGE_ZONE_SCOPED_N("choose_delta_segments");
     assert(coefficients.size() == exps.size());
     const int end = static_cast<int>(exps.size());
     assert(end >= 1 && end <= static_cast<int>(kMaxMantissas));

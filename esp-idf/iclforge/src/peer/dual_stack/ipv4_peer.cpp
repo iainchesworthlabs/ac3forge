@@ -11,7 +11,7 @@
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 
-namespace ac3forge {
+namespace iclforge {
 
 std::optional<Ipv4Peer> ipv4_peer(int fd) {
     sockaddr_storage peer{};
@@ -36,4 +36,4 @@ std::optional<Ipv4Peer> ipv4_peer(int fd) {
     return result;
 }
 
-}  // namespace ac3forge
+}  // namespace iclforge

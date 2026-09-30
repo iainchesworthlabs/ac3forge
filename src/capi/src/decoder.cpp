@@ -3,12 +3,12 @@
 
 #include "internal.hpp"
 
-using ac3forge_c::guard;
+using iclforge_c::guard;
 
 // Kept outside extern "C" below - see encoder.cpp's identical comment on
 // -Wreturn-type-c-linkage.
 namespace {
-iclforge::DecoderConfig decoder_config_to_cpp(const ac3forge_decoder_config_t& config) {
+iclforge::DecoderConfig decoder_config_to_cpp(const iclforge_decoder_config_t& config) {
     return iclforge::DecoderConfig{.drc_scale = config.drc_scale,
                                .heavy_compression = config.heavy_compression != 0};
 }
@@ -16,148 +16,148 @@ iclforge::DecoderConfig decoder_config_to_cpp(const ac3forge_decoder_config_t& c
 
 extern "C" {
 
-void ac3forge_decoder_config_init(ac3forge_decoder_config_t* config) {
+void iclforge_decoder_config_init(iclforge_decoder_config_t* config) {
     if (config == nullptr) {
         return;
     }
     const iclforge::DecoderConfig defaults{};
-    *config = ac3forge_decoder_config_t{.drc_scale = defaults.drc_scale,
+    *config = iclforge_decoder_config_t{.drc_scale = defaults.drc_scale,
                                          .heavy_compression = defaults.heavy_compression ? 1 : 0};
 }
 
-ac3forge_status_t ac3forge_decoder_create(const ac3forge_decoder_config_t* config,
-                                           ac3forge_decoder_t** out_decoder) {
+iclforge_status_t iclforge_decoder_create(const iclforge_decoder_config_t* config,
+                                           iclforge_decoder_t** out_decoder) {
     if (config == nullptr || out_decoder == nullptr) {
-        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+        return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&config, &out_decoder] {
-        *out_decoder = new ac3forge_decoder(decoder_config_to_cpp(*config));
-        return AC3FORGE_OK;
+        *out_decoder = new iclforge_decoder(decoder_config_to_cpp(*config));
+        return ICLFORGE_OK;
     });
 }
 
-void ac3forge_decoder_destroy(ac3forge_decoder_t* decoder) { delete decoder; }
+void iclforge_decoder_destroy(iclforge_decoder_t* decoder) { delete decoder; }
 
-ac3forge_status_t ac3forge_decoder_decode_frame(ac3forge_decoder_t* decoder, const uint8_t* frame,
+iclforge_status_t iclforge_decoder_decode_frame(iclforge_decoder_t* decoder, const uint8_t* frame,
                                                  size_t frame_size,
-                                                 ac3forge_decoded_frame_t** out_frame) {
+                                                 iclforge_decoded_frame_t** out_frame) {
     if (decoder == nullptr || frame == nullptr || out_frame == nullptr) {
-        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+        return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&decoder, &frame, &frame_size, &out_frame]() -> ac3forge_status_t {
+    return guard([&decoder, &frame, &frame_size, &out_frame]() -> iclforge_status_t {
         auto result = decoder->impl.decode_frame(
             std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
         if (!result) {
-            return ac3forge_c::from_cpp(result.error());
+            return iclforge_c::from_cpp(result.error());
         }
-        auto owned = std::make_unique<ac3forge_decoded_frame>();
+        auto owned = std::make_unique<iclforge_decoded_frame>();
         owned->data = std::move(*result);
         *out_frame = owned.release();
-        return AC3FORGE_OK;
+        return ICLFORGE_OK;
     });
 }
 
-ac3forge_status_t ac3forge_decoder_decode_frame_into(ac3forge_decoder_t* decoder,
+iclforge_status_t iclforge_decoder_decode_frame_into(iclforge_decoder_t* decoder,
                                                        const uint8_t* frame, size_t frame_size,
                                                        float* const* channels, size_t channel_count,
                                                        size_t samples_per_channel,
-                                                       ac3forge_decoded_frame_t** out_frame) {
+                                                       iclforge_decoded_frame_t** out_frame) {
     if (decoder == nullptr || frame == nullptr || channels == nullptr || out_frame == nullptr) {
-        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+        return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
-    if (channel_count != AC3FORGE_DECODER_MAX_CHANNELS ||
-        samples_per_channel != AC3FORGE_SAMPLES_PER_FRAME) {
-        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+    if (channel_count != ICLFORGE_DECODER_MAX_CHANNELS ||
+        samples_per_channel != ICLFORGE_SAMPLES_PER_FRAME) {
+        return ICLFORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&decoder, &frame, &frame_size, &channels, &channel_count, &samples_per_channel,
-                  &out_frame]() -> ac3forge_status_t {
+                  &out_frame]() -> iclforge_status_t {
         std::vector<std::span<float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {
             if (channels[i] == nullptr) {
-                return AC3FORGE_ERROR_INVALID_ARGUMENT;
+                return ICLFORGE_ERROR_INVALID_ARGUMENT;
             }
             spans.emplace_back(channels[i], samples_per_channel);
         }
         auto result = decoder->impl.decode_frame_into(
             std::as_bytes(std::span<const uint8_t>(frame, frame_size)), spans);
         if (!result) {
-            return ac3forge_c::from_cpp(result.error());
+            return iclforge_c::from_cpp(result.error());
         }
-        auto owned = std::make_unique<ac3forge_decoded_frame>();
+        auto owned = std::make_unique<iclforge_decoded_frame>();
         owned->data = std::move(*result);
         *out_frame = owned.release();
-        return AC3FORGE_OK;
+        return ICLFORGE_OK;
     });
 }
 
-ac3forge_sample_rate_t ac3forge_decoded_frame_sample_rate(const ac3forge_decoded_frame_t* frame) {
-    return frame == nullptr ? AC3FORGE_SAMPLE_RATE_48000 : ac3forge_c::from_cpp(frame->data.sample_rate);
+iclforge_sample_rate_t iclforge_decoded_frame_sample_rate(const iclforge_decoded_frame_t* frame) {
+    return frame == nullptr ? ICLFORGE_SAMPLE_RATE_48000 : iclforge_c::from_cpp(frame->data.sample_rate);
 }
 
-uint32_t ac3forge_decoded_frame_bitrate_kbps(const ac3forge_decoded_frame_t* frame) {
+uint32_t iclforge_decoded_frame_bitrate_kbps(const iclforge_decoded_frame_t* frame) {
     return frame == nullptr ? 0 : frame->data.bitrate_kbps;
 }
 
-ac3forge_acmod_t ac3forge_decoded_frame_acmod(const ac3forge_decoded_frame_t* frame) {
-    return frame == nullptr ? AC3FORGE_ACMOD_2_0 : ac3forge_c::from_cpp(frame->data.acmod);
+iclforge_acmod_t iclforge_decoded_frame_acmod(const iclforge_decoded_frame_t* frame) {
+    return frame == nullptr ? ICLFORGE_ACMOD_2_0 : iclforge_c::from_cpp(frame->data.acmod);
 }
 
-int ac3forge_decoded_frame_lfe(const ac3forge_decoded_frame_t* frame) {
+int iclforge_decoded_frame_lfe(const iclforge_decoded_frame_t* frame) {
     return frame != nullptr && frame->data.lfe ? 1 : 0;
 }
 
-int ac3forge_decoded_frame_dialnorm(const ac3forge_decoded_frame_t* frame) {
+int iclforge_decoded_frame_dialnorm(const iclforge_decoded_frame_t* frame) {
     return frame == nullptr ? 0 : frame->data.dialnorm;
 }
 
-int ac3forge_decoded_frame_has_compr(const ac3forge_decoded_frame_t* frame) {
+int iclforge_decoded_frame_has_compr(const iclforge_decoded_frame_t* frame) {
     return frame != nullptr && frame->data.compr.has_value() ? 1 : 0;
 }
 
-uint8_t ac3forge_decoded_frame_compr(const ac3forge_decoded_frame_t* frame) {
+uint8_t iclforge_decoded_frame_compr(const iclforge_decoded_frame_t* frame) {
     return frame != nullptr && frame->data.compr.has_value() ? *frame->data.compr : 0;
 }
 
-uint8_t ac3forge_decoded_frame_dynrng(const ac3forge_decoded_frame_t* frame, int block_index) {
+uint8_t iclforge_decoded_frame_dynrng(const iclforge_decoded_frame_t* frame, int block_index) {
     if (frame == nullptr || block_index < 0 || block_index >= iclforge::kBlocksPerFrame) {
         return 0;
     }
     return frame->data.dynrng[static_cast<size_t>(block_index)];
 }
 
-int ac3forge_decoded_frame_has_dialnorm2(const ac3forge_decoded_frame_t* frame) {
+int iclforge_decoded_frame_has_dialnorm2(const iclforge_decoded_frame_t* frame) {
     return frame != nullptr && frame->data.dialnorm2.has_value() ? 1 : 0;
 }
 
-int ac3forge_decoded_frame_dialnorm2(const ac3forge_decoded_frame_t* frame) {
+int iclforge_decoded_frame_dialnorm2(const iclforge_decoded_frame_t* frame) {
     return frame != nullptr && frame->data.dialnorm2.has_value() ? *frame->data.dialnorm2 : 0;
 }
 
-int ac3forge_decoded_frame_has_compr2(const ac3forge_decoded_frame_t* frame) {
+int iclforge_decoded_frame_has_compr2(const iclforge_decoded_frame_t* frame) {
     return frame != nullptr && frame->data.compr2.has_value() ? 1 : 0;
 }
 
-uint8_t ac3forge_decoded_frame_compr2(const ac3forge_decoded_frame_t* frame) {
+uint8_t iclforge_decoded_frame_compr2(const iclforge_decoded_frame_t* frame) {
     return frame != nullptr && frame->data.compr2.has_value() ? *frame->data.compr2 : 0;
 }
 
-uint8_t ac3forge_decoded_frame_dynrng2(const ac3forge_decoded_frame_t* frame, int block_index) {
+uint8_t iclforge_decoded_frame_dynrng2(const iclforge_decoded_frame_t* frame, int block_index) {
     if (frame == nullptr || block_index < 0 || block_index >= iclforge::kBlocksPerFrame) {
         return 0;
     }
     return frame->data.dynrng2[static_cast<size_t>(block_index)];
 }
 
-size_t ac3forge_decoded_frame_channel_count(const ac3forge_decoded_frame_t* frame) {
+size_t iclforge_decoded_frame_channel_count(const iclforge_decoded_frame_t* frame) {
     return frame == nullptr ? 0 : frame->data.channels.size();
 }
 
-size_t ac3forge_decoded_frame_samples_per_channel(const ac3forge_decoded_frame_t*) {
+size_t iclforge_decoded_frame_samples_per_channel(const iclforge_decoded_frame_t*) {
     return iclforge::kSamplesPerFrame;
 }
 
-const float* ac3forge_decoded_frame_channel_samples(const ac3forge_decoded_frame_t* frame,
+const float* iclforge_decoded_frame_channel_samples(const iclforge_decoded_frame_t* frame,
                                                       size_t channel_index) {
     if (frame == nullptr || channel_index >= frame->data.channels.size()) {
         return nullptr;
@@ -165,7 +165,7 @@ const float* ac3forge_decoded_frame_channel_samples(const ac3forge_decoded_frame
     return frame->data.channels[channel_index].data();
 }
 
-int ac3forge_decoded_frame_block_switched(const ac3forge_decoded_frame_t* frame,
+int iclforge_decoded_frame_block_switched(const iclforge_decoded_frame_t* frame,
                                            size_t channel_index, int block_index) {
     if (frame == nullptr || channel_index >= frame->data.blksw.size() || block_index < 0 ||
         block_index >= iclforge::kBlocksPerFrame) {
@@ -174,6 +174,6 @@ int ac3forge_decoded_frame_block_switched(const ac3forge_decoded_frame_t* frame,
     return frame->data.blksw[channel_index][static_cast<size_t>(block_index)] ? 1 : 0;
 }
 
-void ac3forge_decoded_frame_destroy(ac3forge_decoded_frame_t* frame) { delete frame; }
+void iclforge_decoded_frame_destroy(iclforge_decoded_frame_t* frame) { delete frame; }
 
 }  // extern "C"

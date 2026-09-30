@@ -19,7 +19,7 @@ globalThis.registerProcessor = (name, processorClass) => registered.set(name, pr
 let Processor;
 before(async () => {
   await import("../dist/worklet-processor.js");
-  Processor = registered.get("ac3forge-pcm-source");
+  Processor = registered.get("iclforge-pcm-source");
 });
 
 function makeProcessor(channelCount = 2, capacityFrames = 8) {

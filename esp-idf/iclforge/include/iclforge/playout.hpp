@@ -27,7 +27,7 @@
 //
 // Times are local microseconds (esp_timer on a board).
 
-namespace ac3forge {
+namespace iclforge {
 
 // --- The DMA ring's clock ------------------------------------------------------
 //
@@ -654,4 +654,4 @@ class Playout {
     Stats stats_;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

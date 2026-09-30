@@ -586,7 +586,7 @@ jobs:
             Windows) choco install ninja -y --no-progress --requirechecksums ;;
           esac
 
-      # AC3FORGE_BUILD_GUI is ON only on the two Windows presets (see
+      # ICLFORGE_BUILD_GUI is ON only on the two Windows presets (see
       # CMakePresets.json), and cmake/FindQt6.cmake only widens
       # CMAKE_PREFIX_PATH to LOCAL install roots (C:/Qt/6.x/msvc2022_64, and
       # so on) - it has no notion of a CI runner, so a Windows leg with no
@@ -682,9 +682,9 @@ jobs:
       # Configure / build / test
       # ---------------------------------------------------------------------
       # Toolchain assert, vcpkg setup, Configure (presets carry generator,
-      # compiler, Release, AC3FORGE_BUILD_GUI=OFF - `cmake --preset
+      # compiler, Release, ICLFORGE_BUILD_GUI=OFF - `cmake --preset
       # config-<leg>` locally reproduces this exactly except for the
-      # QT_ROOT_DIR/-DAC3FORGE_BUILD_GUI overrides the action bolts on),
+      # QT_ROOT_DIR/-DICLFORGE_BUILD_GUI overrides the action bolts on),
       # Build (-k 0, warnings-as-errors) and Test - extracted into
       # ./.github/actions/build-leg (docs/ci-lanes.md, CI lane partitions
       # plan) so splitting this file into one reusable workflow per platform
@@ -695,7 +695,7 @@ jobs:
       - uses: ./.github/actions/build-leg
         with:
           preset: ${{ matrix.preset }}
-          # No Windows leg sets matrix.gui (AC3FORGE_BUILD_GUI is ON by
+          # No Windows leg sets matrix.gui (ICLFORGE_BUILD_GUI is ON by
           # default on both Windows presets - see CMakePresets.json), so
           # this is always effectively "false" here, same as
           # `${{ matrix.gui }}` used to evaluate on this platform.
@@ -877,7 +877,7 @@ jobs:
           # cmake/FindQt6.cmake's local search roots (C:/Qt/6.x/msvc2022_64
           # and friends) do not cover, so the preset alone finds no Qt6 here.
           # Without it this configure does not degrade into a smaller number -
-          # it fails outright, because AC3FORGE_BUILD_GUI is ON for every
+          # it fails outright, because ICLFORGE_BUILD_GUI is ON for every
           # windows-llvm preset (CMakePresets.json) and apps/gui/CMakeLists.txt
           # asks for Qt6 REQUIRED.
           #
@@ -1032,7 +1032,7 @@ jobs:
       # Hearth's own archive (cmake/Packaging.cmake's hearth component,
       # apps/hearth/ui/CMakeLists.txt's install rules, phase A7). Guarded by
       # matrix.release_package alone, not matrix.crucible above: Hearth
-      # builds and packages on every Windows leg (AC3FORGE_BUILD_HEARTH,
+      # builds and packages on every Windows leg (ICLFORGE_BUILD_HEARTH,
       # root CMakeLists.txt, defaults ON), windows-msvc-arm64 included,
       # where Crucible does not.
       - name: Assert the AC3Forge Hearth was packaged (Windows)

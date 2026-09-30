@@ -261,14 +261,14 @@ bool eventually(const std::function<bool()>& done) {
 }  // namespace
 
 // [aiosendspin-group], not [aiosendspin]: aiosendspin_exit.py's own "ac3tests [aiosendspin]"
-// (once per codec) must not also pick this up - it shares AC3FORGE_AIOSENDSPIN_URL/_TOKEN/_OUT's
+// (once per codec) must not also pick this up - it shares ICLFORGE_AIOSENDSPIN_URL/_TOKEN/_OUT's
 // names with test_aiosendspin.cpp, but expects a different scripted player and a different group
 // shape (two members here, one there); the two must never run against the same process.
 TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin player plays one programme",
          "[.][aiosendspin-group]") {
-    const std::optional<std::string> url = environment("AC3FORGE_AIOSENDSPIN_URL");
-    const std::optional<std::string> token = environment("AC3FORGE_AIOSENDSPIN_TOKEN");
-    const std::optional<std::string> out = environment("AC3FORGE_AIOSENDSPIN_OUT");
+    const std::optional<std::string> url = environment("ICLFORGE_AIOSENDSPIN_URL");
+    const std::optional<std::string> token = environment("ICLFORGE_AIOSENDSPIN_TOKEN");
+    const std::optional<std::string> out = environment("ICLFORGE_AIOSENDSPIN_OUT");
     if (!url || !token || !out) {
         SKIP("run by tools/sendspin/aiosendspin_group_exit.py");
     }
@@ -276,7 +276,7 @@ TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin p
     fs::create_directories(directory);
     constexpr int kFrameCount = 20;  // 640 ms
     const fs::path scratch =
-        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_aiosendspin_group_" + scratch_pid_suffix());
+        fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_aiosendspin_group_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const std::unique_ptr<testsink::Sink> burst_sink =
@@ -310,7 +310,7 @@ TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin p
     }
     REQUIRE(ready);
     // One client is the scripted player (player@v1 over aiosendspin's own dialect), the other the
-    // burst-taking test sink (_ac3forge_player@v1) - not identified by arrival order, which is not
+    // burst-taking test sink (_iclforge_player@v1) - not identified by arrival order, which is not
     // guaranteed.
     std::size_t player_count = 0;
     for (const ss::ClientView& client : (*host)->clients()) {

@@ -26,14 +26,14 @@ const {
 
 const COMPONENT = path.resolve(__dirname, '../../../../esp-idf/iclforge');
 const CONTROL = fs.readFileSync(path.join(COMPONENT, 'src/control.cpp'), 'utf8');
-// ac3forge::Firmware answers the firmware routes that Control carries, and
+// iclforge::Firmware answers the firmware routes that Control carries, and
 // firmware_image.hpp words a refused image; firmware_status.hpp writes
 // GET /firmware.
 const FIRMWARE_CPP = fs.readFileSync(path.join(COMPONENT, 'src/firmware.cpp'), 'utf8');
-const FIRMWARE_IMAGE = fs.readFileSync(path.join(COMPONENT, 'include/ac3forge/firmware_image.hpp'), 'utf8');
-const FIRMWARE_STATUS = fs.readFileSync(path.join(COMPONENT, 'include/ac3forge/firmware_status.hpp'), 'utf8');
-const SCRIPT = fs.readFileSync(path.join(UI_DIR, 'ac3forge_ui.js'), 'utf8');
-const PAGE = fs.readFileSync(path.join(UI_DIR, 'ac3forge_ui.html'), 'utf8');
+const FIRMWARE_IMAGE = fs.readFileSync(path.join(COMPONENT, 'include/iclforge/firmware_image.hpp'), 'utf8');
+const FIRMWARE_STATUS = fs.readFileSync(path.join(COMPONENT, 'include/iclforge/firmware_status.hpp'), 'utf8');
+const SCRIPT = fs.readFileSync(path.join(UI_DIR, 'iclforge_ui.js'), 'utf8');
+const PAGE = fs.readFileSync(path.join(UI_DIR, 'iclforge_ui.html'), 'utf8');
 
 // Every string control.cpp spells out, read the way the compiler reads them:
 // past comments and character literals, adjacent literals joined, and the
@@ -80,7 +80,7 @@ test("the stand-in answers with the firmware's reply texts", () => {
     }
 });
 
-test("the stand-in answers the firmware routes with ac3forge::Firmware's texts", () => {
+test("the stand-in answers the firmware routes with iclforge::Firmware's texts", () => {
     // reply_text adds the newline, so the literals have none.
     const strings = [...literals(FIRMWARE_CPP), ...literals(FIRMWARE_IMAGE)];
     for (const [name, text] of Object.entries(FIRMWARE)) {

@@ -1,4 +1,4 @@
-import type { Ac3ForgeDecoderNode } from "./decoder-node.js";
+import type { IclForgeDecoderNode } from "./decoder-node.js";
 export interface SegmentSink {
     /** Records that [startSeconds, endSeconds) is now buffered - reflected in this SourceBuffer's own `buffered` range. */
     markBuffered(startSeconds: number, endSeconds: number): void;
@@ -18,10 +18,10 @@ export interface MediaSourceShimOptions {
 export declare function installMediaSourceShim(options: MediaSourceShimOptions): () => void;
 export interface HlsAudioBridgeOptions {
     mimeTypePattern?: RegExp;
-    decoderNode: Ac3ForgeDecoderNode;
+    decoderNode: IclForgeDecoderNode;
 }
 /**
- * Wires {@link installMediaSourceShim} to an {@link Ac3ForgeDecoderNode}:
+ * Wires {@link installMediaSourceShim} to an {@link IclForgeDecoderNode}:
  * every captured segment is run through fmp4.ts - an init segment (no
  * `moof`) just records the track's timescale, a media segment's samples are
  * each pushed to the decoder node as their own access unit.

@@ -1,9 +1,9 @@
-//! Shared value types mirroring the enums and small structs `ac3forge.h` uses across both
+//! Shared value types mirroring the enums and small structs `iclforge.h` uses across both
 //! codecs (`ac3::SampleRate`, `ac3::Acmod`, the DRC presets, the mix-level tables, latency).
 
-use ac3forge_sys as sys;
+use iclforge_sys as sys;
 
-/// A. `ac3forge_sample_rate_t` — A/52 Table 5.6, plus Annex E's three `fscod2` reduced rates.
+/// A. `iclforge_sample_rate_t` — A/52 Table 5.6, plus Annex E's three `fscod2` reduced rates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SampleRate {
     Hz48000,
@@ -18,28 +18,28 @@ pub enum SampleRate {
 }
 
 impl SampleRate {
-    pub(crate) fn to_raw(self) -> sys::ac3forge_sample_rate_t {
+    pub(crate) fn to_raw(self) -> sys::iclforge_sample_rate_t {
         match self {
-            SampleRate::Hz48000 => sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_48000,
-            SampleRate::Hz44100 => sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_44100,
-            SampleRate::Hz32000 => sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_32000,
-            SampleRate::Hz24000 => sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_24000,
-            SampleRate::Hz22050 => sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_22050,
-            SampleRate::Hz16000 => sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_16000,
+            SampleRate::Hz48000 => sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_48000,
+            SampleRate::Hz44100 => sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_44100,
+            SampleRate::Hz32000 => sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_32000,
+            SampleRate::Hz24000 => sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_24000,
+            SampleRate::Hz22050 => sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_22050,
+            SampleRate::Hz16000 => sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_16000,
         }
     }
 
     /// `None` for a raw value this crate doesn't recognize (see `Error::Other`'s own doc comment
     /// on why the C side of this API is treated as open).
-    pub(crate) fn from_raw(raw: sys::ac3forge_sample_rate_t) -> Option<Self> {
+    pub(crate) fn from_raw(raw: sys::iclforge_sample_rate_t) -> Option<Self> {
         #[allow(non_upper_case_globals)]
         Some(match raw {
-            sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_48000 => SampleRate::Hz48000,
-            sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_44100 => SampleRate::Hz44100,
-            sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_32000 => SampleRate::Hz32000,
-            sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_24000 => SampleRate::Hz24000,
-            sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_22050 => SampleRate::Hz22050,
-            sys::ac3forge_sample_rate_AC3FORGE_SAMPLE_RATE_16000 => SampleRate::Hz16000,
+            sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_48000 => SampleRate::Hz48000,
+            sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_44100 => SampleRate::Hz44100,
+            sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_32000 => SampleRate::Hz32000,
+            sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_24000 => SampleRate::Hz24000,
+            sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_22050 => SampleRate::Hz22050,
+            sys::iclforge_sample_rate_ICLFORGE_SAMPLE_RATE_16000 => SampleRate::Hz16000,
             _ => return None,
         })
     }
@@ -57,7 +57,7 @@ impl SampleRate {
     }
 }
 
-/// `ac3forge_acmod_t` — A/52 Table 5.8. `DualMono` (1+1) is two independent programmes sharing
+/// `iclforge_acmod_t` — A/52 Table 5.8. `DualMono` (1+1) is two independent programmes sharing
 /// one syncframe, not a channel count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Acmod {
@@ -80,37 +80,37 @@ pub enum Acmod {
 }
 
 impl Acmod {
-    pub(crate) fn to_raw(self) -> sys::ac3forge_acmod_t {
+    pub(crate) fn to_raw(self) -> sys::iclforge_acmod_t {
         match self {
-            Acmod::DualMono => sys::ac3forge_acmod_AC3FORGE_ACMOD_DUAL_MONO,
-            Acmod::Mono => sys::ac3forge_acmod_AC3FORGE_ACMOD_1_0,
-            Acmod::Stereo => sys::ac3forge_acmod_AC3FORGE_ACMOD_2_0,
-            Acmod::Channels3_0 => sys::ac3forge_acmod_AC3FORGE_ACMOD_3_0,
-            Acmod::Channels2_1 => sys::ac3forge_acmod_AC3FORGE_ACMOD_2_1,
-            Acmod::Channels3_1 => sys::ac3forge_acmod_AC3FORGE_ACMOD_3_1,
-            Acmod::Channels2_2 => sys::ac3forge_acmod_AC3FORGE_ACMOD_2_2,
-            Acmod::Channels3_2 => sys::ac3forge_acmod_AC3FORGE_ACMOD_3_2,
+            Acmod::DualMono => sys::iclforge_acmod_ICLFORGE_ACMOD_DUAL_MONO,
+            Acmod::Mono => sys::iclforge_acmod_ICLFORGE_ACMOD_1_0,
+            Acmod::Stereo => sys::iclforge_acmod_ICLFORGE_ACMOD_2_0,
+            Acmod::Channels3_0 => sys::iclforge_acmod_ICLFORGE_ACMOD_3_0,
+            Acmod::Channels2_1 => sys::iclforge_acmod_ICLFORGE_ACMOD_2_1,
+            Acmod::Channels3_1 => sys::iclforge_acmod_ICLFORGE_ACMOD_3_1,
+            Acmod::Channels2_2 => sys::iclforge_acmod_ICLFORGE_ACMOD_2_2,
+            Acmod::Channels3_2 => sys::iclforge_acmod_ICLFORGE_ACMOD_3_2,
         }
     }
 
-    pub(crate) fn from_raw(raw: sys::ac3forge_acmod_t) -> Option<Self> {
+    pub(crate) fn from_raw(raw: sys::iclforge_acmod_t) -> Option<Self> {
         #[allow(non_upper_case_globals)]
         Some(match raw {
-            sys::ac3forge_acmod_AC3FORGE_ACMOD_DUAL_MONO => Acmod::DualMono,
-            sys::ac3forge_acmod_AC3FORGE_ACMOD_1_0 => Acmod::Mono,
-            sys::ac3forge_acmod_AC3FORGE_ACMOD_2_0 => Acmod::Stereo,
-            sys::ac3forge_acmod_AC3FORGE_ACMOD_3_0 => Acmod::Channels3_0,
-            sys::ac3forge_acmod_AC3FORGE_ACMOD_2_1 => Acmod::Channels2_1,
-            sys::ac3forge_acmod_AC3FORGE_ACMOD_3_1 => Acmod::Channels3_1,
-            sys::ac3forge_acmod_AC3FORGE_ACMOD_2_2 => Acmod::Channels2_2,
-            sys::ac3forge_acmod_AC3FORGE_ACMOD_3_2 => Acmod::Channels3_2,
+            sys::iclforge_acmod_ICLFORGE_ACMOD_DUAL_MONO => Acmod::DualMono,
+            sys::iclforge_acmod_ICLFORGE_ACMOD_1_0 => Acmod::Mono,
+            sys::iclforge_acmod_ICLFORGE_ACMOD_2_0 => Acmod::Stereo,
+            sys::iclforge_acmod_ICLFORGE_ACMOD_3_0 => Acmod::Channels3_0,
+            sys::iclforge_acmod_ICLFORGE_ACMOD_2_1 => Acmod::Channels2_1,
+            sys::iclforge_acmod_ICLFORGE_ACMOD_3_1 => Acmod::Channels3_1,
+            sys::iclforge_acmod_ICLFORGE_ACMOD_2_2 => Acmod::Channels2_2,
+            sys::iclforge_acmod_ICLFORGE_ACMOD_3_2 => Acmod::Channels3_2,
             _ => return None,
         })
     }
 
     /// Full-bandwidth channel count this `acmod` names (excludes LFE — see
     /// `EncoderConfig::lfe`/`Eac3FrameConfig::lfe`). `DualMono` is 2 (Ch1, Ch2), matching
-    /// `ac3forge_encoder_channel_count()`'s own convention rather than "0, it's not really a
+    /// `iclforge_encoder_channel_count()`'s own convention rather than "0, it's not really a
     /// channel count" — the encoder still wants two spans either way.
     pub fn full_bandwidth_channel_count(self) -> usize {
         match self {
@@ -126,7 +126,7 @@ impl Acmod {
     }
 }
 
-/// `ac3forge_drc_profile_t` — the five conventional Dolby DRC curves, the same presets `ac3cli
+/// `iclforge_drc_profile_t` — the five conventional Dolby DRC curves, the same presets `ac3cli
 /// --drc` accepts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DrcProfile {
@@ -138,31 +138,31 @@ pub enum DrcProfile {
 }
 
 impl DrcProfile {
-    pub(crate) fn to_raw(self) -> sys::ac3forge_drc_profile_t {
+    pub(crate) fn to_raw(self) -> sys::iclforge_drc_profile_t {
         match self {
-            DrcProfile::FilmStandard => sys::ac3forge_drc_profile_AC3FORGE_DRC_FILM_STANDARD,
-            DrcProfile::FilmLight => sys::ac3forge_drc_profile_AC3FORGE_DRC_FILM_LIGHT,
-            DrcProfile::MusicStandard => sys::ac3forge_drc_profile_AC3FORGE_DRC_MUSIC_STANDARD,
-            DrcProfile::MusicLight => sys::ac3forge_drc_profile_AC3FORGE_DRC_MUSIC_LIGHT,
-            DrcProfile::Speech => sys::ac3forge_drc_profile_AC3FORGE_DRC_SPEECH,
+            DrcProfile::FilmStandard => sys::iclforge_drc_profile_ICLFORGE_DRC_FILM_STANDARD,
+            DrcProfile::FilmLight => sys::iclforge_drc_profile_ICLFORGE_DRC_FILM_LIGHT,
+            DrcProfile::MusicStandard => sys::iclforge_drc_profile_ICLFORGE_DRC_MUSIC_STANDARD,
+            DrcProfile::MusicLight => sys::iclforge_drc_profile_ICLFORGE_DRC_MUSIC_LIGHT,
+            DrcProfile::Speech => sys::iclforge_drc_profile_ICLFORGE_DRC_SPEECH,
         }
     }
 
-    pub(crate) fn from_raw(raw: sys::ac3forge_drc_profile_t) -> Option<Self> {
+    pub(crate) fn from_raw(raw: sys::iclforge_drc_profile_t) -> Option<Self> {
         #[allow(non_upper_case_globals)]
         Some(match raw {
-            sys::ac3forge_drc_profile_AC3FORGE_DRC_FILM_STANDARD => DrcProfile::FilmStandard,
-            sys::ac3forge_drc_profile_AC3FORGE_DRC_FILM_LIGHT => DrcProfile::FilmLight,
-            sys::ac3forge_drc_profile_AC3FORGE_DRC_MUSIC_STANDARD => DrcProfile::MusicStandard,
-            sys::ac3forge_drc_profile_AC3FORGE_DRC_MUSIC_LIGHT => DrcProfile::MusicLight,
-            sys::ac3forge_drc_profile_AC3FORGE_DRC_SPEECH => DrcProfile::Speech,
+            sys::iclforge_drc_profile_ICLFORGE_DRC_FILM_STANDARD => DrcProfile::FilmStandard,
+            sys::iclforge_drc_profile_ICLFORGE_DRC_FILM_LIGHT => DrcProfile::FilmLight,
+            sys::iclforge_drc_profile_ICLFORGE_DRC_MUSIC_STANDARD => DrcProfile::MusicStandard,
+            sys::iclforge_drc_profile_ICLFORGE_DRC_MUSIC_LIGHT => DrcProfile::MusicLight,
+            sys::iclforge_drc_profile_ICLFORGE_DRC_SPEECH => DrcProfile::Speech,
             _ => return None,
         })
     }
 }
 
-/// `ac3forge_centre_mix_level_t` — A/52 Table 5.9 (§5.4.2.4). The default is −4.5 dB, the
-/// library's own (`ac3forge_encoder_config_init()`, `ac3::EncoderConfig::cmixlev`) - not the
+/// `iclforge_centre_mix_level_t` — A/52 Table 5.9 (§5.4.2.4). The default is −4.5 dB, the
+/// library's own (`iclforge_encoder_config_init()`, `ac3::EncoderConfig::cmixlev`) - not the
 /// first variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CentreMixLevel {
@@ -173,31 +173,31 @@ pub enum CentreMixLevel {
 }
 
 impl CentreMixLevel {
-    pub(crate) fn to_raw(self) -> sys::ac3forge_centre_mix_level_t {
+    pub(crate) fn to_raw(self) -> sys::iclforge_centre_mix_level_t {
         match self {
-            CentreMixLevel::Minus3Db => sys::ac3forge_centre_mix_level_AC3FORGE_CMIXLEV_MINUS_3DB,
+            CentreMixLevel::Minus3Db => sys::iclforge_centre_mix_level_ICLFORGE_CMIXLEV_MINUS_3DB,
             CentreMixLevel::Minus4_5Db => {
-                sys::ac3forge_centre_mix_level_AC3FORGE_CMIXLEV_MINUS_4_5DB
+                sys::iclforge_centre_mix_level_ICLFORGE_CMIXLEV_MINUS_4_5DB
             }
-            CentreMixLevel::Minus6Db => sys::ac3forge_centre_mix_level_AC3FORGE_CMIXLEV_MINUS_6DB,
+            CentreMixLevel::Minus6Db => sys::iclforge_centre_mix_level_ICLFORGE_CMIXLEV_MINUS_6DB,
         }
     }
 
-    pub(crate) fn from_raw(raw: sys::ac3forge_centre_mix_level_t) -> Option<Self> {
+    pub(crate) fn from_raw(raw: sys::iclforge_centre_mix_level_t) -> Option<Self> {
         #[allow(non_upper_case_globals)]
         Some(match raw {
-            sys::ac3forge_centre_mix_level_AC3FORGE_CMIXLEV_MINUS_3DB => CentreMixLevel::Minus3Db,
-            sys::ac3forge_centre_mix_level_AC3FORGE_CMIXLEV_MINUS_4_5DB => {
+            sys::iclforge_centre_mix_level_ICLFORGE_CMIXLEV_MINUS_3DB => CentreMixLevel::Minus3Db,
+            sys::iclforge_centre_mix_level_ICLFORGE_CMIXLEV_MINUS_4_5DB => {
                 CentreMixLevel::Minus4_5Db
             }
-            sys::ac3forge_centre_mix_level_AC3FORGE_CMIXLEV_MINUS_6DB => CentreMixLevel::Minus6Db,
+            sys::iclforge_centre_mix_level_ICLFORGE_CMIXLEV_MINUS_6DB => CentreMixLevel::Minus6Db,
             _ => return None,
         })
     }
 }
 
-/// `ac3forge_surround_mix_level_t` — A/52 Table 5.10 (§5.4.2.5). The default is −6 dB, the
-/// library's own (`ac3forge_encoder_config_init()`, `ac3::EncoderConfig::surmixlev`) - not the
+/// `iclforge_surround_mix_level_t` — A/52 Table 5.10 (§5.4.2.5). The default is −6 dB, the
+/// library's own (`iclforge_encoder_config_init()`, `ac3::EncoderConfig::surmixlev`) - not the
 /// first variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SurroundMixLevel {
@@ -208,34 +208,34 @@ pub enum SurroundMixLevel {
 }
 
 impl SurroundMixLevel {
-    pub(crate) fn to_raw(self) -> sys::ac3forge_surround_mix_level_t {
+    pub(crate) fn to_raw(self) -> sys::iclforge_surround_mix_level_t {
         match self {
             SurroundMixLevel::Minus3Db => {
-                sys::ac3forge_surround_mix_level_AC3FORGE_SURMIXLEV_MINUS_3DB
+                sys::iclforge_surround_mix_level_ICLFORGE_SURMIXLEV_MINUS_3DB
             }
             SurroundMixLevel::Minus6Db => {
-                sys::ac3forge_surround_mix_level_AC3FORGE_SURMIXLEV_MINUS_6DB
+                sys::iclforge_surround_mix_level_ICLFORGE_SURMIXLEV_MINUS_6DB
             }
-            SurroundMixLevel::Silent => sys::ac3forge_surround_mix_level_AC3FORGE_SURMIXLEV_SILENT,
+            SurroundMixLevel::Silent => sys::iclforge_surround_mix_level_ICLFORGE_SURMIXLEV_SILENT,
         }
     }
 
-    pub(crate) fn from_raw(raw: sys::ac3forge_surround_mix_level_t) -> Option<Self> {
+    pub(crate) fn from_raw(raw: sys::iclforge_surround_mix_level_t) -> Option<Self> {
         #[allow(non_upper_case_globals)]
         Some(match raw {
-            sys::ac3forge_surround_mix_level_AC3FORGE_SURMIXLEV_MINUS_3DB => {
+            sys::iclforge_surround_mix_level_ICLFORGE_SURMIXLEV_MINUS_3DB => {
                 SurroundMixLevel::Minus3Db
             }
-            sys::ac3forge_surround_mix_level_AC3FORGE_SURMIXLEV_MINUS_6DB => {
+            sys::iclforge_surround_mix_level_ICLFORGE_SURMIXLEV_MINUS_6DB => {
                 SurroundMixLevel::Minus6Db
             }
-            sys::ac3forge_surround_mix_level_AC3FORGE_SURMIXLEV_SILENT => SurroundMixLevel::Silent,
+            sys::iclforge_surround_mix_level_ICLFORGE_SURMIXLEV_SILENT => SurroundMixLevel::Silent,
             _ => return None,
         })
     }
 }
 
-/// `ac3forge_heavy_config_t` — `ac3::meta::HeavyConfig` verbatim (§7.7.2).
+/// `iclforge_heavy_config_t` — `ac3::meta::HeavyConfig` verbatim (§7.7.2).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HeavyConfig {
     pub dialogue_target_dbfs: f64,
@@ -244,15 +244,15 @@ pub struct HeavyConfig {
 }
 
 impl HeavyConfig {
-    pub(crate) fn to_raw(self) -> sys::ac3forge_heavy_config_t {
-        sys::ac3forge_heavy_config_t {
+    pub(crate) fn to_raw(self) -> sys::iclforge_heavy_config_t {
+        sys::iclforge_heavy_config_t {
             dialogue_target_dbfs: self.dialogue_target_dbfs,
             peak_ceiling_dbfs: self.peak_ceiling_dbfs,
             release_db_per_second: self.release_db_per_second,
         }
     }
 
-    pub(crate) fn from_raw(raw: sys::ac3forge_heavy_config_t) -> Self {
+    pub(crate) fn from_raw(raw: sys::iclforge_heavy_config_t) -> Self {
         HeavyConfig {
             dialogue_target_dbfs: raw.dialogue_target_dbfs,
             peak_ceiling_dbfs: raw.peak_ceiling_dbfs,
@@ -262,7 +262,7 @@ impl HeavyConfig {
 }
 
 impl Default for HeavyConfig {
-    /// Same defaults `ac3forge_heavy_config_init()` fills — this is a plain value struct with no
+    /// Same defaults `iclforge_heavy_config_init()` fills — this is a plain value struct with no
     /// growth story of its own (unlike the `_config_init` structs), so mirroring its literal
     /// defaults here rather than calling the raw `_init()` function is safe and one call cheaper.
     fn default() -> Self {
@@ -274,7 +274,7 @@ impl Default for HeavyConfig {
     }
 }
 
-/// `ac3forge_decoder_config_t` — shared by both the AC-3 (`FrameDecoder`) and E-AC-3/Atmos
+/// `iclforge_decoder_config_t` — shared by both the AC-3 (`FrameDecoder`) and E-AC-3/Atmos
 /// (`Eac3Decoder`) decoders.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DecoderConfig {
@@ -284,8 +284,8 @@ pub struct DecoderConfig {
 }
 
 impl DecoderConfig {
-    pub(crate) fn to_raw(self) -> sys::ac3forge_decoder_config_t {
-        sys::ac3forge_decoder_config_t {
+    pub(crate) fn to_raw(self) -> sys::iclforge_decoder_config_t {
+        sys::iclforge_decoder_config_t {
             drc_scale: self.drc_scale,
             heavy_compression: self.heavy_compression as i32,
         }
@@ -293,15 +293,15 @@ impl DecoderConfig {
 }
 
 impl Default for DecoderConfig {
-    /// Calls `ac3forge_decoder_config_init()` rather than hand-mirroring its defaults — see
+    /// Calls `iclforge_decoder_config_init()` rather than hand-mirroring its defaults — see
     /// `rust/README.md` on why every config type in this crate goes through its raw `_init()`
-    /// first (the `_config_init` growth convention `ac3forge.h` documents).
+    /// first (the `_config_init` growth convention `iclforge.h` documents).
     fn default() -> Self {
         let mut raw = unsafe { std::mem::zeroed() };
-        // SAFETY: ac3forge_decoder_config_init() unconditionally overwrites every field of
-        // `raw` via a full struct assignment (see e.g. ac3forge_atmos_config_init()'s
+        // SAFETY: iclforge_decoder_config_init() unconditionally overwrites every field of
+        // `raw` via a full struct assignment (see e.g. iclforge_atmos_config_init()'s
         // implementation in src/capi/src/atmos.cpp) - `raw` is never read before being written.
-        unsafe { sys::ac3forge_decoder_config_init(&mut raw) };
+        unsafe { sys::iclforge_decoder_config_init(&mut raw) };
         DecoderConfig {
             drc_scale: raw.drc_scale,
             heavy_compression: raw.heavy_compression != 0,
@@ -309,8 +309,8 @@ impl Default for DecoderConfig {
     }
 }
 
-/// `ac3forge_latency_t` — the algorithmic delay of an encode → decode chain, in samples at the
-/// coded sample rate. See `ac3forge.h`'s own extensive comment on this struct for what each term
+/// `iclforge_latency_t` — the algorithmic delay of an encode → decode chain, in samples at the
+/// coded sample rate. See `iclforge.h`'s own extensive comment on this struct for what each term
 /// means; compute time is a separate question this type says nothing about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Latency {
@@ -321,7 +321,7 @@ pub struct Latency {
 }
 
 impl Latency {
-    pub(crate) fn from_raw(raw: sys::ac3forge_latency_t) -> Self {
+    pub(crate) fn from_raw(raw: sys::iclforge_latency_t) -> Self {
         Latency {
             frame_samples: raw.frame_samples,
             transform_samples: raw.transform_samples,

@@ -10,10 +10,10 @@
 
 const { test, expect } = require('@playwright/test');
 
-const BASE = process.env.AC3FORGE_STREAM_BASE || 'http://10.0.2.2:8000';
+const BASE = process.env.ICLFORGE_STREAM_BASE || 'http://10.0.2.2:8000';
 
 test('the page says what each output layout does with each stream', async ({ page, request }) => {
-    expect(process.env.AC3FORGE_DEVICE_URL, 'AC3FORGE_DEVICE_URL names the device').toBeTruthy();
+    expect(process.env.ICLFORGE_DEVICE_URL, 'ICLFORGE_DEVICE_URL names the device').toBeTruthy();
     const problems = [];
     page.on('pageerror', (error) => problems.push(String(error)));
     const status = async () => (await request.get('status')).json();

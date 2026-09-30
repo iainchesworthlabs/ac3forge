@@ -194,12 +194,12 @@ def package(build: Path, name: str, out: Path) -> dict[str, Any]:
         sdkconfig = read_sdkconfig(config)
     except OSError as error:
         raise PackageError(f"the build's sdkconfig ({config}) cannot be read: {error}") from error
-    if sdkconfig.get("CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID") or sdkconfig.get(
-        "CONFIG_AC3FORGE_EXAMPLE_WIFI_PASSWORD"
+    if sdkconfig.get("CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID") or sdkconfig.get(
+        "CONFIG_ICLFORGE_EXAMPLE_WIFI_PASSWORD"
     ):
         raise PackageError(
             "this build has a Wi-Fi network built into its image "
-            "(CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID or _PASSWORD); a published image must not"
+            "(CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID or _PASSWORD); a published image must not"
         )
 
     app_path = build / str(description.get("app_bin", ""))

@@ -12,8 +12,8 @@
 #include "iclforge/sendspin/frames.hpp"
 #include "iclforge/sendspin/json.hpp"
 
-// _ac3forge_player@v1's objects (planning/hearth-sendspin-extension.md, The role
-// _ac3forge_player@v1): each writer's text byte for byte against the page's tables, each reader
+// _iclforge_player@v1's objects (planning/hearth-sendspin-extension.md, The role
+// _iclforge_player@v1): each writer's text byte for byte against the page's tables, each reader
 // against what it must refuse and what it must let through, and the settings a sink refuses with
 // the revision it names.
 
@@ -95,11 +95,11 @@ template <class T, class Write>
 
 }  // namespace
 
-TEST_CASE("ac3forge_player: names and IDs", "[sendspin][ac3forge]") {
-    CHECK(ac::kRole == "_ac3forge_player@v1");
-    CHECK(ac::kSupportKey == "_ac3forge_player@v1_support");
-    CHECK(ac::kObjectKey == "_ac3forge_player");
-    CHECK(iclforge::sendspin::message_id::kAc3forgeBurst == 192);
+TEST_CASE("iclforge_player: names and IDs", "[sendspin][iclforge]") {
+    CHECK(ac::kRole == "_iclforge_player@v1");
+    CHECK(ac::kSupportKey == "_iclforge_player@v1_support");
+    CHECK(ac::kObjectKey == "_iclforge_player");
+    CHECK(iclforge::sendspin::message_id::kIclforgeBurst == 192);
     CHECK(ac::data_type_name(ac::DataType::kAc3) == "ac3");
     CHECK(ac::data_type_name(ac::DataType::kEac3) == "eac3");
     CHECK(ac::data_type_name(ac::DataType::kAc4) == "ac4");
@@ -108,8 +108,8 @@ TEST_CASE("ac3forge_player: names and IDs", "[sendspin][ac3forge]") {
     CHECK(ac::burst_data_type(ac::DataType::kAc4) == iclforge::sendspin::BurstDataType::kAc4);
 }
 
-TEST_CASE("ac3forge_player: an AC-4 stream carries any of IEC 61937-14's four burst types",
-          "[sendspin][ac3forge][ac4]") {
+TEST_CASE("iclforge_player: an AC-4 stream carries any of IEC 61937-14's four burst types",
+          "[sendspin][iclforge][ac4]") {
     using iclforge::sendspin::BurstDataType;
     for (const BurstDataType burst : {BurstDataType::kAc4, BurstDataType::kAc4Hbr4,
                                       BurstDataType::kAc4Hbr16, BurstDataType::kAc4Ld}) {
@@ -122,7 +122,7 @@ TEST_CASE("ac3forge_player: an AC-4 stream carries any of IEC 61937-14's four bu
     CHECK(ac::carries(ac::DataType::kEac3, BurstDataType::kEac3));
 }
 
-TEST_CASE("ac3forge_player: the support object", "[sendspin][ac3forge]") {
+TEST_CASE("iclforge_player: the support object", "[sendspin][iclforge]") {
     const std::string text = written(board_support(), ac::write_support);
     CHECK(text == R"({"data_types":["ac3","eac3"],"sample_rates":[48000],)"
                   R"("outputs":{"count":6,"bit_depth":32,"bit_depths":[16,24,32]},"layout_grammar":1,)"
@@ -182,7 +182,7 @@ TEST_CASE("ac3forge_player: the support object", "[sendspin][ac3forge]") {
     CHECK_FALSE(ac::read_support(Parsed(R"(["eac3"])").root()));
 }
 
-TEST_CASE("ac3forge_player: the state object", "[sendspin][ac3forge]") {
+TEST_CASE("iclforge_player: the state object", "[sendspin][iclforge]") {
     ac::State state;
     state.volume = 70;
     state.muted = false;
@@ -265,7 +265,7 @@ TEST_CASE("ac3forge_player: the state object", "[sendspin][ac3forge]") {
     CHECK_FALSE(read_text(timing + R"("supported_commands":"settings","settings_revision":0,)" + counters));
 }
 
-TEST_CASE("ac3forge_player: the stream/start object", "[sendspin][ac3forge]") {
+TEST_CASE("iclforge_player: the stream/start object", "[sendspin][iclforge]") {
     const std::string text =
         written(ac::StreamStart{.data_type = ac::DataType::kEac3, .sample_rate = 48000}, ac::write_stream_start);
     CHECK(text == R"({"data_type":"eac3","sample_rate":48000})");
@@ -286,7 +286,7 @@ TEST_CASE("ac3forge_player: the stream/start object", "[sendspin][ac3forge]") {
     CHECK_FALSE(ac::read_stream_start(Parsed(R"({"sample_rate":48000})").root()));
 }
 
-TEST_CASE("ac3forge_player: the player@v1 commands and identify", "[sendspin][ac3forge]") {
+TEST_CASE("iclforge_player: the player@v1 commands and identify", "[sendspin][iclforge]") {
     const auto round_trip = [](const ac::CommandMessage& command, std::string_view expected) {
         const std::string text = written(command, ac::write_command);
         CHECK(text == expected);
@@ -337,7 +337,7 @@ TEST_CASE("ac3forge_player: the player@v1 commands and identify", "[sendspin][ac
     CHECK(failure(R"({"command":"identify","identify":{"level_db":-30}})") == ac::CommandError::kMalformed);
 }
 
-TEST_CASE("ac3forge_player: settings", "[sendspin][ac3forge]") {
+TEST_CASE("iclforge_player: settings", "[sendspin][iclforge]") {
     const std::string text = written(full_settings(), ac::write_command);
     CHECK(text == R"({"command":"settings","settings":{"revision":7,"layout":"L:small,C,R:small,Ls,Rs,LFE",)"
                   R"("routing":"0,1,2,3,4,5","trim_db":[0,-1.5,0,-3,-3,2],"delay_ms":[0,0,0,12.5,12.5,0],"crossover_hz":80,)"
@@ -412,7 +412,7 @@ TEST_CASE("ac3forge_player: settings", "[sendspin][ac3forge]") {
     CHECK_FALSE(ac::read_command(Parsed(R"({"command":"settings"})").root()).has_value());
 }
 
-TEST_CASE("ac3forge_player: settings checked against the support object", "[sendspin][ac3forge]") {
+TEST_CASE("iclforge_player: settings checked against the support object", "[sendspin][iclforge]") {
     const ac::Support support = board_support();
     CHECK_FALSE(ac::check_settings(full_settings().settings, support).has_value());
     CHECK_FALSE(ac::check_settings(ac::Settings{}, support).has_value());

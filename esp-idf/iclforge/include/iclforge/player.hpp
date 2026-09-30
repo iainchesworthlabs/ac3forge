@@ -19,7 +19,7 @@
 
 // The player: bytes in, sound out, on two cores.
 //
-// This is the ESP-IDF-specific layer of ac3forge - the part that cannot live in
+// This is the ESP-IDF-specific layer of iclforge - the part that cannot live in
 // the library because it is made of FreeRTOS tasks, a ring buffer between them
 // and a pair of seams for the two things that differ per product: where the
 // bitstream comes from and where the audio goes. planning/esp32-player.md says
@@ -53,14 +53,14 @@
 // hand-over in planning/esp32-player.md), so a unit that is exactly one AC-3
 // syncframe goes to FrameDecoder itself.
 //
-// And AC-4, when the component is built with CONFIG_AC3FORGE_AC4 (its Kconfig):
+// And AC-4, when the component is built with CONFIG_ICLFORGE_AC4 (its Kconfig):
 // a stream that opens with an AC-4 sync word is read by iclforge::ac4::SyncFrameSplitter
 // and iclforge::ac4::Decoder in place of the accumulator and the two above, once for the
 // whole play, and its blocks go through the same renderer and sink. Everything
 // that is AC-4's alone is behind that switch, in this header and in player.cpp
 // (src/ac4_bridge.hpp has the rest), so a build without it is what it was.
 
-namespace ac3forge {
+namespace iclforge {
 
 // Where the bitstream comes from. One implementation per transport; the player
 // never learns which. Called from the fetch task only.
@@ -83,7 +83,7 @@ class ByteSource {
 // Planar float rather than interleaved integers because the sample format is
 // the sink's business: standard I2S wants two slots of 16 or 32 bits, a TDM bus
 // wants 24 bits in 32-bit slots with the unused slots zeroed, and the
-// conversion is one pass either way - ac3forge/interleave.hpp has both.
+// conversion is one pass either way - iclforge/interleave.hpp has both.
 class PcmSink {
    public:
     virtual ~PcmSink() = default;
@@ -166,9 +166,9 @@ struct PlayerConfig {
     // error - rather than played at the wrong speed.
     std::uint32_t sample_rate_hz = 48000;
 
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     // How a stream that opens with an AC-4 sync word is decoded
-    // (CONFIG_AC3FORGE_AC4; planning/ac4.md, D14b). Its output layout is served
+    // (CONFIG_ICLFORGE_AC4; planning/ac4.md, D14b). Its output layout is served
     // as an AC-3 stream's is: the decoder's own fold for a stereo or mono
     // layout (`stereo_fold` above), the renderer placing the decoded bed for
     // any other.
@@ -214,7 +214,7 @@ struct StreamInfo {
     std::array<char, 96> coded{};
     std::array<char, 160> silent{};
 
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     // The stream is AC-4, and `eac3`, `acmod` and `substreams` mean nothing
     // for it: `channels` is what the decoder handed over, and `coded` names
     // them in its order.
@@ -256,7 +256,7 @@ struct PlayerStats {
     std::size_t decode_stack_free = 0;
     bool finished = false;
     bool failed = false;
-#if CONFIG_AC3FORGE_AC4
+#if CONFIG_ICLFORGE_AC4
     // What an AC-4 play adds (all zero for any other). `ac4_samples` is the audio
     // the play has decoded, in samples of each channel at the sink's rate: the
     // 2,048 samples of a frame at 23.44 fps, 1,920 at 25 fps and 1,601 or 1,602
@@ -317,4 +317,4 @@ class Player {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3forge
+}  // namespace iclforge

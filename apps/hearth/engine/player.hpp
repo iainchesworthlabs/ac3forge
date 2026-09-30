@@ -83,7 +83,7 @@
 // A network group (A6) takes both at once, from the one decode: rendered PCM
 // for a member playing player@v1, and the item's own units, packed into
 // bursts the same way a bitstream output's are, for a member playing
-// _ac3forge_player@v1 - network_group_sink.hpp's own comment has the shape.
+// _iclforge_player@v1 - network_group_sink.hpp's own comment has the shape.
 // An AC-4 item (planning/ac4.md, I2) is decoded for every output and reaches
 // a member as a bitstream only this way: a sync frame to a burst, packed by
 // iclforge::iec61937::Ac4BurstPacker in the burst type the item's largest frame

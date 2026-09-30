@@ -140,7 +140,7 @@
     <h2 style="font-size:1rem;margin:0 0 8px;">Realtime push-decode (AudioWorklet)</h2>
     <p class="hint" style="margin:0 0 12px;">
       The same bundled stream, fed one access unit at a time through the bundled
-      <code>ac3forge-wasm-decoder</code> push-frame API into an <code>AudioWorkletNode</code>.
+      <code>iclforge-wasm-decoder</code> push-frame API into an <code>AudioWorkletNode</code>.
       Decoding happens in a Worker; a small ring-buffer drain runs on the audio thread.
       Needs cross-origin isolation (<code>SharedArrayBuffer</code>) - see
       <a href="https://iainchesworthlabs.github.io/ac3forge/platforms/wasm/">docs/platforms/wasm.md</a>
@@ -162,7 +162,7 @@
   </footer>
 </div>
 
-<script src="ac3forge_decode.js"></script>
+<script src="iclforge_decode.js"></script>
 <script type="module" src="demo.js"></script>
 </body>
 </html>
