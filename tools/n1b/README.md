@@ -14,8 +14,9 @@ Each script's header says what it does and takes. This page says in what order.
 | stage | what runs, in a worktree of `main` with the stage before it merged |
 |---|---|
 | S1, the cuts | `python tools/n1b/cuts.py --root <worktree> [--only C1,C3]`; one commit per cut. |
-| S2, moves and include spellings | `python tools/n1b/n1b_apply.py --root <worktree> --phase all --scope src --json <plan.json>` stages the renames (`git mv`) and edits the includes; the first commit is the renames alone (`git commit` with nothing added), the second is `git add -A`. |
-| S2, build files | `python tools/n1b/n1b_cmake.py --root <worktree> --plan <plan.json>`: target names, output names and moved paths. The build files of the split libraries are written by hand. |
+| S2, moves and include spellings | `python tools/n1b/n1b_apply.py --root <worktree> --phase all --json <plan.json>` moves `src/` and `tests/` (the default scope, `src,tests`): it stages the renames (`git mv`) and edits the includes; the first commit is the renames alone (`git commit` with nothing added), the second is `git add -A`. |
+| S2, build files | `python tools/n1b/n1b_cmake.py --root <worktree> --plan <plan.json>`: target names, output names and moved paths, and the paths `tests/CMakeLists.txt` names relative to itself. The build files of the split libraries are written by hand. |
+| S2, paths in text | `python tools/n1b/n1b_paths.py --root <worktree> --plan <plan.json>`: every other file that names a moved file by its repository path (pages, plans, comments, strings, workflows, scripts) follows it, so `check_doc_paths.py` stays green. It lists the directories whose files went to several libraries and are still named. |
 | S3, the namespace root | `python tools/n1b/n1b_names.py --root <worktree>`. |
 
 The plan a stage writes is what the build-file pass reads, since the pass runs after the files have moved.
