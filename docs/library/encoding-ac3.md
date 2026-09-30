@@ -204,7 +204,7 @@ with evidence to turn on, and only where the material and rate resemble what was
 
 5.1 is not in the table above: the mirror self-check proves the search's mechanism correct at
 `Acmod::k3_2` + LFE (same candidates, same settlement, same re-settle-on-mismatch path
-`tests/quality/test_search.cpp` exercises for stereo), but external-metric validation on real 5.1
+`tests/ac3/quality/test_search.cpp` exercises for stereo), but external-metric validation on real 5.1
 material hit an alignment problem in the measurement harness rather than an encoder defect.
 That is left for a follow-up.
 
@@ -297,7 +297,7 @@ both blocks whose windows cover it. So the frame the encoder emits reconstructs 
 `[-256, 1280)`: the frame's last block-worth of input is still in the encoder's overlap history
 and only reaches the wire in the next frame. Put the other way round, **decoded output sample
 `k` is input sample `k - 256`** — and that is a claim you can check, not a description of intent.
-[`tests/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/decoder/test_latency.cpp)
+[`tests/ac3/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/ac3/decoder/test_latency.cpp)
 puts an impulse into silence at a known absolute position, encodes, decodes, and finds it again
 256 samples later; a decaying tone burst through the same chain gives the same 256 by
 cross-correlation, which is immune to a quantizer having moved the peak.

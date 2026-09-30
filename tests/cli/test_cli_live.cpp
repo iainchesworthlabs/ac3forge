@@ -15,13 +15,13 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/crc16.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/emdf/emdf.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/crc16.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/objects/emdf.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 // The device-facing half of ac3cli: devices/outputs/record/live/monitor.
 //
@@ -116,7 +116,7 @@ void write_oamd_stream(const fs::path& path, const ac3::oba::Program& program,
 // A §E2.3.1.2 legacy-core delivery whose object layer rides in the Annex E
 // dependent, not the core: an AC-3 syncframe carrying a silent 5.1 bed,
 // immediately followed by a dependent extending it to 7.1 (same shape as
-// tests/decoder/test_eac3_decoder.cpp's "an AC-3 core plus an E-AC-3
+// tests/ac3/decoder/test_eac3_decoder.cpp's "an AC-3 core plus an E-AC-3
 // dependent decodes to 7.1"), whose skip field carries `program`/`objects`
 // as an OAMD payload with no JOC beside it - write_oamd_stream's own
 // convention, above. The core cannot carry the container itself - plain
@@ -192,7 +192,7 @@ void write_bytes(const fs::path& path, const std::vector<std::byte>& data) {
 // Overwrite `count` bits at `offset` and restore the syncframe's trailing
 // crc2, so a patched frame is still a legal, CRC-clean syncframe and the
 // decoder's own semantic checks (not a CRC failure) are what reject it.
-// Copied from tests/decoder/test_eac3_decoder.cpp's own helper of the same
+// Copied from tests/ac3/decoder/test_eac3_decoder.cpp's own helper of the same
 // name - see that file's "the E-AC-3 decoder rejects malformed spectral
 // extension streams" test, which this file's own "monitor reports a decode
 // failure" test below reuses field-for-field.
@@ -692,7 +692,7 @@ TEST_CASE("monitor reports a decode failure by name, distinct from a device refu
     // A semantically invalid but framing-correct, CRC-correct E-AC-3 access
     // unit - spxbegf placed past spxendf, collapsing the spectral extension
     // region to nothing (see ac3::describe(DecodeError::kInvalidStream)) -
-    // the exact vector tests/decoder/test_eac3_decoder.cpp's "the E-AC-3
+    // the exact vector tests/ac3/decoder/test_eac3_decoder.cpp's "the E-AC-3
     // decoder rejects malformed spectral extension streams" test already
     // validates bit-for-bit at the library level, reused here through the
     // CLI. run_monitor decodes its first access unit before ever calling

@@ -9,8 +9,8 @@
 #include <random>
 #include <vector>
 
-#include "ac3/sendspin/clock_sync.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/clock_sync.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // The client's clock synchronisation against a simulated server whose clock runs at an
 // offset and a drift from the client's, over a network whose delay varies from exchange to

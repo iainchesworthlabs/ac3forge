@@ -6,7 +6,7 @@
 #include <initializer_list>
 #include <numbers>
 
-#include "ac4/detail/profiling.hpp"
+#include "iclforge/ac4core/detail/profiling.hpp"
 #include "syntax/acpl.hpp"
 #include "syntax/reset.hpp"
 

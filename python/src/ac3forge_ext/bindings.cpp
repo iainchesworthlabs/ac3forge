@@ -1,7 +1,7 @@
 // pybind11 bindings for ac3forge (Python on PyPI) - wraps ac3::FrameEncoder, ac3::FrameDecoder,
 // ac3::Eac3Decoder and ac3::oba::AtmosEncoder directly (pybind11-direct, per the roadmap's own
 // dependency note - no intermediate C API). Every C++ class kept here is exactly the one
-// declared in src/forge/include/ac3/{encoder/encoder,decoder/decoder,oba/atmos}.hpp; this file adds
+// declared in src/ac3/include/iclforge/ac3/{encoder/encoder,decoder/decoder,oba/atmos}.hpp; this file adds
 // no codec behaviour of its own; error handling exists only because Python has no
 // std::expected-shaped calling convention.
 //
@@ -41,22 +41,22 @@
 #include "binding_support.hpp"
 #include "optional_modules.hpp"
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/meta/qc.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/verify/trace_export.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/ac3/meta/qc.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/ac3/verify/trace_export.hpp"
 
 namespace py = pybind11;
 
@@ -181,7 +181,7 @@ struct ScanProgrammeInfo {
 // programme's) already converted to owned py::bytes - see ScanProgrammeInfo's comment above for
 // why. access_unit_timing()/stream_duration_samples() and friends (bound as free functions
 // below) only ever read `access_unit_samples`/`sample_rate` off a ScannedStream (confirmed
-// against src/forge/src/io/elementary.cpp), so they reconstruct a throwaway
+// against src/ac3/src/io/elementary.cpp), so they reconstruct a throwaway
 // ac3::io::ScannedStream from those two fields alone rather than needing this struct to keep the
 // real one, spans and all, alive.
 struct ScanResult {

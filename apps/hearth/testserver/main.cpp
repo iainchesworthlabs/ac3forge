@@ -30,14 +30,14 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/pairing_messages.hpp"
-#include "ac3/sendspin/server_host.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/server_host.hpp"
 #include "server_store.hpp"
 #include "sink.hpp"
 

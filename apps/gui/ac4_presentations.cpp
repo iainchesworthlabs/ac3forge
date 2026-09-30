@@ -2,7 +2,7 @@
 
 #include <fmt/format.h>
 
-#include "ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
 #include "ac4_channels.hpp"
 
 namespace ac3gui {

@@ -20,7 +20,7 @@ A key with no pinned entry is reported, not failed: this file cannot be
 hand-updated for a leg nobody has run it on. Run this once on a leg, read the
 hash it prints, add it to the JSON, and the NEXT run on that leg is a real
 gate. A key whose pinned hash does not match is a hard failure - every other
-bit-exactness gate in this project (tests/core/test_simd_kernels.cpp, the
+bit-exactness gate in this project (tests/ac3/core/test_simd_kernels.cpp, the
 codec matrix's byte-identical checks) works the same way for the same
 reason: a silent change to a number nobody is watching is worse than a loud,
 possibly-still-mysterious one.

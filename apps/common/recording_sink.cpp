@@ -7,7 +7,7 @@
 #include <system_error>
 #include <utility>
 
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 namespace {
 

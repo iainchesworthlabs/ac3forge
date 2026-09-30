@@ -175,7 +175,7 @@ sets both, and doubles as exactly that.
 
 ## What's reused, what's new
 
-`ac3::forge` (`src/forge/`) — the codec, `FrameDecoder`/`Eac3Decoder`, elementary-stream scanning — is
+`ac3::forge` (`src/ac3/`) — the codec, `FrameDecoder`/`Eac3Decoder`, elementary-stream scanning — is
 fully platform-independent and is linked into both demos **unmodified**, the same way `apps/wasm/CMakeLists.txt`
 links it as any other consumer would: `add_executable` + `target_link_libraries(... ac3::forge ...)`,
 no fork, no `#ifdef`. Unlike `apps/android/`, this doesn't need a separate build system reached

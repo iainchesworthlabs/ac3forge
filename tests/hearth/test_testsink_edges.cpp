@@ -17,15 +17,15 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/noise.hpp"
-#include "ac3/sendspin/pairing.hpp"
-#include "ac3/sendspin/pairing_messages.hpp"
-#include "ac3/sendspin/server_session.hpp"
-#include "ac3/sendspin/session_driver.hpp"
-#include "ac3/sendspin/websocket.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/noise.hpp"
+#include "iclforge/sendspin/pairing.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/server_session.hpp"
+#include "iclforge/sendspin/session_driver.hpp"
+#include "iclforge/sendspin/websocket.hpp"
 #include "sink.hpp"
 
 // ac3hearth-testsink's edges, beside test_testsink.cpp's end-to-end case: what Sink::start

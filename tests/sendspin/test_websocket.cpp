@@ -17,8 +17,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/transport.hpp"
-#include "ac3/sendspin/websocket.hpp"
+#include "iclforge/sendspin/transport.hpp"
+#include "iclforge/sendspin/websocket.hpp"
 
 // Last: it brings in the platform's socket headers and their macros.
 #include <httplib.h>

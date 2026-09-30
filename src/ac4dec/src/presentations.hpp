@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 // The presentations of a table of contents as decode() takes them (ETSI TS 103
 // 190-2 V1.3.1 clause 4.8.2): the substreams each is made of and what each

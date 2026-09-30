@@ -86,7 +86,7 @@ bandwidth default was swept against the synthetic fixtures and narrowing
 looked like a **2.1 dB SNR win** at 448 kbit/s — because discarding the top
 9 kHz of a flat noise plateau costs almost nothing, while doing the same to
 real material throws away real energy. The comment recording that trap is in
-[`src/forge/src/encoder/encoder.cpp`](../../src/forge/src/encoder/encoder.cpp)
+[`src/ac3/src/encoder/encoder.cpp`](../../src/ac3/src/encoder/encoder.cpp)
 above `chbwcod`.
 
 The synthetic fixtures are **not** retired, for a different reason: the
@@ -150,12 +150,12 @@ All of these are run from the repo root.
 | `gen_object_fixture.py` | `tests/golden/object-fixture/dee_joc_514.ec3`, a DD+ JOC stream that DEE makes from the synthetic 5.1.4 tone bed this script also writes | needs **Dolby DEE** and numpy |
 | `gen_ac4_baseline.py` | the committed AC-4 set: `tests/golden/external-baseline/ac4-*/dee.ac4`, `ac4-manifest.json` and the syntax digests under `tests/golden/ac4dec/`. With `--gold-set DIR`, a local set that is never committed | needs **Dolby DEE** (its licence ends 2026-11-06), numpy, `ffmpeg` and a built `ac3cli` (`--cli`) |
 | `gen_ac4_presentation_sources.py` | the six encoder-made substreams under `tests/golden/ac4dec/presentations/sources/` that the presentation tests multiplex | needs a built `ac3cli` (`--cli`) |
-| `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | `aht_tables.hpp` and `bitalloc_tables.hpp` in `src/forge/include/ac3/core/`, `joc_tables.hpp` in `src/forge/include/ac3/oba/` | read spec text (and JOC's tables attachment), not committed; each script's `OUT` still names `src/lib/include/ac3/...`, which no longer exists (the first two fail on write, the third creates it), so point `OUT` at the path in the previous column before running |
-| `gen_ac4_tables.py` | the AC-4 tables under `src/ac4core/src/tables/`: Huffman codebooks, scale factor bands, noise and QMF tables, the ISF rendering matrices | reads the TS 103 190-1 and -2 text and companion archives from `--spec-dir` (default `spec/`) |
+| `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | `aht_tables.hpp` and `bitalloc_tables.hpp` in `src/ac3/include/iclforge/ac3/core/`, `joc_tables.hpp` in `src/objects/include/iclforge/objects/` | read spec text (and JOC's tables attachment), not committed; each script's `OUT` still names `src/lib/include/ac3/...`, which no longer exists (the first two fail on write, the third creates it), so point `OUT` at the path in the previous column before running |
+| `gen_ac4_tables.py` | the AC-4 tables under `src/ac4core/include/iclforge/ac4core/tables/`: Huffman codebooks, scale factor bands, noise and QMF tables, the ISF rendering matrices | reads the TS 103 190-1 and -2 text and companion archives from `--spec-dir` (default `spec/`) |
 | `gen_ac4_reference_tables.py` | `tools/references/ac4_tables.py`, the tables of the Python AC-4 syntax transcription | written separately from `gen_ac4_tables.py` so that a table misread in one shows as a trace difference against the other; takes the same `--spec-dir` |
 | `gen_mdct_goldens.py` | `tests/golden/mdct_goldens.hpp`, the analysis filterbank's golden vectors | needs numpy |
-| `gen_qmf_prototype.py` | `src/forge/src/dsp/qmf_prototype.hpp`, the prototype filter of JOC's 64-band QMF (this project's own design) | needs numpy |
-| `gen_ac4_qmf_twiddles.py` | `src/ac4core/src/tables/qmf_twiddles.hpp`, the cosines the AC-4 QMF banks' twiddle factors are built from | stdlib only; `--check` compares the committed header |
+| `gen_qmf_prototype.py` | `src/dsp/src/qmf_prototype.hpp`, the prototype filter of JOC's 64-band QMF (this project's own design) | needs numpy |
+| `gen_ac4_qmf_twiddles.py` | `src/ac4core/include/iclforge/ac4core/tables/qmf_twiddles.hpp`, the cosines the AC-4 QMF banks' twiddle factors are built from | stdlib only; `--check` compares the committed header |
 | `gen_baremetal_fixture.py` | `apps/baremetal/fixture.hpp`, the AC-3 and E-AC-3 streams the minimum-footprint probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`); `atmos_height_scene.txt`, beside it, is the object placement it gives `atmos-encode` for the render row |
 | `gen_baremetal_ac4_fixture.py` | `apps/baremetal/ac4_fixture.hpp`, the committed AC-4 streams the bare-metal AC-4 probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`) |
 | `gen_device_streams.py` | `esp-idf/ac3forge/examples/hearth_sink/www/`: the ESP32 player's stream set and its `streams.json` | needs a built `ac3cli` (`--ac3cli`) and numpy; `tools/checks/check_stream_set.py` checks the committed set |

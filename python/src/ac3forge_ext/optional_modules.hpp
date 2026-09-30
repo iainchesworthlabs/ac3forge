@@ -20,7 +20,7 @@
 // exactly the same condition that decides the compile definition did - which
 // is how every other either/or in this repository is answered (see
 // src/core/transform/{reference,stub}/, src/internal/avx2/none/,
-// tests/core/avx2/{present,absent}/ and tools/checks/check_platform_macros.ps1
+// tests/ac3/core/avx2/{present,absent}/ and tools/checks/check_platform_macros.ps1
 // for the rule itself).
 //
 // The absent variants are not empty files: each registers nothing and says so.

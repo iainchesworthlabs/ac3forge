@@ -13,7 +13,16 @@ fn main() {
         .expect("rust/ac3forge-sys must live two directories below the repo root")
         .to_path_buf();
 
-    for rel in ["src/capi", "src/forge/include", "CMakeLists.txt"] {
+    for rel in [
+        "src/capi",
+        "src/ac3/include",
+        "src/base",
+        "src/dsp",
+        "src/objects",
+        "src/render",
+        "src/iec61937",
+        "CMakeLists.txt",
+    ] {
         println!("cargo:rerun-if-changed={}", repo_root.join(rel).display());
     }
 
@@ -48,7 +57,7 @@ fn main() {
         // feature that supplies sendspin's cpp-httplib/mbedTLS/libFLAC/Opus/mdns - left unset,
         // configure fails resolving packages this build never installed.
         .define("AC3FORGE_BUILD_HEARTH", "OFF")
-        .build_target("forge_c_shared");
+        .build_target("iclforge_capi_shared");
     // `dst` is cmake-rs's own OUT_DIR-rooted prefix; the actual CMake build tree (what a plain
     // `cmake -B <dir>` would call the binary dir) lives at `<dst>/build` by cmake-rs convention.
     // Deliberately NOT calling `cmake --install`: the project's install() rules cover the whole
@@ -60,7 +69,7 @@ fn main() {
     let build_dir = dst.join("build");
 
     let source_include_dir = repo_root.join("src").join("capi").join("include");
-    let header = source_include_dir.join("ac3forge_c").join("ac3forge.h");
+    let header = source_include_dir.join("iclforge_c").join("iclforge.h");
     assert!(
         header.is_file(),
         "expected the C API header at {}",
@@ -70,15 +79,15 @@ fn main() {
     // generate_export_header() (src/capi/CMakeLists.txt) writes export.h under this target's own
     // binary dir at configure/build time - a real generated file, not something `cmake --install`
     // is needed for either.
-    let generated_include_dir = find_dir_containing(&build_dir, Path::new("ac3forge_c/export.h"))
-        .expect("could not find generated ac3forge_c/export.h under the CMake build tree");
+    let generated_include_dir = find_dir_containing(&build_dir, Path::new("iclforge_c/export.h"))
+        .expect("could not find generated iclforge_c/export.h under the CMake build tree");
 
     let (runtime_name, import_lib_name): (&str, Option<&str>) = if cfg!(target_os = "windows") {
-        ("ac3forge_c.dll", Some("ac3forge_c.lib"))
+        ("iclforge_c.dll", Some("iclforge_c.lib"))
     } else if cfg!(target_os = "macos") {
-        ("libac3forge_c.dylib", None)
+        ("libiclforge_c.dylib", None)
     } else {
-        ("libac3forge_c.so", None)
+        ("libiclforge_c.so", None)
     };
     let runtime_lib = find_file(&build_dir, runtime_name).unwrap_or_else(|| {
         panic!(
@@ -99,7 +108,7 @@ fn main() {
         "cargo:rustc-link-search=native={}",
         link_search_dir.display()
     );
-    println!("cargo:rustc-link-lib=dylib=ac3forge_c");
+    println!("cargo:rustc-link-lib=dylib=iclforge_c");
 
     copy_runtime_library(&runtime_lib, runtime_name);
 
@@ -183,7 +192,7 @@ fn find_file(root: &Path, name: &str) -> Option<PathBuf> {
 }
 
 /// Finds the directory that contains `suffix` as a relative path underneath it (e.g. a directory
-/// `D` such that `D/ac3forge_c/export.h` exists), searching under `root`. Used to locate the
+/// `D` such that `D/iclforge_c/export.h` exists), searching under `root`. Used to locate the
 /// generated `export.h`'s own include root without assuming the exact `CMAKE_CURRENT_BINARY_DIR`
 /// nesting `generate_export_header()` used.
 fn find_dir_containing(root: &Path, suffix: &Path) -> Option<PathBuf> {

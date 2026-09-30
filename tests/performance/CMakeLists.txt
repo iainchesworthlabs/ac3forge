@@ -14,9 +14,9 @@ add_executable(ac3perf test_performance.cpp)
 # wherever this directory is built. The same holds for the three targets below.
 target_link_libraries(ac3perf
     PRIVATE
-        ac3::forge
-        ac4::encoder
-        ac4::decoder
+        iclforge::ac3
+        iclforge::ac4enc
+        iclforge::ac4dec
         ac3::warnings
         ac3::fmt
         Catch2::Catch2WithMain)
@@ -50,7 +50,7 @@ catch_discover_tests(ac3perf
 # ---------------------------------------------------------------------------
 add_executable(ac3bench bench_encoder.cpp)
 
-target_link_libraries(ac3bench PRIVATE ac3::forge ac4::encoder ac4::decoder ac3::warnings ac3::fmt)
+target_link_libraries(ac3bench PRIVATE iclforge::ac3 iclforge::ac4enc iclforge::ac4dec ac3::warnings ac3::fmt)
 
 target_include_directories(ac3bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -63,7 +63,7 @@ target_compile_definitions(ac3bench PRIVATE
 # ---------------------------------------------------------------------------
 # ac3membench - heap-churn and footprint numbers for the same workloads as
 # ac3bench, plus the decode paths ac3bench never covered. Links
-# ac3::forge_static explicitly so the global operator new/delete
+# iclforge::ac3_static explicitly so the global operator new/delete
 # replacements in bench_memory.cpp observe the codec's allocations too: on
 # Windows a DLL's allocations bind to the DLL's own operator new, so
 # linking the shared library would count nothing. The allocator
@@ -105,7 +105,7 @@ if((WIN32 OR LINUX) AND NOT AC3FORGE_SANITIZERS MATCHES "thread")
     # The AC-4 libraries' static builds, for the same reason as
     # ac3::forge_static: a DLL's allocations would not reach the counters.
     target_link_libraries(ac3membench PRIVATE
-        ac3::forge_static ac4::encoder_static ac4::decoder_static ac3::warnings ac3::fmt)
+        iclforge::ac3_static iclforge::ac4enc_static iclforge::ac4dec_static ac3::warnings ac3::fmt)
 
     # The AC-4 workloads read the real-audio fixture (real_audio.hpp).
     target_compile_definitions(ac3membench PRIVATE
@@ -126,9 +126,9 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(ac3kernelbench kernel_bench.cpp)
 
-# ac4::core (static in every build) brings src/ac4core/src's transform headers,
+# iclforge::ac4core (static in every build) brings src/ac4core/include/iclforge/ac4core's transform headers,
 # as it does for tests/ac4core.
-target_link_libraries(ac3kernelbench PRIVATE ac3::forge ac4::core ac3::warnings ac3::fmt)
+target_link_libraries(ac3kernelbench PRIVATE iclforge::ac3 iclforge::ac4core ac3::warnings ac3::fmt)
 
 target_include_directories(ac3kernelbench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

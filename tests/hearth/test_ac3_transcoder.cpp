@@ -11,13 +11,13 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/metadata_edit.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/render/layout.hpp"
 #include "ac3_transcoder.hpp"
 #include "decoder_settings.hpp"
 #include "stream_decoder.hpp"

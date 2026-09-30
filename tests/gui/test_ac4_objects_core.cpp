@@ -13,13 +13,13 @@
 #include <string>
 #include <vector>
 
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/oba/scene.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/objects/scene.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_encode_core.hpp"
 #include "ac4_objects_core.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // The steps ac3cli's `atmos-encode codec=ac4` and ac3gui's AC-4 objects share
 // (apps/common/ac4_objects_core.hpp): which channels are which objects, where a
@@ -94,7 +94,7 @@ TEST_CASE("AC-4 object slots list the dynamic objects, then the speakers, then t
 }
 
 TEST_CASE("a channel pinned to a speaker sits where ADM puts the speaker", "[gui][ac4]") {
-    // tests/oba/test_atmos_motion.cpp's ring constants, which ac3::admbridge's polar
+    // tests/ac3/oba/test_atmos_motion.cpp's ring constants, which ac3::admbridge's polar
     // conversion is checked against: L at +30 degrees, SR at -110.
     const auto left = ac3::apps::ac4_pin_position(30.0);
     CHECK(left.x == Catch::Approx(0.25).margin(1e-6));

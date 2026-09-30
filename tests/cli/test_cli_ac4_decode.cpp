@@ -24,8 +24,8 @@
 #include "platform/process.hpp"
 #include "sanitized.hpp"
 
-#include "ac3/io/wav.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac4/ac4.hpp"
 
 namespace fs = std::filesystem;
 using ac3::test::kSanitized;

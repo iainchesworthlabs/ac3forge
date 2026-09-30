@@ -1,11 +1,11 @@
-#include "ac3/audio/capture.hpp"
+#include "iclforge/audio/capture.hpp"
 
 // The Windows capture backend. CMake compiles this directory's capture.cpp on
 // Windows and another platform directory's everywhere else, so there is no
 // #ifdef here - the file's path is what says "Windows".
 //
 // WIN32_LEAN_AND_MEAN and NOMINMAX are set by the WIN32 block of
-// src/forge/CMakeLists.txt, not by #defines here: they configure <windows.h> for
+// src/ac3/CMakeLists.txt, not by #defines here: they configure <windows.h> for
 // every translation unit that pulls it in, and one setting in one place cannot
 // disagree with itself the way per-file guards can.
 

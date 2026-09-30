@@ -1,7 +1,7 @@
 """The latency budget (bare-metal probe harness) through the Python bindings.
 
 The numbers themselves are established empirically on the C++ side
-(tests/decoder/test_latency.cpp: an impulse and a tone burst through a real
+(tests/ac3/decoder/test_latency.cpp: an impulse and a tone burst through a real
 encode -> decode, located to the sample by two independent methods). What is
 checked here is that the bindings hand the same budget across, and - for the
 one term that is a sample-domain shift - that a round trip driven entirely
@@ -62,7 +62,7 @@ def test_ac3_round_trip_shifts_the_signal_by_the_transform_term():
 # term: JOC reconstruction pulls objects back out of the decoded bed in a
 # 64-band complex QMF domain, not the MDCT's. 576 is spelled out here rather
 # than named, same as tests/capi/test_capi.cpp - measured end to end in
-# tests/decoder/test_latency.cpp.
+# tests/ac3/decoder/test_latency.cpp.
 _QMF_DELAY_SAMPLES = 576
 
 

@@ -6,9 +6,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 // AC-4's channels in WAV files, for ac3cli's `decode` and `ac4-encode` and
 // ac3gui's AC-4 pages alike: a WAV file holds them in the WAVEFORMATEXTENSIBLE

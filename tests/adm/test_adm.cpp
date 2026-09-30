@@ -18,11 +18,11 @@
 
 #include "platform/process.hpp"
 
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 // These tests build BW64/RF64 fixtures byte-by-byte, independently of
-// src/ac3adm's own implementation (which is itself just a thin translation
-// layer over the vendored libbw64/libadm - see src/ac3adm/CMakeLists.txt),
+// src/adm's own implementation (which is itself just a thin translation
+// layer over the vendored libbw64/libadm - see src/adm/CMakeLists.txt),
 // rather than round-tripping data this same code produced - the same
 // reasoning test_mpegts.cpp and test_matroska.cpp document for their own
 // independent readers/writers. ac3adm::ac3adm began as a reader only (phase 1
@@ -615,7 +615,7 @@ TEST_CASE("rejects a file that is not RIFF/RF64/BW64", "[adm]") {
     REQUIRE_FALSE(doc.has_value());
     // libbw64 reports "not a recognized container" the same way it reports
     // "could not open" - a single std::runtime_error family with no
-    // distinguishing exception type (see src/ac3adm/src/adm.cpp's own
+    // distinguishing exception type (see src/adm/src/adm.cpp's own
     // comment on parse_bw64_path) - so this, too, surfaces as kCannotOpen
     // rather than the more specific kNotRiff.
     CHECK(doc.error() == ac3adm::AdmError::kCannotOpen);
@@ -681,7 +681,7 @@ TEST_CASE("malformed XML in axml surfaces as kMalformedXml", "[adm]") {
     // dependency) turned out to be lenient about mismatched close tags - a
     // "<a><b></a>" style fixture parses "successfully" (in whatever shape rapidxml
     // produces for it) and only fails later, as an ADM-structure complaint
-    // (AdmError::kMalformedAdm, see the next test and src/ac3adm/src/adm.cpp's own
+    // (AdmError::kMalformedAdm, see the next test and src/adm/src/adm.cpp's own
     // comment on why). This fixture instead breaks XML tokenizing itself, which is
     // needed to actually reach kMalformedXml - confirmed empirically, not assumed.
     const Bytes axml = "<audioFormatExtended><audioObject audioObjectID=\"AO_1";
@@ -707,7 +707,7 @@ TEST_CASE("a missing required ADM attribute surfaces as kMalformedXml", "[adm]")
     // (xml_parser_helper.hpp's parseAttribute()) throws a plain, untyped std::runtime_error
     // rather than one of its own adm::error:: types - confirmed by catching and printing the
     // real exception during development, not assumed from the enum's own naming. See
-    // ac3adm::AdmError's own doc comment (ac3adm.hpp) and src/ac3adm/src/adm.cpp's
+    // ac3adm::AdmError's own doc comment (ac3adm.hpp) and src/adm/src/adm.cpp's
     // read_adm_model() for the full explanation.
     CHECK(doc.error() == ac3adm::AdmError::kMalformedXml);
 }
@@ -898,7 +898,7 @@ TEST_CASE("a non-data chunk declaring more than the file holds is refused", "[ad
 // layers have to agree on that for this to hold: chunk_sizes_fit() exempts
 // <data> from its own pre-scan (immediately above), AND libbw64's own
 // internal chunk-table walk has to as well - which the pinned commit refuses
-// outright unless patched (src/ac3adm/patch_libbw64.cmake's whole reason for
+// outright unless patched (src/adm/patch_libbw64.cmake's whole reason for
 // existing; see its own comment for why upstream doesn't do this itself).
 TEST_CASE("a file truncated inside its data chunk still parses", "[adm]") {
     Bytes file = minimal_fixture_bytes(false);
@@ -959,7 +959,7 @@ TEST_CASE("a ds64 table entry oversizing a non-data chunk is still refused", "[a
 // UnknownChunk, whose 0.10.0 constructor resizes a std::vector<char> to the
 // declared size and then hands stream.read() `&data_[0]` - undefined behaviour
 // when that size is zero, and the report that kept `ac3adm_objects` out of
-// fuzz/CMakeLists.txt's instrumented set until src/ac3adm/patch_libbw64.cmake
+// fuzz/CMakeLists.txt's instrumented set until src/adm/patch_libbw64.cmake
 // existed. A zero-length chunk is ordinary content: BS.2088-1 §4 puts no floor
 // under a chunk's size, and an empty JUNK is a normal thing for a producer to
 // leave behind. The same shape is committed as

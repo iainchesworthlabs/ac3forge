@@ -1,4 +1,4 @@
-#include "huffman_codes.hpp"
+#include "iclforge/ac4core/tables/huffman_codes.hpp"
 
 namespace ac4::detail::tables {
 

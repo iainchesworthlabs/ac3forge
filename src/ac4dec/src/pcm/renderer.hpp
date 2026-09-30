@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "syntax/presentation.hpp"
 
 // Part 2's channel audio renderer, ETSI TS 103 190-2 V1.3.1 clause 5.10.2, for

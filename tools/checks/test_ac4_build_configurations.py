@@ -41,7 +41,7 @@ PYPROJECT = ROOT / "python" / "pyproject.toml"
 
 
 def _ac4_referenced(path: Path) -> bool:
-    return re.search(r"\bac4::", path.read_text(encoding="utf-8")) is not None
+    return re.search(r"\biclforge::ac4", path.read_text(encoding="utf-8")) is not None
 
 
 def _resolved_cache_variables(presets: dict, name: str) -> dict:
@@ -138,7 +138,7 @@ class Ac4BuildConfigurations(unittest.TestCase):
         text = BAREMETAL_CMAKE.read_text(encoding="utf-8")
         self.assertIn("ac4_probe.cpp", text)
         self.assertIn("elseif(AC3FORGE_MINIMAL_AC4)", text)
-        self.assertIn("ac4::decoder_static", text)
+        self.assertIn("iclforge::ac4dec_static", text)
         self.assertNotIn("ac4enc", text)
 
 

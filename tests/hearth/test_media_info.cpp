@@ -20,20 +20,20 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/signing/emdf_atmos_signer.hpp"
-#include "ac3/signing/signing_key.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/signing/emdf_atmos_signer.hpp"
+#include "iclforge/signing/signing_key.hpp"
 #include "container_input.hpp"
-#include "matroska/matroska.hpp"
+#include "iclforge/matroska/matroska.hpp"
 #include "media_info.hpp"
 #include "media_inspector.hpp"
-#include "mp4/mp4.hpp"
-#include "mpegts/mpegts.hpp"
+#include "iclforge/mp4/mp4.hpp"
+#include "iclforge/mpegts/mpegts.hpp"
 
 // ac3::hearth's media information (apps/hearth/engine/media_info.cpp and
 // media_inspector.cpp): what a queue item's file says about itself, read on a

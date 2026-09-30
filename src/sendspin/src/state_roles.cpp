@@ -1,4 +1,4 @@
-#include "ac3/sendspin/state_roles.hpp"
+#include "iclforge/sendspin/state_roles.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/json.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/json.hpp"
 
 namespace ac3::sendspin {
 

@@ -80,10 +80,10 @@ permissions:
   contents: read
 
 jobs:
-  # ac3tests coverage over every library component: src/forge plus audio,
+  # ac3tests coverage over every library component: src/ac3 plus audio,
   # signing, matroska, mp4, mpegts, capi, and - via the coverage preset's
   # AC3FORGE_BUILD_ADM=ON with vcpkg's 'adm' feature, the same pair
-  # adm-validate passes by hand - ac3adm/admbridge. Originally src/forge only
+  # adm-validate passes by hand - ac3adm/admbridge. Originally src/ac3 only
   # ("the library is what was asked for"); extended once the rest of the
   # library surface existed and was already being EXERCISED by this same
   # suite, just uninstrumented and unreported. apps/cli and apps/gui stay out
@@ -101,7 +101,7 @@ jobs:
   # The gate is PER COMPONENT - a line floor and a branch floor per
   # src/<dir>, not one blended number a small component's regression could
   # hide inside - and lives in tools/checks/coverage_report.sh alongside the
-  # measured baseline each floor was calibrated against. src/forge's original
+  # measured baseline each floor was calibrated against. src/ac3's original
   # 80/70 floor (set a few points under its first hosted run's 81.3/72.0,
   # measured 2026-08-09 while block switching, delta bit allocation, half
   # sample rate and dual mono were still landing) is now 88/78: the suite
@@ -263,15 +263,15 @@ jobs:
         env:
           STATUS: ${{ job.status }}
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
-  # ac3adm::ac3adm (src/ac3adm) is opt-in - AC3FORGE_BUILD_ADM defaults OFF, unlike every other
-  # library component (see the root CMakeLists.txt's own option() and src/ac3adm/CMakeLists.txt's
+  # iclforge::adm (src/adm) is opt-in - AC3FORGE_BUILD_ADM defaults OFF, unlike every other
+  # library component (see the root CMakeLists.txt's own option() and src/adm/CMakeLists.txt's
   # header comment for why: libadm needs Boost header libraries, a third-party dependency that
   # only -DVCPKG_MANIFEST_FEATURES=adm resolves). No leg in
   # build-and-test's matrix (_build.yml) ever passes -DAC3FORGE_BUILD_ADM=ON; besides this job,
   # the only other build with it on is the coverage job's instrumented Debug preset, which turns
   # the CLI and examples OFF - so without this job, ADM BWF reader phase 3's CLI command and example
   # (see below) would still have zero CI builds, and a change to the module or to its vendored
-  # libbw64/libadm pins (src/ac3adm/CMakeLists.txt's GIT_TAG values) would never be exercised at
+  # libbw64/libadm pins (src/adm/CMakeLists.txt's GIT_TAG values) would never be exercised at
   # -O2 or under the full default configuration anybody actually installs.
   #
   # A dedicated job rather than an extra pass inside an existing Linux leg (the shape
@@ -299,7 +299,7 @@ jobs:
   #
   # AC3FORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): ADM BWF reader phase 3 (the
   # 'atmos-adm' ac3cli command, apps/cli/main.cpp's run_atmos_adm, and examples/encode_adm.cpp) is
-  # the first code outside tests/ to link ac3adm::ac3adm/ac3::admbridge at all, so unlike phases 1
+  # the first code outside tests/ to link iclforge::adm/iclforge::admbridge at all, so unlike phases 1
   # and 2 (when neither the CLI nor the examples touched this module, hence this job originally
   # turning both off), this job now has to build and run both too or the CLI command and example
   # get zero CI coverage - the same gap this job's own header comment above already exists to close
@@ -444,7 +444,7 @@ jobs:
         env:
           STATUS: ${{ job.status }}
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
-  # ac3::sendspin (src/sendspin, planning/hearth-reference-player.md A4): AC3FORGE_BUILD_HEARTH
+  # iclforge::sendspin (src/sendspin, planning/hearth-reference-player.md A4): AC3FORGE_BUILD_HEARTH
   # defaults ON (root CMakeLists.txt), with vcpkg's "hearth" feature - cpp-httplib, mdns, mbedTLS,
   # libFLAC and Opus - selected by default too, via CMakePresets.json's "core" fragment. Every
   # build-and-test leg builds and tests it without being asked, so the [sendspin] and [hearth]

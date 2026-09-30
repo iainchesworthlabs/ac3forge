@@ -67,10 +67,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/scene.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/scene.hpp"
 
 namespace {
 

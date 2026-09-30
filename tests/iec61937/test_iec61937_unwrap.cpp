@@ -9,13 +9,13 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/silent_frame.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/silent_frame.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 
 // The de-framing side of ac3::iec61937 (IEC 61937 de-framing). Its whole reason to
 // exist is that nothing read a burst back before, so the wrap side - byte-

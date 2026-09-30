@@ -25,7 +25,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3/sendspin/base64.hpp"
+#include "iclforge/sendspin/base64.hpp"
 #include "ac3forge/firmware_image.hpp"
 #include "ac3forge/firmware_status.hpp"
 #include "sink_firmware.hpp"

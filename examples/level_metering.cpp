@@ -17,10 +17,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
 
 int main() {
     constexpr ac3::Acmod kAcmod = ac3::Acmod::k3_2;

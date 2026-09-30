@@ -24,7 +24,7 @@
 // headers (esp_app_format.h's esp_image_header_t and
 // esp_image_segment_header_t, esp_app_desc.h's esp_app_desc_t) so that every
 // rule can be exercised on a laptop from synthetic bytes -
-// tests/io/test_firmware_image.cpp - and firmware.cpp, which is ESP-IDF-only,
+// tests/ac3/io/test_firmware_image.cpp - and firmware.cpp, which is ESP-IDF-only,
 // fills BoardFacts from the chip and the running image and calls these.
 //
 // ESP-IDF checks the chip and its revision again when the whole image is in

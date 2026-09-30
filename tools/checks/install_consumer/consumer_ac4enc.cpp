@@ -20,8 +20,8 @@
 #include <string>
 #include <vector>
 
-#include <ac4/ac4.hpp>
-#include <ac4enc/encoder.hpp>
+#include <iclforge/ac4/ac4.hpp>
+#include <iclforge/ac4enc/encoder.hpp>
 
 namespace {
 

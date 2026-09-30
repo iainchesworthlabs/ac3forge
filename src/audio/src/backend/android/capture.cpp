@@ -1,4 +1,4 @@
-#include "ac3/audio/capture.hpp"
+#include "iclforge/audio/capture.hpp"
 
 // The Android capture backend: there isn't one, on purpose rather than by
 // omission. The only app this backend exists for (the Shield Atmos demo, see

@@ -21,7 +21,7 @@
 # Android triplet chainloading on for this one dependency.
 #
 # A second target, ac3::fmt_private, is defined at the end of this file. The
-# libraries installed as static archives (ac3::forge, mp4::mp4) link it in place
+# libraries installed as static archives (iclforge::ac3, iclforge::mp4) link it in place
 # of ac3::fmt.
 # ---------------------------------------------------------------------------
 
@@ -47,7 +47,7 @@ option(AC3FORGE_FETCH_FMT "Fetch {fmt} from source via FetchContent when no loca
 # one fails the build at the first #include <fmt/base.h> instead of here.
 # Ubuntu 26.04's libfmt-dev is 10.1.1 (its CMake package reports 10.1.0); a
 # fuzz/run.sh configure on a machine with it installed picked it up and stopped
-# compiling src/forge/src/internal/cpu/cpu_features.cpp. With the minimum,
+# compiling src/base/src/cpu_features.cpp. With the minimum,
 # find_package() passes over a copy like that, including one an existing build
 # directory has already cached in fmt_DIR, and the fallback below applies.
 #
@@ -102,7 +102,7 @@ if(NOT fmt_FOUND)
     # fmt's own CMakeLists does not set POSITION_INDEPENDENT_CODE on its
     # `fmt` target, and a plain FetchContent build defaults to whatever the
     # ambient (unset) value is - fine for a static-only consumer, but
-    # forge_shared (src/forge/CMakeLists.txt) links every dependency,
+    # iclforge_ac3_shared (src/ac3/CMakeLists.txt) links every dependency,
     # including this one, into a real .so/.dll. Confirmed the hard way: the
     # WASM leg and the manylinux wheel build (neither wires vcpkg's toolchain
     # in, so both take this fallback) both failed linking libac3forge.so with
@@ -143,14 +143,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 endif()
 
 # ac3::fmt_private - a private copy of {fmt}, compiled into the object files of a library that is
-# installed as a static archive: ac3::forge (src/forge/CMakeLists.txt) and mp4::mp4
+# installed as a static archive: iclforge::ac3 (src/ac3/CMakeLists.txt) and iclforge::mp4
 # (src/mp4/CMakeLists.txt).
 #
 # An archive is not linked. Each function its objects call without defining stays an undefined
 # reference until a consumer's own link, and the installed package names no {fmt} for that link to
 # find. Linking ac3::fmt privately, as those two libraries did, therefore left an installed
 # libac3forge_static.a and libmp4_static.a with undefined fmt::v12::vformat and fmt::v12::vprint
-# references, and a program linking ac3::forge_c_static from `cmake --install`'s output stopped at
+# references, and a program linking iclforge::c_static from `cmake --install`'s output stopped at
 # "undefined reference to fmt::v12::vprint". A shared library takes {fmt} in at its own link, so
 # only the static variants showed it.
 #

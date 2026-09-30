@@ -6,8 +6,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac4/syntax.hpp"
-#include "huffman_codebook.hpp"
+#include "iclforge/ac4/syntax.hpp"
+#include "iclforge/ac4core/huffman_codebook.hpp"
 
 // Writes one substream's (or the table of contents') bits, MSB first, and
 // records each syntax element it writes as an ac4::SyntaxRecord, in the shape

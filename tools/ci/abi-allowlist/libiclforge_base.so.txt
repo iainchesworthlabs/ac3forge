@@ -1,0 +1,1 @@
+ac3::internal::cpu::has_avx2()

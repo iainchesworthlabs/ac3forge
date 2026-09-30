@@ -1,6 +1,6 @@
 #include "encoder_controller.hpp"
 
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 #include <QDateTime>
 #include <QDir>
@@ -35,29 +35,29 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/audio/watchdog.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/dsp/biquad.hpp"
-#include "ac3/dsp/resampler.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/meta/bsi.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/scene.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/spatial/spatial.hpp"
-#include "ac3/version.hpp"
-#include "matroska/matroska.hpp"
-#include "mp4/dash.hpp"
-#include "mp4/hls.hpp"
-#include "mp4/mp4.hpp"
-#include "mpegts/mpegts.hpp"
+#include "iclforge/audio/watchdog.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/dsp/biquad.hpp"
+#include "iclforge/dsp/resampler.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/scene.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/render/spatial.hpp"
+#include "iclforge/ac3/version.hpp"
+#include "iclforge/matroska/matroska.hpp"
+#include "iclforge/mp4/dash.hpp"
+#include "iclforge/mp4/hls.hpp"
+#include "iclforge/mp4/mp4.hpp"
+#include "iclforge/mpegts/mpegts.hpp"
 #include "ac4_encode_core.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "channel_geometry.hpp"
 #include "fmp4_folder_writer.hpp"
 #include "recording_sink.hpp"
@@ -7920,7 +7920,7 @@ void EncoderController::encodeObjects(const QString& path,
             // The placement is the object's position at the END of the
             // frame - same convention ac3cli's 'atmos' uses, because that is
             // where OAMD's ramp and the JOC matrix both finish. Re-evaluated
-            // every frame - see tests/oba/test_atmos_motion.cpp; this must stay
+            // every frame - see tests/ac3/oba/test_atmos_motion.cpp; this must stay
             // inside the loop, not be hoisted above it.
             const double t = static_cast<double>(start + ac3::kSamplesPerFrame) /
                              static_cast<double>(sample_rate);

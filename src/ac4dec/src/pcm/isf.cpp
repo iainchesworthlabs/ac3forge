@@ -5,7 +5,7 @@
 #include <cmath>
 #include <optional>
 
-#include "tables/isf_tables.hpp"
+#include "iclforge/ac4core/tables/isf_tables.hpp"
 
 namespace ac4::detail {
 namespace {

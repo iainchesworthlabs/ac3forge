@@ -3,13 +3,18 @@
 # Independent, dependency-free libraries in one package - see
 # cmake/InstallLibrary.cmake for why they're separate EXPORT sets sharing
 # this one Config file rather than a single combined export.
-include("${CMAKE_CURRENT_LIST_DIR}/forgeTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/baseTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/dspTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/objectsTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/renderTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/iec61937Targets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/ac3Targets.cmake")
 
-# ac3::signing is mandatory, like ac3::forge itself (no AC3FORGE_BUILD_<NAME> switch, so no
+# iclforge::signing is mandatory, like iclforge::ac3 itself (no AC3FORGE_BUILD_<NAME> switch, so no
 # if(EXISTS) guard needed the way the optional components below need one).
 include("${CMAKE_CURRENT_LIST_DIR}/signingTargets.cmake")
 
-# matroska::matroska, mp4::mp4 and mpegts::mpegts are all optional components
+# iclforge::matroska, iclforge::mp4 and iclforge::mpegts are all optional components
 # (AC3FORGE_BUILD_MATROSKA/AC3FORGE_BUILD_MP4/AC3FORGE_BUILD_MPEGTS) - each Targets file only
 # exists when that component was actually installed, e.g. a vcpkg install() built without a
 # given feature (see cmake/InstallLibrary.cmake's header comment; each of the three maps onto
@@ -29,7 +34,7 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/iabTargets.cmake")
 endif()
 # admTargets/admbridgeTargets.cmake, when present, each define ONLY a *_shared target (never
 # *_static) - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM block and
-# src/ac3adm/CMakeLists.txt's header comment for why ac3adm/admbridge are shared-only, unlike
+# src/adm/CMakeLists.txt's header comment for why ac3adm/admbridge are shared-only, unlike
 # every other component here.
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/admTargets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/admTargets.cmake")
@@ -41,7 +46,7 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/iamfTargets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/iamfTargets.cmake")
 endif()
 # The AC-4 inspector, decoder, encoder and core (AC3FORGE_BUILD_AC4), one export set under ac4::
-# - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_AC4 block. ac4::core is there only when the
+# - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_AC4 block. iclforge::ac4core is there only when the
 # static decoder and encoder are, which link it.
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/ac4Targets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/ac4Targets.cmake")
@@ -51,78 +56,78 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/capiTargets.cmake")
 endif()
 
 # A package built with the default AC3FORGE_INSTALL_BOTH_LINKAGES=ON (the direct-build/CPack
-# SDK) has both ac3::forge_static and ac3::forge_shared and deliberately gets no bare ac3::forge
+# SDK) has both iclforge::ac3_static and iclforge::ac3_shared and deliberately gets no bare iclforge::ac3
 # here - there's no ambient BUILD_SHARED_LIBS to resolve against, so a consumer must pick one
 # explicitly (see docs/library/index.md). A package built with that option OFF (a vcpkg install,
 # which only ever installs one linkage per triplet - see cmake/InstallLibrary.cmake) has no such
 # ambiguity: recreate the same bare-name convenience the in-tree build gets, for whichever one
-# variant is actually present. Same treatment for matroska::matroska, mp4::mp4 and
-# mpegts::mpegts - each guarded on its own TARGET check, since any of the three may be
+# variant is actually present. Same treatment for iclforge::matroska, iclforge::mp4 and
+# iclforge::mpegts - each guarded on its own TARGET check, since any of the three may be
 # entirely absent (its *Targets.cmake never included above) rather than merely single-linkage.
-if(TARGET ac3::forge_shared AND NOT TARGET ac3::forge_static)
-    add_library(ac3::forge ALIAS ac3::forge_shared)
-elseif(TARGET ac3::forge_static AND NOT TARGET ac3::forge_shared)
-    add_library(ac3::forge ALIAS ac3::forge_static)
+if(TARGET iclforge::ac3_shared AND NOT TARGET iclforge::ac3_static)
+    add_library(iclforge::ac3 ALIAS iclforge::ac3_shared)
+elseif(TARGET iclforge::ac3_static AND NOT TARGET iclforge::ac3_shared)
+    add_library(iclforge::ac3 ALIAS iclforge::ac3_static)
 endif()
-if(TARGET ac3::signing_shared AND NOT TARGET ac3::signing_static)
-    add_library(ac3::signing ALIAS ac3::signing_shared)
-elseif(TARGET ac3::signing_static AND NOT TARGET ac3::signing_shared)
-    add_library(ac3::signing ALIAS ac3::signing_static)
+if(TARGET iclforge::signing_shared AND NOT TARGET iclforge::signing_static)
+    add_library(iclforge::signing ALIAS iclforge::signing_shared)
+elseif(TARGET iclforge::signing_static AND NOT TARGET iclforge::signing_shared)
+    add_library(iclforge::signing ALIAS iclforge::signing_static)
 endif()
-if(TARGET matroska::matroska_shared AND NOT TARGET matroska::matroska_static)
-    add_library(matroska::matroska ALIAS matroska::matroska_shared)
-elseif(TARGET matroska::matroska_static AND NOT TARGET matroska::matroska_shared)
-    add_library(matroska::matroska ALIAS matroska::matroska_static)
+if(TARGET iclforge::matroska_shared AND NOT TARGET iclforge::matroska_static)
+    add_library(iclforge::matroska ALIAS iclforge::matroska_shared)
+elseif(TARGET iclforge::matroska_static AND NOT TARGET iclforge::matroska_shared)
+    add_library(iclforge::matroska ALIAS iclforge::matroska_static)
 endif()
-if(TARGET mp4::mp4_shared AND NOT TARGET mp4::mp4_static)
-    add_library(mp4::mp4 ALIAS mp4::mp4_shared)
-elseif(TARGET mp4::mp4_static AND NOT TARGET mp4::mp4_shared)
-    add_library(mp4::mp4 ALIAS mp4::mp4_static)
+if(TARGET iclforge::mp4_shared AND NOT TARGET iclforge::mp4_static)
+    add_library(iclforge::mp4 ALIAS iclforge::mp4_shared)
+elseif(TARGET iclforge::mp4_static AND NOT TARGET iclforge::mp4_shared)
+    add_library(iclforge::mp4 ALIAS iclforge::mp4_static)
 endif()
-if(TARGET mpegts::mpegts_shared AND NOT TARGET mpegts::mpegts_static)
-    add_library(mpegts::mpegts ALIAS mpegts::mpegts_shared)
-elseif(TARGET mpegts::mpegts_static AND NOT TARGET mpegts::mpegts_shared)
-    add_library(mpegts::mpegts ALIAS mpegts::mpegts_static)
+if(TARGET iclforge::mpegts_shared AND NOT TARGET iclforge::mpegts_static)
+    add_library(iclforge::mpegts ALIAS iclforge::mpegts_shared)
+elseif(TARGET iclforge::mpegts_static AND NOT TARGET iclforge::mpegts_shared)
+    add_library(iclforge::mpegts ALIAS iclforge::mpegts_static)
 endif()
-if(TARGET ac3iab::ac3iab_shared AND NOT TARGET ac3iab::ac3iab_static)
-    add_library(ac3iab::ac3iab ALIAS ac3iab::ac3iab_shared)
-elseif(TARGET ac3iab::ac3iab_static AND NOT TARGET ac3iab::ac3iab_shared)
-    add_library(ac3iab::ac3iab ALIAS ac3iab::ac3iab_static)
+if(TARGET iclforge::iab_shared AND NOT TARGET iclforge::iab_static)
+    add_library(iclforge::iab ALIAS iclforge::iab_shared)
+elseif(TARGET iclforge::iab_static AND NOT TARGET iclforge::iab_shared)
+    add_library(iclforge::iab ALIAS iclforge::iab_static)
 endif()
-if(TARGET iamf::iamf_shared AND NOT TARGET iamf::iamf_static)
-    add_library(iamf::iamf ALIAS iamf::iamf_shared)
-elseif(TARGET iamf::iamf_static AND NOT TARGET iamf::iamf_shared)
-    add_library(iamf::iamf ALIAS iamf::iamf_static)
+if(TARGET iclforge::iamf_shared AND NOT TARGET iclforge::iamf_static)
+    add_library(iclforge::iamf ALIAS iclforge::iamf_shared)
+elseif(TARGET iclforge::iamf_static AND NOT TARGET iclforge::iamf_shared)
+    add_library(iclforge::iamf ALIAS iclforge::iamf_static)
 endif()
-if(TARGET ac4::ac4_shared AND NOT TARGET ac4::ac4_static)
-    add_library(ac4::ac4 ALIAS ac4::ac4_shared)
-elseif(TARGET ac4::ac4_static AND NOT TARGET ac4::ac4_shared)
-    add_library(ac4::ac4 ALIAS ac4::ac4_static)
+if(TARGET iclforge::ac4_shared AND NOT TARGET iclforge::ac4_static)
+    add_library(iclforge::ac4 ALIAS iclforge::ac4_shared)
+elseif(TARGET iclforge::ac4_static AND NOT TARGET iclforge::ac4_shared)
+    add_library(iclforge::ac4 ALIAS iclforge::ac4_static)
 endif()
-if(TARGET ac4::decoder_shared AND NOT TARGET ac4::decoder_static)
-    add_library(ac4::decoder ALIAS ac4::decoder_shared)
-elseif(TARGET ac4::decoder_static AND NOT TARGET ac4::decoder_shared)
-    add_library(ac4::decoder ALIAS ac4::decoder_static)
+if(TARGET iclforge::ac4dec_shared AND NOT TARGET iclforge::ac4dec_static)
+    add_library(iclforge::ac4dec ALIAS iclforge::ac4dec_shared)
+elseif(TARGET iclforge::ac4dec_static AND NOT TARGET iclforge::ac4dec_shared)
+    add_library(iclforge::ac4dec ALIAS iclforge::ac4dec_static)
 endif()
-if(TARGET ac4::encoder_shared AND NOT TARGET ac4::encoder_static)
-    add_library(ac4::encoder ALIAS ac4::encoder_shared)
-elseif(TARGET ac4::encoder_static AND NOT TARGET ac4::encoder_shared)
-    add_library(ac4::encoder ALIAS ac4::encoder_static)
+if(TARGET iclforge::ac4enc_shared AND NOT TARGET iclforge::ac4enc_static)
+    add_library(iclforge::ac4enc ALIAS iclforge::ac4enc_shared)
+elseif(TARGET iclforge::ac4enc_static AND NOT TARGET iclforge::ac4enc_shared)
+    add_library(iclforge::ac4enc ALIAS iclforge::ac4enc_static)
 endif()
-if(TARGET ac3::forge_c_shared AND NOT TARGET ac3::forge_c_static)
-    add_library(ac3::forge_c ALIAS ac3::forge_c_shared)
-elseif(TARGET ac3::forge_c_static AND NOT TARGET ac3::forge_c_shared)
-    add_library(ac3::forge_c ALIAS ac3::forge_c_static)
+if(TARGET iclforge::c_shared AND NOT TARGET iclforge::c_static)
+    add_library(iclforge::c ALIAS iclforge::c_shared)
+elseif(TARGET iclforge::c_static AND NOT TARGET iclforge::c_shared)
+    add_library(iclforge::c ALIAS iclforge::c_static)
 endif()
 
-# Single-branch, unlike every alias above: ac3adm::ac3adm_static/ac3::admbridge_static are never
+# Single-branch, unlike every alias above: iclforge::adm_static/iclforge::admbridge_static are never
 # installed here (shared-only export, see admTargets.cmake's own comment just above), so there is
 # no elseif() case to handle - if the _shared target exists at all, the bare alias always means it.
-if(TARGET ac3adm::ac3adm_shared)
-    add_library(ac3adm::ac3adm ALIAS ac3adm::ac3adm_shared)
+if(TARGET iclforge::adm_shared)
+    add_library(iclforge::adm ALIAS iclforge::adm_shared)
 endif()
-if(TARGET ac3::admbridge_shared)
-    add_library(ac3::admbridge ALIAS ac3::admbridge_shared)
+if(TARGET iclforge::admbridge_shared)
+    add_library(iclforge::admbridge ALIAS iclforge::admbridge_shared)
 endif()
 
 check_required_components(ac3forge)

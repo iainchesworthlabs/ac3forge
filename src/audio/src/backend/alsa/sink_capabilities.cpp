@@ -1,4 +1,4 @@
-#include "ac3/audio/sink_capabilities.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
 
 // The ALSA EDID/ELD backend (play/monitor follow mode). CMake compiles this directory's
 // sink_capabilities.cpp on the same host that gets passthrough.cpp's real

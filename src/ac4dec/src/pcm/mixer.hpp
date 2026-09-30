@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "pcm/aspx.hpp"
 
 // Mixing a presentation's substreams (ETSI TS 103 190-1 V1.4.1 clause 6.2.16,

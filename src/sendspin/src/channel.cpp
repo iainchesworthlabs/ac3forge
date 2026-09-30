@@ -1,4 +1,4 @@
-#include "ac3/sendspin/channel.hpp"
+#include "iclforge/sendspin/channel.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -8,9 +8,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/frames.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/frames.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 namespace ac3::sendspin {
 

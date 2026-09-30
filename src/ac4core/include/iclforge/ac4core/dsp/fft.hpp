@@ -1,0 +1,79 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <span>
+#include <vector>
+
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
+
+// A complex FFT for every length of the form 2^a * 3^b * 5^c, which covers
+// every transform AC-4 needs: an inverse MDCT of N spectral lines runs an
+// N/2-point transform (ETSI TS 103 190-1 V1.4.1 clause 5.5.2, Pseudocode 61),
+// and the fifteen block lengths of clause 5.5.3 (2 048 down to 96 at 44.1
+// and 48 kHz, twice and four times those at 96 and 192 kHz) put N/2 between
+// 48 and 8 192.
+//
+// Stockham autosort, decimation in frequency: one pass per radix, radix 4
+// first, then 2, 3 and 5, with the twiddle factors of every pass computed
+// once, in double, when the plan is built. Both directions are unscaled, as
+// Pseudocode 61 is: forward is sum_n x[n] e^(-2 pi i kn/L), inverse the same
+// with +i.
+//
+// Written against a scalar type (planning/ac4.md, "Arithmetic"); only double
+// is instantiated until the float and fixed-point tiers arrive.
+
+namespace ac4::detail::dsp {
+
+template <typename Real>
+class Fft {
+   public:
+    using Complex = ac4::detail::dsp::Complex<Real>;
+
+    // A length with a prime factor above 5, or 0, gives a plan that is not
+    // valid() and transforms nothing.
+    explicit Fft(std::size_t length);
+
+    [[nodiscard]] bool valid() const noexcept { return valid_; }
+    [[nodiscard]] std::size_t length() const noexcept { return length_; }
+
+    // In place. `data` must hold length() values. The first two forms work in a
+    // buffer of the plan's own, made by the first call; the others work in
+    // `scratch`, which must hold length() values and which the caller can share
+    // among plans that never run at once, so the plan holds none.
+    void forward(std::span<Complex> data) { run(data, own_work(), false); }
+    void inverse(std::span<Complex> data) { run(data, own_work(), true); }
+    void forward(std::span<Complex> data, std::span<Complex> scratch) { run(data, scratch, false); }
+    void inverse(std::span<Complex> data, std::span<Complex> scratch) { run(data, scratch, true); }
+
+   private:
+    struct Stage {
+        int radix = 0;
+        std::size_t n = 0;       // the sub-transform length this pass splits
+        std::size_t stride = 0;  // how many sub-transforms run side by side
+        std::size_t twiddle = 0; // offset of this pass's factors in twiddles_
+    };
+
+    [[nodiscard]] std::span<Complex> own_work() {
+        if (work_.size() != length_) {
+            work_.resize(length_);
+        }
+        return work_;
+    }
+    void run(std::span<Complex> data, std::span<Complex> work, bool inverse);
+
+    std::size_t length_ = 0;
+    bool valid_ = false;
+    std::vector<Stage> stages_;
+    // For each pass, w^(p*k) for p < n/radix and k < radix, with w = e^(-2 pi i/n).
+    std::vector<Complex> twiddles_;
+    // e^(-2 pi i j/3) and e^(-2 pi i j/5), the radix-3 and radix-5 butterflies' roots.
+    std::array<Complex, 5> roots3_{};
+    std::array<Complex, 5> roots5_{};
+    std::vector<Complex> work_;
+};
+
+extern template class Fft<Real>;
+
+}  // namespace ac4::detail::dsp

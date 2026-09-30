@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/pairing.hpp"
+#include "iclforge/sendspin/pairing.hpp"
 
 // Pairing tokens (pairing.md, Pairing Token): RFC 4648 base32 without padding,
 // with 2 transliterated to 9 so a token needs only QR alphanumeric characters.

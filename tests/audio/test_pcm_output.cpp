@@ -7,9 +7,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/audio/pcm_output.hpp"
-#include "ac3/audio/speakers.hpp"
-#include "ac3/core/layout.hpp"
+#include "iclforge/audio/pcm_output.hpp"
+#include "iclforge/audio/speakers.hpp"
+#include "iclforge/base/layout.hpp"
 
 // ac3::audio::PcmOutput's two decisions, against fake device records
 // (src/audio/src/pcm_output.cpp): how wide to open the stream, and which

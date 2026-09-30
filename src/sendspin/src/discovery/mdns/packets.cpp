@@ -15,7 +15,7 @@
 
 #include <mdns.h>
 
-#include "ac3/sendspin/discovery.hpp"
+#include "iclforge/sendspin/discovery.hpp"
 
 namespace ac3::sendspin::discovery::mdns_packets {
 

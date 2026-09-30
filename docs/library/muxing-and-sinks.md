@@ -574,7 +574,7 @@ the ones `fragment` would have built. The initialization segment differs in exac
 `mvhd`/`tkhd`/`mdhd` carry duration 0, since a live session does not know its total (ISO/IEC
 14496-12 §8.8.2 provides `mehd` for the fragmented movie that *does*). That is the same
 concession `matroska::Writer` makes with EBML's unknown-size Segment and its omitted Duration.
-Both halves are asserted in `tests/containers/test_fmp4.cpp`, the init segment by patching the
+Both halves are asserted in `tests/ac3/test_fmp4.cpp`, the init segment by patching the
 three duration fields back and then requiring full byte equality.
 
 ```cpp

@@ -11,8 +11,8 @@
 #include <system_error>
 #include <vector>
 
-#include "ac3/audio/audio_backend.hpp"
-#include "ac3/version.hpp"
+#include "iclforge/audio/audio_backend.hpp"
+#include "iclforge/ac3/version.hpp"
 #include "adm/atmos_adm.hpp"
 #include "commands/analysis.hpp"
 #include "commands/atmos.hpp"

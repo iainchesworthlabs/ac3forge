@@ -1,0 +1,277 @@
+#pragma once
+
+#include <cstdint>
+#include <expected>
+#include <memory>
+#include <span>
+#include <vector>
+
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/dsp/qmf.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/export.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/objects/placement.hpp"
+#include "iclforge/render/spatial.hpp"
+
+// Dolby Atmos in Dolby Digital Plus: objects in, one ordinary-looking 5.1
+// E-AC-3 stream out.
+//
+// The whole trick is that there is only one audio payload. Objects are panned
+// into a 5.1 bed the way they always were, and that bed is what a legacy
+// decoder plays - unchanged, at full level, complete. Alongside it ride two
+// pieces of side data in an EMDF container: OAMD saying where each object is,
+// and JOC saying how to pull the objects back out of the bed. A decoder that
+// knows about neither is not merely tolerated, it is the design target.
+//
+// What JOC can and cannot do follows from that. The reconstruction is a linear
+// combination of the five bed channels, so objects that landed on the same
+// channels with the same gains cannot be separated again, however different
+// they sounded going in. Elevation in particular costs nothing in the bed -
+// the ring has no height speakers - so two objects at one azimuth and
+// different heights are indistinguishable in the downmix, and the matrix can
+// only split their shared energy in proportion to how loud each one is. That
+// is not a defect of this encoder; it is what a parametric object coder is.
+
+namespace ac3::oba {
+
+struct AtmosConfig {
+    SampleRate sample_rate = SampleRate::k48000;
+    // The metadata competes with the mantissas for the same frame, so an
+    // object stream needs headroom a plain 5.1 stream does not.
+    std::uint32_t bitrate_kbps = 448;
+    int dialnorm = 31;
+    // Index into joc::kNumBands (Table 50). Nine bands resolve the spectrum
+    // about as finely as a five-channel downmix can justify; more bands cost
+    // codewords without giving the matrix anything new to say.
+    int num_bands_idx = 4;
+    // §6.3.3.7's finer quantizer: half the step, roughly one more bit per
+    // coefficient. Worth it when objects are nearly degenerate and the matrix
+    // entries are large.
+    bool fine_quant = false;
+    // Whether to emit the EMDF object container (OAMD + JOC) into block 0's
+    // skip field. On by default: object-aware decoders get the objects, and a
+    // decoder that ignores the container plays the 5.1 bed underneath it - the
+    // design target described above.
+    //
+    // Turn it OFF to omit the container entirely. That is the only way to keep
+    // the 5.1 bed playable on a decoder that VALIDATES the emdf_protection
+    // field (TS 102 366 §H.2.2.4 leaves its contents "implementation dependent
+    // and not defined", so a third-party encoder cannot satisfy such a check):
+    // such a decoder treats the container's sync word as a commitment to object
+    // decoding and refuses the whole stream if the field does not validate,
+    // rather than falling back. With no container there is no sync word to find,
+    // so it decodes the bed as ordinary 5.1. The choice is objects-or-nothing,
+    // never both - which is why turning this off also drops TS 103 420 §8.3.1's
+    // addbsi object marker (flag_ec3_extension_type_a and §8.3.2.2's complexity
+    // index): that marker is what every reader keys an object layer off
+    // (ac3::io::scan, the dec3 box's Atmos extension, an HLS CHANNELS=.../JOC
+    // attribute, FFmpeg's "Dolby Digital Plus + Dolby Atmos" profile), and a
+    // stream with no container has no object layer to advertise. The 5.1 MIX is
+    // the same either way (the same float bed is encoded); the decoded samples
+    // are not bit-identical across the two, because the frame's rate control
+    // gives the freed skip-field and addbsi bytes back to the mantissas, so the
+    // bed here is encoded at slightly higher fidelity. See encode_frame().
+    bool emit_object_metadata = true;
+    // §7.9.4 fast N/4-FFT forward MDCT (see mdct.hpp's mdct512_forward), on
+    // by default - see eac3::FrameConfig::fast_mdct, which is what the bed's
+    // own independent substream actually reads; this also drives the
+    // band_energy transforms behind the JOC reconstruction-matrix solve, so
+    // the whole object encode rides one transform path. false forces the
+    // direct §8.2.3.2 reference form everywhere, for validation.
+    bool fast_mdct = true;
+    // Which domain the reconstruction matrix is ESTIMATED in - and so, in
+    // practice, which domain it is correct in. §6.6.6 puts the decoder's
+    // reconstruction in §7.1's 64-band complex QMF, and every licensed
+    // decoder runs it there, so joc::Domain::kQmf is the only setting whose
+    // matrices mean on the other side what they meant here.
+    // joc::Domain::kMdctBand is what this encoder did before the filterbank
+    // existed: the same solve over 256 MDCT bins, four to a subband. It is
+    // cheaper, and it is what the in-repo decoder reconstructs best from
+    // when it is also told kMdctBand, but the agreement is between this
+    // encoder and this decoder only - a licensed decoder has no such
+    // setting, and reads every matrix as a QMF one.
+    //
+    // Default kQmf since the evidence was measured: +5.1 dB mean per-object
+    // SNR through a QMF reconstruction, for +0.26 ms/frame of encode
+    // (0.55 -> 0.80 ms of a 32 ms budget, four objects).
+    joc::Domain joc_domain = joc::Domain::kQmf;
+    // §E2.3.1.4 short syncframes, same field and same meaning as
+    // eac3::FrameConfig::numblkscod (default 3 = six blocks; 0/1/2 shorten
+    // the frame to 1/2/3 blocks - 256/512/768 samples). The object layer
+    // scales with it: encode_frame() takes that many samples per object, the
+    // OAMD update's ramp_duration covers exactly one (shortened) frame, and
+    // the JOC matrix interpolates across the frame's own QMF timeslots (four
+    // per block) rather than a fixed 24. AHT never conflicts here the way it
+    // does for a plain eac3-encode `auto` - this encoder's bed substream
+    // does not use AHT - so every code is expressible at every setting.
+    int numblkscod = 3;
+};
+
+// Selects AtmosEncoder's other constructor: a channel-based-immersive (CBI)
+// bed programme instead of dynamic objects. `bed` is the Table 12 standard
+// assignment (ac3::oba::bed::k* flags, OR'd together - e.g. bed::k51 |
+// bed::kTflTfr | bed::kTblTbr for a 5.1.4 bed) this encoder declares; the
+// programme's dynamic_objects is always 0. A distinct type rather than a
+// second int/uint16_t constructor parameter so the two constructors cannot be
+// mixed up at the call site or by overload resolution.
+struct BedProgram {
+    std::uint16_t bed = 0;
+};
+
+class ICLFORGE_AC3_EXPORT AtmosEncoder {
+   public:
+    AtmosEncoder(const AtmosConfig& config, int objects);
+    // Channel-based-immersive construction: see BedProgram and
+    // encode_bed_frame() below. dynamic_object_count() reads 0 afterwards -
+    // program().bed is what is non-zero - and encode_frame() must not be
+    // called on an encoder built this way (nor encode_bed_frame() on one
+    // built with the constructor above); each asserts the other's shape.
+    AtmosEncoder(const AtmosConfig& config, BedProgram bed);
+    // Declared (and defined in atmos.cpp, where Impl below is complete)
+    // rather than implicit/inline-defaulted: a dllexport class generates
+    // every implicit special member whether or not called, and the
+    // unique_ptr member makes the implicit copy deleted - which is fine -
+    // but move-assignment's implicit reset() needs Impl complete, so it
+    // cannot stay inline once Impl is only forward-declared here. Move-only,
+    // same as eac3::AccessUnitEncoder below, which Impl holds by value.
+    ~AtmosEncoder();
+    AtmosEncoder(const AtmosEncoder&) = delete;
+    AtmosEncoder& operator=(const AtmosEncoder&) = delete;
+    AtmosEncoder(AtmosEncoder&&) noexcept;
+    AtmosEncoder& operator=(AtmosEncoder&&) noexcept;
+
+    // objects: one mono span per object, in the order the encoder was
+    // constructed with, each carrying one frame of samples -
+    // kSamplesPerFrame by default, or 256/512/768 under a short
+    // AtmosConfig::numblkscod. Returns one E-AC-3 access unit: a single
+    // independent substream carrying the 5.1 bed, with the EMDF container in
+    // its aux data.
+    [[nodiscard]] std::expected<eac3::AccessUnit, FrameError> encode_frame(
+        std::span<const std::span<const float>> objects,
+        std::span<const ObjectPlacement> placement);
+
+    // One frame of a CBI bed's audio - only on an encoder built with the
+    // BedProgram constructor. `channels` is exactly bed_channel_count(program())
+    // spans of one frame each (kSamplesPerFrame by default, 256/512/768 under a
+    // short AtmosConfig::numblkscod, same as encode_frame), one per
+    // bed_labels(program().bed) entry IN THAT ORDER - the LFE included, at
+    // whichever position §5.6.1.1.4's Table 12 order puts it (build_payload's
+    // own anchored-object loop assumes this same order, and it is also DEE's
+    // own cbi_wav channel order for the layouts this project has verified
+    // against a real DEE stream - see docs/concepts/atmos-joc.md).
+    //
+    // Every channel but the LFE is folded onto the 5-channel ring at its own
+    // FIXED, speaker-implied position (computed once, at construction - a bed
+    // channel's position comes from its label, never from a per-frame
+    // argument, exactly as TS 103 420 §5.5.9 has it) and reconstructed by JOC
+    // from there, the same reconstruction-matrix math encode_frame() runs for
+    // a dynamic object. The LFE feeds the bed's own LFE channel directly,
+    // unpanned and at unity gain - it is not a JOC object either way
+    // (§6.3.2.2 bypasses it for a dynamic-object programme and for a bed one
+    // alike).
+    //
+    // Returns one E-AC-3 access unit, same as encode_frame(): a single
+    // independent substream carrying the 5.1 bed, with program.bed != 0 and
+    // program.dynamic_objects == 0 in its EMDF object container.
+    [[nodiscard]] std::expected<eac3::AccessUnit, FrameError> encode_bed_frame(
+        std::span<const std::span<const float>> channels);
+
+    // bare-metal probe harness. The OBJECT path's budget - what this encoder is for.
+    //
+    // Its transform term is the bed's own MDCT overlap PLUS
+    // joc::reconstruction_delay(config_.joc_domain) - not a fixed number,
+    // because which domain the decoder reconstructs in is this encoder's own
+    // config_.joc_domain choice (whatever this encoder estimated its
+    // matrices in is the only domain a decoder gets a correct answer
+    // reconstructing them in). Domain::kQmf costs dsp::kQmfDelay
+    // (kQmfTaps - kQmfHop = 576) - JOC does not code objects, it codes a
+    // matrix that pulls them back out of the decoded bed, and TS 103 420
+    // §7.1 puts that reconstruction in a 64-band complex QMF domain rather
+    // than the MDCT's, because a critically-sampled real transform relies on
+    // time-domain alias cancellation between neighbouring blocks and a
+    // per-frame matrix breaks that assumption (see ac3/dsp/qmf.hpp's own
+    // header). Domain::kMdctBand, the path that predates the filterbank,
+    // costs only another 256 - the same MDCT/IMDCT overlap as the bed's own,
+    // applied a second time over already-decoded PCM - which is cheaper but
+    // agrees with no decoder outside this project (see joc.hpp's own
+    // comment on Domain). With the default kQmf, an object sample lags its
+    // input by kTransformDelaySamples + dsp::kQmfDelay = 832. Nothing in
+    // this encoder can shorten either figure: the reconstruction transform
+    // is the decoder's, and it is what the tool is.
+    //
+    // With emit_object_metadata off there is no container, no JOC and no
+    // second transform of either kind - the stream is plain 5.1 - so the
+    // budget collapses to bed_latency()'s.
+    [[nodiscard]] LatencyBudget latency() const;
+    [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
+
+    // The 5.1 BED's budget: what a legacy decoder that ignores the container
+    // hears, and the figure to use when the objects are not being
+    // reconstructed. One transform overlap, like any other E-AC-3 stream.
+    [[nodiscard]] LatencyBudget bed_latency() const;
+
+    // Dynamic objects only. The program has one more - the bed's LFE - which
+    // is what the free object_count(Program) counts.
+    [[nodiscard]] int dynamic_object_count() const;
+    [[nodiscard]] const Program& program() const;
+
+    // The 5.1 bed the last frame encoded, in AC-3 coded order (L, C, R, Ls,
+    // Rs, LFE). Exposed because it is what a legacy decoder hears, and that
+    // is the thing most worth checking.
+    [[nodiscard]] std::span<const std::vector<float>> bed() const;
+    // The reconstruction matrix the last frame transmitted, before
+    // quantization. Its channel axis is JOC's order (Table 53), not AC-3's.
+    [[nodiscard]] const joc::FrameParameters& parameters() const;
+
+   private:
+    // Every private data member - config, the bed encoder, the per-object
+    // gain ramps, the QMF analysis filterbanks, all of it - lives behind
+    // this one pimpl, following the same pattern as
+    // ac3::io::WavStreamReader/Writer and ac3::FrameEncoder. Impl is defined
+    // in atmos.cpp.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+// Energy of one object per JOC parameter band, over the whole frame - the
+// per-object input AtmosEncoder::encode_frame's reconstruction-matrix solve
+// consumes. `mapping` is joc::kSubbandToBand's row for the active band count
+// (Table 54); `out` receives one energy value per band and must outlive the
+// call. `fast` selects the §7.9.4 fast forward MDCT for the internal
+// transforms, the same parameter mdct512_forward itself takes and defaulted
+// the same way (direct/reference); AtmosEncoder::encode_frame passes its
+// AtmosConfig::fast_mdct through here, so an object stream's band energies
+// ride the same transform path as its bed. Declared here purely for
+// kernel-level benchmarking - it is not part of the object-encoding API
+// above and no caller outside this library should need it directly.
+ICLFORGE_AC3_EXPORT void band_energy(std::span<const float> signal,
+                                 std::span<const std::uint8_t, 64> mapping,
+                                 std::span<double> out, bool fast = false);
+
+// The same measurement in §7.1's 64-band complex QMF - one subband per
+// Table 54 entry instead of four MDCT bins standing in for one, and 24
+// timeslots of it per frame instead of six blocks. `analysis` is this
+// signal's own filterbank and must be the SAME object frame after frame:
+// a filterbank restarted every frame would see 640 samples of ramp-in each
+// time and under-read the energy at both ends.
+//
+// Absolute scale differs from band_energy's and does not matter: the solve
+// that consumes these regularizes relative to their own trace, so a common
+// factor across all objects cancels out of the matrix entirely.
+//
+// One approximation is left in, and it is in the timing rather than the
+// domain. The filterbank emits the timeslot whose window ENDS on the
+// samples just pushed, so a frame's worth of pushes yields the timeslots
+// running from kQmfDelaySlots before the frame to kQmfDelaySlots before its
+// end - while a decoder applies this frame's matrix to the timeslots that
+// reconstruct this frame. Closing that 576-sample gap would need a frame of
+// encoder lookahead; what it costs instead is that the energy average is
+// taken over a window shifted 576 samples early.
+ICLFORGE_AC3_EXPORT void qmf_band_energy(std::span<const float> signal,
+                                     std::span<const std::uint8_t, 64> mapping,
+                                     std::span<double> out, dsp::QmfAnalysis& analysis);
+
+}  // namespace ac3::oba

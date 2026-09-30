@@ -1036,7 +1036,7 @@ qc options (qc; any order, after the positional arguments):
 reporting it; `preset=all` checks every one below in a single run. Each preset states a target integrated
 loudness, a symmetric tolerance around it (in LU) and a true-peak ceiling (a one-sided limit, never exceeded —
 not a tolerance band). The numbers are defined in `ac3::meta::qc_preset()`
-([`ac3/meta/qc.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/forge/include/ac3/meta/qc.hpp)), each
+([`ac3/meta/qc.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3/include/iclforge/ac3/meta/qc.hpp)), each
 read directly from its own primary source rather than recalled from memory:
 
 | Preset | Loudness | Max true peak | Source (version, date) |
@@ -1307,7 +1307,7 @@ Optional positional arguments, when omitted:
   name what already happens.
 - **`fast-imdct=off`**: the decode-side mirror. `decode` runs §7.9.4 step 3 — the inverse
   transform's one O(N²) part — through an FFT by default. The kernel
-  (`src/forge/src/core/fft_kernel.hpp`) is radix-4 throughout, ending on a single radix-2 stage
+  (`src/dsp/include/iclforge/dsp/detail/fft_kernel.hpp`) is radix-4 throughout, ending on a single radix-2 stage
   only where log2(P) is odd — P = 128 and P = 512, not P = 64. The quality evidence that made it
   the default: 7.8e-14 max peak-normalized relative error against the direct evaluation at the
   transform level, and over 180-second real-material decodes 214.9 dB SNR agreement for AC-3 /

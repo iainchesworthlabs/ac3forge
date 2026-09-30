@@ -41,16 +41,16 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/joc.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
 #include "ac4_bench.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "real_audio.hpp"
 
 namespace {

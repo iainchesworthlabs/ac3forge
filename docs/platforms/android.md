@@ -45,7 +45,7 @@ adb -s <shield-ip>:5555 shell am start -n com.ac3forge.shield/.MainActivity
 
 ## What's reused, what's new
 
-`ac3::forge` (`src/forge/`) — the codec, `AtmosEncoder`, IEC 61937 framing — is fully
+`ac3::forge` (`src/ac3/`) — the codec, `AtmosEncoder`, IEC 61937 framing — is fully
 platform-independent and is linked into the app **unmodified**, via a thin wrapper
 `CMakeLists.txt` (`apps/android/app/src/main/cpp/CMakeLists.txt`) that `add_subdirectory()`s
 the real repo root rather than duplicating its target definitions. `ac3::audio` (`src/audio/`)
@@ -82,8 +82,8 @@ regardless (it never muxes a file).
 The same libc++ implements only `<charconv>`'s **integer** `from_chars`, not its floating-point
 overloads — a gap {fmt} does not close, since {fmt} only formats text *out*, the same direction
 `std::format` goes. Library code that has to turn text *into* a `double` therefore uses `strtod`
-instead (`src/forge/src/encoder/plan.cpp`, `encoder/assignment.cpp`,
-`src/forge/src/oba/scene_text.hpp`, which also serves the object-scene file formats' parsing —
+instead (`src/ac3/src/encoder/plan.cpp`, `encoder/assignment.cpp`,
+`src/objects/src/scene_text.hpp`, which also serves the object-scene file formats' parsing —
 the write side of that same file goes through `fmt::format`, like everything else, once {fmt}
 made that safe). The macOS wheel's own deployment target has the identical `from_chars` gap
 (`'from_chars' is unavailable: introduced in macOS 26.0`) — {fmt}'s own vendored formatting avoids
@@ -233,7 +233,7 @@ locked, audio never did). `app/build.gradle.kts`'s `debug` build type now overri
 profiling (`AC3FORGE_ENABLE_TRACY`) traced the rest of the gap to `mdct_forward_core`
 recomputing `std::cos()` fresh every iteration inside an O(N²) loop, while the *inverse*
 transform beside it already used a precomputed table; fixing the forward transform to match
-(`ForwardCosTable` in `src/forge/src/core/mdct.cpp`) gave a further ~3.8x. This is a real
+(`ForwardCosTable` in `src/ac3/src/core/mdct.cpp`) gave a further ~3.8x. This is a real
 library-level fix — bit-exact against the full test suite, benefiting every platform's Atmos
 encode path, not an Android-specific workaround. With both fixes the Shield holds an exact
 32.0 ms/frame cadence with zero underruns. See [Performance trend](../performance-trend.md) for
@@ -393,7 +393,7 @@ believing anything the panel says.
   NOT Dolby's. §7.1 fixes the filterbank's shape and does not publish its coefficients". A
   per-object SNR here would hold constant precisely the variable most likely to explain a
   disagreement with a real decoder, which is worse than useless: it would look like evidence.
-- **The decoded position is an algebraic identity, not a discovery.** `tests/oba/test_atmos.cpp`
+- **The decoded position is an algebraic identity, not a discovery.** `tests/ac3/oba/test_atmos.cpp`
   asserts that the decoded position equals the encoder's own `quantize_xy`/`quantize_z` of the
   intended one, exactly. It cannot surprise unless the bitstream is broken.
 - **So what is it showing?** The **quantiser**. Height is sent as a sign bit plus four bits of
@@ -818,7 +818,7 @@ like any other non-experimental job.
     `./gradlew :app:connectedDebugAndroidTest` against a GitHub-hosted API-30 x86_64 emulator
     (KVM acceleration is x86/x86_64-only on those runners, so the debug build type targets
     x86_64 alongside the real device's arm64-v8a; release stays arm64-v8a-only). Before this,
-    nothing ran any Kotlin-level test at all — only `tests/backend/android/`'s C++-side
+    nothing ran any Kotlin-level test at all — only `tests/audio/backend/android/`'s C++-side
     device-free logic (burst sizing, carrier rate, render-device construction) on the ordinary
     desktop-hosted CTest suite. Every emulator case is a **"no receiver attached" contract
     check**: the emulator runs `-noaudio`, which makes `isDirectPlaybackSupported` deterministically

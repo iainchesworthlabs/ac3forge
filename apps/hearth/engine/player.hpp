@@ -11,11 +11,11 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/render/identify.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/routing.hpp"
-#include "ac3/render/trim_delay.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/render/identify.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/routing.hpp"
+#include "iclforge/render/trim_delay.hpp"
 #include "ac3_transcoder.hpp"
 #include "bitstream_sink.hpp"
 #include "decoder_settings.hpp"

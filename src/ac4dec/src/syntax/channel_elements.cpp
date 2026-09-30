@@ -6,7 +6,7 @@
 #include <initializer_list>
 #include <utility>
 
-#include "tables/sfb_tables.hpp"
+#include "iclforge/ac4core/tables/sfb_tables.hpp"
 
 namespace ac4::detail {
 

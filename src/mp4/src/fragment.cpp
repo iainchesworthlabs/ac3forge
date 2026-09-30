@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "isobmff_detail.hpp"
-#include "mp4/mp4.hpp"
+#include "iclforge/mp4/mp4.hpp"
 
 // Fragmented MP4 (ISO/IEC 14496-12 §8.8) / CMAF (ISO/IEC 23000-19). See
 // mp4.hpp's own comment on fragment() for the overall shape; this file is

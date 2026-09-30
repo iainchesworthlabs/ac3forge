@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # The pybind11 extension backing the `ac3forge` PyPI package (Python on PyPI).
-# Bound straight onto ac3::forge's existing C++ classes (pybind11-direct, per
+# Bound straight onto iclforge::ac3's existing C++ classes (pybind11-direct, per
 # the roadmap's own dependency note) - no intermediate C API, unlike a normal
 # third-party-language binding, because pybind11 talks C++ ABI directly.
 #
@@ -15,12 +15,12 @@ find_package(pybind11 CONFIG REQUIRED)
 pybind11_add_module(_ac3forge src/ac3forge_ext/bindings.cpp)
 
 # Deliberately not ac3::warnings, unlike every other in-tree consumer of
-# ac3::forge (examples/, tests/, apps/cli, apps/gui) - that target makes this
+# iclforge::ac3 (examples/, tests/, apps/cli, apps/gui) - that target makes this
 # project's OWN warnings fatal, and pybind11's vendored headers are not this
 # project's code to hold to that bar. A real external consumer wrapping
-# ac3::forge would not inherit ac3::warnings either; this target is exactly
+# iclforge::ac3 would not inherit ac3::warnings either; this target is exactly
 # that kind of consumer, just an in-tree one.
-target_link_libraries(_ac3forge PRIVATE ac3::forge)
+target_link_libraries(_ac3forge PRIVATE iclforge::ac3)
 
 # The extension's own include root, so its translation units reach each other
 # by plain filename (binding_support.hpp, optional_modules.hpp) regardless of
@@ -38,23 +38,23 @@ target_include_directories(_ac3forge PRIVATE src/ac3forge_ext)
 # three hundred lines of its module body. It is now a directory-selected
 # translation unit per group, on exactly the same condition - the shape every
 # other either/or in this tree uses (src/core/transform/{reference,stub}/,
-# src/internal/avx2/none/, tests/core/avx2/{present,absent}/) and the one
+# src/internal/avx2/none/, tests/ac3/core/avx2/{present,absent}/) and the one
 # tools/checks/check_platform_macros.ps1 exists to keep. See
 # src/ac3forge_ext/optional_modules.hpp for the seam itself.
-if(TARGET matroska::matroska AND TARGET mp4::mp4 AND TARGET mpegts::mpegts)
-    target_link_libraries(_ac3forge PRIVATE matroska::matroska mp4::mp4 mpegts::mpegts)
+if(TARGET iclforge::matroska AND TARGET iclforge::mp4 AND TARGET iclforge::mpegts)
+    target_link_libraries(_ac3forge PRIVATE iclforge::matroska iclforge::mp4 iclforge::mpegts)
     target_sources(_ac3forge PRIVATE src/ac3forge_ext/containers/present/containers_module.cpp)
 else()
     target_sources(_ac3forge PRIVATE src/ac3forge_ext/containers/absent/containers_module.cpp)
 endif()
-if(TARGET ac3::signing)
-    target_link_libraries(_ac3forge PRIVATE ac3::signing)
+if(TARGET iclforge::signing)
+    target_link_libraries(_ac3forge PRIVATE iclforge::signing)
     target_sources(_ac3forge PRIVATE src/ac3forge_ext/signing/present/signing_module.cpp)
 else()
     target_sources(_ac3forge PRIVATE src/ac3forge_ext/signing/absent/signing_module.cpp)
 endif()
-if(TARGET ac4::ac4 AND TARGET ac4::decoder AND TARGET ac4::encoder)
-    target_link_libraries(_ac3forge PRIVATE ac4::ac4 ac4::decoder ac4::encoder)
+if(TARGET iclforge::ac4 AND TARGET iclforge::ac4dec AND TARGET iclforge::ac4enc)
+    target_link_libraries(_ac3forge PRIVATE iclforge::ac4 iclforge::ac4dec iclforge::ac4enc)
     target_sources(_ac3forge PRIVATE src/ac3forge_ext/ac4/present/ac4_module.cpp)
 else()
     target_sources(_ac3forge PRIVATE src/ac3forge_ext/ac4/absent/ac4_module.cpp)
@@ -65,7 +65,7 @@ endif()
 # next to python/src/ac3forge/__init__.py inside the wheel.
 #
 # COMPONENT python, paired with pyproject.toml's install.components = ["python"]: the root
-# CMakeLists.txt's include(InstallLibrary) always installs the full ac3::forge SDK (headers,
+# CMakeLists.txt's include(InstallLibrary) always installs the full iclforge::ac3 SDK (headers,
 # .lib/.dll, CMake package config) under COMPONENT library/libruntime, unconditionally - it has
 # no idea this configure is a Python build and shouldn't skip its normal job for every OTHER
 # consumer (the windows-msvc CI leg, a real `cmake --install`/CPack release). Restricting

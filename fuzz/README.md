@@ -207,7 +207,7 @@ sets per-exec cost here, so that is the likely reason rather than anything
 about the repair itself. Recorded as observed; the coverage columns are the
 result this change is claiming.
 The mutator's re-stamping half also has its own portable unit test
-(`tests/core/test_crc_mutator.cpp`), so a crc1 solved wrongly would fail the
+(`tests/ac3/core/test_crc_mutator.cpp`), so a crc1 solved wrongly would fail the
 ordinary test suite on every platform rather than only showing up as a
 coverage number that quietly stopped improving.
 
@@ -245,7 +245,7 @@ count.
 
 ### What instrumenting them found
 
-Each is fixed, with a test in `tests/ac4/` or `tests/ac3iab/` that fails on the
+Each is fixed, with a test in `tests/ac4/` or `tests/iab/` that fails on the
 old code under ASan+UBSan:
 
 - **Before any mutation**, replaying the committed AC-4 corpus: a
@@ -380,7 +380,7 @@ not. See the next section for how that was closed.
 
 ### Re-pinned to a maintained fork
 
-`src/ac3adm/CMakeLists.txt` now fetches libbw64 from a maintained fork,
+`src/adm/CMakeLists.txt` now fetches libbw64 from a maintained fork,
 `github.com/pwnified/libbw64`, rather than the EBU's own repository - see that
 file's own header comment for why, and `docs/library/adm.md`/`docs/threat-model.md`
 for what changed. Two consequences for this harness:
@@ -416,7 +416,7 @@ docs claimed:
   first vendored, and no test had ever exercised the 64-bit half of that claim
   until this pass added one - which is what surfaced this.
 
-`src/ac3adm/patch_libbw64.cmake` carves out both; see its own comment for the
+`src/adm/patch_libbw64.cmake` carves out both; see its own comment for the
 reasoning and for the upstream PRs proposing the same fixes, which would let
 each half of this patch be deleted once it lands.
 
@@ -546,7 +546,7 @@ crc1 **precedes** the region it protects: A/52 §7.10.1 requires the register
 to read zero after the first 5/8 of the syncframe has been shifted through,
 and says outright that crc1 is not the CRC of that region. It has to be
 solved for, through the GF(2) polynomial inverse `ac3::solve_leading_crc`
-implements - the same call `src/forge/src/encoder/encoder.cpp` makes, down to
+implements - the same call `src/ac3/src/encoder/encoder.cpp` makes, down to
 its crc2 == `kSyncWord` avoidance step (a crc2 that happens to equal 0x0B77
 would make the frame's own tail look like the start of the next syncframe, so
 the encoder flips crcrsv and recomputes; a mutator skipping that would hand

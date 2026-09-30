@@ -6,8 +6,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/base64url.hpp"
-#include "ac3/sendspin/handshake.hpp"
+#include "iclforge/sendspin/base64url.hpp"
+#include "iclforge/sendspin/handshake.hpp"
 #include "sendspin/sendspin_test_support.hpp"
 
 // The handshake phase's messages. These parse bytes from a peer nobody has

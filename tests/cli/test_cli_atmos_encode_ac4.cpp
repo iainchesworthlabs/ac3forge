@@ -15,13 +15,13 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/oba/scene.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/objects/scene.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_encode_core.hpp"
 #include "ac4_objects_core.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 // ac3cli atmos-encode with codec=ac4 (planning/ac4.md, I5b): the source's channels
 // as AC-4 objects, run against the real binary and held to the steps the page takes

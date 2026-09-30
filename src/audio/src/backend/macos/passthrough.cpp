@@ -1,4 +1,4 @@
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // The macOS passthrough backend. CMake compiles this directory's
 // passthrough.cpp under APPLE and another platform directory's everywhere
@@ -104,9 +104,9 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/playback_counter.hpp"
-#include "ac3/audio/ring_buffer.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/audio/playback_counter.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 #include "coreaudio_names.hpp"
 #include "coreaudio_support.hpp"
 

@@ -5,7 +5,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4/syntax.hpp"
+#include "iclforge/ac4/syntax.hpp"
 #include "bit_writer.hpp"
 #include "frame/metadata.hpp"
 #include "frame/toc_writer.hpp"

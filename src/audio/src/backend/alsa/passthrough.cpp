@@ -1,4 +1,4 @@
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // The ALSA passthrough backend. CMake compiles this directory's
 // passthrough.cpp on a Linux host whose libasound development headers are
@@ -72,10 +72,10 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/playback_counter.hpp"
-#include "ac3/audio/ring_buffer.hpp"
-#include "ac3/audio/speakers.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/audio/playback_counter.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
+#include "iclforge/audio/speakers.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 #include "alsa_support.hpp"
 #include "candidates.hpp"
 #include "device_names.hpp"

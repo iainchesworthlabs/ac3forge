@@ -11,16 +11,16 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/serving.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/render.hpp"
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/chunks.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/serving.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/render.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 // A test sink's output for _ac3forge_player@v1 (planning/hearth-sendspin-extension.md): each
 // stream's bursts decoded, AC-3 or E-AC-3 with any object layer, or AC-4, and rendered to the

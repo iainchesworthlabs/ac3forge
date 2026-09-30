@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake_session.hpp"
-#include "ac3/sendspin/server_store.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake_session.hpp"
+#include "iclforge/sendspin/server_store.hpp"
 #include "settings_model.hpp"
 
 // The pairing records Hearth keeps as a Sendspin server: the Settings page's

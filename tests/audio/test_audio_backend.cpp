@@ -4,12 +4,12 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/audio/capture.hpp"
-#include "ac3/audio/audio_backend.hpp"
-#include "ac3/audio/device_watcher.hpp"
-#include "ac3/audio/monitor.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/spatial.hpp"
+#include "iclforge/audio/capture.hpp"
+#include "iclforge/audio/audio_backend.hpp"
+#include "iclforge/audio/device_watcher.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/spatial.hpp"
 
 // The backend tree, tested from outside it.
 //

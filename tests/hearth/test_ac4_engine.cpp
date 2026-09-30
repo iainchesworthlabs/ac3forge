@@ -24,14 +24,14 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_stream.hpp"
 #include "ac4_stream_kinds.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "decoder_settings.hpp"
 #include "pcm_sink.hpp"
 #include "player.hpp"

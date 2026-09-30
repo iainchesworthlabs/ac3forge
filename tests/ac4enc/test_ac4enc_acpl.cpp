@@ -14,7 +14,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4/syntax.hpp"
+#include "iclforge/ac4/syntax.hpp"
 #include "acpl/acpl_syntax.hpp"
 #include "bit_reader.hpp"
 #include "bit_writer.hpp"

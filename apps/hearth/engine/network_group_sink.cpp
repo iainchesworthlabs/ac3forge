@@ -6,10 +6,10 @@
 #include <cmath>
 #include <utility>
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/server_host.hpp"
-#include "ac3/sendspin/session_driver.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/server_host.hpp"
+#include "iclforge/sendspin/session_driver.hpp"
 
 // The NetworkGroupSink over a real ac3::sendspin::Group: everything here is a
 // translation between the two interfaces, as passthrough_sink.cpp and

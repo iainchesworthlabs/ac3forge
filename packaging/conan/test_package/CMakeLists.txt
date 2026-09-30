@@ -12,4 +12,4 @@ find_package(ac3forge CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 
 add_executable(test_ac3forge src/test_ac3forge.cpp)
-target_link_libraries(test_ac3forge PRIVATE ac3::forge fmt::fmt)
+target_link_libraries(test_ac3forge PRIVATE iclforge::ac3 fmt::fmt)

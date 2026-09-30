@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "ajoc/ajoc_syntax.hpp"
 #include "asf/analysis.hpp"
 #include "asf/coder.hpp"

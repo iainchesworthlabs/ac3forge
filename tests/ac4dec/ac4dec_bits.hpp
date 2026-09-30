@@ -13,7 +13,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 namespace ac4dec_test {
 

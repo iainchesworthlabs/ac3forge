@@ -15,16 +15,16 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/render/layout.hpp"
-#include "ac3/sendspin/arbiter.hpp"
-#include "ac3/sendspin/discovery.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/pairing_flow.hpp"
-#include "ac3/sendspin/session.hpp"
-#include "ac3/sendspin/session_driver.hpp"
-#include "ac3/sendspin/state_roles.hpp"
-#include "ac3/sendspin/stream_roles.hpp"
-#include "ac3/sendspin/websocket.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/sendspin/arbiter.hpp"
+#include "iclforge/sendspin/discovery.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/pairing_flow.hpp"
+#include "iclforge/sendspin/session.hpp"
+#include "iclforge/sendspin/session_driver.hpp"
+#include "iclforge/sendspin/state_roles.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/websocket.hpp"
 #include "store.hpp"
 
 // ac3hearth-testsink: src/sendspin's player half as a program (planning/hearth-reference-player.md,

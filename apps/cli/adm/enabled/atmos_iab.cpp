@@ -10,9 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/admbridge/iab_bridge.hpp"
-#include "ac3iab/ac3iab.hpp"
-#include "ac3iab/mxf.hpp"
+#include "iclforge/admbridge/iab_bridge.hpp"
+#include "iclforge/iab/ac3iab.hpp"
+#include "iclforge/iab/mxf.hpp"
 
 // Compiled only when AC3FORGE_BUILD_ADM turned ac3iab::ac3iab/ac3::admbridge on (see
 // apps/cli/CMakeLists.txt) - see ../atmos_iab.hpp's own top comment for why this file, rather than

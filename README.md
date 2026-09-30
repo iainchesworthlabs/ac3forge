@@ -224,17 +224,17 @@ and where the raw-pointer boundaries are, the per-access-unit resource limits, a
 
 ```
 # the library — src/ is installable, apps/ consumes it and never the reverse
-src/forge/      ac3::forge — the AC-3, E-AC-3 and Atmos codec, GUI-free
+src/ac3/      ac3::forge — the AC-3, E-AC-3 and Atmos codec, GUI-free
 src/capi/       ac3forge_c — a plain-C11 surface over the AC-3, E-AC-3 and AC-4 encode/decode
                 cores, for bindings and callers that do not link C++23
-src/admbridge/  ac3::admbridge — maps the ADM object graph src/ac3adm parses onto the Atmos
+src/admbridge/  ac3::admbridge — maps the ADM object graph src/adm parses onto the Atmos
                 encoder's input
 src/signing/    ac3::signing — EMDF object signing, key supplied at runtime
 src/matroska/   matroska::matroska — a standalone MKV muxer, no ac3::forge dependency
 src/mp4/        mp4::mp4 — a standalone MP4/ISOBMFF muxer plus fMP4/CMAF + HLS/DASH, no ac3::forge dependency
 src/mpegts/     mpegts::mpegts — a standalone MPEG-2 Transport Stream muxer, no ac3::forge dependency
-src/ac3adm/     ac3adm::ac3adm — BW64/RF64 + Audio Definition Model reader (opt-in, needs Boost)
-src/ac3iab/     ac3iab::ac3iab — a standalone SMPTE ST 2098-2 (IAB) bitstream reader, codec-blind
+src/adm/     ac3adm::ac3adm — BW64/RF64 + Audio Definition Model reader (opt-in, needs Boost)
+src/iab/     ac3iab::ac3iab — a standalone SMPTE ST 2098-2 (IAB) bitstream reader, codec-blind
 src/ac4/        ac4::ac4 — a standalone AC-4 sync frame/TOC/presentation/substream inspector
 src/ac4dec/     ac4::decoder — an AC-4 decoder, from ETSI TS 103 190-1 and -2; no ac3::forge
                 dependency

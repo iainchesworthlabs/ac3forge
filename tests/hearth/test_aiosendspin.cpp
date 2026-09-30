@@ -20,14 +20,14 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/io/wav.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/noise.hpp"
-#include "ac3/sendspin/pairing_messages.hpp"
-#include "ac3/sendspin/server_host.hpp"
-#include "ac3/sendspin/server_store.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/noise.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/server_host.hpp"
+#include "iclforge/sendspin/server_store.hpp"
 
 // A4's exit with aiosendspin 9.1.1 (planning/hearth-reference-player.md, A4's exit;
 // planning/hearth-sendspin-extension.md, Decisions): the server's half, which

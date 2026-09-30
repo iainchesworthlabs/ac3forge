@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-#include "ac3/signing/signing_key.hpp"
+#include "iclforge/signing/signing_key.hpp"
 
 // The Shield app's rule, on the desktop (docs/platforms/windows-demo.md,
 // "Object signing"): the key is resolved at runtime from a path the user

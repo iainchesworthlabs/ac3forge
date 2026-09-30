@@ -6,7 +6,7 @@
 // decoded bed, so a reconstructed object comes out
 // oba::joc::reconstruction_delay() samples after the bed it was pulled from -
 // 576 under Domain::kQmf, 256 under Domain::kMdctBand (docs/library/decoding.md,
-// "Atmos objects lag the bed"; tests/decoder/test_latency.cpp measures both
+// "Atmos objects lag the bed"; tests/ac3/decoder/test_latency.cpp measures both
 // halves against the encoder's input). LayoutRenderer::render() places the
 // objects and passes the bed's LFE through beside them, so the LFE has to wait
 // for them.
@@ -29,17 +29,17 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/decoder/serving.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/render.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/serving.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/render.hpp"
 
 namespace {
 
@@ -56,7 +56,7 @@ constexpr std::uint16_t k71 =
     static_cast<std::uint16_t>(k51 | ac3::eac3::chanmap::k71Rear);
 
 constexpr int kFrames = 8;
-// Frame 3, as tests/decoder/test_latency.cpp places its marker: past every
+// Frame 3, as tests/ac3/decoder/test_latency.cpp places its marker: past every
 // encoder's and decoder's priming, and early enough that the longest delay
 // here still leaves the pulse well inside the stream.
 constexpr int kPulseAt = 3 * ac3::kSamplesPerFrame + 512;

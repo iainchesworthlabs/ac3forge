@@ -14,8 +14,8 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
 
 // ac3cli's 'atmos-adm' command (ADM BWF reader phase 3 of 3 - 's "ADM BWF reader
 // feeding the JOC encoder" entry; apps/cli/main.cpp's run_atmos_adm). Real, subprocess-level
@@ -340,7 +340,7 @@ TEST_CASE("ac3cli atmos-adm parses, bridges and encodes a real ADM BWF master en
         REQUIRE(decoded->has_value());
 
         // Check the last frame of each 3-frame hold, the same "settled, not mid-transition"
-        // convention tests/admbridge/test_adm_bridge.cpp's own flagship test (and tests/oba/test_atmos_motion.cpp's before
+        // convention tests/admbridge/test_adm_bridge.cpp's own flagship test (and tests/ac3/oba/test_atmos_motion.cpp's before
         // it) use.
         if (f != 2 && f != 5) {
             continue;

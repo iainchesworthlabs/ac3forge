@@ -8,7 +8,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/audio/resampler.hpp"
+#include "iclforge/audio/resampler.hpp"
 
 using ac3::audio::ClockDriftEstimator;
 using ac3::audio::DriftResampler;

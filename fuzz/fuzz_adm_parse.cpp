@@ -4,16 +4,16 @@
 #include <sstream>
 #include <string>
 
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
-// ac3adm::parse_bw64(std::istream&) (src/ac3adm/src/adm.cpp) - the BW64/RF64
+// ac3adm::parse_bw64(std::istream&) (src/adm/src/adm.cpp) - the BW64/RF64
 // container walk plus the ADM XML document inside <axml>.
 //
 // The widest untrusted surface in the tree by input language: a BW64 file is
 // chunk-structured binary carrying an arbitrary XML document, and both halves
 // come straight from whoever produced the file. It is also the one parser
 // here that is not clean-room - it delegates to the vendored libbw64 and
-// libadm (see src/ac3adm/CMakeLists.txt) - so a report from this harness may
+// libadm (see src/adm/CMakeLists.txt) - so a report from this harness may
 // land in third-party code rather than in ac3forge's own; that is worth
 // knowing either way, since the bytes reach it through an ac3forge API.
 //

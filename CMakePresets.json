@@ -208,7 +208,7 @@
     {
       "name": "coverage",
       "hidden": true,
-      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (coverage floors): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
+      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - iclforge::ac3, iclforge::audio, iclforge::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (coverage floors): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
       "cacheVariables": {
         "AC3FORGE_ENABLE_COVERAGE": "ON",
         "AC3FORGE_BUILD_CLI": "ON",
@@ -220,7 +220,7 @@
     {
       "name": "minimal-decoder",
       "hidden": true,
-      "description": "The minimum-footprint decoder profile: ONE decode-only static library (ac3::forge_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
+      "description": "The minimum-footprint decoder profile: ONE decode-only static library (iclforge::ac3_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_DECODER": "ON",
         "AC3FORGE_BUILD_HEARTH": "OFF",
@@ -242,7 +242,7 @@
     {
       "name": "shared-libs",
       "hidden": true,
-      "description": "BUILD_SHARED_LIBS=ON, proving ac3::forge_shared/matroska::matroska_shared actually work - not just that the CMake topology configures, but that every in-tree consumer (ac3cli/ac3gui/ac3tests/examples) links and runs against the real .so, including the one example that also needs matroska's .so alongside ac3forge's. For ac3tests that is checked rather than assumed: tools/checks/check_shared_forge_binding.sh fails the pass if the test binary binds an ac3:: symbol anywhere but libac3forge.so or carries a copy of the codec itself. The few tests that reach library internals (the AC-4 syntax cases, core/test_fixed32_ecpl.cpp) are built only against the static libraries, since a .so exports none of that. See .github/workflows/_build.yml's 'Configure, build and test with BUILD_SHARED_LIBS=ON' step, which runs this as an extra pass inside the existing linux-llvm leg rather than a new matrix entry - the same shape as the alsa_fallback step below it.",
+      "description": "BUILD_SHARED_LIBS=ON, proving iclforge::ac3_shared/iclforge::matroska_shared actually work - not just that the CMake topology configures, but that every in-tree consumer (ac3cli/ac3gui/ac3tests/examples) links and runs against the real .so, including the one example that also needs matroska's .so alongside ac3forge's. For ac3tests that is checked rather than assumed: tools/checks/check_shared_forge_binding.sh fails the pass if the test binary binds an ac3:: symbol anywhere but libac3forge.so or carries a copy of the codec itself. The few tests that reach library internals (the AC-4 syntax cases, core/test_fixed32_ecpl.cpp) are built only against the static libraries, since a .so exports none of that. See .github/workflows/_build.yml's 'Configure, build and test with BUILD_SHARED_LIBS=ON' step, which runs this as an extra pass inside the existing linux-llvm leg rather than a new matrix entry - the same shape as the alsa_fallback step below it.",
       "cacheVariables": {
         "BUILD_SHARED_LIBS": "ON"
       }
@@ -369,7 +369,7 @@
       "name": "config-linux-gcc-coverage",
       "inherits": [ "debug", "linux-gcc", "coverage", "core" ],
       "displayName": "Linux GCC Coverage",
-      "description": "AC3FORGE_BUILD_HEARTH is ON here (like everywhere else, via the root CMakeLists.txt default) with VCPKG_MANIFEST_FEATURES overridden to carry both opt-in features this leg wants (\"adm\" from the coverage fragment, plus \"hearth\") rather than just the one - src/sendspin and apps/hearth/engine link ac3::coverage the same way apps/cli does, so ac3::sendspin and apps/hearth get their own gated rows in tools/checks/coverage_report.sh alongside ac3adm/admbridge.",
+      "description": "AC3FORGE_BUILD_HEARTH is ON here (like everywhere else, via the root CMakeLists.txt default) with VCPKG_MANIFEST_FEATURES overridden to carry both opt-in features this leg wants (\"adm\" from the coverage fragment, plus \"hearth\") rather than just the one - src/sendspin and apps/hearth/engine link ac3::coverage the same way apps/cli does, so iclforge::sendspin and apps/hearth get their own gated rows in tools/checks/coverage_report.sh alongside ac3adm/admbridge.",
       "cacheVariables": {
         "AC3FORGE_BUILD_HEARTH": "ON",
         "VCPKG_MANIFEST_FEATURES": "adm;hearth"
@@ -378,7 +378,7 @@
     {
       "name": "minimal-encoder",
       "hidden": true,
-      "description": "The minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (ac3::forge_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/forge/minimal.cmake and docs/building.md.",
+      "description": "The minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (iclforge::ac3_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/ac3/minimal.cmake and docs/building.md.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_ENCODER": "ON",
         "AC3FORGE_BUILD_HEARTH": "OFF",
@@ -405,7 +405,7 @@
       "name": "config-linux-gcc-minimal-ac4",
       "inherits": [ "config-linux-gcc-minimal" ],
       "displayName": "Linux GCC minimum-footprint AC-4 decoder",
-      "description": "The decode profile carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: ac4::decoder, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4 --host. AC-4 shares nothing with ac3::forge, so the two probes are two builds. The AC-4 encoder is built for none of the parts.",
+      "description": "The decode profile carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: iclforge::ac4dec, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4 --host. AC-4 shares nothing with iclforge::ac3, so the two probes are two builds. The AC-4 encoder is built for none of the parts.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_AC4": "ON",
         "AC3FORGE_DECODE_SCALAR": "float"
@@ -446,7 +446,7 @@
       "name": "config-arm-none-eabi-minimal-ac4",
       "inherits": [ "config-arm-none-eabi-minimal" ],
       "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint AC-4 decoder",
-      "description": "The decoder preset above carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: ac4::decoder, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4. Its own build directory, since it is a different probe.",
+      "description": "The decoder preset above carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: iclforge::ac4dec, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4. Its own build directory, since it is a different probe.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_AC4": "ON",
         "AC3FORGE_DECODE_SCALAR": "float"

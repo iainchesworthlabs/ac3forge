@@ -17,7 +17,7 @@
 // from esp_chip_info(), esp_psram and CONFIG_SOC_CPU_HAS_FPU; everything below
 // is turning them into fixed English sentences, which is exactly the part
 // worth being able to get wrong on a laptop rather than only on a board -
-// tests/io/test_hardware_info.cpp exercises every chip this component has
+// tests/ac3/io/test_hardware_info.cpp exercises every chip this component has
 // ever built for from synthetic facts, no board involved. Nothing here reads
 // a Kconfig symbol or an ESP-IDF header by name, the same discipline
 // sink_plan.hpp's own header comment explains for I2S_LL_SLOT_FRAME_BIT_MAX.

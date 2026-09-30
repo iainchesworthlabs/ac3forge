@@ -15,9 +15,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/spatial/spatial.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/render/spatial.hpp"
 
 int main() {
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history

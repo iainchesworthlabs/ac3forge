@@ -6,15 +6,15 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 #include "ac4_bench.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "real_audio.hpp"
 
 // Real-time throughput regression guard.
@@ -24,7 +24,7 @@
 // platform backend) - traced with Tracy to the forward MDCT recomputing
 // std::cos() fresh inside an O(N^2) loop on every call, instead of using a
 // precomputed table the way the inverse transform right next to it already
-// did (see src/forge/src/core/mdct.cpp's ForwardCosTable). Every other test in
+// did (see src/ac3/src/core/mdct.cpp's ForwardCosTable). Every other test in
 // this suite asserts correctness, not throughput, so nothing would have
 // caught a regression like that - this file exists specifically to fail
 // loudly if the codec ever stops being faster than real time again.

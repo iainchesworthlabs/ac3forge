@@ -8,10 +8,10 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 
 // PassthroughSink's playback position, pause and flush against a real
 // receiver (src/audio/src/backend/*/passthrough.cpp).

@@ -6,9 +6,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/sendspin/chunks.hpp"
-#include "ac3/sendspin/frames.hpp"
-#include "ac3/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/sendspin/frames.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
 
 // ac3::sendspin::Reassembler, parse_player_chunk and parse_burst_chunk
 // (src/sendspin/src/frames.cpp, chunks.cpp) - everything a decrypted Sendspin

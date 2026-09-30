@@ -1,4 +1,4 @@
-#include "ac3/audio/spatial.hpp"
+#include "iclforge/audio/spatial.hpp"
 
 // The Windows spatial backend. CMake compiles this directory's spatial.cpp on
 // Windows and one of the "no backend" stubs everywhere else, so there is no
@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/audio/ring_buffer.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
 
 namespace ac3::audio {
 

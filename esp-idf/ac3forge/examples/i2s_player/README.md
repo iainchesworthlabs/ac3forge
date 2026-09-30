@@ -109,7 +109,7 @@ at `-O2`, and the console on USB-Serial-JTAG (`sdkconfig.hw`):
 | Interleave buffer (one frame, static) | 6,144 |
 
 The component has compiled the decoder's hot sources at `-O2` by default since
-2026-09-10, as the footprint probe always did (`src/forge/minimal.cmake` lists
+2026-09-10, as the footprint probe always did (`src/ac3/minimal.cmake` lists
 them): 9.9 ms a frame here against 11.5 at `-Os`, for 7.6 KB of flash and no
 SRAM. A project that needs the flash back sets `AC3FORGE_MINIMAL_HOT_O2` off
 before `project()`.

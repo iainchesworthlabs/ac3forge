@@ -188,7 +188,7 @@ stable across PipeWire versions and session managers. `play` falls back to the l
 `outputs` already uses wherever no descriptor can be read.
 
 **Not verified on hardware.** Like the passthrough gap above, the parser
-(`parse_eld_proc_text`, `tests/backend/alsa/test_alsa_eld_parsing.cpp`) is unit-tested against
+(`parse_eld_proc_text`, `tests/audio/backend/alsa/test_alsa_eld_parsing.cpp`) is unit-tested against
 synthesized fixture text matching `/proc/asound` output found in the wild, but this
 development loop has no Linux box with an HDMI/DisplayPort sink attached to confirm the file
 path resolution and field parsing against. It is also not yet taught to disambiguate multiple
@@ -385,7 +385,7 @@ A separate job, `linux-appimage`, is nightly-only as well: an `ubuntu:22.04` con
 a second container that never had Qt installed at all — see [AppImage](#appimage) above for what
 it builds and why.
 
-The ALSA backend has tests of its own (`tests/backend/alsa/`, `tests/audio/test_alsa_null_backend.cpp`
+The ALSA backend has tests of its own (`tests/audio/backend/alsa/`, `tests/audio/test_alsa_null_backend.cpp`
 and `tests/cli/test_cli_live_alsa.cpp`) on top of the base suite, and they run only in a build that
 selected ALSA: a Linux build with the GUI on and `libasound2-dev` absent runs the same suite as
 Windows without them. `ctest --preset test-linux-gcc-debug` (or whichever preset matches your

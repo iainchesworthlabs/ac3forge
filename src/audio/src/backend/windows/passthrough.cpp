@@ -1,11 +1,11 @@
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // The Windows passthrough backend. CMake compiles this directory's
 // passthrough.cpp on Windows and another platform directory's everywhere
 // else, so there is no #ifdef - the file's path is what says "Windows".
 //
 // WIN32_LEAN_AND_MEAN and NOMINMAX are set by the WIN32 block of
-// src/forge/CMakeLists.txt, not by #defines here: they configure <windows.h> for
+// src/ac3/CMakeLists.txt, not by #defines here: they configure <windows.h> for
 // every translation unit that pulls it in, and one setting in one place cannot
 // disagree with itself the way per-file guards can.
 
@@ -25,10 +25,10 @@
 #include <future>
 #include <thread>
 
-#include "ac3/audio/playback_counter.hpp"
-#include "ac3/audio/ring_buffer.hpp"
-#include "ac3/audio/speakers.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/audio/playback_counter.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
+#include "iclforge/audio/speakers.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 #include "windows_support.hpp"
 
 namespace ac3::audio {

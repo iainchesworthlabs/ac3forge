@@ -16,7 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // The handful of things capture.cpp, monitor.cpp and passthrough.cpp all need
 // from libpipewire, kept in one place so the three cannot drift - the same

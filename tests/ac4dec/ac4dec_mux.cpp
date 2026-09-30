@@ -7,10 +7,10 @@
 #include <string_view>
 #include <utility>
 
-#include "ac4/ac4.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4/ac4_toc_writer.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "bit_writer.hpp"
 #include "frame/toc_writer.hpp"
 

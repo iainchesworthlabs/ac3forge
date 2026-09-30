@@ -339,7 +339,7 @@ jobs:
       # A third run of the same gate, against a decoder built float32 rather
       # than double (minimum-footprint decoder profile). Unlike mode=reference above this cannot be a
       # token: AC3FORGE_DECODE_SCALAR is a BUILD option
-      # (src/forge/src/internal/scalar/), so it needs its own binary.
+      # (src/ac3/variants/), so it needs its own binary.
       #
       # Why it is worth a second build. Every fixture both bare-metal legs
       # decode goes through the float32 path, and until this existed nothing
@@ -463,7 +463,7 @@ jobs:
           python3 tools/checks/check_probe_hashes.py --expected tests/golden/ac4-probe-pcm-hashes.json "$RUNNER_TEMP/ac4-host.txt"
 
       # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
-      # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
+      # (src/ac3/variants/encode-scalar-{float64,float32}/) is the axis the minimum-footprint
       # profile encodes on for the ESP32-S3, and a float encoder is a different
       # thing from a float decoder: it makes its own decisions at its own
       # thresholds and rounds its own coefficients, so it produces a different,
@@ -999,10 +999,10 @@ jobs:
           echo "aarch64 Crucible package: ${debs[0]}"
 
       # Proves BUILD_SHARED_LIBS=ON actually works before it ships in a real
-      # release: ac3::forge_shared/matroska::matroska_shared existing and
+      # release: iclforge::ac3_shared/iclforge::matroska_shared existing and
       # configuring cleanly (already exercised by every leg's normal
       # config-<preset> build, since both variants are always built
-      # regardless of BUILD_SHARED_LIBS - see src/forge/CMakeLists.txt) is not
+      # regardless of BUILD_SHARED_LIBS - see src/ac3/CMakeLists.txt) is not
       # the same claim as every in-tree consumer actually linking and
       # running against the real .so - ac3cli/ac3tests/every example,
       # including mux_mkv, the one that needs libmatroska.so alongside
@@ -1047,7 +1047,12 @@ jobs:
           ctest --preset test-linux-llvm-shared -LE Performance
           bash tools/checks/check_shared_forge_binding.sh \
             build/config-linux-llvm-shared/bin/ac3tests \
-            build/config-linux-llvm-shared/src/forge/libac3forge.so
+            build/config-linux-llvm-shared/src/ac3/libiclforge_ac3.so \
+            build/config-linux-llvm-shared/src/base/libiclforge_base.so \
+            build/config-linux-llvm-shared/src/dsp/libiclforge_dsp.so \
+            build/config-linux-llvm-shared/src/objects/libiclforge_objects.so \
+            build/config-linux-llvm-shared/src/render/libiclforge_render.so \
+            build/config-linux-llvm-shared/src/iec61937/libiclforge_iec61937.so
 
       # A build tree is not an installed package. tests/capi and the C examples compile against
       # the build tree, where every generated header is already on the include path whether or

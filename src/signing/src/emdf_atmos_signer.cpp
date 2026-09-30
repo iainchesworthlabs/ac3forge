@@ -1,4 +1,4 @@
-#include "ac3/signing/emdf_atmos_signer.hpp"
+#include "iclforge/signing/emdf_atmos_signer.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/emdf/frame_layout.hpp"
+#include "iclforge/ac3/emdf/frame_layout.hpp"
 #include "hmac_sha256.hpp"
 
 namespace ac3::signing {

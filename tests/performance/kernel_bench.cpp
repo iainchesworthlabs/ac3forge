@@ -36,21 +36,21 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"
-#include "ac3/core/eac3_tools.hpp"
-#include "ac3/core/exponents.hpp"
-#include "ac3/core/fft.hpp"
-#include "ac3/core/mantissas.hpp"
-#include "ac3/core/mdct.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/dsp/qmf.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/oba/joc_tables.hpp"
-#include "dsp/fft.hpp"
-#include "dsp/mdct.hpp"
-#include "dsp/qmf.hpp"
+#include "iclforge/ac3/core/bitalloc.hpp"
+#include "iclforge/ac3/core/eac3_tools.hpp"
+#include "iclforge/ac3/core/exponents.hpp"
+#include "iclforge/dsp/fft.hpp"
+#include "iclforge/ac3/core/mantissas.hpp"
+#include "iclforge/ac3/core/mdct.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/dsp/qmf.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/ac3/oba/joc_tables.hpp"
+#include "iclforge/ac4core/dsp/fft.hpp"
+#include "iclforge/ac4core/dsp/mdct.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 #include "real_audio.hpp"
 
 namespace {
@@ -545,7 +545,7 @@ int main(int argc, char** argv) {
             g_sink += imdct_out[256];
         }));
 
-        // The project's own complex type (src/ac4core/src/dsp/complex.hpp), which
+        // The project's own complex type (src/ac4core/include/iclforge/ac4core/dsp/complex.hpp), which
         // the AC-4 transforms take since D14a in place of std::complex.
         std::vector<dsp::Complex<double>> fft_source(512);
         for (std::size_t i = 0; i < fft_source.size(); ++i) {

@@ -78,8 +78,8 @@ Two headers and about a dozen lines to encode a frame. This is excerpted from
 with the error handling elided:
 
 ```cpp
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
 
 // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history state.
 auto encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{

@@ -16,8 +16,8 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 
 // The encode front ends (apps/cli/commands/encode.cpp: encode, eac3-encode,
 // their src=/map= multi-source twins in apps/cli/multi_source.cpp, and

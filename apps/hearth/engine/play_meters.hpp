@@ -6,10 +6,10 @@
 #include <span>
 #include <vector>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/render/layout.hpp"
 
 // Meters on what the output plays (planning/hearth-reference-player.md,
 // Monitor): a level meter per output slot - peak, hold, RMS and a clip latch,

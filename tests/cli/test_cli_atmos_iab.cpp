@@ -15,8 +15,8 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
 
 // ac3cli's 'atmos-iab' command (IAB reader phase 3 of 3 - 's "IAB (SMPTE ST 2098-2)
 // reader" entry; apps/cli/commands/atmos.cpp's run_atmos_iab). Real, subprocess-level integration

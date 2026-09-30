@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <utility>
 
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 
 // See play_meters.hpp.
 

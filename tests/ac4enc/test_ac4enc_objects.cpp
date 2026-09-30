@@ -31,10 +31,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4/ac4.hpp"
-#include "ac4/syntax.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4/syntax.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 namespace {
 

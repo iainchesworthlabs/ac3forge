@@ -1,4 +1,4 @@
-#include "ac3/audio/live_positions.hpp"
+#include "iclforge/audio/live_positions.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -8,7 +8,7 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/oba/scene_osc.hpp"
+#include "iclforge/objects/scene_osc.hpp"
 #include "net/udp_socket.hpp"
 
 namespace ac3::audio {

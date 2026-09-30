@@ -15,10 +15,10 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 // ac3cli's 'atmos-cbi' command (apps/cli/commands/atmos.cpp's run_atmos_cbi): a channel-based-
 // immersive bed WAV straight to DD+ JOC E-AC-3 with program.bed != 0 and 0 dynamic objects. Same
@@ -26,7 +26,7 @@
 // file's own top comment for why (main.cpp compiles everything into one anonymous-namespace
 // binary with no library surface run_atmos_cbi's own logic could be linked into this test binary
 // and called directly). This file's job is the CLI wiring (arg parsing, layout resolution, WAV
-// channel order -> AtmosEncoder::encode_bed_frame) - tests/oba/test_atmos_cbi.cpp already proves
+// channel order -> AtmosEncoder::encode_bed_frame) - tests/ac3/oba/test_atmos_cbi.cpp already proves
 // the reconstruction math itself against every bed channel's own tone.
 
 namespace fs = std::filesystem;
@@ -54,7 +54,7 @@ std::string read_log(const fs::path& log) {
 }
 
 // DEE's own cbi_wav channel order for 5.1.4 (tools/generators/gen_object_fixture.py) - see
-// tests/oba/test_atmos_cbi.cpp's own header comment for the full provenance.
+// tests/ac3/oba/test_atmos_cbi.cpp's own header comment for the full provenance.
 struct BedChannel {
     const char* label;
     double frequency;

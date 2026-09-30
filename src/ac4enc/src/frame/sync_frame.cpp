@@ -3,7 +3,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // Part 1 Annex G.3 and G.4 (Part 2 Annex G refers to it): the sync word, the
 // frame_size, the raw frame and, after sync word 0xAC41, a CRC over frame_size

@@ -79,12 +79,12 @@ dependencies:
 # reference anything above it. The component is a thin wrapper that
 # add_subdirectory()s the repo root, so packing it directly produces an archive
 # of three files that installs and then fails to configure. A files: list naming
-# ../../src/forge would not help: those paths are silently ignored, and the pack
+# ../../src/ac3 would not help: those paths are silently ignored, and the pack
 # still succeeds.
 #
 # So the packing script stages a copy of the library INTO the component and
 # packs that. The component's own CMakeLists finds its root either way - beside
-# it when packed, two levels up in a checkout - by looking for src/forge rather
+# it when packed, two levels up in a checkout - by looking for src/ac3 rather
 # than being told.
 #
 #   python tools/packaging/pack_esp_component.py --version <v> --verify

@@ -1,4 +1,4 @@
-// The AC-4 shared core's transforms (src/ac4core/src/dsp), each against a
+// The AC-4 shared core's transforms (src/ac4core/include/iclforge/ac4core/dsp), each against a
 // direct evaluation of the formula it computes: the FFT against the DFT, the
 // inverse MDCT against a verbatim transcription of ETSI TS 103 190-1 V1.4.1
 // Pseudocodes 60 to 63 and against the cosine sum they come to, the forward
@@ -24,17 +24,17 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4/detail/real.hpp"
-#include "dsp/complex.hpp"
-#include "dsp/fft.hpp"
-#include "dsp/kbd.hpp"
-#include "dsp/mdct.hpp"
-#include "dsp/qmf.hpp"
-#include "dsp/qmf_constants.hpp"
-#include "dsp/qmf_kernels.hpp"
-#include "dsp/qmf_vector.hpp"
-#include "dsp/synthesis.hpp"
-#include "tables/qmf_tables.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/fft.hpp"
+#include "iclforge/ac4core/dsp/kbd.hpp"
+#include "iclforge/ac4core/dsp/mdct.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/qmf_constants.hpp"
+#include "iclforge/ac4core/dsp/qmf_kernels.hpp"
+#include "iclforge/ac4core/dsp/qmf_vector.hpp"
+#include "iclforge/ac4core/dsp/synthesis.hpp"
+#include "iclforge/ac4core/tables/qmf_tables.hpp"
 
 namespace {
 

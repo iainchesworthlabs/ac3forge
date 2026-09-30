@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "bit_reader.hpp"
-#include "huffman_codebook.hpp"
+#include "iclforge/ac4core/huffman_codebook.hpp"
 #include "syntax/context.hpp"
 
 // Advanced joint object coding's syntax, ETSI TS 103 190-2 V1.3.1 clause
@@ -17,7 +17,7 @@
 // 6.3.6.
 //
 // Syntax only: the Huffman indices as read. Differential decoding,
-// dequantisation and the reconstruction are src/ac4core/src/ajoc's and
+// dequantisation and the reconstruction are src/ac4core/include/iclforge/ac4core/ajoc's and
 // src/ac4dec/src/pcm/objects.cpp's.
 
 namespace ac4::detail {

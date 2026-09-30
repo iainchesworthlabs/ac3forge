@@ -97,13 +97,13 @@ already shipped and nobody had connected it to this problem.
 **What exists.** Roadmap IO4 built the streaming fMP4/CMAF fragmenter and IO5 added the DASH JOC
 signalling:
 
-- `src/mp4/include/mp4/mp4.hpp` — `FragmentWriter`, `MediaSegment`, `SegmentInfo`,
+- `src/mp4/include/iclforge/mp4/mp4.hpp` — `FragmentWriter`, `MediaSegment`, `SegmentInfo`,
   `FragmentOptions`.
-- `src/mp4/include/mp4/hls.hpp` — `build_hls_master_playlist`, `build_hls_media_playlist`,
+- `src/mp4/include/iclforge/mp4/hls.hpp` — `build_hls_master_playlist`, `build_hls_media_playlist`,
   `hls_codec_string`.
-- `src/mp4/include/mp4/dash.hpp` — the dynamic MPD, with TS 103 420 D.2's supplemental
+- `src/mp4/include/iclforge/mp4/dash.hpp` — the dynamic MPD, with TS 103 420 D.2's supplemental
   properties and the `ceao` compatibility brand.
-- `src/mp4/include/mp4/reader.hpp` — **the read direction**, so a sink can pull an access unit
+- `src/mp4/include/iclforge/mp4/reader.hpp` — **the read direction**, so a sink can pull an access unit
   back out of a segment without new demuxing code.
 - `apps/common/fmp4_folder_writer.hpp` — and this is the piece that matters most. It writes
   `init.mp4`, one `segment<N>.m4s` per closed fragment, and `audio.m3u8`, `master.m3u8` and

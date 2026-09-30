@@ -21,11 +21,11 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "iamf/iamf.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/iamf/iamf.hpp"
 
 namespace {
 

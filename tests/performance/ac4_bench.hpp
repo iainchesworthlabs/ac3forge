@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "real_audio.hpp"
 
 namespace perf::ac4_bench {

@@ -4,8 +4,8 @@
 #include <cmath>
 #include <optional>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 namespace ac3::apps {
 namespace {

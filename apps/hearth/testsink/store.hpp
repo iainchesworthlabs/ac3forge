@@ -10,10 +10,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/handshake_session.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/handshake_session.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 // What a test sink keeps between runs, in its state directory: its X25519 identity, its pairing
 // PSK, its pairing records and the last-playback server (pairing.md, Pairing Records;

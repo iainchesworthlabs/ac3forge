@@ -1,40 +1,43 @@
 #!/usr/bin/env bash
-# Prove that an executable built with BUILD_SHARED_LIBS=ON runs its ac3::forge code from
-# libac3forge.so, not from a second copy of the codec that reached it another way.
+# Prove that an executable built with BUILD_SHARED_LIBS=ON runs its iclforge::ac3 code from
+# the shared libraries of the codec, not from a second copy of it that reached the executable
+# another way.
 #
 # The shared-libs pass (config-linux-llvm-shared, .github/workflows/_ci-linux.yml) exists to show
 # that every in-tree consumer links and runs against the real .so. For ac3tests it did not: the
 # C API library embeds the codec as a static archive, exported its C++ symbols, and put the archive
-# on the link line of whatever linked it, all of them ahead of libac3forge.so. Every test still
+# on the link line of whatever linked it, all of them ahead of the codec's .so. Every test still
 # passed, on code that was never in the .so. A passing test suite cannot show this, which is why
 # this looks at the binding itself.
 #
-# Two questions, both about the ac3:: C++ symbols libac3forge.so exports:
+# The codec is six libraries (iclforge_ac3, base, dsp, objects, render and iec61937), and all of
+# them export ac3:: symbols, so they are all given. Two questions, both about the ac3:: C++
+# symbols the libraries export:
 #
 #   1. Where does the dynamic linker bind the ones the executable imports? Read from
 #      LD_DEBUG=bindings with LD_BIND_NOW=1, so every import is resolved at load whether or not a
-#      test would have called it. All of them must bind to libac3forge.so.
+#      test would have called it. Each must bind to the library that exports it.
 #   2. Does the executable define any of them itself? A definition linked in from a static archive
 #      is used ahead of the shared library and binds nothing, so the first question cannot see it.
 #      None may be.
 #
-# It also fails if nothing binds to libac3forge.so at all, since an executable that links no
-# forge symbols would pass both questions for the wrong reason.
+# It also fails if nothing binds to the libraries at all, since an executable that links no
+# codec symbols would pass both questions for the wrong reason.
 #
-# libstdc++ template instantiations that libac3forge.so exports are left out: every C++ binary
+# libstdc++ template instantiations that the libraries export are left out: every C++ binary
 # carries its own copy of those, and the executable's is meant to win.
 #
-# Usage: check_shared_forge_binding.sh <executable> <libac3forge.so>
+# Usage: check_shared_forge_binding.sh <executable> <library.so>...
 
 set -euo pipefail
 export LC_ALL=C
 
-if [ "$#" -ne 2 ]; then
-    echo "usage: $0 <executable> <libac3forge.so>" >&2
+if [ "$#" -lt 2 ]; then
+    echo "usage: $0 <executable> <library.so>..." >&2
     exit 2
 fi
 exe=$1
-forge=$2
+shift
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -45,16 +48,29 @@ ac3_symbol='^_Z(N|NK|TVN|TIN|TSN|GVN|ZN|ZNK)3ac3'
 
 names() { awk '{print $NF}' | { grep -E "$ac3_symbol" || true; } | sort -u; }
 
-nm -D --defined-only "$forge" | names > "$work/exports"
+# One line per exported symbol: the library's name without its version, and the symbol.
+: > "$work/exports"
+for lib in "$@"; do
+    stem="$(basename "$lib")"
+    stem="${stem%%.so*}"
+    nm -D --defined-only "$lib" | names | sed "s/^/$stem /" >> "$work/exports"
+done
+sort -u -o "$work/exports" "$work/exports"
 if [ ! -s "$work/exports" ]; then
-    echo "error: $forge exports no ac3:: symbols; is it libac3forge.so?" >&2
+    echo "error: none of the libraries exports ac3:: symbols; are they the codec's?" >&2
     exit 2
 fi
 
 # 2. What the executable defines: its dynamic table (a definition the process can bind to) and, if
 # it has not been stripped, its full symbol table.
 { nm -D --defined-only "$exe"; nm --defined-only "$exe" 2>/dev/null || true; } | names > "$work/defined"
-comm -12 "$work/exports" "$work/defined" > "$work/linked_in"
+awk 'NR == FNR { defined[$1] = 1; next } ($2 in defined) { print $2 }' \
+    "$work/defined" "$work/exports" | sort -u > "$work/linked_in"
+# One definition is meant to be there twice. ac3tests compiles src/base/src/cpu_features.cpp a
+# second time on purpose (tests/CMakeLists.txt) to test the dispatch against the probe directory the
+# build chose, and iclforge_base exports has_avx2() since the libraries were split.
+{ grep -v -E '^_ZN3ac38internal3cpu8has_avx2Ev$' "$work/linked_in" || true; } > "$work/kept"
+mv "$work/kept" "$work/linked_in"
 
 # 1. Where the executable's imports bind. The tag matches no test, so the binary loads, registers
 # its tests and exits without running any. That is Catch2's exit code 2 (0 in some versions); with
@@ -73,14 +89,19 @@ fi
 sed -nE "s/.*binding file ([^ ]+) \[[0-9]+\] to ([^ ]+) \[[0-9]+\]: (normal|weak) symbol .([^ ']+)'.*/\1 \2 \4/p" \
     "$work/ld_debug" > "$work/all_bindings"
 
+# The executable's bindings of a symbol some library exports: the provider it got, and whether that
+# is one of the libraries that export it.
 awk -v exe="$(basename "$exe")" '
     function base(path,  parts, n) { n = split(path, parts, "/"); return parts[n] }
-    NR == FNR { exported[$1] = 1; next }
-    base($1) == exe && ($3 in exported) { print base($2), $3 }
+    function stem(path,  s) { s = base(path); sub(/\.so.*$/, "", s); return s }
+    NR == FNR { owners[$2] = owners[$2] " " $1 " "; next }
+    base($1) == exe && ($3 in owners) {
+        print stem($2), $3, (index(owners[$3], " " stem($2) " ") ? "ok" : "elsewhere")
+    }
 ' "$work/exports" "$work/all_bindings" > "$work/forge_bindings"
 
-bound_to_forge=$(awk '$1 ~ /^libac3forge\.so/' "$work/forge_bindings" | wc -l)
-awk '$1 !~ /^libac3forge\.so/' "$work/forge_bindings" > "$work/elsewhere"
+bound=$(awk '$3 == "ok"' "$work/forge_bindings" | wc -l)
+awk '$3 == "elsewhere" { print $1, $2 }' "$work/forge_bindings" > "$work/elsewhere"
 
 status=0
 report() {
@@ -94,20 +115,20 @@ report() {
 }
 
 if [ -s "$work/elsewhere" ]; then
-    report "$(wc -l < "$work/elsewhere") ac3:: symbol(s) $(basename "$exe") imports from libac3forge.so bind to another library:" \
+    report "$(wc -l < "$work/elsewhere") ac3:: symbol(s) $(basename "$exe") imports from the codec's libraries bind to another library:" \
         "$work/elsewhere"
     awk '{print "    bound to " $1}' "$work/elsewhere" | sort | uniq -c >&2
 fi
 if [ -s "$work/linked_in" ]; then
-    report "$(wc -l < "$work/linked_in") ac3:: symbol(s) libac3forge.so exports are defined inside $(basename "$exe") itself:" \
+    report "$(wc -l < "$work/linked_in") ac3:: symbol(s) the libraries export are defined inside $(basename "$exe") itself:" \
         "$work/linked_in"
 fi
-if [ "$bound_to_forge" -eq 0 ]; then
-    echo "FAIL: nothing in $(basename "$exe") binds to $(basename "$forge"); the check has nothing to say." >&2
+if [ "$bound" -eq 0 ]; then
+    echo "FAIL: nothing in $(basename "$exe") binds to the libraries; the check has nothing to say." >&2
     status=1
 fi
 
 if [ "$status" -eq 0 ]; then
-    echo "OK: $bound_to_forge ac3:: symbols bind to $(basename "$forge") from $(basename "$exe"); none are linked in."
+    echo "OK: $bound ac3:: symbols bind from $(basename "$exe") to the $# libraries that export them; none are linked in."
 fi
 exit "$status"

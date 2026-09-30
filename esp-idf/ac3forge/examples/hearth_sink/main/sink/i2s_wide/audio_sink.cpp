@@ -70,7 +70,7 @@
 #include <array>
 #include <cstdio>
 
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include "ac3forge/dac_queue_model.hpp"
 #include "ac3forge/interleave.hpp"
 #include "ac3forge/playout.hpp"

@@ -28,7 +28,7 @@
 
     C28020 (expression not satisfied in this call) - 2 alerts, both false
       positives on index arithmetic the surrounding code bounds (see
-      src/forge/src/oba/atmos.cpp's own comment). Bounds errors stay
+      src/ac3/src/oba/atmos.cpp's own comment). Bounds errors stay
       covered by the linux-llvm-asan-ubsan leg (precise, at runtime) and
       CodeQL's dataflow queries.
 

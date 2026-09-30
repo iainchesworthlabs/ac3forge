@@ -1,4 +1,4 @@
-#include "ac3/audio/sink_capabilities.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
 
 // The PipeWire sink-capability backend (the appliance plan's UX9 gap 2).
 //

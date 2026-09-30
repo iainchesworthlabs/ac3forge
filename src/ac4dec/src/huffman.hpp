@@ -4,11 +4,11 @@
 #include <string_view>
 
 #include "bit_reader.hpp"
-#include "huffman_codebook.hpp"
+#include "iclforge/ac4core/huffman_codebook.hpp"
 #include "syntax/context.hpp"
 
 // Huffman decoding for every codebook of both parts' Annex A. The codebooks
-// and their shape are the shared core's (src/ac4core/src/huffman_codebook.hpp
+// and their shape are the shared core's (src/ac4core/include/iclforge/ac4core/huffman_codebook.hpp
 // and tables/huffman_tables.hpp); reading them is the decoder's.
 
 namespace ac4::detail {

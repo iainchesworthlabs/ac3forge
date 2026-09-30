@@ -15,8 +15,8 @@ Use this page to link the C++ library. Other interfaces are documented under the
 [WebAssembly](../platforms/wasm.md) pages. Packages are listed under
 [Releasing](../releasing.md#what-gets-published).
 
-The main public headers are under `src/forge/include/ac3/`. The AC-4 headers are under
-`src/ac4/include/ac4/`, `src/ac4dec/include/ac4dec/` and `src/ac4enc/include/ac4enc/`.
+The main public headers are under `src/ac3/include/iclforge/ac3/`. The AC-4 headers are under
+`src/ac4/include/iclforge/ac4/`, `src/ac4dec/include/iclforge/ac4dec/` and `src/ac4enc/include/iclforge/ac4enc/`.
 
 | CMake target | Purpose |
 |---|---|

@@ -34,7 +34,7 @@
 // In the component, and free of ESP-IDF like interleave.hpp and layout.hpp
 // beside it, so that it runs on the host. The time is the caller's: the
 // streaming example's i2s and tdm sinks pass esp_timer_get_time(), and
-// tests/io/test_dac_queue_model.cpp passes the clock of a simulated DMA. While
+// tests/ac3/io/test_dac_queue_model.cpp passes the clock of a simulated DMA. While
 // the model read esp_timer itself it ran only on a board - QEMU has no I2S, so
 // CI's shapes use the capture sink - and nothing in CI executed it.
 

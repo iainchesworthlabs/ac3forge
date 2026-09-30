@@ -10,11 +10,11 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/meta/qc.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/version.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/meta/qc.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/version.hpp"
 #include "exit_codes.hpp"
 
 namespace ac3cli {

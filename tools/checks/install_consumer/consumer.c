@@ -13,7 +13,7 @@
 
 #include <stdio.h>
 
-#include <ac3forge_c/ac3forge.h>
+#include <iclforge_c/iclforge.h>
 
 /* version.h's own promise, the one tests/capi checks from C++ (this is the C11 spelling). */
 _Static_assert(AC3FORGE_C_VERSION == AC3FORGE_C_VERSION_MAJOR * 1000000 +

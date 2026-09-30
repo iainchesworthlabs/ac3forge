@@ -8,7 +8,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/dsp/qmf.hpp"
+#include "iclforge/dsp/qmf.hpp"
 
 using ac3::dsp::kQmfDelay;
 using ac3::dsp::kQmfHop;

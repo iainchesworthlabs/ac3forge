@@ -9,9 +9,9 @@
 #include <string_view>
 #include <vector>
 
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // What ac3cli's `ac4-encode` and ac3gui's AC-4 encode share, so that the
 // command line the GUI echoes writes the same bytes the GUI does: the encoder's

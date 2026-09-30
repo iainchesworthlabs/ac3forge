@@ -13,10 +13,10 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/elementary.hpp"
-#include "mpegts/mpegts.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/mpegts/mpegts.hpp"
 
 int main() {
     // Some AC-3 to wrap.

@@ -1,9 +1,9 @@
-#include "ac3/audio/pcm_output.hpp"
+#include "iclforge/audio/pcm_output.hpp"
 
 #include <algorithm>
 #include <vector>
 
-#include "ac3/audio/speakers.hpp"
+#include "iclforge/audio/speakers.hpp"
 
 // See pcm_output.hpp's header for what this is for. Nothing here is
 // platform-specific: it is MonitorSink, the enumeration both share, and

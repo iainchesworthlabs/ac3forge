@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "oamd/oamd_syntax.hpp"
 
 // Object audio metadata from the encoder's side: ObjectProperties, the terms

@@ -16,7 +16,7 @@
 // the same way but meters loudness, and keeps no samples. So these are the
 // host shape's own numbers, and the row is a REGRESSION reference: it says
 // the target places the objects exactly as the host does, not that either
-// places them correctly. tests/spatial/ is what says the panner is correct,
+// places them correctly. tests/render/ is what says the panner is correct,
 // on the host, where it can be checked against geometry.
 //
 // To regenerate: build the host shape of the decoder profile and run it. It

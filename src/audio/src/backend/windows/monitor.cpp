@@ -1,11 +1,11 @@
-#include "ac3/audio/monitor.hpp"
+#include "iclforge/audio/monitor.hpp"
 
 // The Windows monitor backend. CMake compiles this directory's monitor.cpp on
 // Windows and another platform directory's everywhere else, so there is no
 // #ifdef here - the file's path is what says "Windows".
 //
 // WIN32_LEAN_AND_MEAN and NOMINMAX are set by the WIN32 block of
-// src/forge/CMakeLists.txt; see passthrough.cpp for why that lives there rather
+// src/ac3/CMakeLists.txt; see passthrough.cpp for why that lives there rather
 // than as #defines here.
 
 #include <windows.h>
@@ -22,9 +22,9 @@
 #include <optional>
 #include <thread>
 
-#include "ac3/audio/playback_counter.hpp"
-#include "ac3/audio/ring_buffer.hpp"
-#include "ac3/audio/speakers.hpp"
+#include "iclforge/audio/playback_counter.hpp"
+#include "iclforge/audio/ring_buffer.hpp"
+#include "iclforge/audio/speakers.hpp"
 #include "windows_support.hpp"
 
 namespace ac3::audio {

@@ -13,9 +13,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/tables.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/core/tables.hpp"
 #include "background_jobs.hpp"
 
 namespace ac3::audio {

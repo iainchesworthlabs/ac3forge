@@ -3,8 +3,8 @@
 #include <span>
 #include <string_view>
 
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake.hpp"
 
 // psk_id, the one handshake-message value that needs a hash, apart from
 // handshake.cpp so the message parsers build without a crypto backend.

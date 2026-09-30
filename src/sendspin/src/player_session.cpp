@@ -1,4 +1,4 @@
-#include "ac3/sendspin/player_session.hpp"
+#include "iclforge/sendspin/player_session.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -12,21 +12,21 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/sendspin/channel.hpp"
-#include "ac3/sendspin/chunks.hpp"
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/frames.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/handshake_session.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/pairing_flow.hpp"
-#include "ac3/sendspin/pairing_messages.hpp"
-#include "ac3/sendspin/session.hpp"
-#include "ac3/sendspin/state_roles.hpp"
-#include "ac3/sendspin/stream_roles.hpp"
-#include "ac3/sendspin/transport.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/channel.hpp"
+#include "iclforge/sendspin/chunks.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/frames.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/handshake_session.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/pairing_flow.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/session.hpp"
+#include "iclforge/sendspin/state_roles.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/transport.hpp"
 
 namespace ac3::sendspin {
 

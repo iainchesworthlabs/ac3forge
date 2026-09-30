@@ -13,13 +13,13 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
 
 // `ac3cli probe` (probe command), at the level its consumers actually use it:
 // the real binary, run as a subprocess, and the text it puts on stdout.
 //
-// tests/io/test_probe.cpp already holds the library's own contract - what the
+// tests/ac3/io/test_probe.cpp already holds the library's own contract - what the
 // walk concludes about a stream. What is checked HERE is the part a library
 // test cannot see: that the JSON document matches the schema docs/forge/cli/
 // commands.md publishes, that the exit code is usable as a gate, and that both
@@ -242,7 +242,7 @@ TEST_CASE("probe reads a foreign E-AC-3 stream at both tiers", "[cli][probe]") {
     //
     // It parses cleanly now, and so does every other committed third-party
     // fixture, so the non-zero side of those counters has no committed stream
-    // left to reach it; tests/io/test_probe.cpp owns the synthetic side. What
+    // left to reach it; tests/ac3/io/test_probe.cpp owns the synthetic side. What
     // this fixture still proves is worth keeping: the layout, rate, duration
     // and substream map below all come off the wire, and the parse tier agrees
     // with them on a stream no encoder here produced.
@@ -433,7 +433,7 @@ TEST_CASE("probe names a reserved dmixmod in both output forms, for both codecs"
     // mixmdate as well. The encoder will not write it, so each stream is the
     // '01' and '10' encodes of one tone ORed byte by byte - '01' | '10' is
     // '11', and every other bit meets an identical copy of itself - with each
-    // syncframe's CRCs re-stamped. tests/meta/test_bsi.cpp checks that this
+    // syncframe's CRCs re-stamped. tests/ac3/meta/test_bsi.cpp checks that this
     // changes nothing but dmixmod.
     const auto make_reserved = [](const std::string& command, const std::string& name,
                                   const std::string& args) {

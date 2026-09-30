@@ -18,10 +18,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4/ac4.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4/ac4_toc_writer.hpp"
-#include "ac4dec/decoder.hpp"
-#include "tables/huffman_codes.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4core/tables/huffman_codes.hpp"
 
 namespace {
 

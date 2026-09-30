@@ -6,10 +6,10 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/dialect.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/dialect.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
 
 // The core and pairing messages' readers (src/sendspin/src/messages.cpp and
 // pairing_messages.cpp): what a server reads from a client once the handshake is done

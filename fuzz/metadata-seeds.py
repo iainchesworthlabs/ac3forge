@@ -32,7 +32,7 @@ Two subcommands, both driven from fuzz/generate-seeds.sh:
       frames a burst, Pc 0x0D18, Pd the frame's length in bits.
 
 The EMDF container syntax below is a deliberate second implementation of
-src/forge/src/emdf/emdf.cpp's own reader, in a different language, for the
+src/objects/src/emdf.cpp's own reader, in a different language, for the
 narrow purpose of finding payload boundaries. It is not a check on that
 reader and is not authoritative: if the two ever disagree, this script simply
 extracts fewer (or worse) seeds, which shows up as a smaller corpus rather
@@ -45,7 +45,7 @@ import pathlib
 import struct
 import sys
 
-# --- EMDF container reader (mirrors src/forge/src/emdf/emdf.cpp) -----------
+# --- EMDF container reader (mirrors src/objects/src/emdf.cpp) -----------
 
 EMDF_SYNC = 0x5838
 PAYLOAD_ID_OAMD = 11

@@ -18,14 +18,14 @@
 #include <thread>
 #include <utility>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/pcm_output.hpp"
-#include "ac3/audio/speakers.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/routing.hpp"
-#include "ac3/sendspin/discovery.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/pcm_output.hpp"
+#include "iclforge/audio/speakers.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/routing.hpp"
+#include "iclforge/sendspin/discovery.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 #include "network_sinks.hpp"
 #include "output_selector.hpp"
 #include "pcm_sink.hpp"

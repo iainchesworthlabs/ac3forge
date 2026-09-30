@@ -162,7 +162,7 @@ comes from.
 | `macos` | `apps/notices/platform/macos/`, `packaging/homebrew/`, `packaging/conan/`, `packaging/vcpkg-port/` | `core`; shared desktop apps below |
 | `android` | `apps/android/` | `core` (not after a merge) |
 | `wasm` | `apps/wasm/`, `js/` (its E2E demo) | `core` (not after a merge) |
-| `esp` | `esp-idf/`, `esphome/`, `apps/baremetal/`, `tools/packaging/`, and the trees its component ships: `src/forge/`, `src/arithmetic/`, `cmake/`, root `CMakeLists.txt` | `core` (not after a merge) |
+| `esp` | `esp-idf/`, `esphome/`, `apps/baremetal/`, `tools/packaging/`, and the trees its component ships: `src/ac3/`, `src/arithmetic/`, `cmake/`, root `CMakeLists.txt` | `core` (not after a merge) |
 | `rust` | `rust/` | `core` (not after a merge) |
 | `python` | `python/`, `examples/python/` | `core` (not after a merge) |
 | `npm` | `js/` (the package's own unit tests) | nothing - see below |
@@ -216,7 +216,7 @@ A `push` to `main` is classified with `--satellites-direct`, from the files merg
 `verified` ref.
 
 The ESP-IDF lane has one more way to light: the trees its component ships. They are the ones
-`tools/packaging/pack_esp_component.py` stages (`STAGED_TREES` and `STAGED_FILES`): `src/forge/`,
+`tools/packaging/pack_esp_component.py` stages (`STAGED_TREES` and `STAGED_FILES`): `src/ac3/`,
 `src/arithmetic/`, `cmake/` and the root `CMakeLists.txt`. A change there is what breaks the package
 and the QEMU images, so it does not wait for the nightly run. The AC-4 trees, staged only for
 `--with-ac4`, do wait. `test_classify_changes.py` reads the packer's list, so a tree added to it

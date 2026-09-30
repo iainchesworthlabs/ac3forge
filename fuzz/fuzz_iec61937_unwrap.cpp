@@ -5,10 +5,10 @@
 #include <span>
 #include <vector>
 
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 
 // ac3::iec61937::BurstReader, driven the way ac3cli's 'unspdif' drives it
-// (src/forge/src/iec61937/iec61937.cpp).
+// (src/iec61937/src/iec61937.cpp).
 //
 // This is the one entry point in the project whose input is, by definition,
 // something that came off a wire: an S/PDIF or HDMI capture, or a file

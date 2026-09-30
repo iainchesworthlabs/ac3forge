@@ -1,0 +1,188 @@
+#pragma once
+
+#include <span>
+
+#include "iclforge/ac3/export.hpp"
+
+// The AC-3 long (512-sample) transform pair.
+//
+// Forward (encoder side, informative A/52 §8.2.3.2, alpha = 0):
+//   XD[k] = (-2/N) * sum_{n=0}^{N-1} x[n] * cos((2pi/4N)(2n+1)(2k+1)
+//                                              + (pi/4)(2k+1))
+// evaluated in direct form by default — at THIS level the reference form
+// stays the default, because the direct evaluation is the spec's own
+// statement of the transform and the oracle every fast-path test validates
+// against. `fast` selects the §7.9.4 fast N/4-FFT structure behind this same
+// interface: verified max relative error ~3e-12 against the direct form on
+// random data and real audio (tests/ac3/core/test_mdct_fast.cpp), and since the owner
+// accepted that evidence it is what every encoder config defaults to
+// (EncoderConfig::fast_mdct / eac3::FrameConfig::fast_mdct default true and
+// are what an encoder actually reads to decide - a caller of THIS function
+// still opts in explicitly). All three forward transforms accelerate - this
+// one and both halves of a block-switched pair, each down its own
+// independently-derived fold; see mdct256_forward_first/second's own doc
+// comment below.
+//
+// Inverse (decoder side, NORMATIVE §7.9.4.1): the N/4-point complex
+// transform with xcos1/xsin1 pre/post twiddles and the windowing/
+// de-interleaving map, transcribed exactly from the pseudocode. The forward
+// transform is validated by round-tripping through this normative inverse
+// plus the §7.9.4.1 step-6 overlap-add (pcm = 2 * (x + delay), the factor
+// of 2 undoing encoder headroom scaling).
+//
+// The inverses' `fast` selects an FFT for step 3's N/4-point complex sum
+// ONLY - the spec's own pseudocode evaluates that step as a direct O(N^2)
+// sum against a tabulated (k, n) matrix, and with the +j*sin sign
+// convention it is exactly an unscaled inverse DFT, so the fast path is
+// conj(FFT(conj(Z))) through the same kernel the forward's fast fold
+// already uses (fft_kernel.hpp). Steps 2, 4 and 5 - the normative twiddles
+// and the windowing/de-interleave map - are the identical code either way.
+// Direct remains the default at THIS level for the forward's own reason:
+// the direct evaluation is the spec's statement of the transform and the
+// oracle the fast path's tests validate against. DecoderConfig::fast_imdct
+// is what a decoder actually reads to decide.
+
+namespace ac3 {
+
+// Multiply a raw 512-sample block by the analysis window (§8.2.3.1).
+ICLFORGE_AC3_EXPORT void apply_analysis_window(std::span<const double, 512> x,
+                                           std::span<double, 512> windowed);
+
+// Forward MDCT of a pre-windowed block: 512 samples -> 256 coefficients.
+ICLFORGE_AC3_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
+                                     std::span<double, 256> coeffs, bool fast = false);
+
+// The float32 forms of the two above (minimum-footprint decoder profile's float32 gap). Their caller
+// is oba::joc's object reconstruction, which runs a forward transform inside a
+// DECODE - it analyses the bed before un-mixing it (PF8). The encoder's own
+// forward path stays double and is untouched: the fifteen bitstream hashes in
+// tests/golden/bitstream-hashes.json pin its output.
+//
+// No `fast` parameter, for the same reason the float32 inverse below has none:
+// the direct evaluation is the spec's own and the oracle the fast path is
+// validated against, so it stays double, and there is no choice to offer.
+ICLFORGE_AC3_EXPORT void apply_analysis_window(std::span<const float, 512> x,
+                                           std::span<float, 512> windowed);
+ICLFORGE_AC3_EXPORT void mdct512_forward(std::span<const float, 512> windowed,
+                                     std::span<float, 256> coeffs);
+
+// Normative inverse: 256 coefficients -> 512 WINDOWED time samples
+// (§7.9.4.1 steps 1-5; the window application is part of step 5).
+// Reconstruction: pcm[n] = 2 * (x[n] + previous_block_x[256 + n]).
+ICLFORGE_AC3_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
+                                       std::span<double, 512> x, bool fast = false);
+
+// The float32 form of the inverse above (minimum-footprint decoder profile's float32 gap), for the
+// minimum-footprint profile on a target whose FPU is single-precision - where
+// carrying the decoder's coefficient buffers in double costs both the memory
+// they occupy and a software-emulated multiply for every one of them.
+//
+// No `fast` parameter, unlike the double form. The direct-form evaluation is
+// the spec's own and is the oracle the fast path is validated against, so it
+// stays double; offering a `false` a float32 caller could pass and then
+// ignoring it would be worse than not offering it.
+ICLFORGE_AC3_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
+                                       std::span<float, 512> x);
+
+// batched SIMD kernels: four INDEPENDENT calls to
+// imdct512_windowed(..., /*fast=*/true) run in lockstep, one object per
+// SIMD lane, instead of four separate scalar/SSE2 calls - the axis PF5's
+// own per-transform 2/4-lane seam cannot reach (there is no clean
+// within-one-transform grouping in the FFT core; see fft_kernel.hpp). Safe
+// to call unconditionally, the same as every other transform in this file:
+// internally checks ac3::internal::cpu::has_avx2() and, when it is false,
+// falls back to four ordinary imdct512_windowed(coeffsN, xN,
+// /*fast=*/true) calls - so a caller (joc.cpp's object loop) only ever
+// needs to decide "are four objects ready to batch", never "is AVX2
+// available too". Always takes the fast N/4-FFT fold, the only form worth
+// batching; produces bit-identical results to four separate
+// `imdct512_windowed(coeffsN, xN, /*fast=*/true)` calls with the same
+// inputs either way (tests/ac3/core/test_simd_kernels.cpp's `[avx2]` case
+// checks exactly that against the AVX2 path specifically).
+ICLFORGE_AC3_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
+                                              std::span<const double, 256> coeffs1,
+                                              std::span<const double, 256> coeffs2,
+                                              std::span<const double, 256> coeffs3,
+                                              std::span<double, 512> x0, std::span<double, 512> x1,
+                                              std::span<double, 512> x2, std::span<double, 512> x3);
+
+// The forward twin of imdct512_windowed_batch4 above (SIMD kernels's
+// batch-axis follow-on, phase 4c): four INDEPENDENT
+// mdct512_forward(..., /*fast=*/true) calls run in lockstep, one
+// transform per SIMD lane. The four windowed blocks need not belong to
+// the same signal - the encoders batch four BLOCKS of one channel, the
+// JOC bed loop four CHANNELS of one block; the transform neither knows
+// nor cares. Same contract throughout: safe to call unconditionally
+// (internally checks ac3::internal::cpu::has_avx2() and falls back to
+// four ordinary fast calls), always the fast fold, bit-identical to four
+// separate `mdct512_forward(wN, cN, /*fast=*/true)` calls with the same
+// inputs (tests/ac3/core/test_simd_kernels.cpp's `[avx2]` case checks that
+// against the AVX2 path specifically).
+ICLFORGE_AC3_EXPORT void mdct512_forward_batch4(std::span<const double, 512> w0,
+                                            std::span<const double, 512> w1,
+                                            std::span<const double, 512> w2,
+                                            std::span<const double, 512> w3,
+                                            std::span<double, 256> c0, std::span<double, 256> c1,
+                                            std::span<double, 256> c2, std::span<double, 256> c3);
+
+// The float32 batch forms. Four independent calls rather than four lanes -
+// there is no float32 AVX2 kernel for them to fill, so batching would buy
+// nothing yet. They exist so a caller written against the batch shape (joc.cpp
+// is) picks up a real one later without changing.
+ICLFORGE_AC3_EXPORT void mdct512_forward_batch4(
+    std::span<const float, 512> w0, std::span<const float, 512> w1,
+    std::span<const float, 512> w2, std::span<const float, 512> w3, std::span<float, 256> c0,
+    std::span<float, 256> c1, std::span<float, 256> c2, std::span<float, 256> c3);
+
+ICLFORGE_AC3_EXPORT void imdct512_windowed_batch4(
+    std::span<const float, 256> coeffs0, std::span<const float, 256> coeffs1,
+    std::span<const float, 256> coeffs2, std::span<const float, 256> coeffs3,
+    std::span<float, 512> x0, std::span<float, 512> x1, std::span<float, 512> x2,
+    std::span<float, 512> x3);
+
+// The block-switched (short) transform pair (§7.9, blksw = 1): the usual
+// 512-sample windowed block split into two 256-sample halves, each
+// transformed separately with alpha = -1 (first) or +1 (second, §8.2.3.2).
+// Each half yields 128 coefficients; per §7.9.2 the encoder interleaves
+// them bin-by-bin (X[2k] = first[k], X[2k+1] = second[k]) into an ordinary
+// 256-coefficient set before quantization — exponents/bitalloc/mantissa
+// never see a difference from the long-block path.
+//
+// Both halves accelerate behind the same `fast` parameter mdct512_forward
+// takes, each with its OWN independently-derived fold (alpha = -1 is the
+// BARE cosine sum - no "+N/4" phase shift at all, a different transform
+// from alpha = 0's, not the same formula "just at a different NLen" as an
+// earlier version of this comment wrongly claimed; alpha = +1 is a
+// sine-kernel sum that reaches the shared DCT-IV core through the DST-IV
+// reversal identity). Each fold is verified against its own direct-form
+// table to the same 1e-10 bound as the long transform's -
+// tests/ac3/core/test_mdct_fast.cpp. `fast = false` remains the spec's own
+// direct-form evaluation on all three.
+ICLFORGE_AC3_EXPORT void mdct256_forward_first(std::span<const double, 256> windowed,
+                                           std::span<double, 128> coeffs, bool fast = false);
+ICLFORGE_AC3_EXPORT void mdct256_forward_second(std::span<const double, 256> windowed,
+                                            std::span<double, 128> coeffs, bool fast = false);
+
+// The float32 forms of the short-block pair (minimum-footprint decoder profile), for the encoders'
+// analysis front end under the minimum-footprint profile
+// (ac3/internal/encode_scalar.hpp). No `fast` parameter, as for the float32
+// mdct512_forward above: the direct evaluation stays double, and these are
+// the same two folds in float.
+ICLFORGE_AC3_EXPORT void mdct256_forward_first(std::span<const float, 256> windowed,
+                                           std::span<float, 128> coeffs);
+ICLFORGE_AC3_EXPORT void mdct256_forward_second(std::span<const float, 256> windowed,
+                                            std::span<float, 128> coeffs);
+
+// Normative inverse for blksw = 1 (§7.9.4.2): takes the SAME 256-length
+// interleaved coefficient set a long block would carry and produces 512
+// WINDOWED time samples, using the identical overlap-add as
+// imdct512_windowed — callers do not need to know which transform path ran.
+ICLFORGE_AC3_EXPORT void imdct256_pair_windowed(std::span<const double, 256> coeffs,
+                                            std::span<double, 512> x, bool fast = false);
+
+// The float32 form of the short-block inverse (minimum-footprint decoder profile). Same contract as
+// the float32 imdct512_windowed above, including the absent `fast` parameter.
+ICLFORGE_AC3_EXPORT void imdct256_pair_windowed(std::span<const float, 256> coeffs,
+                                            std::span<float, 512> x);
+
+}  // namespace ac3

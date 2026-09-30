@@ -29,9 +29,9 @@
 
 #include <string>
 
-#include "ac3/audio/audio_backend.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/version.hpp"
+#include "iclforge/audio/audio_backend.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/ac3/version.hpp"
 
 namespace {
 constexpr char kLogTag[] = "ac3forge.shield";

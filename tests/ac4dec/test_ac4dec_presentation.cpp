@@ -13,7 +13,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4/ac4.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4dec_bits.hpp"
 #include "bit_reader.hpp"
 #include "syntax/context.hpp"

@@ -1,5 +1,5 @@
 // ac3forge_ac4_decoder_* - see ac3forge.h's AC-4 section and ac4::Decoder
-// (src/ac4dec/include/ac4dec/decoder.hpp).
+// (src/ac4dec/include/iclforge/ac4dec/decoder.hpp).
 
 #include <memory>
 #include <span>

@@ -5,10 +5,10 @@
 #include <span>
 #include <vector>
 
-#include "ac4/detail/real.hpp"
-#include "aspx/frequency_tables.hpp"
-#include "aspx/hf_generator.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/detail/real.hpp"
+#include "iclforge/ac4core/aspx/frequency_tables.hpp"
+#include "iclforge/ac4core/aspx/hf_generator.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 #include "syntax/aspx.hpp"
 #include "syntax/context.hpp"
 

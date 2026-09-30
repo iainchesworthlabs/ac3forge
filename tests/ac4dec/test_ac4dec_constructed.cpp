@@ -30,9 +30,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "ac4dec_constructed.hpp"
-#include "dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 #include "sanitized.hpp"
 
 namespace {

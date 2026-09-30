@@ -12,10 +12,10 @@
 
 #include "freertos/FreeRTOS.h"
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/decoder/serving.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/serving.hpp"
+#include "iclforge/render/layout.hpp"
 
 // The player: bytes in, sound out, on two cores.
 //

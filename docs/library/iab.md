@@ -32,7 +32,7 @@ Track File, parses both, and prints that they agree.
 
 **Defaults on**, unlike `ac3adm::ac3adm`. `AC3FORGE_BUILD_IAB` defaults **ON** — IAB's own
 Plex(n)-coded bitstream and its MXF/KLV wrapper both need nothing beyond this module's own bit
-reader (`src/ac3iab/src/bitreader.hpp`), no third-party dependency at all, so it builds the same
+reader (`src/iab/src/bitreader.hpp`), no third-party dependency at all, so it builds the same
 way the three container writers do:
 
 ```bash
@@ -56,7 +56,7 @@ examples) consumes it.
   `AuthoringToolInfo` and `UserData`. Positions (§5.4's `DistanceXY`/`DistanceZ` formulas), gains
   and spreads (§5.5) are resolved to their final linear/physical values on the way in, the same
   "plain aggregate, already-resolved" shape [`ac3adm/model.hpp`](adm.md) uses for ADM — see
-  [`ac3iab/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3iab/include/ac3iab/model.hpp)
+  [`ac3iab/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/iab/include/iclforge/iab/model.hpp)
   for the full struct-by-struct citation trail.
 - **`AudioDataDLC`** (§9.6/§10.7, Annex B) is read only by identity — its forward-adaptive lattice
   predictor plus entropy-coded residual is left as an opaque `std::vector<std::byte>` rather than
@@ -78,7 +78,7 @@ examples) consumes it.
   skips everything that is not a match by that KLV's own declared Length, and hands the one KLV
   whose Key matches ST 2067-201 Table 4.2's registered value straight to `parse_iabitstream`'s
   `std::istream` overload, unmodified. See
-  [`src/ac3iab/src/mxf_reader.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3iab/src/mxf_reader.cpp)'s
+  [`src/iab/src/mxf_reader.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/iab/src/mxf_reader.cpp)'s
   own header comment for the full clause-by-clause trail, including why Header Metadata's
   Preface/ContentStorage/Package object graph is never parsed at all (locating essence is a
   KLV-Key matter, not an object-graph one).

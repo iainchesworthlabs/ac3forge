@@ -24,7 +24,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "ac4_object_render.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "ac4dec_objects.hpp"
 
 namespace {

@@ -175,7 +175,7 @@ object NativeBridge {
      *
      * The two height lines are not independent measurements: the decoded one
      * is the intended one put through the format's own quantiser, and
-     * `tests/oba/test_atmos.cpp` asserts exactly that. What is worth seeing is
+     * `tests/ac3/oba/test_atmos.cpp` asserts exactly that. What is worth seeing is
      * the QUANTISER — height travels in 16 steps against a smooth intended
      * line — and, when OBJECTS OFF is engaged, the third value going to zero,
      * which is a decoder independently confirming the object layer is no

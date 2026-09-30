@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <vector>
 
-#include "dsp/real_functions.hpp"
+#include "iclforge/ac4core/dsp/real_functions.hpp"
 
 namespace ac4::detail {
 namespace {

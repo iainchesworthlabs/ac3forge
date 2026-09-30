@@ -18,9 +18,9 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/sendspin/noise.hpp"
 #include "engine_thread.hpp"
 #include "network_group_sink.hpp"
 #include "network_sinks.hpp"

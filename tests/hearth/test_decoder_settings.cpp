@@ -3,16 +3,16 @@
 
 #include <optional>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/decoder/serving.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/serving.hpp"
+#include "iclforge/render/layout.hpp"
 #include "decoder_settings.hpp"
 
 // ac3::hearth::decoder_setup (apps/hearth/engine/decoder_settings.cpp): every
 // decoder control lands where the library reads it, for the layout it serves.
 // What each setting then does to the audio is the library's to test, and
-// tests/meta/test_drc.cpp and tests/decoder/test_output_stage.cpp do.
+// tests/ac3/meta/test_drc.cpp and tests/ac3/decoder/test_output_stage.cpp do.
 
 namespace {
 

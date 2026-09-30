@@ -22,9 +22,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4dec/decoder.hpp"
-#include "acpl/acpl.hpp"
-#include "ajcc/ajcc.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4core/acpl/acpl.hpp"
+#include "iclforge/ac4core/ajcc/ajcc.hpp"
 #include "pcm/acpl.hpp"
 #include "pcm/ajcc.hpp"
 #include "pcm/immersive.hpp"

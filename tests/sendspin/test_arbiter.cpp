@@ -4,9 +4,9 @@
 #include <optional>
 #include <vector>
 
-#include "ac3/sendspin/arbiter.hpp"
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/arbiter.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // Admission between servers, as connection.md's Multiple servers (server-initiated) sets it:
 // the ranking, its three exceptions, and what a later activation or a closed connection

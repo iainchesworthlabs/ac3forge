@@ -79,23 +79,24 @@ cache_value() {
 }
 
 # Each optional library: its AC3FORGE_BUILD_<NAME> option, its CMake export file (without
-# .cmake), and the stem its library files, .pc files and include directories are named from.
+# .cmake), the stem of its .pc files, the stem of its library files and its include directory
+# below include/.
 components=(
-    "AC3FORGE_BUILD_MATROSKA matroskaTargets matroska"
-    "AC3FORGE_BUILD_MP4 mp4Targets mp4"
-    "AC3FORGE_BUILD_MPEGTS mpegtsTargets mpegts"
-    "AC3FORGE_BUILD_IAB iabTargets ac3iab"
-    "AC3FORGE_BUILD_IAMF iamfTargets iamf"
-    "AC3FORGE_BUILD_AC4 ac4Targets ac4"
+    "AC3FORGE_BUILD_MATROSKA matroskaTargets matroska iclforge_matroska iclforge/matroska"
+    "AC3FORGE_BUILD_MP4 mp4Targets mp4 iclforge_mp4 iclforge/mp4"
+    "AC3FORGE_BUILD_MPEGTS mpegtsTargets mpegts iclforge_mpegts iclforge/mpegts"
+    "AC3FORGE_BUILD_IAB iabTargets ac3iab iclforge_iab iclforge/iab"
+    "AC3FORGE_BUILD_IAMF iamfTargets iamf iclforge_iamf iclforge/iamf"
+    "AC3FORGE_BUILD_AC4 ac4Targets ac4 iclforge_ac4 iclforge/ac4"
 )
 
 # Each optional library the tree $1 was configured with is in the prefix $2 with its export file
 # and its .pc file, and each it was configured without has no file there at all. -print -quit, not
 # a pipe into head: with pipefail, the SIGPIPE a closed pipe sends find would stop the script.
 check_components() {
-    local build="$1" prefix="$2" entry option targets stem value found
+    local build="$1" prefix="$2" entry option targets stem libstem incdir value found
     for entry in "${components[@]}"; do
-        read -r option targets stem <<< "$entry"
+        read -r option targets stem libstem incdir <<< "$entry"
         value="$(cache_value "$build" "$option")"
         case "${value^^}" in
             ON|TRUE|1|YES|Y)
@@ -107,8 +108,8 @@ check_components() {
                 echo "--- $option=ON: $targets.cmake and $stem.pc installed"
                 ;;
             *)
-                found="$(find "$prefix" \( -name "$targets*.cmake" -o -name "lib$stem*" -o -name "$stem*.pc" \
-                    -o -path "$prefix/include/$stem*" \) -print -quit)"
+                found="$(find "$prefix" \( -name "$targets*.cmake" -o -name "lib$libstem*" -o -name "$stem*.pc" \
+                    -o -path "$prefix/include/$incdir*" \) -print -quit)"
                 if [[ -n "$found" ]]; then
                     echo "::error::$build has $option=${value:-unset} and installed a file of it anyway: $found - see cmake/InstallLibrary.cmake" >&2
                     return 1
@@ -129,7 +130,7 @@ pc() {
 # the C compiler that configured the tree, or empty for cc, $4 = its C++ compiler, or empty for c++.
 pkg_config_check() {
     local prefix="$1" work="$2" cc="${3:-${CC:-cc}}" cxx="${4:-${CXX:-c++}}"
-    local -a flags libs whole static=() ac4_static=()
+    local -a flags libs whole static=() iclforge_ac4_static=()
     local pc_file name flag libdir
 
     pc_file="$(find "$prefix" -name ac3forge_c.pc -print -quit)"
@@ -142,7 +143,7 @@ pkg_config_check() {
     # A Libs line that names the archive is a static-only install, and --static is what makes
     # pkg-config read the private fields that say what the archive needs.
     case " $(pc --libs-only-l ac3forge_c) " in
-        *" -lac3forge_c_static "*) static=(--static) ;;
+        *" -liclforge_c_static "*) static=(--static) ;;
         *) ;;
     esac
 
@@ -161,12 +162,12 @@ pkg_config_check() {
     # line brings ac4.pc, and a static-only install's Requires.private the core's archive.
     if [[ -f "$pc_dir/ac4dec.pc" ]]; then
         case " $(pc --libs-only-l ac4dec) " in
-            *" -lac4dec_static "*) ac4_static=(--static) ;;
+            *" -liclforge_ac4dec_static "*) iclforge_ac4_static=(--static) ;;
             *) ;;
         esac
         libdir="$(pc --variable=libdir ac4dec)"
-        read -r -a flags <<< "$(pc ${ac4_static[@]+"${ac4_static[@]}"} --cflags --libs ac4dec)"
-        echo "--- $cxx consumer_ac4.cpp, flags from: pkg-config ${ac4_static[*]:+${ac4_static[*]} }--cflags --libs ac4dec"
+        read -r -a flags <<< "$(pc ${iclforge_ac4_static[@]+"${iclforge_ac4_static[@]}"} --cflags --libs ac4dec)"
+        echo "--- $cxx consumer_ac4.cpp, flags from: pkg-config ${iclforge_ac4_static[*]:+${iclforge_ac4_static[*]} }--cflags --libs ac4dec"
         echo "    ${flags[*]}"
         if ! "$cxx" -std=c++23 "$root/tools/checks/install_consumer/consumer_ac4.cpp" \
                 -o "$work/pc_consumer_ac4" -Wl,--as-needed -Wl,-rpath,"$libdir" "${flags[@]}"; then
@@ -179,14 +180,14 @@ pkg_config_check() {
     # The AC-4 encoder through ac4enc.pc, in the same way. The switch that installs the decoder
     # installs the encoder too.
     if [[ -f "$pc_dir/ac4enc.pc" ]]; then
-        ac4_static=()
+        iclforge_ac4_static=()
         case " $(pc --libs-only-l ac4enc) " in
-            *" -lac4enc_static "*) ac4_static=(--static) ;;
+            *" -liclforge_ac4enc_static "*) iclforge_ac4_static=(--static) ;;
             *) ;;
         esac
         libdir="$(pc --variable=libdir ac4enc)"
-        read -r -a flags <<< "$(pc ${ac4_static[@]+"${ac4_static[@]}"} --cflags --libs ac4enc)"
-        echo "--- $cxx consumer_ac4enc.cpp, flags from: pkg-config ${ac4_static[*]:+${ac4_static[*]} }--cflags --libs ac4enc"
+        read -r -a flags <<< "$(pc ${iclforge_ac4_static[@]+"${iclforge_ac4_static[@]}"} --cflags --libs ac4enc)"
+        echo "--- $cxx consumer_ac4enc.cpp, flags from: pkg-config ${iclforge_ac4_static[*]:+${iclforge_ac4_static[*]} }--cflags --libs ac4enc"
         echo "    ${flags[*]}"
         if ! "$cxx" -std=c++23 "$root/tools/checks/install_consumer/consumer_ac4enc.cpp" \
                 -o "$work/pc_consumer_ac4enc" -Wl,--as-needed -Wl,-rpath,"$libdir" "${flags[@]}"; then
@@ -234,12 +235,12 @@ for build in "$@"; do
     cmake --install "$build" --prefix "$prefix" --component library
     cmake --install "$build" --prefix "$prefix" --component libruntime
 
-    if [[ ! -d "$prefix/include/ac3forge_c" ]]; then
-        echo "::error::$build installed no include/ac3forge_c; was it configured with AC3FORGE_BUILD_CAPI=OFF?" >&2
+    if [[ ! -d "$prefix/include/iclforge_c" ]]; then
+        echo "::error::$build installed no include/iclforge_c; was it configured with AC3FORGE_BUILD_CAPI=OFF?" >&2
         exit 1
     fi
-    echo "--- installed include/ac3forge_c:"
-    ls -1 "$prefix/include/ac3forge_c"
+    echo "--- installed include/iclforge_c:"
+    ls -1 "$prefix/include/iclforge_c"
     check_components "$build" "$prefix"
 
     # The compilers that built the libraries, not whichever cc and c++ a machine offers.

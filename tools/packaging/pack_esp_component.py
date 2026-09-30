@@ -10,7 +10,7 @@ AC3FORGE_ROOT points outside the installed tree. That was the state of the
 manifest until this script existed, and nothing said so: the pack SUCCEEDS.
 
 So the sources are staged INTO a copy of the component first. The staged tree is
-generated, never committed: a second copy of src/forge/ in the repository is
+generated, never committed: a second copy of src/ac3/ in the repository is
 exactly the drift this project avoids everywhere else.
 
 WHAT GOES IN is the minimum the minimum-footprint profile compiles, worked out
@@ -48,7 +48,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 COMPONENT = REPO / "esp-idf" / "ac3forge"
 
 # Whole directories copied verbatim. Directories rather than a file list on
-# purpose: src/forge/minimal.cmake names its own sources and changes without
+# purpose: src/ac3/minimal.cmake names its own sources and changes without
 # telling this script, so anything narrower would need keeping in step with it -
 # which is the failure this repo has hit before (the bare-metal fixture, 131
 # encoder commits stale). Copying the tree costs archive size and cannot go
@@ -58,10 +58,17 @@ COMPONENT = REPO / "esp-idf" / "ac3forge"
 # language binding, and none of the container muxers. A component archive should
 # carry the part that builds for this chip.
 STAGED_TREES = (
-    "src/forge",
-    # The header-only Fixed32 / scalar-function target src/forge and src/ac4core
+    # The AC-3 codec and the five libraries it is built from: the minimum-footprint profile is
+    # one archive of files from all six (src/ac3/minimal.cmake).
+    "src/ac3",
+    "src/base",
+    "src/dsp",
+    "src/objects",
+    "src/render",
+    "src/iec61937",
+    # The header-only Fixed32 / scalar-function target src/ac3 and src/ac4core
     # both link (planning/ac4.md decision 31); the root CMakeLists.txt adds it
-    # with add_subdirectory before it reaches src/forge, so a staged tree
+    # with add_subdirectory before it reaches src/ac3, so a staged tree
     # without it stops the configure with "source src/arithmetic ... is not an
     # existing directory" - the failure this list produced when D14a added it.
     "src/arithmetic",
@@ -79,7 +86,7 @@ STAGED_AC4_TREES = (
     "src/ac4dec",
 )
 
-# Individual files the root build needs before it reaches src/forge.
+# Individual files the root build needs before it reaches src/ac3.
 STAGED_FILES = (
     "CMakeLists.txt",
     "LICENSE",
@@ -87,18 +94,18 @@ STAGED_FILES = (
 )
 
 # Dropped from the staged copy. Both are excluded from the minimum-footprint
-# profile already (src/forge/minimal.cmake), so removing them changes nothing
+# profile already (src/ac3/minimal.cmake), so removing them changes nothing
 # that builds - they are here because an archive carrying AVX2 kernels for a
 # part with no AVX2 is just bigger.
 #
 # Repo-relative, and applied against the staged tree unchanged, because the
-# staging preserves the layout. Written the other way - relative to src/forge -
+# staging preserves the layout. Written the other way - relative to src/ac3 -
 # they still worked, and tools/checks/check_doc_paths.py rightly called them
 # paths that do not exist: a reader cannot tell a wrong path from one that is
 # merely relative to something else.
 PRUNE = (
-    "src/forge/src/internal/avx2/mdct_avx2.cpp",
-    "src/forge/src/internal/avx2/avx2_probe.cpp",
+    "src/ac3/src/internal/avx2/mdct_avx2.cpp",
+    "src/ac3/src/internal/avx2/avx2_probe.cpp",
 )
 
 
@@ -163,7 +170,7 @@ def describe(archive: pathlib.Path) -> tuple[int, int]:
     """Returns (entries, forge source files) - the second is what matters."""
     with tarfile.open(archive) as tar:
         names = tar.getnames()
-    sources = [n for n in names if "/lib/src/forge/src/" in n and n.endswith(".cpp")]
+    sources = [n for n in names if "/lib/src/ac3/src/" in n and n.endswith(".cpp")]
     return len(names), len(sources)
 
 
@@ -241,11 +248,11 @@ def main_source(with_ac4: bool) -> str:
     prove nothing.
     """
     lines = [
-        '#include "ac3/decoder/decoder.hpp"',
-        '#include "ac3/decoder/output.hpp"',
+        '#include "iclforge/ac3/decoder/decoder.hpp"',
+        '#include "iclforge/ac3/decoder/output.hpp"',
     ]
     if with_ac4:
-        lines.append('#include "ac4dec/decoder.hpp"')
+        lines.append('#include "iclforge/ac4dec/decoder.hpp"')
     lines += [
         "#include <array>",
         "#include <span>",
@@ -356,7 +363,7 @@ def main() -> int:
 
     print(f"packed {final}")
     print(f"  entries: {entries}")
-    print(f"  src/forge sources: {sources}")
+    print(f"  src/ac3 sources: {sources}")
     if args.with_ac4:
         print("  with the AC-4 inspector, core and decoder")
     # The number that would have caught the original three-file archive. A

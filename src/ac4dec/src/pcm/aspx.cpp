@@ -5,9 +5,9 @@
 #include <cstddef>
 #include <memory>
 
-#include "ac4/detail/profiling.hpp"
-#include "dsp/real_functions.hpp"
-#include "tables/qmf_tables.hpp"
+#include "iclforge/ac4core/detail/profiling.hpp"
+#include "iclforge/ac4core/dsp/real_functions.hpp"
+#include "iclforge/ac4core/tables/qmf_tables.hpp"
 
 namespace ac4::detail {
 namespace {

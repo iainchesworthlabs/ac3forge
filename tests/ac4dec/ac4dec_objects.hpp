@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-#include "ac4/syntax.hpp"
+#include "iclforge/ac4/syntax.hpp"
 
 namespace ac4dec_test {
 

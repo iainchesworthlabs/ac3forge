@@ -18,10 +18,10 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/routing.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/routing.hpp"
 #include "engine_thread.hpp"
 #include "pcm_sink.hpp"
 

@@ -7,11 +7,11 @@
 #include <fmt/format.h>
 #include <utility>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/meta/loudness.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
 #include "ac4_channels.hpp"
-#include "mp4/mp4.hpp"
+#include "iclforge/mp4/mp4.hpp"
 
 namespace ac3::apps {
 

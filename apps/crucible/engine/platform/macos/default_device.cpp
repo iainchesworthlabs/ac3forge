@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 #include "coreaudio_support.hpp"
 #include "platform_services.hpp"
 

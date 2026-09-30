@@ -11,7 +11,7 @@
 //
 // Free of ESP-IDF, like layout.hpp and render.hpp beside it and for the same
 // reason: this is the part with real logic (and a hardware ceiling to get
-// right), the peripheral setup around it is not, and tests/io/test_sink_plan.cpp
+// right), the peripheral setup around it is not, and tests/ac3/io/test_sink_plan.cpp
 // builds this on the host.
 //
 // Standard I2S is always exactly two slots (or one, a mono layout doubled

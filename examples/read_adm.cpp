@@ -8,7 +8,7 @@
 // object/bed mapping layer) exists. ac3adm::ac3adm has no idea what AC-3,
 // E-AC-3 or Atmos are, so this program does not either - it only proves the
 // parsed graph is navigable. (It is also built on top of the vendored
-// libbw64/libadm - see src/ac3adm/CMakeLists.txt - rather than a hand-rolled
+// libbw64/libadm - see src/adm/CMakeLists.txt - rather than a hand-rolled
 // parser; only ac3adm's own types appear below, never either library's.)
 //
 // Every real-world ADM BWF master is a production audio file this project
@@ -28,7 +28,7 @@
 #include <string>
 #include <string_view>
 
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 namespace {
 
@@ -38,7 +38,7 @@ using Bytes = std::string;
 // examples under its own `ctest` (examples/CMakeLists.txt registers each as a
 // test case), several checkouts commonly run at once, and they share a temp
 // directory - two runs on one fixed name read and delete each other's fixture.
-// Same ingredients as src/ac3adm/src/adm.cpp's make_temp_path, same reason.
+// Same ingredients as src/adm/src/adm.cpp's make_temp_path, same reason.
 std::string scratch_path(std::string_view name) {
     static const std::string run = std::to_string(
         (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^

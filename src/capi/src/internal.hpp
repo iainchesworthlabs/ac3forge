@@ -11,16 +11,16 @@
 #include <new>
 #include <vector>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/meta/qc.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3forge_c/ac3forge.h"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/ac3/meta/qc.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge_c/iclforge.h"
 
 
 // --- enum-ordinal contract ---------------------------------------------

@@ -5,7 +5,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "syntax/channel_elements.hpp"
 #include "syntax/context.hpp"
 

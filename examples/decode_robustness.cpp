@@ -11,7 +11,7 @@
 // DecoderConfig::diagnostics (decoder diagnostics describe()) rides alongside: it fires for the
 // same CRC failure the returned error already reports here, but it is the
 // only signal at all once ConcealmentPolicy is turned on (see
-// tests/decoder/test_diagnostics.cpp) - a concealed frame comes back as a
+// tests/ac3/decoder/test_diagnostics.cpp) - a concealed frame comes back as a
 // SUCCESSFUL decode_frame result, and polling DecodedFrame::concealed on
 // every call is the only alternative to a sink that speaks up when it
 // actually happens.
@@ -27,9 +27,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
 
 int main() {
     constexpr int kFrameCount = 8;

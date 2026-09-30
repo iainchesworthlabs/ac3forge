@@ -35,8 +35,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
 
 #include "fixture.hpp"
 

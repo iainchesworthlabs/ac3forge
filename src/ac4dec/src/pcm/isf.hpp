@@ -4,7 +4,7 @@
 #include <span>
 #include <vector>
 
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 // The intermediate spatial format renderer (ETSI TS 103 190-2 V1.3.1 clause
 // 5.10.3): an ISF object's essence, with the gain its metadata sets, to the

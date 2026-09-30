@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 #include "frame/metadata.hpp"
 #include "frame/timing.hpp"
 

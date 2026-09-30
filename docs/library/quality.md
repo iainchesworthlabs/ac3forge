@@ -58,7 +58,7 @@ segment can correct.
 rather than calling the pair, which is what makes a per-candidate measurement affordable inside
 the frame loop. That is a second copy of the §7.3 quantizer arithmetic — the shape of bug
 `ac3/verify/mirror.hpp` exists to catch — so it is pinned rather than trusted:
-`tests/quality/test_distortion.cpp` sweeps every `bap` over the quantizer's decision boundaries
+`tests/ac3/quality/test_distortion.cpp` sweeps every `bap` over the quantizer's decision boundaries
 and the full mantissa range, at every exponent a coefficient can carry, and requires **bit-exact**
 agreement.
 
@@ -117,7 +117,7 @@ change measuring well for the wrong reason (see `encoder.cpp`'s `chbwcod` commen
 
 The SPL calibration is measured, not assumed. A full-scale sine through this project's own
 analysis window and MDCT produces a block energy of 0.25, and `kFullScaleBlockEnergy` is asserted
-against that in `tests/quality/test_perceptual.cpp`, so a change to the transform's scaling cannot
+against that in `tests/ac3/quality/test_perceptual.cpp`, so a change to the transform's scaling cannot
 quietly move the threshold. The convention that full scale is 96 dB SPL is a `PerceptualConfig`
 field, because it is a convention rather than a measurement.
 

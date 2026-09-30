@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // Everything the ALSA backend does with device names and IEC 60958 channel
 // status, expressed without touching libasound.
@@ -14,7 +14,7 @@
 // It lives in its own header for one reason: it is the part of the backend
 // that can be tested on a machine with no sound card, no ALSA configuration
 // and - since nothing here includes <alsa/asoundlib.h> - no libasound at all.
-// tests/backend/alsa/test_alsa_device_names.cpp covers it, and CMake adds
+// tests/audio/backend/alsa/test_alsa_device_names.cpp covers it, and CMake adds
 // that file to the suite in the same breath as it selects this directory.
 //
 // The subject is the one thing ALSA does differently from WASAPI. WASAPI has a

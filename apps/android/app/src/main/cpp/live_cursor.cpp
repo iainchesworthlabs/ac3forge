@@ -31,7 +31,7 @@
 // ~266ms/frame on this Shield's SoC - traced (Tracy) to the forward MDCT
 // recomputing std::cos() fresh inside an O(N^2) loop instead of using a
 // precomputed table the way the inverse transform already did (see
-// src/forge/src/core/mdct.cpp's ForwardCosTable). Fixed there, not worked
+// src/ac3/src/core/mdct.cpp's ForwardCosTable). Fixed there, not worked
 // around here - this is the straight per-frame loop again.
 
 #include <jni.h>
@@ -59,15 +59,15 @@
 
 #include <sys/resource.h>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/io/object_strip.hpp"
-#include "ac3/latency.hpp"
-#include "ac3/meta/loudness.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/io/object_strip.hpp"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/meta/loudness.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/audio/passthrough.hpp"
 #include "shield_signing_hook.hpp"
 
 namespace {
@@ -266,7 +266,7 @@ enum class RecordState : std::int32_t { kIdle = 0, kRecording = 1, kPlaying = 2 
 //     variable most likely to explain a disagreement with a real decoder.
 //     Nothing of the kind is computed.
 //   * The decoded POSITION is an algebraic identity, not a discovery -
-//     tests/oba/test_atmos.cpp asserts decoded == the encoder's own
+//     tests/ac3/oba/test_atmos.cpp asserts decoded == the encoder's own
 //     quantize_xy/quantize_z of the intended position. It is shown because
 //     the QUANTISER is the interesting part: height travels in 16 steps and
 //     left/right in 63, which is visible as a staircase against a smooth
@@ -726,7 +726,7 @@ public:
             // that one keeps the BIAS itself bounded, this one keeps the
             // final trajectory+bias position inside the room even right at
             // the trajectory's own extremes (x,y in [0,1], z in [-1,1] - see
-            // src/forge/include/ac3/oba/oamd.hpp).
+            // src/objects/include/iclforge/objects/oamd.hpp).
             placements_[static_cast<std::size_t>(i)] = {
                 .position = {.x = std::clamp(base.x + defl.x, 0.0, 1.0),
                             .y = std::clamp(base.y + defl.y, 0.0, 1.0),
@@ -938,7 +938,7 @@ void trace_loop() {
             object_count = static_cast<int>(objects.size());
             if (!objects.empty()) {
                 // objects[i] is parallel to the placement[i] the encoder was
-                // handed - see tests/oba/test_atmos.cpp's round-trip - so
+                // handed - see tests/ac3/oba/test_atmos.cpp's round-trip - so
                 // index 0 is the interactive lead.
                 decoded_z = static_cast<float>(objects[0].position.z);
             }

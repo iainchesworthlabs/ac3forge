@@ -19,8 +19,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 int main(int argc, char** argv) {
     if (argc != 2) {

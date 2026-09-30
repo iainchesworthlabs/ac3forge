@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3gui - the Qt6 Quick front end over ac3::forge. Presentation and platform
+# ac3gui - the Qt6 Quick front end over iclforge::ac3. Presentation and platform
 # glue only: every codec decision lives in the library.
 #
 # Qt is a PREBUILT dependency discovered by cmake/FindQt6.cmake (which widens
@@ -301,26 +301,26 @@ endif()
 
 target_link_libraries(ac3gui
     PRIVATE
-        ac3::forge
+        iclforge::ac3
         # EncoderController's live-capture/monitor/passthrough panel is a
         # real, load-bearing consumer of this - not incidental.
-        ac3::audio
+        iclforge::audio
         # The GUI can save straight to .mkv, so it needs the muxer the CLI's
-        # 'mkv' command uses. It links nothing from ac3::forge itself.
-        matroska::matroska
-        # Same reasoning as matroska::matroska above, for the CLI's 'mp4'/
+        # 'mkv' command uses. It links nothing from iclforge::ac3 itself.
+        iclforge::matroska
+        # Same reasoning as iclforge::matroska above, for the CLI's 'mp4'/
         # 'fmp4'/'ts' commands - see EncoderController::writeOutput().
-        mp4::mp4
-        mpegts::mpegts
+        iclforge::mp4
+        iclforge::mpegts
         # AC-4 in the codec list, the QC, the player and the object page, through
         # the decoder's and the encoder's public APIs.
-        ac4::ac4
-        ac4::decoder
-        ac4::encoder
+        iclforge::ac4
+        iclforge::ac4dec
+        iclforge::ac4enc
         ac3::warnings
         ac3::fmt
-        # Unlike ac3::forge's own PRIVATE, $<BUILD_INTERFACE:...>-wrapped link
-        # (src/forge/CMakeLists.txt), this app has no intermediate engine
+        # Unlike iclforge::ac3's own PRIVATE, $<BUILD_INTERFACE:...>-wrapped link
+        # (src/ac3/CMakeLists.txt), this app has no intermediate engine
         # library of its own to hang the profiling header pair on the way
         # apps/crucible/CMakeLists.txt and apps/hearth/engine/CMakeLists.txt
         # do for their windows - so ac3gui (and ac3gui_qmltests, tests/CMakeLists.txt's
@@ -332,7 +332,7 @@ target_link_libraries(ac3gui
         Qt6::QuickControls2
         Qt6::Concurrent)
 target_include_directories(ac3gui PRIVATE
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
 
 # A GUI app rather than a console one. MACOSX_BUNDLE moves the binary to
 # bin/ac3gui.app/Contents/MacOS/ac3gui, which is where --smoke lives on macOS;

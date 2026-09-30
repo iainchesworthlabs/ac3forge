@@ -27,7 +27,7 @@ accepts BWF ADM, but its reader gates on content provenance ("Content was not
 authored with Dolby tools") and refuses a master this project authors, so the
 `cbi_wav` path is the only one available here. That is why the fixture has no
 dynamic objects and therefore no object size, zone or snap on the wire - the
-encode-side round trip in tests/oba/test_oba.cpp covers those instead.
+encode-side round trip in tests/ac3/oba/test_oba.cpp covers those instead.
 
 DEE is licensed commercial software and must never run in CI, exactly as
 gen_external_baseline.py says of the same binary - hence the same
@@ -57,7 +57,7 @@ DATA_RATE_KBPS = 448
 # L/C/R/Ls/Rs/LFE "SMPTE order" its 5.1 dee_ddp_encoder path documents. That is
 # not stated in `--morehelp input-format`; it was measured, by encoding a file
 # with one distinct tone per channel and identifying each reconstructed JOC
-# object by which tone dominates it (tests/oba/test_dee_joc_fixture.cpp runs
+# object by which tone dominates it (tests/ac3/oba/test_dee_joc_fixture.cpp runs
 # the same identification over the committed fixture as a regression check).
 CHANNELS = [
     ("L", 220.0),

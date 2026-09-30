@@ -15,9 +15,9 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/oba/atmos.hpp"
-#include "ac3/signing/emdf_atmos_signer.hpp"
-#include "ac3/signing/signing_key.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/signing/emdf_atmos_signer.hpp"
+#include "iclforge/signing/signing_key.hpp"
 
 // Internal crypto headers - on the include path for this target only (see
 // tests/CMakeLists.txt), the same way the alsa backend's internal header is.

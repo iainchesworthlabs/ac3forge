@@ -8,11 +8,11 @@
 #include <span>
 #include <string>
 
-#include "ac3/io/wav.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 #include "fmp4_folder_writer.hpp"
-#include "matroska/matroska.hpp"
-#include "mpegts/mpegts.hpp"
+#include "iclforge/matroska/matroska.hpp"
+#include "iclforge/mpegts/mpegts.hpp"
 
 // Streams a recording's encoded frames to their destination as they are
 // produced, for the containers whose format allows it - which is what turns

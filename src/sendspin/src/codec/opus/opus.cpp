@@ -10,8 +10,8 @@
 #include <opus.h>
 
 #include "../codecs.hpp"
-#include "ac3/sendspin/codec.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/codec.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // Opus for player@v1: one 20 ms packet a unit, no header, configured from the format's rate and
 // channels (roles/player/v1.md, Codec framing).

@@ -65,12 +65,12 @@ difference 1.1e-5.
 
 ## Milestones 8–9 — space, and getting it to a receiver
 
-The spatial layer (`src/forge/src/spatial/`) places mono objects on the ITU 5.1 ring by
+The spatial layer (`src/render/src/`) places mono objects on the ITU 5.1 ring by
 energy-normalized 2D VBAP with per-block gain ramps and explicit LFE sends. `ac3cli orbit`
 renders a tone circling the listener into 5.1 AC-3. An end-to-end test parks the object at
 each speaker in turn and asserts the decoded energy follows it: C → L → SL → SR → R.
 
-The IEC 61937 packer (`src/forge/src/iec61937/`) wraps frames into S/PDIF bursts byte-exact against
+The IEC 61937 packer (`src/iec61937/src/`) wraps frames into S/PDIF bursts byte-exact against
 FFmpeg's `spdif` muxer. `ac3cli spdif` emits them as a PCM16 WAV; played bit-exactly through a
 passthrough output, a receiver locks on and lights its Dolby Digital indicator.
 
@@ -425,14 +425,14 @@ Neither tool has any external decode oracle — FFmpeg's own Annex E parser has 
 one's syntax, which is weaker than 7.1.4's situation (a syntax it reads but rejects on one field):
 it has no model of the bits at all, so strict-decoding a stream that uses either tool isn't merely
 unavailable, it would reject a correctly-formed stream on syntax it doesn't recognise. Verification
-is self-consistency only: round-trip unit tests in `tests/decoder/test_eac3_decoder.cpp`, and
+is self-consistency only: round-trip unit tests in `tests/ac3/decoder/test_eac3_decoder.cpp`, and
 `tools/ci/quality_race.py`'s CI gate, extended with a `decode_scores_ours` path that decodes through
 this project's own `ac3cli decode` instead of FFmpeg for exactly these two tools, with SNR/LSD
 floors sized off a measured run rather than guessed.
 
 ## Enhanced coupling's real angle/chaos fit
 
-The amplitude-only MVP above was closed by `fit_ecpl_band` (`src/forge/src/encoder/eac3_frame.cpp`):
+The amplitude-only MVP above was closed by `fit_ecpl_band` (`src/ac3/src/encoder/eac3_frame.cpp`):
 §3.5.5.4's reconstruction turns out to be linear in the complex gain a band's (amplitude, angle)
 pair expresses — the same shared coupling channel folded through unity gain at angle 0 and at
 angle 0.5 (a quarter-turn) spans every gain a single coordinate pair could ever produce, so fitting
@@ -470,7 +470,7 @@ infrastructure, and both decoders' own independent copies of the same four range
 it too, closing a three-way literal duplication risk that predated this work rather than adding a
 new one.
 
-Two existing bit-placement tests (`tests/encoder/test_eac3.cpp`) had hardcoded `rematflg` at zero,
+Two existing bit-placement tests (`tests/ac3/encoder/test_eac3.cpp`) had hardcoded `rematflg` at zero,
 true only because the encoder never set it before; both now assert engagement (at least one
 band fires) for their already-correlated test material instead, catching the field's PRESENCE
 without pinning a value that is legitimately content-dependent. The existing stereo round-trip

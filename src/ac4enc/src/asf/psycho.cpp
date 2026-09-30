@@ -6,8 +6,8 @@
 #include <numbers>
 #include <span>
 
-#include "dsp/kbd.hpp"
-#include "dsp/mdct.hpp"
+#include "iclforge/ac4core/dsp/kbd.hpp"
+#include "iclforge/ac4core/dsp/mdct.hpp"
 
 namespace ac4::detail {
 namespace {

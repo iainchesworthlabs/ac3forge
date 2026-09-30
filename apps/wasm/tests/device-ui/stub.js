@@ -167,7 +167,7 @@ const STREAMS = {
 };
 
 // Table E2.5's location names as the firmware writes them, and the other
-// tokens OutputLayout's list takes (src/forge/include/ac3/render/layout.hpp).
+// tokens OutputLayout's list takes (src/render/include/iclforge/render/layout.hpp).
 const LOCATIONS = 'L C R Ls Rs Lc Rc Lrs Rrs Cs Ts Lsd Rsd Lw Rw Vhl Vhr Vhc Lts Rts LFE LFE2'.split(' ');
 const TOKENS = new Set([...LOCATIONS.map((n) => n.toLowerCase()), '-']);
 

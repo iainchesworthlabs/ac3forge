@@ -159,14 +159,14 @@ endif()
 
 target_link_libraries(ac3gui_qmltests
     PRIVATE
-        ac3::forge
-        ac3::audio
-        matroska::matroska
-        mp4::mp4
-        mpegts::mpegts
-        ac4::ac4
-        ac4::decoder
-        ac4::encoder
+        iclforge::ac3
+        iclforge::audio
+        iclforge::matroska
+        iclforge::mp4
+        iclforge::mpegts
+        iclforge::ac4
+        iclforge::ac4dec
+        iclforge::ac4enc
         ac3::warnings
         ac3::fmt
         # This target recompiles encoder_controller.cpp/stream_player_controller.cpp
@@ -187,7 +187,7 @@ target_link_libraries(ac3gui_qmltests
         Qt6::QuickTest
         Qt6::Concurrent)
 target_include_directories(ac3gui_qmltests PRIVATE
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
 
 # QT_QPA_PLATFORM=offscreen on the test itself, not just -platform offscreen
 # on the command line: belt and suspenders again, and it means running the

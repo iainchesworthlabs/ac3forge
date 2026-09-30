@@ -51,7 +51,7 @@ ac3forge 0.10.0-beta.1+2637
 The headline carries the commits past the tag as semver build metadata: `+2637` is 2 637 commits
 past `v0.10.0-beta.1` (the `release:` line carries git's own describe of it), so a build from
 between releases is not mistaken for the tagged one. `kernels:` is `generic`, `x86_64-sse2` or
-`aarch64-neon`, the `src/arithmetic/arch/` directory the binary was built from. A tree with
+`aarch64-neon`, the `arch-*` directory of `src/arithmetic/variants/` the binary was built from. A tree with
 uncommitted changes adds a `state:   dirty (uncommitted changes)` line.
 
 `--version` (or its `-v` alias) is a flag, not one of the 44 commands — it's handled

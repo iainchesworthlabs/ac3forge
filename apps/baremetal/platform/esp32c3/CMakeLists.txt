@@ -43,7 +43,7 @@ set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
 #
 # It is still an override, not a hard-wire - `idf.py -DAC3FORGE_DECODE_SCALAR=float
 # build` measures the float tier on the same part, which is the comparison
-# docs/platforms/bare-metal/esp32-c3.md's own row is made of. src/forge/minimal.cmake is what
+# docs/platforms/bare-metal/esp32-c3.md's own row is made of. src/ac3/minimal.cmake is what
 # honours it; every other value of the option resolves to float32 there.
 set(AC3FORGE_DECODE_SCALAR "fixed" CACHE STRING
     "Decode arithmetic: fixed (this part has no FPU), float, or double")
@@ -51,9 +51,9 @@ set(AC3FORGE_DECODE_SCALAR "fixed" CACHE STRING
 # The decode-critical sources at -O2, as on the S3 and for the same reason:
 # the code is in flash, of which a C3 module has 4 MB, and the internal SRAM
 # the footprint ceilings guard is untouched by it. On a part with no FPU the
-# question this answers is sharper - see src/forge/minimal.cmake's list.
+# question this answers is sharper - see src/ac3/minimal.cmake's list.
 set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
-    "Decode-critical sources at -O2; see src/forge/minimal.cmake")
+    "Decode-critical sources at -O2; see src/ac3/minimal.cmake")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 

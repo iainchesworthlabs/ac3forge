@@ -23,9 +23,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
-#include "dsp/qmf.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 #include "pcm/pow43.hpp"
 #include "pcm/snf_random.hpp"
 #include "pcm/stereo.hpp"
@@ -33,8 +33,8 @@
 #include "sanitized.hpp"
 #include "syntax/asf.hpp"
 #include "syntax/context.hpp"
-#include "tables/noise_tables.hpp"
-#include "tables/sfb_tables.hpp"
+#include "iclforge/ac4core/tables/noise_tables.hpp"
+#include "iclforge/ac4core/tables/sfb_tables.hpp"
 
 namespace {
 

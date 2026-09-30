@@ -13,8 +13,8 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/meta/bsi.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/meta/bsi.hpp"
 
 // The commands that take an already-encoded stream somewhere else - the
 // container wrappers (apps/cli/commands/containers.cpp: mkv, mp4, fmp4, ts,

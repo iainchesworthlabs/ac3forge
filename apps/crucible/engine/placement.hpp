@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <span>
 
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 #include "slots.hpp"
 
 // Where each object is this frame (docs/platforms/windows-demo.md, "Objects

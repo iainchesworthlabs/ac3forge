@@ -6,11 +6,11 @@
 #include <string>
 #include <vector>
 
-#include "ac4/ac4.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_encode_core.hpp"
 #include "ac4_encode_settings.hpp"
 #include "ac4_presentations.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // ac3gui's AC-4 page (apps/gui/ac4_encode_settings.hpp): each choice echoes
 // the `ac3cli ac4-encode` token ac3cli's parser reads for it, and builds the

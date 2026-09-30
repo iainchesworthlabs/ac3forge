@@ -1,4 +1,4 @@
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // The Android passthrough backend. CMake compiles this directory's
 // passthrough.cpp on Android and another platform directory's everywhere
@@ -100,8 +100,8 @@
 #include <optional>
 #include <vector>
 
-#include "ac3/audio/playback_counter.hpp"
-#include "ac3/iec61937/iec61937.hpp"
+#include "iclforge/audio/playback_counter.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
 #include "android_support.hpp"
 
 namespace ac3::audio {

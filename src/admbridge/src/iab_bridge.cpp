@@ -1,4 +1,4 @@
-#include "ac3/admbridge/iab_bridge.hpp"
+#include "iclforge/admbridge/iab_bridge.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -8,9 +8,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ac3/admbridge/coordinates.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3iab/model.hpp"
+#include "iclforge/admbridge/coordinates.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/iab/model.hpp"
 
 // See iab_bridge.hpp's own top comment for the overall two-pass design and what is and is not
 // mapped. This file is the implementation of that design.

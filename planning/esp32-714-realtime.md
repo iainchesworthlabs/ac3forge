@@ -52,7 +52,7 @@ each is expected to save, and the decisions, each with a recommendation and a co
   way.
 - The whole path: the decode, the Annex E coding tools, the output stage, the render, the sink,
   where memory is placed, and the second core.
-- Two constraints. Changes in `src/forge` need the user's agreement, and are coordinated with the
+- Two constraints. Changes in `src/ac3` need the user's agreement, and are coordinated with the
   other work in progress there. The gold standard (the host's double-precision decode, and the hashes
   and levels held to it) and the other platforms must not change.
 
@@ -109,8 +109,8 @@ bed's.
 
 The probe's 5.1 fixture folds in 3,180 µs (`eac3_fold`). Both folds work out at about 18 cycles
 for each sample the output stage zeroes, multiplies and adds, or copies. The stage makes six
-passes over the frame, and `src/forge/src/decoder/output.cpp` was compiled at `-Os`: it was not on
-`src/forge/minimal.cmake`'s `AC3FORGE_MINIMAL_HOT_O2` list (#654 put it there). Folding the whole
+passes over the frame, and `src/ac3/src/decoder/output.cpp` was compiled at `-Os`: it was not on
+`src/ac3/minimal.cmake`'s `AC3FORGE_MINIMAL_HOT_O2` list (#654 put it there). Folding the whole
 frame at once is also what raised the peak by 49 KB: six seats and two outputs of 1,536 samples
 each; the stage works a block at a time now.
 
@@ -305,14 +305,14 @@ than measured.
 | | Option | Where | Expected saving | From |
 |---|---|---|---|---|
 | A | An output task on core 0, fed by a ring of decoded blocks in PSRAM. The fold, the render, the meter and the sink leave the decode's core | the component | 2.0: 9.5 ms, less about 1 ms of copying (estimate). Twelve slots: 4.3 ms, or 6.7 ms with a TDM conversion, less the copy | measured stages |
-| B | Two cores inside the decode: each substream's reconstruction (spectral extension, IMDCT) in parallel, and the parse kept in bitstream order | `src/forge` | 8 to 11 ms at 7.1.4 (estimate) | the stage shares above |
-| C | The output stage's own cost: `-O2`, and one pass per block | `src/forge`, in #654 | up to about 6 of the 7.9 ms at 2.0 (estimate) | 18 cycles an element at `-Os` |
+| B | Two cores inside the decode: each substream's reconstruction (spectral extension, IMDCT) in parallel, and the parse kept in bitstream order | `src/ac3` | 8 to 11 ms at 7.1.4 (estimate) | the stage shares above |
+| C | The output stage's own cost: `-O2`, and one pass per block | `src/ac3`, in #654 | up to about 6 of the 7.9 ms at 2.0 (estimate) | 18 cycles an element at `-Os` |
 | D | The fold's scratch sized to a block rather than a frame. With A, that is 8 KB on the output task instead of 49 KB on the decoder | the component, with A | 1 to 1.5 ms of placement at 2.0 (estimate) | PSRAM per frame 48 KB at 2.0, against 25 KB with no fold |
 | E | A 64 KB data cache with 64-byte lines | `sdkconfig.psram` | 2.0 ms at 2.0 | measured |
-| F | Per-frame channel buffers kept by the decoder, where today they are allocated each frame | `src/forge` | up to 3 to 4 ms in the network shape (estimate), and fourteen fewer allocations a frame | network shape against probe |
-| G | AHT's 43 KB frame buffer split into seven buffers, so it can stay in internal RAM, and a cheaper six-point inverse | `src/forge` | 2 to 5 ms when a stream uses AHT (estimate) | 9.2 to 11.8 ms on the board, against 8.0 in internal RAM |
+| F | Per-frame channel buffers kept by the decoder, where today they are allocated each frame | `src/ac3` | up to 3 to 4 ms in the network shape (estimate), and fourteen fewer allocations a frame | network shape against probe |
+| G | AHT's 43 KB frame buffer split into seven buffers, so it can stay in internal RAM, and a cheaper six-point inverse | `src/ac3` | 2 to 5 ms when a stream uses AHT (estimate) | 9.2 to 11.8 ms on the board, against 8.0 in internal RAM |
 | H | The component's sources at `-O2`: render, conversion, meter | the component | 1.5 ms onto twelve slots, less at 2.0; 4,400 bytes of flash | measured |
-| I | A hand-written Xtensa FFT for the IMDCT, as esp-dsp does it | `src/forge` | about 2 ms (estimate) | esp-dsp's published cycle counts |
+| I | A hand-written Xtensa FFT for the IMDCT, as esp-dsp does it | `src/ac3` | about 2 ms (estimate) | esp-dsp's published cycle counts |
 | J | The dependent substreams decoded by a second `Eac3Decoder` on core 0 | the component | as B | |
 | K | A 32 KB instruction cache | `sdkconfig.psram` | 3.1 ms of a 2.0 frame's decode, 3.8 ms of a twelve-slot frame | measured, [on the board](#the-decisions-on-the-board) |
 | L | A play's first unit held until the second is decoded | the component | the underruns in a play's first frames | measured, on the board |
@@ -408,14 +408,14 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    **Recommend (a).** Decisions 1 and 2 are expected to bring `714-walk` and `714-tones` to about
    28 ms a frame on core 1. That is real time with a margin of about 10%. F and G widen that
    margin, and bring the 7.1.4 streams that use AHT closer, but a board figure should say how much
-   is still needed before `src/forge` changes. Cost of F and G: each needs the user's agreement.
+   is still needed before `src/ac3` changes. Cost of F and G: each needs the user's agreement.
    Each must leave the double build's arithmetic textually untouched and must not
    raise the probe's peak heap on any target. F keeps up to 84 KB of channel buffers between
    frames that today are freed between frames, so its peak is unchanged but its low point rises.
 
    **Taken 2026-09-11 as (b):** the user asked for F and G to be proposed now, and they were
    proposed that day, with #654's changes to the same file as the reason to build them after it
-   lands or on top of it. Nothing in `src/forge` changed before the user's answer.
+   lands or on top of it. Nothing in `src/ac3` changed before the user's answer.
 
    With decisions 13 and 14, `714-walk` and `714-tones` play without F or G. Both were built
    as #656, and the user had them measured on the board on 2026-09-11, each
@@ -516,7 +516,7 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     `AC3FORGE_MINIMAL_HOT_O2` already allows for the decoder.
 
     **Measured:** the renderer is header-only (`include/ac3forge/render.hpp` then, since moved to
-    `src/forge/include/ac3/render/render.hpp`) and compiles into
+    `src/render/include/iclforge/render/render.hpp`) and compiles into
     `player.cpp`, so it runs at `-O2` with it. Onto twelve slots the render took 2.1 to 2.7 ms a
     frame in the base image and 1.5 to 2.2 ms with `player.cpp` at `-O2` (#654 does not touch the
     render).

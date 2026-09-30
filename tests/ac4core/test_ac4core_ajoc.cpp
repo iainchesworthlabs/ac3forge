@@ -1,4 +1,4 @@
-// A-JOC in the AC-4 shared core (src/ac4core/src/ajoc): ETSI TS 103 190-2
+// A-JOC in the AC-4 shared core (src/ac4core/include/iclforge/ac4core/ajoc): ETSI TS 103 190-2
 // V1.3.1 clause 5.7's band mapping (Table 28), dequantisation (Tables 29 to
 // 32) and differential decoding (Pseudocode 16), and the reconstruction
 // (Pseudocodes 17 and 18) against its formulas on inputs whose outputs can be
@@ -21,9 +21,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "acpl/acpl.hpp"
-#include "ajoc/ajoc.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/acpl/acpl.hpp"
+#include "iclforge/ac4core/ajoc/ajoc.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 namespace {
 

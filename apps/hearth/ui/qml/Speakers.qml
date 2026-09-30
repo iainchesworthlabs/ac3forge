@@ -16,7 +16,7 @@ import Ac3ForgeHearth
 // only the label and the small-speaker flag. Rather than extend the engine
 // for one diagram, this file keeps its own label-to-angle/elevation table,
 // ported by hand from ac3::spatial::direction_of
-// (src/forge/src/spatial/spatial.cpp) - see speakerAngles/directionOf
+// (src/render/src/spatial.cpp) - see speakerAngles/directionOf
 // below. Keep the two in sync if that table ever changes.
 ScrollView {
     id: root

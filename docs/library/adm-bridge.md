@@ -47,7 +47,7 @@ Two hard constraints rule out folding this into either side it bridges:
 
 - `ac3adm::ac3adm` is documentedly codec-blind — its own header comments and this project's design
   keep it with zero dependency on `ac3::forge`/`ac3::oba`, and that does not change here.
-- `src/forge` (`ac3::forge`, `ac3::oba::AtmosEncoder`) is always built, unconditionally, by every
+- `src/ac3` (`ac3::forge`, `ac3::oba::AtmosEncoder`) is always built, unconditionally, by every
   configuration of this project. It cannot gain a dependency on the opt-in, Boost-requiring
   `ac3adm` without breaking every default build.
 
@@ -56,7 +56,7 @@ shape `ac3::signing` uses for its own `ac3::forge` dependency. Like `ac3adm::ac3
 (see [ADM / BW64 reading](adm.md)), it IS part of the installed `find_package(ac3forge)` package,
 but shared-only: `ac3::admbridge_shared`/the bare `ac3::admbridge` alias, no `_static` variant.
 `build_iab()` (`ac3/admbridge/iab_bridge.hpp`) maps a whole parsed `ac3iab::IABitstreamFrame`
-sequence — from either of `ac3iab::ac3iab`'s two readers (`src/ac3iab`: a bare elementary `.iab`
+sequence — from either of `ac3iab::ac3iab`'s two readers (`src/iab`: a bare elementary `.iab`
 file or a real MXF Track File) — onto this same `ObjectPath` layer, driven end to end by `ac3cli
 atmos-iab` (see [Commands](../forge/cli/commands.md)). `ac3adm::AdmDocument` and `ac3iab::
 IABitstreamFrame` are therefore both input shapes here, sharing the coordinate-conversion and
@@ -94,7 +94,7 @@ parsing — see "Bridging IAB" below for exactly what differs between the two.
   front-positive, Z top-positive, `[-1, 1]` unit cube) conventions, both converted to
   `ac3::oba::Position`'s room-anchored `[0, 1]`/`[0, 1]`/`[-1, 1]` one. Checked against the
   standard's own axis-direction text at the cardinal points, and empirically against this
-  project's own existing ring-position constants (`tests/oba/test_atmos_motion.cpp`'s `kL`/`kR`/`kSR`)
+  project's own existing ring-position constants (`tests/ac3/oba/test_atmos_motion.cpp`'s `kL`/`kR`/`kSR`)
   — the BS.2076-2 `M+030`/`M-030`/`M-110` speaker-label azimuths reproduce those exact values
   through this conversion.
 - **Absolute timeline time** for a channel's automation is `object.start_s + block.rtime_s` — two
@@ -339,7 +339,7 @@ real byte-level BW64 fixture (two DirectSpeakers bed channels plus one Objects c
 at one ring position and then jumps to another), parses it with the real `ac3adm::parse_bw64()`,
 bridges it, and drives a real `ac3::oba::AtmosEncoder`/`ac3::Eac3Decoder` round trip — confirming
 the decoded bitstream's channel energy actually lands where the authored ADM positions and hold/
-jump timing say it should, the same standard `tests/oba/test_atmos_motion.cpp`'s own flagship test
+jump timing say it should, the same standard `tests/ac3/oba/test_atmos_motion.cpp`'s own flagship test
 holds itself to.
 
 `tests/cli/test_cli_atmos_adm.cpp` covers the same fixture shape one level up: it runs the

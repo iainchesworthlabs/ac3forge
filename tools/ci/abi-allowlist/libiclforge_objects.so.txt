@@ -1,0 +1,45 @@
+ac3::emdf::build_container(std::span<ac3::emdf::Payload const, 18446744073709551615ul>, int)
+ac3::emdf::parse_container(std::span<std::byte const, 18446744073709551615ul>)
+ac3::emdf::put_variable_bits(ac3::BitWriter&, unsigned int, int)
+ac3::emdf::variable_bits_size(unsigned int, int)
+ac3::oba::KeyframePath::create(std::vector<ac3::oba::Keyframe, std::allocator<ac3::oba::Keyframe> >)
+ac3::oba::KeyframePath::evaluate(double) const
+ac3::oba::ObjectPath::evaluate(double) const
+ac3::oba::ObjectScene::create(std::vector<ac3::oba::SceneObject, std::allocator<ac3::oba::SceneObject> >, ac3::oba::Orientation const&)
+ac3::oba::ObjectScene::duration_s() const
+ac3::oba::ObjectScene::evaluate(double) const
+ac3::oba::ObjectScene::evaluate(unsigned long, double) const
+ac3::oba::ObjectScene::evaluate_into(double, std::span<ac3::oba::ObjectPlacement, 18446744073709551615ul>) const
+ac3::oba::OrbitPath::OrbitPath(double, double, double, double, double)
+ac3::oba::OrbitPath::evaluate(double) const
+ac3::oba::SceneCursor::SceneCursor(ac3::oba::ObjectScene)
+ac3::oba::SceneCursor::is_live(unsigned long) const
+ac3::oba::SceneCursor::push(ac3::oba::SceneUpdate const&)
+ac3::oba::SceneCursor::release(unsigned long)
+ac3::oba::SceneCursor::release_all()
+ac3::oba::SceneCursor::sample(double) const
+ac3::oba::SceneCursor::sample_into(double, std::span<ac3::oba::ObjectPlacement, 18446744073709551615ul>) const
+ac3::oba::apply(ac3::oba::SceneOscUpdate const&, ac3::oba::ObjectPlacement const&)
+ac3::oba::bed_label_position(ac3::oba::BedLabel)
+ac3::oba::bed_labels(unsigned short)
+ac3::oba::build_payload(ac3::oba::Program const&, std::span<ac3::oba::DynamicObject const, 18446744073709551615ul>, int)
+ac3::oba::build_payload_updates(ac3::oba::Program const&, std::span<ac3::oba::ObjectUpdate const, 18446744073709551615ul>)
+ac3::oba::describe(ac3::oba::BedLabel)
+ac3::oba::describe_objects(ac3::oba::DecodedProgram const&, unsigned long)
+ac3::oba::evaluate_placements(std::span<ac3::oba::ObjectPath const, 18446744073709551615ul>, double)
+ac3::oba::joc_object_indices(ac3::oba::Program const&)
+ac3::oba::make_orbit_path(double, double, double, double, double)
+ac3::oba::orientation_from_degrees(double, double, double)
+ac3::oba::parse_osc_packet(std::span<std::byte const, 18446744073709551615ul>, ac3::oba::OscParseStats*)
+ac3::oba::parse_osc_packet_into(std::span<std::byte const, 18446744073709551615ul>, std::span<ac3::oba::SceneOscUpdate, 18446744073709551615ul>, ac3::oba::OscParseStats*)
+ac3::oba::parse_payload(std::span<std::byte const, 18446744073709551615ul>)
+ac3::oba::read_scene(std::basic_string_view<char, std::char_traits<char> >)
+ac3::oba::read_scene_json(std::basic_string_view<char, std::char_traits<char> >)
+ac3::oba::rotate(ac3::oba::Position const&, ac3::oba::Orientation const&)
+ac3::oba::scene_from_json(std::basic_string_view<char, std::char_traits<char> >)
+ac3::oba::scene_from_text(std::basic_string_view<char, std::char_traits<char> >, ac3::oba::ObjectPlacement const&)
+ac3::oba::scene_objects_from_keyframe_text(std::basic_string_view<char, std::char_traits<char> >)
+ac3::oba::to_json[abi:cxx11](ac3::oba::ObjectScene const&)
+ac3::oba::to_keyframe_text[abi:cxx11](ac3::oba::ObjectScene const&)
+ac3::oba::to_keyframe_text[abi:cxx11](std::span<ac3::oba::SceneObject const, 18446744073709551615ul>)
+std::__throw_bad_variant_access(unsigned int)::__reasons

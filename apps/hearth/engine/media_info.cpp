@@ -6,12 +6,12 @@
 #include <span>
 #include <utility>
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/sendspin/json.hpp"
-#include "ac3/signing/emdf_atmos_signer.hpp"
-#include "ac3/version.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/sendspin/json.hpp"
+#include "iclforge/signing/emdf_atmos_signer.hpp"
+#include "iclforge/ac3/version.hpp"
+#include "iclforge/ac4/ac4.hpp"
 
 // See media_info.hpp.
 

@@ -741,7 +741,7 @@ jobs:
   # names, and nothing in ac3gui's own install() rules controls that.
   #
   # AppImage over Flatpak, decided and not re-litigated here: ac3gui's whole
-  # point is ac3::audio's IEC 61937 passthrough - exclusive-mode ALSA
+  # point is iclforge::audio's IEC 61937 passthrough - exclusive-mode ALSA
   # `iec958:...,AES0=0x06` device args or PipeWire's native
   # `SPA_MEDIA_SUBTYPE_iec958` straight to an AVR (docs/platforms/linux.md's
   # "Why ALSA still comes first"). That needs raw device access a sandbox
@@ -963,7 +963,7 @@ jobs:
       # library/libruntime (cmake/Packaging.cmake's other two components)
       # are for BUILD_SHARED_LIBS=ON, which the plain linux-gcc preset used
       # here does not set (only config-linux-llvm-shared does - see that
-      # preset's own description) - so ac3::forge/matroska/mp4/mpegts should
+      # preset's own description) - so iclforge::ac3/matroska/mp4/mpegts should
       # all be linked straight into the ac3gui binary already. Checked with
       # ldd rather than just assumed, so a future default flip doesn't
       # silently ship an AppImage missing a .so it now needs.
@@ -1780,7 +1780,7 @@ jobs:
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
   # of the desktop workflows' steps apply (no ctest suite, no cpack package, no gold-reference
   # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
-  # ac3::forge_c_shared rather than reusing a desktop preset.
+  # iclforge::c_shared rather than reusing a desktop preset.
   #
   # All three desktop OSes, one job each (Rust bindings's completeness pass): the
   # dynamic-linking approach was proven on Linux first and then validated on Windows locally -
@@ -2830,13 +2830,13 @@ jobs:
       #     each. The conversion it calls (ac3forge/interleave.hpp) runs
       #     through the capture sink - stereo in the streaming and HTTP steps,
       #     8 and 12 TDM slots in the capture and render steps - and is
-      #     unit-tested on the host (tests/io/test_interleave.cpp). The model
+      #     unit-tested on the host (tests/ac3/io/test_interleave.cpp). The model
       #     of the DMA queue it keeps for its sink.* line
       #     (ac3forge/dac_queue_model.hpp) runs in no QEMU step, since the
       #     capture sink has no DMA, and is unit-tested on the host as well
-      #     (tests/io/test_dac_queue_model.cpp). The mode/slot-count
+      #     (tests/ac3/io/test_dac_queue_model.cpp). The mode/slot-count
       #     arithmetic itself (ac3forge/sink_plan.hpp) is unit-tested on the
-      #     host too (tests/io/test_sink_plan.cpp).
+      #     host too (tests/ac3/io/test_sink_plan.cpp).
       #   * sd drives the SDMMC host. The file layer it shares with the
       #     flash-backed FAT source (main/source/file_common.hpp) runs in the
       #     capture and render steps.
@@ -3569,7 +3569,7 @@ jobs:
         run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "build/config-arm-none-eabi-minimal/icount-fixed.txt"
 
       # The AC-4 decoder on the same leg (planning/ac4.md, D14a): its own probe
-      # and its own image, in float, since AC-4 shares nothing with ac3::forge and
+      # and its own image, in float, since AC-4 shares nothing with iclforge::ac3 and
       # an image carries one probe. Five committed streams; each channel's level,
       # the image, each fixture's peak heap, the stack a decode used, the
       # allocations per frame and, below, the instructions per frame are gated

@@ -12,16 +12,16 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/audio/monitor.hpp"
-#include "ac3/core/eac3_tables.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac4/ac4.hpp"
 #include "ac4_channels.hpp"
 #include "ac4_presentations.hpp"
 #include "ac4_sync_word.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "container_input.hpp"
 
 using objdec_detail::RawFrame;

@@ -16,12 +16,12 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/messages.hpp"
-#include "ac3/sendspin/noise.hpp"
-#include "ac3/sendspin/pairing_messages.hpp"
-#include "ac3/sendspin/server_host.hpp"
-#include "ac3/sendspin/server_store.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/messages.hpp"
+#include "iclforge/sendspin/noise.hpp"
+#include "iclforge/sendspin/pairing_messages.hpp"
+#include "iclforge/sendspin/server_host.hpp"
+#include "iclforge/sendspin/server_store.hpp"
 #include "sink.hpp"
 
 // ServerHost's dialling against a test sink in process over loopback, with mDNS off: what the host

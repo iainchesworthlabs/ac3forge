@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 #include "pipewire_support.hpp"
 #include "platform_services.hpp"
 

@@ -59,15 +59,15 @@
 // here calls them.
 #include "hearth_controller.cpp"
 
-#include "ac3/analysis/levels.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/io/probe.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac3/analysis/levels.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/io/probe.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 #include "container_input.hpp"
 #include "probe_json.hpp"
 #include "decoder_settings.hpp"
@@ -261,7 +261,7 @@ TEST_CASE("media_bitstream_to_map: Lo/Ro mix levels and the preferred downmix la
 
 TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join the Lo/Ro pair",
           "[hearth][hearth-controller]") {
-    // ac3::MixLevels carries ltrt_clev/ltrt_slev (src/forge/include/ac3/decoder/output.hpp)
+    // ac3::MixLevels carries ltrt_clev/ltrt_slev (src/ac3/include/iclforge/ac3/decoder/output.hpp)
     // alongside loro_clev/loro_slev; media_bitstream_to_map() reads both pairs
     // into mixLevels, the Lo/Ro one unlabelled (centreDb/surroundDb, kept as
     // DecoderEac3.qml's own "This stream" card already reads it) and the

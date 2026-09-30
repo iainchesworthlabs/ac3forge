@@ -8,9 +8,9 @@
 #include <span>
 #include <string>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/render/layout.hpp"
-#include "ac3/render/routing.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/routing.hpp"
 #include "transport.hpp"
 
 // Where a session's rendered audio goes (planning/hearth-reference-player.md,

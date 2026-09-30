@@ -77,9 +77,9 @@ If you cannot cite where something came from, it does not go in.
 
 ## Repository layout
 
-**`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/forge` is
+**`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/ac3` is
 the AC-3, E-AC-3 and Atmos codec. `src/ac4`, `src/ac4core`, `src/ac4dec` and `src/ac4enc` are the
-AC-4 codec, in namespace `ac4`, and link nothing from `src/forge`. `src/arithmetic` is the
+AC-4 codec, in namespace `ac4`, and link nothing from `src/ac3`. `src/arithmetic` is the
 header-only target both codecs link for their scalar types (`Fixed32`, the project's own float
 functions) and the SIMD seam; it is not installed.
 `apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` consume them (Crucible and the Shield app
@@ -105,7 +105,7 @@ records what each member owns, down to the targets, packages and CI legs.
 the namespace, the C symbol prefix; **Forge**, capitalised and standing alone, names the
 `ac3cli` + `ac3gui` pair. "AC3Forge" is the family in prose, every identifier stays lowercase,
 and "AC3Forge Forge" is never written. `ac3cli --version` keeps printing `ac3forge <version>`
-(`src/forge/src/version.cpp`), because that is the library's version line and the published
+(`src/ac3/src/version.cpp`), because that is the library's version line and the published
 Homebrew formula's test asserts it.
 
 **The `ac3/` header prefix marks a dependency on `ac3::forge`, not just anything codec-adjacent.**
@@ -158,8 +158,8 @@ window tables and several spec-table self-checks are
 `from_chars` is unavailable both on the NDK's bundled libc++ and at the macOS wheel's deployment
 target (`'from_chars' is unavailable: introduced in macOS 26.0`) — the **integer** overloads are
 fine everywhere and are used directly. Code that has to parse a decimal from user- or
-file-supplied text therefore goes through `strtod` instead (`src/forge/src/encoder/plan.cpp`,
-`encoder/assignment.cpp`, `src/forge/src/oba/scene_text.hpp`). Neither gap shows up on a Windows,
+file-supplied text therefore goes through `strtod` instead (`src/ac3/src/encoder/plan.cpp`,
+`encoder/assignment.cpp`, `src/objects/src/scene_text.hpp`). Neither gap shows up on a Windows,
 Linux or Homebrew-macOS build, so the CI legs that catch it are Android (Shield) and Build wheels
 (macos-latest).
 
@@ -203,7 +203,7 @@ Not useful:
 ```
 
 Where behaviour is deliberately narrower than the standard, say so and say why — see the
-opening comment of `src/ac4dec/include/ac4dec/decoder.hpp` for the pattern: what the decoder
+opening comment of `src/ac4dec/include/iclforge/ac4dec/decoder.hpp` for the pattern: what the decoder
 does, then what it refuses, by name and with a reason. A clean refusal is a design statement;
 a silent gap is a bug waiting to be found by someone else.
 

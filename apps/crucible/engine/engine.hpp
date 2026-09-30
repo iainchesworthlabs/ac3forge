@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/objects/oamd.hpp"
 #include "output_policy.hpp"
 #include "slots.hpp"
 

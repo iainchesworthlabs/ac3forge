@@ -8,11 +8,11 @@
 #include <span>
 #include <vector>
 
-#include "acpl/acpl.hpp"
+#include "iclforge/ac4core/acpl/acpl.hpp"
 #include "acpl/acpl_syntax.hpp"
 #include "ajcc/ajcc_syntax.hpp"
-#include "dsp/complex.hpp"
-#include "dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 #include "frame/timing.hpp"
 
 // The encoder's A-CPL: ETSI TS 103 190-1 V1.4.1 clause 5.7.7 run from the

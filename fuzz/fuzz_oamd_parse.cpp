@@ -2,9 +2,9 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/objects/oamd.hpp"
 
-// ac3::oba::parse_payload (src/forge/src/oba/oamd.cpp) - the
+// ac3::oba::parse_payload (src/objects/src/oamd.cpp) - the
 // object_audio_metadata_payload of TS 103 420 §5, as recovered from an EMDF
 // payload with id 11.
 //

@@ -347,7 +347,7 @@ libadm and libbw64, plus Boost headers. That means:
   number of buffer overruns, integer overflows, and uses of uninitialised data which may be
   triggered by reading malformed files", but has tagged no release containing them. This module
   pinned `0.10.0` at first and patched around the gap
-  (`src/ac3adm/patch_libbw64.cmake`, `adm.cpp`'s own pre-check) as `fuzz_adm_parse` and an audit
+  (`src/adm/patch_libbw64.cmake`, `adm.cpp`'s own pre-check) as `fuzz_adm_parse` and an audit
   of libbw64 for the same pattern found an unbounded allocation, an unbounded loop, a read of
   uninitialised stack and a `<ds64>` table that could resize a chunk other than `<data>` to
   whatever it liked. `github.com/pwnified/libbw64`, an active single-maintainer fork, carries the
@@ -400,7 +400,7 @@ the GUI toggle) is explicitly used, and listens on every interface only when tha
 widened too.
 
 What a successful spoof or injection buys an attacker is narrow. `ac3::oba::apply`
-(`src/forge/src/oba/scene_osc.cpp`) merges only position, gain and `lfe_send` onto an object's
+(`src/objects/src/scene_osc.cpp`) merges only position, gain and `lfe_send` onto an object's
 existing placement, or releases it back to its authored automation (`/object/<n>/release`) —
 there is no path from this input to encoder configuration, to the filesystem, or to anything
 outside the object placements themselves. The blast radius of a successful attack is "objects

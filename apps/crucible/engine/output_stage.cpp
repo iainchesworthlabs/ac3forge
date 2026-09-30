@@ -11,13 +11,13 @@
 #include <thread>
 #include <utility>
 
-#include "ac3/audio/spatial.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/audio/spatial.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 namespace ac3::crucible {
 

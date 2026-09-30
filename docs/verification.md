@@ -58,7 +58,7 @@ In rough order of strength:
    carries a different tone, so identifying each reconstructed JOC object by which tone dominates
    it is an independent check on both the reconstruction and the *order* the bed's channels
    occupy — the order TS 103 420 §5.6.1.1.4 states backwards
-   (`tests/oba/test_dee_joc_fixture.cpp`).
+   (`tests/ac3/oba/test_dee_joc_fixture.cpp`).
 
    Two limits are worth stating: DEE's `atmos_mezz` (ADM BWF) input refuses a master this project
    authors, gating on content provenance rather than syntax, so the fixture is channel-based
@@ -427,7 +427,7 @@ threaded from `decode`/`monitor`/`live`), defaulted ON by the same evidence gate
 fast path here: 1.3e-13 worst relative error at the transform level (the same forward kernel
 `EncoderConfig::fast_mdct` already validates), full `oba::joc::reconstruct` output agreeing
 321-325 dB SNR against the direct form over three real encoded-and-decoded objects
-(`tests/oba/test_atmos.cpp`), and the bed analysis kernel itself — isolated from object
+(`tests/ac3/oba/test_atmos.cpp`), and the bed analysis kernel itself — isolated from object
 synthesis, which this switch does not touch — measured 11.0x, 238 to 2628 microseconds per
 block's five-channel analysis on a release build (`ac3kernelbench`'s
 `joc_reconstruct_mdct_4obj`/`_direct`): a fixed ~2.4 ms saved per frame regardless of object
@@ -442,7 +442,7 @@ example program, run per platform. The Qt Quick Test harnesses add one entry per
 suite on a build with the application enabled: `ac3gui_qmltests` for `apps/gui/tests/qml/` (36
 today), Hearth's for `apps/hearth/ui/tests/qml/` (15) and Crucible's for
 `apps/crucible/ui/tests/qml/` (16). The audio backend's device-free tests
-(`tests/backend/<backend>/`) join `ac3tests` for whichever backend the build selected, ALSA,
+(`tests/audio/backend/<backend>/`) join `ac3tests` for whichever backend the build selected, ALSA,
 PipeWire, macOS, Windows or Android, and an ALSA build also runs
 `tests/audio/test_alsa_null_backend.cpp` against software ALSA devices, so its success paths run
 without a card. `ctest` runs whatever the configuration registered:
@@ -692,7 +692,7 @@ makes `-xerror` unusable as a check here rather than merely unavailable.
 decoder instead, the same self-consistency posture 7.1.4 falls back to, with one weaker guarantee
 than 7.1.4 has: a defect both the encoder and decoder agree on — a misreading of the spec shared
 by both sides rather than a one-sided bug — is not caught by either the CI gate or the round-trip
-unit tests in `tests/decoder/test_eac3_decoder.cpp`.
+unit tests in `tests/ac3/decoder/test_eac3_decoder.cpp`.
 
 **Transient pre-noise processing had the same gap, and it hid a defect of exactly that kind.**
 The decoder counted `transprocloc` from the first sample of a frame's decoded output, one block
@@ -709,7 +709,7 @@ the corrected regions it agrees with this decoder to 37–40 dB on DEE's stream.
 what settled the origin (`ac3/decoder/transient_prenoise.hpp`); on the same comparison it agrees
 with this decoder to about 70 dB. `tools/checks/verify_gold_reference.sh` scores a five-second
 excerpt of the DEE stream against its source and against FFmpeg, and
-`tests/decoder/test_eac3_transient_prenoise.cpp` holds the corrections to the places Dolby's
+`tests/ac3/decoder/test_eac3_transient_prenoise.cpp` holds the corrections to the places Dolby's
 decoder puts them.
 
 The E-AC-3 mirror self-check (#6 above) narrows that, and is worth being exact about what it
@@ -740,7 +740,7 @@ a normal-rate stream from this encoder without issue. `fscod2` appears to be a c
 own reference implementation does not support it. So the coded audio is verified only by this
 project's own encoder/decoder round trip, the mirror self-check over that round trip (all three
 rates, with and without the Annex E tools, in `tools/ci/run_codec_matrix.sh` and
-`tests/verify/test_eac3_selfcheck.cpp`), and the independent Python parser
+`tests/ac3/verify/test_eac3_selfcheck.cpp`), and the independent Python parser
 (`tools/references/eac3_parse.py`) — the last of which is the only one of the three written from
 the spec separately from the codec.
 
@@ -771,7 +771,7 @@ What has **not** been checked against anything external is the *meaning* of the 
 `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` and the Dolby
 `audio_channel_configuration:2011` `@value` are transcribed from ETSI TS 103 420 clause D.2 and
 TS 102 366 clause I.1.2.1 (via DASH-IF IOP Part 8 v5.0.0 §5.3.2–5.3.3) and asserted against those
-clause texts in `tests/containers/test_fmp4.cpp`, including the element order ISO/IEC 23009-1's
+clause texts in `tests/ac3/test_fmp4.cpp`, including the element order ISO/IEC 23009-1's
 `RepresentationBaseType` sequence requires — but FFmpeg's DASH demuxer ignores supplemental
 descriptors entirely, so it confirms only that the manifest still parses and plays, not that a
 JOC-aware player would read the right complexity index from it. No MPD schema validator and no
@@ -788,7 +788,7 @@ rather than by re-measuring it.
 **`compr` in E-AC-3 has no external oracle.** FFmpeg's Annex E header parser reads `compre` and
 then skips the word, so `-heavy_compr` changes nothing on an E-AC-3 stream however good the
 metadata is. It is covered bit-by-bit instead
-([tests/meta/test_drc.cpp](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/meta/test_drc.cpp),
+([tests/ac3/meta/test_drc.cpp](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/ac3/meta/test_drc.cpp),
 [tools/references/eac3_parse.py](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/references/eac3_parse.py)).
 
 ## Going the other way: published conformance vectors
@@ -1679,7 +1679,7 @@ paragraph on the objects follows them:
   value's refusal. `tools/checks/check_install_consumer.sh` installs each build and encodes a
   second of tone through the installed encoder, by CMake and by pkg-config, static and shared,
   reading every sync frame and its CRC back with the installed inspector; the ABI gate compares
-  `libac4enc.so`'s exports with the header's API (`tools/ci/abi-allowlist/libac4enc.so.txt`), and
+  `libac4enc.so`'s exports with the header's API (`tools/ci/abi-allowlist/libiclforge_ac4enc.so.txt`), and
   is advisory until the API freeze. Both run nightly.
 - **The immersive element** (phase E8, `tests/ac4enc/test_ac4enc_immersive.cpp`). 5.0.4 and 5.1.4
   are written in the immersive element as DEE writes it: SCPL from 640 kbps, ASPX_SCPL from 480
@@ -1788,7 +1788,7 @@ at four frame rates do the same. For the extension role, a loopback test
 (`tests/hearth/test_group.cpp`) sends DEE's 2.0 stream at 48 kHz through `_ac3forge_player@v1`
 to a test sink, whose output equals the local decode, rendered the same way, sample for sample.
 The two readings Part 14 leaves open, which frame starts a burst sequence and whether `Pd` counts
-bits or bytes, are given in `src/forge/src/iec61937/iec61937.cpp`.
+bits or bytes, are given in `src/iec61937/src/iec61937.cpp`.
 
 ### Hearth's engine
 

@@ -95,7 +95,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 
 # A/52 Table 5.18's nominal rates - the only ones AC-3's frmsizcod can index
-# (ac3::is_valid_bitrate, src/forge/include/ac3/core/tables.hpp).
+# (ac3::is_valid_bitrate, src/ac3/include/iclforge/ac3/core/tables.hpp).
 LEGAL_RATES = [32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320,
                384, 448, 512, 576, 640]
 
@@ -536,7 +536,7 @@ def generate_pcm(rng, channels, blocks, rate, profile, correlation):
 
 def write_wav(path, data, rate, pcm16):
     """A real WAV on disk - PCM16 or float32, the two ac3::io::read_wav
-    accepts (src/forge/src/io/wav.cpp). Both are exercised: the float path
+    accepts (src/ac3/src/io/wav.cpp). Both are exercised: the float path
     carries exact +/-1.0 full scale, which PCM16's asymmetric range cannot."""
     channels = len(data)
     frames = len(data[0])

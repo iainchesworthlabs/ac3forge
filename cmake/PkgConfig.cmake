@@ -44,14 +44,14 @@ list(REMOVE_DUPLICATES _AC3FORGE_PC_CXX_RUNTIME_LIBS)
 unset(_ac3forge_pc_lib)
 
 # NAME: pkg-config name, e.g. `pkg-config --libs ac3forge` - matches the shared OUTPUT_NAME
-# convention (see e.g. src/forge/CMakeLists.txt), which is also the on-disk library basename
+# convention (see e.g. src/ac3/CMakeLists.txt), which is also the on-disk library basename
 # whenever the shared variant is what's actually installed.
 # LIBNAME: the `-l<LIBNAME>` this component's install actually provides - see
 # ac3forge_pkgconfig_libname() below for how callers derive this correctly for whichever
 # linkage(s) got installed.
 # REQUIRES: other .pc names this one's Requires: line should chain to (space-separated), for a
 # genuine PUBLIC/usage-requirement dependency - e.g. ac3signing requires ac3forge because
-# signing_static/signing_shared PUBLIC-link ac3::forge_static/ac3::forge_shared.
+# iclforge_signing_static/signing_shared PUBLIC-link iclforge::ac3_static/iclforge::ac3_shared.
 # STATIC_REQUIRES: .pc names a static archive of this component calls into, for a dependency that
 # is PRIVATE in CMake - ac3forge_c, whose libac3forge_c_static.a holds calls into
 # libac3forge_static.a. An archive is not linked when it is built, so nothing in it records that

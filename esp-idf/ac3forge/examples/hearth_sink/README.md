@@ -738,7 +738,7 @@ its own operator approves the board.
 A server stamps each chunk with the time its first sample should play, on
 its own clock, and the player follows that clock with Sendspin's time
 filter
-([`clock_sync.hpp`](../../../../src/sendspin/include/ac3/sendspin/clock_sync.hpp)):
+([`clock_sync.hpp`](../../../../src/sendspin/include/iclforge/sendspin/clock_sync.hpp)):
 bursts of eight exchanges, one after another until the filter has converged,
 then thirty a second apart, then one every ten seconds. Convergence itself is
 confirmed rather than taken on trust: once a run of bursts reads as converged,
@@ -1159,7 +1159,7 @@ as a name — `2.0` (the default), `5.1`, `7.1`, `5.1.4`, `7.1.4`, `9.2.4`,
 `L,R,C,LFE,Ls,Rs` for a 5.1 DAC wired in WAV order, `30/0,-30/0,lfe` by angles,
 `-` for a slot nothing is on. A name is Table E2.5's order with the LFE last, so
 `5.1` is L C R Ls Rs LFE; a list is whatever order the board is wired in. The
-grammar is [`ac3/render/layout.hpp`](../../../../src/forge/include/ac3/render/layout.hpp)'s and
+grammar is [`ac3/render/layout.hpp`](../../../../src/render/include/iclforge/render/layout.hpp)'s and
 `PUT /layout` on the control surface takes the same text for the next play.
 
 What happens to a stream depends on the layout, not the stream:
@@ -1194,10 +1194,10 @@ with real time. The same stream decodes and renders onto twelve slots in about
 [`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md#on-a-board)
 and [Folded to stereo](../../../../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo).
 
-All of it is [`ac3/render/render.hpp`](../../../../src/forge/include/ac3/render/render.hpp),
+All of it is [`ac3/render/render.hpp`](../../../../src/render/include/iclforge/render/render.hpp),
 one 256-sample block at a time, which is why a 7.1.4 layout costs the player 12 KB
 of block storage rather than 72 KB of frame. The geometry is the library's
-(`tests/spatial/`); what the header adds is indexing between coded channels,
+(`tests/render/`); what the header adds is indexing between coded channels,
 objects and slots, tested on the host in `tests/render/test_layout.cpp` because a
 swapped subscript there puts the centre in the subwoofer and nothing complains.
 
@@ -1332,12 +1332,12 @@ QEMU runs it. The exceptions are the parts worth testing without a board at
 all, free of
 ESP-IDF and unit-tested on the host:
 [`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp)
-(`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing with
+(`tests/ac3/io/test_interleave.cpp`), because planar-to-interleaved indexing with
 slot padding is where the bugs are; the mode/slot-count arithmetic itself,
 [`ac3forge/sink_plan.hpp`](../../include/ac3forge/sink_plan.hpp)
-(`tests/io/test_sink_plan.cpp`); and the queue model behind the `sink.*` line,
+(`tests/ac3/io/test_sink_plan.cpp`); and the queue model behind the `sink.*` line,
 [`ac3forge/dac_queue_model.hpp`](../../include/ac3forge/dac_queue_model.hpp)
-(`tests/io/test_dac_queue_model.cpp`), which runs there against a simulated
+(`tests/ac3/io/test_dac_queue_model.cpp`), which runs there against a simulated
 DMA. The rest of this sink is peripheral setup that either works on a board or
 does not.
 

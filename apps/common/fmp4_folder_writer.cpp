@@ -10,9 +10,9 @@
 #include <system_error>
 #include <utility>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/io/dec3.hpp"
-#include "ac3/io/elementary.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/io/dec3.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
 
 namespace {
 

@@ -9,7 +9,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/dsp/resampler.hpp"
+#include "iclforge/dsp/resampler.hpp"
 
 using ac3::dsp::resample;
 using ac3::dsp::resample_planar;

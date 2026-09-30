@@ -11,12 +11,12 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/encoder/assignment.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/scene.hpp"
-#include "ac4/ac4.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/encoder/assignment.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/scene.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 // What ac3cli's `atmos-encode codec=ac4` and `atmos-adm`/`atmos-iab` with
 // codec=ac4 and ac3gui's AC-4 objects share, so that the command line the GUI

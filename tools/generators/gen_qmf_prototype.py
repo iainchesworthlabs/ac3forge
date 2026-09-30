@@ -4,7 +4,7 @@ TS 103 420 §7.1 says the JOC reconstruction runs in a 64-subband complex
 filterbank. It does not print that filterbank's prototype coefficients, and no
 public source for Dolby's does; this project is clean-room anyway. So the
 prototype here is this project's OWN design, constrained to the structure
-src/forge/src/dsp/qmf.cpp implements and to exact perfect reconstruction.
+src/dsp/src/qmf.cpp implements and to exact perfect reconstruction.
 
 The structure, in the notation qmf.cpp uses: M = 64 subbands, hop M, prototype
 length L = 640 = 5 * 2M, fold period 2M = 128 with an alternating sign, and an
@@ -51,7 +51,7 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent.parent
-OUT = REPO / "src" / "forge" / "src" / "dsp" / "qmf_prototype.hpp"
+OUT = REPO / "src" / "dsp" / "src" / "qmf_prototype.hpp"
 
 M = 64  # subbands
 L = 640  # prototype taps

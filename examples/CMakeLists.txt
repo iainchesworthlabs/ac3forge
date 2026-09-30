@@ -33,35 +33,35 @@ set(AC3FORGE_EXAMPLES
     atmos_fallback
     qc_report)
 
-# read_adm demonstrates ac3adm::ac3adm (src/ac3adm), the standalone BW64/RF64 + ADM
-# parser - "standalone" meaning zero dependency on ac3::forge, unlike every other
+# read_adm demonstrates iclforge::adm (src/adm), the standalone BW64/RF64 + ADM
+# parser - "standalone" meaning zero dependency on iclforge::ac3, unlike every other
 # example in the list above. encode_adm (ADM BWF reader phase 3) is the end-to-end
 # counterpart: ac3adm::parse_bw64 -> ac3::admbridge::build -> ac3::oba::AtmosEncoder, so unlike
-# every other entry here (including read_adm) it needs BOTH ac3::forge and the opt-in ADM modules
+# every other entry here (including read_adm) it needs BOTH iclforge::ac3 and the opt-in ADM modules
 # together. Both are only added when AC3FORGE_BUILD_ADM turned those modules on (default OFF - see
 # root CMakeLists.txt's own option() for why), so the foreach below cannot assume either is always
 # present the way it can for e.g. mux_mkv.
 if(AC3FORGE_BUILD_ADM)
     list(APPEND AC3FORGE_EXAMPLES read_adm encode_adm)
-    # encode_iab (IAB reader phase 3) needs ac3::admbridge's own IAB mapping (build_iab), gated
+    # encode_iab (IAB reader phase 3) needs iclforge::admbridge's own IAB mapping (build_iab), gated
     # the same way encode_adm needs the ADM one - see src/admbridge/CMakeLists.txt's own header
     # comment for why that whole module rides AC3FORGE_BUILD_ADM. Unlike encode_adm it does NOT
-    # need ac3adm::ac3adm directly (ac3iab::ac3iab, its own container reader, is always available -
+    # need iclforge::adm directly (iclforge::iab, its own container reader, is always available -
     # AC3FORGE_BUILD_IAB defaults ON).
     list(APPEND AC3FORGE_EXAMPLES encode_iab)
 endif()
 
 # mux_iamf demonstrates IAMF writer phase 1's decode -> IAMF bridge: it encodes a synthetic
 # 7.1.4 E-AC-3 stream, decodes it back with ac3::Eac3Decoder, permutes the result into iamf::'s
-# own channel order and calls iamf::mux() - so, like encode_adm above, it needs BOTH ac3::forge
+# own channel order and calls iamf::mux() - so, like encode_adm above, it needs BOTH iclforge::ac3
 # and the standalone writer module together, and only exists to build when AC3FORGE_BUILD_IAMF
-# (default ON, see the root CMakeLists.txt's own option()) turned iamf::iamf on.
+# (default ON, see the root CMakeLists.txt's own option()) turned iclforge::iamf on.
 if(AC3FORGE_BUILD_IAMF)
     list(APPEND AC3FORGE_EXAMPLES mux_iamf)
 endif()
 
-# read_iab demonstrates ac3iab::ac3iab (src/ac3iab), IAB reader phases 1-2 - "standalone" meaning
-# zero dependency on ac3::forge, the same shape read_adm has for ac3adm::ac3adm above. Unlike
+# read_iab demonstrates iclforge::iab (src/iab), IAB reader phases 1-2 - "standalone" meaning
+# zero dependency on iclforge::ac3, the same shape read_adm has for iclforge::adm above. Unlike
 # AC3FORGE_BUILD_ADM (default OFF), AC3FORGE_BUILD_IAB defaults ON, so this is unconditional like
 # mux_mkv rather than gated in the foreach below.
 if(AC3FORGE_BUILD_IAB)
@@ -71,47 +71,47 @@ endif()
 foreach(example IN LISTS AC3FORGE_EXAMPLES)
     add_executable(${example} "${example}.cpp")
     if(example STREQUAL "read_adm")
-        # No ac3::forge here - src/ac3adm is deliberately independent of it (see
-        # src/ac3adm/CMakeLists.txt's header comment), so this example only needs
+        # No iclforge::ac3 here - src/adm is deliberately independent of it (see
+        # src/adm/CMakeLists.txt's header comment), so this example only needs
         # the parser itself plus the same ac3::warnings every other example gets.
-        target_link_libraries(${example} PRIVATE ac3adm::ac3adm ac3::warnings ac3::fmt)
+        target_link_libraries(${example} PRIVATE iclforge::adm ac3::warnings ac3::fmt)
     elseif(example STREQUAL "encode_adm")
-        # The one example (and ADM BWF reader's own phase-3 deliverable) needing ac3::forge
+        # The one example (and ADM BWF reader's own phase-3 deliverable) needing iclforge::ac3
         # (AtmosEncoder) and the ADM modules (parse/bridge) at the same time.
-        target_link_libraries(${example} PRIVATE ac3::forge ac3adm::ac3adm ac3::admbridge
+        target_link_libraries(${example} PRIVATE iclforge::ac3 iclforge::adm iclforge::admbridge
                                                   ac3::warnings ac3::fmt)
     elseif(example STREQUAL "mux_iamf")
-        target_link_libraries(${example} PRIVATE ac3::forge iamf::iamf ac3::warnings ac3::fmt)
+        target_link_libraries(${example} PRIVATE iclforge::ac3 iclforge::iamf ac3::warnings ac3::fmt)
     elseif(example STREQUAL "read_iab")
-        # No ac3::forge here either - src/ac3iab is deliberately independent of it (see
-        # src/ac3iab/CMakeLists.txt's header comment), the same reason read_adm above needs none.
-        target_link_libraries(${example} PRIVATE ac3iab::ac3iab ac3::warnings ac3::fmt)
+        # No iclforge::ac3 here either - src/iab is deliberately independent of it (see
+        # src/iab/CMakeLists.txt's header comment), the same reason read_adm above needs none.
+        target_link_libraries(${example} PRIVATE iclforge::iab ac3::warnings ac3::fmt)
     elseif(example STREQUAL "encode_iab")
-        # The one example (and IAB reader's own phase-3 deliverable) needing ac3::forge
-        # (AtmosEncoder), ac3iab::ac3iab (its own container reader) and ac3::admbridge (build_iab)
+        # The one example (and IAB reader's own phase-3 deliverable) needing iclforge::ac3
+        # (AtmosEncoder), iclforge::iab (its own container reader) and iclforge::admbridge (build_iab)
         # at the same time - the IAB mirror of encode_adm above.
-        target_link_libraries(${example} PRIVATE ac3::forge ac3iab::ac3iab ac3::admbridge
+        target_link_libraries(${example} PRIVATE iclforge::ac3 iclforge::iab iclforge::admbridge
                                                   ac3::warnings ac3::fmt)
     else()
-        target_link_libraries(${example} PRIVATE ac3::forge ac3::warnings ac3::fmt)
+        target_link_libraries(${example} PRIVATE iclforge::ac3 ac3::warnings ac3::fmt)
     endif()
     set_target_properties(${example} PROPERTIES FOLDER examples)
 endforeach()
 
-# Only these need a container writer; mux_fmp4 reuses mp4::mp4 the same way mux_mp4 does.
-target_link_libraries(mux_mkv PRIVATE matroska::matroska)
-target_link_libraries(mux_mp4 PRIVATE mp4::mp4)
-target_link_libraries(mux_fmp4 PRIVATE mp4::mp4)
-target_link_libraries(mux_ts PRIVATE mpegts::mpegts)
+# Only these need a container writer; mux_fmp4 reuses iclforge::mp4 the same way mux_mp4 does.
+target_link_libraries(mux_mkv PRIVATE iclforge::matroska)
+target_link_libraries(mux_mp4 PRIVATE iclforge::mp4)
+target_link_libraries(mux_fmp4 PRIVATE iclforge::mp4)
+target_link_libraries(mux_ts PRIVATE iclforge::mpegts)
 
 # Only this one needs the object signer.
-target_link_libraries(object_signing PRIVATE ac3::signing)
+target_link_libraries(object_signing PRIVATE iclforge::signing)
 
 # capi_encode_decode (C API) is a plain C source, not C++ - the .c extension is what actually
 # proves ac3forge_c/ac3forge.h compiles under a C toolchain rather than merely under a C++ one
 # parsing valid-C syntax, so it cannot join the foreach()/AC3FORGE_EXAMPLES list above (that loop
 # hardcodes add_executable(${example} "${example}.cpp")) and gets its own block instead. It links
-# ac3::forge_c only, never ac3::forge - the whole point of the C API is that a consumer needs
+# iclforge::c only, never iclforge::ac3 - the whole point of the C API is that a consumer needs
 # nothing else.
 if(AC3FORGE_BUILD_CAPI)
     # The only C (not C++) source anywhere in this tree - the project() call in the root
@@ -119,10 +119,10 @@ if(AC3FORGE_BUILD_CAPI)
     # CMake will generate a compile rule for a .c file at all.
     enable_language(C)
     add_executable(capi_encode_decode capi_encode_decode.c)
-    target_link_libraries(capi_encode_decode PRIVATE ac3::forge_c ac3::warnings)
+    target_link_libraries(capi_encode_decode PRIVATE iclforge::c ac3::warnings)
 
     add_executable(capi_encode_eac3 capi_encode_eac3.c)
-    target_link_libraries(capi_encode_eac3 PRIVATE ac3::forge_c ac3::warnings)
+    target_link_libraries(capi_encode_eac3 PRIVATE iclforge::c ac3::warnings)
 
     # AP4: pin the dialect rather than riding whatever the compiler defaults to
     # (gnu17 on GCC/Clang, an unspecified MSVC default) - this is the project's
@@ -136,7 +136,7 @@ if(AC3FORGE_BUILD_CAPI)
             C_STANDARD_REQUIRED ON
             C_EXTENSIONS OFF)
         # Both call sin() to make their tone, and a C link, unlike a clang++/g++ one, does not add
-        # libm. They never had to name it: the static codec rode along on ac3::forge_c's link
+        # libm. They never had to name it: the static codec rode along on iclforge::c's link
         # interface, which made CMake link them with the C++ driver. With BUILD_SHARED_LIBS=ON it
         # no longer does (src/capi/CMakeLists.txt), so they link as the C programs they are.
         if(UNIX)
@@ -151,12 +151,12 @@ if(AC3FORGE_BUILD_CAPI)
 endif()
 
 # decode_ac4 demonstrates the AC-4 inspector and decoder (src/ac4, src/ac4dec), which link nothing
-# of ac3::forge, as read_iab links nothing of it. It decodes the stream it is given, so it keeps out
+# of iclforge::ac3, as read_iab links nothing of it. It decodes the stream it is given, so it keeps out
 # of the list above, whose programs ctest runs with no arguments, and ctest hands it a committed DEE
 # stream. AC3FORGE_BUILD_AC4 defaults ON, and with it off there is no decoder to link.
 if(AC3FORGE_BUILD_AC4)
     add_executable(decode_ac4 decode_ac4.cpp)
-    target_link_libraries(decode_ac4 PRIVATE ac4::decoder ac3::warnings ac3::fmt)
+    target_link_libraries(decode_ac4 PRIVATE iclforge::ac4dec ac3::warnings ac3::fmt)
     set_target_properties(decode_ac4 PROPERTIES FOLDER examples)
     if(AC3FORGE_BUILD_TESTS)
         add_test(NAME "example.decode_ac4" COMMAND decode_ac4

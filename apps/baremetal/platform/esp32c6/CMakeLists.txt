@@ -50,7 +50,7 @@ set(AC3FORGE_DECODE_SCALAR "fixed" CACHE STRING
     "Decode arithmetic: fixed (this part has no FPU), float, or double")
 
 set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
-    "Decode-critical sources at -O2; see src/forge/minimal.cmake")
+    "Decode-critical sources at -O2; see src/ac3/minimal.cmake")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 

@@ -8,8 +8,8 @@
 #include <span>
 #include <string>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/audio/passthrough.hpp"
 #include "transport.hpp"
 
 // Where a bitstreamed item goes (planning/hearth-reference-player.md, A3:

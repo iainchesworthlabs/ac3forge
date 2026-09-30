@@ -5,8 +5,8 @@
 #include <complex>
 #include <numbers>
 
-#include "dsp/complex.hpp"
-#include "tables/qmf_tables.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
+#include "iclforge/ac4core/tables/qmf_tables.hpp"
 
 namespace ac4::detail {
 namespace {

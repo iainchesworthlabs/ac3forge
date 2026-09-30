@@ -2,10 +2,10 @@
 
 For each leg the decoder turns into PCM - SIMPLE and ASPX mono, stereo and 5.1, 5.1 in ASPX_ACPL_2
 and ASPX_ACPL_3, and DEE's immersive stereo (IMS), at frame_rate_index 13, and IMS at 23.976, 24,
-25 and 29.97 fps through the sample rate converter (see src/ac4dec/include/ac4dec/decoder.hpp) -
-this decodes the stream with `ac3cli decode`, aligns the output with its reference by
-cross-correlation, fits a least-squares gain per channel, and checks (planning/ac4.md, the
-decoder's ladder, item 3):
+25 and 29.97 fps through the sample rate converter (see
+src/ac4dec/include/iclforge/ac4dec/decoder.hpp) - this decodes the stream with `ac3cli decode`,
+aligns the output with its reference by cross-correlation, fits a least-squares gain per channel,
+and checks (planning/ac4.md, the decoder's ladder, item 3):
 
   lag      the output lags the source by the leg's LAG: DEE's encoder delay plus this decoder's,
            1 313 samples at index 13 (Part 1 Table 188's d_pcm, the QMF banks' 577 samples and six
@@ -107,9 +107,9 @@ RESAMPLING = {0: (1001, 960), 1: (25, 24), 2: (15, 16), 3: (1001, 960), 4: (25, 
 # At the other frame rates DEE's IMS encoder writes, the lag by frame_rate_index, as first
 # measured. DEE's IMS encoder delays by half a frame at 48 kHz, as at index 13 (1 024); this
 # decoder by its d_pcm, the QMF banks' 577 samples and 384 of history at the internal rate, and
-# its converter's delay() (src/ac4core/src/dsp/resampler.hpp), taken to 48 kHz. Their sum comes
-# within 1.3 samples of each lag: 1 000 + 1 301.0 + 49.0 at 24 fps, 1 001 + 1 302.4 + 49.1 at
-# 23.976, 960 + 1 230.9 + 46.8 at 25, 800.8 + 1 102.1 + 49.1 at 29.97.
+# its converter's delay() (src/ac4core/include/iclforge/ac4core/dsp/resampler.hpp), taken to 48 kHz.
+# Their sum comes within 1.3 samples of each lag: 1 000 + 1 301.0 + 49.0 at 24 fps,
+# 1 001 + 1 302.4 + 49.1 at 23.976, 960 + 1 230.9 + 46.8 at 25, 800.8 + 1 102.1 + 49.1 at 29.97.
 LAG_AT_RATE = {(baseline.IMS, 0): 2353, (baseline.IMS, 1): 2351, (baseline.IMS, 2): 2239,
                (baseline.IMS, 3): 1952}
 GAIN_TOLERANCE_DB = 0.2

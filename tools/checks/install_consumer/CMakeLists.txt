@@ -3,9 +3,9 @@
 # project finds one. consumer.c's header comment says what it checks and why it needs to be
 # built this way.
 #
-# One consumer per C API target the package exports: ac3::forge_c_shared and ac3::forge_c_static
+# One consumer per C API target the package exports: iclforge::c_shared and iclforge::c_static
 # when it was installed with AC3FORGE_INSTALL_BOTH_LINKAGES=ON, one of them otherwise, plus the
-# bare ac3::forge_c that ac3forgeConfig.cmake defines only for a single-linkage package (the name
+# bare iclforge::c that ac3forgeConfig.cmake defines only for a single-linkage package (the name
 # docs/library/c-api.md tells a consumer to link). Every one is built, linked and run.
 #
 # CXX is enabled beside C for the static target's sake. A static C API library is made of C++
@@ -17,8 +17,8 @@
 # pinned to the C driver, which is what a C-only project gets: the shared library carries the C++
 # runtime it needs, and the driver would otherwise be chosen by whatever else lands on the link line.
 #
-# One C++ consumer per AC-4 decoder target the package exports, in the same way: ac4::decoder_shared
-# and ac4::decoder_static, or the bare ac4::decoder of a single-linkage package. consumer_ac4.cpp
+# One C++ consumer per AC-4 decoder target the package exports, in the same way: iclforge::ac4dec_shared
+# and iclforge::ac4dec_static, or the bare iclforge::ac4dec of a single-linkage package. consumer_ac4.cpp
 # decodes a committed stream through the installed inspector and decoder. And one per AC-4 encoder
 # target: consumer_ac4enc.cpp encodes a tone through the installed encoder and reads the stream
 # back with the inspector. A package built with AC3FORGE_BUILD_AC4=OFF has neither;
@@ -32,7 +32,7 @@ enable_testing()
 find_package(ac3forge CONFIG REQUIRED)
 
 set(consumers)
-foreach(target IN ITEMS ac3::forge_c_shared ac3::forge_c_static ac3::forge_c)
+foreach(target IN ITEMS iclforge::c_shared iclforge::c_static iclforge::c)
     if(NOT TARGET ${target})
         continue()
     endif()
@@ -53,8 +53,8 @@ endforeach()
 
 if(NOT consumers)
     message(FATAL_ERROR
-        "the installed package exports none of ac3::forge_c_shared, ac3::forge_c_static or "
-        "ac3::forge_c - was it configured with AC3FORGE_BUILD_CAPI=OFF?")
+        "the installed package exports none of iclforge::c_shared, iclforge::c_static or "
+        "iclforge::c - was it configured with AC3FORGE_BUILD_CAPI=OFF?")
 endif()
 message(STATUS "C API consumers of the installed package, each linked and run: ${consumers}")
 
@@ -65,7 +65,7 @@ cmake_path(APPEND here .. .. .. tests golden external-baseline ac4-51-film-96 de
 cmake_path(NORMAL_PATH ac4_stream)
 
 set(ac4_consumers)
-foreach(target IN ITEMS ac4::decoder_shared ac4::decoder_static ac4::decoder)
+foreach(target IN ITEMS iclforge::ac4dec_shared iclforge::ac4dec_static iclforge::ac4dec)
     if(NOT TARGET ${target})
         continue()
     endif()
@@ -83,14 +83,14 @@ endforeach()
 if(AC3FORGE_EXPECT_AC4 AND NOT ac4_consumers)
     message(FATAL_ERROR
         "the package was built with AC3FORGE_BUILD_AC4=ON and exports none of "
-        "ac4::decoder_shared, ac4::decoder_static or ac4::decoder - see cmake/InstallLibrary.cmake")
+        "iclforge::ac4dec_shared, iclforge::ac4dec_static or iclforge::ac4dec - see cmake/InstallLibrary.cmake")
 endif()
 if(ac4_consumers)
     message(STATUS "AC-4 consumers of the installed package, each linked and run: ${ac4_consumers}")
 endif()
 
 set(ac4enc_consumers)
-foreach(target IN ITEMS ac4::encoder_shared ac4::encoder_static ac4::encoder)
+foreach(target IN ITEMS iclforge::ac4enc_shared iclforge::ac4enc_static iclforge::ac4enc)
     if(NOT TARGET ${target})
         continue()
     endif()
@@ -108,7 +108,7 @@ endforeach()
 if(AC3FORGE_EXPECT_AC4 AND NOT ac4enc_consumers)
     message(FATAL_ERROR
         "the package was built with AC3FORGE_BUILD_AC4=ON and exports none of "
-        "ac4::encoder_shared, ac4::encoder_static or ac4::encoder - see cmake/InstallLibrary.cmake")
+        "iclforge::ac4enc_shared, iclforge::ac4enc_static or iclforge::ac4enc - see cmake/InstallLibrary.cmake")
 endif()
 if(ac4enc_consumers)
     message(STATUS

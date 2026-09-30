@@ -1,7 +1,7 @@
 #include "optional_modules.hpp"
 
-#include "ac3/signing/emdf_atmos_signer.hpp"
-#include "ac3/signing/signing_key.hpp"
+#include "iclforge/signing/emdf_atmos_signer.hpp"
+#include "iclforge/signing/signing_key.hpp"
 
 #include "binding_support.hpp"
 

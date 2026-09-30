@@ -10,15 +10,15 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/output.hpp"
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/meta/mixing.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/joc.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/joc.hpp"
+#include "iclforge/render/layout.hpp"
 #include "decoder_settings.hpp"
 #include "stream_decoder.hpp"
 
@@ -587,7 +587,7 @@ TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely m
 
     // The setting must reach DecoderConfig::fast_imdct rather than the same
     // path running twice (decoder_settings.cpp's decoder_setup()) - but both
-    // remain a correct decode of the same signal: tests/decoder/test_decoder.cpp's
+    // remain a correct decode of the same signal: tests/ac3/decoder/test_decoder.cpp's
     // own fast_imdct test pins the two transform paths' agreement above 200 dB SNR.
     CHECK_FALSE(std::ranges::equal(fast, reference));
     double squared_diff = 0.0;

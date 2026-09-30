@@ -2,8 +2,8 @@
 
 #include <memory>
 
-#include "ac3/sendspin/codec.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/sendspin/codec.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 // Each codec's own maker, which make_encoder() and make_decoder() choose between (codec.cpp).
 // Private to the library; a board picks the makers it builds.

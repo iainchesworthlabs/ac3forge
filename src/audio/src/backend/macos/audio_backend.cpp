@@ -1,6 +1,6 @@
-#include "ac3/audio/audio_backend.hpp"
+#include "iclforge/audio/audio_backend.hpp"
 
-#include "ac3/audio/capture.hpp"
+#include "iclforge/audio/capture.hpp"
 #include "coreaudio_names.hpp"
 
 // macOS: five of the six capabilities are implemented here. capture.cpp reads

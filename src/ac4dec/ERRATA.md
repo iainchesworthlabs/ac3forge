@@ -1613,7 +1613,7 @@ output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample 
   filters"; Part 2 5.11 and Table 47, p. 110, give the number of samples each frame yields at the
   1000/1001 rates, by phase.
 - **Reading:** a Kaiser-windowed sinc, polyphase, with the passband to 0.86 of the lower rate's Nyquist
-  frequency and the stopband from that frequency 100 dB down (`src/ac4core/src/dsp/resampler.hpp`). Output
+  frequency and the stopband from that frequency 100 dB down (`src/ac4core/include/iclforge/ac4core/dsp/resampler.hpp`). Output
   sample m is complete once (m + 1) x down / up input samples have arrived, so frame t of N samples
   yields floor((t + 1) R) - floor(t R), R = N x up / down: Table 47's sequence for phi_t = t modulo 5, and
   a constant count at the other rates. A converter starting at phi_t starts its grid t frames in.
@@ -1947,7 +1947,7 @@ decoder takes them in `src/ac4dec/src/pcm/renderer.cpp` and `downmix.cpp`, and
 
 The readings phase D10 takes to decode A-JOC substreams (Part 2 clause 5.7) in full and core decoding,
 with A-JOC's dialogue enhancement (5.8.2.3 and 5.8.2.4). They are the decoder's alone: the Python
-transcription reads the syntax. `src/ac4core/src/ajoc/` does the processing, and
+transcription reads the syntax. `src/ac4core/include/iclforge/ac4core/ajoc/` does the processing, and
 `tests/ac4core/test_ac4core_ajoc.cpp` holds it to the formulas on known input. The constructed streams of
 `tests/ac4dec/ac4dec_objects.cpp` give each object coefficients of whole quantisation steps, so that each
 object is a known sum of the downmix's tones, which the decoder meets to 0.1 dB in both modes. Chromium's

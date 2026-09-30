@@ -3,9 +3,9 @@
 #include <span>
 #include <vector>
 
-#include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/wav.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/wav.hpp"
 #include "differential_oracle.hpp"
 
 // Differential mode for E-AC-3 (differential decoder fuzzing): the same split_access_units +

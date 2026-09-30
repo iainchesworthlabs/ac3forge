@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <utility>
 
-#include "dsp/kbd.hpp"
+#include "iclforge/ac4core/dsp/kbd.hpp"
 
 namespace ac4::detail {
 namespace {

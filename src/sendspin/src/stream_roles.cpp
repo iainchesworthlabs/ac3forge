@@ -1,4 +1,4 @@
-#include "ac3/sendspin/stream_roles.hpp"
+#include "iclforge/sendspin/stream_roles.hpp"
 
 #include <algorithm>
 #include <array>
@@ -11,8 +11,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/sendspin/frames.hpp"
-#include "ac3/sendspin/json.hpp"
+#include "iclforge/sendspin/frames.hpp"
+#include "iclforge/sendspin/json.hpp"
 
 namespace ac3::sendspin {
 

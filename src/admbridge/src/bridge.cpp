@@ -1,4 +1,4 @@
-#include "ac3/admbridge/bridge.hpp"
+#include "iclforge/admbridge/bridge.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,9 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/admbridge/coordinates.hpp"
-#include "ac3/oba/oamd.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/coordinates.hpp"
+#include "iclforge/objects/oamd.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 namespace ac3::admbridge {
 
@@ -44,7 +44,7 @@ namespace {
 
 // A real Dirac/instantaneous jump has no representation in KeyframePath's piecewise-linear model
 // (two keyframes cannot share one time_s - see ac3::oba::PathError::kDuplicateTimestamp). This is
-// the same resolution tests/oba/test_atmos_motion.cpp's own make_holds() helper relies on implicitly: every
+// the same resolution tests/ac3/oba/test_atmos_motion.cpp's own make_holds() helper relies on implicitly: every
 // caller in this codebase samples ObjectPath::evaluate() once per encoded frame
 // (ac3::kSamplesPerFrame = 1536 samples, 32 ms at 48 kHz - see ac3::oba::AtmosEncoder::
 // encode_frame's own doc comment, "one placement per frame"), so any transition faster than one

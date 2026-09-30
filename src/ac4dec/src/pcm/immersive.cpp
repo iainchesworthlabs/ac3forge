@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <numbers>
 
-#include "dsp/qmf.hpp"
+#include "iclforge/ac4core/dsp/qmf.hpp"
 #include "syntax/channel_elements.hpp"
 
 namespace ac4::detail {

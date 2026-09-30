@@ -13,8 +13,8 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/core/tables.hpp"
-#include "ac3/decoder/decoder.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"
 
 // The synthetic generators (apps/cli/commands/synth.cpp: silence, sine,
 // orbit, eac3-silence, eac3-sine) and the two object generators that sit

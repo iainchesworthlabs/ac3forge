@@ -3,7 +3,7 @@
 #include <functional>
 #include <memory>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 #include "output_selector.hpp"
 #include "pcm_sink.hpp"
 

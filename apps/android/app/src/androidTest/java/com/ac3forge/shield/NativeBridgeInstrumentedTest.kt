@@ -12,7 +12,7 @@ import org.junit.runner.RunWith
 
 /**
  * Device-free coverage for NativeBridge's JNI surface (Android JNI instrumented coverage).
- * docs/platforms/android.md's tests/backend/android/ note covers only the
+ * docs/platforms/android.md's tests/audio/backend/android/ note covers only the
  * pure C++-side logic (burst sizing, carrier rate, render-device
  * construction) on the desktop ctest suite; this is the other half - the
  * actual Kotlin<->JNI<->C++ round trip, on a real Android runtime

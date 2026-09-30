@@ -25,10 +25,10 @@
 #include <cstdint>
 #include <vector>
 
-#include "ac3/render/layout.hpp"
-#include "ac3/render/routing.hpp"
-#include "ac3/sendspin/ac3forge_player.hpp"
-#include "ac3/version.hpp"
+#include "iclforge/render/layout.hpp"
+#include "iclforge/render/routing.hpp"
+#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/ac3/version.hpp"
 #include "network_output_status.hpp"
 #include "network_sinks.hpp"
 #include "network_view.hpp"

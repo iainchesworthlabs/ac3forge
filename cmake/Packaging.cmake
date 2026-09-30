@@ -362,7 +362,7 @@ a PipeWire node Crucible creates while it runs.")
         # The -dev package's headers/static-archives are useless without a
         # matching runtime .so to actually link and load - and since this
         # project makes no ABI-compatibility promise pre-1.0 (see
-        # src/forge/CMakeLists.txt's SOVERSION comment), the pin has to be
+        # src/ac3/CMakeLists.txt's SOVERSION comment), the pin has to be
         # exact, not a >= floor. libac3forge0 itself declares no such
         # dependency the other way: it is a plain .so with no headers or
         # symlink of its own, valid to have installed alone.
@@ -503,7 +503,7 @@ endif()
 # ---------------------------------------------------------------------------
 # Library component(s): a second, separate download alongside the existing
 # ac3cli/ac3gui package - headers + .lib/.dll/.a/.so + CMake package config
-# for a third party consuming ac3::forge/matroska::matroska via
+# for a third party consuming iclforge::ac3/iclforge::matroska via
 # find_package(ac3forge) (see cmake/InstallLibrary.cmake). Everything
 # install()'d without an explicit COMPONENT falls into CPack's own
 # "Unspecified" component, which is why ac3cli/ac3gui and every

@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "ac3/oba/atmos.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
 #include "audio_devices.hpp"
 #include "output_policy.hpp"
 

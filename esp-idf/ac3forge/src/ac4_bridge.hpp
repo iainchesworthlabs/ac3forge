@@ -18,11 +18,11 @@
 #include <optional>
 #include <span>
 
-#include "ac3/core/eac3_tables.hpp"
-#include "ac3/decoder/output.hpp"
+#include "iclforge/ac3/core/eac3_tables.hpp"
+#include "iclforge/ac3/decoder/output.hpp"
 
-#include "ac4/ac4.hpp"
-#include "ac4dec/decoder.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4dec/decoder.hpp"
 
 namespace ac3forge::ac4bridge {
 

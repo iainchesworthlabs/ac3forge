@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/oba/motion.hpp"
-#include "ac3/audio/audio_backend.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/audio/audio_backend.hpp"
 
 // IAB reader bridge, phase 3 - the narrow seam
 // between main.cpp's 'atmos-iab' command and ac3iab::ac3iab/ac3::admbridge, exactly the same

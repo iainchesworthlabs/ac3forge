@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/oba/oamd.hpp"
+#include "iclforge/objects/oamd.hpp"
 
 // Roadmap item IM2 ("JOC -> ADM BWF writer") - the write-direction sibling of atmos_adm.hpp's
 // AdmAtmosSource/load_adm_atmos_source. Same reason for existing: decode.cpp cannot

@@ -29,8 +29,8 @@ endforeach()
 
 # S4 needs the real encoder. Pull the repo root in the way the Android app does
 # (everything it does not need pre-seeded OFF, then add_subdirectory), so the
-# spike measures the same ac3::forge the demo will link.
-option(AC3FORGE_SPIKES_WITH_LIBRARY "Build the spikes that link ac3::forge (S4)" ON)
+# spike measures the same iclforge::ac3 the demo will link.
+option(AC3FORGE_SPIKES_WITH_LIBRARY "Build the spikes that link iclforge::ac3 (S4)" ON)
 if(AC3FORGE_SPIKES_WITH_LIBRARY)
     foreach(opt CLI GUI TESTS EXAMPLES FUZZERS CAPI MATROSKA MP4 MPEGTS AC4 IAB IAMF ADM PYTHON)
         set(AC3FORGE_BUILD_${opt} OFF CACHE BOOL "" FORCE)
@@ -38,7 +38,7 @@ if(AC3FORGE_SPIKES_WITH_LIBRARY)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." ac3forge_build)
     add_executable(s4_throughput s4_throughput/s4_throughput.cpp)
     target_compile_options(s4_throughput PRIVATE /W4 /EHsc /permissive- /utf-8)
-    target_link_libraries(s4_throughput PRIVATE ac3::forge)
+    target_link_libraries(s4_throughput PRIVATE iclforge::ac3)
 endif()
 
 # S1 part two: the same tap through the library's own Capture/DeviceWatcher.
@@ -46,5 +46,5 @@ if(AC3FORGE_SPIKES_WITH_LIBRARY)
     add_executable(s1_library_tap s1_taps/s1_library_tap.cpp)
     target_compile_definitions(s1_library_tap PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
     target_compile_options(s1_library_tap PRIVATE /W4 /EHsc /permissive- /utf-8)
-    target_link_libraries(s1_library_tap PRIVATE ac3::audio)
+    target_link_libraries(s1_library_tap PRIVATE iclforge::audio)
 endif()

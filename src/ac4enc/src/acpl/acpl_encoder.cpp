@@ -9,7 +9,7 @@
 #include <tuple>
 #include <utility>
 
-#include "ajcc/ajcc.hpp"
+#include "iclforge/ac4core/ajcc/ajcc.hpp"
 
 namespace ac4::detail {
 namespace {

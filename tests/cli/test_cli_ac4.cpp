@@ -25,9 +25,9 @@
 
 #include "platform/process.hpp"
 
-#include "ac3/io/metadata_edit.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac3/meta/mixing.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac3/meta/mixing.hpp"
 
 namespace fs = std::filesystem;
 

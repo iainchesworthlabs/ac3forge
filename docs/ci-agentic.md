@@ -176,7 +176,7 @@ The run after a merge also picks its lanes from what changed. It lists the files
 documentation or a Python-only change builds little or nothing. A satellite lane runs only when a
 path in its own tree changed: a change to the core library lights the desktop platforms and reaches
 the satellites in the nightly run. The ESP-IDF lane also lights for the trees its component ships
-(`src/forge/`, `src/arithmetic/`, `cmake/` and the root `CMakeLists.txt`), because a change there is
+(`src/ac3/`, `src/arithmetic/`, `cmake/` and the root `CMakeLists.txt`), because a change there is
 what breaks its package and its QEMU images. Anything the classifier does not recognise, and any change to
 the workflows themselves, lights every lane. With no `verified` ref yet, every lane runs.
 

@@ -23,7 +23,7 @@ key, reads none from the build, and has no way to obtain or derive one. What it 
 | Part | Where it comes from | In the library? |
 |---|---|---|
 | **HMAC-SHA-256** | FIPS 180-4 / RFC 2104, public standards | Yes — `src/signing/`, dependency-free |
-| **What gets authenticated** — which frame regions feed the HMAC, and where the tag is written | The public container layout this codec already emits (`src/forge/src/emdf/emdf.cpp`, the E-AC-3 syntax, TS 103 420) | Yes — `src/signing/src/emdf_atmos_signer.cpp` |
+| **What gets authenticated** — which frame regions feed the HMAC, and where the tag is written | The public container layout this codec already emits (`src/objects/src/emdf.cpp`, the E-AC-3 syntax, TS 103 420) | Yes — `src/signing/src/emdf_atmos_signer.cpp` |
 | **The key** | You provision it — exactly as a licensed tool (DEE) receives its own via iLok | **No — never** |
 
 A stream signed with a key that does not match a given decoder's simply fails that decoder's check,
@@ -68,8 +68,8 @@ Any code that links `ac3::signing` gets a key-less signer and must construct a k
 whole API surface is the key type plus the sign/verify calls:
 
 ```cpp
-#include "ac3/signing/signing_key.hpp"
-#include "ac3/signing/emdf_atmos_signer.hpp"
+#include "iclforge/signing/signing_key.hpp"
+#include "iclforge/signing/emdf_atmos_signer.hpp"
 
 // You own the bytes. There is no default, no built-in, no fallback key.
 ac3::signing::SigningKey key{ my_32_key_bytes };          // or:

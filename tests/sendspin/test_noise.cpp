@@ -9,10 +9,10 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/base64url.hpp"
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/base64url.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/noise.hpp"
 #include "sendspin/sendspin_test_support.hpp"
 
 // Noise KKpsk2 for both Sendspin suites. The first two cases are the cacophony

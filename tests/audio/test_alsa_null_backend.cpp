@@ -14,14 +14,14 @@
 #include <tuple>
 #include <vector>
 
-#include "ac3/audio/capture.hpp"
-#include "ac3/audio/monitor.hpp"
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/pcm_output.hpp"
-#include "ac3/audio/sink_capabilities.hpp"
-#include "ac3/audio/spatial.hpp"
-#include "ac3/iec61937/iec61937.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/audio/capture.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/pcm_output.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
+#include "iclforge/audio/spatial.hpp"
+#include "iclforge/iec61937/iec61937.hpp"
+#include "iclforge/render/layout.hpp"
 #include "audio/alsa_null_device.hpp"
 
 // The ALSA backend's capture, monitor and passthrough classes against software

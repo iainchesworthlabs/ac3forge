@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/sink_capabilities.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
 #include "output_decision.hpp"
 #include "queue.hpp"
 

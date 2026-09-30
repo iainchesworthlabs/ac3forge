@@ -1,4 +1,4 @@
-// A-CPL in the AC-4 shared core (src/ac4core/src/acpl): ETSI TS 103 190-1
+// A-CPL in the AC-4 shared core (src/ac4core/include/iclforge/ac4core/acpl): ETSI TS 103 190-1
 // V1.4.1 clause 5.7.7's parameter bands (Table 197), dequantisation tables
 // (Tables 203 to 208) and differential decoding (Pseudocode 121),
 // interpolation (Pseudocodes 109 and 110), the decorrelators (Pseudocode 111,
@@ -18,8 +18,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "acpl/acpl.hpp"
-#include "dsp/complex.hpp"
+#include "iclforge/ac4core/acpl/acpl.hpp"
+#include "iclforge/ac4core/dsp/complex.hpp"
 
 namespace {
 

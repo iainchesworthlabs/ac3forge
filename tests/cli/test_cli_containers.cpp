@@ -20,13 +20,13 @@
 #include "platform/process.hpp"
 #include "sanitized.hpp"
 
-#include "ac3/decoder/decoder.hpp"  // split_frames, to lift the dependent out of a legacy-core unit
-#include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/encoder.hpp"
-#include "ac3/io/elementary.hpp"
-#include "ac3/io/metadata_edit.hpp"  // restamp_crc, for the non-uniform-access-unit fixture
-#include "ac3/io/wav.hpp"
-#include "ac4/ac4.hpp"
+#include "iclforge/ac3/decoder/decoder.hpp"  // split_frames, to lift the dependent out of a legacy-core unit
+#include "iclforge/ac3/encoder/eac3_frame.hpp"
+#include "iclforge/ac3/encoder/encoder.hpp"
+#include "iclforge/ac3/io/elementary.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"  // restamp_crc, for the non-uniform-access-unit fixture
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac4/ac4.hpp"
 
 // apps/cli/commands/containers.cpp measured 0.0% line coverage when roadmap
 // VX15 first pointed the apps/cli coverage gate at apps/ (re-measured at
@@ -86,7 +86,7 @@ void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
 }
 
 // A/52 §E2.3.1.2's legacy-core delivery, built the same way
-// tests/io/test_elementary.cpp's own legacy_core_stream() is: an AC-3
+// tests/ac3/io/test_elementary.cpp's own legacy_core_stream() is: an AC-3
 // syncframe carrying the 5.1 bed, with the DEPENDENT substream of an ordinary
 // E-AC-3 access unit riding immediately behind it. reject_legacy_core (see
 // containers.cpp) is the only place any of the three simple writers ever
@@ -123,7 +123,7 @@ std::vector<std::byte> legacy_core_stream() {
     return stream;
 }
 
-// A header-level fixture, same recipe as tests/io/test_elementary.cpp's "a
+// A header-level fixture, same recipe as tests/ac3/io/test_elementary.cpp's "a
 // stream whose access units differ in length has no uniform figure": two
 // six-block E-AC-3 access units with a three-block one spliced between them.
 // track_samples_per_frame (containers.cpp) refuses every stream like this -

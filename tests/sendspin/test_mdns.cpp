@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/sendspin/discovery.hpp"
-#include "ac3/sendspin/mdns.hpp"
+#include "iclforge/sendspin/discovery.hpp"
+#include "iclforge/sendspin/mdns.hpp"
 #include "discovery/mdns/packets.hpp"
 
 // The mdns backend's packets, with no network: a responder's answers read back by a browser's

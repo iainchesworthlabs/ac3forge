@@ -1,7 +1,7 @@
-#include "ac3/latency.hpp"
-#include "ac3/meta/drc.hpp"
-#include "ac3/version.hpp"
-#include "ac3forge_c/ac3forge.h"
+#include "iclforge/ac3/latency.hpp"
+#include "iclforge/ac3/meta/drc.hpp"
+#include "iclforge/ac3/version.hpp"
+#include "iclforge_c/iclforge.h"
 
 #include "internal.hpp"
 

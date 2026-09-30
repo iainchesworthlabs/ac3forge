@@ -9,8 +9,8 @@
 #include <thread>
 #include <vector>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/render/layout.hpp"
+#include "iclforge/audio/monitor.hpp"
+#include "iclforge/render/layout.hpp"
 #include "pcm_sink.hpp"
 
 // Hearth's real local output (apps/hearth/engine/device_sink.cpp, the sink the

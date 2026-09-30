@@ -6,8 +6,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/audio/passthrough.hpp"
-#include "ac3/audio/sink_capabilities.hpp"
+#include "iclforge/audio/passthrough.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
 #include "output_selector.hpp"
 
 // ac3::hearth::OutputSelector (apps/hearth/engine/output_selector.cpp): the

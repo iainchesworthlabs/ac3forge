@@ -19,7 +19,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac4/syntax.hpp"
+#include "iclforge/ac4/syntax.hpp"
 #include "aspx/aspx_encoder.hpp"
 #include "aspx/aspx_syntax.hpp"
 #include "bit_reader.hpp"
@@ -27,7 +27,7 @@
 #include "syntax/aspx.hpp"
 #include "syntax/channel_elements.hpp"
 #include "syntax/context.hpp"
-#include "tables/huffman_codes.hpp"
+#include "iclforge/ac4core/tables/huffman_codes.hpp"
 
 namespace {
 

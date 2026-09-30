@@ -1,6 +1,6 @@
 // A real ADM BWF master, all the way to a Dolby Atmos E-AC-3 (DD+ JOC) elementary stream.
 //
-// Roadmap item B1 phase 3 of 3 (the last piece - phase 1 is ac3adm::ac3adm, src/ac3adm; phase 2 is
+// Roadmap item B1 phase 3 of 3 (the last piece - phase 1 is ac3adm::ac3adm, src/adm; phase 2 is
 // ac3::admbridge, src/admbridge). This is a minimal, standalone illustration of the same pipeline
 // ac3cli's 'atmos-adm' command drives for real: ac3adm::parse_bw64() reads the container + ADM XML
 // graph, ac3::admbridge::build() maps it onto ac3::oba::AtmosEncoder's flat object-list input
@@ -38,11 +38,11 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/admbridge/bridge.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/oba/motion.hpp"
-#include "ac3adm/ac3adm.hpp"
+#include "iclforge/admbridge/bridge.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/objects/motion.hpp"
+#include "iclforge/adm/ac3adm.hpp"
 
 namespace {
 
@@ -52,7 +52,7 @@ using Bytes = std::string;
 // examples under its own `ctest` (examples/CMakeLists.txt registers each as a
 // test case), several checkouts commonly run at once, and they share a temp
 // directory - two runs on one fixed name read and delete each other's files.
-// Same ingredients as src/ac3adm/src/adm.cpp's make_temp_path, same reason.
+// Same ingredients as src/adm/src/adm.cpp's make_temp_path, same reason.
 // Only for the paths this example picks itself; --write-fixture's path comes
 // from the caller (tools/ci/run_codec_matrix.sh) and stays exactly as given.
 std::string scratch_path(std::string_view name) {

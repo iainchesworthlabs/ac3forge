@@ -27,9 +27,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "../ac4dec/ac4dec_mux.hpp"
-#include "ac3/io/wav.hpp"
-#include "ac4/ac4.hpp"
-#include "ac4enc/encoder.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/ac4/ac4.hpp"
+#include "iclforge/ac4enc/encoder.hpp"
 
 namespace {
 

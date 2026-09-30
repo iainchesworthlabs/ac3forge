@@ -1,6 +1,6 @@
-#include "ac3/audio/audio_backend.hpp"
+#include "iclforge/audio/audio_backend.hpp"
 
-#include "ac3/audio/capture.hpp"
+#include "iclforge/audio/capture.hpp"
 
 // PipeWire: capture, passthrough and monitor playback are real, over the
 // native pw_stream API - not PipeWire's ALSA-compatibility shim, and not a

@@ -1,6 +1,6 @@
 #include "engine.hpp"
 
-#include "ac3/internal/profiling.hpp"
+#include "iclforge/base/detail/profiling.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,10 +20,10 @@
 #include <unordered_set>
 #include <utility>
 
-#include "ac3/audio/device_watcher.hpp"
-#include "ac3/core/tables.hpp"
-#include "ac3/oba/atmos.hpp"
-#include "ac3/signing/signing_key.hpp"
+#include "iclforge/audio/device_watcher.hpp"
+#include "iclforge/ac3/core/tables.hpp"
+#include "iclforge/ac3/oba/atmos.hpp"
+#include "iclforge/signing/signing_key.hpp"
 #include "bed_mixer.hpp"
 #include "diagnostics.hpp"
 #include "output_policy.hpp"

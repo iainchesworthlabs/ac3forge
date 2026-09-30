@@ -6,8 +6,8 @@
 #include <iterator>
 #include <utility>
 
-#include "ac3/encoder/plan.hpp"
-#include "ac3/io/metadata_edit.hpp"
+#include "iclforge/ac3/encoder/plan.hpp"
+#include "iclforge/ac3/io/metadata_edit.hpp"
 
 // See ac3_transcoder.hpp.
 

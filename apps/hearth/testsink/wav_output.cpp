@@ -12,9 +12,9 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/io/wav.hpp"
-#include "ac3/sendspin/codec.hpp"
-#include "ac3/sendspin/messages.hpp"
+#include "iclforge/ac3/io/wav.hpp"
+#include "iclforge/sendspin/codec.hpp"
+#include "iclforge/sendspin/messages.hpp"
 
 namespace ac3::hearth::testsink {
 

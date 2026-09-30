@@ -67,7 +67,7 @@
 // otherwise. It was written in a worktree where nothing in src/ called
 // system_audio_tap_api_available(), and concluded from that that no build had
 // ever emitted a __builtin_available here. A test had, since before this
-// branch: tests/backend/macos/test_macos_support.cpp's "this CI runner's OS
+// branch: tests/audio/backend/macos/test_macos_support.cpp's "this CI runner's OS
 // build exposes the Core Audio tap API" calls it, and it passes on both macOS
 // legs on main. Clang lowers a __builtin_available to a call into compiler-rt
 // (__isPlatformVersionAtLeast), so the Homebrew clang the toolchain file picks

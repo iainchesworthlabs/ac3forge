@@ -13,8 +13,8 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/audio/live_positions.hpp"
-#include "ac3/oba/scene.hpp"
+#include "iclforge/audio/live_positions.hpp"
+#include "iclforge/objects/scene.hpp"
 #include "udp_socket.hpp"
 
 // LivePositionSource's own thread and a per-test loopback UdpSocket sender:

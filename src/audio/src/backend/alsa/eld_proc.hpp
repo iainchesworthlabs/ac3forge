@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "ac3/audio/sink_capabilities.hpp"
+#include "iclforge/audio/sink_capabilities.hpp"
 
 // Parsing the text ALSA's HD-audio driver exposes at
 // /proc/asound/card<N>/eld#<dev>.<port> for an HDMI/DisplayPort output -
@@ -22,7 +22,7 @@
 // Header-only and proc-file-content-in, struct-out, in the same spirit as
 // device_names.hpp: it can be tested with a synthesized fixture on a machine
 // with no ALSA, no sound card and no /proc/asound at all - see
-// tests/backend/alsa/test_alsa_eld_parsing.cpp. sink_capabilities.cpp is the
+// tests/audio/backend/alsa/test_alsa_eld_parsing.cpp. sink_capabilities.cpp is the
 // (untestable-here) other half: finding which file to read.
 
 namespace ac3::alsa {

@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/audio/passthrough.hpp"
+#include "iclforge/audio/passthrough.hpp"
 
 // The play queue (planning/hearth-reference-player.md, Media): the items the
 // player was given, in the order they will play, and which one is current.

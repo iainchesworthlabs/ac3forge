@@ -29,7 +29,7 @@
 // same_image_ancestors(), the walk that lets a browser's window process
 // match its audio process and keeps a terminal from being its child.
 //
-// Linux only, by tests/CMakeLists.txt, the way tests/backend/pipewire rides
+// Linux only, by tests/CMakeLists.txt, the way tests/audio/backend/pipewire rides
 // its backend: the files under test live in a platform directory.
 
 using namespace ac3::crucible;

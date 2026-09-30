@@ -19,8 +19,8 @@
 #include <fmt/base.h>
 #include <vector>
 
-#include "ac3/internal/profiling.hpp"
-#include "ac3/version.hpp"
+#include "iclforge/base/detail/profiling.hpp"
+#include "iclforge/ac3/version.hpp"
 #include "encoder_controller.hpp"
 #include "language_manager.hpp"
 

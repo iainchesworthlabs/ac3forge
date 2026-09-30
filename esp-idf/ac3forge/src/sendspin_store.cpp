@@ -17,10 +17,10 @@
 #include "esp_err.h"
 #include "nvs.h"
 
-#include "ac3/sendspin/base64url.hpp"
-#include "ac3/sendspin/crypto.hpp"
-#include "ac3/sendspin/handshake.hpp"
-#include "ac3/sendspin/noise.hpp"
+#include "iclforge/sendspin/base64url.hpp"
+#include "iclforge/sendspin/crypto.hpp"
+#include "iclforge/sendspin/handshake.hpp"
+#include "iclforge/sendspin/noise.hpp"
 
 namespace ac3forge {
 namespace {
