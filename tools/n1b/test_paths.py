@@ -50,6 +50,12 @@ FILES = {
     "docs/library/page.md": f"The transform is in `{OLD_A}`; see [it](../../{OLD_A}).\n",
     ".github/workflows/ci.yml": f"      - '{OLD_B}'\n      - 'src/forge/src/core/**'\n",
     "docs/oba.md": "Objects: `src/forge/src/oba`\n",
+    "tools/generators/gen.py": (
+        'OUT = REPO / "src" / "forge" / "src" / "dsp" / "fft.cpp"\n'
+        'HERE = REPO / "src" / "forge" / "src" / "oba"\n'
+        'KEPT = REPO / "src" / "ac3" / "src"\n'
+    ),
+    "docs/notes.md": 'not python: REPO / "src" / "forge" / "src" / "dsp" / "fft.cpp"\n',
     "CHANGELOG.md": f"- moved {OLD_A}\n",
     "planning/layout.md": f"the study read {OLD_A}\n",
     "tools/n1b/notes.py": f'OLD = "{OLD_A}"\n',
@@ -141,6 +147,20 @@ class Paths(unittest.TestCase):
         self.assertEqual(self.text("docs/oba.md"), "Objects: `src/forge/src/oba`\n")
         self.assertIn("src/forge/src/oba", hits)
         self.assertIn("docs/oba.md", hits["src/forge/src/oba"])
+
+    def test_a_path_a_python_file_builds_from_its_components_follows_the_move(self) -> None:
+        self.run_pass()
+        gen = self.text("tools/generators/gen.py")
+        self.assertIn('OUT = REPO / "src" / "dsp" / "src" / "fft.cpp"\n', gen)
+        self.assertIn('KEPT = REPO / "src" / "ac3" / "src"\n', gen)
+        # the same words in a page are not a path chain
+        self.assertIn('"src" / "forge" / "src" / "dsp"', self.text("docs/notes.md"))
+
+    def test_a_chain_that_names_a_split_directory_is_left_and_reported(self) -> None:
+        _, hits = self.run_pass()
+        gen = self.text("tools/generators/gen.py")
+        self.assertIn('HERE = REPO / "src" / "forge" / "src" / "oba"\n', gen)
+        self.assertIn("tools/generators/gen.py", hits["src/forge/src/oba"])
 
     def test_a_directory_most_of_whose_files_stayed_together_follows(self) -> None:
         self.run_pass()

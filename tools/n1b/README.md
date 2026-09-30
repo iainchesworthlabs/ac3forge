@@ -38,7 +38,12 @@ build of that `main` (every option on, no `--target`) and `<work>` a directory o
     git apply --3way tools/n1b/s2-hand.patch        # the hand-written part, below
     git add -A && git commit -m "S2: the build of the split libraries"
 
-then build every default target with MSVC, `baseline.py record --build <after> --out <work>/after`, and
+`n1b_apply.py` prints `PROBLEM` for nine includes (on the day of writing): tests that include a private
+header of `src/ac3/src/` by its bare name, `test_mdct_fixed.cpp` and eight like it. Each is met by an
+include directory that `tests/CMakeLists.txt` already names and `n1b_cmake.py` moves with the header,
+so there is nothing to do; a `PROBLEM` outside `tests/` would be a real include across libraries.
+
+Then build every default target with MSVC, `baseline.py record --build <after> --out <work>/after`, and
 
     python tools/n1b/baseline.py compare <work>/before <work>/after --only hashes,cli        # identical
     python tools/n1b/export_diff.py --old <work>/before/symbols-msvc.json \

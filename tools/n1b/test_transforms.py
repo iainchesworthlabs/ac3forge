@@ -92,6 +92,17 @@ class CMake(unittest.TestCase):
             "iclforge_audio iclforge_ac4core",
         )
 
+    def test_a_directory_named_ac4core_in_a_quote_or_a_pattern_keeps_its_name(self) -> None:
+        text = (
+            'OUT = REPO / "src" / "ac4core" / "src"\n'
+            "--filter 'src/(ac4|ac4core|ac4dec)/.*'\n"
+        )
+        self.check(text, text)
+        self.check(
+            "target_link_libraries(x PRIVATE ac4core)",
+            "target_link_libraries(x PRIVATE iclforge_ac4core)",
+        )
+
     def test_a_raw_name_inside_a_path_or_after_a_scope_is_not_a_target(self) -> None:
         self.check(
             "a/forge_objects.txt ac3::forge_objects_x", "a/forge_objects.txt ac3::forge_objects_x"
@@ -104,6 +115,31 @@ class CMake(unittest.TestCase):
             'OUTPUT_NAME "iclforge_ac3_static"',
         )
         self.check('OUTPUT_NAME "somethingelse"', 'OUTPUT_NAME "somethingelse"')
+
+    def test_the_library_names_a_pkg_config_file_is_made_from_are_output_names(self) -> None:
+        self.check(
+            "ac3forge_pkgconfig_libname(_v forge_shared ac3forge ac3forge_static\n"
+            '    "${_targets}")\n'
+            "ac3forge_pkgconfig_libname(_w mp4_shared mp4 mp4_static "
+            '"${_targets}")\n'
+            "ac3forge_pkgconfig_libname(_x forge_c_shared ac3forge_c ac3forge_c_static\n"
+            '    "${_targets}")\n',
+            "ac3forge_pkgconfig_libname(_v iclforge_ac3_shared iclforge_ac3 iclforge_ac3_static\n"
+            '    "${_targets}")\n'
+            "ac3forge_pkgconfig_libname(_w iclforge_mp4_shared iclforge_mp4 iclforge_mp4_static "
+            '"${_targets}")\n'
+            "ac3forge_pkgconfig_libname(_x iclforge_capi_shared iclforge_c iclforge_c_static\n"
+            '    "${_targets}")\n',
+        )
+        self.check(
+            "LIBNAME ac3adm)\nLIBNAME admbridge\nLIBNAME ac4core_static)",
+            "LIBNAME iclforge_adm)\nLIBNAME iclforge_admbridge\nLIBNAME iclforge_ac4core_static)",
+        )
+
+    def test_a_libname_that_is_a_variable_or_a_word_of_a_comment_is_left_alone(self) -> None:
+        text = 'LIBNAME "${_pc_libname}"\n# its LIBNAME ends in _static\n'
+        self.check(text, text)
+        self.check("LIBNAME iclforge_adm)", "LIBNAME iclforge_adm)")
 
     def test_a_moved_file_is_rewritten_where_the_whole_path_appears(self) -> None:
         self.check(

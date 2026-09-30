@@ -7,7 +7,9 @@ that names a moved file by its path in the repository is done here, after the fi
 documentation pages and plans, the comments and strings of the C and C++ sources (a test that reads
 a source file by path, a comment that says where a function lives), the workflows, the scripts and
 the data files. The rule is n1b_cmake.rewrite_paths: a whole old path, or a directory that the moves
-kept together, becomes its new path, and nothing that merely ends the same way.
+kept together, becomes its new path, and nothing that merely ends the same way. A Python path built
+from its components (`REPO / "src" / "forge" / "src" / "dsp"`) is joined, moved by the same rule and
+split again.
 
 It leaves alone the files that quote the old layout as history: the changelog, the layout study and
 its inventory, the scripts and baselines of the migration (KEEP_OLD_PATHS), and the byte-exact
@@ -76,6 +78,40 @@ def is_text(data: bytes) -> bool:
     return b"\0" not in data[:8192]
 
 
+# A path built the way pathlib builds it, `REPO / "src" / "forge" / "src" / "dsp" / "qmf.hpp"`: a
+# generator or a check names a file so, and no repository path stands in the text for the pass above
+# to see. It starts at a component named src or tests, the trees the moves are in.
+_CHAIN_RX = re.compile(
+    r"""(?P<chain>(?P<q>["'])(?:src|tests)(?P=q)(?:\s*/\s*(?P=q)[\w.\-]+(?P=q))+)"""
+)
+
+
+def chain_parts(chain: str, quote: str) -> list[str]:
+    return re.findall(re.escape(quote) + r"([\w.\-]+)" + re.escape(quote), chain)
+
+
+def rewrite_chains(
+    text: str,
+    moves: dict[str, str],
+    dirs: list[tuple[str, str]] | None,
+    hold: list[str] | None = None,
+    known: set[str] | None = None,
+) -> str:
+    """The chains of `text` that name a moved file or directory, by the rule of rewrite_paths."""
+
+    def follow(m: re.Match) -> str:
+        chain, quote = m.group("chain"), m.group("q")
+        path = "/".join(chain_parts(chain, quote))
+        new = rewrite_paths(path, moves, dirs, hold, known)
+        if new == path:
+            return chain
+        sep = re.search(re.escape(quote) + r"(\s*/\s*)" + re.escape(quote), chain)
+        assert sep is not None
+        return sep.group(1).join(f"{quote}{part}{quote}" for part in new.split("/"))
+
+    return _CHAIN_RX.sub(follow, text)
+
+
 def run(root: Path, plan: Path, dry_run: bool = False) -> tuple[int, dict[str, list[str]]]:
     """Rewrite the paths in every text file; return the files changed and the split directories
     that are still named (old directory -> the files that name it)."""
@@ -98,8 +134,15 @@ def run(root: Path, plan: Path, dry_run: bool = False) -> tuple[int, dict[str, l
         except (OSError, UnicodeDecodeError):
             continue
         out = rewrite_paths(text, moves, dirs, hold, known)
+        named = out
+        if f.endswith(".py"):
+            out = rewrite_chains(out, moves, dirs, hold, known)
+            named = out + "\n" + "\n".join(
+                "/".join(chain_parts(m.group("chain"), m.group("q")))
+                for m in _CHAIN_RX.finditer(out)
+            )
         for old_dir in split:
-            if old_dir in out and re.search(_PATH_START + re.escape(old_dir) + _PATH_END, out):
+            if old_dir in named and re.search(_PATH_START + re.escape(old_dir) + _PATH_END, named):
                 hits.setdefault(old_dir, []).append(f)
         if out != text:
             changed += 1

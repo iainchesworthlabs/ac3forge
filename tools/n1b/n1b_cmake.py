@@ -124,7 +124,9 @@ RAW = [
     (r"(?<![\w/.\-])(?<!::)ac3iab_(objects|static|shared)\b", r"iclforge_iab_\1"),
     (r"(?<![\w/.\-])(?<!::)ac3adm_(objects|static|shared)\b", r"iclforge_adm_\1"),
     (r"(?<![\w/.\-])(?<!::)(ac4|ac4dec|ac4enc)_(objects|static|shared)\b", r"iclforge_\1_\2"),
-    (r"(?<![\w:.\-/])ac4core(?![\w:.\-/])", "iclforge_ac4core"),
+    # Not a quoted word or one between bars: `REPO / "src" / "ac4core"` and a regex of directory
+    # names name the directory, which keeps its name.
+    (r"""(?<![\w:.\-/"'|])ac4core(?![\w:.\-/"'|])""", "iclforge_ac4core"),
 ]
 
 OUTPUT = {
@@ -176,6 +178,12 @@ GENERATED = [  # generate_export_header paths and install destinations of the ge
 _ALIAS_RX = [(re.compile(r"(?<![\w])(?<!::)" + re.escape(a) + r"(?![\w:])"), b) for a, b in ALIASES]
 _RAW_RX = [(re.compile(p), r) for p, r in RAW]
 _OUT_RX = re.compile(r'(OUTPUT_NAME\s+")([A-Za-z0-9_]+)(")')
+# cmake/InstallLibrary.cmake gives cmake/PkgConfig.cmake the file names of a library apart from
+# OUTPUT_NAME: as the two names ac3forge_pkgconfig_libname() chooses between (its third and fourth
+# arguments), and as the LIBNAME of a library that has one linkage. The `-l` line of the .pc file is
+# made from them, so they follow the output names.
+_PC_CHOICE_RX = re.compile(r"(ac3forge_pkgconfig_libname\(\s*\S+\s+\S+\s+)(\S+)(\s+)(\S+)")
+_PC_LIBNAME_RX = re.compile(r"(\bLIBNAME\s+)([A-Za-z0-9_]+)\b")
 
 
 MIXED = re.compile(
@@ -342,6 +350,14 @@ def transform(
         text = rx.sub(r, text)
     text = MIXED.sub(r"iclforge::\2_\3", text)
     text = _OUT_RX.sub(lambda m: m.group(1) + OUTPUT.get(m.group(2), m.group(2)) + m.group(3), text)
+    text = _PC_CHOICE_RX.sub(
+        lambda m: m.group(1)
+        + OUTPUT.get(m.group(2), m.group(2))
+        + m.group(3)
+        + OUTPUT.get(m.group(4), m.group(4)),
+        text,
+    )
+    text = _PC_LIBNAME_RX.sub(lambda m: m.group(1) + OUTPUT.get(m.group(2), m.group(2)), text)
     for a, b in GENERATED:
         text = text.replace(a, b)
     text = rewrite_paths(text, moves, dirs, hold, known)
