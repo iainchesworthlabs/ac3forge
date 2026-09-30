@@ -43,7 +43,7 @@ function G { git -C $Root @args }
 # The stage's scripts, in the order a stage runs them. The moves are staged by `git mv` and the include edits
 # are not, so the first commit holds the renames alone.
 function Run-Scripts([string]$plan) {
-    python "$tools\n1b_apply.py" --root $Root --phase all --scope src --quiet --json $plan
+    python "$tools\n1b_apply.py" --root $Root --phase all --quiet --json $plan
     if ($LASTEXITCODE) { throw 'n1b_apply.py failed' }
     G commit -q -m 'scripts: move the files' 2>$null
     G add -A
@@ -52,6 +52,10 @@ function Run-Scripts([string]$plan) {
     if ($LASTEXITCODE) { throw 'n1b_cmake.py failed' }
     G add -A
     G commit -q -m 'scripts: build files' 2>$null
+    python "$tools\n1b_paths.py" --root $Root --plan $plan
+    if ($LASTEXITCODE) { throw 'n1b_paths.py failed' }
+    G add -A
+    G commit -q -m 'scripts: paths in text' 2>$null
     python "$tools\n1b_names.py" --root $Root
     if ($LASTEXITCODE) { throw 'n1b_names.py failed' }
     G add -A
