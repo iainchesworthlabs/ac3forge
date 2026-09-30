@@ -1,6 +1,6 @@
-// ac3forge WASM encode demo - glue between the two Embind modules
-// (ac3forge_encode.js/.wasm, built from encoder_bindings.cpp; and
-// ac3forge_decode.js/.wasm, the existing decode module copied alongside this
+// iclforge WASM encode demo - glue between the two Embind modules
+// (iclforge_encode.js/.wasm, built from encoder_bindings.cpp; and
+// iclforge_decode.js/.wasm, the existing decode module copied alongside this
 // page's own build output for the round-trip preview) and the page
 // (index.html).
 //
@@ -52,12 +52,12 @@ function setStatus(text, isError) {
 }
 
 async function loadModules() {
-    // createAc3ForgeEncodeModule / createAc3ForgeModule are the global
+    // createIclForgeEncodeModule / createIclForgeModule are the global
     // factory functions MODULARIZE+EXPORT_NAME produce for each module (see
     // apps/wasm/CMakeLists.txt's link options) - distinct names so both can
     // load on this one page without colliding.
-    encodeModule = await createAc3ForgeEncodeModule();
-    decodeModule = await createAc3ForgeModule();
+    encodeModule = await createIclForgeEncodeModule();
+    decodeModule = await createIclForgeModule();
 }
 
 function reorderedChannels(audioBuffer) {
@@ -236,7 +236,7 @@ class CaptureProcessor extends AudioWorkletProcessor {
         return true;
     }
 }
-registerProcessor('ac3forge-capture', CaptureProcessor);
+registerProcessor('iclforge-capture', CaptureProcessor);
 `;
 
 let micState = null;
@@ -331,7 +331,7 @@ async function startMicCapture() {
         URL.revokeObjectURL(workletUrl);
     }
     const source = audioCtx.createMediaStreamSource(stream);
-    const capture = new AudioWorkletNode(audioCtx, 'ac3forge-capture');
+    const capture = new AudioWorkletNode(audioCtx, 'iclforge-capture');
     source.connect(capture);
 
     const state = {
@@ -408,7 +408,7 @@ function downloadStream() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ac3forge-encode.${ext}`;
+    a.download = `iclforge-encode.${ext}`;
     document.body.appendChild(a);
     a.click();
     a.remove();

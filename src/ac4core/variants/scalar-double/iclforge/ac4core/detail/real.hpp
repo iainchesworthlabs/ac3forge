@@ -5,9 +5,9 @@
 // aspx/hf_generator.hpp, acpl/acpl.hpp, ajcc/ajcc.hpp and ajoc/ajoc.hpp) - the
 // DOUBLE variant. The float variant is the identically-pathed header under
 // src/internal/scalar/float/; src/ac4core/CMakeLists.txt picks the directory
-// from AC3FORGE_DECODE_SCALAR, the same cache variable src/ac3/CMakeLists.txt
+// from ICLFORGE_DECODE_SCALAR, the same cache variable src/ac3/CMakeLists.txt
 // resolves its own decode_scalar_t from (planning/ac4.md, "AC-4 joins
-// AC3FORGE_DECODE_SCALAR"), so no source file asks which it is with a
+// ICLFORGE_DECODE_SCALAR"), so no source file asks which it is with a
 // preprocessor conditional (tools/checks/check_platform_macros.ps1's rule).
 //
 // This is not the same mechanism as iclforge::internal::decode_scalar_t: that name

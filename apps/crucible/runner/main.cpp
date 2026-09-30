@@ -7,7 +7,7 @@
 //              [--bitrate KBPS] [--set-default SUBSTR]
 //
 //   --null-sink SUBSTR         the silent endpoint applications render into ("Desktop Atmos")
-//   --key PATH                 the signing key file; else the AC3FORGE_SIGNING_KEY* variables
+//   --key PATH                 the signing key file; else the ICLFORGE_SIGNING_KEY* variables
 //   --pin MODE                 start pinned to a mode (the pin verb's list), not the policy's choice
 //   --low-latency              one-block frames, the PCM sink at the engine's smallest period
 //   --bitrate KBPS             a fixed bitrate instead of 448 kb/s (1536 in low latency)

@@ -46,7 +46,7 @@
 // saves:
 //
 //   {
-//     "schema": "ac3forge.hearth.media/1",
+//     "schema": "iclforge.hearth.media/1",
 //     "generator": the ac3forge version,
 //     "file": the item's path,
 //     "codec": "ac3", "eac3", "ac3+eac3" (an AC-3 core with E-AC-3
@@ -72,13 +72,13 @@
 //     "channel_map": the Table E2.5 word, or null,
 //     "bitstream": null, or {info, alternate_bsi, cmixlev, surmixlev,
 //                  mixing, fold_levels} - see write_bitstream() for each,
-//     "probe": null, or {schema: "ac3forge.probe/1", stream}: the stream
+//     "probe": null, or {schema: "iclforge.probe/1", stream}: the stream
 //              object ac3cli probe json=1 writes (docs/forge/cli/commands.md),
 //              the AC-4 one for an AC-4 item
 //   }
 //
 // Members are only ever added within a version, and one that does not apply
-// is present and null, as ac3forge.probe/1 promises for its own.
+// is present and null, as iclforge.probe/1 promises for its own.
 
 namespace iclforge::hearth {
 

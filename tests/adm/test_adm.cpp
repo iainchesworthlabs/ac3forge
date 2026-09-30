@@ -499,10 +499,10 @@ iclforge::adm::AdmDocument objects_document(
     return document;
 }
 
-// Where a write test puts its files: a directory of its own under AC3FORGE_TEST_SCRATCH_DIR, with
+// Where a write test puts its files: a directory of its own under ICLFORGE_TEST_SCRATCH_DIR, with
 // this process's id folded in (tests/platform/process.hpp says why).
 std::filesystem::path write_scratch_dir(std::string_view name) {
-    auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} /
+    auto dir = std::filesystem::path{ICLFORGE_TEST_SCRATCH_DIR} /
                (std::string(name) + "_" + iclforge::test::platform::process_id());
     std::filesystem::create_directories(dir);
     return dir;
@@ -863,7 +863,7 @@ TEST_CASE("an oversized declared data chunk is bounded by the real file size", "
 // shape and both different from the <data> case above: libbw64 materialises
 // every chunk it reads EXCEPT <data> into a std::vector sized straight from
 // the chunk header, during readFile() itself, so a 99-byte file whose <axml>
-// claims four gigabytes asked for four gigabytes before any ac3forge code
+// claims four gigabytes asked for four gigabytes before any iclforge code
 // ran. adm.cpp's chunk_sizes_fit() now refuses any chunk but <data> whose
 // declared size runs past the end of the file; see its own comment for what
 // that covers and what it deliberately does not.
@@ -1174,7 +1174,7 @@ TEST_CASE("describe() returns a non-empty string for every AdmError", "[adm]") {
 TEST_CASE("write_bw64 gives every audioTrackUID the bit depth of the fmt chunk", "[adm][write]") {
     const auto document = objects_document({std::nullopt, 16U, 24U});
 
-    const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} /
+    const auto dir = std::filesystem::path{ICLFORGE_TEST_SCRATCH_DIR} /
                      ("adm_write_" + iclforge::test::platform::process_id());
     std::filesystem::create_directories(dir);
     const auto path = (dir / "track_uid_bit_depth.wav").string();

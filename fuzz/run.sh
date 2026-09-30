@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fuzz/run.sh - build ac3forge's libFuzzer harnesses under Clang+ASan+UBSan and
+# fuzz/run.sh - build iclforge's libFuzzer harnesses under Clang+ASan+UBSan and
 # run each for a bounded time budget. This is deliberately NOT continuous
 # fuzzing infrastructure (no OSS-Fuzz-style always-on service) - see
 # .github/workflows/fuzz.yml for how CI bounds it further, and the README in
@@ -13,28 +13,28 @@
 #
 # The differential harnesses (fuzz_differential_ac3_decode,
 # fuzz_differential_eac3_decode - differential decoder fuzzing: same mutated bytes decoded by
-# both ac3forge and FFmpeg, PCM diffed - see fuzz/differential_oracle.hpp)
+# both iclforge and FFmpeg, PCM diffed - see fuzz/differential_oracle.hpp)
 # are NOT in the default target list `run`/`regress` use with no arguments:
 # they need `ffmpeg` on PATH and are much slower per-exec, so name them
 # explicitly, e.g. `fuzz/run.sh run fuzz_differential_ac3_decode`. CI's
 # fuzz-differential job (fuzz.yml) does exactly this.
 #
 # Env overrides:
-#   AC3FORGE_FUZZ_SECONDS       per-target time budget in `run` mode (default 60)
-#   AC3FORGE_FUZZ_BUILD_DIR     CMake build directory (default build/fuzz)
-#   AC3FORGE_FUZZ_CORPUS_DIR    grown, persistent corpus (default fuzz/corpus, gitignored)
-#   AC3FORGE_FUZZ_ARTIFACT_DIR  where crashing inputs land (default fuzz/artifacts, gitignored)
-#   AC3FORGE_FUZZ_ADM           also build and run fuzz_adm_parse; needs VCPKG_ROOT and network
+#   ICLFORGE_FUZZ_SECONDS       per-target time budget in `run` mode (default 60)
+#   ICLFORGE_FUZZ_BUILD_DIR     CMake build directory (default build/fuzz)
+#   ICLFORGE_FUZZ_CORPUS_DIR    grown, persistent corpus (default fuzz/corpus, gitignored)
+#   ICLFORGE_FUZZ_ARTIFACT_DIR  where crashing inputs land (default fuzz/artifacts, gitignored)
+#   ICLFORGE_FUZZ_ADM           also build and run fuzz_adm_parse; needs VCPKG_ROOT and network
 #                               access (see configure_and_build's own comment)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-BUILD_DIR="${AC3FORGE_FUZZ_BUILD_DIR:-$REPO_ROOT/build/fuzz}"
-CORPUS_ROOT="${AC3FORGE_FUZZ_CORPUS_DIR:-$REPO_ROOT/fuzz/corpus}"
-ARTIFACT_DIR="${AC3FORGE_FUZZ_ARTIFACT_DIR:-$REPO_ROOT/fuzz/artifacts}"
-SECONDS_PER_TARGET="${AC3FORGE_FUZZ_SECONDS:-60}"
+BUILD_DIR="${ICLFORGE_FUZZ_BUILD_DIR:-$REPO_ROOT/build/fuzz}"
+CORPUS_ROOT="${ICLFORGE_FUZZ_CORPUS_DIR:-$REPO_ROOT/fuzz/corpus}"
+ARTIFACT_DIR="${ICLFORGE_FUZZ_ARTIFACT_DIR:-$REPO_ROOT/fuzz/artifacts}"
+SECONDS_PER_TARGET="${ICLFORGE_FUZZ_SECONDS:-60}"
 
 # The crash-only targets fuzz-regress/fuzz-short/fuzz-nightly run by
 # default. The two differential targets (fuzz_differential_ac3_decode,
@@ -47,8 +47,8 @@ SECONDS_PER_TARGET="${AC3FORGE_FUZZ_SECONDS:-60}"
 # without duplicating any files.
 #
 # fuzz_adm_parse is absent for a different reason from the differential
-# pair's: it is not built at all unless AC3FORGE_FUZZ_ADM=1 turns
-# AC3FORGE_BUILD_ADM on (see configure_and_build below), because ac3adm needs
+# pair's: it is not built at all unless ICLFORGE_FUZZ_ADM=1 turns
+# ICLFORGE_BUILD_ADM on (see configure_and_build below), because ac3adm needs
 # vcpkg's "adm" feature for libadm's Boost headers and nothing else in this
 # build has a vcpkg dependency of any kind. With that variable set it IS part
 # of the default list - see target_list.
@@ -59,7 +59,7 @@ readonly BASE_TARGETS=(fuzz_scan fuzz_ac3_decode fuzz_eac3_decode fuzz_wav_read
                        fuzz_ac4_decode fuzz_ac4_encode fuzz_sendspin_json fuzz_sendspin_frames
                        fuzz_sendspin_handshake fuzz_sendspin_messages)
 
-adm_enabled() { [ -n "${AC3FORGE_FUZZ_ADM:-}" ]; }
+adm_enabled() { [ -n "${ICLFORGE_FUZZ_ADM:-}" ]; }
 
 target_list() {
     local targets=("${BASE_TARGETS[@]}")
@@ -83,7 +83,7 @@ configure_and_build() {
     # engine itself, which starves the corpus of iterations within any
     # bounded time budget). -g still lands full symbols for triage.
     #
-    # AC3FORGE_FUZZ_ADM additionally builds fuzz_adm_parse, which needs
+    # ICLFORGE_FUZZ_ADM additionally builds fuzz_adm_parse, which needs
     # ac3adm - and therefore vcpkg's "adm" feature for libadm's Boost
     # headers, plus network access for the FetchContent pulls of libbw64 and
     # libadm themselves. Nothing else in this build touches vcpkg at all, so
@@ -92,26 +92,26 @@ configure_and_build() {
     local adm_args=()
     if adm_enabled; then
         if [ -z "${VCPKG_ROOT:-}" ]; then
-            echo "error: AC3FORGE_FUZZ_ADM needs VCPKG_ROOT set - ac3adm's libadm" >&2
+            echo "error: ICLFORGE_FUZZ_ADM needs VCPKG_ROOT set - ac3adm's libadm" >&2
             echo "dependency takes its Boost headers from vcpkg's 'adm' feature." >&2
             exit 1
         fi
-        adm_args=(-DAC3FORGE_BUILD_ADM=ON
+        adm_args=(-DICLFORGE_BUILD_ADM=ON
                   -DVCPKG_MANIFEST_FEATURES=adm
                   "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake")
     fi
     cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -G Ninja \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DCMAKE_CXX_COMPILER="$CXX_CANDIDATE" \
-        -DAC3FORGE_BUILD_FUZZERS=ON \
-        -DAC3FORGE_BUILD_CLI=OFF \
-        -DAC3FORGE_BUILD_GUI=OFF \
-        -DAC3FORGE_BUILD_TESTS=OFF \
-        -DAC3FORGE_BUILD_EXAMPLES=OFF \
-        -DAC3FORGE_BUILD_HEARTH=ON \
-        -DAC3FORGE_SENDSPIN_CORE_ONLY=ON \
+        -DICLFORGE_BUILD_FUZZERS=ON \
+        -DICLFORGE_BUILD_CLI=OFF \
+        -DICLFORGE_BUILD_GUI=OFF \
+        -DICLFORGE_BUILD_TESTS=OFF \
+        -DICLFORGE_BUILD_EXAMPLES=OFF \
+        -DICLFORGE_BUILD_HEARTH=ON \
+        -DICLFORGE_SENDSPIN_CORE_ONLY=ON \
         "${adm_args[@]}"
-    cmake --build "$BUILD_DIR" --target ac3forge_fuzzers
+    cmake --build "$BUILD_DIR" --target iclforge_fuzzers
 }
 
 target_binary() {

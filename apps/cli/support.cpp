@@ -4459,7 +4459,7 @@ std::optional<iclforge::signing::VerifySummary> apply_object_verification(
         if (key.error().kind == iclforge::signing::KeyErrorKind::kAbsent) {
             fmt::println(stderr,
                          "error: verify-objects needs a key — pass signing-key=<path>, or set "
-                         "AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY");
+                         "ICLFORGE_SIGNING_KEY_FILE / ICLFORGE_SIGNING_KEY");
         } else {
             fmt::println(stderr, "error: {}", key.error().message);
         }

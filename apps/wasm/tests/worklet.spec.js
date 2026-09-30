@@ -32,9 +32,9 @@ test('streams the bundled fixture through a real AudioWorkletNode and produces n
             return { ok: false, error: 'page is not cross-origin isolated (COOP/COEP headers missing)' };
         }
         // @ts-ignore
-        const { Ac3ForgeDecoderNode, scanStream, DownmixTarget } = await import('./package/index.js');
+        const { IclForgeDecoderNode, scanStream, DownmixTarget } = await import('./package/index.js');
         // @ts-ignore
-        const moduleInstance = await window.createAc3ForgeModule();
+        const moduleInstance = await window.createIclForgeModule();
         const response = await fetch('assets/demo.ec3');
         const bytes = new Uint8Array(await response.arrayBuffer());
 
@@ -53,10 +53,10 @@ test('streams the bundled fixture through a real AudioWorkletNode and produces n
         }
 
         const offlineCtx = new OfflineAudioContext(2, scanned.sampleRate * 1, scanned.sampleRate);
-        const node = await Ac3ForgeDecoderNode.create(offlineCtx, {
+        const node = await IclForgeDecoderNode.create(offlineCtx, {
             workletProcessorUrl: new URL('./package/worklet-processor.js', location.href),
             workerUrl: new URL('./package/decoder-worker.js', location.href),
-            wasmGlueUrl: new URL('./ac3forge_decode.js', location.href),
+            wasmGlueUrl: new URL('./iclforge_decode.js', location.href),
             fold: { target: DownmixTarget.LoRo, applyDialnorm: true },
         });
         node.node.connect(offlineCtx.destination);

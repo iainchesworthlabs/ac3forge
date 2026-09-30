@@ -46,13 +46,13 @@ class FakeTools:
 
 
 NM = """\
-0000000000001000 T _ZN7ac3forge6encodeEv
-0000000000001010 T _ZN7ac3forge6encodeEv
+0000000000001000 T _ZN7iclforge6encodeEv
+0000000000001010 T _ZN7iclforge6encodeEv
 0000000000001020 W _ZNSt6vectorIiSaIiEE9push_backEv
 0000000000001030 W _ZNKSt10_Hashtable4findEv
 0000000000001040 V _ZTVSt9exception
 0000000000001050 W _ZN9__gnu_cxx13new_allocatorEv
-0000000000001060 T ac3forge_c_open
+0000000000001060 T iclforge_c_open
                  U malformed
 """
 
@@ -62,7 +62,7 @@ class ExportedSymbols(unittest.TestCase):
         fake = FakeTools({"libx.so": NM})
         with mock.patch.object(abi.subprocess, "run", fake):
             symbols = abi.exported_symbols(Path("/b/libx.so"))
-        self.assertEqual(symbols, ["D:_ZN7ac3forge6encodeEv", "D:ac3forge_c_open"])
+        self.assertEqual(symbols, ["D:_ZN7iclforge6encodeEv", "D:iclforge_c_open"])
         self.assertEqual(fake.assertion, ["nm", "-D", "--defined-only"])
         self.assertNotIn("_ZNKSt", fake.demangle_inputs[0])
 
@@ -97,7 +97,7 @@ class Main(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("Wrote 2 symbols for liba.so", out)
         self.assertEqual((self.allow / "liba.so.txt").read_text(),
-                         "D:_ZN7ac3forge6encodeEv\nD:ac3forge_c_open\n")
+                         "D:_ZN7iclforge6encodeEv\nD:iclforge_c_open\n")
         self.assertEqual((self.allow / "libempty.so.txt").read_text(), "")
         rc, out = self.run_main({"liba.so": NM})
         self.assertEqual(rc, 0, out)
@@ -106,12 +106,12 @@ class Main(unittest.TestCase):
 
     def test_new_and_removed_exports_fail(self):
         self.allow.mkdir(parents=True)
-        (self.allow / "liba.so.txt").write_text("D:ac3forge_c_open\nD:ac3forge_gone\n")
+        (self.allow / "liba.so.txt").write_text("D:iclforge_c_open\nD:iclforge_gone\n")
         rc, out = self.run_main({"liba.so": NM})
         self.assertEqual(rc, 1)
         self.assertIn("MISMATCH  liba.so vs liba.so.txt", out)
-        self.assertIn("::warning::+ D:_ZN7ac3forge6encodeEv (newly exported", out)
-        self.assertIn("::warning::- D:ac3forge_gone (allowlisted, no longer exported)", out)
+        self.assertIn("::warning::+ D:_ZN7iclforge6encodeEv (newly exported", out)
+        self.assertIn("::warning::- D:iclforge_gone (allowlisted, no longer exported)", out)
         self.assertIn("regenerate the allowlist with --update", out)
 
     def test_library_without_allowlist_fails(self):

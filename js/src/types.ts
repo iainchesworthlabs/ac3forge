@@ -107,11 +107,11 @@ export interface RawScanResult {
   accessUnits?: { offset: number; length: number }[];
 }
 
-/** The Embind module `apps/wasm/decoder_bindings.cpp` builds - what `createAc3ForgeModule()` resolves to. */
-export interface Ac3ForgeEmbindModule {
+/** The Embind module `apps/wasm/decoder_bindings.cpp` builds - what `createIclForgeModule()` resolves to. */
+export interface IclForgeEmbindModule {
   PushDecoder: new (foldTarget: number, foldApplyDialnorm: boolean, foldMixLfe: boolean) => NativePushDecoder;
   scanStream(bytes: Uint8Array): RawScanResult;
 }
 
-/** The MODULARIZE factory Emscripten attaches as `createAc3ForgeModule` - see apps/wasm/CMakeLists.txt's link options. */
-export type Ac3ForgeModuleFactory = (moduleOverrides?: Record<string, unknown>) => Promise<Ac3ForgeEmbindModule>;
+/** The MODULARIZE factory Emscripten attaches as `createIclForgeModule` - see apps/wasm/CMakeLists.txt's link options. */
+export type IclForgeModuleFactory = (moduleOverrides?: Record<string, unknown>) => Promise<IclForgeEmbindModule>;

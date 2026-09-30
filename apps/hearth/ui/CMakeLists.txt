@@ -8,11 +8,11 @@
 # the precedent this follows.
 #
 # included from ../CMakeLists.txt, itself only reached under the root's
-# `AC3FORGE_BUILD_HEARTH AND NOT AC3FORGE_SENDSPIN_PLAYER_ONLY` guard - which
+# `ICLFORGE_BUILD_HEARTH AND NOT ICLFORGE_SENDSPIN_PLAYER_ONLY` guard - which
 # the ESP-IDF component never satisfies (feedback-root-cmake-guards-need-
-# esp-idf-build: CONFIG_AC3FORGE_SENDSPIN pre-seeds AC3FORGE_BUILD_HEARTH=ON
-# together with AC3FORGE_SENDSPIN_PLAYER_ONLY=ON, and every other board shape
-# leaves AC3FORGE_BUILD_HEARTH at its default OFF). So this file is never
+# esp-idf-build: CONFIG_ICLFORGE_SENDSPIN pre-seeds ICLFORGE_BUILD_HEARTH=ON
+# together with ICLFORGE_SENDSPIN_PLAYER_ONLY=ON, and every other board shape
+# leaves ICLFORGE_BUILD_HEARTH at its default OFF). So this file is never
 # entered by a board configure, and needs no guard of its own for that - see
 # this change's PR for the WSL configure-only check that confirmed it.
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2 Linguist
 # here" (this defined and false) apart from "apps/hearth/CMakeLists.txt
 # hasn't add_subdirectory()'d this directory yet" (not defined at all) - the
 # same PARENT_SCOPE-across-add_subdirectory() reason apps/gui/CMakeLists.txt
-# exports AC3FORGE_GUI_QT_VERSION for apps/notices/notices.cmake.
+# exports ICLFORGE_GUI_QT_VERSION for apps/notices/notices.cmake.
 set(AC3HEARTH_UI_QT_FOUND "${Qt6_FOUND}" PARENT_SCOPE)
 
 if(NOT Qt6_FOUND)
@@ -63,13 +63,13 @@ else()
     qt_standard_project_setup(REQUIRES 6.8)
 
     # The shared family components, copied from apps/gui/qml and rewritten by
-    # cmake/SharedFamilyQml.cmake's ac3forge_stage_shared_qml() - the same
+    # cmake/SharedFamilyQml.cmake's iclforge_stage_shared_qml() - the same
     # function apps/crucible/CMakeLists.txt calls (see that file's header for
     # why this is a shared function rather than each app running its own copy
     # of the loop). Edit apps/gui/qml/*.qml and every app that copies it follows.
     include(SharedFamilyQml)
     set(AC3HEARTH_SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/qml/shared")
-    ac3forge_stage_shared_qml(Ac3ForgeHearth "${AC3HEARTH_SHARED_DIR}" AC3HEARTH_SHARED_OUT)
+    iclforge_stage_shared_qml(Ac3ForgeHearth "${AC3HEARTH_SHARED_DIR}" AC3HEARTH_SHARED_OUT)
 
     qt_add_executable(ac3hearth
         main.cpp
@@ -327,7 +327,7 @@ else()
     # qt_add_qml_module() pair runs in THIS directory's scope rather than a nested one -
     # apps/gui/CMakeLists.txt's own comment on its identical include() explains why that
     # distinction is load-bearing for AUTOMOC's metatypes JSON handoff to qmltyperegistrar.
-    if(AC3FORGE_BUILD_TESTS)
+    if(ICLFORGE_BUILD_TESTS)
         include(tests/CMakeLists.txt)
     endif()
 

@@ -561,7 +561,7 @@ private:
     // Set only by set_test_outputs(); null in the shipped window.
     std::shared_ptr<TestOutputs> test_outputs_;
     // The opt-in loopback diagnostics endpoint (diagnostics_server.hpp),
-    // started from start() only when AC3FORGE_HEARTH_DIAGNOSTICS_PORT names
+    // started from start() only when ICLFORGE_HEARTH_DIAGNOSTICS_PORT names
     // a port; null otherwise. Stopped explicitly, first, in the destructor
     // body - not left to field order - since it owns a thread that must not
     // outlive anything its report lambda touches.

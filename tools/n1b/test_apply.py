@@ -35,6 +35,12 @@ FILES = {
     "tests/containers/test_no_include.cpp": "int x;\n",
     "tests/dsp/test_qmf.cpp": '#include "ac3/dsp/qmf.hpp"\n',
     "rust/ac3forge/src/lib.rs": "// rust\n",
+    "esp-idf/ac3forge/include/ac3forge/player.hpp": "#pragma once\n",
+    "esp-idf/ac3forge/include/ac3forge/interleave.hpp": '#include "ac3forge/slot_conversion.hpp"\n',
+    "esp-idf/ac3forge/conversion/bits/ac3forge/slot_conversion.hpp": "#pragma once\n",
+    "src/sendspin/include/iclforge/sendspin/ac3forge_player.hpp": "#pragma once\n",
+    "apps/hearth/testsink/sink.cpp": '#include "iclforge/sendspin/ac3forge_player.hpp"\n',
+    "packaging/winget/manifests/i/iainchesworthlabs/ac3forge/0.10.0-beta.1/x.yaml": "x\n",
     "tools/generators/gen.py": 'TEMPLATE = """\n#include "ac3/core/crc16.hpp"\n"""\n',
     "tools/packaging/pack.py": "lines.append('#include \"ac3/core/crc16.hpp\"')\n",
     "tools/n1b/notes.py": 'OLD = """\n#include "ac3/core/crc16.hpp"\n"""\n',
@@ -96,7 +102,24 @@ class Moves(Fixture):
         self.assertFalse([old for old in src if old.startswith("tests/")])
         self.assertTrue(tests)
         self.assertFalse([old for old in tests if not old.startswith("tests/")])
-        self.assertEqual(packages, {"rust/ac3forge/src/lib.rs": "rust/iclforge/src/lib.rs"})
+        self.assertEqual(
+            packages,
+            {
+                "rust/ac3forge/src/lib.rs": "rust/iclforge/src/lib.rs",
+                "esp-idf/ac3forge/include/ac3forge/player.hpp": (
+                    "esp-idf/iclforge/include/iclforge/player.hpp"
+                ),
+                "esp-idf/ac3forge/include/ac3forge/interleave.hpp": (
+                    "esp-idf/iclforge/include/iclforge/interleave.hpp"
+                ),
+                "esp-idf/ac3forge/conversion/bits/ac3forge/slot_conversion.hpp": (
+                    "esp-idf/iclforge/conversion/bits/iclforge/slot_conversion.hpp"
+                ),
+                "src/sendspin/include/iclforge/sendspin/ac3forge_player.hpp": (
+                    "src/sendspin/include/iclforge/sendspin/iclforge_player.hpp"
+                ),
+            },
+        )
 
     def test_a_test_goes_with_the_library_whose_files_it_includes_most(self) -> None:
         tests = self.moves("tests")
@@ -168,6 +191,27 @@ class Includes(Fixture):
         git(self.root, "add", "-A")
         git(self.root, "commit", "-q", "-m", "moved")
         plan = self.run_script("src,tests", "plan")
+        self.assertEqual(plan["moves"], {})
+        self.assertEqual(plan["edits"], {})
+
+    def test_the_package_moves_carry_their_includes_and_leave_the_released_manifests(self) -> None:
+        self.run_script("packages", "all")
+        self.assertEqual(
+            self.text("apps/hearth/testsink/sink.cpp"),
+            '#include "iclforge/sendspin/iclforge_player.hpp"\n',
+        )
+        self.assertEqual(
+            self.text("esp-idf/iclforge/include/iclforge/interleave.hpp"),
+            '#include "iclforge/slot_conversion.hpp"\n',
+        )
+        released = "packaging/winget/manifests/i/iainchesworthlabs/ac3forge/0.10.0-beta.1/x.yaml"
+        self.assertTrue((self.root / released).exists())
+
+    def test_a_second_package_run_on_the_finished_tree_plans_nothing(self) -> None:
+        self.run_script("packages", "all")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-q", "-m", "moved")
+        plan = self.run_script("packages", "plan")
         self.assertEqual(plan["moves"], {})
         self.assertEqual(plan["edits"], {})
 

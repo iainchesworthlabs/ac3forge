@@ -5,7 +5,7 @@
 // the point: this is a consumer of the one push-frame decode path, not a
 // second implementation of it. A live/streaming caller that doesn't need
 // arbitrary seeking has no reason to use this; it uses PushDecoder or
-// Ac3ForgeDecoderNode directly instead.
+// IclForgeDecoderNode directly instead.
 import { PushDecoder, scanStream } from "./push-decoder.js";
 // About 21ms at 48kHz - small enough for a visualization to feel responsive
 // without recomputing energy on every animation frame. Ported from the old

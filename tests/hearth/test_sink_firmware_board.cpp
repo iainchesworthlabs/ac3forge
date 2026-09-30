@@ -1,7 +1,7 @@
 // iclforge::hearth::SinkFirmware against a stand-in board on 127.0.0.1: the
 // requests it makes, and how it follows a board through an update's restart
 // and trial to each way one can end. The stand-in answers GET /firmware with
-// the board's own renderer (ac3forge/firmware_status.hpp), so the client
+// the board's own renderer (iclforge/firmware_status.hpp), so the client
 // reads what a board sends. Nothing here leaves the loopback interface.
 
 #include <httplib.h>
@@ -26,8 +26,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "iclforge/sendspin/base64.hpp"
-#include "ac3forge/firmware_image.hpp"
-#include "ac3forge/firmware_status.hpp"
+#include "iclforge/firmware_image.hpp"
+#include "iclforge/firmware_status.hpp"
 #include "sink_firmware.hpp"
 #include "sink_firmware_images.hpp"
 #include "sink_firmware_view.hpp"
@@ -61,18 +61,18 @@ bool eventually(Predicate predicate, std::chrono::milliseconds timeout = 15s) {
     return predicate();
 }
 
-ac3forge::FirmwareSlot slot(std::string label, std::string state, std::string version, const ImageSpec& spec) {
-    ac3forge::FirmwareSlot out;
+iclforge::FirmwareSlot slot(std::string label, std::string state, std::string version, const ImageSpec& spec) {
+    iclforge::FirmwareSlot out;
     out.label = std::move(label);
     out.state = std::move(state);
     out.version = std::move(version);
-    out.project = "ac3forge_hearth_sink";
+    out.project = "iclforge_hearth_sink";
     out.elf_sha256 = sink_firmware_test::elf_hex(spec);
     out.intact = true;
     return out;
 }
 
-// The routes ac3forge::Firmware serves, modelled as far as SinkFirmware uses
+// The routes iclforge::Firmware serves, modelled as far as SinkFirmware uses
 // them. After an upload it answers two reads in flash mode and one with a 503,
 // as a board restarting would not answer, then plays `after_upload` out.
 class FakeBoard {
@@ -92,7 +92,7 @@ class FakeBoard {
 
         server_.Get("/hardware", [](const httplib::Request&, httplib::Response& response) {
             response.set_content(R"({"target":"esp32s3","chip":"ESP32-S3","revision":"0.2",)"
-                                 R"("project":"ac3forge_hearth_sink","version":"v0.10.0"})",
+                                 R"("project":"iclforge_hearth_sink","version":"v0.10.0"})",
                                  "application/json");
         });
         server_.Get("/firmware", [this](const httplib::Request&, httplib::Response& response) {
@@ -113,10 +113,10 @@ class FakeBoard {
                 status_.trial.reset();
                 status_.running->intact = true;
                 status_.running->image_sha256 = uploaded_image_sha256_;
-                status_.last_update = ac3forge::FirmwareLastUpdate{
+                status_.last_update = iclforge::FirmwareLastUpdate{
                     .version = status_.running->version, .result = "accepted", .reason = ""};
             }
-            response.set_content(ac3forge::render_firmware_status(status_), "application/json");
+            response.set_content(iclforge::render_firmware_status(status_), "application/json");
         });
         server_.Put("/firmware", [this](const httplib::Request& request, httplib::Response& response,
                                         const httplib::ContentReader& content_reader) {
@@ -151,7 +151,7 @@ class FakeBoard {
                     // flash mode for another, and says why.
                     status_.mode = "flash";
                     status_.last_update =
-                        ac3forge::FirmwareLastUpdate{.version = "v0.11.0", .result = "refused", .reason = refusal_};
+                        iclforge::FirmwareLastUpdate{.version = "v0.11.0", .result = "refused", .reason = refusal_};
                 }
                 if (answer_delay_ > 0ms) {
                     // Interrupted when the stand-in goes, so that the server
@@ -169,7 +169,7 @@ class FakeBoard {
                 uploaded_ = std::move(read.file);
                 uploaded_image_sha256_ = uploaded_ ? uploaded_->image_sha256 : std::string();
                 status_.mode = "flash";
-                status_.upload = ac3forge::FirmwareUpload{
+                status_.upload = iclforge::FirmwareUpload{
                     .received = bytes.size(), .total = bytes.size(), .stage = "restarting"};
                 step_ = 1;
             }
@@ -231,7 +231,7 @@ class FakeBoard {
     }
     // The next `count` uploads are cut off, and `after` is what each one did
     // to the board: what GET /firmware answers from then on.
-    void drop_uploads(int count, std::function<void(ac3forge::FirmwareStatus&)> after) {
+    void drop_uploads(int count, std::function<void(iclforge::FirmwareStatus&)> after) {
         const std::lock_guard<std::mutex> lock(mutex_);
         drops_ = count;
         after_drop_ = std::move(after);
@@ -294,8 +294,8 @@ class FakeBoard {
         }
         status_.mode = "normal";
         status_.upload.reset();
-        const ac3forge::FirmwareSlot old = *status_.running;
-        ac3forge::FirmwareSlot fresh;
+        const iclforge::FirmwareSlot old = *status_.running;
+        iclforge::FirmwareSlot fresh;
         fresh.label = "ota_1";
         fresh.version = uploaded_->head.version;
         fresh.project = uploaded_->head.project;
@@ -304,14 +304,14 @@ class FakeBoard {
             fresh.state = "trial";
             status_.running = fresh;
             status_.other = old;
-            status_.trial = ac3forge::FirmwareTrial{
+            status_.trial = iclforge::FirmwareTrial{
                 .healthy_for_ms = 1000, .hold_ms = 30'000, .remaining_ms = 299'000, .waiting_for = {}};
             status_.last_update =
-                ac3forge::FirmwareLastUpdate{.version = fresh.version, .result = "on trial", .reason = ""};
+                iclforge::FirmwareLastUpdate{.version = fresh.version, .result = "on trial", .reason = ""};
         } else {
             fresh.state = "aborted";
             status_.other = fresh;
-            status_.last_update = ac3forge::FirmwareLastUpdate{
+            status_.last_update = iclforge::FirmwareLastUpdate{
                 .version = fresh.version, .result = "rolled back", .reason = "it panicked"};
         }
     }
@@ -319,12 +319,12 @@ class FakeBoard {
     mutable std::mutex mutex_;
     std::condition_variable closing_;
     bool closed_ = false;
-    ac3forge::FirmwareStatus status_;
+    iclforge::FirmwareStatus status_;
     AfterUpload after_upload_ = AfterUpload::kAccept;
     std::string refusal_;
     std::chrono::milliseconds answer_delay_{0};
     int drops_ = 0;
-    std::function<void(ac3forge::FirmwareStatus&)> after_drop_;
+    std::function<void(iclforge::FirmwareStatus&)> after_drop_;
     int mode_status_ = 200;
     std::string mode_text_;
     int mode_requests_ = 0;
@@ -358,7 +358,7 @@ iclforge::hearth::FirmwareFile update_file() {
 // closed under it resets: the client is still sending when it finds out, as
 // a client sending to a board is. The stand-in's slot is made room for it.
 iclforge::hearth::FirmwareFile large_update_file(FakeBoard& board) {
-    board.change([](ac3forge::FirmwareStatus& status) { status.slot_bytes = 16 * 1024 * 1024; });
+    board.change([](iclforge::FirmwareStatus& status) { status.slot_bytes = 16 * 1024 * 1024; });
     ImageSpec spec;
     spec.elf_seed = 40;
     spec.version = "v0.11.0";
@@ -369,10 +369,10 @@ iclforge::hearth::FirmwareFile large_update_file(FakeBoard& board) {
 }
 
 // What a board records when it gives an upload up: flash mode, and why.
-std::function<void(ac3forge::FirmwareStatus&)> gave_up(std::string result, std::string reason) {
-    return [result = std::move(result), reason = std::move(reason)](ac3forge::FirmwareStatus& status) {
+std::function<void(iclforge::FirmwareStatus&)> gave_up(std::string result, std::string reason) {
+    return [result = std::move(result), reason = std::move(reason)](iclforge::FirmwareStatus& status) {
         status.mode = "flash";
-        status.last_update = ac3forge::FirmwareLastUpdate{.version = "v0.11.0", .result = result, .reason = reason};
+        status.last_update = iclforge::FirmwareLastUpdate{.version = "v0.11.0", .result = result, .reason = reason};
     };
 }
 
@@ -405,7 +405,7 @@ TEST_CASE("sink firmware board: a watched sink is read at every poll", "[hearth]
     CHECK(snapshot.firmware->other->label == "ota_1");
 
     // A change on the board shows at the next poll.
-    board.change([](ac3forge::FirmwareStatus& status) { status.network = "wired"; });
+    board.change([](iclforge::FirmwareStatus& status) { status.network = "wired"; });
     CHECK(eventually([&] { return firmware.snapshot().firmware->network == "wired"; }));
 }
 
@@ -482,7 +482,7 @@ TEST_CASE("sink firmware board: a refusal is reported in the board's own words",
         CHECK(board.mode() == "flash");
     }
     SECTION("the pre-flight refuses a board on trial, and nothing is sent") {
-        board.change([](ac3forge::FirmwareStatus& status) { status.running->state = "trial"; });
+        board.change([](iclforge::FirmwareStatus& status) { status.running->state = "trial"; });
         REQUIRE(firmware.start_update(update_file()));
         const std::optional<SinkFirmware::Update> update = finished(firmware);
         REQUIRE(update.has_value());
@@ -649,7 +649,7 @@ TEST_CASE("sink firmware board: going away does not wait out the board's answer 
 //   AC3HEARTH_LIVE_FIRMWARE_HOST   the board's address or .local name; the case
 //                                  is skipped without it
 //   AC3HEARTH_LIVE_FIRMWARE_IMAGE  the image, as a build leaves it
-//                                  (ac3forge_hearth_sink.bin)
+//                                  (iclforge_hearth_sink.bin)
 //
 // Each step prints as the Firmware tab would show it.
 TEST_CASE("sink firmware live: an image goes onto a real board and is accepted",

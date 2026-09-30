@@ -70,7 +70,7 @@
 # Contents/Resources/qml/QtTest/{libquicktestplugin.dylib,qmldir} into the
 # .app exactly as it stages Qt6Test.dll and qml/QtTest/ on Windows. Confirmed
 # 2026-09-16 against a real packages-macos-llvm CI artifact built from main
-# (ac3forge-0.0.0-Darwin.zip): both paths were there, and nothing under
+# (iclforge-0.0.0-Darwin.zip): both paths were there, and nothing under
 # Contents/Frameworks/ was named Test or QuickTest - the QML plugin is the
 # only carrier on THAT build, unlike Windows where windeployqt also resolves
 # the plugin's own Qt6Test.dll/Qt6QuickTest.dll dependencies into bin/.

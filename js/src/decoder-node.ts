@@ -9,18 +9,18 @@ import type { RingBufferLayout } from "./ring-buffer.js";
 import type { FoldOptions, ObjectFrame, PushOutcome, WriteTarget } from "./types.js";
 import { DownmixTarget } from "./types.js";
 
-export interface Ac3ForgeDecoderNodeOptions {
+export interface IclForgeDecoderNodeOptions {
   /**
    * URL of this package's compiled `worklet-processor.js` - passed to
    * `audioContext.audioWorklet.addModule()`. A bundler resolves this from
-   * `new URL("ac3forge-wasm-decoder/worklet-processor", import.meta.url)`
+   * `new URL("iclforge-wasm-decoder/worklet-processor", import.meta.url)`
    * or the package's own `exports["./worklet-processor"]` entry; a plain
    * static site copies the file next to its own script and points here.
    */
   workletProcessorUrl: string | URL;
   /** URL of this package's compiled `decoder-worker.js` - same resolution story as workletProcessorUrl. */
   workerUrl: string | URL;
-  /** URL of the Emscripten glue (`ac3forge_decode.js`) built from apps/wasm/ - this package embeds no compiled binary of its own. */
+  /** URL of the Emscripten glue (`iclforge_decode.js`) built from apps/wasm/ - this package embeds no compiled binary of its own. */
   wasmGlueUrl: string | URL;
   /** Default: no fold (raw/coded channels), so `channelCount` must be supplied. */
   fold?: FoldOptions;
@@ -43,10 +43,10 @@ function nextPowerOfTwo(value: number): number {
   return n;
 }
 
-function resolveChannelCount(options: Ac3ForgeDecoderNodeOptions): number {
+function resolveChannelCount(options: IclForgeDecoderNodeOptions): number {
   if (options.channelCount) return options.channelCount;
   if (options.fold && options.fold.target !== DownmixTarget.AsCoded) return 2;
-  throw new Error("Ac3ForgeDecoderNode: channelCount is required unless a non-AsCoded fold is given");
+  throw new Error("IclForgeDecoderNode: channelCount is required unless a non-AsCoded fold is given");
 }
 
 /**
@@ -56,7 +56,7 @@ function resolveChannelCount(options: Ac3ForgeDecoderNodeOptions): number {
  * Web Audio graph. Decoding happens in a Worker; only ring-buffer draining
  * happens on the audio rendering thread itself.
  */
-export class Ac3ForgeDecoderNode extends EventTarget {
+export class IclForgeDecoderNode extends EventTarget {
   readonly node: AudioWorkletNode;
   readonly #worker: Worker;
   #streamInfoSeen = false;
@@ -71,11 +71,11 @@ export class Ac3ForgeDecoderNode extends EventTarget {
 
   static async create(
     audioContext: BaseAudioContext,
-    options: Ac3ForgeDecoderNodeOptions,
-  ): Promise<Ac3ForgeDecoderNode> {
+    options: IclForgeDecoderNodeOptions,
+  ): Promise<IclForgeDecoderNode> {
     if (!crossOriginIsolated) {
       throw new Error(
-        "Ac3ForgeDecoderNode requires cross-origin isolation (COOP: same-origin, COEP: " +
+        "IclForgeDecoderNode requires cross-origin isolation (COOP: same-origin, COEP: " +
           "require-corp) for SharedArrayBuffer - see js/README.md.",
       );
     }
@@ -85,7 +85,7 @@ export class Ac3ForgeDecoderNode extends EventTarget {
     const sab = allocateRingBuffer(layout);
 
     await audioContext.audioWorklet.addModule(options.workletProcessorUrl);
-    const node = new AudioWorkletNode(audioContext, "ac3forge-pcm-source", {
+    const node = new AudioWorkletNode(audioContext, "iclforge-pcm-source", {
       numberOfInputs: 0,
       numberOfOutputs: 1,
       outputChannelCount: [channelCount],
@@ -93,7 +93,7 @@ export class Ac3ForgeDecoderNode extends EventTarget {
     });
 
     const worker = new Worker(options.workerUrl, { type: "module" });
-    const instance = new Ac3ForgeDecoderNode(node, worker);
+    const instance = new IclForgeDecoderNode(node, worker);
     worker.addEventListener("message", (event: MessageEvent) => instance.#onWorkerMessage(event.data));
     node.port.addEventListener("message", (event: MessageEvent) => instance.#onProcessorMessage(event.data));
     node.port.start();

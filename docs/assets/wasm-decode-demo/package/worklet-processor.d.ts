@@ -1,5 +1,5 @@
 import type { RingBufferLayout } from "./ring-buffer.js";
-export interface Ac3ForgeProcessorOptions {
+export interface IclForgeProcessorOptions {
     sab: SharedArrayBuffer;
     layout: RingBufferLayout;
 }

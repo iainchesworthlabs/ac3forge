@@ -18,7 +18,7 @@
 #include "container_input.hpp"
 #include "json_sink.hpp"
 
-// The `stream` object of the ac3forge.probe/1 document (docs/forge/cli/
+// The `stream` object of the iclforge.probe/1 document (docs/forge/cli/
 // commands.md), for ac3cli probe and for Hearth's media information, which
 // carries the same object so one stream is never described two ways. Also the
 // fixed names both of ac3cli probe's forms use, and the AC-4 walk.

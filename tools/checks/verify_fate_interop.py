@@ -265,10 +265,10 @@ def main() -> int:
                                    if os.environ.get("FATE_CACHE_DIR") else None)
     scratch = None
     if cache_dir is None:
-        scratch = tempfile.mkdtemp(prefix="ac3forge-fate-")
+        scratch = tempfile.mkdtemp(prefix="iclforge-fate-")
         cache_dir = Path(scratch)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix="ac3forge-fate-work-"))
+    work = Path(tempfile.mkdtemp(prefix="iclforge-fate-work-"))
 
     failures = []
     try:

@@ -1,7 +1,7 @@
 #pragma once
 
 // The variant of tests/core/avx2/avx2_tier.hpp compiled when src/ac3 did NOT
-// build the AVX2 tier - AC3FORGE_AVX2=OFF, or a target that is not x86_64 at
+// build the AVX2 tier - ICLFORGE_AVX2=OFF, or a target that is not x86_64 at
 // all - so neither avx2_probe.cpp nor mdct_avx2.cpp is in this binary.
 //
 // It exists so tests/ac3/core/test_simd_kernels.cpp compiles unchanged on every

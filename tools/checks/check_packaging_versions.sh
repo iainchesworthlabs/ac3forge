@@ -37,14 +37,26 @@ note() { echo "::error::$1"; echo "  $1"; fail=1; }
 
 # --- winget: every version directory's three files must agree with each
 # other and with the directory name, and the installer's hash/URL must be
-# well-formed. ---
-winget_root="$root/packaging/winget/manifests/i/iainchesworthlabs/ac3forge"
-if [[ -d "$winget_root" ]]; then
-    for dir in "$winget_root"/*/; do
+# well-formed. The releases staged before the rename are under the package
+# identity iainchesworthlabs.ac3forge and stay as they were made; what
+# tools/release/bump_manifests.py writes from now on is under
+# iainchesworthlabs.iclforge. Each package directory is read with the identity
+# its own name gives, and the versions of both are checked. ---
+winget_dirs=()
+for winget_package in ac3forge iclforge; do
+    for dir in "$root/packaging/winget/manifests/i/iainchesworthlabs/$winget_package"/*/; do
+        if [[ -d "$dir" ]]; then
+            winget_dirs+=("$dir")
+        fi
+    done
+done
+if [[ ${#winget_dirs[@]} -gt 0 ]]; then
+    for dir in "${winget_dirs[@]}"; do
         version="$(basename "$dir")"
-        installer="$dir/iainchesworthlabs.ac3forge.installer.yaml"
-        locale="$dir/iainchesworthlabs.ac3forge.locale.en-US.yaml"
-        manifest="$dir/iainchesworthlabs.ac3forge.yaml"
+        package="$(basename "$(dirname "$dir")")"
+        installer="$dir/iainchesworthlabs.$package.installer.yaml"
+        locale="$dir/iainchesworthlabs.$package.locale.en-US.yaml"
+        manifest="$dir/iainchesworthlabs.$package.yaml"
 
         for f in "$installer" "$locale" "$manifest"; do
             [[ -f "$f" ]] || note "winget $version: missing $(basename "$f")"
@@ -106,7 +118,7 @@ if [[ -d "$winget_root" ]]; then
         esac
     done
 else
-    note "winget manifest root not found: $winget_root"
+    note "winget manifests not found under $root/packaging/winget/manifests/i/iainchesworthlabs/{ac3forge,iclforge}"
 fi
 
 # --- conan: every sources: entry's key, url and sha256 must agree with each
@@ -146,8 +158,8 @@ fi
 # --- homebrew: the Formula and Cask should agree on which release they pin,
 # even though they version independently (Formula from source, Cask from a
 # prebuilt .dmg) - see docs/releasing.md#homebrew-formula-and-cask. ---
-formula="$root/packaging/homebrew/Formula/ac3forge.rb"
-cask="$root/packaging/homebrew/Casks/ac3gui.rb"
+formula="$root/packaging/homebrew/Formula/iclforge.rb"
+cask="$root/packaging/homebrew/Casks/iclforge.rb"
 formula_version=""
 cask_version=""
 if [[ -f "$formula" ]] && [[ -f "$cask" ]]; then
@@ -161,7 +173,7 @@ else
 fi
 
 # --- vcpkg port: portfile's SHA512 must be well-formed. ---
-portfile="$root/packaging/vcpkg-port/ac3forge/portfile.cmake"
+portfile="$root/packaging/vcpkg-port/iclforge/portfile.cmake"
 if [[ -f "$portfile" ]]; then
     sha="$(grep -m1 -oE 'SHA512 [0-9A-Fa-f]+' "$portfile" | awk '{print $2}')"
     if ! echo "$sha" | grep -qE '^[0-9A-Fa-f]{128}$'; then
@@ -175,7 +187,7 @@ fi
 # all agree on the SPDX identifier - a drift here is real legal-metadata inconsistency, not
 # cosmetic (packaging metadata parity: pyproject.toml drifted to GPL-3.0-only while everything else already
 # said GPL-3.0-or-later, unnoticed until it was checked by hand). ---
-vcpkg_json="$root/packaging/vcpkg-port/ac3forge/vcpkg.json"
+vcpkg_json="$root/packaging/vcpkg-port/iclforge/vcpkg.json"
 conanfile="$root/packaging/conan/conanfile.py"
 pyproject="$root/python/pyproject.toml"
 if [[ -f "$vcpkg_json" ]] && [[ -f "$conanfile" ]] && [[ -f "$formula" ]] && [[ -f "$pyproject" ]]; then
@@ -186,7 +198,7 @@ if [[ -f "$vcpkg_json" ]] && [[ -f "$conanfile" ]] && [[ -f "$formula" ]] && [[ 
 
     if [[ -n "$vcpkg_license" ]]; then
         [[ "$conan_license" = "$vcpkg_license" ]] || note "licence drift: packaging/conan/conanfile.py says '$conan_license', vcpkg.json says '$vcpkg_license'"
-        [[ "$formula_license" = "$vcpkg_license" ]] || note "licence drift: packaging/homebrew/Formula/ac3forge.rb says '$formula_license', vcpkg.json says '$vcpkg_license'"
+        [[ "$formula_license" = "$vcpkg_license" ]] || note "licence drift: packaging/homebrew/Formula/iclforge.rb says '$formula_license', vcpkg.json says '$vcpkg_license'"
         [[ "$pyproject_license" = "$vcpkg_license" ]] || note "licence drift: python/pyproject.toml says '$pyproject_license', vcpkg.json says '$vcpkg_license'"
     else
         note "licence check: could not extract vcpkg.json's \"license\" field"
@@ -214,7 +226,7 @@ else
     note "vcpkg feature-parity check: vcpkg.json or portfile.cmake not found"
 fi
 
-# --- Conan option <-> generate() parity: every AC3FORGE_BUILD_<NAME>-shaped Conan option
+# --- Conan option <-> generate() parity: every ICLFORGE_BUILD_<NAME>-shaped Conan option
 # (excluding shared/fPIC, which aren't component switches) must actually be wired into
 # generate()'s tc.variables[...] - same gap class as the vcpkg check above. ---
 if [[ -f "$conanfile" ]]; then
@@ -223,14 +235,14 @@ if [[ -f "$conanfile" ]]; then
     while IFS= read -r opt; do
         [[ -n "$opt" ]] || continue
         grep -q "self\.options\.$opt" "$conanfile" \
-            || note "conanfile.py: option '$opt' has no matching AC3FORGE_BUILD_<NAME> wiring (no self.options.$opt reference found)"
+            || note "conanfile.py: option '$opt' has no matching ICLFORGE_BUILD_<NAME> wiring (no self.options.$opt reference found)"
     done <<< "$conan_options"
 else
     note "conan option-parity check: conanfile.py not found"
 fi
 
 # --- vcpkg <-> Conan parity: the two recipes offer the same optional components, each switching
-# the same AC3FORGE_BUILD_<NAME> option, so that a component added to one and not the other, or
+# the same ICLFORGE_BUILD_<NAME> option, so that a component added to one and not the other, or
 # wired to another option, fails here. And what a default install carries: the vcpkg port turns
 # no feature on by default, since the curated registry's default features may enable behaviours
 # and not public targets (docs/releasing.md#vcpkg-port), and the Conan recipe turns on by default
@@ -240,11 +252,11 @@ if [[ -f "$vcpkg_json" ]] && [[ -f "$portfile" ]] && [[ -f "$conanfile" ]]; then
     # exit rather than the note below.
     vcpkg_components="$(awk '/FEATURES/{found=1; next} found && /\)/{exit} found {print $1 " " $2}' "$portfile" \
         | sort -u)"
-    conan_components="$( { grep -oE 'tc\.variables\["AC3FORGE_BUILD_[A-Z0-9_]+"\] = bool\(self\.options\.[a-zA-Z0-9_]+\)' "$conanfile" || true; } \
-        | sed -E 's/^tc\.variables\["(AC3FORGE_BUILD_[A-Z0-9_]+)"\] = bool\(self\.options\.([a-zA-Z0-9_]+)\)$/\2 \1/' \
+    conan_components="$( { grep -oE 'tc\.variables\["ICLFORGE_BUILD_[A-Z0-9_]+"\] = bool\(self\.options\.[a-zA-Z0-9_]+\)' "$conanfile" || true; } \
+        | sed -E 's/^tc\.variables\["(ICLFORGE_BUILD_[A-Z0-9_]+)"\] = bool\(self\.options\.([a-zA-Z0-9_]+)\)$/\2 \1/' \
         | sort -u)"
     if [[ "$vcpkg_components" != "$conan_components" ]]; then
-        note "vcpkg/Conan drift: the port's features and the recipe's options switch different AC3FORGE_BUILD_<NAME> options - vcpkg: $(echo "$vcpkg_components" | tr '\n' ';') Conan: $(echo "$conan_components" | tr '\n' ';')"
+        note "vcpkg/Conan drift: the port's features and the recipe's options switch different ICLFORGE_BUILD_<NAME> options - vcpkg: $(echo "$vcpkg_components" | tr '\n' ';') Conan: $(echo "$conan_components" | tr '\n' ';')"
     fi
     if grep -q '"default-features"' "$vcpkg_json"; then
         note "vcpkg.json declares default-features: each of its features adds public targets, which a curated port's default features may not (docs/releasing.md#vcpkg-port)"
@@ -259,23 +271,23 @@ else
     note "vcpkg/Conan parity check: vcpkg.json, portfile.cmake or conanfile.py not found"
 fi
 
-# --- Every AC3FORGE_BUILD_<NAME> option the root CMakeLists.txt defaults ON (each is declared on
+# --- Every ICLFORGE_BUILD_<NAME> option the root CMakeLists.txt defaults ON (each is declared on
 # one line) is, in each recipe, either a component it offers or pinned OFF. One that a recipe
-# neither offers nor pins gets built by it, with whatever it needs: AC3FORGE_BUILD_HEARTH, which
+# neither offers nor pins gets built by it, with whatever it needs: ICLFORGE_BUILD_HEARTH, which
 # defaults ON, had both recipes configure src/sendspin, which stops at a dependency neither
 # declares, and, with the AC-4 libraries off, at upstream's refusal of Hearth without them. ---
 cmakelists="$root/CMakeLists.txt"
 if [[ -f "$cmakelists" ]] && [[ -f "$portfile" ]] && [[ -f "$conanfile" ]]; then
-    upstream_on="$( { grep -E '^[[:space:]]*option\(AC3FORGE_BUILD_[A-Z0-9_]+[[:space:]].*[[:space:]]ON\)[[:space:]]*(#.*)?$' "$cmakelists" || true; } \
-        | sed -E 's/^[[:space:]]*option\((AC3FORGE_BUILD_[A-Z0-9_]+).*/\1/' | sort -u)"
+    upstream_on="$( { grep -E '^[[:space:]]*option\(ICLFORGE_BUILD_[A-Z0-9_]+[[:space:]].*[[:space:]]ON\)[[:space:]]*(#.*)?$' "$cmakelists" || true; } \
+        | sed -E 's/^[[:space:]]*option\((ICLFORGE_BUILD_[A-Z0-9_]+).*/\1/' | sort -u)"
     port_handled="$( { awk '/FEATURES/{found=1; next} found && /\)/{exit} found {print $2}' "$portfile"
-        grep -oE '^[[:space:]]*-DAC3FORGE_BUILD_[A-Z0-9_]+=OFF' "$portfile" || true; } \
+        grep -oE '^[[:space:]]*-DICLFORGE_BUILD_[A-Z0-9_]+=OFF' "$portfile" || true; } \
         | sed -E 's/^[[:space:]]*-D//; s/=OFF$//' | sort -u)"
-    conan_handled="$( { grep -oE 'tc\.variables\["AC3FORGE_BUILD_[A-Z0-9_]+"\] = (False|bool\(self\.options\.[a-zA-Z0-9_]+\))' "$conanfile" || true; } \
-        | sed -E 's/^tc\.variables\["(AC3FORGE_BUILD_[A-Z0-9_]+)"\].*/\1/' | sort -u)"
+    conan_handled="$( { grep -oE 'tc\.variables\["ICLFORGE_BUILD_[A-Z0-9_]+"\] = (False|bool\(self\.options\.[a-zA-Z0-9_]+\))' "$conanfile" || true; } \
+        | sed -E 's/^tc\.variables\["(ICLFORGE_BUILD_[A-Z0-9_]+)"\].*/\1/' | sort -u)"
     port_unhandled="$(comm -23 <(printf '%s\n' "$upstream_on") <(printf '%s\n' "$port_handled") | grep -v '^$' || true)"
     conan_unhandled="$(comm -23 <(printf '%s\n' "$upstream_on") <(printf '%s\n' "$conan_handled") | grep -v '^$' || true)"
-    [[ -n "$upstream_on" ]] || note "upstream-default check: found no option(AC3FORGE_BUILD_<NAME> ... ON) line in CMakeLists.txt"
+    [[ -n "$upstream_on" ]] || note "upstream-default check: found no option(ICLFORGE_BUILD_<NAME> ... ON) line in CMakeLists.txt"
     [[ -z "$port_unhandled" ]] || note "portfile.cmake neither offers nor pins OFF option(s) upstream defaults ON, so the port builds them: $(echo "$port_unhandled" | tr '\n' ' ')- add a feature, or -D<NAME>=OFF to vcpkg_cmake_configure()"
     [[ -z "$conan_unhandled" ]] || note "conanfile.py neither offers nor sets False option(s) upstream defaults ON, so the recipe builds them: $(echo "$conan_unhandled" | tr '\n' ' ')- add an option, or tc.variables[\"<NAME>\"] = False to generate()"
 else
@@ -283,15 +295,15 @@ else
 fi
 
 # --- pkg-config completeness: cmake/InstallLibrary.cmake's install(TARGETS ... EXPORT ...)
-# component blocks and its ac3forge_install_pkgconfig() calls must be in 1:1 count - a future
+# component blocks and its iclforge_install_pkgconfig() calls must be in 1:1 count - a future
 # component that adds one but forgets the other (packaging metadata parity's original gap: no pkg-config files
 # existed for any component) fails here immediately. ---
 install_lib="$root/cmake/InstallLibrary.cmake"
 if [[ -f "$install_lib" ]]; then
     export_count="$(grep -cE '^[[:space:]]*EXPORT [A-Za-z0-9]+Targets$' "$install_lib" || true)"
-    pkgconfig_count="$(grep -cE '^[[:space:]]*ac3forge_install_pkgconfig\($' "$install_lib" || true)"
+    pkgconfig_count="$(grep -cE '^[[:space:]]*iclforge_install_pkgconfig\($' "$install_lib" || true)"
     if [[ "$export_count" -ne "$pkgconfig_count" ]]; then
-        note "cmake/InstallLibrary.cmake: $export_count install(TARGETS ... EXPORT ...) component block(s) but $pkgconfig_count ac3forge_install_pkgconfig() call(s) - every installed/exported component needs a matching pkg-config file"
+        note "cmake/InstallLibrary.cmake: $export_count install(TARGETS ... EXPORT ...) component block(s) but $pkgconfig_count iclforge_install_pkgconfig() call(s) - every installed/exported component needs a matching pkg-config file"
     fi
 else
     note "pkg-config completeness check: cmake/InstallLibrary.cmake not found"
@@ -311,20 +323,20 @@ if [[ -n "$latest_tag" ]]; then
     latest_version="${latest_tag#v}"
     advise() { echo "::warning::$1"; echo "  (advisory) $1"; }
 
-    vcpkg_json="$root/packaging/vcpkg-port/ac3forge/vcpkg.json"
+    vcpkg_json="$root/packaging/vcpkg-port/iclforge/vcpkg.json"
     if [[ -f "$vcpkg_json" ]]; then
         v="$(grep -m1 '"version-semver"' "$vcpkg_json" | sed -E 's/.*"version-semver":[[:space:]]*"([^"]+)".*/\1/')"
         [[ "$v" = "$latest_version" ]] ||
-            advise "vcpkg port is at $v, latest release is $latest_version - packaging/vcpkg-port/ac3forge/ needs a bump (docs/releasing.md#vcpkg-port)"
+            advise "vcpkg port is at $v, latest release is $latest_version - packaging/vcpkg-port/iclforge/ needs a bump (docs/releasing.md#vcpkg-port)"
     fi
 
     if [[ -f "$formula" ]]; then
         [[ "$formula_version" = "$latest_version" ]] ||
-            advise "Homebrew formula is at $formula_version, latest release is $latest_version - packaging/homebrew/Formula/ac3forge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
+            advise "Homebrew formula is at $formula_version, latest release is $latest_version - packaging/homebrew/Formula/iclforge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
     fi
     if [[ -f "$cask" ]]; then
         [[ "$cask_version" = "$latest_version" ]] ||
-            advise "Homebrew cask is at $cask_version, latest release is $latest_version - packaging/homebrew/Casks/ac3gui.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
+            advise "Homebrew cask is at $cask_version, latest release is $latest_version - packaging/homebrew/Casks/iclforge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
     fi
 
     if [[ -f "$conandata" ]] && ! grep -q "\"$latest_version\":" "$conandata"; then

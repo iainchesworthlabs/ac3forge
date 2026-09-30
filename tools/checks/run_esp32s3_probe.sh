@@ -36,7 +36,7 @@ PROJECT="$REPO/apps/baremetal/platform/esp32s3"
 # part, no two of decode / AC-3 encode / E-AC-3 encode fit in internal SRAM at
 # once - so this selects a build rather than adding a fixture to one.
 DIRECTION=decoder
-# --stage-timers builds the library with AC3FORGE_STAGE_TIMERS so the probe
+# --stage-timers builds the library with ICLFORGE_STAGE_TIMERS so the probe
 # prints a per-stage breakdown of each fixture's decode time beside the
 # per-frame figure. Under QEMU that breakdown has the same standing as the
 # per-frame number - shape only, never evidence - but the build and the lines
@@ -75,7 +75,7 @@ fi
 # Not 179,064: that is what the peak was BEFORE the probe reconstructed Atmos
 # objects, and docs/performance-trend.md quotes it as the start of the sequence
 # that ends at today's number rather than as today's number.
-: "${AC3FORGE_ESP32S3_MAX_DIRAM_BYTES:=170000}"
+: "${ICLFORGE_ESP32S3_MAX_DIRAM_BYTES:=170000}"
 # 245,000, raised from 200,000 when the probe started reconstructing Atmos
 # objects rather than only decoding their bed. oba::joc::reconstruct now runs on
 # this target, which it could not before: 449,826 bytes of peak as found,
@@ -93,7 +93,7 @@ fi
 # is not an allocation budget, and a peak that packs into a flat newlib heap on
 # the arm-none-eabi leg can still fail here. It did: at 267,754, before the
 # scratch was released, this leg died on a 6,144-byte request.
-: "${AC3FORGE_ESP32S3_MAX_HEAP_BYTES:=245000}"
+: "${ICLFORGE_ESP32S3_MAX_HEAP_BYTES:=245000}"
 # One ceiling for all fourteen fixtures. Enhanced coupling had its own of 140
 # until the 60 allocations per frame behind that exemption turned out to be two
 # std::vector<double> in the reconstruction loop rather than anything §E3.5
@@ -101,7 +101,7 @@ fi
 # run_baremetal_probe.sh's own copy of this ceiling for the fixture-by-fixture
 # numbers - this leg reports every one of them identically, which is the check
 # that section is really there for.
-: "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
+: "${ICLFORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed. 12 - one __cxa_thread_atexit registration record, for the pointer
 # to enhanced coupling's spectrum scratch, the one thread_local the library
@@ -120,7 +120,7 @@ fi
 # grows a little; either the scratch is being handed back or it is not, and the
 # difference is five figures. A ceiling with room for half of it would report
 # nothing useful.
-: "${AC3FORGE_ESP32S3_MAX_RETAINED_BYTES:=1024}"
+: "${ICLFORGE_ESP32S3_MAX_RETAINED_BYTES:=1024}"
 # The decode runs on the main task, whose stack sdkconfig.defaults sets to
 # 40,960 bytes after an overflow that surfaced as a LoadProhibited panic on the
 # OTHER core - i.e. the failure mode here is not a clean error, it is corruption
@@ -133,7 +133,7 @@ fi
 # stack size above is 40,960 rather than the original 32,768. It read 16,064
 # free of the 40,960 after that, and 19,344 once the decoder built its results
 # in place rather than holding copies of those structs on the stack.
-: "${AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES:=8192}"
+: "${ICLFORGE_ESP32S3_MIN_STACK_FREE_BYTES:=8192}"
 
 # --- and the encode direction's own, where they differ ---------------------
 # Only the ones that move. Retained bytes and the stack floor mean the same
@@ -155,7 +155,7 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # source in the profile at 5,715 lines. Most of that file is flash-resident
     # code; what sits in DIRAM is the decode side's tables and its per-channel
     # state. 125,000 leaves the same ~11% the other ceilings here leave.
-    AC3FORGE_ESP32S3_MAX_DIRAM_BYTES=${AC3FORGE_ESP32S3_MAX_DIRAM_BYTES_ENCODE:-125000}
+    ICLFORGE_ESP32S3_MAX_DIRAM_BYTES=${ICLFORGE_ESP32S3_MAX_DIRAM_BYTES_ENCODE:-125000}
     # 218,560 measured on this target - AC-3 alone reaches 162,602 and E-AC-3
     # takes it the rest of the way. Identical to the arm-none-eabi leg's figure
     # to the byte, which is what a deterministic input through the same
@@ -166,7 +166,7 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # block against a 218,560 peak - but that is a fact about this profile, not
     # a property of the part, and the decode direction had to be reshaped
     # precisely because it was not true there.
-    AC3FORGE_ESP32S3_MAX_HEAP_BYTES=${AC3FORGE_ESP32S3_MAX_HEAP_BYTES_ENCODE:-240000}
+    ICLFORGE_ESP32S3_MAX_HEAP_BYTES=${ICLFORGE_ESP32S3_MAX_HEAP_BYTES_ENCODE:-240000}
     # 260 rather than 100, for a reason that is in the API rather than in a
     # regression: both encoders return std::vector<std::byte> from
     # encode_frame, with no encode_frame_into to match the decoder's
@@ -175,15 +175,15 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # decoder's number would gate a difference nothing in this profile can
     # currently close. run_baremetal_probe.sh carries the same ceiling.
     #
-    AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME=${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
+    ICLFORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME=${ICLFORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
 fi
 
 OUTPUT="$(mktemp)"
 trap 'rm -f "$OUTPUT"' EXIT
 
-# fullclean between directions, not for tidiness: AC3FORGE_ESP_PROFILE reaches
-# the library as CMake cache variables (AC3FORGE_MINIMAL_DECODER /
-# AC3FORGE_MINIMAL_ENCODER, FORCEd by esp-idf/ac3forge/CMakeLists.txt), and a
+# fullclean between directions, not for tidiness: ICLFORGE_ESP_PROFILE reaches
+# the library as CMake cache variables (ICLFORGE_MINIMAL_DECODER /
+# ICLFORGE_MINIMAL_ENCODER, FORCEd by esp-idf/iclforge/CMakeLists.txt), and a
 # warm build directory has already resolved them. Reconfiguring over the top
 # silently keeps the previous direction's archive - which links, runs, and
 # reports the wrong profile's numbers under this one's ceilings.
@@ -191,14 +191,14 @@ trap 'rm -f "$OUTPUT"' EXIT
 # Only when the direction has actually changed: a rebuild of the same direction
 # is the common case in CI and on a laptop, and a fullclean every time would
 # cost several minutes to prove nothing.
-STAMP="build/.ac3forge-direction"
+STAMP="build/.iclforge-direction"
 if [[ -d build && "$(cat "$STAMP" 2>/dev/null || echo)" != "$DIRECTION" ]]; then
     echo "note: build directory holds a different profile - cleaning" >&2
     idf.py fullclean
 fi
 
 idf.py set-target esp32s3
-idf.py -DAC3FORGE_ESP_PROFILE="$DIRECTION" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS" build
+idf.py -DICLFORGE_ESP_PROFILE="$DIRECTION" -DICLFORGE_STAGE_TIMERS="$STAGE_TIMERS" build
 mkdir -p build && printf '%s' "$DIRECTION" > "$STAMP"
 
 echo
@@ -219,8 +219,8 @@ if [[ "$DIRAM" == "0" ]]; then
          "the SRAM ceiling is not being enforced on this run" >&2
 else
     echo "esp32s3.diram_bytes=$DIRAM" | tee -a "$OUTPUT"
-    if (( DIRAM > AC3FORGE_ESP32S3_MAX_DIRAM_BYTES )); then
-        echo "::error title=ESP32-S3 footprint regression::the image uses $DIRAM bytes of internal SRAM, ceiling is $AC3FORGE_ESP32S3_MAX_DIRAM_BYTES - every byte here is one the ${DIRECTION} cannot allocate (see docs/platforms/bare-metal/esp32-s3.md)" >&2
+    if (( DIRAM > ICLFORGE_ESP32S3_MAX_DIRAM_BYTES )); then
+        echo "::error title=ESP32-S3 footprint regression::the image uses $DIRAM bytes of internal SRAM, ceiling is $ICLFORGE_ESP32S3_MAX_DIRAM_BYTES - every byte here is one the ${DIRECTION} cannot allocate (see docs/platforms/bare-metal/esp32-s3.md)" >&2
         exit 1
     fi
 fi
@@ -283,10 +283,10 @@ wait "$watcher" 2>/dev/null || true
 # an artifact that uploaded the linker map and silently dropped the summary -
 # the one file that says what the probe measured - because the path the script
 # wrote to and the path the upload step searched were not the same one.
-if [[ -n "${AC3FORGE_ESP32S3_SUMMARY:-}" ]]; then
-    case "$AC3FORGE_ESP32S3_SUMMARY" in
-        /*) summary_dest="$AC3FORGE_ESP32S3_SUMMARY" ;;
-        *) summary_dest="$REPO/$AC3FORGE_ESP32S3_SUMMARY" ;;
+if [[ -n "${ICLFORGE_ESP32S3_SUMMARY:-}" ]]; then
+    case "$ICLFORGE_ESP32S3_SUMMARY" in
+        /*) summary_dest="$ICLFORGE_ESP32S3_SUMMARY" ;;
+        *) summary_dest="$REPO/$ICLFORGE_ESP32S3_SUMMARY" ;;
     esac
     cp "$OUTPUT" "$summary_dest"
 fi
@@ -311,8 +311,8 @@ if [[ -z "$heap" ]]; then
     echo "error: the probe reported no heap.peak_bytes line" >&2
     exit 1
 fi
-if (( heap > AC3FORGE_ESP32S3_MAX_HEAP_BYTES )); then
-    echo "::error title=ESP32-S3 footprint regression::peak heap is $heap bytes, ceiling is $AC3FORGE_ESP32S3_MAX_HEAP_BYTES" >&2
+if (( heap > ICLFORGE_ESP32S3_MAX_HEAP_BYTES )); then
+    echo "::error title=ESP32-S3 footprint regression::peak heap is $heap bytes, ceiling is $ICLFORGE_ESP32S3_MAX_HEAP_BYTES" >&2
     exit 1
 fi
 
@@ -321,9 +321,9 @@ if [[ -z "$retained" ]]; then
     echo "error: the probe reported no heap.retained_bytes line" >&2
     exit 1
 fi
-echo "retained after teardown: $retained bytes (ceiling $AC3FORGE_ESP32S3_MAX_RETAINED_BYTES)"
-if (( retained > AC3FORGE_ESP32S3_MAX_RETAINED_BYTES )); then
-    echo "::error title=ESP32-S3 footprint regression::$retained bytes are still live after every decoder was destroyed, ceiling is $AC3FORGE_ESP32S3_MAX_RETAINED_BYTES - see the heap.retained_bucket lines for which buffer" >&2
+echo "retained after teardown: $retained bytes (ceiling $ICLFORGE_ESP32S3_MAX_RETAINED_BYTES)"
+if (( retained > ICLFORGE_ESP32S3_MAX_RETAINED_BYTES )); then
+    echo "::error title=ESP32-S3 footprint regression::$retained bytes are still live after every decoder was destroyed, ceiling is $ICLFORGE_ESP32S3_MAX_RETAINED_BYTES - see the heap.retained_bucket lines for which buffer" >&2
     exit 1
 fi
 
@@ -345,7 +345,7 @@ if [[ -z "$CHURN" ]]; then
     exit 1
 fi
 while read -r codec per_frame; do
-    ceiling=$AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME
+    ceiling=$ICLFORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME
     echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${ceiling})"
     if (( per_frame > ceiling )); then
         echo "::error title=ESP32-S3 footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $ceiling" >&2
@@ -373,9 +373,9 @@ if [[ -z "$stack_free" ]]; then
     echo "error: the probe reported no esp32s3.main_task_stack_free_bytes line" >&2
     exit 1
 fi
-echo "main task stack free at high-water: $stack_free bytes (floor $AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES)"
-if (( stack_free < AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES )); then
-    echo "::error title=ESP32-S3 stack headroom::the ${DIRECTION} left only $stack_free bytes of main-task stack, floor is $AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES - raise CONFIG_ESP_MAIN_TASK_STACK_SIZE rather than lowering this" >&2
+echo "main task stack free at high-water: $stack_free bytes (floor $ICLFORGE_ESP32S3_MIN_STACK_FREE_BYTES)"
+if (( stack_free < ICLFORGE_ESP32S3_MIN_STACK_FREE_BYTES )); then
+    echo "::error title=ESP32-S3 stack headroom::the ${DIRECTION} left only $stack_free bytes of main-task stack, floor is $ICLFORGE_ESP32S3_MIN_STACK_FREE_BYTES - raise CONFIG_ESP_MAIN_TASK_STACK_SIZE rather than lowering this" >&2
     exit 1
 fi
 

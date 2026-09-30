@@ -18,11 +18,11 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/render/layout.hpp"
 #include "iclforge/render/render.hpp"
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/chunks.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-// A test sink's output for _ac3forge_player@v1 (planning/hearth-sendspin-extension.md): each
+// A test sink's output for _iclforge_player@v1 (planning/hearth-sendspin-extension.md): each
 // stream's bursts decoded, AC-3 or E-AC-3 with any object layer, or AC-4, and rendered to the
 // sink's speaker layout by iclforge::render, to a float WAV file with one channel per slot and a
 // play-time log beside it. The log's lines are `local_time_us,first_frame,frames` for each burst,
@@ -68,7 +68,7 @@ class BurstOutput {
     BurstOutput& operator=(BurstOutput&&) = delete;
 
     // A stream began, or changed in place: new decoders, and a new file.
-    bool start(const sendspin::ac3forge::StreamStart& stream);
+    bool start(const sendspin::player::StreamStart& stream);
     void clear();
     void end();
     // One burst to be played from `local_time`.
@@ -82,7 +82,7 @@ class BurstOutput {
     [[nodiscard]] const std::filesystem::path& file() const { return file_; }
     // What the decoder found in the current stream, once a unit of it has decoded; updated once
     // more by the first unit to carry objects, if the first did not.
-    [[nodiscard]] const std::optional<sendspin::ac3forge::DecoderReport>& decoder() const { return decoder_; }
+    [[nodiscard]] const std::optional<sendspin::player::DecoderReport>& decoder() const { return decoder_; }
 
    private:
     void reset_decoding();
@@ -99,7 +99,7 @@ class BurstOutput {
     render::Serving serving_;
     DecoderConfig config_;
     render::LayoutRenderer renderer_;
-    std::optional<sendspin::ac3forge::StreamStart> stream_;
+    std::optional<sendspin::player::StreamStart> stream_;
     std::optional<FrameDecoder> ac3_decoder_;
     std::optional<Eac3Decoder> eac3_decoder_;
     std::optional<iclforge::ac4::Decoder> ac4_decoder_;
@@ -110,7 +110,7 @@ class BurstOutput {
     // the oldest, whichever call delivers it.
     std::deque<eac3::chanmap::Layout> beds_;
     std::optional<eac3::chanmap::Layout> renderer_bed_;
-    std::optional<sendspin::ac3forge::DecoderReport> decoder_;
+    std::optional<sendspin::player::DecoderReport> decoder_;
 
     std::array<std::array<float, kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};
     std::vector<float> interleaved_;

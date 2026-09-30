@@ -48,8 +48,8 @@ inline constexpr std::uint8_t kSourceLast = 15;
 inline constexpr std::uint8_t kVisualizerFirst = 16;
 inline constexpr std::uint8_t kVisualizerLast = 23;
 inline constexpr std::uint8_t kApplicationFirst = 192;
-// _ac3forge_player@v1's burst chunk (planning/hearth-sendspin-extension.md).
-inline constexpr std::uint8_t kAc3forgeBurst = 192;
+// _iclforge_player@v1's burst chunk (planning/hearth-sendspin-extension.md).
+inline constexpr std::uint8_t kIclforgeBurst = 192;
 }  // namespace message_id
 
 inline constexpr std::size_t kMaxNoiseMessage = 65535;

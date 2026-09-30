@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 # The minimum-footprint profile compiles what it needs into one archive (src/ac3/minimal.cmake),
 # so no library is built here for it.
-if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
+if(ICLFORGE_MINIMAL_DECODER OR ICLFORGE_MINIMAL_ENCODER)
     return()
 endif()
 
@@ -17,4 +17,4 @@ iclforge_add_library(render
     PRIVATE_INCLUDES
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     LINK_PRIVATE
-        "$<BUILD_INTERFACE:ac3::tracy>")
+        "$<BUILD_INTERFACE:iclforge::tracy>")

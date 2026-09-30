@@ -6,7 +6,7 @@
 // an upload and the last update; an update from a file, checked here on its
 // head before anything is sent, sent with the bytes shown, and the new
 // image's page loaded once the board runs it; Restart and Roll back, each
-// behind the dialog. stub.js models the routes as ac3forge::Firmware answers
+// behind the dialog. stub.js models the routes as iclforge::Firmware answers
 // them.
 
 const { test, expect } = require('./fixtures');
@@ -15,7 +15,7 @@ const { appImage, defaultHardware, emptySlot, firmwareSlot, firmwareTrial } = re
 const RUNNING = 'v0.10.0-beta.1-42-gee9cf4f';
 
 // A file for the page's file input.
-const file = (buffer, name = 'ac3forge_hearth_sink.bin') => ({ name, mimeType: 'application/octet-stream', buffer });
+const file = (buffer, name = 'iclforge_hearth_sink.bin') => ({ name, mimeType: 'application/octet-stream', buffer });
 
 // Whether leaving the page now would be asked about.
 const leavingAsks = (page) =>
@@ -225,7 +225,7 @@ test.describe('an update from a file', () => {
         await page.getByRole('button', { name: 'Update firmware…' }).click();
         await (await chooser).setFiles(file(image));
         const dialog = page.getByRole('dialog', { name: 'Update to v0.11.0?' });
-        await expect(dialog).toContainText('the board writes ac3forge_hearth_sink.bin into ota_1, then restarts into it');
+        await expect(dialog).toContainText('the board writes iclforge_hearth_sink.bin into ota_1, then restarts into it');
         await expect(dialog).toContainText('goes back to ' + RUNNING + ' by itself if not');
         expect(await leavingAsks(page)).toBe(false);
         await dialog.getByRole('button', { name: 'Update', exact: true }).click();
@@ -258,7 +258,7 @@ test.describe('an update from a file', () => {
         await expect(page.locator('#fw-trial')).toHaveText('0 of 30 s held, 5:00 left; waiting for a network address, the Sendspin player');
         await expect(page.locator('#fw-last')).toHaveText('v0.11.0, on trial');
         await expect(page.locator('#fw-other')).toHaveText(RUNNING + ' in ota_0, accepted, intact');
-        await expect(page.locator('#hw-firmware')).toHaveText('ac3forge_hearth_sink v0.11.0');
+        await expect(page.locator('#hw-firmware')).toHaveText('iclforge_hearth_sink v0.11.0');
     });
 
     test('an image the board takes is announced, and leaving is no longer asked about', async ({ page, stub }) => {
@@ -290,15 +290,15 @@ test.describe('an update from a file', () => {
     });
 
     for (const [what, image, why] of [
-        ['a file that is not an image', appImage({ magic: 0 }), 'it is not an application image; choose ac3forge_hearth_sink.bin'],
+        ['a file that is not an image', appImage({ magic: 0 }), 'it is not an application image; choose iclforge_hearth_sink.bin'],
         ['an image with no app description', (() => {
             const b = appImage();
             b.writeUInt32LE(0, 32);
             return b;
-        })(), 'it is not an application image; choose ac3forge_hearth_sink.bin'],
-        ['a file shorter than a head', Buffer.alloc(64, 0xe9), 'it is not an application image; choose ac3forge_hearth_sink.bin'],
+        })(), 'it is not an application image; choose iclforge_hearth_sink.bin'],
+        ['a file shorter than a head', Buffer.alloc(64, 0xe9), 'it is not an application image; choose iclforge_hearth_sink.bin'],
         ['an image for another chip', appImage({ chip: 13 }), 'it is for another chip than this ESP32-S3'],
-        ['an image of another project', appImage({ project: 'ac3forge_stream_player' }), 'it is ac3forge_stream_player, not ac3forge_hearth_sink'],
+        ['an image of another project', appImage({ project: 'iclforge_stream_player' }), 'it is iclforge_stream_player, not iclforge_hearth_sink'],
     ]) {
         test(`${what} is not sent, since an upload stops what plays first`, async ({ page, stub }) => {
             await page.setInputFiles('#fw-file', file(image, 'mine.bin'));
@@ -494,7 +494,7 @@ test.describe('restarting and going back', () => {
     });
 });
 
-test('the stand-in refuses what ac3forge::Firmware refuses', async ({ stub }) => {
+test('the stand-in refuses what iclforge::Firmware refuses', async ({ stub }) => {
     const ask = async (method, route, body, headers) => {
         const r = await fetch(stub.url + route, { method, body, headers });
         return [r.status, (await r.text()).trim()];
@@ -509,7 +509,7 @@ test('the stand-in refuses what ac3forge::Firmware refuses', async ({ stub }) =>
     // On its head, after flash mode has begun.
     expect(await ask('PUT', 'firmware', appImage({ magic: 0 }))).toEqual([
         400,
-        'this is not an ESP-IDF application image (its first byte is not 0xE9); send ac3forge_hearth_sink.bin, not the merged factory image or the ELF',
+        'this is not an ESP-IDF application image (its first byte is not 0xE9); send iclforge_hearth_sink.bin, not the merged factory image or the ELF',
     ]);
     expect(fw.mode).toBe('flash');
     expect(await ask('PUT', 'firmware/mode', 'sideways')).toEqual([400, 'PUT /firmware/mode wants flash or normal']);

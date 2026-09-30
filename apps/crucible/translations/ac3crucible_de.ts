@@ -26,7 +26,7 @@
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="66"/>
         <source>Every application with sound becomes an object in a Dolby Atmos scene. Place it in the room; the result goes to your receiver as E-AC-3 JOC over HDMI, to a PCM or spatial endpoint, or to headphones. An ac3forge demonstration: the encoder, the object layer and the taps are the library&apos;s; this window is the room.</source>
-        <translation>Jede Anwendung mit Ton wird zu einem Objekt in einer Dolby-Atmos-Szene. Platzieren Sie sie im Raum; das Ergebnis geht als E-AC-3 JOC über HDMI an den Receiver, an einen PCM- oder Spatial-Endpunkt oder an Kopfhörer. Eine ac3forge-Demonstration: Encoder, Objektschicht und Abgriffe gehören der Bibliothek; dieses Fenster ist der Raum.</translation>
+        <translation>Jede Anwendung mit Ton wird zu einem Objekt in einer Dolby-Atmos-Szene. Platzieren Sie sie im Raum; das Ergebnis geht als E-AC-3 JOC über HDMI an den Receiver, an einen PCM- oder Spatial-Endpunkt oder an Kopfhörer. Eine iclforge-Demonstration: Encoder, Objektschicht und Abgriffe gehören der Bibliothek; dieses Fenster ist der Raum.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="68"/>
@@ -1611,8 +1611,8 @@
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="302"/>
-        <source>With no file chosen here, the environment is honoured: AC3FORGE_SIGNING_KEY_FILE names a key file and AC3FORGE_SIGNING_KEY carries the key itself.</source>
-        <translation>Ist hier keine Datei gewählt, gilt die Umgebung: AC3FORGE_SIGNING_KEY_FILE nennt eine Schlüsseldatei und AC3FORGE_SIGNING_KEY trägt den Schlüssel selbst.</translation>
+        <source>With no file chosen here, the environment is honoured: ICLFORGE_SIGNING_KEY_FILE names a key file and ICLFORGE_SIGNING_KEY carries the key itself.</source>
+        <translation>Ist hier keine Datei gewählt, gilt die Umgebung: ICLFORGE_SIGNING_KEY_FILE nennt eine Schlüsseldatei und ICLFORGE_SIGNING_KEY trägt den Schlüssel selbst.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="316"/>

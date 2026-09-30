@@ -1,4 +1,4 @@
-// Ac3ForgeDecoderNode's main-thread orchestration, in Node, with the Web Audio
+// IclForgeDecoderNode's main-thread orchestration, in Node, with the Web Audio
 // and Worker globals it constructs (AudioWorkletNode, Worker,
 // crossOriginIsolated) replaced by fakes that record what they were given.
 // The fake Worker answers "init" with "ready" the way decoder-worker.ts does,
@@ -8,7 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Ac3ForgeDecoderNode } from "../dist/decoder-node.js";
+import { IclForgeDecoderNode } from "../dist/decoder-node.js";
 import { DownmixTarget } from "../dist/types.js";
 
 class FakePort extends EventTarget {
@@ -66,7 +66,7 @@ function fakeContext(sampleRate = 48000) {
 const urls = {
   workletProcessorUrl: "https://example.test/worklet-processor.js",
   workerUrl: "https://example.test/decoder-worker.js",
-  wasmGlueUrl: new URL("https://example.test/ac3forge_decode.js"),
+  wasmGlueUrl: new URL("https://example.test/iclforge_decode.js"),
 };
 
 function isolated(value) {
@@ -95,14 +95,14 @@ function collect(node, type) {
 
 test("create refuses to run without cross-origin isolation", async () => {
   isolated(false);
-  await assert.rejects(Ac3ForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 }), /cross-origin isolation/);
+  await assert.rejects(IclForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 }), /cross-origin isolation/);
 });
 
 test("create needs a channel count unless a real fold decides it", async () => {
   isolated(true);
-  await assert.rejects(Ac3ForgeDecoderNode.create(fakeContext(), urls), /channelCount is required/);
+  await assert.rejects(IclForgeDecoderNode.create(fakeContext(), urls), /channelCount is required/);
   await assert.rejects(
-    Ac3ForgeDecoderNode.create(fakeContext(), { ...urls, fold: { target: DownmixTarget.AsCoded } }),
+    IclForgeDecoderNode.create(fakeContext(), { ...urls, fold: { target: DownmixTarget.AsCoded } }),
     /channelCount is required/,
   );
 });
@@ -110,11 +110,11 @@ test("create needs a channel count unless a real fold decides it", async () => {
 test("create wires the worklet, the worker and a power-of-two ring, then waits for ready", async () => {
   isolated(true);
   const context = fakeContext(44100);
-  const node = await Ac3ForgeDecoderNode.create(context, { ...urls, channelCount: 6, ringBufferSeconds: 1 });
+  const node = await IclForgeDecoderNode.create(context, { ...urls, channelCount: 6, ringBufferSeconds: 1 });
 
   assert.deepEqual(context.added, [urls.workletProcessorUrl]);
   assert.equal(node.node, lastNode);
-  assert.equal(lastNode.name, "ac3forge-pcm-source");
+  assert.equal(lastNode.name, "iclforge-pcm-source");
   assert.deepEqual(lastNode.options.outputChannelCount, [6]);
   assert.equal(lastNode.options.numberOfInputs, 0);
   assert.deepEqual(lastNode.options.processorOptions.layout, { channelCount: 6, capacityFrames: 65536 });
@@ -125,14 +125,14 @@ test("create wires the worklet, the worker and a power-of-two ring, then waits f
   assert.deepEqual(lastWorker.options, { type: "module" });
   const init = lastWorker.posted[0].message;
   assert.equal(init.type, "init");
-  assert.equal(init.glueUrl, "https://example.test/ac3forge_decode.js");
+  assert.equal(init.glueUrl, "https://example.test/iclforge_decode.js");
   assert.equal(init.writeTarget, "channels");
   assert.equal(init.sab, lastNode.options.processorOptions.sab, "worker and worklet share one ring");
 });
 
 test("a non-AsCoded fold defaults to stereo, feeds the ring from the fold, and sizes 2 s by default", async () => {
   isolated(true);
-  await Ac3ForgeDecoderNode.create(fakeContext(48000), { ...urls, fold: { target: DownmixTarget.LoRo } });
+  await IclForgeDecoderNode.create(fakeContext(48000), { ...urls, fold: { target: DownmixTarget.LoRo } });
   const init = lastWorker.posted[0].message;
   assert.equal(init.writeTarget, "fold");
   assert.deepEqual(init.fold, { target: DownmixTarget.LoRo });
@@ -141,7 +141,7 @@ test("a non-AsCoded fold defaults to stereo, feeds the ring from the fold, and s
 
 test("pushAccessUnit transfers a private copy of exactly the unit's bytes", async () => {
   isolated(true);
-  const node = await Ac3ForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 });
+  const node = await IclForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 });
   const shared = Uint8Array.of(0, 1, 2, 3, 4, 5);
   node.pushAccessUnit(shared.subarray(2, 5));
   const { message, transfer } = lastWorker.posted.at(-1);
@@ -153,7 +153,7 @@ test("pushAccessUnit transfers a private copy of exactly the unit's bytes", asyn
 
 test("whenIdle resolves at once when nothing is pending, else after every push is acknowledged", async () => {
   isolated(true);
-  const node = await Ac3ForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 });
+  const node = await IclForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 });
   await node.whenIdle();
 
   node.pushAccessUnit(new Uint8Array(1));
@@ -170,7 +170,7 @@ test("whenIdle resolves at once when nothing is pending, else after every push i
 
 test("streaminfo fires once, on the first decoded frame", async () => {
   isolated(true);
-  const node = await Ac3ForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 6 });
+  const node = await IclForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 6 });
   const infos = collect(node, "streaminfo");
   lastWorker.reply({ type: "result", outcome: { ok: true, holdBack: true } });
   lastWorker.reply({ type: "result", outcome: decoded() });
@@ -182,7 +182,7 @@ test("streaminfo fires once, on the first decoded frame", async () => {
 
 test("decode failures, worker errors, overruns, underruns and object frames each become their event", async () => {
   isolated(true);
-  const node = await Ac3ForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 });
+  const node = await IclForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 });
   const errors = collect(node, "error");
   const overruns = collect(node, "overrun");
   const underruns = collect(node, "underrun");
@@ -205,7 +205,7 @@ test("decode failures, worker errors, overruns, underruns and object frames each
 
 test("flush and close send their messages, and close tears the graph down", async () => {
   isolated(true);
-  const node = await Ac3ForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 });
+  const node = await IclForgeDecoderNode.create(fakeContext(), { ...urls, channelCount: 2 });
   node.flush();
   node.close();
   assert.deepEqual(

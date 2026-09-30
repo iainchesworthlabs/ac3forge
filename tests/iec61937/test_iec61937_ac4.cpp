@@ -893,7 +893,7 @@ TEST_CASE("Ac4BurstPacker: DEE's streams at four frame rates pack and read back 
           Stream{"ac4-ims-music-128-25", 2}, Stream{"ac4-ims-music-64-2997", 3}}) {
         CAPTURE(stream.leg);
         const std::vector<std::vector<std::byte>> frames = frames_of_file(
-            std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / stream.leg / "dee.ac4");
+            std::filesystem::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / stream.leg / "dee.ac4");
         const std::optional<iec::Ac4BurstTiming> timing =
             iec::ac4_burst_timing(BurstDataType::kAc4, 1, stream.frame_rate_index);
         REQUIRE(timing.has_value());
@@ -929,7 +929,7 @@ TEST_CASE("Ac4BurstPacker: every DEE leg of a directory packs and reads back unc
     const char* const elsewhere = std::getenv("AC4DEC_STREAM_DIR");
     const std::filesystem::path root =
         elsewhere != nullptr ? std::filesystem::path{elsewhere}
-                             : std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR};
+                             : std::filesystem::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR};
     std::vector<std::filesystem::path> legs;
     for (const std::filesystem::directory_entry& entry :
          std::filesystem::directory_iterator(root)) {

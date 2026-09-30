@@ -159,7 +159,7 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
                            PW_KEY_MEDIA_ROLE, "Production", PW_KEY_TARGET_OBJECT, node_id.c_str(),
                            nullptr);
 
-    Stream stream{pw_stream_new_simple(pw_thread_loop_get_loop(loop.get()), "ac3forge probe",
+    Stream stream{pw_stream_new_simple(pw_thread_loop_get_loop(loop.get()), "iclforge probe",
                                         props, &probe_events(), &probe)};
     if (!stream) {
         pw_thread_loop_unlock(loop.get());
@@ -792,7 +792,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         "Production", PW_KEY_TARGET_OBJECT, target.c_str(), nullptr);
 
     Stream stream{pw_stream_new_simple(pw_thread_loop_get_loop(impl_->loop.get()),
-                                        "ac3forge passthrough", props, &Impl::stream_events(),
+                                        "iclforge passthrough", props, &Impl::stream_events(),
                                         impl_.get())};
     if (!stream) {
         pw_thread_loop_unlock(impl_->loop.get());

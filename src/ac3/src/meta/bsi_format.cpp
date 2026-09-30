@@ -8,7 +8,7 @@
 //
 // It was that file's only fmt user, and fmt is a dependency the
 // minimum-footprint profile does not carry - the repo root skips include(Fmt)
-// entirely under AC3FORGE_MINIMAL_DECODER. Everything else in bsi.cpp is
+// entirely under ICLFORGE_MINIMAL_DECODER. Everything else in bsi.cpp is
 // validation and enum naming that an ENCODER needs (valid_bsi_info,
 // valid_alternate_bsi), so one presentation function was keeping the whole
 // translation unit out of a build that has no console to format for.

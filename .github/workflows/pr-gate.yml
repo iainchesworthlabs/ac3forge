@@ -444,7 +444,7 @@ jobs:
         uses: ./.github/actions/build-leg
         with:
           preset: windows-msvc
-          # AC3FORGE_BUILD_GUI is already ON in both Windows presets.
+          # ICLFORGE_BUILD_GUI is already ON in both Windows presets.
           gui: "false"
           crucible: ""
           version-tag: ""

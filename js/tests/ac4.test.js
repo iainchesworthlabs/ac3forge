@@ -35,7 +35,7 @@ let fake = null;
 // The glue's module factory, reachable from the data: URL the fake
 // createObjectURL below produces (a data: module cannot close over this
 // file's scope, so it reads it off globalThis) - same indirection
-// decoder-worker.test.js uses for createAc3ForgeModule.
+// decoder-worker.test.js uses for createIclForgeModule.
 globalThis.__ac4FakeFactory = async (overrides) => {
   factoryArgs = overrides;
   return fake.module;
@@ -43,7 +43,7 @@ globalThis.__ac4FakeFactory = async (overrides) => {
 
 globalThis.fetch = async (url) => {
   fetched.push(String(url));
-  return { text: async () => "var createAc3ForgeAc4Module = globalThis.__ac4FakeFactory;" };
+  return { text: async () => "var createIclForgeAc4Module = globalThis.__ac4FakeFactory;" };
 };
 
 const RealBlob = globalThis.Blob;
@@ -57,7 +57,7 @@ globalThis.Blob = class extends RealBlob {
 URL.createObjectURL = (blob) => `data:text/javascript;base64,${Buffer.from(blob.source).toString("base64")}`;
 URL.revokeObjectURL = (url) => revoked.push(url);
 
-const GLUE_URL = "https://example.test/wasm/ac3forge_ac4.js";
+const GLUE_URL = "https://example.test/wasm/iclforge_ac4.js";
 
 test("loadAc4Module fetches the glue, resolves the wasm beside it, and returns the fake module", async () => {
   fake = makeFakeAc4Module();
@@ -65,7 +65,7 @@ test("loadAc4Module fetches the glue, resolves the wasm beside it, and returns t
   revoked.length = 0;
   const module = await loadAc4Module(GLUE_URL);
   assert.deepEqual(fetched, [GLUE_URL]);
-  assert.equal(factoryArgs.locateFile("ac3forge_ac4.wasm"), "https://example.test/wasm/ac3forge_ac4.wasm");
+  assert.equal(factoryArgs.locateFile("iclforge_ac4.wasm"), "https://example.test/wasm/iclforge_ac4.wasm");
   assert.equal(revoked.length > 0, true, "the object URL is revoked once imported");
   assert.equal(module, fake.module);
 });

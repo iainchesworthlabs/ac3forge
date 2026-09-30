@@ -1645,7 +1645,7 @@ void Eac3Decoder::conceal(std::size_t slot, SubstreamResult& decoded) {
 
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream_core(
     std::span<const std::byte> frame) {
-    AC3_ZONE_SCOPED_N("eac3_decode_substream");
+    ICLFORGE_ZONE_SCOPED_N("eac3_decode_substream");
     // Before the first early return, for the same reason FrameDecoder resets
     // its own: a caller reusing one trace across a file must never read a
     // previous frame's state out of a call that decoded nothing.
@@ -2069,7 +2069,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     joc_bytes.clear();
 
     for (int blk = 0; blk < nblks; ++blk) {
-        AC3_ZONE_SCOPED_N("eac3_parse_block");
+        ICLFORGE_ZONE_SCOPED_N("eac3_parse_block");
         verify::Eac3BlockTrace* block_trace = nullptr;
         if (trace != nullptr) {
             block_trace = &trace->blocks[static_cast<std::size_t>(blk)];
@@ -2637,7 +2637,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         }
 
         {
-            AC3_ZONE_SCOPED_N("eac3_exponents");
+            ICLFORGE_ZONE_SCOPED_N("eac3_exponents");
             for (int ch = 0; ch < nchans; ++ch) {
                 const auto strat = strategy(ch);
                 if (strat == ExpStrategy::kReuse) {
@@ -2984,7 +2984,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
         }
         {
-            AC3_ZONE_SCOPED_N("eac3_bit_allocation");
+            ICLFORGE_ZONE_SCOPED_N("eac3_bit_allocation");
             for (int ch = 0; ch < nchans; ++ch) {
                 const auto uch = static_cast<std::size_t>(ch);
                 const int end = endmant[uch];
@@ -3371,7 +3371,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     // six blocks of mantissas arrive here at once, and the
                     // inverse transform behind them is the part of a
                     // mantissa read that is not a bitstream read.
-                    AC3_ZONE_SCOPED_N("eac3_aht");
+                    ICLFORGE_ZONE_SCOPED_N("eac3_aht");
                     if (const auto result = decode_aht_stream(s, begin); !result) {
                         return result;
                     }
@@ -3390,7 +3390,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // Every stream's quantized mantissas off the wire - or, for an AHT
         // stream, its whole frame of them out of block 0 (§3.4.4).
         {
-            AC3_ZONE_SCOPED_N("eac3_mantissas");
+            ICLFORGE_ZONE_SCOPED_N("eac3_mantissas");
             bool read_coupling = false;
             for (int ch = 0; ch < nfchans; ++ch) {
                 if (const auto result = read_stream_dispatch(ch, 0); !result) {
@@ -3425,7 +3425,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // strict block order (IMDCT's overlap-add delay line requires that
         // regardless of coupling mode).
         if (frm->cplinu[static_cast<std::size_t>(blk)] && !ecplinu_now) {
-            AC3_ZONE_SCOPED_N("eac3_decoupling");
+            ICLFORGE_ZONE_SCOPED_N("eac3_decoupling");
             const auto& shared = coeffs[static_cast<std::size_t>(kCplStream)];
             const auto& cpl_bap = bap[static_cast<std::size_t>(kCplStream)];
             const auto& cpl_exps = exps[static_cast<std::size_t>(kCplStream)];
@@ -3601,12 +3601,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // above; only enhanced coupling's own reconstruction happens here, right
     // before the spx/rematrix/IMDCT tail every block goes through.
     for (int blk = 0; blk < nblks; ++blk) {
-        AC3_ZONE_SCOPED_N("eac3_reconstruct_block");
+        ICLFORGE_ZONE_SCOPED_N("eac3_reconstruct_block");
         auto& tail = tails[static_cast<std::size_t>(blk)];
         auto& coeffs = tail.coeffs;
 
         if (tail.cplinu && tail.ecplinu_now) {
-            AC3_ZONE_SCOPED_N("eac3_ecpl_reconstruct");
+            ICLFORGE_ZONE_SCOPED_N("eac3_ecpl_reconstruct");
             // §3.5.5: reconstruct each coupled channel from the enhanced
             // coupling channel, using this block's neighbors. A neighbor is
             // zero when the adjacent block did not use enhanced coupling
@@ -3660,7 +3660,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // spx_startmant to copy from - coupling always ends exactly where
         // spx begins (§E3.3.1), so there is no gap and nothing to reconcile.
         if (tail.spxinu) {
-            AC3_ZONE_SCOPED_N("eac3_spx");
+            ICLFORGE_ZONE_SCOPED_N("eac3_spx");
             for (int ch = 0; ch < nfchans; ++ch) {
                 if (!tail.chinspx[static_cast<std::size_t>(ch)]) {
                     continue;
@@ -3817,7 +3817,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // channels are independent programmes, so Ch2 gets its own gain
         // from its own words (out.dynrng2/out.compr2) rather than sharing
         // Ch1's.
-        AC3_ZONE_BEGIN(drc_zone, "eac3_drc_gain");
+        ICLFORGE_ZONE_BEGIN(drc_zone, "eac3_drc_gain");
         // Resolved once per programme per block rather than once per channel:
         // every channel of a programme takes the same gain, and resolving it
         // is double arithmetic - a run of software floating-point calls on a
@@ -3866,13 +3866,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 value *= scale.scale;
             }
         }
-        AC3_ZONE_END(drc_zone);
+        ICLFORGE_ZONE_END(drc_zone);
 
         // The transform pair plus the overlap-add that reconstructs PCM from it -
         // where a decode frame spends most of its time, and the stage
         // DecoderConfig::fast_imdct's default switched under in 0.9.0.
         {
-            AC3_ZONE_SCOPED_N("eac3_imdct_overlap");
+            ICLFORGE_ZONE_SCOPED_N("eac3_imdct_overlap");
             for (int ch = 0; ch < nchans; ++ch) {
                 const auto index = static_cast<std::size_t>(ch);
                 auto& x = impl_->imdct_scratch_;
@@ -3933,7 +3933,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // what channel-based-immersive third-party content is - it is the bed's
     // own channels, and out.object_indices is what says which.
     {
-        AC3_ZONE_SCOPED_N("eac3_joc_reconstruct");
+        ICLFORGE_ZONE_SCOPED_N("eac3_joc_reconstruct");
         // DecoderConfig::skip_object_reconstruction stops here rather than
         // further in, so the ReconstructionState is never allocated at all -
         // which is the point of the flag on a target where that one 147,504-byte
@@ -4226,7 +4226,7 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
         // Outside eac3_decode_access_unit, so it reports as its own root
         // zone: this is the fold the caller's config asked for, applied to a
         // finished program, not part of decoding one.
-        AC3_ZONE_SCOPED_N("eac3_output");
+        ICLFORGE_ZONE_SCOPED_N("eac3_output");
         impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
                              resolve_mix_levels(out.bsid, out.acmod, out.mixing, out.cmixlev,
                                                 out.surmixlev, out.alternate_bsi),
@@ -4247,10 +4247,10 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_core(
     std::span<const std::byte> unit, std::span<const std::span<float>> external,
     const BlockSink* sink) {
-    AC3_ZONE_SCOPED_N("eac3_decode_access_unit");
-    AC3_ZONE_BEGIN(split_zone, "eac3_au_split");
+    ICLFORGE_ZONE_SCOPED_N("eac3_decode_access_unit");
+    ICLFORGE_ZONE_BEGIN(split_zone, "eac3_au_split");
     const auto frames = split_frames(unit);
-    AC3_ZONE_END(split_zone);
+    ICLFORGE_ZONE_END(split_zone);
     if (!frames.has_value()) {
         return std::unexpected(frames.error());
     }
@@ -4344,7 +4344,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // decoded - see the loop below and ConcealmentAction::kBedOnly.
     std::optional<DecodeError> bed_only;
     for (const auto& frame : *frames) {
-        AC3_ZONE_BEGIN(key_zone, "eac3_au_key");
+        ICLFORGE_ZONE_BEGIN(key_zone, "eac3_au_key");
         // §E2.3.1.2 assigns an AC-3 bit stream present in an E-AC-3 bit stream
         // the identity (independent, 0) without it carrying either field -
         // parse_bsi would read strmtyp out of crc1 and substreamid out of the
@@ -4369,7 +4369,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             keys.push_back(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
             frame_is_dependent = bsi->strmtyp == StreamType::kDependent;
         }
-        AC3_ZONE_END(key_zone);
+        ICLFORGE_ZONE_END(key_zone);
 
         auto decoded = decode_substream(frame);
         if (!decoded) {
@@ -4394,7 +4394,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             return std::unexpected(decoded.error());
         }
         if (decoded->has_value()) {
-            AC3_ZONE_SCOPED_N("eac3_au_queue");
+            ICLFORGE_ZONE_SCOPED_N("eac3_au_queue");
             impl_->pending_au_parts_[static_cast<std::size_t>(keys.back())].push_back(
                 std::move(**decoded));
         }
@@ -4413,7 +4413,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             return UnitResult(std::in_place, std::nullopt);
         }
     }
-    AC3_ZONE_BEGIN(assemble_zone, "eac3_au_assemble");
+    ICLFORGE_ZONE_BEGIN(assemble_zone, "eac3_au_assemble");
     // The decoder's own array, kept from unit to unit (see au_substreams_);
     // empty here, and emptied again by the guard below.
     auto& substreams = impl_->au_substreams_;
@@ -4594,7 +4594,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             out.object_metadata.has_value() ? &*out.object_metadata : nullptr;
         // Its own zone, so the time a caller's sink spends in here reads as
         // the caller's rather than as the access unit's.
-        AC3_ZONE_SCOPED_N("eac3_au_emit");
+        ICLFORGE_ZONE_SCOPED_N("eac3_au_emit");
         for (int b = 0; b < blocks; ++b) {
             const auto offset =
                 static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock);
@@ -4641,7 +4641,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             for (std::size_t ch = 0; ch < count; ++ch) {
                 views[ch] = own.channels[ch];
             }
-            AC3_ZONE_END(assemble_zone);
+            ICLFORGE_ZONE_END(assemble_zone);
             emit_blocks(std::span<std::span<float>>(views).first(count));
             return UnitResult(std::in_place, std::in_place, std::move(out));
         }
@@ -4651,7 +4651,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         for (std::size_t ch = 0; ch < lead.channels.size(); ++ch) {
             write_slot(ch, lead.channels[ch]);
         }
-        AC3_ZONE_END(assemble_zone);
+        ICLFORGE_ZONE_END(assemble_zone);
         apply_output(out, external);
         return UnitResult(std::in_place, std::in_place, std::move(out));
     }
@@ -4764,7 +4764,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
                 views[static_cast<std::size_t>(slot)] = sub.channels[static_cast<std::size_t>(i)];
             }
         }
-        AC3_ZONE_END(assemble_zone);
+        ICLFORGE_ZONE_END(assemble_zone);
         emit_blocks(std::span<std::span<float>>(views).first(
             static_cast<std::size_t>(out.layout.count)));
         return UnitResult(std::in_place, std::in_place, std::move(out));
@@ -4781,7 +4781,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // above), so every slot is written in full here - which is what lets
     // write_slot skip pre-clearing external storage.
     {
-        AC3_ZONE_SCOPED_N("eac3_au_pcm");
+        ICLFORGE_ZONE_SCOPED_N("eac3_au_pcm");
         for (const auto& sub : substreams) {
             const auto locations = eac3::chanmap::expand(sub.location_map());
             if (static_cast<std::size_t>(locations.count) != sub.channels.size()) {
@@ -4797,7 +4797,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             }
         }
     }
-    AC3_ZONE_END(assemble_zone);
+    ICLFORGE_ZONE_END(assemble_zone);
     apply_output(out, external);
     return UnitResult(std::in_place, std::in_place, std::move(out));
 }

@@ -27,7 +27,7 @@
 
 #include "iclforge/render/layout.hpp"
 #include "iclforge/render/routing.hpp"
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/ac3/version.hpp"
 #include "network_output_status.hpp"
 #include "network_sinks.hpp"
@@ -44,7 +44,7 @@ namespace iclforge::hearth::ui {
 
 namespace {
 
-namespace forge = iclforge::sendspin::ac3forge;
+namespace forge = iclforge::sendspin::player;
 
 constexpr int kPollMs = 60;
 
@@ -168,8 +168,8 @@ bool g_network_discovery = true;
     forge::Settings settings;
     const iclforge::render::OutputLayout layout = draft_layout(std::nullopt);
     settings.layout = std::string(layout.text());
-    const auto outputs = static_cast<std::size_t>(facts.ac3forge_support ? facts.ac3forge_support->outputs.count : 0);
-    if (facts.ac3forge_support && facts.ac3forge_support->management.routing) {
+    const auto outputs = static_cast<std::size_t>(facts.iclforge_support ? facts.iclforge_support->outputs.count : 0);
+    if (facts.iclforge_support && facts.iclforge_support->management.routing) {
         std::array<char, iclforge::render::Routing::kTextBytes> text{};
         if (const std::optional<iclforge::render::Routing> identity =
                 iclforge::render::Routing::identity(layout.slots(), outputs)) {
@@ -231,19 +231,19 @@ struct LayoutFields {
 
 // Whether the sink's own state lists the Settings command - the only way
 // any of the Speakers/Decoder tabs' edits can reach it:
-// ServerSession::ac3forge_command() refuses a command the state does not
+// ServerSession::iclforge_command() refuses a command the state does not
 // list, whatever the support object says the sink could manage.
 [[nodiscard]] bool sink_takes_settings(const iclforge::hearth::SinkFacts& facts) {
-    if (!facts.ac3forge_state) {
+    if (!facts.iclforge_state) {
         return false;
     }
-    const std::vector<forge::Command>& listed = facts.ac3forge_state->supported_commands;
+    const std::vector<forge::Command>& listed = facts.iclforge_state->supported_commands;
     return std::find(listed.begin(), listed.end(), forge::Command::kSettings) != listed.end();
 }
 
 [[nodiscard]] QVariantMap sink_speaker_settings_to_map(const iclforge::hearth::SinkFacts& facts) {
     QVariantMap map;
-    if (!facts.ac3forge_support) {
+    if (!facts.iclforge_support) {
         return map;
     }
     // NetworkSinkSpeakers.qml disables every control, and says why, when
@@ -252,7 +252,7 @@ struct LayoutFields {
     const forge::Settings settings = sink_settings_base(facts);
     const iclforge::render::OutputLayout layout = draft_layout(settings.layout);
     const LayoutFields fields = layout_fields(layout);
-    const auto outputs = static_cast<std::size_t>(facts.ac3forge_support->outputs.count);
+    const auto outputs = static_cast<std::size_t>(facts.iclforge_support->outputs.count);
 
     map[QStringLiteral("layoutText")] = QString::fromStdString(std::string(layout.text()));
     map[QStringLiteral("labels")] = fields.labels;
@@ -262,7 +262,7 @@ struct LayoutFields {
     map[QStringLiteral("hasLfe")] = fields.has_lfe;
     map[QStringLiteral("heightsRealization")] = fields.heights_realization;
     map[QStringLiteral("outputs")] = static_cast<int>(outputs);
-    map[QStringLiteral("outputBitDepth")] = facts.ac3forge_support->outputs.bit_depth;
+    map[QStringLiteral("outputBitDepth")] = facts.iclforge_support->outputs.bit_depth;
     map[QStringLiteral("crossoverHz")] = settings.crossover_hz.value_or(80.0);
 
     QVariantList trim_db;
@@ -286,7 +286,7 @@ struct LayoutFields {
     }
     map[QStringLiteral("routing")] = routing;
 
-    const forge::Management& management = facts.ac3forge_support->management;
+    const forge::Management& management = facts.iclforge_support->management;
     QVariantMap management_map;
     management_map[QStringLiteral("routing")] = management.routing;
     management_map[QStringLiteral("trimMinDb")] = management.trim_db[0];
@@ -303,7 +303,7 @@ struct LayoutFields {
 
 [[nodiscard]] QVariantMap sink_decoder_settings_to_map(const iclforge::hearth::SinkFacts& facts) {
     QVariantMap map;
-    if (!facts.ac3forge_support) {
+    if (!facts.iclforge_support) {
         return map;
     }
     const forge::DecoderSettings& decoder = sink_settings_base(facts).decoder;
@@ -318,7 +318,7 @@ struct LayoutFields {
     map[QStringLiteral("concealment")] = concealment_name(decoder.concealment.value_or(forge::Concealment::kRepeatFade));
 
     QStringList accepted;
-    for (const std::string& name : facts.ac3forge_support->decoder_settings) {
+    for (const std::string& name : facts.iclforge_support->decoder_settings) {
         accepted.push_back(QString::fromStdString(name));
     }
     map[QStringLiteral("acceptedKeys")] = accepted;
@@ -331,7 +331,7 @@ struct LayoutFields {
 [[nodiscard]] QVariantMap sink_report_to_map(const iclforge::hearth::SinkFacts& facts,
                                              bool refused) {
     QVariantMap map;
-    if (!facts.ac3forge_support) {
+    if (!facts.iclforge_support) {
         return map;
     }
     QString settings_text = QStringLiteral("Nothing sent yet.");
@@ -343,16 +343,16 @@ struct LayoutFields {
         settings_text = QObject::tr("The sink does not take settings from Hearth.");
     } else if (facts.intended_settings) {
         const std::int64_t sent = facts.intended_settings->revision;
-        if (!facts.ac3forge_state) {
+        if (!facts.iclforge_state) {
             settings_text = QObject::tr("revision %1 sent, not reported yet").arg(sent);
-        } else if (facts.ac3forge_state->settings_error && facts.ac3forge_state->settings_error->revision == sent) {
+        } else if (facts.iclforge_state->settings_error && facts.iclforge_state->settings_error->revision == sent) {
             settings_text = QObject::tr("revision %1 refused: %2")
                                 .arg(sent)
-                                .arg(QString::fromStdString(facts.ac3forge_state->settings_error->why));
-        } else if (facts.ac3forge_state->settings_revision >= sent) {
+                                .arg(QString::fromStdString(facts.iclforge_state->settings_error->why));
+        } else if (facts.iclforge_state->settings_revision >= sent) {
             settings_text = QObject::tr("revision %1 · applied").arg(sent);
         } else {
-            settings_text = QObject::tr("revision %1 sent · sink on %2").arg(sent).arg(facts.ac3forge_state->settings_revision);
+            settings_text = QObject::tr("revision %1 sent · sink on %2").arg(sent).arg(facts.iclforge_state->settings_revision);
         }
     }
     map[QStringLiteral("settingsText")] = settings_text;
@@ -360,8 +360,8 @@ struct LayoutFields {
     QString stream_text = QObject::tr("Nothing playing.");
     QString objects_text = QObject::tr("none");
     QString dialogue_text = QObject::tr("not reported");
-    if (facts.ac3forge_state && facts.ac3forge_state->decoder) {
-        const forge::DecoderReport& decoder = *facts.ac3forge_state->decoder;
+    if (facts.iclforge_state && facts.iclforge_state->decoder) {
+        const forge::DecoderReport& decoder = *facts.iclforge_state->decoder;
         const QString data_type = QString::fromStdString(std::string(forge::data_type_name(decoder.data_type)))
                                        .toUpper();
         stream_text = QObject::tr("%1 · %2%3 · %4 substream%5")
@@ -381,7 +381,7 @@ struct LayoutFields {
     map[QStringLiteral("objectsText")] = objects_text;
     map[QStringLiteral("dialogueText")] = dialogue_text;
 
-    const forge::Counters counters = facts.ac3forge_state ? facts.ac3forge_state->counters : forge::Counters{};
+    const forge::Counters counters = facts.iclforge_state ? facts.iclforge_state->counters : forge::Counters{};
     map[QStringLiteral("playedText")] = QObject::tr("%1 bursts").arg(counters.bursts_played);
     map[QStringLiteral("problemsText")] = QObject::tr("%1 underruns · %2 late · %3 dropped · %4 invalid")
                                                .arg(counters.underruns)
@@ -393,7 +393,7 @@ struct LayoutFields {
 
 [[nodiscard]] QVariantMap sink_only_on_sink_to_map(const iclforge::hearth::SinkFacts& facts) {
     QVariantMap map;
-    if (!facts.ac3forge_support) {
+    if (!facts.iclforge_support) {
         return map;
     }
     map[QStringLiteral("name")] = QString::fromStdString(facts.name);
@@ -402,7 +402,7 @@ struct LayoutFields {
             ? QObject::tr("%1-bit · %2 slots").arg(facts.output_bit_depth.value_or(0)).arg(*facts.output_slots)
             : QObject::tr("not reported");
     // No RSSI or interface (Wi-Fi/Ethernet) field exists anywhere on the
-    // wire (ac3forge_player.hpp, messages.hpp) - the mockup's own note says
+    // wire (iclforge_player.hpp, messages.hpp) - the mockup's own note says
     // this whole panel is "set on the sink's page", and this row shows the
     // one network fact this app actually has: how it reached the sink.
     map[QStringLiteral("network")] =
@@ -750,7 +750,7 @@ void NetworkController::poll() {
         if (facts.id == status.selected_id) {
             selected = detail_to_variant(iclforge::hearth::to_detail(facts), grouped_sink_ids.count(facts.id) > 0);
             selected_settable = facts.pair_state == iclforge::hearth::PairState::kPaired &&
-                                 facts.ac3forge_support.has_value();
+                                 facts.iclforge_support.has_value();
             if (selected_settable) {
                 speaker_settings = sink_speaker_settings_to_map(facts);
                 decoder_settings = sink_decoder_settings_to_map(facts);
@@ -974,7 +974,7 @@ void NetworkController::setSinkLayoutText(const QString& text) {
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support) {
+    if (!facts || !facts->iclforge_support) {
         return;
     }
     if (!iclforge::render::OutputLayout::parse(text.toStdString())) {
@@ -996,7 +996,7 @@ void NetworkController::setSinkHeights(const QString& realization) {
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support) {
+    if (!facts || !facts->iclforge_support) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
@@ -1010,7 +1010,7 @@ void NetworkController::setSinkSpeakerSmall(int slot, bool small) {
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support) {
+    if (!facts || !facts->iclforge_support) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
@@ -1028,7 +1028,7 @@ void NetworkController::setSinkTrimDb(int output, double db) {
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support) {
+    if (!facts || !facts->iclforge_support) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
@@ -1044,7 +1044,7 @@ void NetworkController::setSinkDelayMs(int output, double ms) {
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support) {
+    if (!facts || !facts->iclforge_support) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
@@ -1060,7 +1060,7 @@ void NetworkController::setSinkCrossoverHz(double hz) {
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support) {
+    if (!facts || !facts->iclforge_support) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
@@ -1073,12 +1073,12 @@ void NetworkController::setSinkRoutingAssignment(int slot, int output) {
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support || !facts->ac3forge_support->management.routing) {
+    if (!facts || !facts->iclforge_support || !facts->iclforge_support->management.routing) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
     const iclforge::render::OutputLayout layout = draft_layout(settings.layout);
-    const auto outputs = static_cast<std::size_t>(facts->ac3forge_support->outputs.count);
+    const auto outputs = static_cast<std::size_t>(facts->iclforge_support->outputs.count);
     std::optional<iclforge::render::Routing> patch =
         settings.routing ? iclforge::render::Routing::parse(*settings.routing, outputs)
                           : iclforge::render::Routing::identity(layout.slots(), outputs);
@@ -1098,7 +1098,7 @@ void NetworkController::setSinkDecoderSettings(const QVariantMap& settings_map) 
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support) {
+    if (!facts || !facts->iclforge_support) {
         return;
     }
     forge::Settings settings = sink_settings_base(*facts);
@@ -1151,7 +1151,7 @@ void NetworkController::startSinkIdentify(int slot) {
         return;
     }
     const std::optional<iclforge::hearth::SinkFacts> facts = selected_sink_facts(*sinks_engine_);
-    if (!facts || !facts->ac3forge_support || !facts->ac3forge_support->management.identify) {
+    if (!facts || !facts->iclforge_support || !facts->iclforge_support->management.identify) {
         return;
     }
     sinks_engine_->push_sink_identify(facts->id, forge::Identify{.output = slot});

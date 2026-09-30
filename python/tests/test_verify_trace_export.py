@@ -12,7 +12,7 @@ import csv
 import io
 import json
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

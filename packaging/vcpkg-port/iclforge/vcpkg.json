@@ -1,0 +1,42 @@
+{
+  "name": "iclforge",
+  "version-semver": "0.10.0-beta.1",
+  "description": "Clean-room AC-3 (ATSC A/52), E-AC-3 and AC-4 encoder and decoder with a spatial object layer, in C++23.",
+  "homepage": "https://github.com/iainchesworthlabs/ac3forge",
+  "license": "GPL-3.0-or-later",
+  "supports": "!(android & !arm64)",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    "fmt"
+  ],
+  "features": {
+    "matroska": {
+      "description": "Standalone Matroska (.mkv) container writer (iclforge::matroska) - depends on nothing in iclforge::ac3"
+    },
+    "mp4": {
+      "description": "Standalone MP4/ISOBMFF container writer, plus fMP4/CMAF segmenting and HLS/DASH signaling (iclforge::mp4) - depends on nothing in iclforge::ac3"
+    },
+    "mpegts": {
+      "description": "Standalone MPEG-2 Transport Stream container writer (iclforge::mpegts) - depends on nothing in iclforge::ac3"
+    },
+    "capi": {
+      "description": "Stable, minimal C11 API over the AC-3 and E-AC-3 encode/decode core, and over AC-4 when the ac4 feature is also on (iclforge::c) - for bindings and embedding by callers that cannot or do not want to link C++23"
+    },
+    "ac4": {
+      "description": "AC-4 (ETSI TS 103 190) sync frame and table of contents reader, decoder and encoder (iclforge::ac4, iclforge::ac4dec, iclforge::ac4enc) - depends on nothing in iclforge::ac3"
+    },
+    "iab": {
+      "description": "Standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader (iclforge::iab) - depends on nothing in iclforge::ac3"
+    },
+    "iamf": {
+      "description": "Standalone IAMF v1.1 OBU and ISOBMFF writer (iclforge::iamf) - depends on nothing in iclforge::ac3"
+    }
+  }
+}

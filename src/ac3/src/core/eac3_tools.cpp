@@ -354,7 +354,7 @@ int aht_bin_gaq_bits(std::span<const double, kBlocksPerFrameSize> values,
 
 int aht_choose_gain(std::span<const double, kBlocksPerFrameSize> values,
                     int mantissa_bits, int gaqmod) {
-    AC3_ZONE_SCOPED_N("aht_choose_gain");
+    ICLFORGE_ZONE_SCOPED_N("aht_choose_gain");
     int best = 1;
     int best_bits = std::numeric_limits<int>::max();
     for (const int gain : aht_gaq_gains(gaqmod)) {
@@ -378,7 +378,7 @@ int aht_choose_gain(std::span<const double, kBlocksPerFrameSize> values,
 }
 
 int aht_vector_quantize(std::span<double, kBlocksPerFrameSize> values, int hebap) {
-    AC3_ZONE_SCOPED_N("aht_vector_quantize");
+    ICLFORGE_ZONE_SCOPED_N("aht_vector_quantize");
     assert(hebap >= 1 && hebap <= 7);
     const auto book = tables::aht_vq_table(hebap);
     int best = 0;
@@ -741,7 +741,7 @@ void ecpl_channel_spectrum_impl(std::span<const Scalar, 256> prev_mant,
                                 std::span<const Scalar, 256> next_mant,
                                 std::span<Scalar, 256> real_out, std::span<Scalar, 256> imag_out,
                                 bool fast) {
-    AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
+    ICLFORGE_ZONE_SCOPED_N("ecpl_channel_spectrum");
     auto& s = ecpl_spectrum_scratch<Scalar>();
     // Step 1: three independent 512-sample normative IMDCTs (§7.9.4.1
     // steps 1-5, the exact machinery every other coefficient set in this
@@ -945,7 +945,7 @@ void ecpl_channel_spectrum_fixed(std::span<const Fixed32, 256> prev_mant, int pr
                                  std::span<const Fixed32, 256> next_mant, int next_norm,
                                  std::span<Fixed32, 256> real_out,
                                  std::span<Fixed32, 256> imag_out, int& out_norm) {
-    AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
+    ICLFORGE_ZONE_SCOPED_N("ecpl_channel_spectrum");
     auto& s = ecpl_spectrum_scratch<Fixed32>();
 
     // Step 1: the three normative inverses, in the tier's own transform

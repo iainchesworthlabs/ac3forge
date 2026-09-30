@@ -12,7 +12,7 @@
 // compiled a second time directly into the test binary) TWICE: once into
 // the library proper, once into ac3tests, so the AVX2 codegen path is
 // exercised - proven to compile, link and execute correctly - on both,
-// independent of whether AC3FORGE's own consumer (ac3tests) links the
+// independent of whether ICLFORGE's own consumer (ac3tests) links the
 // static or the shared library (see the config-linux-llvm-shared CI leg).
 // Only the compiled-in TEST copy needs to be directly callable without
 // crossing a possible DLL export boundary, which is exactly why it is

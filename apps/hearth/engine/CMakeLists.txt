@@ -48,16 +48,16 @@ endif()
 # pairing, A6) needs the same server half - ServerHost and the computer's own
 # mdns backend - plus PairingStore itself. network_group_sink.cpp is the same
 # reason: it wraps ac3::sendspin::Group.
-if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+if(NOT ICLFORGE_SENDSPIN_CORE_ONLY)
     target_sources(ac3hearth_engine PRIVATE pairing_store.cpp server_identity.cpp network_sinks.cpp
                                             network_group_sink.cpp)
     # A Hearth sink's firmware (planning/esp32-ota.md, O5): the board's own HTTP routes over
     # cpp-httplib, configured as src/sendspin configures it, and the board's own headers for what
-    # GET /firmware says and what an image must be (esp-idf/ac3forge/include, free of ESP-IDF,
+    # GET /firmware says and what an image must be (esp-idf/iclforge/include, free of ESP-IDF,
     # as ac3tests already reads them), so that this app holds an image to the rules the board
     # holds it to.
     target_sources(ac3hearth_engine PRIVATE sink_firmware.cpp sink_firmware_view.cpp)
-    target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/esp-idf/ac3forge/include")
+    target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/esp-idf/iclforge/include")
     # The opt-in loopback diagnostics endpoint (diagnostics_server.hpp): the
     # same httplib already linked in for sink_firmware.cpp above, so it adds
     # nothing new to a core-only build to leave out.
@@ -87,12 +87,12 @@ target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/apps/c
 # network output plays through (network_group_sink.hpp). iclforge::signing asks
 # whether frames carry an authenticity tag.
 target_link_libraries(ac3hearth_engine PUBLIC iclforge::audio iclforge::ac3 iclforge::ac4 iclforge::ac4dec iclforge::sendspin)
-# ac3::coverage (coverage floors, tools/checks/coverage_report.sh's "apps/hearth" row) instruments
+# iclforge::coverage (coverage floors, tools/checks/coverage_report.sh's "apps/hearth" row) instruments
 # this target's OWN sources - apps/cli's own comment on its matching link explains why the
 # instrumented EXECUTABLE that eventually links this library is not enough on its own: --coverage
 # is a compile-time flag, so without this a coverage build's .cpp files here would produce no
 # .gcno at all and read as no data rather than as low coverage.
-target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt iclforge::signing ac3::coverage)
+target_link_libraries(ac3hearth_engine PRIVATE iclforge::warnings iclforge::fmt iclforge::signing iclforge::coverage)
 # The engine thread (engine_thread.cpp).
 find_package(Threads REQUIRED)
 target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)
@@ -104,6 +104,6 @@ target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)
 # the identical pair, for the identical reason (its own comment there has the
 # history of why this lives at the engine level rather than per-platform or
 # per-executable).
-target_link_libraries(ac3hearth_engine PUBLIC ac3::tracy)
+target_link_libraries(ac3hearth_engine PUBLIC iclforge::tracy)
 target_include_directories(ac3hearth_engine PUBLIC
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
+    "$<IF:$<BOOL:${ICLFORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")

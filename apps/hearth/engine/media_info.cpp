@@ -665,14 +665,14 @@ void write_probe(JsonSink& json, const MediaInfo& info) {
     json.key("probe");
     if (info.probe) {
         json.begin_object();
-        json.member("schema", "ac3forge.probe/1");
+        json.member("schema", "iclforge.probe/1");
         apps::probe_json::write_stream(json, *info.probe);
         json.end_object();
         return;
     }
     if (info.ac4 && info.ac4->sync_frames > 0) {
         json.begin_object();
-        json.member("schema", "ac3forge.probe/1");
+        json.member("schema", "iclforge.probe/1");
         apps::probe_json::write_ac4_stream(json, *info.ac4);
         json.end_object();
         return;
@@ -793,7 +793,7 @@ std::string media_info_json(const MediaInfo& info) {
     std::string out;
     StringSink json{out};
     json.begin_object();
-    json.member("schema", "ac3forge.hearth.media/1");
+    json.member("schema", "iclforge.hearth.media/1");
     json.member("generator", version_full);
     json.member("file", info.path);
     if (info.codec) {

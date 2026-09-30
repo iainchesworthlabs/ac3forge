@@ -345,7 +345,7 @@ struct Options {
     iclforge::plan::Metadata p{};
     // Atmos object signing (atmos/atmos-path/atmos-encode). Off unless the
     // operator both asks (sign-objects) and provides a key - either
-    // signing-key=<path> here, or the AC3FORGE_SIGNING_KEY[_FILE] env vars
+    // signing-key=<path> here, or the ICLFORGE_SIGNING_KEY[_FILE] env vars
     // load_signing_key() falls back to. The key is never stored by this tool;
     // see docs/concepts/object-signing.md.
     bool sign_objects = false;
@@ -536,7 +536,7 @@ struct Options {
     // reason dither=/search= are not: every command that encodes at all can
     // answer it, in either codec.
     int fgaincod = -1;
-    // 'probe' only: emit the JSON document (schema ac3forge.probe/1) instead
+    // 'probe' only: emit the JSON document (schema iclforge.probe/1) instead
     // of the human-readable table. Off by default - a bare `ac3cli probe
     // <file>` is meant to be read by a person, and every other command here
     // prints for one too.

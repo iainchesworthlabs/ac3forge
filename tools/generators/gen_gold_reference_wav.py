@@ -1,7 +1,7 @@
 """Gold-reference WAV generator for the CI correctness gate.
 
 Produces tests/golden/audio/reference_51.wav: a fixed, checked-in 5.1 PCM16
-WAV, independent of ac3forge's own encoder/decoder (it is built here from
+WAV, independent of iclforge's own encoder/decoder (it is built here from
 first principles - sin()/pseudo-random noise/simple FIR smoothing - not
 bootstrapped by decoding one of our own encodes the way
 tools/ci/run_codec_matrix.sh's "bootstrap_51.wav" is). tools/checks/verify_gold_

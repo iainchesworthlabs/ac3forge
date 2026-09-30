@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Sanitizers.cmake
 #
-# AC3FORGE_SANITIZERS is a comma-separated -fsanitize= value (e.g.
+# ICLFORGE_SANITIZERS is a comma-separated -fsanitize= value (e.g.
 # "address,undefined") applied to every target via global compile and link
 # flags. Empty (the default) compiles nothing differently. Clang/GCC only -
 # MSVC's /fsanitize=address has no UBSan equivalent, so a sanitizer build
@@ -13,24 +13,24 @@
 # continue-on-violation run defeats the point of a CI gate.
 # ---------------------------------------------------------------------------
 
-if(NOT AC3FORGE_SANITIZERS)
+if(NOT ICLFORGE_SANITIZERS)
     return()
 endif()
 
 if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
         CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
     message(FATAL_ERROR
-        "AC3FORGE_SANITIZERS='${AC3FORGE_SANITIZERS}' needs Clang or GCC; "
+        "ICLFORGE_SANITIZERS='${ICLFORGE_SANITIZERS}' needs Clang or GCC; "
         "the active compiler is ${CMAKE_CXX_COMPILER_ID}.")
 endif()
 
 set(_AC3_SANITIZE_FLAGS
-    "-fsanitize=${AC3FORGE_SANITIZERS}"
+    "-fsanitize=${ICLFORGE_SANITIZERS}"
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer)
 
 add_compile_options(${_AC3_SANITIZE_FLAGS})
 add_link_options(${_AC3_SANITIZE_FLAGS})
 
-message(STATUS "Sanitizers enabled: ${AC3FORGE_SANITIZERS}")
+message(STATUS "Sanitizers enabled: ${ICLFORGE_SANITIZERS}")
 unset(_AC3_SANITIZE_FLAGS)

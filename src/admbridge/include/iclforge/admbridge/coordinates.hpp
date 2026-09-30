@@ -67,18 +67,18 @@ namespace iclforge::admbridge {
 // BS.2076-2 Clause 8's polar convention to the same right/front/top-positive point its own
 // Cartesian axes describe. See this header's own top comment for the full derivation and the
 // three independent checks performed against it.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::adm::CartesianPosition polar_to_adm_cartesian(
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT iclforge::adm::CartesianPosition polar_to_adm_cartesian(
     const iclforge::adm::PolarPosition& polar);
 
 // BS.2076-2's [-1, 1] unit-cube Cartesian convention to iclforge::oba::Position's [0, 1]/[0, 1]/
 // [-1, 1] room-anchored one. Pure affine remap - see this header's own top comment.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::oba::Position adm_cartesian_to_room(
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT iclforge::oba::Position adm_cartesian_to_room(
     const iclforge::adm::CartesianPosition& cartesian);
 
 // Dispatches on iclforge::adm::Position's own variant (ac3adm/model.hpp: PolarPosition or
 // CartesianPosition, selected by AudioBlockFormat::cartesian) and converts whichever alternative
 // is actually present straight to room coordinates.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::oba::Position adm_position_to_room(
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT iclforge::oba::Position adm_position_to_room(
     const iclforge::adm::Position& position);
 
 // The write-direction inverse of adm_cartesian_to_room() above, for roadmap item IM2 (the JOC ->
@@ -87,7 +87,7 @@ namespace iclforge::admbridge {
 // checked formula. This writer only ever emits cartesian ADM (the Dolby Atmos Master ADM Profile's
 // own shape), so unlike the read side there is no matching room_to_adm_polar()/room_position_to_adm()
 // pair - a caller wanting a polar master would need one, and none of this project's own writers do.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::adm::CartesianPosition room_to_adm_cartesian(
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT iclforge::adm::CartesianPosition room_to_adm_cartesian(
     const iclforge::oba::Position& room);
 
 // SMPTE ST 2098-2:2022 §11.1's unit cube to iclforge::oba::Position's own room-anchored convention
@@ -107,7 +107,7 @@ namespace iclforge::admbridge {
 // plainly rather than asserted as spec fact. See iab_bridge.cpp's own top comment for where this
 // is used and what is deliberately not carried across (ObjectSpread, the 9-zone
 // ObjectZoneControl).
-[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::oba::Position iab_position_to_room(
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT iclforge::oba::Position iab_position_to_room(
     const iclforge::iab::Position& position);
 
 }  // namespace iclforge::admbridge

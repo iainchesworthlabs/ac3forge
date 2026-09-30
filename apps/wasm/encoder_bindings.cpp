@@ -44,7 +44,7 @@ namespace {
 // a configuration-validation failure a well-behaved caller does not hit in
 // practice, and every case's own doc comment (ac3/encoder/silent_frame.hpp)
 // already says what it means. A page-error-message translation stays local
-// to this binding rather than becoming AC3FORGE_EXPORT library API for a
+// to this binding rather than becoming ICLFORGE_AC3_EXPORT library API for a
 // message nothing else in the tree needs yet.
 std::string_view describe_frame_error(iclforge::FrameError error) {
     switch (error) {
@@ -519,7 +519,7 @@ class WasmQcMeter {
     iclforge::meta::LoudnessMeter meter_;
 };
 
-EMSCRIPTEN_BINDINGS(ac3forge_wasm_encode) {
+EMSCRIPTEN_BINDINGS(iclforge_wasm_encode) {
     emscripten::class_<WasmEncoder>("Encoder")
         .constructor<int, int, int, int, int>()
         .function("samplesPerFrame", &WasmEncoder::samplesPerFrame)

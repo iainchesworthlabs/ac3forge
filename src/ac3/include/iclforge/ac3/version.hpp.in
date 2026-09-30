@@ -11,32 +11,32 @@
 namespace iclforge {
 
 // Semantic version (https://semver.org).
-inline constexpr int version_major = @AC3FORGE_VERSION_MAJOR@;
-inline constexpr int version_minor = @AC3FORGE_VERSION_MINOR@;
-inline constexpr int version_patch = @AC3FORGE_VERSION_PATCH@;
-inline constexpr std::string_view version_string = "@AC3FORGE_VERSION@";
+inline constexpr int version_major = @ICLFORGE_VERSION_MAJOR@;
+inline constexpr int version_minor = @ICLFORGE_VERSION_MINOR@;
+inline constexpr int version_patch = @ICLFORGE_VERSION_PATCH@;
+inline constexpr std::string_view version_string = "@ICLFORGE_VERSION@";
 
 // Same as version_string, plus any prerelease suffix from the git tag it was
 // derived from (e.g. "0.2.0-beta.1"). version_string stays bare M.M.P since
 // that is all CMake's project() VERSION field (and CPack) can hold.
-inline constexpr std::string_view version_full = "@AC3FORGE_VERSION_FULL@";
+inline constexpr std::string_view version_full = "@ICLFORGE_VERSION_FULL@";
 
 // Git provenance, stamped at build time.
-inline constexpr std::string_view git_commit = "@AC3FORGE_GIT_COMMIT@";
-inline constexpr std::string_view git_commit_full = "@AC3FORGE_GIT_COMMIT_FULL@";
-inline constexpr std::string_view git_describe = "@AC3FORGE_GIT_DESCRIBE@";
-inline constexpr std::string_view git_branch = "@AC3FORGE_GIT_BRANCH@";
-inline constexpr bool git_dirty = @AC3FORGE_GIT_DIRTY@;
+inline constexpr std::string_view git_commit = "@ICLFORGE_GIT_COMMIT@";
+inline constexpr std::string_view git_commit_full = "@ICLFORGE_GIT_COMMIT_FULL@";
+inline constexpr std::string_view git_describe = "@ICLFORGE_GIT_DESCRIBE@";
+inline constexpr std::string_view git_branch = "@ICLFORGE_GIT_BRANCH@";
+inline constexpr bool git_dirty = @ICLFORGE_GIT_DIRTY@;
 // Commits between the tag version_full came from and the built commit: 0
 // when built on the tag (or without git). version_details() appends it to
 // the headline as semver build metadata ("0.10.0-beta.1+100") so a build
 // from past a tag does not read as the tagged release.
-inline constexpr int git_commits_since_tag = @AC3FORGE_GIT_COMMITS_SINCE_TAG@;
+inline constexpr int git_commits_since_tag = @ICLFORGE_GIT_COMMITS_SINCE_TAG@;
 
 // OS/architecture/compiler this binary was built for, e.g. "Linux x86_64
 // (Clang 22.1.2)". Computed by src/ac3/CMakeLists.txt from the toolchain
 // CMake itself configured, not read back from predefined compiler macros.
-inline constexpr std::string_view build_target = "@AC3FORGE_BUILD_TARGET@";
+inline constexpr std::string_view build_target = "@ICLFORGE_BUILD_TARGET@";
 
 // A multi-line, human-readable version + build-provenance block, suitable for
 // `--version` output or an About dialog.

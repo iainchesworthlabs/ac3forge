@@ -349,7 +349,7 @@ TEST_CASE("addbsi announces object audio", "[emdf][eac3]") {
 }
 
 TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[emdf][eac3]") {
-    // walk_frame maps only ac3forge's own Atmos shape, but the object-layer
+    // walk_frame maps only iclforge's own Atmos shape, but the object-layer
     // signals ahead of audfrm are read for ANY E-AC-3 syncframe - which means
     // walking mixmdate and infomdate field for field to find addbsi. The
     // complexity index sits in addbsi, so reading it back exactly is the

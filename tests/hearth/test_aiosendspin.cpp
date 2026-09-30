@@ -98,9 +98,9 @@ class Events final : public ss::ServerHostEvents {
 
 TEST_CASE("aiosendspin: a host pairs with the scripted aiosendspin 9.1.1 player and plays it a programme",
           "[.][aiosendspin]") {
-    const std::optional<std::string> url = environment("AC3FORGE_AIOSENDSPIN_URL");
-    const std::optional<std::string> token = environment("AC3FORGE_AIOSENDSPIN_TOKEN");
-    const std::optional<std::string> out = environment("AC3FORGE_AIOSENDSPIN_OUT");
+    const std::optional<std::string> url = environment("ICLFORGE_AIOSENDSPIN_URL");
+    const std::optional<std::string> token = environment("ICLFORGE_AIOSENDSPIN_TOKEN");
+    const std::optional<std::string> out = environment("ICLFORGE_AIOSENDSPIN_OUT");
     if (!url || !token || !out) {
         SKIP("run by tools/sendspin/aiosendspin_exit.py");
     }

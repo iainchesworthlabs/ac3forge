@@ -107,7 +107,7 @@ class TestSink:
         self._reader: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
-        # A Hearth sink lists _ac3forge_player@v1 before player@v1, which a 9.1.1 server does not
+        # A Hearth sink lists _iclforge_player@v1 before player@v1, which a 9.1.1 server does not
         # know; --extension leaves it listed to see that the server passes it over.
         extension = [] if self.extension else ["--no-extension"]
         self._process = await asyncio.create_subprocess_exec(
@@ -388,7 +388,7 @@ def main() -> int:
         "--out", type=Path, help="where each codec's files go; a temporary directory otherwise"
     )
     parser.add_argument(
-        "--extension", action="store_true", help="let the sink list _ac3forge_player@v1 as well"
+        "--extension", action="store_true", help="let the sink list _iclforge_player@v1 as well"
     )
     parser.add_argument("--verbose", action="store_true", help="the SDK's debug log")
     arguments = parser.parse_args()

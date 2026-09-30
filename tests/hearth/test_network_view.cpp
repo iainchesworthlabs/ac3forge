@@ -43,7 +43,7 @@ namespace {
     facts.port = 8928;
     facts.path = "/sendspin";
     facts.hardware = "ESP32-S3";
-    facts.roles = {"_ac3forge_player@v1", "player@v1"};
+    facts.roles = {"_iclforge_player@v1", "player@v1"};
     facts.data_types = {"ac3", "eac3"};
     facts.codecs = {"pcm", "flac"};
     facts.output_slots = 8;
@@ -71,9 +71,9 @@ TEST_CASE("network view: a paired Hearth sink's detail panel", "[hearth][network
     CHECK(detail.badge == "paired");
     CHECK(detail.kind_text == "Hearth sink · ESP32-S3");
     CHECK(detail.address == "192.168.1.52:8928 · /sendspin");
-    CHECK(detail.roles_text == "_ac3forge_player@v1 · player@v1");
+    CHECK(detail.roles_text == "_iclforge_player@v1 · player@v1");
     // The extension spec's own example (planning/hearth-sendspin-extension.md,
-    // The role _ac3forge_player@v1): a Hearth sink lists both roles, so
+    // The role _iclforge_player@v1): a Hearth sink lists both roles, so
     // "Takes" combines what each accepts.
     CHECK(detail.takes_text == "AC-3 and E-AC-3 · PCM and FLAC");
     CHECK(detail.outputs_text == "8 slots at 32-bit, as it reports");

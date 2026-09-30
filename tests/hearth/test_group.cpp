@@ -35,7 +35,7 @@
 #include "iclforge/ac3/io/wav.hpp"
 #include "iclforge/render/layout.hpp"
 #include "iclforge/render/render.hpp"
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/crypto.hpp"
 #include "iclforge/sendspin/handshake.hpp"
 #include "iclforge/sendspin/messages.hpp"
@@ -53,7 +53,7 @@
 // A ServerHost and two test sinks in process over loopback WebSockets, with mDNS off: the host
 // dials both and plays one programme to them as a group. Approved for unpaired access, they take
 // player@v1, PCM to one and FLAC to the other; paired by their tokens, they take
-// _ac3forge_player@v1, and the programme is the Dolby Encoding Engine's E-AC-3 JOC fixture in
+// _iclforge_player@v1, and the programme is the Dolby Encoding Engine's E-AC-3 JOC fixture in
 // bursts, rendered to their speaker layout with its objects. Each sink's WAV holds exactly what a
 // local decode and render of the programme gives, and every chunk's logged play time puts the
 // programme's first frame at the same local time on both sinks, within 1 ms: the group plays in
@@ -73,7 +73,7 @@ using namespace std::chrono_literals;
 
 // See tests/cli/test_cli.cpp's own scratch_dir comment for why every
 // TEST_CASE below folds this into its scratch leaf, on top of
-// AC3FORGE_TEST_SCRATCH_DIR's build-tree rooting.
+// ICLFORGE_TEST_SCRATCH_DIR's build-tree rooting.
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
@@ -329,14 +329,14 @@ void decode_and_render(const iclforge::io::ScannedStream& stream, int passes, co
 }
 
 // Plays the Dolby Encoding Engine's E-AC-3 JOC fixture `passes` times over to two test sinks paired
-// by their tokens, as one programme over _ac3forge_player@v1 rendered to `layout_text`. Then each
+// by their tokens, as one programme over _iclforge_player@v1 rendered to `layout_text`. Then each
 // sink's WAV must be a local decode and render of the programme, sample for sample, and every
 // burst's logged play time must put the first frame at the same local time on both, within 1 ms.
 void play_joc_programme(const fs::path& scratch, const std::string& layout_text, int passes) {
     fs::remove_all(scratch);
     const std::optional<iclforge::render::OutputLayout> layout = iclforge::render::OutputLayout::parse(layout_text);
     REQUIRE(layout.has_value());
-    const std::vector<std::byte> fixture = read_bytes(AC3FORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
+    const std::vector<std::byte> fixture = read_bytes(ICLFORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
     const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream =
         iclforge::io::scan(fixture);
     REQUIRE(stream.has_value());
@@ -393,7 +393,7 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
         group->add(client.client_id);
     }
     REQUIRE(group->start({.pcm = std::nullopt,
-                          .bursts = iclforge::sendspin::ac3forge::StreamStart{.data_type = iclforge::sendspin::ac3forge::DataType::kEac3,
+                          .bursts = iclforge::sendspin::player::StreamStart{.data_type = iclforge::sendspin::player::DataType::kEac3,
                                                                          .sample_rate = 48000},
                           .buffered = true}));
 
@@ -415,14 +415,14 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
     const bool reported = events.wait(
         [](const auto& clients) {
             return clients.size() == 2 && std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
-                       const std::optional<iclforge::sendspin::ac3forge::State>& state = entry.second.ac3forge_state;
+                       const std::optional<iclforge::sendspin::player::State>& state = entry.second.iclforge_state;
                        return state && state->decoder && state->decoder->objects > 0 && state->decoder->objects_placed;
                    });
         },
         10s);
     if (!reported) {
         for (const iclforge::sendspin::ClientView& client : (*host)->clients()) {
-            const std::optional<iclforge::sendspin::ac3forge::State>& state = client.ac3forge_state;
+            const std::optional<iclforge::sendspin::player::State>& state = client.iclforge_state;
             UNSCOPED_INFO(client.name << ": decoder reported " << (state && state->decoder) << ", objects "
                                       << (state && state->decoder ? state->decoder->objects : -1));
         }
@@ -494,7 +494,7 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
 }  // namespace
 
 TEST_CASE("group: two test sinks play one programme in step, in PCM and FLAC", "[hearth][group][websocket]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_group_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const std::unique_ptr<testsink::Sink> kitchen = start_sink(scratch / "kitchen", "Kitchen", m::Codec::kPcm, log);
@@ -591,7 +591,7 @@ TEST_CASE("group: two test sinks play one programme in step, in PCM and FLAC", "
 }
 
 TEST_CASE("group: a host pairs one test sink by its token and another by a dynamic code", "[hearth][group][websocket]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_pairing_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_pairing_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog token_log;
     QuietLog code_log;
@@ -660,7 +660,7 @@ TEST_CASE("group: unpairing a sink delivers client/goodbye's own reason to the h
     // outcomes, covered end to end already by tests/sendspin/test_sessions.cpp's "the owner
     // rejects an activation, or another server displaces the connection" - this test is only
     // for the plumbing between here and there, which kUnpaired reaches just as directly.
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_goodbye_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_goodbye_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const std::unique_ptr<testsink::Sink> sink = start_sink(scratch, "Study", m::Codec::kPcm, log, false);
@@ -696,7 +696,7 @@ TEST_CASE("group: test sinks' other roles get the group's metadata, colours, tra
           "[hearth][group][websocket][roles]") {
     namespace ss = iclforge::sendspin;
     namespace controller = iclforge::sendspin::controller;
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_roles_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_roles_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const auto make_sink = [&](const fs::path& directory, std::string sink_name, std::vector<std::string> listed) {
@@ -816,10 +816,10 @@ TEST_CASE("group: test sinks' other roles get the group's metadata, colours, tra
     const std::optional<ss::ClientView> lounge_view = (*host)->client(lounge_id);
     REQUIRE(kitchen_view.has_value());
     REQUIRE(lounge_view.has_value());
-    REQUIRE(kitchen_view->ac3forge_state.has_value());
+    REQUIRE(kitchen_view->iclforge_state.has_value());
     REQUIRE(lounge_view->player_state.has_value());
-    CHECK(kitchen_view->ac3forge_state->volume == 40);
-    CHECK(kitchen_view->ac3forge_state->muted == true);
+    CHECK(kitchen_view->iclforge_state->volume == 40);
+    CHECK(kitchen_view->iclforge_state->muted == true);
     CHECK(lounge_view->player_state->volume == 40);
     CHECK(lounge_view->player_state->muted == true);
 
@@ -891,7 +891,7 @@ TEST_CASE("group: test sinks' other roles get the group's metadata, colours, tra
 TEST_CASE("group: the host sets a member's volume and mute directly, and the group's own, without a controller",
           "[hearth][group][websocket]") {
     namespace ss = iclforge::sendspin;
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_host_volume_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_group_host_volume_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     // The extension role (kitchen, paired) and player@v1 (lounge, approved
@@ -952,8 +952,8 @@ TEST_CASE("group: the host sets a member's volume and mute directly, and the gro
     // Reaches the sink itself, not just this read-back.
     const std::optional<ss::ClientView> kitchen_after_member_set = (*host)->client(kitchen_id);
     REQUIRE(kitchen_after_member_set.has_value());
-    REQUIRE(kitchen_after_member_set->ac3forge_state.has_value());
-    CHECK(kitchen_after_member_set->ac3forge_state->volume == 30);
+    REQUIRE(kitchen_after_member_set->iclforge_state.has_value());
+    CHECK(kitchen_after_member_set->iclforge_state->volume == 30);
 
     // A member's mute is direct too.
     group->set_member_muted(lounge_id, true);
@@ -979,11 +979,11 @@ TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at 
     // members or all extension-role members, never both - this is the one
     // that proves server_host.hpp's own Programme comment for real ("a
     // member playing player@v1 gets the programme's PCM... and a member
-    // playing _ac3forge_player@v1 gets the coded stream's bursts, all on
+    // playing _iclforge_player@v1 gets the coded stream's bursts, all on
     // one timeline"), ahead of Player growing a network-group output seam
     // that will need to feed both at once (issue #874's own follow-up).
     namespace ss = iclforge::sendspin;
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_mixed_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_group_mixed_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const std::unique_ptr<testsink::Sink> kitchen = start_sink(scratch / "kitchen", "Kitchen", m::Codec::kPcm, log, false);
@@ -1013,7 +1013,7 @@ TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at 
 
     // The burst feed: a real E-AC-3 stream, packed exactly as the JOC test's
     // own helper does.
-    const std::vector<std::byte> fixture = read_bytes(AC3FORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
+    const std::vector<std::byte> fixture = read_bytes(ICLFORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
     const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream =
         iclforge::io::scan(fixture);
     REQUIRE(stream.has_value());
@@ -1036,7 +1036,7 @@ TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at 
     group->add(lounge->client_id());
     const m::AudioFormat pcm_format{.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 48000, .bit_depth = 16};
     REQUIRE(group->start({.pcm = pcm_format,
-                          .bursts = ss::ac3forge::StreamStart{.data_type = ss::ac3forge::DataType::kEac3, .sample_rate = 48000},
+                          .bursts = ss::player::StreamStart{.data_type = ss::player::DataType::kEac3, .sample_rate = 48000},
                           .buffered = true}));
 
     std::size_t next_burst = 0;
@@ -1093,27 +1093,27 @@ TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at 
 }
 
 TEST_CASE("group: two paired test sinks play E-AC-3 JOC in step over the extension role",
-          "[hearth][group][websocket][ac3forge]") {
-    play_joc_programme(fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_joc_" + scratch_pid_suffix()), "7.1.4", 2);
+          "[hearth][group][websocket][iclforge]") {
+    play_joc_programme(fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_group_joc_" + scratch_pid_suffix()), "7.1.4", 2);
 }
 
 // A4's exit at its full length: ten minutes of the programme, rendered to four speakers to keep the
 // WAV files near half a gigabyte each. Run by name.
 TEST_CASE("group: ten minutes of E-AC-3 JOC in step on two test sinks", "[.][hearth-soak]") {
-    play_joc_programme(fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_soak_" + scratch_pid_suffix()), "2.0.2", 298);
+    play_joc_programme(fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_group_soak_" + scratch_pid_suffix()), "2.0.2", 298);
 }
 
 // D11 (planning/ac4.md): the Dolby Encoding Engine's 2.0 AC-4 stream at 48 kHz and frame_rate_index
-// 13, the rate the decoder on main decodes, sent to a paired test sink over _ac3forge_player@v1:
+// 13, the rate the decoder on main decodes, sent to a paired test sink over _iclforge_player@v1:
 // each frame in its own AC-4 data-burst, with the Pc and Pd iclforge::iec61937::Ac4BurstPacker
 // writes and the frame's 2 048 samples on the group's timeline. The sink's WAV must be the local
 // decode of the same frames rendered to its layout as its BurstOutput renders them, sample for
 // sample; what its decoder found must reach the host; and every burst's logged play time must put
 // the first frame at the same local time, within 1 ms.
 TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
-          "[hearth][group][websocket][ac3forge][ac4]") {
+          "[hearth][group][websocket][iclforge][ac4]") {
     const fs::path scratch =
-        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_ac4_" + scratch_pid_suffix());
+        fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_group_ac4_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     const std::string layout_text = "5.1";
     const std::optional<iclforge::render::OutputLayout> layout =
@@ -1121,7 +1121,7 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
     REQUIRE(layout.has_value());
 
     const std::vector<std::byte> file =
-        read_bytes(AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac4-stereo-64/dee.ac4");
+        read_bytes(ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac4-stereo-64/dee.ac4");
     const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(file);
     REQUIRE_FALSE(scanned.frames.empty());
     REQUIRE_FALSE(scanned.stopped_at.has_value());
@@ -1197,8 +1197,8 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
     REQUIRE(group->start(
         {.pcm = std::nullopt,
          .bursts =
-             iclforge::sendspin::ac3forge::StreamStart{
-                 .data_type = iclforge::sendspin::ac3forge::DataType::kAc4, .sample_rate = 48000},
+             iclforge::sendspin::player::StreamStart{
+                 .data_type = iclforge::sendspin::player::DataType::kAc4, .sample_rate = 48000},
          .buffered = true}));
     std::size_t next = 0;
     const auto deadline =
@@ -1222,11 +1222,11 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
         [](const auto& clients) {
             return clients.size() == 1 &&
                    std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
-                       const std::optional<iclforge::sendspin::ac3forge::State>& state =
-                           entry.second.ac3forge_state;
+                       const std::optional<iclforge::sendspin::player::State>& state =
+                           entry.second.iclforge_state;
                        return state && state->decoder &&
                               state->decoder->data_type ==
-                                  iclforge::sendspin::ac3forge::DataType::kAc4 &&
+                                  iclforge::sendspin::player::DataType::kAc4 &&
                               state->decoder->acmod == 2 && !state->decoder->lfe;
                    });
         },

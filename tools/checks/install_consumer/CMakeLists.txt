@@ -1,11 +1,11 @@
-# A standalone project, not part of ac3forge's own build: tools/checks/check_install_consumer.sh
+# A standalone project, not part of iclforge's own build: tools/checks/check_install_consumer.sh
 # configures it against an INSTALLED package (-DCMAKE_PREFIX_PATH=<prefix>), the way a downstream
 # project finds one. consumer.c's header comment says what it checks and why it needs to be
 # built this way.
 #
 # One consumer per C API target the package exports: iclforge::c_shared and iclforge::c_static
-# when it was installed with AC3FORGE_INSTALL_BOTH_LINKAGES=ON, one of them otherwise, plus the
-# bare iclforge::c that ac3forgeConfig.cmake defines only for a single-linkage package (the name
+# when it was installed with ICLFORGE_INSTALL_BOTH_LINKAGES=ON, one of them otherwise, plus the
+# bare iclforge::c that iclforgeConfig.cmake defines only for a single-linkage package (the name
 # docs/library/c-api.md tells a consumer to link). Every one is built, linked and run.
 #
 # CXX is enabled beside C for the static target's sake. A static C API library is made of C++
@@ -21,15 +21,15 @@
 # and iclforge::ac4dec_static, or the bare iclforge::ac4dec of a single-linkage package. consumer_ac4.cpp
 # decodes a committed stream through the installed inspector and decoder. And one per AC-4 encoder
 # target: consumer_ac4enc.cpp encodes a tone through the installed encoder and reads the stream
-# back with the inspector. A package built with AC3FORGE_BUILD_AC4=OFF has neither;
-# check_install_consumer.sh passes AC3FORGE_EXPECT_AC4 from the tree's own cache, so that a package
+# back with the inspector. A package built with ICLFORGE_BUILD_AC4=OFF has neither;
+# check_install_consumer.sh passes ICLFORGE_EXPECT_AC4 from the tree's own cache, so that a package
 # that should have them and does not fails here.
 cmake_minimum_required(VERSION 3.28)
-project(ac3forge_install_consumer LANGUAGES C CXX)
+project(iclforge_install_consumer LANGUAGES C CXX)
 
 enable_testing()
 
-find_package(ac3forge CONFIG REQUIRED)
+find_package(iclforge CONFIG REQUIRED)
 
 set(consumers)
 foreach(target IN ITEMS iclforge::c_shared iclforge::c_static iclforge::c)
@@ -54,11 +54,11 @@ endforeach()
 if(NOT consumers)
     message(FATAL_ERROR
         "the installed package exports none of iclforge::c_shared, iclforge::c_static or "
-        "iclforge::c - was it configured with AC3FORGE_BUILD_CAPI=OFF?")
+        "iclforge::c - was it configured with ICLFORGE_BUILD_CAPI=OFF?")
 endif()
 message(STATUS "C API consumers of the installed package, each linked and run: ${consumers}")
 
-option(AC3FORGE_EXPECT_AC4 "The package was built with AC3FORGE_BUILD_AC4=ON" OFF)
+option(ICLFORGE_EXPECT_AC4 "The package was built with ICLFORGE_BUILD_AC4=ON" OFF)
 cmake_path(ABSOLUTE_PATH CMAKE_CURRENT_SOURCE_DIR NORMALIZE OUTPUT_VARIABLE here)
 cmake_path(APPEND here .. .. .. tests golden external-baseline ac4-51-film-96 dee.ac4
     OUTPUT_VARIABLE ac4_stream)
@@ -80,9 +80,9 @@ foreach(target IN ITEMS iclforge::ac4dec_shared iclforge::ac4dec_static iclforge
     list(APPEND ac4_consumers ${target})
 endforeach()
 
-if(AC3FORGE_EXPECT_AC4 AND NOT ac4_consumers)
+if(ICLFORGE_EXPECT_AC4 AND NOT ac4_consumers)
     message(FATAL_ERROR
-        "the package was built with AC3FORGE_BUILD_AC4=ON and exports none of "
+        "the package was built with ICLFORGE_BUILD_AC4=ON and exports none of "
         "iclforge::ac4dec_shared, iclforge::ac4dec_static or iclforge::ac4dec - see cmake/InstallLibrary.cmake")
 endif()
 if(ac4_consumers)
@@ -105,9 +105,9 @@ foreach(target IN ITEMS iclforge::ac4enc_shared iclforge::ac4enc_static iclforge
     list(APPEND ac4enc_consumers ${target})
 endforeach()
 
-if(AC3FORGE_EXPECT_AC4 AND NOT ac4enc_consumers)
+if(ICLFORGE_EXPECT_AC4 AND NOT ac4enc_consumers)
     message(FATAL_ERROR
-        "the package was built with AC3FORGE_BUILD_AC4=ON and exports none of "
+        "the package was built with ICLFORGE_BUILD_AC4=ON and exports none of "
         "iclforge::ac4enc_shared, iclforge::ac4enc_static or iclforge::ac4enc - see cmake/InstallLibrary.cmake")
 endif()
 if(ac4enc_consumers)

@@ -28,7 +28,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir comment for why the
 // TEST_CASE below folds this into its scratch leaf, on top of
-// AC3FORGE_TEST_SCRATCH_DIR's build-tree rooting.
+// ICLFORGE_TEST_SCRATCH_DIR's build-tree rooting.
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 std::span<const std::byte> as_bytes(std::string_view s) {
@@ -120,18 +120,18 @@ TEST_CASE("HMAC-SHA-256 matches RFC 4231 test vectors", "[signing][hmac]") {
 // --- Runtime key loading ----------------------------------------------------
 TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
     namespace fs = std::filesystem;
-    // AC3FORGE_TEST_SCRATCH_DIR rather than fs::temp_directory_path(), for the
+    // ICLFORGE_TEST_SCRATCH_DIR rather than fs::temp_directory_path(), for the
     // reason tests/cli/test_cli.cpp's own scratch_dir explains - the key
     // filenames below are fixed, so a machine-global directory is one two
     // concurrently running ac3tests binaries would collide in. The leaf also
-    // carries this process's own PID, since AC3FORGE_TEST_SCRATCH_DIR's
+    // carries this process's own PID, since ICLFORGE_TEST_SCRATCH_DIR's
     // build-tree rooting alone does not separate two such binaries pointed at
     // the same build tree.
-    const fs::path dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("signing_" + scratch_pid_suffix());
+    const fs::path dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("signing_" + scratch_pid_suffix());
     fs::create_directories(dir);
 
     SECTION("base64 contents decode to the raw key, whitespace ignored") {
-        const fs::path p = dir / "ac3forge_test_key_b64.txt";
+        const fs::path p = dir / "iclforge_test_key_b64.txt";
         {
             std::ofstream out{p};
             out << "AAECA/8=\n";  // base64 of {00,01,02,03,ff}
@@ -145,7 +145,7 @@ TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
     }
 
     SECTION("non-base64 contents are taken as raw bytes") {
-        const fs::path p = dir / "ac3forge_test_key_raw.bin";
+        const fs::path p = dir / "iclforge_test_key_raw.bin";
         {
             std::ofstream out{p, std::ios::binary};
             // 5 bytes: length not a multiple of 4 and '!'/0x01 aren't base64,
@@ -160,7 +160,7 @@ TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
     }
 
     SECTION("a C-array hex export decodes to the raw key") {
-        const fs::path p = dir / "ac3forge_test_key_hexarray.txt";
+        const fs::path p = dir / "iclforge_test_key_hexarray.txt";
         {
             std::ofstream out{p};
             out << "0x00, 0x01, 0x02, 0x03, 0xff\n";
@@ -174,7 +174,7 @@ TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
     }
 
     SECTION("a botched hex export is rejected rather than signed with the wrong bytes") {
-        const fs::path p = dir / "ac3forge_test_key_botched.txt";
+        const fs::path p = dir / "iclforge_test_key_botched.txt";
         {
             // Missing every "0x" prefix - exactly the shape a hand-edited or
             // half-converted export can end up in. All-hex-digit-and-comma,
@@ -190,13 +190,13 @@ TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
 
     SECTION("a missing path is an error, not an absent key") {
         const auto key = iclforge::signing::load_signing_key(
-            (dir / "definitely_not_here_ac3forge.key").string());
+            (dir / "definitely_not_here_iclforge.key").string());
         REQUIRE_FALSE(key.has_value());
         CHECK(key.error().kind == iclforge::signing::KeyErrorKind::kUnreadable);
     }
 
     SECTION("an empty file resolves but yields no key") {
-        const fs::path p = dir / "ac3forge_test_key_empty.txt";
+        const fs::path p = dir / "iclforge_test_key_empty.txt";
         { std::ofstream out{p}; }
         const auto key = iclforge::signing::load_signing_key(p.string());
         REQUIRE_FALSE(key.has_value());

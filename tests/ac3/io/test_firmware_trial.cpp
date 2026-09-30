@@ -1,15 +1,15 @@
 // When an image an update wrote accepts itself or gives up, tested on the
-// host - see ac3forge/firmware_trial.hpp's own header comment.
+// host - see iclforge/firmware_trial.hpp's own header comment.
 
 #include <cstdint>
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/firmware_trial.hpp"
+#include "iclforge/firmware_trial.hpp"
 
-using ac3forge::Trial;
-using ac3forge::TrialPolicy;
-using ac3forge::TrialStep;
+using iclforge::Trial;
+using iclforge::TrialPolicy;
+using iclforge::TrialStep;
 
 namespace {
 

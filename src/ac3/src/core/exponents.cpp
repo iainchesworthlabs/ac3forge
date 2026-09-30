@@ -103,7 +103,7 @@ EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy
 
 void encode_exponents_into(std::span<const std::uint8_t> raw, ExpStrategy strategy,
                            EncodedExponents& out) {
-    AC3_ZONE_SCOPED_N("encode_exponents");
+    ICLFORGE_ZONE_SCOPED_N("encode_exponents");
     const int endmant = static_cast<int>(raw.size());
     const int group_size = exponent_group_size(strategy);
     const int group_count = exponent_group_count(strategy, endmant);

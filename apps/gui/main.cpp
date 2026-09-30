@@ -79,11 +79,11 @@ bool save_window(QQmlApplicationEngine& engine, const QString& path) {
 
 // Ties Tracy's frame view to real Qt Quick presentation instead of leaving it
 // empty - see apps/crucible/ui/main.cpp's identical helper for why this is a
-// NAMED ("UI") frame mark rather than the bare AC3_FRAME_MARK(), and why the
+// NAMED ("UI") frame mark rather than the bare ICLFORGE_FRAME_MARK(), and why the
 // connection is direct rather than queued.
 void mark_frames_for_tracy(QQuickWindow* window) {
     QObject::connect(window, &QQuickWindow::frameSwapped, window,
-                     [] { AC3_FRAME_MARK_NAMED("UI"); }, Qt::DirectConnection);
+                     [] { ICLFORGE_FRAME_MARK_NAMED("UI"); }, Qt::DirectConnection);
 }
 
 // What the meters did while a run was in flight, read from the properties QML

@@ -94,6 +94,15 @@ class Compare(unittest.TestCase):
         self.assertEqual(changed, 0)
         self.assertIn("libiclforge_mp4.so (2) <- 1 library (2: mp4 2): -0 +0", text)
 
+    def test_the_c_apis_brand_is_no_change_once_the_old_names_are_rewritten(self) -> None:
+        self.write(self.old, "libiclforge_c.so", ["ac3forge_encoder_create", "ac3forge_version"])
+        self.write(self.new, "libiclforge_c.so", ["iclforge_encoder_create", "iclforge_version"])
+        changed, text = self.run_identity({"names", "idents"})
+        self.assertEqual(changed, 0)
+        self.assertIn("libiclforge_c.so (2) <- 1 library (2: c 2): -0 +0", text)
+        changed, _ = self.run_identity({"names"})
+        self.assertEqual(changed, 1)
+
     def test_the_same_rename_is_listed_without_the_rewrite(self) -> None:
         self.write(self.old, "libiclforge_mp4.so", ["mp4::write()"])
         self.write(self.new, "libiclforge_mp4.so", ["iclforge::mp4::write()"])

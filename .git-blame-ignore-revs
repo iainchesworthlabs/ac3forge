@@ -12,3 +12,13 @@ dab28bcf816ceed802a2ec058d825ac96e4bf2b6  # S2: the build of the split libraries
 # after it (the hand-written commit that follows them is not listed)
 37c28148700fe0a1bf5dd8c53f411a5bc3920971  # S3: namespace root ac3 to iclforge
 7859440a8c4daf856d10668905c47cd73e73d4cb  # S3: wrap the lines the namespace pass pushed past 100 columns
+
+# N1B stage S4, the brand: what each script gives on its parent (the commit that moves the directories is the one before
+# the include spellings; the tools commits and the hand-written one are not listed)
+b89703e8886a73ecd6bd0c0ae0c717908a630c1f  # S4: include spellings of the moved headers
+af6b96212eae0a22514aec67bd68c4a061854a41  # S4: paths in text follow the moved packages
+842afd8086fcabd4d21f3951c1d2403833c11783  # S4: sendspin::ac3forge becomes sendspin::player
+88cdd467c30c7c7f7669378f4dbd1b852bc494c1  # S4: the brand ac3forge becomes iclforge in every identifier, name and wire string
+6ccafc41e13cbe1596d537cda2886bf3bdc8329c  # S4: wrap the lines the identifier pass pushed past 100 columns
+101a36a4762da1b89182173fa3095f14db7a8033  # S4: cargo fmt puts the renamed use items in order
+86c053253d5ca404319ca62cbb567c7c5155c477  # S4: Cargo.lock lists the renamed crates in cargo's order

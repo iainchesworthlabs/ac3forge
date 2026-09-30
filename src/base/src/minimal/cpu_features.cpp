@@ -1,7 +1,7 @@
 #include "iclforge/base/detail/cpu_features.hpp"
 
 // ---------------------------------------------------------------------------
-// has_avx2() in the MINIMUM-FOOTPRINT DECODER profile (AC3FORGE_MINIMAL_DECODER,
+// has_avx2() in the MINIMUM-FOOTPRINT DECODER profile (ICLFORGE_MINIMAL_DECODER,
 // minimum-footprint decoder profile). Every ordinary build compiles ../cpu_features.cpp instead;
 // src/ac3/minimal.cmake picks this one, so no source file asks which profile
 // it is in with a preprocessor conditional (tools/checks/check_platform_macros.ps1's
@@ -10,7 +10,7 @@
 //
 // A separate translation unit rather than an `if constexpr` inside the shared
 // one, because the difference is not a branch - it is a DEPENDENCY. The shared
-// implementation reads AC3FORGE_SIMD_TIER and reports a bad value through
+// implementation reads ICLFORGE_SIMD_TIER and reports a bad value through
 // fmt, and reporting an abort reason through it as well; this profile targets
 // a Cortex-M3 with no environment to read, no host to print to, and a ROM
 // budget that would notice newlib's formatted-output machinery being linked in

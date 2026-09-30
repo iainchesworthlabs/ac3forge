@@ -37,7 +37,7 @@ TestCase {
                                              "Short 5.1.ac3");
         longEac3 = TestServices.stageFixture(repo + "tests/golden/external-baseline/eac3-music-stereo-96/dee.ec3",
                                              "Long stereo.ec3");
-        objectsEac3 = TestServices.stageFixture(repo + "esp-idf/ac3forge/examples/hearth_sink/www/objects-mdct.ec3",
+        objectsEac3 = TestServices.stageFixture(repo + "esp-idf/iclforge/examples/hearth_sink/www/objects-mdct.ec3",
                                                 "Objects.ec3");
         filmAc4 = TestServices.stageFixture(repo + "tests/golden/external-baseline/ac4-51-drc-ltrt-192/dee.ac4",
                                             "Film 5.1.ac4");
@@ -131,7 +131,7 @@ TestCase {
         const exported = JSON.parse(TestServices.readTextFile(path));
         compare(exported.codec, "eac3");
         compare(exported.playback.sample_rate_hz, 48000);
-        compare(exported.schema, "ac3forge.hearth.media/1");
+        compare(exported.schema, "iclforge.hearth.media/1");
     }
 
     // An E-AC-3 stream with object metadata: the Media page grows its

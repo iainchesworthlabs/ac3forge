@@ -104,7 +104,7 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
     // burst and places most of its transients in the frame AFTER the one that
     // signals them, which this decoder used to refuse outright.
     const std::string dir =
-        std::string{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} + "/eac3-transient-stereo-128";
+        std::string{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} + "/eac3-transient-stereo-128";
     const auto stream = read_bytes(dir + "/dee.ec3");
     const auto source = iclforge::io::read_wav(dir + "/source.wav");
     REQUIRE(source.has_value());

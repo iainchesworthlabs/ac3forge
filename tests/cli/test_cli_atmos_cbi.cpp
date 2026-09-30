@@ -34,7 +34,7 @@ namespace fs = std::filesystem;
 namespace {
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli_atmos_cbi";
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / "cli_atmos_cbi";
     fs::create_directories(dir);
     return dir;
 }

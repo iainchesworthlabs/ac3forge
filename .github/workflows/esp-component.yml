@@ -1,4 +1,4 @@
-# ac3forge as an ESP-IDF component (esp-idf/ac3forge/) - packing it, and one day
+# iclforge as an ESP-IDF component (esp-idf/iclforge/) - packing it, and one day
 # publishing it to the ESP Component Registry.
 #
 # The same shape as npm.yml: a validate job that runs continuously, and a
@@ -83,7 +83,7 @@ jobs:
       # The manifest's own schema. Cheap, and it fails on things the pack below
       # would happily accept - a bad SPDX licence string, an unknown key.
       - name: Lint the manifest
-        working-directory: esp-idf/ac3forge
+        working-directory: esp-idf/iclforge
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
@@ -104,7 +104,7 @@ jobs:
 
       # The archive the AC-4 decoder needs, and one part built against it: packed with
       # --with-ac4, which also stages src/ac4, src/ac4core and src/ac4dec, and built for the
-      # ESP32-P4 with CONFIG_AC3FORGE_AC4 on and an application that constructs an AC-4
+      # ESP32-P4 with CONFIG_ICLFORGE_AC4 on and an application that constructs an AC-4
       # decoder and calls it (planning/ac4.md, D14b). The archive above is what it always
       # was, without them; this asks that the flag does what it says. One part rather than
       # all four: the others are the step above's, and only the parts with a floating-point
@@ -122,7 +122,7 @@ jobs:
           path: dist/esp-component/*.tgz
           if-no-files-found: error
 
-  # The ESPHome external component (esphome/components/ac3forge/). Its own job
+  # The ESPHome external component (esphome/components/iclforge/). Its own job
   # rather than a step in the one above: it needs ESPHome from PyPI and nothing
   # from ESP-IDF, so it runs on a plain runner while the pack job sits in
   # Espressif's container.
@@ -133,7 +133,7 @@ jobs:
   # changed under us - which is the failure most likely to happen quietly,
   # since that signature is not part of any stability promise.
   #
-  # It does NOT compile the firmware. That would clone ac3forge at the
+  # It does NOT compile the firmware. That would clone iclforge at the
   # configured ref and build the whole IDF project - several minutes, a network
   # dependency on this repository's own default branch, and a result that says
   # nothing a PR can act on, because the ref it fetched is not the code under
@@ -167,7 +167,7 @@ jobs:
       # the git one the docs show - a git source would validate whatever is on
       # the default branch and pass regardless of what this PR changed.
       - name: Validate the component
-        run: esphome config esphome/tests/ac3forge-test.yaml
+        run: esphome config esphome/tests/iclforge-test.yaml
 
       # The schema's bounds are only worth having if they reject. A buffer
       # below one syncframe cannot ever assemble an access unit, so the
@@ -176,7 +176,7 @@ jobs:
       - name: Reject a buffer that cannot work
         run: |
           set -eu
-          sed 's/buffer_size: 16384/buffer_size: 512/' esphome/tests/ac3forge-test.yaml \
+          sed 's/buffer_size: 16384/buffer_size: 512/' esphome/tests/iclforge-test.yaml \
             > esphome/tests/too-small.yaml
           if esphome config esphome/tests/too-small.yaml > /dev/null 2>&1; then
             echo "::error title=ESPHome schema::buffer_size: 512 was accepted, but no access unit fits in it" >&2
@@ -186,7 +186,7 @@ jobs:
 
   # DELIBERATELY NOT ARMED, for the same reason npm.yml's publish job is not.
   #
-  # ac3forge has never been published to the ESP Component Registry. A namespace
+  # iclforge has never been published to the ESP Component Registry. A namespace
   # there is claimed by first upload and a published version cannot be replaced
   # - only yanked, which leaves the version number spent - so a v* tag must not
   # create one as a side effect of cutting a release. It also needs an
@@ -235,6 +235,6 @@ jobs:
           . "$IDF_PATH/export.sh"
           compote component upload \
             --namespace iainchesworthlabs \
-            --name ac3forge \
+            --name iclforge \
             --version "$VERSION" \
-            --archive "dist/esp-component/ac3forge_${VERSION}.tgz"
+            --archive "dist/esp-component/iclforge_${VERSION}.tgz"

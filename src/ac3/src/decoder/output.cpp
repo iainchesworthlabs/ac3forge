@@ -356,7 +356,7 @@ void fold_block(const FoldPlan& plan, const OutputConfig& config,
         float* const surround = surround_sum.data();
         sum(plan.surround, plan.surround_terms, surround);
         if (config.ltrt_phase_shift) {
-            AC3_ZONE_SCOPED_N("output_ltrt_shift");
+            ICLFORGE_ZONE_SCOPED_N("output_ltrt_shift");
             // Delay the direct path by the filter's own group delay, then
             // filter the surround sum, so the two arrive together. Both delay
             // lines carry across calls, which is what makes a stream decoded
@@ -650,7 +650,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
     const double dialnorm2_gain =
         normalising && dual_mono_ch2 ? meta::dialnorm_gain(*dialnorm2) : dialnorm_gain;
     if (dialnorm_gain != 1.0 || dialnorm2_gain != 1.0) {
-        AC3_ZONE_SCOPED_N("output_dialnorm");
+        ICLFORGE_ZONE_SCOPED_N("output_dialnorm");
         const auto gain = static_cast<Scalar>(dialnorm_gain);
         const auto gain2 = static_cast<Scalar>(dialnorm2_gain);
         for (std::size_t ch = 0; ch < channels.size(); ++ch) {
@@ -682,7 +682,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
     for (std::size_t offset = 0; offset < length; offset += kFoldBlock) {
         const std::size_t count = std::min(kFoldBlock, length - offset);
         {
-            AC3_ZONE_SCOPED_N("output_fold");
+            ICLFORGE_ZONE_SCOPED_N("output_fold");
             fold_block(plan, config_, channels, offset, count, out_left_.data(),
                        plan.stereo ? out_right_.data() : nullptr, surround_sum_,
                        {shift_history_, direct_history_, delay_scratch_});
@@ -699,7 +699,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
         }
     }
     if (rf) {
-        AC3_ZONE_SCOPED_N("output_rf_limiter");
+        ICLFORGE_ZONE_SCOPED_N("output_rf_limiter");
         limit_frame(config_, protection_gain_, peak, channels[0].first(length),
                     right_out ? channels[1].first(length) : std::span<float>{}, length);
     }
@@ -797,7 +797,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels,
     for (std::size_t offset = 0; offset < length; offset += kFoldBlock) {
         const std::size_t block = std::min(kFoldBlock, length - offset);
         {
-            AC3_ZONE_SCOPED_N("output_seat");
+            ICLFORGE_ZONE_SCOPED_N("output_seat");
             for (std::size_t seat = 0; seat < fold_scratch_.size(); ++seat) {
                 if (occupied[seat] || lent[seat]) {
                     std::fill_n(fold_scratch_[seat].data(), block, 0.0F);
@@ -816,7 +816,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels,
             }
         }
         if (dialnorm_gain != 1.0) {
-            AC3_ZONE_SCOPED_N("output_dialnorm");
+            ICLFORGE_ZONE_SCOPED_N("output_dialnorm");
             const auto gain = static_cast<Scalar>(dialnorm_gain);
             for (const auto& seat : fold_views_) {
                 scale(seat.data(), gain, block);
@@ -826,7 +826,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels,
         float* const right = right_out ? channels[1].data() + offset
                                        : (plan.stereo ? out_right_.data() : nullptr);
         {
-            AC3_ZONE_SCOPED_N("output_fold");
+            ICLFORGE_ZONE_SCOPED_N("output_fold");
             fold_block(plan, config_, fold_views_, 0, block, left, right, surround_sum_,
                        {shift_history_, direct_history_, delay_scratch_});
         }
@@ -835,7 +835,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels,
         }
     }
     if (rf) {
-        AC3_ZONE_SCOPED_N("output_rf_limiter");
+        ICLFORGE_ZONE_SCOPED_N("output_rf_limiter");
         limit_frame(config_, protection_gain_, peak, channels[0].first(length),
                     right_out ? channels[1].first(length) : std::span<float>{}, length);
     }

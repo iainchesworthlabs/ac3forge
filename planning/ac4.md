@@ -714,7 +714,7 @@ decoder into the component through `AC3FORGE_MINIMAL_AC4`, and the encoder never
 added where the peer libraries are: its own `CMakeLists.txt`, the root option and subdirectory,
 `tests/CMakeLists.txt`, an instrumented fuzz target, an ABI allowlist, the coverage table,
 `docs/building.md`, `docs/library/` and `docs/verification.md`. D8 and E7 installed and exported
-them in `cmake/InstallLibrary.cmake` and `cmake/ac3forgeConfig.cmake.in`, since an exported target
+them in `cmake/InstallLibrary.cmake` and `cmake/iclforgeConfig.cmake.in`, since an exported target
 cannot link one that is not exported.
 
 ### What the inspector grows

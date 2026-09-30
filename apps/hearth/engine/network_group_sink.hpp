@@ -16,7 +16,7 @@
 
 // Forward-declared, not included: player.hpp includes this header
 // unconditionally (PlayerOutputs::group), and player.cpp/player.hpp must
-// stay buildable without src/sendspin at all (AC3FORGE_SENDSPIN_CORE_ONLY,
+// stay buildable without src/sendspin at all (ICLFORGE_SENDSPIN_CORE_ONLY,
 // fuzz/run.sh) - the same reason output_decision.hpp carries a group by
 // plain std::string rather than a sendspin type, and pcm_sink.hpp/
 // bitstream_sink.hpp name no backend. GroupResolver only names
@@ -34,7 +34,7 @@ class Group;
 // A group needs BOTH forms from the one decode at once: rendered PCM for a
 // member playing player@v1 (iclforge::sendspin::Group::push()), and the item's own
 // coded units, packed into IEC 61937 bursts, for a member playing
-// _ac3forge_player@v1 (Group::push_burst()) - a mixed group takes both from
+// _iclforge_player@v1 (Group::push_burst()) - a mixed group takes both from
 // the same session together (tests/hearth/test_group.cpp's own proof).
 // Neither PcmSink nor BitstreamSink fits alone - pcm_sink.hpp's own comment
 // says why: "a network group takes a stream... a seam of its own" - so this
@@ -58,7 +58,7 @@ public:
         // What the renderer produces, for a member playing player@v1.
         render::OutputLayout layout{};
         // The item's own coded form, for a member playing
-        // _ac3forge_player@v1; unset when the item carries nothing IEC 61937
+        // _iclforge_player@v1; unset when the item carries nothing IEC 61937
         // can wrap - submit_burst() is then never called, and the group
         // plays to player@v1 members only.
         std::optional<audio::BitstreamFormat> stream{};

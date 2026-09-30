@@ -94,8 +94,8 @@ std::string_view describe_source(KeySource source) {
     switch (source) {
         case KeySource::kNone: return "none";
         case KeySource::kFile: return "a file chosen in Settings (path withheld)";
-        case KeySource::kEnvironmentFile: return "AC3FORGE_SIGNING_KEY_FILE (path withheld)";
-        case KeySource::kEnvironmentInline: return "AC3FORGE_SIGNING_KEY (value withheld)";
+        case KeySource::kEnvironmentFile: return "ICLFORGE_SIGNING_KEY_FILE (path withheld)";
+        case KeySource::kEnvironmentInline: return "ICLFORGE_SIGNING_KEY (value withheld)";
     }
     return "none";
 }
@@ -213,8 +213,8 @@ std::string render_report(const ReportFacts& facts, const EngineStatus& engine, 
     line("# signing");
     row("objects", facts.signing.objects_enabled ? "on" : "off");
     row("key source", describe_source(facts.signing.source));
-    row("AC3FORGE_SIGNING_KEY_FILE", facts.signing.env_key_file_set ? "set" : "not set");
-    row("AC3FORGE_SIGNING_KEY", facts.signing.env_key_inline_set ? "set" : "not set");
+    row("ICLFORGE_SIGNING_KEY_FILE", facts.signing.env_key_file_set ? "set" : "not set");
+    row("ICLFORGE_SIGNING_KEY", facts.signing.env_key_inline_set ? "set" : "not set");
 
     // Named fields only: EngineStatus::signing is never read here.
     line("");

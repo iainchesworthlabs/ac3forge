@@ -130,7 +130,7 @@ void MantissaBlockWriter::reset() {
 
 std::size_t mantissa_bits_per_block(
     std::span<const std::span<const std::uint8_t>> channel_baps) {
-    AC3_ZONE_SCOPED_N("mantissa_bits_per_block");
+    ICLFORGE_ZONE_SCOPED_N("mantissa_bits_per_block");
     std::size_t direct = 0;
     std::size_t count1 = 0;
     std::size_t count2 = 0;

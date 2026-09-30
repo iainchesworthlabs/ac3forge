@@ -102,7 +102,7 @@ both cases: the bare `ac3::signing` alias in-tree, and explicit `ac3::signing_st
 `ac3::signing_shared` from an installed package.
 
 **vcpkg.** A port lives in this repo at
-[`packaging/vcpkg-port/ac3forge/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/vcpkg-port/ac3forge) and is pending
+[`packaging/vcpkg-port/iclforge/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/vcpkg-port/iclforge) and is pending
 submission to the curated `microsoft/vcpkg` registry (see
 [docs/releasing.md](../releasing.md#vcpkg-port)) — until that lands, point vcpkg at it directly
 with `--overlay-ports`/`VCPKG_OVERLAY_PORTS` (works from any clone of this repo, no waiting on

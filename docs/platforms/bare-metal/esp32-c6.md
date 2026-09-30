@@ -3,7 +3,7 @@
 The minimum-footprint decoder on an Espressif ESP32-C6: one 160 MHz RISC-V core (RV32IMAC) with
 no floating-point unit, 512 KB of SRAM shared with WiFi 6, Bluetooth LE and 802.15.4, and no
 external PSRAM, which ESP-IDF does not support on this part. It decodes in the fixed-point tier,
-as the [ESP32-C3](esp32-c3.md) does, from the same `esp-idf/ac3forge/` component, whose manifest
+as the [ESP32-C3](esp32-c3.md) does, from the same `esp-idf/iclforge/` component, whose manifest
 lists `esp32c6` beside `esp32s3`, `esp32c3` and `esp32p4`.
 
 Every figure on this page was measured on a board on 2026-09-15, with no network and again with
@@ -49,7 +49,7 @@ In the float tier, with the network up, mono is the only row in real time (0.52x
 ### 2/0, 5.1 and 7.1 from one generator
 
 The probe has no 7.1 fixture, so the stream set's three layout streams,
-`esp-idf/ac3forge/examples/hearth_sink/www/layout-20.ec3`, `layout-51.ec3` and `layout-71.ec3`,
+`esp-idf/iclforge/examples/hearth_sink/www/layout-20.ec3`, `layout-51.ec3` and `layout-71.ec3`,
 were decoded on the same board by a copy of the probe with them added as rows. They come from one
 generator, use no Annex E tools and hold 32 access units each; 2/0 and 5.1 are 192 kbit/s, and
 7.1, a 5.1 substream and a dependent one, is 288 kbit/s. That copy measured time and heap, and did
@@ -271,7 +271,7 @@ not part of this measurement.
 
 Getting samples onto those slots costs time here too. The decoder hands a sink planar `float`
 blocks, and the component's interleaves
-(`esp-idf/ac3forge/include/ac3forge/interleave.hpp`) turn each sample into a slot. Scaling,
+(`esp-idf/iclforge/include/iclforge/interleave.hpp`) turn each sample into a slot. Scaling,
 clipping and converting one in `float` is four calls into the software floating-point routines
 on a part with no FPU, so the component computes the same integers from the sample's IEEE-754
 bits wherever `CONFIG_SOC_CPU_HAS_FPU` is unset, which is this part. Both forms are timed below.
@@ -369,7 +369,7 @@ with socket.create_connection((host, port)) as s:
 
 Playback (I2S, a DMA queue, underruns) and a second board are outside this probe's own scope, but
 both are covered on the part now: `hearth_sink`'s Sendspin player runs on this board, and its
-[README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)
+[README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6)
 has the clock, memory and two-board figures.
 
 ## Where to go next

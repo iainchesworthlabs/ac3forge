@@ -162,7 +162,7 @@ class ICLFORGE_AC3_EXPORT PerceptualModel {
     // per channel, in block order.
     void analyse(int channel, std::span<const double> coefficients, int end, BlockAnalysis& out);
 
-    // The float form, for the float encode path (AC3FORGE_ENCODE_SCALAR): the
+    // The float form, for the float encode path (ICLFORGE_ENCODE_SCALAR): the
     // same analysis from float coefficients. The model's own arithmetic is
     // double in either form; only the coefficients arrive narrower.
     void analyse(int channel, std::span<const float> coefficients, int end, BlockAnalysis& out);

@@ -1,0 +1,109 @@
+menu "iclforge"
+
+# THE SENDSPIN PLAYER - include/iclforge/sendspin_host.hpp and
+# include/iclforge/burst_player.hpp, over src/sendspin's player half
+# (planning/hearth-reference-player.md, B3). Off by default: a firmware that
+# only decodes from its own storage carries none of it.
+config ICLFORGE_SENDSPIN
+    bool "Sendspin player"
+    default n
+    select HTTPD_WS_SUPPORT
+    select HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT
+    select MBEDTLS_CHACHA20_C
+    select MBEDTLS_CHACHAPOLY_C
+    help
+        Builds src/sendspin's player half into the component with the parts a
+        board adds to it: the WebSocket a Sendspin server connects to, on
+        esp_http_server; pairing records in NVS; and a player that decodes
+        timestamped bursts and PCM and plays each sample at the time the
+        server gave it.
+
+        Selects what that needs from ESP-IDF: WebSocket support in
+        esp_http_server, with the callback it makes once a connection has
+        been upgraded (a player speaks first, with client/init), and
+        ChaCha20-Poly1305 in mbedTLS. mbedTLS's PSA Crypto API carries the
+        rest: X25519, SHA-256, SHA-512 and AES-256-GCM are on in ESP-IDF's
+        default configuration.
+
+# THE AC-4 DECODER - src/ac4, src/ac4core and src/ac4dec, and the player's
+# reading of AC-4 streams (src/ac4_bridge.hpp; planning/ac4.md, D14b). Off by
+# default: a firmware that plays AC-3 and E-AC-3 carries none of it, and its
+# build is what it was without this option.
+config ICLFORGE_AC4
+    bool "AC-4 decoder"
+    depends on SOC_CPU_HAS_FPU
+    default n
+    help
+        Builds the AC-4 inspector, core and decoder (ETSI TS 103 190-1 and
+        -2) into the component, in single precision, and lets the player
+        decode an AC-4 stream: raw sync frames, from any source the player
+        takes, told from AC-3 and E-AC-3 by their sync word. The encoder is
+        never built.
+
+        Only parts with a floating-point unit offer it: the fixed-point
+        tier of the AC-4 decoder is a later phase of planning/ac4.md.
+
+        The decoder holds about half a megabyte at 2.0 and two at 5.1.4,
+        which is more than the ESP32-S3's internal RAM at any layout and
+        more than the ESP32-P4's from 5.1 up: a build that turns it on
+        hands its heap to PSRAM (CONFIG_SPIRAM_USE_MALLOC). Its decode task
+        uses 20 to 24 KB of stack, and examples/hearth_sink/sdkconfig.ac4
+        gives it 40 KB. docs/platforms/bare-metal/esp32-p4.md has what a
+        stream of each kind held on an ESP32-P4, and how fast it decoded.
+        Only the ESP32-P4 has run it; the ESP32-S3, which also offers it,
+        has not (planning/ac4.md, D14c).
+
+# An int rather than a choice, so it reaches C++ as a plain constant: the
+# component reads no configuration through the preprocessor.
+config ICLFORGE_SENDSPIN_SUITE
+    int "Noise suite the player asks for: ChaCha20-Poly1305 (0) or AES-256-GCM (1)"
+    depends on ICLFORGE_SENDSPIN
+    default 0
+    range 0 1
+    help
+        A client names one suite in client/init and a server supports both
+        (planning/hearth-sendspin-extension.md, row E3).
+        25519_ChaChaPoly_SHA256 is software on every part;
+        25519_AESGCM_SHA256 uses the part's AES accelerator where it has one.
+
+# UPDATES OVER THE NETWORK - include/iclforge/firmware.hpp and
+# planning/esp32-ota.md. Ints rather than bools, so they reach C++ as plain
+# constants.
+config ICLFORGE_FIRMWARE_TRIAL_HOLD_S
+    int "Seconds an updated image has to stay healthy before it is accepted"
+    default 30
+    range 1 3600
+    help
+        An image an update wrote boots on trial. It is accepted once every
+        condition its owner names (for a Hearth sink: a network address, the
+        HTTP server and the Sendspin player) has held this long without a
+        break.
+
+config ICLFORGE_FIRMWARE_TRIAL_DEADLINE_S
+    int "Seconds after boot an updated image has to get there"
+    default 300
+    range 10 3600
+    help
+        An image not accepted this long after it booted gives up, and the
+        bootloader boots the image before it. So does any reset before then:
+        a panic, a watchdog, a power cut.
+
+config ICLFORGE_FIRMWARE_FLASH_MODE_IDLE_S
+    int "Seconds in flash mode with no upload before the board restarts"
+    default 600
+    range 30 86400
+
+# DIAGNOSTICS WITHOUT A CABLE - include/iclforge/log.hpp and
+# planning/esp32-ota.md (O4).
+config ICLFORGE_LOG_BYTES
+    int "Bytes of recent console output kept for GET /log"
+    default 16384 if SPIRAM
+    default 2048
+    range 0 262144
+    help
+        A ring of the console's last bytes, which GET /log sends. It comes
+        from PSRAM where the board has it, and from internal RAM otherwise,
+        which is why a board without PSRAM keeps less. 0 keeps none, and
+        GET /log answers 404.
+
+endmenu

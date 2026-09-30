@@ -6,7 +6,7 @@
 # hidden preset in CMakePresets.json against "core": it does not inherit
 # "core" at all, so vcpkg.cmake is never the primary toolchain here). That is
 # fine because the manifest's base dependencies are catch2, which is
-# tests-only and which this preset turns off (AC3FORGE_BUILD_TESTS=OFF), and
+# tests-only and which this preset turns off (ICLFORGE_BUILD_TESTS=OFF), and
 # {fmt}, which iclforge::ac3 compiles into the modules and cmake/Fmt.cmake builds
 # from source with FetchContent when no local copy is found - so there is
 # nothing for vcpkg to supply a WASM build of, and going through vcpkg's own

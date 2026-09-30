@@ -56,7 +56,7 @@ test('a paired server playing bursts, with a level for each output', async ({ pa
     await show(page, stub, playingSendspin());
     await expect(page.locator('#ss-note')).toBeHidden();
     await expect(page.locator('#ss-server')).toHaveText('Hearth on the desk (specification)');
-    await expect(page.locator('#ss-link')).toHaveText('Paired, encrypted, _ac3forge_player@v1');
+    await expect(page.locator('#ss-link')).toHaveText('Paired, encrypted, _iclforge_player@v1');
     await expect(page.locator('#ss-clock')).toHaveText('In step with the server, within 0.3 ms');
     await expect(page.locator('#ss-playing')).toHaveText('Bursts, decoded here, 1,875 chunks');
     await expect(page.locator('#ss-timing')).toHaveText('0.0 ms early, 0.2 ms at worst');

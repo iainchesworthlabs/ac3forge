@@ -35,7 +35,7 @@ namespace {
     return *intact ? "checked intact" : "does not check out";
 }
 
-[[nodiscard]] std::string slot_text(const ac3forge::FirmwareSlot& slot) {
+[[nodiscard]] std::string slot_text(const iclforge::FirmwareSlot& slot) {
     if (slot.state == "empty") {
         return fmt::format("{} · empty", slot.label);
     }
@@ -54,12 +54,12 @@ namespace {
 
 // Which slot's image wrote a core dump, by the start of the ELF SHA-256 the
 // dump keeps (ota.py's coredump_source).
-[[nodiscard]] std::string coredump_source(const ac3forge::FirmwareCoredump& dump,
-                                          const ac3forge::FirmwareStatus& firmware) {
+[[nodiscard]] std::string coredump_source(const iclforge::FirmwareCoredump& dump,
+                                          const iclforge::FirmwareStatus& firmware) {
     if (dump.elf_sha256.empty()) {
         return "an image the dump does not name";
     }
-    for (const std::optional<ac3forge::FirmwareSlot>* held : {&firmware.running, &firmware.other}) {
+    for (const std::optional<iclforge::FirmwareSlot>* held : {&firmware.running, &firmware.other}) {
         if (*held && (*held)->elf_sha256.starts_with(dump.elf_sha256)) {
             return fmt::format("{} in {}", (*held)->version, (*held)->label);
         }
@@ -67,8 +67,8 @@ namespace {
     return fmt::format("an image neither slot holds now (ELF SHA-256 {}...)", dump.elf_sha256);
 }
 
-[[nodiscard]] std::string crash_text(const ac3forge::FirmwareCoredump& dump,
-                                     const ac3forge::FirmwareStatus& firmware) {
+[[nodiscard]] std::string crash_text(const iclforge::FirmwareCoredump& dump,
+                                     const iclforge::FirmwareStatus& firmware) {
     std::string text = fmt::format("{} bytes", grouped_number(dump.bytes));
     if (!dump.intact) {
         text += ", which do not check out";
@@ -141,7 +141,7 @@ FirmwarePanel to_firmware_panel(const SinkFirmware::Snapshot& snapshot, std::str
     if (!snapshot.firmware) {
         return panel;
     }
-    const ac3forge::FirmwareStatus& firmware = *snapshot.firmware;
+    const iclforge::FirmwareStatus& firmware = *snapshot.firmware;
     panel.reported = true;
     if (firmware.other && firmware.other->state != "empty") {
         panel.other_version = firmware.other->version;
@@ -174,7 +174,7 @@ FirmwarePanel to_firmware_panel(const SinkFirmware::Snapshot& snapshot, std::str
                                         grouped_number(firmware.upload->total));
     }
     if (firmware.last_update) {
-        const ac3forge::FirmwareLastUpdate& last = *firmware.last_update;
+        const iclforge::FirmwareLastUpdate& last = *firmware.last_update;
         panel.last_update_text =
             fmt::format("{}: {}", last.version.empty() ? std::string("(no version)") : last.version, last.result);
         if (!last.reason.empty()) {
@@ -199,7 +199,7 @@ FirmwarePanel to_firmware_panel(const SinkFirmware::Snapshot& snapshot, std::str
 FirmwareCandidate to_candidate(const FirmwareFile& file, const SinkFirmware::Snapshot& snapshot) {
     FirmwareCandidate candidate;
     candidate.version = file.head.version;
-    const std::string chip = ac3forge::detail::chip_name(file.head.chip_id);
+    const std::string chip = iclforge::detail::chip_name(file.head.chip_id);
     candidate.text = fmt::format("{} {}, for {} {}, {} bytes",
                                  file.head.project.empty() ? std::string("an unnamed project") : file.head.project,
                                  file.head.version, chip.starts_with("ESP") ? "an" : "a", chip,

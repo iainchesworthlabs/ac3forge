@@ -622,7 +622,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
     };
 
     for (int block = 0; block < nblocks; ++block) {
-        AC3_ZONE_SCOPED_N("joc_block");
+        ICLFORGE_ZONE_SCOPED_N("joc_block");
         // --- analyze this block of the downmix, one MDCT per bed channel ---
         // Only block 0 ever reads negative indices (into the previous
         // frame's tail); every later block's window sits entirely inside
@@ -650,7 +650,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
         // four plus one ordinary call; mode=reference (fast_mdct false)
         // never batches, exactly as the object loop does not.
         int bed_ch = 0;
-        AC3_ZONE_BEGIN(analysis_zone, "joc_bed_analysis");
+        ICLFORGE_ZONE_BEGIN(analysis_zone, "joc_bed_analysis");
         while (bed_ch < channels) {
             if (fast_mdct && bed_ch + 4 <= channels) {
                 for (std::size_t lane = 0; lane < 4; ++lane) {
@@ -668,7 +668,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
             forward_512(windowed[0], bed_mdct[static_cast<std::size_t>(bed_ch)], fast_mdct);
             ++bed_ch;
         }
-        AC3_ZONE_END(analysis_zone);
+        ICLFORGE_ZONE_END(analysis_zone);
 
         // §6.6.5 counts in QMF timeslots, four to a 256-sample block. Taking
         // each block's LAST timeslot keeps the smooth single-data-point case
@@ -687,7 +687,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
         // runs on objects that actually have a spectrum to transform.
         std::array<int, kMaxObjects> present{};
         int n_present = 0;
-        AC3_ZONE_BEGIN(mix_zone, "joc_mix");
+        ICLFORGE_ZONE_BEGIN(mix_zone, "joc_mix");
         for (int object = 0; object < objects; ++object) {
             const auto shape = params.shape(object);
             if (!shape.present) {
@@ -771,7 +771,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
                 }
             }
         }
-        AC3_ZONE_END(mix_zone);
+        ICLFORGE_ZONE_END(mix_zone);
 
         // --- synthesize, same overlap-add eac3_decoder.cpp's own channel
         // reconstruction uses --- four present objects at a time via
@@ -783,7 +783,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
         // (mode=reference) always takes the one-at-a-time branch below, at
         // every present object, exactly as it always has.
         int idx = 0;
-        AC3_ZONE_BEGIN(synthesis_zone, "joc_synthesis");
+        ICLFORGE_ZONE_BEGIN(synthesis_zone, "joc_synthesis");
         while (idx < n_present) {
             if (fast_imdct && idx + 4 <= n_present) {
                 const int o0 = present[static_cast<std::size_t>(idx)];
@@ -818,7 +818,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
                 history[static_cast<std::size_t>(n)] = xo[static_cast<std::size_t>(256 + n)];
             }
         }
-        AC3_ZONE_END(synthesis_zone);
+        ICLFORGE_ZONE_END(synthesis_zone);
     }
 
     for (int ch = 0; ch < channels; ++ch) {

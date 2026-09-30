@@ -72,8 +72,8 @@ function(iclforge_add_library name)
     endforeach()
     # $<BUILD_INTERFACE:...>: dev-only targets must not enter an installed export set.
     target_link_libraries(${objects} PRIVATE
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>"
+        "$<BUILD_INTERFACE:iclforge::warnings>"
+        "$<BUILD_INTERFACE:iclforge::coverage>"
         ${ARG_LINK_PRIVATE})
 
     set_target_properties(${objects} PROPERTIES
@@ -113,16 +113,16 @@ function(iclforge_add_library name)
         ICLFORGE_DEPENDS "${ARG_DEPENDS}")
 endfunction()
 
-# The install and export rules of a library iclforge_add_library() made. `AC3FORGE_INSTALL_BOTH_LINKAGES`
+# The install and export rules of a library iclforge_add_library() made. `ICLFORGE_INSTALL_BOTH_LINKAGES`
 # and BUILD_SHARED_LIBS choose which variants are installed, as cmake/InstallLibrary.cmake always did.
 # The export set is <name>Targets under the iclforge:: namespace, in the package directory
-# find_package(ac3forge) reads; the package config includes it when the file exists. The library also
-# gets a pkg-config file, iclforge_<name>.pc, that requires the .pc files of the libraries it links: a
+# find_package(iclforge) reads; the package config includes it when the file exists. The library also
+# gets a pkg-config file, iclforge-<name>.pc, that requires the .pc files of the libraries it links: a
 # static-only install has to name every archive on a link line, since nothing in an archive records
 # what it needs (cmake/PkgConfig.cmake).
 function(iclforge_install_library name)
     cmake_parse_arguments(PARSE_ARGV 1 ARG "" "DESCRIPTION" "")
-    if(AC3FORGE_INSTALL_BOTH_LINKAGES)
+    if(ICLFORGE_INSTALL_BOTH_LINKAGES)
         set(targets iclforge_${name}_objects iclforge_${name}_static iclforge_${name}_shared)
     elseif(BUILD_SHARED_LIBS)
         set(targets iclforge_${name}_objects iclforge_${name}_shared)
@@ -143,20 +143,20 @@ function(iclforge_install_library name)
     install(EXPORT ${name}Targets
         FILE ${name}Targets.cmake
         NAMESPACE iclforge::
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/iclforge"
         COMPONENT library)
 
-    ac3forge_pkgconfig_libname(pc_libname iclforge_${name}_shared iclforge_${name}
+    iclforge_pkgconfig_libname(pc_libname iclforge_${name}_shared iclforge_${name}
         iclforge_${name}_static "${targets}")
     get_target_property(deps iclforge_${name}_objects ICLFORGE_DEPENDS)
     set(pc_requires "")
     if(deps)
         foreach(dep IN LISTS deps)
-            list(APPEND pc_requires iclforge_${dep})
+            list(APPEND pc_requires iclforge-${dep})
         endforeach()
     endif()
-    ac3forge_install_pkgconfig(
-        NAME iclforge_${name}
+    iclforge_install_pkgconfig(
+        NAME iclforge-${name}
         DESCRIPTION "${ARG_DESCRIPTION}"
         LIBNAME "${pc_libname}"
         REQUIRES ${pc_requires})

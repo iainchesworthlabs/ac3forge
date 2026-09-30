@@ -1,7 +1,7 @@
 #pragma once
 
 // Zone markers for the AC-4 kernels, stage-timer variant: selected by
-// AC3FORGE_STAGE_TIMERS (src/ac4core/CMakeLists.txt), which the minimum-footprint
+// ICLFORGE_STAGE_TIMERS (src/ac4core/CMakeLists.txt), which the minimum-footprint
 // profile has and no other build does. See the none/ sibling for the default and
 // for why a directory, not a preprocessor test, chooses between them.
 //
@@ -9,7 +9,7 @@
 // zone_enter() at a marker and zone_leave() at the end of its scope, which the
 // APPLICATION supplies. apps/baremetal/stage_timers.cpp is the one
 // implementation - a stack of open zones, a per-name accumulator and the report
-// esp-idf/ac3forge/examples/hearth_sink prints beside each play - so an AC-4
+// esp-idf/iclforge/examples/hearth_sink prints beside each play - so an AC-4
 // play's `play.stage[<zone>]` lines come out of the same code as an AC-3 play's,
 // and a library built with this variant links only where that or another
 // implementation of the two functions is present, which is the intended failure.

@@ -22,7 +22,7 @@ test('a board with everything to report: chip, revision, cores, clock, arithmeti
         psram_bytes: 32 * 1024 * 1024,
         sink_max_slots: 16,
         sink_max_slots_bits: 32,
-        project: 'ac3forge_hearth_sink',
+        project: 'iclforge_hearth_sink',
         version: 'v0.10.0-beta.1-42-gee9cf4f',
         idf_version: 'v6.1',
         capabilities: [
@@ -47,7 +47,7 @@ test('a board with everything to report: chip, revision, cores, clock, arithmeti
     await expect(page.locator('#hw-arithmetic')).toHaveText('Hardware floating point');
     await expect(page.locator('#hw-psram')).toHaveText('32 MiB');
     await expect(page.locator('#hw-sink')).toHaveText('16 slots at 32-bit');
-    await expect(page.locator('#hw-firmware')).toHaveText('ac3forge_hearth_sink v0.10.0-beta.1-42-gee9cf4f');
+    await expect(page.locator('#hw-firmware')).toHaveText('iclforge_hearth_sink v0.10.0-beta.1-42-gee9cf4f');
     await expect(page.locator('#hw-idf')).toHaveText('v6.1');
     await expect(page.locator('#hw-notices')).toBeVisible();
     await expect(page.locator('#hw-notices li')).toHaveText([
@@ -92,7 +92,7 @@ test('a board with nothing extra to report: no PSRAM, no FPU, no sink ceiling to
 test('a firmware that reports its project but no version', async ({ page, stub }) => {
     stub.device.hardware = { ...stub.device.hardware, version: '' };
     await page.goto(stub.url);
-    await expect(page.locator('#hw-firmware')).toHaveText('ac3forge_hearth_sink');
+    await expect(page.locator('#hw-firmware')).toHaveText('iclforge_hearth_sink');
 });
 
 test('a firmware built for one target running on another shows the mismatch as a notice', async ({ page, stub }) => {

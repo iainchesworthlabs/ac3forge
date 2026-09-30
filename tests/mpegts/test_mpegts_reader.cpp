@@ -1219,7 +1219,7 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
 TEST_CASE("MPEG-TS parse_service_descriptor rejects truncated and unknown input",
          "[mpegts][reader][service]") {
     // Tags, mirrored from mpegts.cpp's own (unexported) constants rather
-    // than re-declared with MPEGTS_EXPORT: 0x6A/0x7A/0x81/0xCC are this
+    // than re-declared with ICLFORGE_MPEGTS_EXPORT: 0x6A/0x7A/0x81/0xCC are this
     // module's own public wire values (EN 300 468 Annex D.2/D.4, A/52
     // Annex A §A4.3, Annex G §G3.5), not implementation details.
     constexpr std::uint8_t kDvbAc3 = 0x6A;

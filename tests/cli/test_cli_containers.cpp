@@ -56,7 +56,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_containers_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_containers_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }
@@ -322,7 +322,7 @@ TEST_CASE("demux reports what each container told it, sample rate included or no
 
 namespace {
 fs::path ac4_fixture() {
-    return fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-stereo-64" / "dee.ac4";
+    return fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-stereo-64" / "dee.ac4";
 }
 
 std::vector<std::byte> read_file(const fs::path& path) {
@@ -398,7 +398,7 @@ TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][a
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_decode.log";
     // SIMPLE stereo, one tone per channel: what iclforge::ac4::Decoder decodes today.
-    const fs::path stream = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4";
+    const fs::path stream = fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4";
     const auto raw_wav = dir / "ac4_raw.wav";
     REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(raw_wav), log) == 0);
     const auto report = read_log(log);
@@ -438,7 +438,7 @@ TEST_CASE(
     const auto five_one_log = dir / "ac4_decode_51.log";
     const auto five_one_wav = dir / "ac4_51.wav";
     const fs::path five_one = decoded_stream(
-        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-384" / "dee.ac4",
+        fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-384" / "dee.ac4",
         dir / "ac4_51_prefix.ac4");
     REQUIRE(run_cli("decode " + quoted(five_one) + " " + quoted(five_one_wav), five_one_log) == 0);
     CHECK(read_log(five_one_log).find("(L R C LFE Ls Rs, 48000 Hz)") != std::string::npos);
@@ -450,7 +450,7 @@ TEST_CASE(
     const auto acpl_log = dir / "ac4_decode_acpl.log";
     const auto acpl_wav = dir / "ac4_acpl.wav";
     const fs::path acpl = decoded_stream(
-        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-128" / "dee.ac4",
+        fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-128" / "dee.ac4",
         dir / "ac4_acpl_prefix.ac4");
     REQUIRE(run_cli("decode " + quoted(acpl) + " " + quoted(acpl_wav), acpl_log) == 0);
     const auto decoded_acpl = iclforge::io::read_wav(acpl_wav.string());
@@ -462,7 +462,7 @@ TEST_CASE(
     const auto ims_log = dir / "ac4_decode_ims25.log";
     const auto ims_wav = dir / "ac4_ims25.wav";
     const fs::path ims = decoded_stream(
-        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-ims-music-128-25" / "dee.ac4",
+        fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-ims-music-128-25" / "dee.ac4",
         dir / "ac4_ims_prefix.ac4");
     REQUIRE(run_cli("decode " + quoted(ims) + " " + quoted(ims_wav), ims_log) == 0);
     const auto decoded_ims = iclforge::io::read_wav(ims_wav.string());
@@ -476,7 +476,7 @@ TEST_CASE("decode takes AC-4 to output-level= and compresses it in drcmode='s mo
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_decode_level.log";
     const fs::path stream = decoded_stream(
-        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4",
+        fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4",
         dir / "ac4_level_prefix.ac4");
     const auto rms_db = [](const std::vector<float>& x) {
         double sum = 0.0;
@@ -562,7 +562,7 @@ TEST_CASE("decode raises AC-4's dialogue by dialogue-enhancement=", "[cli][ac4]"
     // DEE's speech stream sends dialogue enhancement parameters for L and R,
     // capped at 9 dB.
     const fs::path stream = decoded_stream(
-        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-speech-128" / "dee.ac4",
+        fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-speech-128" / "dee.ac4",
         dir / "ac4_de_prefix.ac4");
     const auto plain_wav = dir / "ac4_de_plain.wav";
     const auto raised_wav = dir / "ac4_de_raised.wav";
@@ -588,7 +588,7 @@ TEST_CASE("decode folds AC-4 5.1 to stereo and mono with channels= and downmix="
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_decode_downmix.log";
     const fs::path stream = decoded_stream(
-        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-tones-384" / "dee.ac4",
+        fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-tones-384" / "dee.ac4",
         dir / "ac4_downmix_prefix.ac4");
     struct Case {
         const char* options;
@@ -618,7 +618,7 @@ TEST_CASE("decode stops on a damaged AC-4 frame and conceal= carries on through 
     // DEE's stereo tones with the eleventh frame's audio_size_value set past its
     // audio substream: the table of contents still reads, the substream does not.
     std::vector<std::byte> bytes =
-        read_file(fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4");
+        read_file(fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4");
     const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(bytes);
     REQUIRE(scan.frames.size() == 120);
     const std::span<const std::byte> raw = scan.frames[10].raw_ac4_frame;
@@ -1260,7 +1260,7 @@ TEST_CASE("mp4 describes every presentation of a stream of several in its dac4 o
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_presentations_mp4.log";
     const fs::path presentations =
-        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." / "ac4dec" / "presentations";
+        fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." / "ac4dec" / "presentations";
     // Phase E6's broadcast stream: fifteen presentations, the eighth an
     // alternative one named Deutsch, whose name the decoder reads from its
     // presentation substream for the box.

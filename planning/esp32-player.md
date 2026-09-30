@@ -6,7 +6,7 @@
       on 2026-09-10.
     - **Phase 2, sinks and layouts:** built on 2026-09-10. It owes what needs the SigmaDSP board:
       the slave role against a real master, and TDM into a DAC.
-    - **Phase 3, ESPHome:** not built. `esphome/components/ac3forge/` is still the plumbing, on
+    - **Phase 3, ESPHome:** not built. `esphome/components/iclforge/` is still the plumbing, on
       `ac3::FrameDecoder`, with no `media_player`
       ([ESPHome](../docs/platforms/bare-metal/esphome.md)).
     - **Phase 4, upstream to ESPHome:** not started. It waits on Phase 3.
@@ -73,22 +73,22 @@ one that comes later, the HLS client, all sit on the same code.
 
 | Path | What it is | State |
 |---|---|---|
-| `esp-idf/ac3forge/` | The ESP-IDF component: a wrapper that `add_subdirectory()`s the repo root and links `ac3::forge_minimal`. No sources of its own. | Builds in CI under `espressif/idf:v6.1`; packs and verifies through `tools/packaging/pack_esp_component.py`. |
-| `esp-idf/ac3forge/examples/i2s_player/` | Decodes a flash-resident AC-3 fixture to an I2S DAC and prints per-lap timing. | Measured on a board 2026-09-10: 9.9 ms of every 32 for AC-3 5.1 folded to stereo, paced at exactly 32 ms a frame. |
-| `esp-idf/ac3forge/examples/hearth_sink/` | Bytes from a `partition`, `sd`, `fatfs` or `http` source through `ac3::io::AccessUnitAccumulator` to an `i2s`, `tdm`, `capture` or `null` sink. One loop, on the main task. | CI runs `partition` and `fatfs` under QEMU with the `capture` sink. Phase 0 runs `http` to `i2s` on a board. |
-| `esphome/components/ac3forge/` | An ESPHome external component: a decoder and the framer, fed bytes by another component. | `esphome config` in CI. Never compiled into firmware by CI. |
+| `esp-idf/iclforge/` | The ESP-IDF component: a wrapper that `add_subdirectory()`s the repo root and links `ac3::forge_minimal`. No sources of its own. | Builds in CI under `espressif/idf:v6.1`; packs and verifies through `tools/packaging/pack_esp_component.py`. |
+| `esp-idf/iclforge/examples/i2s_player/` | Decodes a flash-resident AC-3 fixture to an I2S DAC and prints per-lap timing. | Measured on a board 2026-09-10: 9.9 ms of every 32 for AC-3 5.1 folded to stereo, paced at exactly 32 ms a frame. |
+| `esp-idf/iclforge/examples/hearth_sink/` | Bytes from a `partition`, `sd`, `fatfs` or `http` source through `ac3::io::AccessUnitAccumulator` to an `i2s`, `tdm`, `capture` or `null` sink. One loop, on the main task. | CI runs `partition` and `fatfs` under QEMU with the `capture` sink. Phase 0 runs `http` to `i2s` on a board. |
+| `esphome/components/iclforge/` | An ESPHome external component: a decoder and the framer, fed bytes by another component. | `esphome config` in CI. Never compiled into firmware by CI. |
 | `docs/platforms/bare-metal/esp32-s3.md` | The platform page. | Being restructured by PR #603; player documentation stays in the example READMEs until it lands. |
 
 Two things about that table decide the shape of everything below.
 
-**The decode loop has been written three times.** `hearth_sink.cpp`, `esphome/components/ac3forge/ac3forge.cpp` and the probe's `decode_eac3()` each drive the accumulator, call a decoder into caller-owned storage and hand the result on. Two of the three used `ac3::FrameDecoder`, which reads AC-3 alone: bsid above 8 returns `DecodeError::kUnsupported`, so neither the streaming example nor the ESPHome component could ever have played an E-AC-3 stream, and CI did not notice because its only sample is AC-3. `ac3::Eac3Decoder::decode_access_unit_into` takes the access units the accumulator produces, decodes Annex E, and accepts a plain AC-3 syncframe as one access unit of one substream. Phase 0 moves the example onto it; Phase 3 moves the ESPHome component.
+**The decode loop has been written three times.** `hearth_sink.cpp`, `esphome/components/iclforge/iclforge.cpp` and the probe's `decode_eac3()` each drive the accumulator, call a decoder into caller-owned storage and hand the result on. Two of the three used `ac3::FrameDecoder`, which reads AC-3 alone: bsid above 8 returns `DecodeError::kUnsupported`, so neither the streaming example nor the ESPHome component could ever have played an E-AC-3 stream, and CI did not notice because its only sample is AC-3. `ac3::Eac3Decoder::decode_access_unit_into` takes the access units the accumulator produces, decodes Annex E, and accepts a plain AC-3 syncframe as one access unit of one substream. Phase 0 moves the example onto it; Phase 3 moves the ESPHome component.
 
 **Nothing between the source and the decoder buffers.** The `http` source reads from the socket inside the decode loop. The I2S DMA queue holds 20 ms, less than the 32 ms one frame lasts, so from the moment playback is under way the loop has 20 ms to fetch and decode each frame before the DAC runs dry. The decode alone is 11 ms for 5.1 E-AC-3 at 240 MHz. What the network adds is what Phase 0 measures.
 
-**As built, 2026-09-30.** The component has sources of its own in `esp-idf/ac3forge/src/`:
+**As built, 2026-09-30.** The component has sources of its own in `esp-idf/iclforge/src/`:
 `player.cpp`, `control.cpp`, `firmware.cpp`, `log.cpp` and `tcp_arrivals.cpp`, and with
 `CONFIG_AC3FORGE_SENDSPIN` the Sendspin host and burst player
-(`esp-idf/ac3forge/CMakeLists.txt`). The streaming example is `hearth_sink`,
+(`esp-idf/iclforge/CMakeLists.txt`). The streaming example is `hearth_sink`,
 renamed in #709 (2026-09-16), and its player runs a fetch task and a decode task. Its sinks are
 `i2s`, which opens standard I2S or TDM for each layout, `i2s_wide` for the P4, `capture` and
 `null`: the `tdm` sink was folded into `i2s` on 2026-09-12 (#666). The example decodes through
@@ -102,12 +102,12 @@ Measured on 2026-09-10 on the second DevKitC-1 (an ESP32-S3 rev v0.2 with 8 MB o
 16 MB of flash) at 240 MHz, with no DAC wired - the I2S peripheral clocks the audio out regardless,
 so the pacing and the underrun counts are real. The READMEs carry the lines themselves.
 
-- [`i2s_player`](../esp-idf/ac3forge/examples/i2s_player/README.md): AC-3 5.1 folded to stereo in
+- [`i2s_player`](../esp-idf/iclforge/examples/i2s_player/README.md): AC-3 5.1 folded to stereo in
   9.9 ms of every 32, paced at exactly 32.000 ms a frame once its DMA descriptors divided the
   write. With the 240-frame descriptors it had, it paced at 35.000: ESP-IDF v6.1's
   `i2s_channel_write` abandons a partly written buffer whenever two sent ones are waiting, and
   the rest of it goes out as silence. The streaming example's sinks had the same exposure.
-- [`hearth_sink`](../esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-board), local:
+- [`hearth_sink`](../esp-idf/iclforge/examples/hearth_sink/README.md#on-the-board), local:
   `partition` to `i2s`, 150 passes, 28.7 s of wall clock for 28.8 s of audio and no underruns. A
   7.1.4 render from objects takes 22.8 ms of decode and 3.2 ms of render in each 32 ms frame - the
   probe's `eac3_atmos_render` row is 25.1 ms for the same work - once the component compiled the
@@ -132,7 +132,7 @@ Seven, and five of them exist. The order is the order bytes take.
 3. **The output stage.** `ac3::OutputConfig`: the §7.8 fold and §7.7 operating mode, applied in the
    decoder's own storage before it returns. Exists.
 4. **Sample format.** Planar float to interleaved 16-bit, or 24-in-32 with slot padding for TDM.
-   Exists as [`ac3forge/interleave.hpp`](../esp-idf/ac3forge/include/ac3forge/interleave.hpp),
+   Exists as [`ac3forge/interleave.hpp`](../esp-idf/iclforge/include/iclforge/interleave.hpp),
    moved on 2026-09-10 from inside the streaming example into the component, free of ESP-IDF, and
    tested on the host by `tests/ac3/io/test_interleave.cpp`. It is library code with a temporary home.
 5. **Bytes to PCM.** The loop over 1 to 4: feed bytes, take frames, with hold-back (§3.7) and
@@ -171,9 +171,9 @@ such, and the day they land is the day the copies are deleted. **As built,** nei
 renderer did move into the library, as `ac3::render` (`src/render/include/iclforge/render/`, tests in
 `tests/render/`), for Hearth.
 
-**The component, `esp-idf/ac3forge/`.** Layer 6, and the seams for 7. The component registered no
-sources when this was written; it gains `esp-idf/ac3forge/include/ac3forge/player.hpp` and
-`esp-idf/ac3forge/src/player.cpp`, registered as component sources beside the interface link it
+**The component, `esp-idf/iclforge/`.** Layer 6, and the seams for 7. The component registered no
+sources when this was written; it gains `esp-idf/iclforge/include/iclforge/player.hpp` and
+`esp-idf/iclforge/src/player.cpp`, registered as component sources beside the interface link it
 already has. Two abstract seams, mirroring the example's `byte_source.hpp` and `audio_sink.hpp`,
 one pipeline:
 
@@ -216,8 +216,8 @@ The sketch is a shape, not a signature freeze. What it fixes is the division of 
 player knows about tasks, cores, the ring and the decoder; the sink knows about a peripheral; the
 source knows about a transport. The example's four sources and four sinks become implementations
 of the two seams, and `hearth_sink.cpp` becomes the wiring of a configured pair into a
-`Player`. **Built 2026-09-10** as `esp-idf/ac3forge/include/ac3forge/player.hpp` and
-`esp-idf/ac3forge/src/player.cpp`, with the example's seams adapted rather than rewritten (a
+`Player`. **Built 2026-09-10** as `esp-idf/iclforge/include/iclforge/player.hpp` and
+`esp-idf/iclforge/src/player.cpp`, with the example's seams adapted rather than rewritten (a
 `SeamSource` and a `MeteredSink` over the existing free functions) and the ring's size, placement
 and both cores in the example's Kconfig. The Sendspin shape later needs an interleaved 16-bit
 entry on the I2S sink beside the planar one; that is that sink's, not the seam's.
@@ -237,7 +237,7 @@ and the place its Kconfig lives: pins, DMA depth, slot width, role, source and s
 
 ## ESPHome
 
-**Status, 2026-09-30: not built** (Phases 3 and 4). `esphome/components/ac3forge/` is the
+**Status, 2026-09-30: not built** (Phases 3 and 4). `esphome/components/iclforge/` is the
 plumbing component it was on 2026-09-10: it owns an `ac3::FrameDecoder`, so it reads AC-3 alone,
 and it has no `media_player` platform. CI runs `esphome config` over it and compiles no firmware.
 The two routes below are still the options, and (a) is still the recommendation.
@@ -348,7 +348,7 @@ Hearth, with Home Assistant sending commands to an entity.
   to carry it.
 
 **As built,** the ESP-IDF half is `ac3forge::Control` in the component, with 27 route
-registrations now (`esp-idf/ac3forge/src/control.cpp`): the ones above, and the page,
+registrations now (`esp-idf/iclforge/src/control.cpp`): the ones above, and the page,
 `/hardware`, the settings, the pairing list and the firmware routes that [the device page's
 plan](esp32-device-ui.md) and [the update plan](esp32-ota.md) describe. `/status` does not carry
 the sink's underrun counters (the device page's decision 8): the sinks print them on the console,
@@ -614,7 +614,7 @@ QEMU through the changed player.
 
 **Status, 2026-09-30: built, and its exit met on 2026-09-10.**
 
-`ac3forge::Player`, `ByteSource` and `PcmSink` in `esp-idf/ac3forge/`; the streaming example's
+`ac3forge::Player`, `ByteSource` and `PcmSink` in `esp-idf/iclforge/`; the streaming example's
 sources and sinks become implementations; `hearth_sink.cpp` becomes the wiring. The fetch task
 on core 0, the decode task on core 1, the ring sized in seconds of stream. The REST surface from
 [Control](#control) beside it, mounted by the example.

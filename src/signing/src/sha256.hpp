@@ -43,6 +43,6 @@ private:
 // otherwise drop it from the .so's export table). The header itself stays uninstalled and off
 // the target's public include path, so this does not change what iclforge::signing's own advertised
 // public API is.
-AC3SIGNING_EXPORT std::array<std::byte, 32> sha256(std::span<const std::byte> data);
+ICLFORGE_SIGNING_EXPORT std::array<std::byte, 32> sha256(std::span<const std::byte> data);
 
 }  // namespace iclforge::signing

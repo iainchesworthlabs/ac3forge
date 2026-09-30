@@ -1611,8 +1611,8 @@
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="302"/>
-        <source>With no file chosen here, the environment is honoured: AC3FORGE_SIGNING_KEY_FILE names a key file and AC3FORGE_SIGNING_KEY carries the key itself.</source>
-        <translation>כשלא נבחר כאן קובץ, הסביבה מכובדת: AC3FORGE_SIGNING_KEY_FILE מציין קובץ מפתח ו-AC3FORGE_SIGNING_KEY נושא את המפתח עצמו.</translation>
+        <source>With no file chosen here, the environment is honoured: ICLFORGE_SIGNING_KEY_FILE names a key file and ICLFORGE_SIGNING_KEY carries the key itself.</source>
+        <translation>כשלא נבחר כאן קובץ, הסביבה מכובדת: ICLFORGE_SIGNING_KEY_FILE מציין קובץ מפתח ו-ICLFORGE_SIGNING_KEY נושא את המפתח עצמו.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="316"/>

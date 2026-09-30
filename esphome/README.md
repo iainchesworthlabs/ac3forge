@@ -86,7 +86,7 @@ on publishing.
 ## Validation
 
 `esphome config` runs over
-[`tests/ac3forge-test.yaml`](tests/ac3forge-test.yaml) in CI, against a **local**
+[`tests/iclforge-test.yaml`](tests/iclforge-test.yaml) in CI, against a **local**
 source pointing at the working tree. That exercises the schema and `to_code` —
 including the `add_idf_component` call, whose signature is not covered by any
 stability promise. CI also asserts that a `buffer_size` no access unit fits in

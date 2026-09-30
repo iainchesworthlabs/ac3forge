@@ -75,7 +75,7 @@ struct HlsOptions {
 // a bare CODECS="...,ec-3"/"...,ac-3". A named function rather than just
 // using track.codec_id directly at each call site exists so there is one
 // place this claim, and its citation, live.
-[[nodiscard]] MP4_EXPORT std::string_view hls_codec_string(const AudioTrack& track);
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string_view hls_codec_string(const AudioTrack& track);
 
 // One audio rendition of a master playlist's #EXT-X-MEDIA group (RFC 8216
 // §4.3.4.1): its own Media Playlist, its own CHANNELS value, its own segments
@@ -124,13 +124,13 @@ struct HlsRendition {
 // across an asset is the only honest answer a batch fragmenter has (see
 // manifest_detail::estimate_bandwidth_bps). CODECS comes from the default
 // rendition's track.
-[[nodiscard]] MP4_EXPORT std::string build_hls_master_playlist(
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_hls_master_playlist(
     std::span<const HlsRendition> renditions, const HlsOptions& options = {});
 
 // The single-rendition form: one #EXT-X-MEDIA named "Audio", DEFAULT=YES,
 // with HlsOptions::channels_attribute as its CHANNELS - the one-element case
 // of the renditions form above, which it delegates to.
-[[nodiscard]] MP4_EXPORT std::string build_hls_master_playlist(
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_hls_master_playlist(
     const AudioTrack& track, std::span<const SegmentInfo> segments,
     std::string_view media_playlist_uri, const HlsOptions& options = {});
 
@@ -139,18 +139,18 @@ struct HlsRendition {
 // above is the one a live caller wants: iclforge::mp4::FragmentWriter::window() hands
 // back exactly that, without keeping the windowed segments' bytes alive
 // purely to name them.
-[[nodiscard]] MP4_EXPORT std::string build_hls_master_playlist(
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_hls_master_playlist(
     const AudioTrack& track, std::span<const MediaSegment> segments,
     std::string_view media_playlist_uri, const HlsOptions& options = {});
 
 // The media playlist itself (RFC 8216 §4.3.3): #EXTM3U, #EXT-X-MAP pointing
 // at the initialization segment, then #EXTINF/segment-URI pairs for every
 // fragment in order.
-[[nodiscard]] MP4_EXPORT std::string build_hls_media_playlist(
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_hls_media_playlist(
     const AudioTrack& track, std::span<const SegmentInfo> segments,
     const HlsOptions& options = {});
 
-[[nodiscard]] MP4_EXPORT std::string build_hls_media_playlist(
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_hls_media_playlist(
     const AudioTrack& track, std::span<const MediaSegment> segments,
     const HlsOptions& options = {});
 

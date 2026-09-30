@@ -196,8 +196,8 @@ std::string render_report(const ReportFacts& facts, const MessageLog& log, const
     // (src/signing/signing_key.hpp), which reads these two.
     line("");
     line("# signing");
-    row("AC3FORGE_SIGNING_KEY_FILE", facts.env_key_file_set ? "set" : "not set");
-    row("AC3FORGE_SIGNING_KEY", facts.env_key_inline_set ? "set" : "not set");
+    row("ICLFORGE_SIGNING_KEY_FILE", facts.env_key_file_set ? "set" : "not set");
+    row("ICLFORGE_SIGNING_KEY", facts.env_key_inline_set ? "set" : "not set");
 
     // What was loaded, by name and shape. No folder and no sample data - see
     // the header's rule.

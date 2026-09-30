@@ -38,7 +38,7 @@
 namespace {
 
 constexpr const char* kFixture =
-    AC3FORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3";
+    ICLFORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3";
 
 std::vector<std::byte> read_fixture() {
     std::ifstream in{kFixture, std::ios::binary};

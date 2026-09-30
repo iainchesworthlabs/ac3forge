@@ -1,5 +1,5 @@
 // The console's last bytes for GET /log, tested on the host - see
-// ac3forge/log_ring.hpp's own header comment.
+// iclforge/log_ring.hpp's own header comment.
 
 #include <array>
 #include <cstdint>
@@ -7,9 +7,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/log_ring.hpp"
+#include "iclforge/log_ring.hpp"
 
-using ac3forge::LogRing;
+using iclforge::LogRing;
 
 TEST_CASE("a ring not yet full gives back what was put, from any count", "[io][log_ring]") {
     std::array<char, 16> storage{};

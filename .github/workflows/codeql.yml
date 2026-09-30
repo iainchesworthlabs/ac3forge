@@ -23,7 +23,7 @@
 # The C++ leg is modelled on CountdownSolver's .github/workflows/codeql.yml
 # (same CMake+vcpkg shape, same gitflow model) - build-mode: manual,
 # library+CLI only, no Qt app: the GUI adds nothing CodeQL needs to see and
-# config-linux-gcc already defaults AC3FORGE_BUILD_GUI off (see
+# config-linux-gcc already defaults ICLFORGE_BUILD_GUI off (see
 # CMakePresets.json), so this is the same build ci.yml's static-analysis
 # (clang-tidy) nightly already proves clean.
 #
@@ -65,7 +65,7 @@ name: CodeQL
 on:
   schedule:
     # Nightly against main - see docs/ci-self-hosted-runners.md "Nightly
-    # analysis window": ac3forge owns 02:00-03:15 UTC on the shared fleet,
+    # analysis window": iclforge owns 02:00-03:15 UTC on the shared fleet,
     # aqualink-automate owns ~04:00. Off-minute per GitHub's own advice.
     - cron: "17 2 * * *"
   workflow_dispatch:
@@ -184,7 +184,7 @@ jobs:
       # what the toolchain script assumes is present (lsb_release,
       # add-apt-repository, curl+gnupg) - the same package list ci.yml's
       # static-analysis job uses. No libasound2-dev: this build never enables
-      # AC3FORGE_BUILD_GUI, and the ALSA backend is optional, auto-detected,
+      # ICLFORGE_BUILD_GUI, and the ALSA backend is optional, auto-detected,
       # and irrelevant to what CodeQL is scanning for here.
       - name: Bootstrap container
         if: matrix.container

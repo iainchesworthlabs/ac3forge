@@ -25,7 +25,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 TABLES_C = REPO / "spec" / "ts_103420_tables.c"
 SPEC_TXT = REPO / "spec" / "TS103420-2018.txt"
-OUT = REPO / "src" / "lib" / "include" / "ac3" / "oba" / "joc_tables.hpp"
+OUT = REPO / "src" / "ac3" / "include" / "iclforge" / "ac3" / "oba" / "joc_tables.hpp"
 
 # Table 50: joc_num_bands_idx -> joc_num_bands. Table 54's columns run the
 # other way round, widest first, so the two are transposed against each other.

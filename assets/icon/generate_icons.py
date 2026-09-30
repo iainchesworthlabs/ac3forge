@@ -160,7 +160,7 @@ def main() -> None:
     write_icns(icons_dir / "ac3forge.icns")
     render_badge(32).save(icons_dir / "ac3forge-32.png")
     render_badge(256).save(icons_dir / "ac3forge-256.png")
-    print(f"wrote {icons_dir}/ac3forge.{{ico,icns}}, ac3forge-{{32,256}}.png")
+    print(f"wrote {icons_dir}/iclforge.{{ico,icns}}, iclforge-{{32,256}}.png")
 
     res_dir = REPO_ROOT / "apps" / "android" / "app" / "src" / "main" / "res"
 

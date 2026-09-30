@@ -41,11 +41,11 @@ target_compile_features(iclforge_matroska_objects PUBLIC cxx_std_23)
 
 # $<BUILD_INTERFACE:...> wrapping - see src/ac3/CMakeLists.txt's identical
 # iclforge_ac3_objects treatment for why a plain PRIVATE link isn't enough for
-# an OBJECT library that's part of an install(EXPORT) set. ac3::coverage is a
-# no-op unless AC3FORGE_ENABLE_COVERAGE is on (see cmake/Coverage.cmake).
+# an OBJECT library that's part of an install(EXPORT) set. iclforge::coverage is a
+# no-op unless ICLFORGE_ENABLE_COVERAGE is on (see cmake/Coverage.cmake).
 target_link_libraries(iclforge_matroska_objects PRIVATE
-    "$<BUILD_INTERFACE:ac3::warnings>"
-    "$<BUILD_INTERFACE:ac3::coverage>")
+    "$<BUILD_INTERFACE:iclforge::warnings>"
+    "$<BUILD_INTERFACE:iclforge::coverage>")
 
 set_target_properties(iclforge_matroska_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -53,7 +53,7 @@ set_target_properties(iclforge_matroska_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 # MSVC's C4251 ("class X needs to have dll-interface...") fires for every
-# PRIVATE STL-typed member of a MATROSKA_EXPORT class (matroska::Writer's own
+# PRIVATE STL-typed member of a ICLFORGE_MATROSKA_EXPORT class (matroska::Writer's own
 # std::vector<std::byte> buffers) - pure implementation detail, never touched
 # by a caller except through the class's own (exported) methods. Suppressed
 # here rather than by scattering non-portable #pragma warning(disable:)
@@ -65,15 +65,15 @@ set_target_properties(iclforge_matroska_objects PROPERTIES
 target_compile_options(iclforge_matroska_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_matroska_shared PROPERTIES DEFINE_SYMBOL "MATROSKA_BUILDING_SHARED")
+set_target_properties(iclforge_matroska_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_MATROSKA_BUILDING_SHARED")
 generate_export_header(iclforge_matroska_shared
-    BASE_NAME MATROSKA
-    EXPORT_MACRO_NAME MATROSKA_EXPORT
+    BASE_NAME ICLFORGE_MATROSKA
+    EXPORT_MACRO_NAME ICLFORGE_MATROSKA_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/matroska/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE MATROSKA_STATIC_DEFINE)
-target_compile_definitions(iclforge_matroska_objects PRIVATE MATROSKA_BUILDING_SHARED)
-target_compile_definitions(iclforge_matroska_static PUBLIC MATROSKA_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_MATROSKA_STATIC_DEFINE)
+target_compile_definitions(iclforge_matroska_objects PRIVATE ICLFORGE_MATROSKA_BUILDING_SHARED)
+target_compile_definitions(iclforge_matroska_static PUBLIC ICLFORGE_MATROSKA_STATIC_DEFINE)
 
 set_target_properties(iclforge_matroska_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

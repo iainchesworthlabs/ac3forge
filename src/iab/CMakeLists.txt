@@ -15,7 +15,7 @@
 # downstream (CLI, GUI, examples) consumes it yet - IAB reader's phase 3
 # (`atmos-iab`, mapping onto iclforge::admbridge) is what will eventually give it
 # a consumer. Following iclforge::c's own precedent (see
-# packaging/vcpkg-port/ac3forge/portfile.cmake's header comment), it is left
+# packaging/vcpkg-port/iclforge/portfile.cmake's header comment), it is left
 # out of the vcpkg port until it has one.
 #
 # Built and installed as both a static and a shared library - see
@@ -53,13 +53,13 @@ target_include_directories(iclforge_iab_objects
 
 target_compile_features(iclforge_iab_objects PUBLIC cxx_std_23)
 
-# $<BUILD_INTERFACE:...> wrapping ac3::warnings/ac3::coverage - see
+# $<BUILD_INTERFACE:...> wrapping iclforge::warnings/iclforge::coverage - see
 # src/ac3/CMakeLists.txt's identical iclforge_ac3_objects treatment for why a
 # plain PRIVATE link isn't enough for an OBJECT library that's part of an
 # install(EXPORT) set.
 target_link_libraries(iclforge_iab_objects PRIVATE
-    "$<BUILD_INTERFACE:ac3::warnings>"
-    "$<BUILD_INTERFACE:ac3::coverage>")
+    "$<BUILD_INTERFACE:iclforge::warnings>"
+    "$<BUILD_INTERFACE:iclforge::coverage>")
 
 set_target_properties(iclforge_iab_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -67,15 +67,15 @@ set_target_properties(iclforge_iab_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_iab_shared PROPERTIES DEFINE_SYMBOL "AC3IAB_BUILDING_SHARED")
+set_target_properties(iclforge_iab_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_IAB_BUILDING_SHARED")
 generate_export_header(iclforge_iab_shared
-    BASE_NAME AC3IAB
-    EXPORT_MACRO_NAME AC3IAB_EXPORT
+    BASE_NAME ICLFORGE_IAB
+    EXPORT_MACRO_NAME ICLFORGE_IAB_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/iab/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC3IAB_STATIC_DEFINE)
-target_compile_definitions(iclforge_iab_objects PRIVATE AC3IAB_BUILDING_SHARED)
-target_compile_definitions(iclforge_iab_static PUBLIC AC3IAB_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_IAB_STATIC_DEFINE)
+target_compile_definitions(iclforge_iab_objects PRIVATE ICLFORGE_IAB_BUILDING_SHARED)
+target_compile_definitions(iclforge_iab_static PUBLIC ICLFORGE_IAB_STATIC_DEFINE)
 
 set_target_properties(iclforge_iab_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

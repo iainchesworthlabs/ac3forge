@@ -1,20 +1,20 @@
-# Conan (2.x) recipe for ac3forge - installs the library only (iclforge::ac3,
+# Conan (2.x) recipe for iclforge - installs the library only (iclforge::ac3,
 # iclforge::matroska/iclforge::mp4/iclforge::mpegts behind their own default-on options, and
 # iclforge::c, the AC-4 libraries, iclforge::iab and iclforge::iamf behind default-off "capi",
 # "ac4", "iab" and "iamf" options), never the CLI, GUI, Hearth, tests, examples or fuzz
-# harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/ac3forge/) - one Conan option
-# <-> one AC3FORGE_BUILD_<NAME> CMake option, same pattern that port's vcpkg_check_features()
+# harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/iclforge/) - one Conan option
+# <-> one ICLFORGE_BUILD_<NAME> CMake option, same pattern that port's vcpkg_check_features()
 # call already establishes, and tools/checks/check_packaging_versions.sh holds the two recipes to
 # the same components and options. iclforge::adm/iclforge::admbridge (the ADM/BW64
 # reader and its Atmos bridge) are deliberately NOT options here even though upstream now
-# installs/exports both (shared-only - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
+# installs/exports both (shared-only - see cmake/InstallLibrary.cmake's ICLFORGE_BUILD_ADM
 # block): ac3adm needs Boost, and out-of-scope-for-now applies here the same way it does for the
 # vcpkg port's own missing "adm" feature.
 #
 # This recipe wraps cmake/InstallLibrary.cmake's own install()/export()
 # rules rather than reimplementing them: package() just runs `cmake --install`
-# and package_info() points consumers at the CMake package config ac3forge
-# already generates (ac3forgeConfig.cmake et al.), instead of asking Conan's
+# and package_info() points consumers at the CMake package config iclforge
+# already generates (iclforgeConfig.cmake et al.), instead of asking Conan's
 # CMakeDeps generator to synthesise a second, competing one - see
 # package_info()'s comment below.
 #
@@ -29,8 +29,8 @@ from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain, cmake_layout
 from conan.tools.files import copy, get
 
 
-class Ac3forgeConan(ConanFile):
-    name = "ac3forge"
+class IclforgeConan(ConanFile):
+    name = "iclforge"
     description = (
         "Clean-room AC-3 (ATSC A/52), E-AC-3 and AC-4 encoder and decoder with a spatial "
         "object layer, in C++23."
@@ -87,7 +87,7 @@ class Ac3forgeConan(ConanFile):
         # it's an implementation detail of forge/mp4's own .cpp files, never
         # named in an installed public header, so a consumer of this package
         # never needs to resolve fmt themselves. forge and mp4 compile a private
-        # copy of it into their own object files (ac3::fmt_private in
+        # copy of it into their own object files (iclforge::fmt_private in
         # cmake/Fmt.cmake) and link no fmt library: an archive is not linked,
         # so a linked fmt would have left the static package with undefined
         # fmt:: symbols for the consumer's link to find.
@@ -106,29 +106,29 @@ class Ac3forgeConan(ConanFile):
         tc = CMakeToolchain(self)
         # Library only - same OFF set as portfile.cmake's
         # vcpkg_cmake_configure() call.
-        tc.variables["AC3FORGE_BUILD_CLI"] = False
-        tc.variables["AC3FORGE_BUILD_GUI"] = False
+        tc.variables["ICLFORGE_BUILD_CLI"] = False
+        tc.variables["ICLFORGE_BUILD_GUI"] = False
         # Hearth, an application (apps/hearth) and a library nothing installs (src/sendspin), needs
         # dependencies this recipe does not declare; upstream also refuses it beside
-        # AC3FORGE_BUILD_AC4=OFF.
-        tc.variables["AC3FORGE_BUILD_HEARTH"] = False
-        tc.variables["AC3FORGE_BUILD_TESTS"] = False
-        tc.variables["AC3FORGE_BUILD_EXAMPLES"] = False
-        tc.variables["AC3FORGE_BUILD_FUZZERS"] = False
-        tc.variables["AC3FORGE_FETCH_CATCH2"] = False
+        # ICLFORGE_BUILD_AC4=OFF.
+        tc.variables["ICLFORGE_BUILD_HEARTH"] = False
+        tc.variables["ICLFORGE_BUILD_TESTS"] = False
+        tc.variables["ICLFORGE_BUILD_EXAMPLES"] = False
+        tc.variables["ICLFORGE_BUILD_FUZZERS"] = False
+        tc.variables["ICLFORGE_FETCH_CATCH2"] = False
         # A Conan package (like a vcpkg triplet) installs exactly the
         # linkage this recipe's own `shared` option/BUILD_SHARED_LIBS
         # selected, not both - see cmake/InstallLibrary.cmake's option of
         # the same name.
-        tc.variables["AC3FORGE_INSTALL_BOTH_LINKAGES"] = False
-        tc.variables["AC3FORGE_BUILD_MATROSKA"] = bool(self.options.matroska)
-        tc.variables["AC3FORGE_BUILD_MP4"] = bool(self.options.mp4)
-        tc.variables["AC3FORGE_BUILD_MPEGTS"] = bool(self.options.mpegts)
-        tc.variables["AC3FORGE_BUILD_CAPI"] = bool(self.options.capi)
+        tc.variables["ICLFORGE_INSTALL_BOTH_LINKAGES"] = False
+        tc.variables["ICLFORGE_BUILD_MATROSKA"] = bool(self.options.matroska)
+        tc.variables["ICLFORGE_BUILD_MP4"] = bool(self.options.mp4)
+        tc.variables["ICLFORGE_BUILD_MPEGTS"] = bool(self.options.mpegts)
+        tc.variables["ICLFORGE_BUILD_CAPI"] = bool(self.options.capi)
         # Upstream defaults these three ON; the recipe's options, off unless asked for, decide.
-        tc.variables["AC3FORGE_BUILD_AC4"] = bool(self.options.ac4)
-        tc.variables["AC3FORGE_BUILD_IAB"] = bool(self.options.iab)
-        tc.variables["AC3FORGE_BUILD_IAMF"] = bool(self.options.iamf)
+        tc.variables["ICLFORGE_BUILD_AC4"] = bool(self.options.ac4)
+        tc.variables["ICLFORGE_BUILD_IAB"] = bool(self.options.iab)
+        tc.variables["ICLFORGE_BUILD_IAMF"] = bool(self.options.iamf)
         tc.variables["BUILD_SHARED_LIBS"] = bool(self.options.shared)
         tc.generate()
         # Generates fmtConfig.cmake (from the requirements() dependency above)
@@ -158,17 +158,17 @@ class Ac3forgeConan(ConanFile):
         cmake.install()
 
     def package_info(self):
-        # ac3forge exports its own CMake package config
+        # iclforge exports its own CMake package config
         # (cmake/InstallLibrary.cmake's configure_package_config_file() +
-        # install(EXPORT ...) calls - ac3forgeConfig.cmake,
+        # install(EXPORT ...) calls - iclforgeConfig.cmake,
         # forgeTargets.cmake, and one *Targets.cmake per enabled
         # component) rather than relying on Conan's CMakeDeps generator to
         # synthesise one. cmake_find_mode "none" tells CMakeDeps to stay out
         # of the way; builddirs puts the package's own installed config on
         # CMAKE_PREFIX_PATH so a consumer's plain
-        # find_package(ac3forge CONFIG REQUIRED) resolves it directly -
+        # find_package(iclforge CONFIG REQUIRED) resolves it directly -
         # same find_package() call and iclforge::ac3/iclforge::matroska/
         # iclforge::mp4/iclforge::mpegts targets as any other consumer in
         # docs/library/index.md, Conan or not.
         self.cpp_info.set_property("cmake_find_mode", "none")
-        self.cpp_info.builddirs = [os.path.join("lib", "cmake", "ac3forge")]
+        self.cpp_info.builddirs = [os.path.join("lib", "cmake", "iclforge")]

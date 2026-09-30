@@ -22,19 +22,20 @@
 // and the inspector. With MSVC, from a developer prompt at the repo root,
 // against a build tree in <b>:
 //
-//   cl /nologo /std:c++latest /EHsc /utf-8 /MD /O2 /DAC4_STATIC_DEFINE
-//      /DAC4DEC_STATIC_DEFINE /Isrc/ac4/include /Isrc/ac4dec/include
+//   cl /nologo /std:c++latest /EHsc /utf-8 /MD /O2 /DICLFORGE_AC4_STATIC_DEFINE
+//      /DICLFORGE_AC4DEC_STATIC_DEFINE /Isrc/ac4/include /Isrc/ac4dec/include
 //      /I<b>/src/ac4/generated /I<b>/src/ac4dec/generated
-//      tools/checks/ac4_syntax_trace.cpp /link <b>/src/ac4dec/ac4dec_static.lib
-//      <b>/src/ac4core/ac4core_static.lib <b>/src/ac4/ac4_static.lib
+//      tools/checks/ac4_syntax_trace.cpp
+//      /link <b>/src/ac4dec/iclforge_ac4dec_static.lib
+//      <b>/src/ac4core/iclforge_ac4core_static.lib <b>/src/ac4/iclforge_ac4_static.lib
 //
 // With GCC or Clang:
 //
 //   g++ -std=c++23 -O2 -o ac4_syntax_trace tools/checks/ac4_syntax_trace.cpp
-//      -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE -Isrc/ac4/include
+//      -DICLFORGE_AC4_STATIC_DEFINE -DICLFORGE_AC4DEC_STATIC_DEFINE -Isrc/ac4/include
 //      -Isrc/ac4dec/include -I<b>/src/ac4/generated -I<b>/src/ac4dec/generated
-//      <b>/src/ac4dec/libac4dec_static.a <b>/src/ac4core/libac4core_static.a
-//      <b>/src/ac4/libac4_static.a
+//      <b>/src/ac4dec/libiclforge_ac4dec_static.a
+//      <b>/src/ac4core/libiclforge_ac4core_static.a <b>/src/ac4/libiclforge_ac4_static.a
 
 #include <cstddef>
 #include <cstdio>

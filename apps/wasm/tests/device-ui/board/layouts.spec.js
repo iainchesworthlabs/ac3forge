@@ -2,7 +2,7 @@
 'use strict';
 
 // The page on a twelve-slot board - CI's sdkconfig.ci-http714 shape under QEMU,
-// with the stream set (esp-idf/ac3forge/examples/hearth_sink/www/) served
+// with the stream set (esp-idf/iclforge/examples/hearth_sink/www/) served
 // beside it - and what it says a layout does with a stream: planning/
 // esp32-device-ui.md's "The output layout". CI runs it after
 // tools/checks/check_stream_set.py has played the set, with the device's
@@ -10,10 +10,10 @@
 
 const { test, expect } = require('@playwright/test');
 
-const BASE = process.env.AC3FORGE_STREAM_BASE || 'http://10.0.2.2:8000';
+const BASE = process.env.ICLFORGE_STREAM_BASE || 'http://10.0.2.2:8000';
 
 test('the page says what each output layout does with each stream', async ({ page, request }) => {
-    expect(process.env.AC3FORGE_DEVICE_URL, 'AC3FORGE_DEVICE_URL names the device').toBeTruthy();
+    expect(process.env.ICLFORGE_DEVICE_URL, 'ICLFORGE_DEVICE_URL names the device').toBeTruthy();
     const problems = [];
     page.on('pageerror', (error) => problems.push(String(error)));
     const status = async () => (await request.get('status')).json();

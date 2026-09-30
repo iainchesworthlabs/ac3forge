@@ -151,7 +151,7 @@ in CONTRIBUTING.md:
    "Forge" are the member names; "AC3Forge Forge" is never written.
 3. `ac3cli --version` keeps printing `ac3forge <version>` (`src/ac3/src/version.cpp:19-21`):
    it is the library's version line, and the live Homebrew formula's test asserts it
-   (`packaging/homebrew/Formula/ac3forge.rb:65`).
+   (`packaging/homebrew/Formula/iclforge.rb:65`).
 
 The tooling's namespaces are the one code-level inconsistency worth folding while here:
 `ac3cli` and `ac3cli::commands` (38 declarations), `ac3::cli::platform` (3), `ac3gui` (2) and
@@ -185,7 +185,7 @@ its decisions are with the user.
 | `apps/windows/driver`, `driver-vm` | Crucible's driver, frozen | unchanged until signing; optionally `apps/crucible/driver` in the signing-time change | breaks the `windows-driver` job's paths, `apps/crucible/CMakeLists.txt:372-376`, driver-vm's relative paths, and the signing session's checkout |
 | `apps/android` | the Shield demo | unchanged | a `demos/` parent breaks the depth-sensitive `add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../..")` (`apps/android/app/src/main/cpp/CMakeLists.txt:66`), the Android and CodeQL job paths |
 | `apps/wasm`, `js/` | library demos and binding | unchanged | a `web/` parent breaks docs.yml's and npm.yml's path triggers, `build-wasm`'s working directory, `js/package.json:23` `directory: "js"`, and the relative loads inside the checked-in `docs/assets/wasm-*-demo` bundles |
-| `python/`, `rust/` | bindings | unchanged | `pyproject.toml:37` `cmake.source-dir = ".."` and `:77` `root = ".."`, wheels.yml `package-dir`, `rust/ac3forge-sys/build.rs:9-13` (asserts it lives two directories below the root) |
+| `python/`, `rust/` | bindings | unchanged | `pyproject.toml:37` `cmake.source-dir = ".."` and `:77` `root = ".."`, wheels.yml `package-dir`, `rust/iclforge-sys/build.rs:9-13` (asserts it lives two directories below the root) |
 | `tests/` | one `ac3tests` | unchanged | a per-member binary duplicates `tests/CMakeLists.txt`'s backend, ADM and IAB conditionals for no gate that does not already key on source paths |
 | `docs/` | 73 pages | 73 pages plus `docs/forge/index.md`, `docs/family/recasting.md` (this page), and, under [decision 8](#decisions), `docs/library/capabilities.md` and a `docs/security.md` wrapper | see [The docs](#the-docs) |
 
@@ -213,11 +213,11 @@ names are GitHub's, the repository name, the Pages address, release tags and ass
 | Identity | Member | Where | State | Under S2 | Deprecation path if ever renamed |
 |---|---|---|---|---|---|
 | `project(ac3forge)`, `CPACK_PACKAGE_NAME`, `find_package(ac3forge)` at `lib/cmake/ac3forge`, `ac3::` namespace, ten export sets, ten `.pc` files | family / library | `CMakeLists.txt:8`; `cmake/Packaging.cmake:24`; `cmake/InstallLibrary.cmake:425-522` | shipped; consumed by the vcpkg port (`portfile.cmake:56`), Conan (`conanfile.py`), 18 files | unchanged | a compatibility config shim; source-compatibility break |
-| `libac3forge.so`/`ac3forge.dll`/`ac3forge_static`, `ac3forge_c`, `ac3signing`; `AC3FORGE_EXPORT`; 215 `ac3forge_*` C symbols | library | `src/ac3/CMakeLists.txt:622-623`; `src/capi` | shipped; abi-gate allowlists keyed per basename; `rust/ac3forge-sys` `links = "ac3forge_c"` | unchanged | an ABI break, a new allowlist set, a breaking release |
+| `libac3forge.so`/`ac3forge.dll`/`ac3forge_static`, `ac3forge_c`, `ac3signing`; `AC3FORGE_EXPORT`; 215 `ac3forge_*` C symbols | library | `src/ac3/CMakeLists.txt:622-623`; `src/capi` | shipped; abi-gate allowlists keyed per basename; `rust/iclforge-sys` `links = "ac3forge_c"` | unchanged | an ABI break, a new allowlist set, a breaking release |
 | PyPI `ac3forge` | library | `python/pyproject.toml:6`; wheels.yml publishes on `v*` through environment `pypi` | live | unchanged | a new project plus a stub release under the old name; never |
 | npm `ac3forge-wasm-decoder` | library | `js/package.json:2`; publish gated to `workflow_dispatch` (npm.yml:86) | unpublished | unchanged | free until first publish; the name is reserved on first publish |
 | crates `ac3forge`, `ac3forge-sys` | library | `rust/Cargo.toml` | unpublished | unchanged | free; `links` follows the C library's name |
-| vcpkg port `ac3forge`, Conan `ac3forge` | library | `packaging/vcpkg-port/ac3forge`, `packaging/conan` | staged, pending upstream | unchanged | a port rename is a new port |
+| vcpkg port `ac3forge`, Conan `ac3forge` | library | `packaging/vcpkg-port/iclforge`, `packaging/conan` | staged, pending upstream | unchanged | a port rename is a new port |
 | `ac3forge-dev-<full>-<sys>`; DEB `libac3forge0`, `libac3forge-dev` (`Depends libac3forge0 (= version)`); RPM `libac3forge0`, `ac3forge-devel` | library | `cmake/Packaging.cmake:165-166,212,231-233,365` | shipped | unchanged | `Replaces`/`Conflicts`/`Provides` (RPM `Obsoletes`) |
 | component `runtime`: `ac3forge-<M.m.p>-<sys>` zip/tgz; NSIS `.exe`, install dir `ac3forge`, ProgID `AC3Forge.Stream` for `.ac3`/`.ec3`; DEB/RPM `ac3forge`; `.dmg` volume `ac3forge` | Forge | `cmake/Packaging.cmake:32,52,81-94,164,227,357-360` | shipped since the first release | `forge-<ver>-<sys>`, DEB/RPM `forge` | NSIS: the new installer must uninstall the old key or users get two installs; DEB/RPM: `Replaces`/`Conflicts`/`Provides`; three tools' patterns (manifest-bump.yml:116-117, `tools/release/bump_manifests.py:146,285,295`, `Casks/ac3gui.rb:54`) |
 | winget `iainchesworthlabs.ac3forge`, Moniker `ac3forge`, aliases `ac3cli`/`ac3gui` | Forge | `packaging/winget/manifests/i/iainchesworthlabs/ac3forge/` (0.8.0-beta.1, 0.8.0-beta.2, 0.9.0-beta.1, 0.10.0-beta.1) | staged; submission blocked on DR6 | `iainchesworthlabs.Forge` | a new identifier is a new package upstream; staged version directories are never rewritten (docs/releasing.md); `check_packaging_versions.sh:41-47` and `bump_manifests.py:278` address the path by literal |
@@ -827,7 +827,7 @@ not started). Unchanged: 15.
     and ships. The filename unification was examined and **not** made. Two archives carry
     `PROJECT_VERSION_FULL` (`crucible`, `dev`) and the runtime carries `M.m.p`, and neither can
     take the other's style: the runtime's is what the Homebrew cask's URL is built from
-    (`packaging/homebrew/Casks/ac3gui.rb` downloads `ac3forge-<M.m.p>-Darwin.dmg`), while
+    (`packaging/homebrew/Casks/iclforge.rb` downloads `ac3forge-<M.m.p>-Darwin.dmg`), while
     dropping the prerelease suffix from the other two would make `0.10.0-beta.1` and
     `0.10.0-beta.2` produce the same filename. The two styles are therefore deliberate, and
     this page is where that is written down.

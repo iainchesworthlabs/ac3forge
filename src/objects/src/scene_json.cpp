@@ -24,7 +24,7 @@
 // an error, not something to ignore. A hand-authored scene file's likeliest
 // fault by far is a misspelled key, and silently defaulting "gian" to 1.0 would
 // produce a scene that is wrong in a way nothing reports. Forward compatibility
-// rides on the "ac3forge_scene" version number instead, which is what it is for.
+// rides on the "iclforge_scene" version number instead, which is what it is for.
 
 namespace iclforge::oba {
 
@@ -111,7 +111,7 @@ void write_string(std::string& out, std::string_view value) {
 }  // namespace
 
 std::string to_json(const ObjectScene& scene) {
-    std::string out = fmt::format("{{\n  \"ac3forge_scene\": {},\n", kFormatVersion);
+    std::string out = fmt::format("{{\n  \"iclforge_scene\": {},\n", kFormatVersion);
     const auto& orientation = scene.orientation();
     out += fmt::format("  \"orientation\": {{ \"yaw_rad\": {}, \"pitch_rad\": {}, "
                        "\"roll_rad\": {} }},\n",
@@ -583,14 +583,14 @@ std::expected<SceneContents, SceneError> read_scene_json(std::string_view text) 
             if (!reader.read_string(key) || !reader.expect(':')) {
                 return std::unexpected(reader.error());
             }
-            if (key == "ac3forge_scene") {
+            if (key == "iclforge_scene") {
                 double version = 0.0;
                 if (!reader.read_number(version)) {
                     return std::unexpected(reader.error());
                 }
                 if (version != kFormatVersion) {
                     reader.fail(SceneErrorKind::kBadValue,
-                                fmt::format("this is an ac3forge scene version {}; this build "
+                                fmt::format("this is an iclforge scene version {}; this build "
                                             "reads version {}",
                                             version, kFormatVersion));
                     return std::unexpected(reader.error());
@@ -645,7 +645,7 @@ std::expected<SceneContents, SceneError> read_scene_json(std::string_view text) 
     }
     if (!have_version) {
         reader.fail(SceneErrorKind::kBadField,
-                    "not an ac3forge scene: no 'ac3forge_scene' version member");
+                    "not an iclforge scene: no 'iclforge_scene' version member");
         return std::unexpected(reader.error());
     }
     if (!have_objects) {

@@ -94,8 +94,8 @@ def _unified_diff_lines(before: str, after: str, path: Path) -> list[str]:
 
 
 def bump_vcpkg(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
-    vcpkg_json = root / "packaging/vcpkg-port/ac3forge/vcpkg.json"
-    portfile = root / "packaging/vcpkg-port/ac3forge/portfile.cmake"
+    vcpkg_json = root / "packaging/vcpkg-port/iclforge/vcpkg.json"
+    portfile = root / "packaging/vcpkg-port/iclforge/portfile.cmake"
 
     def edit_json(text: str) -> str:
         return _substitute_once(
@@ -118,7 +118,7 @@ def bump_vcpkg(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
 
 
 def bump_homebrew_formula(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
-    formula = root / "packaging/homebrew/Formula/ac3forge.rb"
+    formula = root / "packaging/homebrew/Formula/iclforge.rb"
 
     def edit(text: str) -> str:
         text = _substitute_once(
@@ -141,14 +141,14 @@ def bump_homebrew_cask(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
     if plan.dmg_sha256 is None:
         plan.results.append(
             EditResult(
-                root / "packaging/homebrew/Casks/ac3gui.rb",
+                root / "packaging/homebrew/Casks/iclforge.rb",
                 "skipped",
-                "no ac3forge-*-Darwin.dmg release asset - macOS leg did not package this release",
+                "no iclforge-*-Darwin.dmg release asset - macOS leg did not package this release",
             )
         )
         return
 
-    cask = root / "packaging/homebrew/Casks/ac3gui.rb"
+    cask = root / "packaging/homebrew/Casks/iclforge.rb"
 
     def edit(text: str) -> str:
         # No `^`/MULTILINE anchor needed: this is the file's first `version "..."`
@@ -200,7 +200,7 @@ _WINGET_INSTALLER_TEMPLATE = """\
 # InstallerType zip + NestedInstallerType portable installs straight from
 # that archive with no separate installer to run.
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
-PackageIdentifier: iainchesworthlabs.ac3forge
+PackageIdentifier: iainchesworthlabs.iclforge
 PackageVersion: {version}
 InstallerLocale: en-US
 Platform:
@@ -232,7 +232,7 @@ _WINGET_VERSION_TEMPLATE = """\
 # path a microsoft/winget-pkgs submission uses, so this directory can be copied
 # straight into a winget-pkgs fork - see docs/releasing.md.
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.12.0.schema.json
-PackageIdentifier: iainchesworthlabs.ac3forge
+PackageIdentifier: iainchesworthlabs.iclforge
 PackageVersion: {version}
 DefaultLocale: en-US
 ManifestType: version
@@ -241,24 +241,24 @@ ManifestVersion: 1.12.0
 
 _WINGET_LOCALE_TEMPLATE = """\
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
-PackageIdentifier: iainchesworthlabs.ac3forge
+PackageIdentifier: iainchesworthlabs.iclforge
 PackageVersion: {version}
 PackageLocale: en-US
 Publisher: iainchesworthlabs
 PublisherUrl: https://github.com/iainchesworthlabs
 PublisherSupportUrl: https://github.com/iainchesworthlabs/ac3forge/issues
-PackageName: ac3forge
+PackageName: iclforge
 PackageUrl: https://github.com/iainchesworthlabs/ac3forge
 License: GPL-3.0-or-later
 LicenseUrl: https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE
 ShortDescription: Clean-room AC-3/E-AC-3/AC-4 encoder, decoder and Atmos object-layer CLI/GUI
 Description: >-
-  ac3forge is a clean-room C++23 implementation of the AC-3 (ATSC A/52, "Dolby Digital"),
+  iclforge is a clean-room C++23 implementation of the AC-3 (ATSC A/52, "Dolby Digital"),
   E-AC-3 ("Dolby Digital Plus") and AC-4 codecs, including a spatial object layer for
   Atmos-style authoring and decode. This package installs ac3cli (the command-line
   encoder and decoder) and ac3gui (the Qt6 desktop application) as portable executables;
   both encode and decode AC-3, E-AC-3 and AC-4.
-Moniker: ac3forge
+Moniker: iclforge
 Tags:
   - audio
   - codec
@@ -276,14 +276,17 @@ ManifestVersion: 1.12.0
 
 
 def bump_winget(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
-    base = root / "packaging/winget/manifests/i/iainchesworthlabs/ac3forge"
+    # winget-pkgs files a package under manifests/<first letter>/<publisher>/<package>/, and the
+    # package is the last part of the identifier: the releases staged under
+    # iainchesworthlabs.ac3forge stay in the ac3forge directory as they were made.
+    base = root / "packaging/winget/manifests/i/iainchesworthlabs/iclforge"
 
     if plan.winzip_sha256 is None:
         plan.results.append(
             EditResult(
                 base / plan.version,
                 "skipped",
-                "no ac3forge-*-win64.zip release asset - windows-msvc leg did not package "
+                "no iclforge-*-win64.zip release asset - windows-msvc leg did not package "
                 "this release",
             )
         )
@@ -293,7 +296,7 @@ def bump_winget(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
     bare_version = plan.version.split("-", 1)[0]
     installer_url = (
         f"https://github.com/{plan.repo}/releases/download/{plan.tag}/"
-        f"ac3forge-{bare_version}-win64.zip"
+        f"iclforge-{bare_version}-win64.zip"
     )
     release_notes_url = f"https://github.com/{plan.repo}/releases/tag/{plan.tag}"
 
@@ -305,9 +308,9 @@ def bump_winget(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
         version=plan.version, release_notes_url=release_notes_url
     )
     files = {
-        version_dir / "iainchesworthlabs.ac3forge.installer.yaml": installer_yaml,
-        version_dir / "iainchesworthlabs.ac3forge.yaml": version_yaml,
-        version_dir / "iainchesworthlabs.ac3forge.locale.en-US.yaml": locale_yaml,
+        version_dir / "iainchesworthlabs.iclforge.installer.yaml": installer_yaml,
+        version_dir / "iainchesworthlabs.iclforge.yaml": version_yaml,
+        version_dir / "iainchesworthlabs.iclforge.locale.en-US.yaml": locale_yaml,
     }
 
     if version_dir.is_dir():
@@ -344,8 +347,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True, help="bare version, e.g. 0.9.0-beta.1")
     parser.add_argument("--source-sha512", required=True, help="SHA512 of the source tarball")
     parser.add_argument("--source-sha256", required=True, help="SHA256 of the source tarball")
-    parser.add_argument("--dmg-sha256", help="SHA256 of ac3forge-*-Darwin.dmg, if it was built")
-    parser.add_argument("--winzip-sha256", help="SHA256 of ac3forge-*-win64.zip, if it was built")
+    parser.add_argument("--dmg-sha256", help="SHA256 of iclforge-*-Darwin.dmg, if it was built")
+    parser.add_argument("--winzip-sha256", help="SHA256 of iclforge-*-win64.zip, if it was built")
     parser.add_argument("--repo", default=REPO)
     parser.add_argument("--root", type=Path, default=Path())
     parser.add_argument("--dry-run", action="store_true")

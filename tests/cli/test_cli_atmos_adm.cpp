@@ -26,7 +26,7 @@
 // comment).
 //
 // A separate file rather than folded into test_cli.cpp: this file's own tests only make sense
-// when AC3FORGE_BUILD_ADM turned on iclforge::adm/iclforge::admbridge AND ac3cli was actually built
+// when ICLFORGE_BUILD_ADM turned on iclforge::adm/iclforge::admbridge AND ac3cli was actually built
 // (so its own binary has the 'atmos-adm' command at all) - a narrower, two-part condition
 // test_cli.cpp's single TARGET-ac3cli gate does not express. See tests/CMakeLists.txt's own
 // gating comment for exactly how both conditions are checked before this file is even compiled.
@@ -53,7 +53,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_adm_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_adm_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }

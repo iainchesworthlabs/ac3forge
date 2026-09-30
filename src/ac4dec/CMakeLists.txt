@@ -21,16 +21,16 @@ add_library(iclforge_ac4dec_objects OBJECT)
 # The profile's archive takes the objects as sources and passes on only the
 # OBJECT library's compile-time requirements, as src/ac4/CMakeLists.txt's does
 # and for its reason.
-if(AC3FORGE_MINIMAL_DECODER)
+if(ICLFORGE_MINIMAL_DECODER)
     add_library(iclforge_ac4dec_static STATIC $<TARGET_OBJECTS:iclforge_ac4dec_objects>)
 else()
     add_library(iclforge_ac4dec_static STATIC)
 endif()
-# No shared library in the minimum-footprint profile (AC3FORGE_MINIMAL_AC4,
+# No shared library in the minimum-footprint profile (ICLFORGE_MINIMAL_AC4,
 # planning/ac4.md, D14b): a bare-metal build has no dynamic loader, and CMake
 # refuses add_library(SHARED) for a target that has none. The same test guards
 # each line below that names iclforge_ac4dec_shared, as src/ac4/CMakeLists.txt's does.
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT ICLFORGE_MINIMAL_DECODER)
     add_library(iclforge_ac4dec_shared SHARED)
 endif()
 
@@ -45,18 +45,18 @@ endif()
 # either. Linked there, the core's archive was on the link line of everything
 # that linked libac4dec.so, and in a static build the inspector's archive was
 # too (src/capi/CMakeLists.txt found the same with iclforge::c).
-if(AC3FORGE_MINIMAL_DECODER)
+if(ICLFORGE_MINIMAL_DECODER)
     target_link_libraries(iclforge_ac4dec_static PUBLIC $<COMPILE_ONLY:iclforge_ac4dec_objects> iclforge::ac4_static PRIVATE iclforge::ac4core)
 else()
     target_link_libraries(iclforge_ac4dec_static PUBLIC iclforge_ac4dec_objects iclforge::ac4_static PRIVATE iclforge::ac4core)
 endif()
 
 add_library(iclforge::ac4dec_static ALIAS iclforge_ac4dec_static)
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT ICLFORGE_MINIMAL_DECODER)
     target_link_libraries(iclforge_ac4dec_shared PUBLIC iclforge_ac4dec_objects iclforge::ac4_shared PRIVATE iclforge::ac4core)
     add_library(iclforge::ac4dec_shared ALIAS iclforge_ac4dec_shared)
 endif()
-if(BUILD_SHARED_LIBS AND NOT AC3FORGE_MINIMAL_DECODER)
+if(BUILD_SHARED_LIBS AND NOT ICLFORGE_MINIMAL_DECODER)
     add_library(iclforge::ac4dec ALIAS iclforge_ac4dec_shared)
 else()
     add_library(iclforge::ac4dec ALIAS iclforge_ac4dec_static)
@@ -124,14 +124,14 @@ target_link_libraries(iclforge_ac4dec_objects
         "$<BUILD_INTERFACE:$<COMPILE_ONLY:iclforge::ac4>>"
         "$<BUILD_INTERFACE:$<COMPILE_ONLY:iclforge::ac4core>>"
         "$<BUILD_INTERFACE:iclforge::arithmetic>"
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>")
+        "$<BUILD_INTERFACE:iclforge::warnings>"
+        "$<BUILD_INTERFACE:iclforge::coverage>")
 
 # In the minimum-footprint profile: its compile options (no exceptions, no RTTI,
 # a section for each function and datum), PUBLIC for a consumer to share, and
 # code that is not position-independent - see src/ac4core/CMakeLists.txt.
-if(AC3FORGE_MINIMAL_DECODER)
-    target_link_libraries(iclforge_ac4dec_objects PUBLIC ac3::minimal_profile)
+if(ICLFORGE_MINIMAL_DECODER)
+    target_link_libraries(iclforge_ac4dec_objects PUBLIC iclforge::minimal_profile)
     set(_ac4dec_pic OFF)
 else()
     set(_ac4dec_pic ON)
@@ -147,23 +147,23 @@ set_target_properties(iclforge_ac4dec_objects PROPERTIES
 target_compile_options(iclforge_ac4dec_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-if(NOT AC3FORGE_MINIMAL_DECODER)
-    set_target_properties(iclforge_ac4dec_shared PROPERTIES DEFINE_SYMBOL "AC4DEC_BUILDING_SHARED")
+if(NOT ICLFORGE_MINIMAL_DECODER)
+    set_target_properties(iclforge_ac4dec_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_AC4DEC_BUILDING_SHARED")
     set(_ac4dec_export_target iclforge_ac4dec_shared)
 else()
     # The header is the same either way, as src/ac4/CMakeLists.txt's is.
     set(_ac4dec_export_target iclforge_ac4dec_static)
 endif()
 generate_export_header(${_ac4dec_export_target}
-    BASE_NAME AC4DEC
-    EXPORT_MACRO_NAME AC4DEC_EXPORT
+    BASE_NAME ICLFORGE_AC4DEC
+    EXPORT_MACRO_NAME ICLFORGE_AC4DEC_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac4dec/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC4DEC_STATIC_DEFINE)
-target_compile_definitions(iclforge_ac4dec_objects PRIVATE AC4DEC_BUILDING_SHARED)
-target_compile_definitions(iclforge_ac4dec_static PUBLIC AC4DEC_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_AC4DEC_STATIC_DEFINE)
+target_compile_definitions(iclforge_ac4dec_objects PRIVATE ICLFORGE_AC4DEC_BUILDING_SHARED)
+target_compile_definitions(iclforge_ac4dec_static PUBLIC ICLFORGE_AC4DEC_STATIC_DEFINE)
 
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT ICLFORGE_MINIMAL_DECODER)
     set_target_properties(iclforge_ac4dec_shared PROPERTIES
         VERSION "${PROJECT_VERSION}"
         SOVERSION "${PROJECT_VERSION}")
@@ -177,6 +177,6 @@ set_target_properties(iclforge_ac4dec_static PROPERTIES OUTPUT_NAME "iclforge_ac
 # where the tree says iclforge::ac4dec_static.
 set_target_properties(iclforge_ac4dec_objects PROPERTIES EXPORT_NAME "decoder_objects")
 set_target_properties(iclforge_ac4dec_static PROPERTIES EXPORT_NAME "decoder_static")
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT ICLFORGE_MINIMAL_DECODER)
     set_target_properties(iclforge_ac4dec_shared PROPERTIES EXPORT_NAME "decoder_shared")
 endif()

@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # MinimalDecoder.cmake
 #
-# The minimum-footprint decoder profile. AC3FORGE_MINIMAL_DECODER
+# The minimum-footprint decoder profile. ICLFORGE_MINIMAL_DECODER
 # turns src/ac3 into a single decode-only static library
 # (iclforge::ac3_minimal) built for a target that has a few hundred kilobytes of
 # RAM and no operating system - a set-top box, a receiver, a DSP port.
@@ -38,7 +38,7 @@
 # extern "C" can throw, and no MSVC target this profile is aimed at exists.
 # ---------------------------------------------------------------------------
 
-if(NOT AC3FORGE_MINIMAL_DECODER AND NOT AC3FORGE_MINIMAL_ENCODER)
+if(NOT ICLFORGE_MINIMAL_DECODER AND NOT ICLFORGE_MINIMAL_ENCODER)
     return()
 endif()
 
@@ -50,10 +50,10 @@ if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "
         "approximated here.")
 endif()
 
-add_library(ac3_minimal_profile INTERFACE)
-add_library(ac3::minimal_profile ALIAS ac3_minimal_profile)
+add_library(iclforge_minimal_profile INTERFACE)
+add_library(iclforge::minimal_profile ALIAS iclforge_minimal_profile)
 
-target_compile_options(ac3_minimal_profile INTERFACE
+target_compile_options(iclforge_minimal_profile INTERFACE
     -fno-exceptions
     -fno-rtti
     -ffunction-sections
@@ -63,7 +63,7 @@ target_compile_options(ac3_minimal_profile INTERFACE
 # rides the interface target rather than being a global add_link_options():
 # a static archive is not linked, and forcing the flag on a consumer that
 # deliberately keeps every section would be this file overreaching.
-target_link_options(ac3_minimal_profile INTERFACE "LINKER:--gc-sections")
+target_link_options(iclforge_minimal_profile INTERFACE "LINKER:--gc-sections")
 
 message(STATUS "Minimum-footprint profile: ON (no exceptions/RTTI, "
                "no direct-form transform tables)")

@@ -9,9 +9,9 @@ built from one tree:
   a.bin          the image the board boots (sdkconfig.ci-ota, over the
                  Sendspin player's CI shape), and which qemu_flash.bin holds
   b.bin          the same with another PROJECT_VER
-  unhealthy.bin  built with AC3FORGE_FIRMWARE_TEST=unhealthy: never healthy,
+  unhealthy.bin  built with ICLFORGE_FIRMWARE_TEST=unhealthy: never healthy,
                  so it goes back at its deadline
-  panic.bin      built with AC3FORGE_FIRMWARE_TEST=panic: panics as its trial
+  panic.bin      built with ICLFORGE_FIRMWARE_TEST=panic: panics as its trial
                  starts, so the bootloader goes back
 
 In order, each step failing the run with an ::error:: annotation that says what

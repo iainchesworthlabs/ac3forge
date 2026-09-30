@@ -2,7 +2,7 @@
 // (planning/hearth-reference-player.md, B3 and B4).
 //
 // It dials each player it is given, pairs it, sends it settings, plays one AC-3 or E-AC-3
-// programme to all of them as a group over _ac3forge_player@v1, and reports what each said: its
+// programme to all of them as a group over _iclforge_player@v1, and reports what each said: its
 // counters, its decoder's findings and its levels, and for a board, what its GET /status said
 // while it played - above all where it put the programme's first frame on the server's clock,
 // which is how two boards are held to playing within a millisecond of each other.
@@ -32,7 +32,7 @@
 
 #include "iclforge/iec61937/iec61937.hpp"
 #include "iclforge/ac3/io/elementary.hpp"
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/handshake.hpp"
 #include "iclforge/sendspin/json.hpp"
 #include "iclforge/sendspin/messages.hpp"
@@ -50,7 +50,7 @@ namespace {
 namespace fs = std::filesystem;
 namespace ss = iclforge::sendspin;
 namespace m = ss::messages;
-namespace ac = ss::ac3forge;
+namespace ac = ss::player;
 namespace json = ss::json;
 namespace testsink = iclforge::hearth::testsink;
 using namespace std::chrono_literals;
@@ -60,7 +60,7 @@ constexpr std::string_view kUsage = R"(usage: ac3hearth-testserver [options] --p
 
 A Sendspin server for Hearth's tests. It dials each player, pairs it, sends it
 settings, plays one AC-3 or E-AC-3 programme to all of them as a group over
-_ac3forge_player@v1, and writes a report of what each said about it.
+_iclforge_player@v1, and writes a report of what each said about it.
 
   --player URL         a player to dial, such as ws://192.168.1.40:8928/sendspin;
                        the options below apply to the last one given
@@ -420,7 +420,7 @@ class BurstSource {
     // Paired: by its record, by its token (entered before dialling), or by the code it shows.
     const auto playing = [&](const ss::ClientView& client) {
         return client.playing && client.bursts && client.available &&
-               client.psk == ss::handshake::PskCategory::kLongTerm && client.ac3forge_state.has_value();
+               client.psk == ss::handshake::PskCategory::kLongTerm && client.iclforge_state.has_value();
     };
     if (view->psk != ss::handshake::PskCategory::kLongTerm && !run.spec.token) {
         if (!run.spec.code_log) {
@@ -467,22 +467,22 @@ class BurstSource {
             if (!now) {
                 return fail("went away before it played");
             }
-            return fail(std::string("is not playing _ac3forge_player@v1 on a long-term PSK (psk ") + psk_text(now->psk) +
+            return fail(std::string("is not playing _iclforge_player@v1 on a long-term PSK (psk ") + psk_text(now->psk) +
                         (now->playing ? ", playing" : "") + (now->bursts ? ", bursts" : "") +
                         (now->available ? ", available" : "") + ")");
         }
         std::this_thread::sleep_for(50ms);
     }
-    note(run.spec.label + ": playing _ac3forge_player@v1 (" + run.dialect + ")");
+    note(run.spec.label + ": playing _iclforge_player@v1 (" + run.dialect + ")");
 
     // Settings, for a player that takes them.
     if (run.spec.layout) {
-        const std::vector<ac::Command>& commands = view->ac3forge_state->supported_commands;
+        const std::vector<ac::Command>& commands = view->iclforge_state->supported_commands;
         if (std::find(commands.begin(), commands.end(), ac::Command::kSettings) == commands.end()) {
             return fail("does not take settings");
         }
         const std::int64_t revision =
-            std::max<std::int64_t>(view->ac3forge_state->settings_revision + 1,
+            std::max<std::int64_t>(view->iclforge_state->settings_revision + 1,
                                    std::chrono::duration_cast<std::chrono::seconds>(
                                        std::chrono::system_clock::now().time_since_epoch())
                                        .count());
@@ -491,13 +491,13 @@ class BurstSource {
         command.settings.revision = revision;
         command.settings.layout = *run.spec.layout;
         command.settings.trim_db = run.spec.trim_db;
-        if (!host.ac3forge_command(run.client_id, command)) {
+        if (!host.iclforge_command(run.client_id, command)) {
             return fail("refused settings for layout " + *run.spec.layout + " before sending them");
         }
         while (true) {
             const std::optional<ss::ClientView> now = host.client(run.client_id);
-            if (now && now->ac3forge_state) {
-                const ac::State& state = *now->ac3forge_state;
+            if (now && now->iclforge_state) {
+                const ac::State& state = *now->iclforge_state;
                 if (state.settings_error && state.settings_error->revision == revision) {
                     return fail("refused its settings: " + state.settings_error->why);
                 }
@@ -548,8 +548,8 @@ void write_report(std::ostream& out, const std::string& server_name, const std::
         w.member("settings_revision", run.settings_revision);
         w.key("failure");
         run.failure ? w.string(*run.failure) : w.null();
-        if (run.last_view && run.last_view->ac3forge_state) {
-            const ac::State& state = *run.last_view->ac3forge_state;
+        if (run.last_view && run.last_view->iclforge_state) {
+            const ac::State& state = *run.last_view->iclforge_state;
             w.key("counters").begin_object();
             w.member("bursts_played", state.counters.bursts_played);
             w.member("underruns", state.counters.underruns);
@@ -965,12 +965,12 @@ int main(int argc, char** argv) {
                 failure = run.spec.label + " went away during the play";
                 continue;
             }
-            if (view->ac3forge_state) {
-                if (view->ac3forge_state->decoder) {
-                    run.decoder = view->ac3forge_state->decoder;
+            if (view->iclforge_state) {
+                if (view->iclforge_state->decoder) {
+                    run.decoder = view->iclforge_state->decoder;
                 }
-                if (view->ac3forge_state->levels && !view->ac3forge_state->levels->empty()) {
-                    run.levels = *view->ac3forge_state->levels;
+                if (view->iclforge_state->levels && !view->iclforge_state->levels->empty()) {
+                    run.levels = *view->iclforge_state->levels;
                 }
             }
         }
@@ -1026,10 +1026,10 @@ int main(int argc, char** argv) {
             for (const PlayerRun& run : runs) {
                 const std::optional<ss::ClientView> view =
                     run.spec.hold ? std::nullopt : (*host)->client(run.client_id);
-                if (!view || !view->ac3forge_state) {
+                if (!view || !view->iclforge_state) {
                     continue;
                 }
-                const ac::Counters& counters = view->ac3forge_state->counters;
+                const ac::Counters& counters = view->iclforge_state->counters;
                 const std::uint64_t accounted = counters.bursts_played + counters.late_chunks + counters.dropped_chunks;
                 auto& [count, since] = last[run.client_id];
                 if (accounted != count) {
@@ -1057,13 +1057,13 @@ int main(int argc, char** argv) {
             continue;
         }
         const std::optional<ss::ClientView> view = (*host)->client(run.client_id);
-        if (!view || !view->ac3forge_state) {
+        if (!view || !view->iclforge_state) {
             if (failure.empty()) {
                 failure = run.spec.label + " reported nothing at the end";
             }
             continue;
         }
-        const ac::Counters& counters = view->ac3forge_state->counters;
+        const ac::Counters& counters = view->iclforge_state->counters;
         note(run.spec.label + ": " + std::to_string(counters.bursts_played) + " bursts played of " +
             std::to_string(sent) + ", " + std::to_string(counters.underruns) + " underruns, " +
             std::to_string(counters.late_chunks) + " late, " + std::to_string(counters.dropped_chunks) + " dropped, " +

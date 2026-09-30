@@ -80,7 +80,7 @@ enum class DecodeError : std::uint8_t {
     kMissingIFrame,    // a non-I-frame that needs configuration no I-frame has supplied
 };
 
-[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DecodeError error);
+[[nodiscard]] ICLFORGE_AC4DEC_EXPORT std::string_view describe(DecodeError error);
 
 // --- The syntax trace -------------------------------------------------------
 //
@@ -122,7 +122,7 @@ enum class DownmixTarget : std::uint8_t {
     k5X2,
 };
 
-[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DownmixTarget target);
+[[nodiscard]] ICLFORGE_AC4DEC_EXPORT std::string_view describe(DownmixTarget target);
 
 // Part 1 Table 161's DRC decoder modes, and how decode() chooses one.
 enum class DrcMode : std::uint8_t {
@@ -134,7 +134,7 @@ enum class DrcMode : std::uint8_t {
     kPortableHeadphones,  // 3
 };
 
-[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DrcMode mode);
+[[nodiscard]] ICLFORGE_AC4DEC_EXPORT std::string_view describe(DrcMode mode);
 
 // The controls of planning/ac4.md's "One control for both formats" that act on
 // the decoded channels. Decoder::set_output() changes them from the next frame.
@@ -223,7 +223,7 @@ struct PresentationChoice {
 // level `level` (md_compat, Part 1 Table 86 and Part 2 Table 55): its index in
 // Toc::presentations_v1, or in presentations_v0 below bitstream_version 2;
 // nothing when no presentation can be selected.
-[[nodiscard]] AC4DEC_EXPORT std::optional<std::size_t> select_presentation(const Toc& toc,
+[[nodiscard]] ICLFORGE_AC4DEC_EXPORT std::optional<std::size_t> select_presentation(const Toc& toc,
                                                                            const PresentationChoice& choice,
                                                                            int level);
 
@@ -276,7 +276,7 @@ enum class DecodingMode : std::uint8_t {
     kCore,
 };
 
-[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DecodingMode mode);
+[[nodiscard]] ICLFORGE_AC4DEC_EXPORT std::string_view describe(DecodingMode mode);
 
 // A decoder's configuration. Decoder::set_output() and set_presentation()
 // change the two halves a system changes while a stream plays; the rest is
@@ -349,7 +349,7 @@ enum class Speaker : std::uint8_t {
     kLfe2,           // the second LFE a bed can assign (Part 2 Tables 64 and 65)
 };
 
-[[nodiscard]] AC4DEC_EXPORT std::string_view describe(Speaker speaker);
+[[nodiscard]] ICLFORGE_AC4DEC_EXPORT std::string_view describe(Speaker speaker);
 
 // --- Objects -----------------------------------------------------------------
 //
@@ -507,7 +507,7 @@ enum class SubstreamRole : std::uint8_t {
     kAssociated,
 };
 
-[[nodiscard]] AC4DEC_EXPORT std::string_view describe(SubstreamRole role);
+[[nodiscard]] ICLFORGE_AC4DEC_EXPORT std::string_view describe(SubstreamRole role);
 
 struct PresentationMember {
     int substream = 0;  // substream_index: the first of a frame-rate-multiplied series
@@ -666,7 +666,7 @@ struct PresentationMetadata {
 // A system changes the output processing and the presentation while a stream
 // plays with set_output() and set_presentation(), which keep everything the
 // decoder has read: a new decoder waits for an I-frame.
-class AC4DEC_EXPORT Decoder {
+class ICLFORGE_AC4DEC_EXPORT Decoder {
    public:
     Decoder();
     explicit Decoder(const DecoderConfig& config);

@@ -167,19 +167,19 @@ target_link_libraries(ac3gui_qmltests
         iclforge::ac4
         iclforge::ac4dec
         iclforge::ac4enc
-        ac3::warnings
-        ac3::fmt
+        iclforge::warnings
+        iclforge::fmt
         # This target recompiles encoder_controller.cpp/stream_player_controller.cpp
         # from scratch (this file's own header comment), so it needs the same
         # profiling header pair ../CMakeLists.txt's ac3gui target links -
         # otherwise a Tracy-enabled configure fails only on this target.
-        ac3::tracy
-        # Inert unless AC3FORGE_ENABLE_COVERAGE is on - see cmake/Coverage.cmake:
+        iclforge::tracy
+        # Inert unless ICLFORGE_ENABLE_COVERAGE is on - see cmake/Coverage.cmake:
         # linking an instrumented library gives this target only the gcov
         # runtime, not instrumentation of the controller sources it
         # recompiles, so without this a gcovr filter for apps/gui measured
         # nothing these suites ran (Crucible's qmltests link it the same way).
-        ac3::coverage
+        iclforge::coverage
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
@@ -187,7 +187,7 @@ target_link_libraries(ac3gui_qmltests
         Qt6::QuickTest
         Qt6::Concurrent)
 target_include_directories(ac3gui_qmltests PRIVATE
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
+    "$<IF:$<BOOL:${ICLFORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
 
 # QT_QPA_PLATFORM=offscreen on the test itself, not just -platform offscreen
 # on the command line: belt and suspenders again, and it means running the

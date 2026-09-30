@@ -84,12 +84,12 @@ class NotBuiltByTheLinuxGate(unittest.TestCase):
 
     def test_platform_and_language_trees(self):
         for path in (
-            "esp-idf/ac3forge/component.c",
+            "esp-idf/iclforge/component.c",
             "esphome/x.yaml",
             "apps/android/app/build.gradle.kts",
             "apps/wasm/main.cpp",
             "apps/baremetal/probe.cpp",
-            "python/ac3forge/__init__.py",
+            "python/iclforge/__init__.py",
             "rust/src/lib.rs",
             "js/package.json",
             "packaging/conan/conanfile.py",

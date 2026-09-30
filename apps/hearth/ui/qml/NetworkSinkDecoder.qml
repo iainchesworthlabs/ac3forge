@@ -7,7 +7,7 @@ import Ac3ForgeHearth
 // The selected Hearth sink's own decoder settings (network-sink-decoder.png):
 // the extension's DecoderSettings, the sink's own subset of DecoderEac3.qml's
 // controls - no RF ceiling, dual mono, JOC domain or fast inverse transform,
-// since _ac3forge_player@v1 carries none of those (ac3forge_player.hpp's own
+// since _iclforge_player@v1 carries none of those (iclforge_player.hpp's own
 // kDecoderSettingNames). Read from and written straight back to
 // NetworkController.sinkDecoderSettings/setSinkDecoderSettings(), the same
 // "whole map, apply what changed" shape DecoderEac3.qml already uses for

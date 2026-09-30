@@ -35,7 +35,7 @@ PINS="$REPO/tests/golden/fixed-probe-pcm-hashes.json"
 # this target exists; `float` builds the same part with the S3's tier, which is
 # the comparison docs/platforms/bare-metal/esp32-c3.md's own row is made of. Passed to CMake
 # explicitly in both cases, for the reason the S3 runner gives about
-# AC3FORGE_STAGE_TIMERS: an option set on one run stays in the cache for the
+# ICLFORGE_STAGE_TIMERS: an option set on one run stays in the cache for the
 # next, and a run that silently inherited the other tier would report the
 # wrong thing under this one's hash pins.
 SCALAR=fixed
@@ -63,29 +63,29 @@ fi
 # block of 114,688. A total is therefore not a budget here either, and this
 # part proves it - the 7.1.4 fixture, whose peak is 238,094, failed on a
 # 6,144-byte request with eleven kilobytes still showing free. That fixture is
-# skipped by the project's own AC3FORGE_PROBE_HEAP_BUDGET_BYTES rather than
+# skipped by the project's own ICLFORGE_PROBE_HEAP_BUDGET_BYTES rather than
 # gated here; what this ceiling holds is the peak of the eleven that do run.
-: "${AC3FORGE_ESP32C3_MAX_HEAP_BYTES:=235000}"
-: "${AC3FORGE_ESP32C3_MAX_RETAINED_BYTES:=1024}"
-: "${AC3FORGE_ESP32C3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
-: "${AC3FORGE_ESP32C3_MIN_STACK_FREE_BYTES:=8192}"
+: "${ICLFORGE_ESP32C3_MAX_HEAP_BYTES:=235000}"
+: "${ICLFORGE_ESP32C3_MAX_RETAINED_BYTES:=1024}"
+: "${ICLFORGE_ESP32C3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
+: "${ICLFORGE_ESP32C3_MIN_STACK_FREE_BYTES:=8192}"
 
 OUTPUT="$(mktemp)"
 trap 'rm -f "$OUTPUT"' EXIT
 
 # fullclean when the scalar changes, for the reason the S3 runner cleans
-# between profiles: AC3FORGE_DECODE_SCALAR reaches the library as a cache
+# between profiles: ICLFORGE_DECODE_SCALAR reaches the library as a cache
 # variable that a warm build directory has already resolved into an include
 # path, and reconfiguring over the top keeps the previous tier's archive -
 # which links, runs, and reports the wrong arithmetic under this run's pins.
-STAMP="build/.ac3forge-scalar"
+STAMP="build/.iclforge-scalar"
 if [[ -d build && "$(cat "$STAMP" 2>/dev/null || echo)" != "$SCALAR" ]]; then
     echo "note: build directory holds a different scalar - cleaning" >&2
     idf.py fullclean
 fi
 
 idf.py set-target esp32c3
-idf.py -DAC3FORGE_DECODE_SCALAR="$SCALAR" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS" build
+idf.py -DICLFORGE_DECODE_SCALAR="$SCALAR" -DICLFORGE_STAGE_TIMERS="$STAGE_TIMERS" build
 mkdir -p build && printf '%s' "$SCALAR" > "$STAMP"
 
 echo
@@ -152,9 +152,9 @@ if [[ -z "$heap" ]]; then
     echo "error: the probe reported no heap.peak_bytes line" >&2
     exit 1
 fi
-echo "peak heap: $heap bytes (ceiling $AC3FORGE_ESP32C3_MAX_HEAP_BYTES)"
-if (( heap > AC3FORGE_ESP32C3_MAX_HEAP_BYTES )); then
-    echo "::error title=ESP32-C3 footprint regression::peak heap is $heap bytes, ceiling is $AC3FORGE_ESP32C3_MAX_HEAP_BYTES" >&2
+echo "peak heap: $heap bytes (ceiling $ICLFORGE_ESP32C3_MAX_HEAP_BYTES)"
+if (( heap > ICLFORGE_ESP32C3_MAX_HEAP_BYTES )); then
+    echo "::error title=ESP32-C3 footprint regression::peak heap is $heap bytes, ceiling is $ICLFORGE_ESP32C3_MAX_HEAP_BYTES" >&2
     exit 1
 fi
 
@@ -163,9 +163,9 @@ if [[ -z "$retained" ]]; then
     echo "error: the probe reported no heap.retained_bytes line" >&2
     exit 1
 fi
-echo "retained after teardown: $retained bytes (ceiling $AC3FORGE_ESP32C3_MAX_RETAINED_BYTES)"
-if (( retained > AC3FORGE_ESP32C3_MAX_RETAINED_BYTES )); then
-    echo "::error title=ESP32-C3 footprint regression::$retained bytes are still live after every decoder was destroyed, ceiling is $AC3FORGE_ESP32C3_MAX_RETAINED_BYTES" >&2
+echo "retained after teardown: $retained bytes (ceiling $ICLFORGE_ESP32C3_MAX_RETAINED_BYTES)"
+if (( retained > ICLFORGE_ESP32C3_MAX_RETAINED_BYTES )); then
+    echo "::error title=ESP32-C3 footprint regression::$retained bytes are still live after every decoder was destroyed, ceiling is $ICLFORGE_ESP32C3_MAX_RETAINED_BYTES" >&2
     exit 1
 fi
 
@@ -178,9 +178,9 @@ if [[ -z "$CHURN" ]]; then
     exit 1
 fi
 while read -r codec per_frame; do
-    echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${AC3FORGE_ESP32C3_MAX_STEADY_ALLOCS_PER_FRAME})"
-    if (( per_frame > AC3FORGE_ESP32C3_MAX_STEADY_ALLOCS_PER_FRAME )); then
-        echo "::error title=ESP32-C3 footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $AC3FORGE_ESP32C3_MAX_STEADY_ALLOCS_PER_FRAME" >&2
+    echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${ICLFORGE_ESP32C3_MAX_STEADY_ALLOCS_PER_FRAME})"
+    if (( per_frame > ICLFORGE_ESP32C3_MAX_STEADY_ALLOCS_PER_FRAME )); then
+        echo "::error title=ESP32-C3 footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $ICLFORGE_ESP32C3_MAX_STEADY_ALLOCS_PER_FRAME" >&2
         exit 1
     fi
 done <<< "$CHURN"
@@ -190,9 +190,9 @@ if [[ -z "$stack" ]]; then
     echo "error: the probe reported no esp32c3.main_task_stack_free_bytes line" >&2
     exit 1
 fi
-echo "main task stack free: $stack bytes (floor $AC3FORGE_ESP32C3_MIN_STACK_FREE_BYTES)"
-if (( stack < AC3FORGE_ESP32C3_MIN_STACK_FREE_BYTES )); then
-    echo "::error title=ESP32-C3 stack headroom::the decode left $stack bytes of the main task's stack free, floor is $AC3FORGE_ESP32C3_MIN_STACK_FREE_BYTES" >&2
+echo "main task stack free: $stack bytes (floor $ICLFORGE_ESP32C3_MIN_STACK_FREE_BYTES)"
+if (( stack < ICLFORGE_ESP32C3_MIN_STACK_FREE_BYTES )); then
+    echo "::error title=ESP32-C3 stack headroom::the decode left $stack bytes of the main task's stack free, floor is $ICLFORGE_ESP32C3_MIN_STACK_FREE_BYTES" >&2
     exit 1
 fi
 

@@ -4,8 +4,8 @@
 planning/hearth-reference-player.md, B2. A board with no network listens for
 Improv Wi-Fi (https://www.improv-wifi.com/serial/) on its console, and a
 client there gives it an SSID and a passphrase:
-esp-idf/ac3forge/examples/hearth_sink/main/provision.cpp answers, in the
-packet format of esp-idf/ac3forge/include/ac3forge/improv.hpp. QEMU has no
+esp-idf/iclforge/examples/hearth_sink/main/provision.cpp answers, in the
+packet format of esp-idf/iclforge/include/iclforge/improv.hpp. QEMU has no
 radio, so tools/checks/run_improv_qemu.sh boots two images, one for each of
 these scenarios:
 
@@ -70,7 +70,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# The packet format: ac3forge/improv.hpp, byte for byte.
+# The packet format: iclforge/improv.hpp, byte for byte.
 # ---------------------------------------------------------------------------
 
 HEADER = b"IMPROV"

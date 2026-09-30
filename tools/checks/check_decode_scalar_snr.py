@@ -4,7 +4,7 @@ Written for the float32 path and used for the fixed-point one too
 (planning/arithmetic-tiers.md): --float-cli names whichever build is under
 test, and --min-snr-db the floor that build is held to.
 
-`AC3FORGE_DECODE_SCALAR=float` builds the decoder's coefficient stores,
+`ICLFORGE_DECODE_SCALAR=float` builds the decoder's coefficient stores,
 transform scratch and overlap-add history as `float` instead of `double` - the
 arithmetic the minimum-footprint profile has used since the ESP32-S3 port, and
 the arithmetic every bare-metal fixture is decoded with. Nothing measured it.
@@ -12,7 +12,7 @@ the arithmetic every bare-metal fixture is decoded with. Nothing measured it.
 docs/building.md records "~139 dB worst-channel SNR against the double decode
 across four streams", and that number was true when it was taken. It came from
 a build made by hand: until the scalar was split onto its own CMake axis
-(src/ac3/variants/, AC3FORGE_DECODE_SCALAR) it could only be float in a
+(src/ac3/variants/, ICLFORGE_DECODE_SCALAR) it could only be float in a
 configuration that was ALSO decode-only and had no `ac3cli` to compare with. So
 the figure has sat in prose for months with nothing able to re-derive it, while
 the path it describes is the one two CI legs decode every fixture through.

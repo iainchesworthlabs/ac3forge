@@ -121,7 +121,7 @@ constexpr int kPollMs = 60;
 // Follows media_info_json()'s own document shape (see that function's
 // comment) so a field here and the same field in "Export JSON..." never say
 // two different things; `json` on the top-level map carries that document
-// whole. Deliberately short of every field ac3forge.hearth.media/1 carries -
+// whole. Deliberately short of every field iclforge.hearth.media/1 carries -
 // the deep per-object OAMD table and the per-frame EMDF/CRC dumps are "at
 // play time" or "detail" questions (planning/hearth-reference-player.md,
 // Media information) the Play page's own monitor and a future slice answer,
@@ -1262,7 +1262,7 @@ void HearthController::start() {
     poll();
 
     // Off by default, deliberately not a Settings toggle: set
-    // AC3FORGE_HEARTH_DIAGNOSTICS_PORT to a port number to `curl` the same
+    // ICLFORGE_HEARTH_DIAGNOSTICS_PORT to a port number to `curl` the same
     // report Save/Copy/View live already produce from a second terminal.
     // Unset, empty, or not a plain port number leaves this null - the same
     // "refused silently" shape an out-of-range trim or delay already has
@@ -1273,7 +1273,7 @@ void HearthController::start() {
     // triggers the platform CRT's "getenv is deprecated" warning under
     // clang-cl's stricter defaults.
     bool port_ok = false;
-    const int port_value = qEnvironmentVariableIntValue("AC3FORGE_HEARTH_DIAGNOSTICS_PORT", &port_ok);
+    const int port_value = qEnvironmentVariableIntValue("ICLFORGE_HEARTH_DIAGNOSTICS_PORT", &port_ok);
     if (port_ok && port_value > 0 && port_value <= std::numeric_limits<std::uint16_t>::max()) {
         diagnostics_server_ = std::make_unique<iclforge::hearth::DiagnosticsHttpServer>(
             [this] { return diagnosticsReport().toStdString(); });
@@ -1411,7 +1411,7 @@ bool HearthController::exportInspectedMedia(const QUrl& fileUrl) {
 }
 
 void HearthController::poll() {
-    AC3_ZONE_SCOPED_N("hearth poll");
+    ICLFORGE_ZONE_SCOPED_N("hearth poll");
     if (!engine_) {
         return;
     }
@@ -1438,7 +1438,7 @@ void HearthController::poll() {
     // Named spans inside this one function rather than nested scopes: it
     // runs sixteen times a second and does five unrelated jobs, and a
     // capture that attributes them all to one "hearth poll" zone cannot say
-    // which of them costs anything. AC3_ZONE_BEGIN/END exists for exactly
+    // which of them costs anything. ICLFORGE_ZONE_BEGIN/END exists for exactly
     // this (see profiling.hpp's own comment on marking a section of an
     // already-large function).
     //
@@ -1448,7 +1448,7 @@ void HearthController::poll() {
     // handful of items a queue normally holds and much less so after an
     // "Add folder" of several hundred, which is the shape a capture would
     // show here first.
-    AC3_ZONE_BEGIN(poll_queue_zone, "poll: queue");
+    ICLFORGE_ZONE_BEGIN(poll_queue_zone, "poll: queue");
     const iclforge::hearth::EngineStatus status = engine_->status();
 
     QVariantList rows;
@@ -1464,9 +1464,9 @@ void HearthController::poll() {
         current_index_ = new_current;
         emit queueChanged();
     }
-    AC3_ZONE_END(poll_queue_zone);
+    ICLFORGE_ZONE_END(poll_queue_zone);
 
-    AC3_ZONE_BEGIN(poll_transport_zone, "poll: transport");
+    ICLFORGE_ZONE_BEGIN(poll_transport_zone, "poll: transport");
     const QString new_state = transport_state_name(status.state);
     const QString new_output_reason = QString::fromStdString(status.output_reason);
     const QString new_note = QString::fromStdString(status.note);
@@ -1485,11 +1485,11 @@ void HearthController::poll() {
         emit stateChanged();
     }
 
-    AC3_ZONE_END(poll_transport_zone);
+    ICLFORGE_ZONE_END(poll_transport_zone);
 
     // --- media information ------------------------------------------------
     // currentMedia follows the item playing now.
-    AC3_ZONE_BEGIN(poll_media_zone, "poll: media");
+    ICLFORGE_ZONE_BEGIN(poll_media_zone, "poll: media");
     QString new_now_playing_path;
     if (status.current != iclforge::hearth::Queue::kNone && status.current < status.queue.size()) {
         new_now_playing_path = QString::fromStdString(status.queue[status.current].path);
@@ -1539,7 +1539,7 @@ void HearthController::poll() {
         emit inspectedMediaChanged();
     }
 
-    AC3_ZONE_END(poll_media_zone);
+    ICLFORGE_ZONE_END(poll_media_zone);
 
     // Read apart from status() - Engine::position()'s own comment says why -
     // and on its own signal, so the scrubber does not have to sit through
@@ -1565,7 +1565,7 @@ void HearthController::poll() {
         emit decoderSettingsChanged();
     }
 
-    AC3_ZONE_BEGIN(poll_speakers_zone, "poll: speakers");
+    ICLFORGE_ZONE_BEGIN(poll_speakers_zone, "poll: speakers");
     const std::size_t slots = status.layout.slots();
     // The layout can change now (setLayoutText()/setHeights()/
     // setSpeakerSmall()), not just appear once, so everything keyed by slot
@@ -1662,9 +1662,9 @@ void HearthController::poll() {
         emit speakerSetupChanged();
     }
 
-    AC3_ZONE_END(poll_speakers_zone);
+    ICLFORGE_ZONE_END(poll_speakers_zone);
 
-    AC3_ZONE_BEGIN(poll_monitor_zone, "poll: monitor");
+    ICLFORGE_ZONE_BEGIN(poll_monitor_zone, "poll: monitor");
     // --- the play monitor: Engine::meters() and Engine::unit_report(), ----
     // read every tick the same as status() above - both calls have existed
     // on Engine since A3 (slices 6 and 8); this is the first place in the
@@ -1773,7 +1773,7 @@ void HearthController::poll() {
     if (monitor_changed) {
         emit monitorChanged();
     }
-    AC3_ZONE_END(poll_monitor_zone);
+    ICLFORGE_ZONE_END(poll_monitor_zone);
 }
 
 void HearthController::setDecoderSettings(const QVariantMap& settings) {

@@ -6,8 +6,8 @@
 # native formats are layered on top when the packaging tool for that format is
 # actually available, so `cpack` degrades gracefully instead of failing
 # outright. Which targets end up in a package is decided entirely by which
-# install() rules ran - ac3cli's runs unconditionally (AC3FORGE_BUILD_CLI
-# defaults ON), ac3gui's only when AC3FORGE_BUILD_GUI is ON - so no extra
+# install() rules ran - ac3cli's runs unconditionally (ICLFORGE_BUILD_CLI
+# defaults ON), ac3gui's only when ICLFORGE_BUILD_GUI is ON - so no extra
 # gating is needed here for that.
 #
 # CMakePresets.json's packagePresets deliberately carry no "generators"
@@ -21,7 +21,7 @@
 # `cpack --preset` and not only through a bare `cpack` invocation.
 # ---------------------------------------------------------------------------
 
-set(CPACK_PACKAGE_NAME "ac3forge")
+set(CPACK_PACKAGE_NAME "iclforge")
 set(CPACK_PACKAGE_VENDOR "Iain Chesworth")
 set(CPACK_PACKAGE_CONTACT "Iain Chesworth")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
@@ -29,7 +29,7 @@ set(CPACK_PACKAGE_HOMEPAGE_URL "${PROJECT_HOMEPAGE_URL}")
 set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "ac3forge")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "iclforge")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
 set(CPACK_VERBATIM_VARIABLES ON)
 
@@ -46,8 +46,8 @@ set(CPACK_GENERATOR "ZIP")
 set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_LIST_DIR}/CPackProjectConfig.cmake")
 
 if(WIN32)
-    find_program(AC3FORGE_MAKENSIS_EXECUTABLE makensis)
-    if(AC3FORGE_MAKENSIS_EXECUTABLE)
+    find_program(ICLFORGE_MAKENSIS_EXECUTABLE makensis)
+    if(ICLFORGE_MAKENSIS_EXECUTABLE)
         list(APPEND CPACK_GENERATOR "NSIS")
         set(CPACK_NSIS_PACKAGE_NAME "${CPACK_PACKAGE_NAME}")
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
@@ -219,8 +219,8 @@ elseif(APPLE)
 elseif(UNIX)
     list(APPEND CPACK_GENERATOR "TGZ")
 
-    find_program(AC3FORGE_DPKG_DEB_EXECUTABLE dpkg-deb)
-    if(AC3FORGE_DPKG_DEB_EXECUTABLE)
+    find_program(ICLFORGE_DPKG_DEB_EXECUTABLE dpkg-deb)
+    if(ICLFORGE_DPKG_DEB_EXECUTABLE)
         list(APPEND CPACK_GENERATOR "DEB")
         set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_VENDOR}")
         set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
@@ -275,14 +275,14 @@ elseif(UNIX)
         # package is free to change.
         #
         # Only when the GUI is in the package. A CLI-only .deb
-        # (AC3FORGE_BUILD_GUI=OFF, still the default on every Linux preset in
+        # (ICLFORGE_BUILD_GUI=OFF, still the default on every Linux preset in
         # CMakePresets.json) links no Qt at all, and pulling the whole QML
         # runtime onto a machine that asked for ac3cli would be a regression.
         # The Qt libraries themselves stay with shlibdeps, which resolves
         # them from an apt kit; a private kit needs them added here too, and
         # the first gap above is the reason why.
-        if(AC3FORGE_BUILD_GUI)
-            set(AC3FORGE_GUI_QML_MODULES
+        if(ICLFORGE_BUILD_GUI)
+            set(ICLFORGE_GUI_QML_MODULES
                 qml6-module-qtcore
                 qml6-module-qtqml-models
                 qml6-module-qtqml-workerscript
@@ -300,7 +300,7 @@ elseif(UNIX)
             # every one of these arrived with Qt 6 itself, and the Qt version
             # floor that does matter is already carried by the library
             # dependencies shlibdeps writes.
-            list(JOIN AC3FORGE_GUI_QML_MODULES ", " CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS)
+            list(JOIN ICLFORGE_GUI_QML_MODULES ", " CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS)
         endif()
 
         # Component-aware packaging, OFF by default for the DEB generator -
@@ -318,12 +318,12 @@ elseif(UNIX)
 
         # Package-name overrides: without these, CPack derives
         # <name>-<component> for every component once component install is
-        # on (e.g. "ac3forge-runtime"), which both renames today's existing
+        # on (e.g. "iclforge-runtime"), which both renames today's existing
         # ac3cli package and ignores Debian's own libFOO/libFOO-dev naming
         # convention for the library halves.
-        set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "ac3forge")
-        set(CPACK_DEBIAN_LIBRUNTIME_PACKAGE_NAME "libac3forge0")
-        set(CPACK_DEBIAN_LIBRARY_PACKAGE_NAME "libac3forge-dev")
+        set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "iclforge")
+        set(CPACK_DEBIAN_LIBRUNTIME_PACKAGE_NAME "libiclforge0")
+        set(CPACK_DEBIAN_LIBRARY_PACKAGE_NAME "libiclforge-dev")
         # AC3Forge Crucible (Crucible cross-platform promotion): its own package, since it is its
         # own download everywhere else. shlibdeps resolves libpipewire-0.3 and
         # the Qt runtime from the binary; what it cannot see is that the
@@ -334,7 +334,7 @@ elseif(UNIX)
         set(CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME "ac3forge-crucible")
         # Named for what it is, the same reasoning as the archive override
         # further down: without this the file is
-        # ac3forge-<version>-<system>-crucible.deb, the base name with the
+        # iclforge-<version>-<system>-crucible.deb, the base name with the
         # component appended, and nothing in it says "Crucible" until dpkg
         # is asked. DEB-DEFAULT is dpkg's own <name>_<version>_<arch>.deb.
         set(CPACK_DEBIAN_CRUCIBLE_FILE_NAME DEB-DEFAULT)
@@ -363,16 +363,16 @@ a PipeWire node Crucible creates while it runs.")
         # matching runtime .so to actually link and load - and since this
         # project makes no ABI-compatibility promise pre-1.0 (see
         # src/ac3/CMakeLists.txt's SOVERSION comment), the pin has to be
-        # exact, not a >= floor. libac3forge0 itself declares no such
+        # exact, not a >= floor. libiclforge0 itself declares no such
         # dependency the other way: it is a plain .so with no headers or
         # symlink of its own, valid to have installed alone.
         # PROJECT_VERSION, not CPACK_PACKAGE_VERSION: the latter is only
         # computed by include(CPack) itself, further down this file - read
         # here, before that point, it is still unset and silently renders
-        # this Depends line as "libac3forge0 (= )" with no version at all
+        # this Depends line as "libiclforge0 (= )" with no version at all
         # (confirmed empirically against a real dpkg-deb -I). See
         # CPACK_SYSTEM_NAME's identical trap, documented below.
-        set(CPACK_DEBIAN_LIBRARY_PACKAGE_DEPENDS "libac3forge0 (= ${PROJECT_VERSION})")
+        set(CPACK_DEBIAN_LIBRARY_PACKAGE_DEPENDS "libiclforge0 (= ${PROJECT_VERSION})")
 
         # ac3hearth, the desktop reference player (Hearth phase A7): its own
         # package, since like AC3Forge Crucible it is its own download
@@ -412,19 +412,19 @@ AC-3 and E-AC-3 only.")
             # qml6-module-qtqml-models and qml6-module-qtqml-workerscript
             # would come from) and its speaker layout diagram are none of
             # them here yet.
-            set(AC3FORGE_HEARTH_QML_MODULES
+            set(ICLFORGE_HEARTH_QML_MODULES
                 qml6-module-qtquick
                 qml6-module-qtquick-controls
                 qml6-module-qtquick-dialogs
                 qml6-module-qtquick-layouts
                 qml6-module-qtquick-templates
                 qml6-module-qt-labs-folderlistmodel)
-            list(JOIN AC3FORGE_HEARTH_QML_MODULES ", " CPACK_DEBIAN_HEARTH_PACKAGE_DEPENDS)
+            list(JOIN ICLFORGE_HEARTH_QML_MODULES ", " CPACK_DEBIAN_HEARTH_PACKAGE_DEPENDS)
         endif()
     endif()
 
-    find_program(AC3FORGE_RPMBUILD_EXECUTABLE rpmbuild)
-    if(AC3FORGE_RPMBUILD_EXECUTABLE)
+    find_program(ICLFORGE_RPMBUILD_EXECUTABLE rpmbuild)
+    if(ICLFORGE_RPMBUILD_EXECUTABLE)
         list(APPEND CPACK_GENERATOR "RPM")
         set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-or-later")
         set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
@@ -435,7 +435,7 @@ AC-3 and E-AC-3 only.")
         # "-devel" rather than "-dev": Fedora/RHEL/openSUSE package-naming
         # convention for a development package, where Debian/Ubuntu use "-dev".
         set(CPACK_RPM_COMPONENT_INSTALL ON)
-        set(CPACK_RPM_RUNTIME_PACKAGE_NAME "ac3forge")
+        set(CPACK_RPM_RUNTIME_PACKAGE_NAME "iclforge")
         # No QML Requires here, unlike the DEB block above, and that is the
         # one asymmetry between the two worth knowing. The RPM distributions
         # this generator targets do not split the QML modules out: Fedora and
@@ -470,7 +470,7 @@ AC-3 and E-AC-3 only.")
         #     rpmbuild is.
         #   - And the legs that DO run a full `cpack --preset pack-linux-*`,
         #     where CPACK_GENERATOR from this file applies in full, configure
-        #     their build tree without -DAC3FORGE_BUILD_CRUCIBLE=ON, so
+        #     their build tree without -DICLFORGE_BUILD_CRUCIBLE=ON, so
         #     `crucible` is not in CPACK_COMPONENTS_ALL there at all (see the
         #     list(APPEND) further down).
         #
@@ -484,9 +484,9 @@ AC-3 and E-AC-3 only.")
         set(CPACK_RPM_CRUCIBLE_PACKAGE_NAME "ac3forge-crucible")
         set(CPACK_RPM_CRUCIBLE_FILE_NAME RPM-DEFAULT)
         set(CPACK_RPM_CRUCIBLE_PACKAGE_REQUIRES "pipewire, wireplumber")
-        set(CPACK_RPM_LIBRUNTIME_PACKAGE_NAME "libac3forge0")
-        set(CPACK_RPM_LIBRARY_PACKAGE_NAME "ac3forge-devel")
-        set(CPACK_RPM_LIBRARY_PACKAGE_REQUIRES "libac3forge0 = %{version}-%{release}")
+        set(CPACK_RPM_LIBRUNTIME_PACKAGE_NAME "libiclforge0")
+        set(CPACK_RPM_LIBRARY_PACKAGE_NAME "iclforge-devel")
+        set(CPACK_RPM_LIBRARY_PACKAGE_REQUIRES "libiclforge0 = %{version}-%{release}")
 
         # ac3hearth's RPM, the DEB block's own reasoning above - no per-QML-
         # module Requires here, the same asymmetry CPACK_RPM_PACKAGE_AUTOREQPROV's
@@ -504,7 +504,7 @@ endif()
 # Library component(s): a second, separate download alongside the existing
 # ac3cli/ac3gui package - headers + .lib/.dll/.a/.so + CMake package config
 # for a third party consuming iclforge::ac3/iclforge::matroska via
-# find_package(ac3forge) (see cmake/InstallLibrary.cmake). Everything
+# find_package(iclforge) (see cmake/InstallLibrary.cmake). Everything
 # install()'d without an explicit COMPONENT falls into CPack's own
 # "Unspecified" component, which is why ac3cli/ac3gui and every
 # InstallLibrary.cmake rule now carry one explicitly.
@@ -520,7 +520,7 @@ endif()
 # (cmake/CPackProjectConfig.cmake overrides the grouping back to IGNORE for
 # just those two generators) - that split is the entire point of shipping
 # them as .deb/.rpm at all: apt/dnf can then pull in "the .so a linked binary
-# needs" via libac3forge0 without the headers/static archives libac3forge-dev
+# needs" via libiclforge0 without the headers/static archives libiclforge-dev
 # carries, the same libFOO/libFOO-dev shape every other Linux C library uses.
 #
 # CPACK_ARCHIVE_COMPONENT_INSTALL is specifically the Archive generator
@@ -556,7 +556,7 @@ set(CPACK_COMPONENTS_ALL runtime library libruntime)
 # actually built, since CPack would otherwise package an empty component;
 # kept out of the NSIS installer for now by cmake/CPackProjectConfig.cmake,
 # which is where that choice is explained.
-if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR LINUX OR APPLE))
+if(ICLFORGE_BUILD_CRUCIBLE AND (WIN32 OR LINUX OR APPLE))
     list(APPEND CPACK_COMPONENTS_ALL crucible)
 endif()
 
@@ -565,7 +565,7 @@ endif()
 # Windows and macOS - but with no NSIS exclusion: unlike Crucible it has no
 # test-signed driver holding it out of the shared installer, so it stays in
 # CPACK_COMPONENTS_ALL for every generator, NSIS included. TARGET, not
-# AC3FORGE_BUILD_HEARTH, because apps/hearth/ui/CMakeLists.txt only WARNs
+# ICLFORGE_BUILD_HEARTH, because apps/hearth/ui/CMakeLists.txt only WARNs
 # and skips when Qt6 is not found rather than failing the configure -
 # checking the option alone would try to package a component nothing built.
 if(TARGET ac3hearth)
@@ -590,7 +590,7 @@ set(CPACK_COMPONENT_LIBRUNTIME_GROUP "dev")
 # name (e.g. -runtime/-dev) - the runtime override below exists purely to
 # suppress that suffix and keep today's exact filename; the dev-group
 # override chooses the name explicitly rather than accepting CPack's default
-# "-dev" suffix, matching the ac3forge-dev-* convention docs/releasing.md
+# "-dev" suffix, matching the iclforge-dev-* convention docs/releasing.md
 # documents. CPACK_ARCHIVE_<NAME>_FILE_NAME keys off the GROUP name once one
 # is assigned (library+libruntime share GROUP "dev" above), not the
 # individual component name - CPACK_ARCHIVE_LIBRARY_FILE_NAME /
@@ -600,7 +600,7 @@ set(CPACK_COMPONENT_LIBRUNTIME_GROUP "dev")
 # looking already computed above - both are actually filled in by the
 # include(CPack) module itself, further down, not by any of the set() calls
 # in this file: confirmed by an empty CPACK_SYSTEM_NAME producing a real
-# "ac3forge-dev-0.2.0-beta.1-.zip" (trailing hyphen, no platform) and the
+# "iclforge-dev-0.2.0-beta.1-.zip" (trailing hyphen, no platform) and the
 # runtime override silently no-op'ing back to CPack's own "-runtime"
 # suffixed default, from an actual cpack --preset pack-windows-msvc run, not
 # assumed. Setting both explicitly here, before include(CPack), replicates
@@ -643,7 +643,7 @@ set(CPACK_ARCHIVE_RUNTIME_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
 # base name, the same reasoning as the dev group's override below.
 set(CPACK_ARCHIVE_CRUCIBLE_FILE_NAME
     "ac3forge-crucible-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
-set(CPACK_ARCHIVE_DEV_FILE_NAME "ac3forge-dev-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
+set(CPACK_ARCHIVE_DEV_FILE_NAME "iclforge-dev-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 set(CPACK_ARCHIVE_HEARTH_FILE_NAME
     "ac3forge-hearth-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 

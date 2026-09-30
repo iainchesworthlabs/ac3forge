@@ -185,8 +185,8 @@ TEST_CASE("the report renders every section with an idle engine", "[crucible][di
     CHECK(has(report, "output: no usable output on \"\""));
     CHECK(has(report, "last error: (none)"));
     CHECK(has(report, "# recent messages (oldest first, 0 of 512; 0 dropped)"));
-    CHECK(has(report, "AC3FORGE_SIGNING_KEY_FILE: not set"));
-    CHECK(has(report, "AC3FORGE_SIGNING_KEY: not set"));
+    CHECK(has(report, "ICLFORGE_SIGNING_KEY_FILE: not set"));
+    CHECK(has(report, "ICLFORGE_SIGNING_KEY: not set"));
     CHECK(has(report, "key source: none"));
 }
 
@@ -241,7 +241,7 @@ TEST_CASE("the report renders a busy engine: endpoints, placed and paired applic
     engine.apps = {fullscreen, pair, custom, background};
 
     const std::string report = iclforge::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{});
-    CHECK(has(report, "key source: AC3FORGE_SIGNING_KEY_FILE (path withheld)"));
+    CHECK(has(report, "key source: ICLFORGE_SIGNING_KEY_FILE (path withheld)"));
     CHECK(has(report, "\"Headphones\"  id=hp"));
     CHECK(has(report, "spatial=yes (max 17 objects)"));
     CHECK(has(report, "eac3=yes  ac3=yes  pcm=8ch  spatial=no"));
@@ -258,7 +258,7 @@ TEST_CASE("the report renders a busy engine: endpoints, placed and paired applic
 
     for (const auto& [source, text] :
          {std::pair{KeySource::kFile, "a file chosen in Settings (path withheld)"},
-          std::pair{KeySource::kEnvironmentInline, "AC3FORGE_SIGNING_KEY (value withheld)"}}) {
+          std::pair{KeySource::kEnvironmentInline, "ICLFORGE_SIGNING_KEY (value withheld)"}}) {
         facts.signing.source = source;
         CHECK(has(iclforge::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{}),
                   text));

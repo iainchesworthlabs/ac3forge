@@ -20,7 +20,7 @@ intended level rather than the source's, and SNR against the source would be
 measuring that deliberate level change rather than reconstruction quality.
 The committed placements pin both, at unit gain.
 
-Independent of ac3forge's own encoder/decoder in the same sense as
+Independent of iclforge's own encoder/decoder in the same sense as
 tools/generators/gen_gold_reference_wav.py: built here from first principles
 (sin()/pseudo-random noise/simple FIR smoothing), not bootstrapped by
 decoding one of our own encodes.

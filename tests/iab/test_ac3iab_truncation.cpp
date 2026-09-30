@@ -508,7 +508,7 @@ TEST_CASE("an IA bitstream cut short anywhere is refused as truncated, and a wro
 }
 
 TEST_CASE("an unreadable input is refused as cannot-open", "[ac3iab]") {
-    const auto missing = iclforge::iab::parse_iabitstream(std::string(AC3FORGE_TEST_SCRATCH_DIR) + "/no-such-dir/none.iab");
+    const auto missing = iclforge::iab::parse_iabitstream(std::string(ICLFORGE_TEST_SCRATCH_DIR) + "/no-such-dir/none.iab");
     REQUIRE_FALSE(missing.has_value());
     CHECK(missing.error() == iclforge::iab::IabError::kCannotOpen);
 
@@ -613,7 +613,7 @@ TEST_CASE("an MXF file's essence that is not a valid IA bitstream is refused wit
 
 TEST_CASE("an MXF file is read from a path, and a missing path or a broken stream cannot be opened",
           "[ac3iab][mxf]") {
-    const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} / "ac3iab_truncation";
+    const auto dir = std::filesystem::path{ICLFORGE_TEST_SCRATCH_DIR} / "ac3iab_truncation";
     std::filesystem::create_directories(dir);
     const auto path = dir / "clip.mxf";
     {

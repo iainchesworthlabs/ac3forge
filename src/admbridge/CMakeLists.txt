@@ -13,13 +13,13 @@
 #     unconditionally, by every configuration of this project. It cannot
 #     gain a dependency on the opt-in, Boost-requiring ac3adm without
 #     breaking every default build - the exact reason ac3adm itself defaults
-#     AC3FORGE_BUILD_ADM off (see src/adm/CMakeLists.txt's own header).
+#     ICLFORGE_BUILD_ADM off (see src/adm/CMakeLists.txt's own header).
 #
-# Gated by the SAME AC3FORGE_BUILD_ADM option ac3adm itself uses, rather than
-# a new AC3FORGE_BUILD_ADMBRIDGE of its own: this module is meaningless
+# Gated by the SAME ICLFORGE_BUILD_ADM option ac3adm itself uses, rather than
+# a new ICLFORGE_BUILD_ADMBRIDGE of its own: this module is meaningless
 # without ac3adm (there is nothing to bridge), and iclforge::ac3 is
 # unconditionally available regardless, so a separate option would only ever
-# take the same value AC3FORGE_BUILD_ADM already does - one flag, not two
+# take the same value ICLFORGE_BUILD_ADM already does - one flag, not two
 # that must be kept in sync by hand. A future DAMF reader (out of scope for now)
 # names this module as the "mapping layer" it plans to share, which
 # is the other half of why this lives on its own rather than inside either
@@ -27,7 +27,7 @@
 # this module without dragging in BW64/RF64-specific parsing it does not
 # need.
 #
-# Installed/exported via find_package(ac3forge) (cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
+# Installed/exported via find_package(iclforge) (cmake/InstallLibrary.cmake's ICLFORGE_BUILD_ADM
 # block) as iclforge::admbridge_shared ONLY - same shared-only deviation as iclforge::adm itself (see
 # src/adm/CMakeLists.txt's header comment), and for a related reason: iclforge_admbridge_objects PUBLIC-
 # links iclforge::adm below, a genuine usage requirement (this module's own public headers name
@@ -75,7 +75,7 @@ target_compile_features(iclforge_admbridge_objects PUBLIC cxx_std_23)
 # iclforge::adm_shared explicitly, not the ambient iclforge::adm alias: this file's header
 # comment explains why - the alias tracks BUILD_SHARED_LIBS and would resolve to iclforge_adm_static
 # whenever that's OFF (the common case, including the coverage preset - the only place
-# AC3FORGE_BUILD_ADM=ON is exercised in CI today), which is never in any export set under
+# ICLFORGE_BUILD_ADM=ON is exercised in CI today), which is never in any export set under
 # ac3adm's shared-only design. Pinning here mirrors src/capi/CMakeLists.txt's forge_c precedent
 # of embedding one fixed variant regardless of the ambient default, just for a PUBLIC dependency
 # instead of a PRIVATE one. ac3iab is NOT pinned the same way: it is default-ON with both
@@ -86,8 +86,8 @@ target_link_libraries(iclforge_admbridge_objects
         iclforge::adm_shared
         iclforge::iab
     PRIVATE
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>")
+        "$<BUILD_INTERFACE:iclforge::warnings>"
+        "$<BUILD_INTERFACE:iclforge::coverage>")
 
 set_target_properties(iclforge_admbridge_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -95,15 +95,15 @@ set_target_properties(iclforge_admbridge_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_admbridge_shared PROPERTIES DEFINE_SYMBOL "ADMBRIDGE_BUILDING_SHARED")
+set_target_properties(iclforge_admbridge_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_ADMBRIDGE_BUILDING_SHARED")
 generate_export_header(iclforge_admbridge_shared
-    BASE_NAME ADMBRIDGE
-    EXPORT_MACRO_NAME AC3ADMBRIDGE_EXPORT
+    BASE_NAME ICLFORGE_ADMBRIDGE
+    EXPORT_MACRO_NAME ICLFORGE_ADMBRIDGE_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/admbridge/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE ADMBRIDGE_STATIC_DEFINE)
-target_compile_definitions(iclforge_admbridge_objects PRIVATE ADMBRIDGE_BUILDING_SHARED)
-target_compile_definitions(iclforge_admbridge_static PUBLIC ADMBRIDGE_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_ADMBRIDGE_STATIC_DEFINE)
+target_compile_definitions(iclforge_admbridge_objects PRIVATE ICLFORGE_ADMBRIDGE_BUILDING_SHARED)
+target_compile_definitions(iclforge_admbridge_static PUBLIC ICLFORGE_ADMBRIDGE_STATIC_DEFINE)
 
 set_target_properties(iclforge_admbridge_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

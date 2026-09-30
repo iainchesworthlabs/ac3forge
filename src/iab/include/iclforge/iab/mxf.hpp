@@ -57,9 +57,9 @@ namespace iclforge::iab {
 // matched ST 2067-201 Table 4.2's registered value. kMxfBadKlv: a Length field violated ST 336's
 // BER encoding rules. kTruncated: fewer bytes remained than a Key or a declared Length/Value
 // needed.
-[[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_mxf_iab(
-    const std::string& path);
-[[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_mxf_iab(
-    std::istream& in);
+[[nodiscard]] ICLFORGE_IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError>
+parse_mxf_iab(const std::string& path);
+[[nodiscard]] ICLFORGE_IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError>
+parse_mxf_iab(std::istream& in);
 
 }  // namespace iclforge::iab

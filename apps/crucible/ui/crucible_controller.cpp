@@ -307,7 +307,7 @@ void CrucibleController::restart_engine() {
 }
 
 void CrucibleController::poll() {
-    AC3_ZONE_SCOPED_N("desk poll");
+    ICLFORGE_ZONE_SCOPED_N("desk poll");
     if (!engine_) {
         return;
     }
@@ -1116,8 +1116,8 @@ iclforge::crucible::Secrets CrucibleController::secrets() const {
         }
     };
     add_path(keyPath());
-    add_path(qEnvironmentVariable("AC3FORGE_SIGNING_KEY_FILE"));
-    add(qEnvironmentVariable("AC3FORGE_SIGNING_KEY"));
+    add_path(qEnvironmentVariable("ICLFORGE_SIGNING_KEY_FILE"));
+    add(qEnvironmentVariable("ICLFORGE_SIGNING_KEY"));
     return out;
 }
 
@@ -1159,8 +1159,8 @@ iclforge::crucible::ReportFacts CrucibleController::build_report_facts() const {
     capability_row("device watch", backend.device_watch);
 
     // Whether the variables are set is read; their values never are.
-    const bool env_key_file = qEnvironmentVariableIsSet("AC3FORGE_SIGNING_KEY_FILE");
-    const bool env_key_inline = qEnvironmentVariableIsSet("AC3FORGE_SIGNING_KEY");
+    const bool env_key_file = qEnvironmentVariableIsSet("ICLFORGE_SIGNING_KEY_FILE");
+    const bool env_key_inline = qEnvironmentVariableIsSet("ICLFORGE_SIGNING_KEY");
     facts.signing.objects_enabled = objects_enabled_;
     facts.signing.env_key_file_set = env_key_file;
     facts.signing.env_key_inline_set = env_key_inline;

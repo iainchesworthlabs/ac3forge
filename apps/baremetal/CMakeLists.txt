@@ -3,7 +3,7 @@
 # encode_probe.cpp's own headers for what each checks and why neither is a unit
 # test.
 #
-# Built under AC3FORGE_MINIMAL_DECODER or AC3FORGE_MINIMAL_ENCODER, and in two
+# Built under ICLFORGE_MINIMAL_DECODER or ICLFORGE_MINIMAL_ENCODER, and in two
 # shapes from one source:
 #
 #   - Cross-compiled for arm-none-eabi (see cmake/toolchains/arm-none-eabi.toolchain.cmake).
@@ -19,7 +19,7 @@
 # CMake adds, per the platform-tree rule (tools/checks/check_platform_macros.ps1).
 #
 # A third target, ESP32-S3, is driven from outside: platform/esp32s3/ is an
-# ESP-IDF project that points EXTRA_COMPONENT_DIRS at esp-idf/, whose ac3forge
+# ESP-IDF project that points EXTRA_COMPONENT_DIRS at esp-idf/, whose iclforge
 # component add_subdirectory()s the repo root - the way apps/android's Gradle
 # build does. It owns its own application, so this file must NOT also build
 # one - see the platform resolution below.
@@ -38,17 +38,17 @@
 # the failure would have surfaced as an undefined-symbol error a long way from
 # its cause.
 #
-# The esp32s3 value is set by esp-idf/ac3forge/CMakeLists.txt before it
+# The esp32s3 value is set by esp-idf/iclforge/CMakeLists.txt before it
 # add_subdirectory()s the root, so it is already in the cache when this runs.
-if(NOT DEFINED AC3FORGE_BAREMETAL_PLATFORM)
+if(NOT DEFINED ICLFORGE_BAREMETAL_PLATFORM)
     if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
-        set(AC3FORGE_BAREMETAL_PLATFORM "baremetal")
+        set(ICLFORGE_BAREMETAL_PLATFORM "baremetal")
     else()
-        set(AC3FORGE_BAREMETAL_PLATFORM "host")
+        set(ICLFORGE_BAREMETAL_PLATFORM "host")
     endif()
 endif()
 
-if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "esp32s3")
+if(ICLFORGE_BAREMETAL_PLATFORM STREQUAL "esp32s3")
     # ESP-IDF builds the application from platform/esp32s3/main/, linking
     # iclforge::ac3_minimal through its own component. There is nothing for this
     # file to add, and an add_executable() here would produce a second binary
@@ -68,16 +68,16 @@ endif()
 # (planning/ac4.md, D14a). All three define ac3probe::run() rather than main(),
 # so main.cpp and the ESP-IDF application run whichever was built without
 # knowing which it is.
-if(AC3FORGE_MINIMAL_ENCODER)
+if(ICLFORGE_MINIMAL_ENCODER)
     add_executable(ac3probe encode_probe.cpp main.cpp)
-elseif(AC3FORGE_MINIMAL_AC4)
+elseif(ICLFORGE_MINIMAL_AC4)
     add_executable(ac3probe ac4_probe.cpp main.cpp)
 else()
     add_executable(ac3probe probe.cpp main.cpp)
 endif()
 
 # The stage-timer backend's application half, in EVERY build of the probe and
-# not only the ones configured with AC3FORGE_STAGE_TIMERS: a library built
+# not only the ones configured with ICLFORGE_STAGE_TIMERS: a library built
 # without the option never calls it, --gc-sections drops it, and the probe
 # then prints stage_timers=off instead of a breakdown. Keeping it
 # unconditional means the two builds differ in nothing but the library's
@@ -94,17 +94,17 @@ target_sources(ac3probe PRIVATE stage_timers.cpp)
 # under QEMU's -icount counts instructions (platform/baremetal/clock_timer.cpp,
 # read back by run_baremetal_probe.sh --icount). A cache variable rather than
 # a conditional in either file, per the platform-tree rule.
-set(AC3FORGE_BAREMETAL_CLOCK "semihosting" CACHE STRING
+set(ICLFORGE_BAREMETAL_CLOCK "semihosting" CACHE STRING
     "Clock behind ac3probe::now_us() on the mps2-an385: semihosting (host time) or timer (CMSDK TIMER0; instructions under QEMU -icount)")
-set_property(CACHE AC3FORGE_BAREMETAL_CLOCK PROPERTY STRINGS semihosting timer)
-if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "baremetal")
-    if(AC3FORGE_BAREMETAL_CLOCK STREQUAL "semihosting")
+set_property(CACHE ICLFORGE_BAREMETAL_CLOCK PROPERTY STRINGS semihosting timer)
+if(ICLFORGE_BAREMETAL_PLATFORM STREQUAL "baremetal")
+    if(ICLFORGE_BAREMETAL_CLOCK STREQUAL "semihosting")
         target_sources(ac3probe PRIVATE platform/baremetal/clock.cpp)
-    elseif(AC3FORGE_BAREMETAL_CLOCK STREQUAL "timer")
+    elseif(ICLFORGE_BAREMETAL_CLOCK STREQUAL "timer")
         target_sources(ac3probe PRIVATE platform/baremetal/clock_timer.cpp)
     else()
-        message(FATAL_ERROR "AC3FORGE_BAREMETAL_CLOCK must be semihosting or timer, not "
-                            "'${AC3FORGE_BAREMETAL_CLOCK}'")
+        message(FATAL_ERROR "ICLFORGE_BAREMETAL_CLOCK must be semihosting or timer, not "
+                            "'${ICLFORGE_BAREMETAL_CLOCK}'")
     endif()
 else()
     target_sources(ac3probe PRIVATE platform/host/clock.cpp)
@@ -117,18 +117,18 @@ endif()
 # builds and the mps2-an385 run every fixture, so both default to 0; a cache
 # variable rather than a conditional in probe.cpp, per the platform-tree
 # rule. Raising a target's budget is a measurement, not an edit.
-set(AC3FORGE_PROBE_HEAP_BUDGET_BYTES "0" CACHE STRING
+set(ICLFORGE_PROBE_HEAP_BUDGET_BYTES "0" CACHE STRING
     "Heap a fixture may peak at before ac3probe skips it, in bytes; 0 means no budget")
 target_compile_definitions(ac3probe PRIVATE
-    AC3FORGE_PROBE_HEAP_BUDGET_BYTES=${AC3FORGE_PROBE_HEAP_BUDGET_BYTES})
+    ICLFORGE_PROBE_HEAP_BUDGET_BYTES=${ICLFORGE_PROBE_HEAP_BUDGET_BYTES})
 
 # What the AC-4 probe decodes with is iclforge::ac4dec, whose archives bring the inspector
 # and the core; it links nothing of iclforge::ac3, and has no use for its decoders.
-if(AC3FORGE_MINIMAL_AC4)
-    target_link_libraries(ac3probe PRIVATE iclforge::ac4dec_static ac3::minimal_profile
-                                           ac3::warnings)
+if(ICLFORGE_MINIMAL_AC4)
+    target_link_libraries(ac3probe PRIVATE iclforge::ac4dec_static iclforge::minimal_profile
+                                           iclforge::warnings)
 else()
-    target_link_libraries(ac3probe PRIVATE iclforge::ac3_minimal ac3::warnings)
+    target_link_libraries(ac3probe PRIVATE iclforge::ac3_minimal iclforge::warnings)
 endif()
 
 # How much stack the AC-4 probe paints before a decode, to read the stack the decode
@@ -136,10 +136,10 @@ endif()
 # the task the probe runs in: 256 KiB is a fraction of the mps2-an385's 4 MB and of a
 # desktop's 8 MB; an ESP-IDF application sets its own. A decode that uses all of it
 # fails the run, since its figure would then be a floor.
-set(AC3FORGE_PROBE_STACK_WINDOW_BYTES "262144" CACHE STRING
+set(ICLFORGE_PROBE_STACK_WINDOW_BYTES "262144" CACHE STRING
     "Stack the AC-4 probe paints and reads back, in bytes")
 target_compile_definitions(ac3probe PRIVATE
-    AC3FORGE_PROBE_STACK_WINDOW_BYTES=${AC3FORGE_PROBE_STACK_WINDOW_BYTES})
+    ICLFORGE_PROBE_STACK_WINDOW_BYTES=${ICLFORGE_PROBE_STACK_WINDOW_BYTES})
 
 # A measurement switch for the ENCODE probe, off by default: adds a 7.1
 # access-unit fixture (an independent 5.1 substream plus a dependent, two
@@ -150,17 +150,17 @@ target_compile_definitions(ac3probe PRIVATE
 # buildable so the number can be re-taken when something changes (PSRAM, a
 # smaller encoder). See encode_probe.cpp and encode_fixture.hpp. The ESP-IDF
 # application under platform/esp32s3/ takes the same option.
-option(AC3FORGE_PROBE_SEVEN_ONE
+option(ICLFORGE_PROBE_SEVEN_ONE
        "Encode probe: add the 7.1 access-unit fixture (a footprint measurement; does not fit an ESP32-S3)"
        OFF)
 target_compile_definitions(ac3probe PRIVATE
-    "AC3FORGE_PROBE_SEVEN_ONE=$<BOOL:${AC3FORGE_PROBE_SEVEN_ONE}>")
+    "ICLFORGE_PROBE_SEVEN_ONE=$<BOOL:${ICLFORGE_PROBE_SEVEN_ONE}>")
 
 # fixture.hpp sits beside probe.cpp; the generated ac3/export.hpp comes with
 # the library target.
 target_include_directories(ac3probe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
-if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "baremetal")
+if(ICLFORGE_BAREMETAL_PLATFORM STREQUAL "baremetal")
     target_sources(ac3probe PRIVATE
         platform/baremetal/vectors.cpp
         platform/baremetal/tls.cpp)
@@ -178,14 +178,14 @@ if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "baremetal")
     target_link_options(ac3probe PRIVATE
         "LINKER:-Map,${CMAKE_CURRENT_BINARY_DIR}/ac3probe.map")
 
-    message(STATUS "  Bare-metal probe: ${AC3FORGE_BAREMETAL_TARGET} "
+    message(STATUS "  Bare-metal probe: ${ICLFORGE_BAREMETAL_TARGET} "
                    "(run it with tools/checks/run_baremetal_probe.sh)")
 else()
     message(STATUS "  Footprint probe: host build (run bin/ac3probe directly)")
 endif()
 
 # Not ctest-registered in either shape, and deliberately: the profile requires
-# AC3FORGE_BUILD_TESTS=OFF (nothing under tests/ builds against a decode-only
+# ICLFORGE_BUILD_TESTS=OFF (nothing under tests/ builds against a decode-only
 # archive), so there is no enable_testing() in this configure for an add_test
 # to attach to. tools/checks/run_baremetal_probe.sh is the runner for both
 # shapes - it configures, builds, runs (under QEMU when cross-built) and gates

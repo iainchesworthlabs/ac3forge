@@ -95,7 +95,7 @@ std::vector<std::byte> read_file(const fs::path& path) {
 }
 
 fs::path baseline(std::string_view leg) {
-    return fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
+    return fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
 }
 
 // Every committed AC-4 stream: DEE's, the constructed ones and the
@@ -104,7 +104,7 @@ fs::path baseline(std::string_view leg) {
 std::vector<fs::path> committed_streams() {
     std::vector<fs::path> paths;
     for (const fs::path& root :
-         {fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR}, fs::path{AC4DEC_GOLDEN_DIR}}) {
+         {fs::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR}, fs::path{AC4DEC_GOLDEN_DIR}}) {
         for (const auto& entry : fs::recursive_directory_iterator(root)) {
             if (entry.is_regular_file() && entry.path().extension() == ".ac4") {
                 paths.push_back(entry.path());

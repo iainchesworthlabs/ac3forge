@@ -85,8 +85,8 @@ target_compile_definitions(ac3crucible_qmltests PRIVATE WIN32_LEAN_AND_MEAN NOMI
     AC3DESK_QUICK3D=${AC3DESK_QUICK3D}
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/ui/tests/qml")
 target_link_libraries(ac3crucible_qmltests PRIVATE
-    ac3::crucible_engine
-    ac3::coverage
+    iclforge::crucible_engine
+    iclforge::coverage
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest Qt6::Widgets
     ${AC3DESK_QUICK3D_LIB})
 if(Qt6Svg_FOUND)

@@ -11,7 +11,7 @@
 # Precedence, highest first:
 #   1. -DCMAKE_PREFIX_PATH=... / -DQt6_DIR=... / -DQt6_ROOT=..., which the
 #      plain find_package below honours, so this module never gets a say;
-#   2. -DAC3FORGE_QT_ROOT=..., or the AC3FORGE_QT_ROOT, QT_ROOT_DIR or QTDIR
+#   2. -DICLFORGE_QT_ROOT=..., or the ICLFORGE_QT_ROOT, QT_ROOT_DIR or QTDIR
 #      environment variables (QT_ROOT_DIR is what aqtinstall and
 #      install-qt-action export, QTDIR is the long-standing Qt convention);
 #   3. the per-platform default install roots below, newest version first.
@@ -19,10 +19,10 @@
 # Qt is deliberately NOT a vcpkg dependency here - building it from source
 # costs hours and gigabytes for no benefit over the official prebuilt kits.
 # A machine with no Qt kit at all builds everything else with
-# -DAC3FORGE_BUILD_GUI=OFF; the error at the bottom of this file says so.
+# -DICLFORGE_BUILD_GUI=OFF; the error at the bottom of this file says so.
 # ---------------------------------------------------------------------------
 
-set(AC3FORGE_QT_ROOT "" CACHE PATH
+set(ICLFORGE_QT_ROOT "" CACHE PATH
     "Prebuilt Qt6 kit (e.g. C:/Qt/6.8.3/msvc2022_64) or Qt install root (e.g. /opt/Qt)")
 
 # Respect anything the caller already pointed CMake at.
@@ -35,18 +35,18 @@ if(NOT Qt6_FOUND)
     set(_qt6_roots "")
     set(_qt6_root_labels "")
 
-    # AC3FORGE_QT_ROOT is this project's own knob, so setting it is always
+    # ICLFORGE_QT_ROOT is this project's own knob, so setting it is always
     # deliberate and a value that yields no kit is an error rather than a cue
     # to go looking elsewhere. QT_ROOT_DIR and QTDIR are shared with the rest
     # of the Qt world and are routinely left stale in a shell profile, so a
     # miss on those falls through to the defaults instead.
-    if(AC3FORGE_QT_ROOT)
-        list(APPEND _qt6_roots "${AC3FORGE_QT_ROOT}")
-        list(APPEND _qt6_root_labels "from -DAC3FORGE_QT_ROOT")
+    if(ICLFORGE_QT_ROOT)
+        list(APPEND _qt6_roots "${ICLFORGE_QT_ROOT}")
+        list(APPEND _qt6_root_labels "from -DICLFORGE_QT_ROOT")
     endif()
-    if(NOT "$ENV{AC3FORGE_QT_ROOT}" STREQUAL "")
-        list(APPEND _qt6_roots "$ENV{AC3FORGE_QT_ROOT}")
-        list(APPEND _qt6_root_labels "from the AC3FORGE_QT_ROOT environment variable")
+    if(NOT "$ENV{ICLFORGE_QT_ROOT}" STREQUAL "")
+        list(APPEND _qt6_roots "$ENV{ICLFORGE_QT_ROOT}")
+        list(APPEND _qt6_root_labels "from the ICLFORGE_QT_ROOT environment variable")
     endif()
     list(LENGTH _qt6_roots _qt6_strict_count)
 
@@ -158,7 +158,7 @@ if(NOT Qt6_FOUND)
         list(SUBLIST _qt6_roots 0 ${_qt6_strict_count} _qt6_strict_roots)
         string(REPLACE ";" "\n    " _qt6_strict_text "${_qt6_strict_roots}")
         message(FATAL_ERROR
-            "AC3FORGE_QT_ROOT is set but holds no Qt6 kit:\n"
+            "ICLFORGE_QT_ROOT is set but holds no Qt6 kit:\n"
             "    ${_qt6_strict_text}\n"
             "Expected lib/cmake/Qt6/Qt6Config.cmake under it, or a 6.x/<kit>/ "
             "subdirectory containing one. Point it at a kit such as "
@@ -169,7 +169,7 @@ if(NOT Qt6_FOUND)
     if(_qt6_candidates)
         list(GET _qt6_candidates 0 _qt6_chosen)
 
-        message(STATUS "FindQt6: auto-detected prebuilt Qt6 at ${_qt6_chosen} (pass -DAC3FORGE_QT_ROOT to override)")
+        message(STATUS "FindQt6: auto-detected prebuilt Qt6 at ${_qt6_chosen} (pass -DICLFORGE_QT_ROOT to override)")
         list(APPEND CMAKE_PREFIX_PATH "${_qt6_chosen}")
 
         set(_qt6_args CONFIG)
@@ -196,20 +196,20 @@ if(NOT Qt6_FOUND)
         endif()
 
         message(FATAL_ERROR
-            "Qt6 was not found, so the ac3forge GUI cannot be configured.\n"
+            "Qt6 was not found, so the iclforge GUI cannot be configured.\n"
             "Qt is a prebuilt dependency, never a vcpkg port. Searched, in order:\n"
             "${_qt6_report}"
             "  In each of those: lib/cmake/Qt6/Qt6Config.cmake, lib64/cmake/Qt6/Qt6Config.cmake, "
             "and <root>/6.x/<kit>/lib/cmake/Qt6/Qt6Config.cmake for kit in: ${_qt6_arch_text}\n"
             "${_qt6_hint_note}"
             "Point at a Qt kit with any one of:\n"
-            "  cmake --preset <preset> -DAC3FORGE_QT_ROOT=${_qt6_example}\n"
-            "  AC3FORGE_QT_ROOT, QT_ROOT_DIR or QTDIR in the environment\n"
+            "  cmake --preset <preset> -DICLFORGE_QT_ROOT=${_qt6_example}\n"
+            "  ICLFORGE_QT_ROOT, QT_ROOT_DIR or QTDIR in the environment\n"
             "  cmake --preset <preset> -DCMAKE_PREFIX_PATH=${_qt6_example}\n"
             "Or build the CLI and tests without it:\n"
-            "  cmake --preset <preset> -DAC3FORGE_BUILD_GUI=OFF\n")
+            "  cmake --preset <preset> -DICLFORGE_BUILD_GUI=OFF\n")
     elseif(NOT Qt6_FIND_QUIETLY)
-        message(STATUS "FindQt6: no prebuilt Qt6 kit found; configure with -DAC3FORGE_QT_ROOT=<kit> to use one")
+        message(STATUS "FindQt6: no prebuilt Qt6 kit found; configure with -DICLFORGE_QT_ROOT=<kit> to use one")
     endif()
 
     unset(_qt6_arch_dirs)

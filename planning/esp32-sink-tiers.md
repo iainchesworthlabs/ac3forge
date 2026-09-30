@@ -60,7 +60,7 @@ DACs are driven and at what width — same firmware family, same analogue front 
 ```
 
 Same `hearth_sink` family, same `SinkFrame::fixed` ES9080 contract
-([`sink_plan.hpp`](../esp-idf/ac3forge/include/ac3forge/sink_plan.hpp)), same Sendspin /
+([`sink_plan.hpp`](../esp-idf/iclforge/include/iclforge/sink_plan.hpp)), same Sendspin /
 Improv / page surface where the part allows. The tier is a **module choice on one PCB**,
 not four products.
 
@@ -79,7 +79,7 @@ the DACs do not.
   at the 512-bit frame (`sdkconfig.p4`). On the FireBeetle 2 it opens standard I2S and nothing
   wider. Its revision v1.3 chip has no PLL clock source for I2S, and the audio PLL it falls back
   to is too slow for a 512-bit frame; a v3.0 or newer chip has the 160 MHz PLL that clears it
-  ([the example's README](../esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-p4)).
+  ([the example's README](../esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-p4)).
   `GET /hardware` says so on such a board ([the device page's plan](esp32-device-ui.md#what-hardware-adds)).
 - **The ES9080 pair:** no PCB exists, no ES9080 is wired to any board, and no firmware programs
   one over I2C. What `SinkFrame::fixed` gives such a DAC, a fixed frame with the unused slots
@@ -219,7 +219,7 @@ and the three streams above have not been played through it.
      **Built, 2026-09-23 (PR #941):** `hearth_sink` runs on the P4 over this link. A clean boot,
      a Wi-Fi join and a paired Sendspin play from `ac3hearth-testserver` played an Atmos E-AC-3
      fixture onto 2.0, 315 of 315 bursts with no underrun
-     ([the example's README](../esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-p4)).
+     ([the example's README](../esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-p4)).
      **Not done:** a report of the SDIO and remote Wi-Fi cost against the same streams, and a
      group with an S3 or C6 board. The one comparison on record is the decoder time per frame
      through the player with the network up, against the probe with none

@@ -29,15 +29,15 @@ add_library(ac3crucible_engine STATIC
     engine/library_devices.cpp
     engine/diagnostics.cpp
     engine/engine.cpp)
-add_library(ac3::crucible_engine ALIAS ac3crucible_engine)
+add_library(iclforge::crucible_engine ALIAS ac3crucible_engine)
 target_include_directories(ac3crucible_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/engine")
 target_compile_features(ac3crucible_engine PUBLIC cxx_std_23)
-# ac3::coverage is inert unless AC3FORGE_ENABLE_COVERAGE is on
+# iclforge::coverage is inert unless ICLFORGE_ENABLE_COVERAGE is on
 # (config-windows-llvm-coverage); then this library, the window and its
 # tests are the instrumented set tools/checks/coverage_crucible.ps1 reports.
 target_link_libraries(ac3crucible_engine
-    PUBLIC iclforge::ac3 iclforge::audio iclforge::signing ac3::tracy
-    PRIVATE ac3::warnings ac3::coverage)
+    PUBLIC iclforge::ac3 iclforge::audio iclforge::signing iclforge::tracy
+    PRIVATE iclforge::warnings iclforge::coverage)
 
 # The platform half, selected the way apps/cli/CMakeLists.txt selects its
 # platform/ directory: a platform is a directory, never a conditional inside
@@ -77,13 +77,13 @@ elseif(UNIX AND NOT APPLE)
     # would otherwise configure a Crucible that can list applications and never
     # capture one. That is a worse outcome than refusing, so refuse, and say
     # which flags fix it.
-    if(NOT AC3FORGE_AUDIO_BACKEND STREQUAL "pipewire")
+    if(NOT ICLFORGE_AUDIO_BACKEND STREQUAL "pipewire")
         message(FATAL_ERROR
-            "AC3FORGE_BUILD_CRUCIBLE=ON needs the PipeWire audio backend on Linux, but "
-            "iclforge_audio selected '${AC3FORGE_AUDIO_BACKEND}'. Crucible taps each application "
+            "ICLFORGE_BUILD_CRUCIBLE=ON needs the PipeWire audio backend on Linux, but "
+            "iclforge_audio selected '${ICLFORGE_AUDIO_BACKEND}'. Crucible taps each application "
             "separately and only PipeWire can do that. Reconfigure with "
-            "-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON, or turn the application "
-            "off with -DAC3FORGE_BUILD_CRUCIBLE=OFF. Note that this trades away the "
+            "-DICLFORGE_WITH_ALSA=OFF -DICLFORGE_WITH_PIPEWIRE=ON, or turn the application "
+            "off with -DICLFORGE_BUILD_CRUCIBLE=OFF. Note that this trades away the "
             "passthrough path confirmed against a real receiver (ALSA iec958) for one that "
             "is not yet - see docs/crucible/design/promotion.md, \"ALSA or PipeWire\".")
     endif()
@@ -108,12 +108,12 @@ elseif(UNIX AND NOT APPLE)
     # headers are there, ON demands them, OFF leaves it out. Without it the
     # Foreground says so at runtime and the rule is off; exactly one of the
     # two readers is compiled, the same rule as a platform directory.
-    set(AC3FORGE_CRUCIBLE_X11 "AUTO" CACHE STRING
+    set(ICLFORGE_CRUCIBLE_X11 "AUTO" CACHE STRING
         "Crucible's X11 full-screen check: AUTO uses libxcb when found, ON requires it, OFF never builds it")
-    set_property(CACHE AC3FORGE_CRUCIBLE_X11 PROPERTY STRINGS AUTO ON OFF)
-    if(AC3FORGE_CRUCIBLE_X11 STREQUAL "OFF")
+    set_property(CACHE ICLFORGE_CRUCIBLE_X11 PROPERTY STRINGS AUTO ON OFF)
+    if(ICLFORGE_CRUCIBLE_X11 STREQUAL "OFF")
         set(AC3CRUCIBLE_XCB_FOUND FALSE)
-    elseif(AC3FORGE_CRUCIBLE_X11 STREQUAL "ON")
+    elseif(ICLFORGE_CRUCIBLE_X11 STREQUAL "ON")
         pkg_check_modules(AC3CRUCIBLE_XCB REQUIRED IMPORTED_TARGET xcb)
     else()
         pkg_check_modules(AC3CRUCIBLE_XCB QUIET IMPORTED_TARGET xcb)
@@ -122,14 +122,14 @@ elseif(UNIX AND NOT APPLE)
     if(AC3CRUCIBLE_XCB_FOUND)
         target_sources(ac3crucible_engine PRIVATE engine/platform/linux/xcb_window_reader.cpp)
         target_link_libraries(ac3crucible_engine PRIVATE PkgConfig::AC3CRUCIBLE_XCB)
-        set(AC3FORGE_CRUCIBLE_X11_BACKEND xcb PARENT_SCOPE)
+        set(ICLFORGE_CRUCIBLE_X11_BACKEND xcb PARENT_SCOPE)
     else()
         target_sources(ac3crucible_engine PRIVATE engine/platform/linux/no_xcb_window_reader.cpp)
-        set(AC3FORGE_CRUCIBLE_X11_BACKEND none PARENT_SCOPE)
-        if(AC3FORGE_CRUCIBLE_X11 STREQUAL "AUTO")
+        set(ICLFORGE_CRUCIBLE_X11_BACKEND none PARENT_SCOPE)
+        if(ICLFORGE_CRUCIBLE_X11 STREQUAL "AUTO")
             message(STATUS "libxcb not found: Crucible's X11 full-screen check is left out "
                            "(libxcb1-dev on Debian/Ubuntu, libxcb-devel on Fedora; "
-                           "-DAC3FORGE_CRUCIBLE_X11=OFF silences this)")
+                           "-DICLFORGE_CRUCIBLE_X11=OFF silences this)")
         endif()
     endif()
     # This platform's notices directory (notices/notices.cmake).
@@ -154,7 +154,7 @@ elseif(APPLE)
     # never returned from AudioDeviceCreateIOProcID on the tap's aggregate
     # device and wedged the rest of the process's HAL with it, so the path is
     # refused before that call (src/audio/src/backend/macos/coreaudio_names.hpp
-    # carries the observation and the AC3FORGE_MACOS_PROCESS_TAP opt-in). So
+    # carries the observation and the ICLFORGE_MACOS_PROCESS_TAP opt-in). So
     # Crucible lists applications here and taps none of them, and says so.
     # Behind that sit the things that were expected to be in the way and have
     # not been reached: the code-signing identity, the
@@ -250,11 +250,11 @@ endif()
 # the Linux arm for a while after the second was added - which is how a
 # Windows build came to lose ac3/internal/profiling.hpp.
 target_include_directories(ac3crucible_engine PUBLIC
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
+    "$<IF:$<BOOL:${ICLFORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_enabled,${CMAKE_SOURCE_DIR}/src/base/variants/profiling-tracy_disabled>")
 
 # The console runner: Phase 2's exit criterion, and the thing the UI replaces.
 add_executable(ac3crucible-run runner/main.cpp)
-target_link_libraries(ac3crucible-run PRIVATE ac3::crucible_engine ac3::warnings)
+target_link_libraries(ac3crucible-run PRIVATE iclforge::crucible_engine iclforge::warnings)
 target_compile_definitions(ac3crucible-run PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 set_target_properties(ac3crucible-run PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
@@ -333,7 +333,7 @@ else()
     # see its header for why.
     include(SharedFamilyQml)
     set(AC3DESK_SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/shared")
-    ac3forge_stage_shared_qml(Ac3ForgeCrucible "${AC3DESK_SHARED_DIR}" AC3DESK_SHARED_OUT)
+    iclforge_stage_shared_qml(Ac3ForgeCrucible "${AC3DESK_SHARED_DIR}" AC3DESK_SHARED_OUT)
 
     set(AC3DESK_QML_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Main.qml"
@@ -435,11 +435,11 @@ else()
     target_compile_definitions(ac3crucible PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX
         AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}/apps/windows/driver"
         AC3DESK_QUICK3D=${AC3DESK_QUICK3D})
-    # ac3::warnings is deliberately not linked: Qt's generated sources would
+    # iclforge::warnings is deliberately not linked: Qt's generated sources would
     # be compiled under it (apps/gui carries a workaround for exactly that).
     target_link_libraries(ac3crucible PRIVATE
-        ac3::crucible_engine
-        ac3::coverage
+        iclforge::crucible_engine
+        iclforge::coverage
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Widgets Qt6::Quick Qt6::QuickControls2 ${AC3DESK_QUICK3D_LIB})
     if(Qt6Svg_FOUND)
         target_link_libraries(ac3crucible PRIVATE ${AC3DESK_SVG_LIB})
@@ -568,7 +568,7 @@ else()
     # The window's Qt Quick Test suites (ui/tests), include()d rather than
     # add_subdirectory()'d so they see AC3DESK_QML_FILES and AC3DESK_TS_FILES
     # as this scope set them.
-    if(AC3FORGE_BUILD_TESTS)
+    if(ICLFORGE_BUILD_TESTS)
         include(ui/tests/CMakeLists.txt)
     endif()
 

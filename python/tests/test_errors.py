@@ -1,5 +1,5 @@
 """std::expected's error branch, translated at the binding boundary into Python exceptions - see
-python/src/ac3forge_ext/bindings.cpp's own header comment on why exceptions rather than a
+python/src/iclforge_ext/bindings.cpp's own header comment on why exceptions rather than a
 Result-like return. Every case here checks both the exception TYPE and its `.error` enum value,
 not just that *something* was raised.
 """
@@ -7,7 +7,7 @@ not just that *something* was raised.
 import subprocess
 import sys
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 
@@ -63,7 +63,7 @@ def _run_child(code):
 
 def test_frame_encoder_wrong_channel_count_raises_value_error():
     code = (
-        "import ac3forge as ac3\n"
+        "import iclforge as ac3\n"
         "import numpy as np\n"
         "config = ac3.EncoderConfig(bitrate_kbps=192, acmod=ac3.Acmod.k3_2, lfe=True)\n"
         "encoder = ac3.FrameEncoder(config)\n"
@@ -83,7 +83,7 @@ def test_frame_encoder_wrong_channel_count_raises_value_error():
 
 def test_atmos_encoder_wrong_object_count_raises_value_error():
     code = (
-        "import ac3forge as ac3\n"
+        "import iclforge as ac3\n"
         "import numpy as np\n"
         "encoder = ac3.AtmosEncoder(ac3.AtmosConfig(bitrate_kbps=448), 2)\n"
         "objects = [np.zeros(ac3.SAMPLES_PER_FRAME, dtype=np.float32)]\n"

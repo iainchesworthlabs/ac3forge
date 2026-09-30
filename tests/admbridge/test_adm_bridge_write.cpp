@@ -36,7 +36,7 @@ namespace {
 using iclforge::eac3::chanmap::Location;
 
 // See tests/cli/test_cli.cpp's own scratch_dir comment for why the scratch
-// path below folds this in, on top of AC3FORGE_TEST_SCRATCH_DIR's
+// path below folds this in, on top of ICLFORGE_TEST_SCRATCH_DIR's
 // build-tree rooting.
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
@@ -158,7 +158,7 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
         CHECK(track_uid.bit_depth == built->audio.bits_per_sample);
     }
 
-    const auto scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("admbridge_write_" + scratch_pid_suffix());
+    const auto scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("admbridge_write_" + scratch_pid_suffix());
     fs::create_directories(scratch);
     const auto master_path = (scratch / "write_roundtrip.wav").string();
     const auto written = iclforge::adm::write_bw64(master_path, *built);

@@ -12,7 +12,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/firmware_status.hpp"
+#include "iclforge/firmware_status.hpp"
 #include "sink_firmware.hpp"
 #include "sink_firmware_images.hpp"
 #include "sink_firmware_view.hpp"
@@ -44,16 +44,16 @@ SinkHardware s3_hardware() {
     return SinkHardware{.target = "esp32s3",
                         .chip = "ESP32-S3",
                         .revision = "0.2",
-                        .project = "ac3forge_hearth_sink",
+                        .project = "iclforge_hearth_sink",
                         .version = "v0.10.0"};
 }
 
-ac3forge::FirmwareSlot slot(std::string label, std::string state, std::string version, const ImageSpec& spec) {
-    ac3forge::FirmwareSlot out;
+iclforge::FirmwareSlot slot(std::string label, std::string state, std::string version, const ImageSpec& spec) {
+    iclforge::FirmwareSlot out;
     out.label = std::move(label);
     out.state = std::move(state);
     out.version = std::move(version);
-    out.project = "ac3forge_hearth_sink";
+    out.project = "iclforge_hearth_sink";
     out.idf_version = "v6.1";
     out.elf_sha256 = sink_firmware_test::elf_hex(spec);
     return out;
@@ -61,8 +61,8 @@ ac3forge::FirmwareSlot slot(std::string label, std::string state, std::string ve
 
 // A board running `running_spec` from ota_0, accepted, with an older image in
 // ota_1 and room for 4 MiB in either.
-ac3forge::FirmwareStatus s3_firmware(const ImageSpec& running_spec) {
-    ac3forge::FirmwareStatus status;
+iclforge::FirmwareStatus s3_firmware(const ImageSpec& running_spec) {
+    iclforge::FirmwareStatus status;
     status.running = slot("ota_0", "valid", "v0.10.0", running_spec);
     status.running->intact = true;
     ImageSpec older = running_spec;
@@ -79,18 +79,18 @@ ac3forge::FirmwareStatus s3_firmware(const ImageSpec& running_spec) {
 TEST_CASE("sink firmware: GET /firmware is read back into what the board renders it from",
           "[hearth][sink-firmware]") {
     ImageSpec spec;
-    ac3forge::FirmwareStatus status = s3_firmware(spec);
+    iclforge::FirmwareStatus status = s3_firmware(spec);
     status.mode = "flash";
     status.running->image_sha256 = "ab12";
     status.other->intact = false;
-    status.trial = ac3forge::FirmwareTrial{.healthy_for_ms = 12'000,
+    status.trial = iclforge::FirmwareTrial{.healthy_for_ms = 12'000,
                                            .hold_ms = 30'000,
                                            .remaining_ms = 274'000,
                                            .waiting_for = {"a network address", "the Sendspin player"}};
-    status.upload = ac3forge::FirmwareUpload{.received = 4096, .total = 1'480'768, .stage = "writing"};
-    status.last_update = ac3forge::FirmwareLastUpdate{
+    status.upload = iclforge::FirmwareUpload{.received = 4096, .total = 1'480'768, .stage = "writing"};
+    status.last_update = iclforge::FirmwareLastUpdate{
         .version = "v0.9.9", .result = "rolled back", .reason = "it panicked \"early\""};
-    status.coredump = ac3forge::FirmwareCoredump{.bytes = 5600,
+    status.coredump = iclforge::FirmwareCoredump{.bytes = 5600,
                                                  .intact = true,
                                                  .task = "main",
                                                  .pc = "0x408078e8",
@@ -102,15 +102,15 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
     status.reset_reason = "sw";
     status.uptime_ms = 61'234;
 
-    const std::optional<ac3forge::FirmwareStatus> parsed =
-        iclforge::hearth::parse_firmware_status(ac3forge::render_firmware_status(status));
+    const std::optional<iclforge::FirmwareStatus> parsed =
+        iclforge::hearth::parse_firmware_status(iclforge::render_firmware_status(status));
     REQUIRE(parsed.has_value());
     CHECK(parsed->mode == "flash");
     REQUIRE(parsed->running.has_value());
     CHECK(parsed->running->label == "ota_0");
     CHECK(parsed->running->state == "valid");
     CHECK(parsed->running->version == "v0.10.0");
-    CHECK(parsed->running->project == "ac3forge_hearth_sink");
+    CHECK(parsed->running->project == "iclforge_hearth_sink");
     CHECK(parsed->running->idf_version == "v6.1");
     CHECK(parsed->running->elf_sha256 == status.running->elf_sha256);
     CHECK(parsed->running->image_sha256 == "ab12");
@@ -149,9 +149,9 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
     CHECK(parsed->uptime_ms == 61'234);
 
     SECTION("nulls stay absent") {
-        ac3forge::FirmwareStatus bare;
-        const std::optional<ac3forge::FirmwareStatus> back =
-            iclforge::hearth::parse_firmware_status(ac3forge::render_firmware_status(bare));
+        iclforge::FirmwareStatus bare;
+        const std::optional<iclforge::FirmwareStatus> back =
+            iclforge::hearth::parse_firmware_status(iclforge::render_firmware_status(bare));
         REQUIRE(back.has_value());
         CHECK_FALSE(back->running.has_value());
         CHECK_FALSE(back->trial.has_value());
@@ -161,7 +161,7 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
         CHECK(back->network == "none");
     }
     SECTION("firmware from before O4 has no coredump key") {
-        const std::optional<ac3forge::FirmwareStatus> back =
+        const std::optional<iclforge::FirmwareStatus> back =
             iclforge::hearth::parse_firmware_status(R"({"mode":"normal","running":null,"other":null,"trial":null,)"
                                                R"("upload":null,"last_update":null,"network":"stored",)"
                                                R"("slot_bytes":0,"flash_bytes":0,"partitions":[]})");
@@ -181,13 +181,13 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
 TEST_CASE("sink firmware: GET /hardware gives the chip, its revision and the project", "[hearth][sink-firmware]") {
     const std::optional<SinkHardware> hardware = iclforge::hearth::parse_sink_hardware(
         R"({"target":"esp32c6","chip":"ESP32-C6","revision":"0.2","cores":1,"fpu":false,"cpu_freq_mhz":160,)"
-        R"("psram_bytes":0,"project":"ac3forge_hearth_sink","version":"v0.10.0","idf_version":"v6.1",)"
+        R"("psram_bytes":0,"project":"iclforge_hearth_sink","version":"v0.10.0","idf_version":"v6.1",)"
         R"("capabilities":[],"notices":[]})");
     REQUIRE(hardware.has_value());
     CHECK(hardware->target == "esp32c6");
     CHECK(hardware->chip == "ESP32-C6");
     CHECK(hardware->revision == "0.2");
-    CHECK(hardware->project == "ac3forge_hearth_sink");
+    CHECK(hardware->project == "iclforge_hearth_sink");
     CHECK(hardware->version == "v0.10.0");
     CHECK_FALSE(iclforge::hearth::parse_sink_hardware(R"({"chip":"ESP32-C6"})").has_value());
     CHECK_FALSE(iclforge::hearth::parse_sink_hardware("<html>").has_value());
@@ -202,7 +202,7 @@ TEST_CASE("sink firmware: an image file is walked as the bootloader walks it", "
         REQUIRE(read.file.has_value());
         CHECK(read.why.empty());
         CHECK(read.file->head.version == "v0.11.0");
-        CHECK(read.file->head.project == "ac3forge_hearth_sink");
+        CHECK(read.file->head.project == "iclforge_hearth_sink");
         CHECK(read.file->head.chip_id == 0x0009);
         CHECK(read.file->data == image);
         CHECK(read.file->elf_sha256 == sink_firmware_test::elf_hex(spec));
@@ -258,7 +258,7 @@ TEST_CASE("sink firmware: a board is refused an image it must not take, in ota.p
     ImageSpec update;
     update.elf_seed = 40;
     const SinkHardware hardware = s3_hardware();
-    ac3forge::FirmwareStatus firmware = s3_firmware(running);
+    iclforge::FirmwareStatus firmware = s3_firmware(running);
 
     CHECK_FALSE(iclforge::hearth::refuse_update(file_of(update), hardware, firmware).has_value());
 
@@ -278,7 +278,7 @@ TEST_CASE("sink firmware: a board is refused an image it must not take, in ota.p
         ImageSpec other = update;
         other.project = "hello_world";
         CHECK(iclforge::hearth::refuse_update(file_of(other), hardware, firmware) ==
-              "this image is hello_world, not ac3forge_hearth_sink");
+              "this image is hello_world, not iclforge_hearth_sink");
     }
     SECTION("another flash size") {
         firmware.flash_bytes = 4 * 1024 * 1024;
@@ -297,7 +297,7 @@ TEST_CASE("sink firmware: a board is refused an image it must not take, in ota.p
             "the running image is still on trial"));
     }
     SECTION("an update already under way") {
-        firmware.upload = ac3forge::FirmwareUpload{.received = 1, .total = 2, .stage = "writing"};
+        firmware.upload = iclforge::FirmwareUpload{.received = 1, .total = 2, .stage = "writing"};
         CHECK(iclforge::hearth::refuse_update(file_of(update), hardware, firmware) ==
               "an update is already under way on this board");
     }
@@ -334,7 +334,7 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
     context.slot = "ota_1";
 
     // The board's view of the new image once it runs from ota_1.
-    ac3forge::FirmwareStatus after = s3_firmware(running);
+    iclforge::FirmwareStatus after = s3_firmware(running);
     after.other = after.running;
     after.other->label = "ota_0";
     after.running = slot("ota_1", "trial", "v0.11.0", update_spec);
@@ -346,14 +346,14 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
         CHECK(verdict.text == "no answer yet: restarting");
     }
     SECTION("flash mode, before the restart") {
-        ac3forge::FirmwareStatus flash = s3_firmware(running);
+        iclforge::FirmwareStatus flash = s3_firmware(running);
         flash.mode = "flash";
-        flash.upload = ac3forge::FirmwareUpload{.received = 1, .total = 1, .stage = "restarting"};
+        flash.upload = iclforge::FirmwareUpload{.received = 1, .total = 1, .stage = "restarting"};
         CHECK(iclforge::hearth::judge_wait(&flash, update, context).outcome ==
               UpdateOutcome::kNone);
         SECTION("with the upload's answer lost and no upload running, it refused the image") {
             flash.upload.reset();
-            flash.last_update = ac3forge::FirmwareLastUpdate{
+            flash.last_update = iclforge::FirmwareLastUpdate{
                 .version = "v0.11.0", .result = "refused", .reason = "the image does not check out"};
             context.reply_lost = true;
             const iclforge::hearth::WaitVerdict verdict = iclforge::hearth::judge_wait(&flash, update, context);
@@ -362,7 +362,7 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
         }
     }
     SECTION("the new image on trial") {
-        after.trial = ac3forge::FirmwareTrial{
+        after.trial = iclforge::FirmwareTrial{
             .healthy_for_ms = 11'000, .hold_ms = 30'000, .remaining_ms = 286'000, .waiting_for = {}};
         const iclforge::hearth::WaitVerdict verdict =
             iclforge::hearth::judge_wait(&after, update, context);
@@ -397,9 +397,9 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
         CHECK(verdict.text.ends_with("; the board has not reported the image's SHA-256 yet"));
     }
     SECTION("the image before it, and the last update rolled back") {
-        ac3forge::FirmwareStatus back = s3_firmware(running);
+        iclforge::FirmwareStatus back = s3_firmware(running);
         back.last_update =
-            ac3forge::FirmwareLastUpdate{.version = "v0.11.0", .result = "rolled back", .reason = "it panicked"};
+            iclforge::FirmwareLastUpdate{.version = "v0.11.0", .result = "rolled back", .reason = "it panicked"};
         const iclforge::hearth::WaitVerdict verdict =
             iclforge::hearth::judge_wait(&back, update, context);
         CHECK(verdict.outcome == UpdateOutcome::kRolledBack);
@@ -408,7 +408,7 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
               "it panicked");
     }
     SECTION("the upload's answer lost, and the board says nothing of it") {
-        ac3forge::FirmwareStatus same = s3_firmware(running);
+        iclforge::FirmwareStatus same = s3_firmware(running);
         context.reply_lost = true;
         context.last_before = same.last_update;
         const iclforge::hearth::WaitVerdict verdict =
@@ -420,13 +420,13 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
         using std::chrono::seconds;
         CHECK(iclforge::hearth::silent_text(nullptr, update, context, seconds(360)).starts_with(
             "did not come back within 360 s. Cycling the board's power"));
-        ac3forge::FirmwareStatus flash = s3_firmware(running);
+        iclforge::FirmwareStatus flash = s3_firmware(running);
         flash.mode = "flash";
         CHECK(iclforge::hearth::silent_text(&flash, update, context, seconds(360)).starts_with(
             "still in flash mode after 360 s: it has not restarted into the new image."));
         CHECK(iclforge::hearth::silent_text(&after, update, context, seconds(360)).starts_with(
             "still runs the new image on trial after 360 s."));
-        ac3forge::FirmwareStatus before = s3_firmware(running);
+        iclforge::FirmwareStatus before = s3_firmware(running);
         CHECK(iclforge::hearth::silent_text(&before, update, context, seconds(360)).starts_with(
             "runs v0.10.0 from ota_0 after 360 s, and has not said how the update to ota_1 ended."));
     }
@@ -438,15 +438,15 @@ TEST_CASE("sink firmware: an upload that broke off is judged as ota.py's after_b
     using iclforge::hearth::judge_break;
     using namespace std::chrono_literals;
     ImageSpec running;
-    ac3forge::FirmwareStatus board = s3_firmware(running);
+    iclforge::FirmwareStatus board = s3_firmware(running);
     board.uptime_ms = 600'000;  // up since long before the upload began
     const std::chrono::milliseconds since = 20s;
 
     SECTION("the board is asked again while it does not answer, or still reports the upload") {
         CHECK_FALSE(judge_break(nullptr, since, false).decided);
-        ac3forge::FirmwareStatus still = board;
+        iclforge::FirmwareStatus still = board;
         still.mode = "flash";
-        still.upload = ac3forge::FirmwareUpload{.received = 4096, .total = 1'480'768, .stage = "writing"};
+        still.upload = iclforge::FirmwareUpload{.received = 4096, .total = 1'480'768, .stage = "writing"};
         CHECK_FALSE(judge_break(&still, since, false).decided);
 
         // Once the wait runs out, neither is sent again.
@@ -463,7 +463,7 @@ TEST_CASE("sink firmware: an upload that broke off is judged as ota.py's after_b
     }
     SECTION("in flash mode the board gave it up and says why, and a connection that went is tried again") {
         board.mode = "flash";
-        board.last_update = ac3forge::FirmwareLastUpdate{
+        board.last_update = iclforge::FirmwareLastUpdate{
             .version = "v0.11.0", .result = "refused", .reason = "the upload stopped after 65536 of 1480768 bytes"};
         BreakVerdict verdict = judge_break(&board, since, false);
         CHECK(verdict.decided);
@@ -474,7 +474,7 @@ TEST_CASE("sink firmware: an upload that broke off is judged as ota.py's after_b
         CHECK(judge_break(&board, since, false).retry);
 
         SECTION("any other reason is not tried again") {
-            board.last_update = ac3forge::FirmwareLastUpdate{
+            board.last_update = iclforge::FirmwareLastUpdate{
                 .version = "v0.11.0", .result = "failed", .reason = "writing the slot failed after 4096 bytes"};
             verdict = judge_break(&board, since, false);
             CHECK(verdict.text == "the board gave it up: writing the slot failed after 4096 bytes");
@@ -492,7 +492,7 @@ TEST_CASE("sink firmware: an upload that broke off is judged as ota.py's after_b
         }
     }
     SECTION("in normal mode, a board that restarted during it says so, and is sent it again") {
-        board.last_update = ac3forge::FirmwareLastUpdate{
+        board.last_update = iclforge::FirmwareLastUpdate{
             .version = "v0.11.0",
             .result = "interrupted",
             .reason = "the board restarted while the image was being written, on a panic"};
@@ -565,11 +565,11 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
     }
     SECTION("another build, a crash and a rollback") {
         snapshot.firmware->last_update =
-            ac3forge::FirmwareLastUpdate{.version = "v0.11.0", .result = "rolled back", .reason = "it panicked"};
+            iclforge::FirmwareLastUpdate{.version = "v0.11.0", .result = "rolled back", .reason = "it panicked"};
         ImageSpec failed;
         failed.elf_seed = 40;
         snapshot.firmware->other = slot("ota_1", "aborted", "v0.11.0", failed);
-        snapshot.firmware->coredump = ac3forge::FirmwareCoredump{
+        snapshot.firmware->coredump = iclforge::FirmwareCoredump{
             .bytes = 5600,
             .intact = true,
             .task = "main",
@@ -589,7 +589,7 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
     }
     SECTION("on trial: a rollback gives the trial up, and a restart is not offered") {
         snapshot.firmware->running->state = "trial";
-        snapshot.firmware->trial = ac3forge::FirmwareTrial{
+        snapshot.firmware->trial = iclforge::FirmwareTrial{
             .healthy_for_ms = 3000, .hold_ms = 30'000, .remaining_ms = 290'000, .waiting_for = {"a network address"}};
         const iclforge::hearth::FirmwarePanel panel =
             iclforge::hearth::to_firmware_panel(snapshot, "");
@@ -601,7 +601,7 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
     }
     SECTION("another client's upload, and flash mode") {
         snapshot.firmware->mode = "flash";
-        snapshot.firmware->upload = ac3forge::FirmwareUpload{.received = 4096, .total = 1'480'768, .stage = "writing"};
+        snapshot.firmware->upload = iclforge::FirmwareUpload{.received = 4096, .total = 1'480'768, .stage = "writing"};
         const iclforge::hearth::FirmwarePanel panel =
             iclforge::hearth::to_firmware_panel(snapshot, "");
         CHECK(panel.mode_text == "Flash mode: nothing plays until the board restarts.");
@@ -734,7 +734,7 @@ TEST_CASE("sink firmware: a chosen file, as the dialog asks about it", "[hearth]
 
     iclforge::hearth::FirmwareCandidate candidate = iclforge::hearth::to_candidate(file_of(update_spec), snapshot);
     CHECK(candidate.version == "v0.11.0");
-    CHECK(candidate.text.starts_with("ac3forge_hearth_sink v0.11.0, for an ESP32-S3, 1,"));
+    CHECK(candidate.text.starts_with("iclforge_hearth_sink v0.11.0, for an ESP32-S3, 1,"));
     CHECK(candidate.refusal == "the sink has not said what it is yet");
 
     snapshot.hardware = s3_hardware();

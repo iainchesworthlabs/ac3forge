@@ -35,7 +35,7 @@ import check_cli_docs_package as gate
 # What a runtime package holds besides the five files under test: the binary,
 # the licence, and - on macOS - the GUI bundle at the archive root, which is
 # the entry that does not start at an install directory.
-OTHER_FILES = ("bin/ac3cli", "share/doc/ac3forge/LICENSE.txt")
+OTHER_FILES = ("bin/ac3cli", "share/doc/iclforge/LICENSE.txt")
 MACOS_BUNDLE = "ac3gui.app/Contents/MacOS/ac3gui"
 
 
@@ -45,7 +45,7 @@ def entries(omit=(), extra=()):
 
 
 def make_tar(directory, names, prefix=""):
-    path = os.path.join(directory, "ac3forge-0.7.0-Linux-x86_64.tar.gz")
+    path = os.path.join(directory, "iclforge-0.7.0-Linux-x86_64.tar.gz")
     with tarfile.open(path, "w:gz") as archive:
         for name in names:
             info = tarfile.TarInfo(prefix + name)
@@ -55,7 +55,7 @@ def make_tar(directory, names, prefix=""):
 
 
 def make_zip(directory, names, prefix=""):
-    path = os.path.join(directory, "ac3forge-0.7.0-Darwin.zip")
+    path = os.path.join(directory, "iclforge-0.7.0-Darwin.zip")
     with zipfile.ZipFile(path, "w") as archive:
         for name in names:
             archive.writestr(prefix + name, "")
@@ -136,7 +136,7 @@ class TopLevelDirectoryTest(unittest.TestCase):
 
     def test_wrapped_archive_is_read_relative_to_the_prefix(self):
         with tempfile.TemporaryDirectory() as directory:
-            prefix = "ac3forge-0.7.0-Linux-x86_64/"
+            prefix = "iclforge-0.7.0-Linux-x86_64/"
             code, out = run(make_tar(directory, entries(), prefix=prefix))
             self.assertEqual(code, 0, out)
             code, out = run(make_zip(directory, entries(), prefix=prefix))
@@ -146,7 +146,7 @@ class TopLevelDirectoryTest(unittest.TestCase):
         # The normalisation must not turn "wrapped" into "everything found".
         with tempfile.TemporaryDirectory() as directory:
             code, out = run(
-                make_tar(directory, entries(omit=["share/man/man1/ac3cli.1"]), prefix="ac3forge/")
+                make_tar(directory, entries(omit=["share/man/man1/ac3cli.1"]), prefix="iclforge/")
             )
             self.assertEqual(code, 1)
             self.assertIn("missing share/man/man1/ac3cli.1", out)

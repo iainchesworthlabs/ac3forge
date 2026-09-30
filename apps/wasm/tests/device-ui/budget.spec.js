@@ -41,7 +41,7 @@ const { UI_DIR } = require('./stub');
 const BUDGET = 57344;
 
 test('the page and its script fit the flash budget', () => {
-    const files = ['ac3forge_ui.html', 'ac3forge_ui.js'].map((name) => fs.readFileSync(path.join(UI_DIR, name)));
+    const files = ['iclforge_ui.html', 'iclforge_ui.js'].map((name) => fs.readFileSync(path.join(UI_DIR, name)));
     const total = files.reduce((sum, file) => sum + file.length, 0);
     test.info().annotations.push({
         type: 'flash',

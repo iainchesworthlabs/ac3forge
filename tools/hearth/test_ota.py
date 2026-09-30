@@ -51,7 +51,7 @@ import package_firmware
 import sink_build_fixture
 
 HERE = Path(__file__).resolve().parent
-EXAMPLE = HERE.parents[1] / "esp-idf" / "ac3forge" / "examples" / "hearth_sink"
+EXAMPLE = HERE.parents[1] / "esp-idf" / "iclforge" / "examples" / "hearth_sink"
 
 OLD_ELF = hashlib.sha256(b"the image the board runs").digest()
 NEW_ELF = hashlib.sha256(b"the image pushed").digest()
@@ -86,7 +86,7 @@ def make_image(
     max_rev: int = 99,
     flash_code: int = 4,
     version: str = "v1.1.0",
-    project: str = "ac3forge_hearth_sink",
+    project: str = "iclforge_hearth_sink",
     elf: bytes = NEW_ELF,
     sizes: tuple[int, ...] = (512, 4096, 1024),
     hash_appended: bool = True,
@@ -163,7 +163,7 @@ def slot(
         "label": label,
         "state": state,
         "version": version,
-        "project": "ac3forge_hearth_sink",
+        "project": "iclforge_hearth_sink",
         "idf_version": "v6.1",
         "elf_sha256": elf.hex(),
         "image_sha256": image_sha,
@@ -246,7 +246,7 @@ class FakeBoard:
             "chip": "ESP32-S3",
             "revision": "0.2",
             "psram_bytes": 8 << 20,
-            "project": "ac3forge_hearth_sink",
+            "project": "iclforge_hearth_sink",
             "version": "v1.0.0",
             "idf_version": "v6.1",
         }
@@ -469,7 +469,7 @@ class Case(unittest.TestCase):
         self.tmp = Path(temporary.name)
 
     def write_image(self, data: bytes) -> Path:
-        path = self.tmp / "ac3forge_hearth_sink.bin"
+        path = self.tmp / "iclforge_hearth_sink.bin"
         path.write_bytes(data)
         return path
 
@@ -486,13 +486,13 @@ class Case(unittest.TestCase):
         """A build directory as idf.py leaves one, with what the tool reads from it."""
         build = self.tmp / name
         (build / "partition_table").mkdir(parents=True)
-        (build / "ac3forge_hearth_sink.bin").write_bytes(data)
+        (build / "iclforge_hearth_sink.bin").write_bytes(data)
         (build / "partition_table" / "partition-table.bin").write_bytes(make_table(table))
         description = {
-            "project_name": "ac3forge_hearth_sink",
+            "project_name": "iclforge_hearth_sink",
             "project_version": version,
             "build_dir": build.as_posix(),
-            "app_bin": "ac3forge_hearth_sink.bin",
+            "app_bin": "iclforge_hearth_sink.bin",
             "target": target,
         }
         (build / "project_description.json").write_text(json.dumps(description), encoding="utf-8")
@@ -511,7 +511,7 @@ class ImageChecks(Case):
         self.assertEqual((image.min_rev_full, image.max_rev_full), (0, 99))
         self.assertEqual((image.flash_code, image.flash_bytes), (4, 16 << 20))
         self.assertEqual(image.version, "v1.1.0")
-        self.assertEqual(image.project, "ac3forge_hearth_sink")
+        self.assertEqual(image.project, "iclforge_hearth_sink")
         self.assertEqual(image.idf_version, "v6.1")
         self.assertEqual(image.built, "Sep 25 2026 10:06:38")
         self.assertEqual(image.elf_sha256, NEW_ELF.hex())
@@ -622,7 +622,7 @@ class Refusals(Case):
             "target": "esp32s3",
             "chip": "ESP32-S3",
             "revision": "0.2",
-            "project": "ac3forge_hearth_sink",
+            "project": "iclforge_hearth_sink",
         }
 
     def refused(
@@ -667,7 +667,7 @@ class Refusals(Case):
     def test_another_project(self) -> None:
         why = self.refused(hardware={"project": "stream_player"})
         self.assertEqual(
-            why, "this image is ac3forge_hearth_sink, and the board runs stream_player"
+            why, "this image is iclforge_hearth_sink, and the board runs stream_player"
         )
 
     def test_a_partition_table_the_board_does_not_have(self) -> None:
@@ -1605,7 +1605,7 @@ class CommandLine(Case):
 
 
 class IdfExtension(unittest.TestCase):
-    """esp-idf/ac3forge/examples/hearth_sink/idf_ext.py, as idf.py loads it."""
+    """esp-idf/iclforge/examples/hearth_sink/idf_ext.py, as idf.py loads it."""
 
     def load(self) -> types.ModuleType:
         spec = importlib.util.spec_from_file_location("idf_ext_hearth_sink", EXAMPLE / "idf_ext.py")

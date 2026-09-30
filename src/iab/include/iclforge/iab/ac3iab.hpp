@@ -57,7 +57,7 @@ enum class IabError : std::uint8_t {
                            // Essence Element Key
 };
 
-[[nodiscard]] AC3IAB_EXPORT std::string_view describe(IabError error);
+[[nodiscard]] ICLFORGE_IAB_EXPORT std::string_view describe(IabError error);
 
 // §7 Table 2, §8.1: one IABitstream frame - the Preamble segment (opaque; §8.1.3 says its
 // content is "outside the scope of this specification") plus the decoded IAFrame that follows
@@ -74,9 +74,9 @@ struct IABitstreamFrame {
 // wrapper away - SMPTE ST 2067-201 clip-wraps the whole IABitstream as a single Generic
 // Container KLV Value, so there is no reframing to do, only extraction (see mxf.hpp's own
 // header comment).
-[[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(
+[[nodiscard]] ICLFORGE_IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(
     const std::string& path);
-[[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(
+[[nodiscard]] ICLFORGE_IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(
     std::istream& in);
 
 // Parses a single already-extracted IAFrame element's payload (§9.1 Table 5) directly -
@@ -86,6 +86,6 @@ struct IABitstreamFrame {
 // uses internally once it has stripped the IAFrameTag/IAFrameLength TLV wrapper (§8.1.4-6);
 // exposed directly since it is what a caller already holding one extracted frame - a
 // synthetic test vector, or a future MXF track reader - actually has in hand.
-[[nodiscard]] AC3IAB_EXPORT std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payload);
+[[nodiscard]] ICLFORGE_IAB_EXPORT std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payload);
 
 }  // namespace iclforge::iab

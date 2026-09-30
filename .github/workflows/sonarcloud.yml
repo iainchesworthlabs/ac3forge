@@ -169,7 +169,7 @@ jobs:
       # Debug also keeps asserts in front of the analyser, the same reasoning
       # static-analysis.yml gives for clang-tidy.
       #
-      # AC3FORGE_BUILD_EXAMPLES=ON overrides the preset, which turns examples
+      # ICLFORGE_BUILD_EXAMPLES=ON overrides the preset, which turns examples
       # off because ctest would then run each one as a process of its own for
       # coverage the test suite already provides. That reasoning is about
       # coverage, and this job wants the compile database: the CFamily
@@ -182,7 +182,7 @@ jobs:
       # reading as 0% and moving the coverage figure.
       - name: Configure
         shell: bash
-        run: cmake --preset config-linux-gcc-coverage -DAC3FORGE_BUILD_EXAMPLES=ON
+        run: cmake --preset config-linux-gcc-coverage -DICLFORGE_BUILD_EXAMPLES=ON
 
       # A full build, not just a configure: the compile database's command
       # lines reference per-TU .modmap files that only exist once ninja has
@@ -237,7 +237,7 @@ jobs:
           set -euo pipefail
           g++ -std=c++23 --coverage -o "${BUILD_DIR}/ac4_syntax_trace" \
             tools/checks/ac4_syntax_trace.cpp \
-            -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE \
+            -DICLFORGE_AC4_STATIC_DEFINE -DICLFORGE_AC4DEC_STATIC_DEFINE \
             -Isrc/ac4/include -Isrc/ac4dec/include \
             -I"${BUILD_DIR}/src/ac4/generated" -I"${BUILD_DIR}/src/ac4dec/generated" \
             "${BUILD_DIR}/src/ac4dec/libiclforge_ac4dec_static.a" \

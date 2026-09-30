@@ -39,8 +39,8 @@ Usage (repo root, after a build):
         --out dist/conformance-vectors --archive
 
 Signing: --sign asks for the Atmos signed-object vector, which needs a key
-this project does not ship. Supply one through AC3FORGE_SIGNING_KEY /
-AC3FORGE_SIGNING_KEY_FILE (the same environment ac3cli itself reads) or
+this project does not ship. Supply one through ICLFORGE_SIGNING_KEY /
+ICLFORGE_SIGNING_KEY_FILE (the same environment ac3cli itself reads) or
 --signing-key <path>. Without a key the signed vector is omitted and the
 manifest records why; nothing here ever invents or forges one.
 """
@@ -68,7 +68,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 GOLDEN_AUDIO = REPO / "tests" / "golden" / "audio"
 
-SCHEMA = "ac3forge-conformance-vectors/1"
+SCHEMA = "iclforge-conformance-vectors/1"
 
 # Annex E fscod2 (§E2.3.1.3). Reduced-rate streams FFmpeg walks but refuses to
 # decode - see docs/verification.md's own note.
@@ -794,7 +794,7 @@ def generate(
 
     env = dict(os.environ)
     if signing_key is not None:
-        env["AC3FORGE_SIGNING_KEY_FILE"] = str(signing_key.resolve())
+        env["ICLFORGE_SIGNING_KEY_FILE"] = str(signing_key.resolve())
 
     entries: list[dict] = []
     scratch = out_dir / ".scratch"
@@ -887,7 +887,7 @@ def generate(
                 "signed_vectors": False,
                 "note": (
                     "Object signing needs a key this project does not ship (docs/concepts/"
-                    "object-signing.md). Regenerate with --sign and AC3FORGE_SIGNING_KEY_FILE "
+                    "object-signing.md). Regenerate with --sign and ICLFORGE_SIGNING_KEY_FILE "
                     "to add the signed Atmos vector."
                 ),
             }
@@ -918,11 +918,11 @@ def write_readme(out_dir: Path, manifest: dict) -> None:
     ffmpeg_none = sum(1 for e in manifest["vectors"] if e["ffmpeg"]["support"] == "none")
 
     text = f"""\
-# ac3forge conformance vectors {manifest["version"]}
+# iclforge conformance vectors {manifest["version"]}
 
 {len(manifest["vectors"])} AC-3 / E-AC-3 / Dolby Atmos streams ({by_codec}), each with the PCM it
 was encoded from and a description of what it exercises. Produced by
-[ac3forge](https://github.com/iainchesworthlabs/ac3forge), a clean-room C++23 implementation.
+[iclforge](https://github.com/iainchesworthlabs/ac3forge), a clean-room C++23 implementation.
 
 No free ATSC or ETSI conformance bitstreams exist publicly. This set exists so another decoder
 implementer has something concrete to test against.
@@ -1085,11 +1085,11 @@ def main() -> int:
     args.cli = args.cli.resolve()
     args.out = args.out.resolve()
     if args.sign and args.signing_key is None and not (
-        os.environ.get("AC3FORGE_SIGNING_KEY") or os.environ.get("AC3FORGE_SIGNING_KEY_FILE")
+        os.environ.get("ICLFORGE_SIGNING_KEY") or os.environ.get("ICLFORGE_SIGNING_KEY_FILE")
     ):
         print(
-            "error: --sign needs a key: pass --signing-key, or set AC3FORGE_SIGNING_KEY / "
-            "AC3FORGE_SIGNING_KEY_FILE. This project ships no key and none is invented here.",
+            "error: --sign needs a key: pass --signing-key, or set ICLFORGE_SIGNING_KEY / "
+            "ICLFORGE_SIGNING_KEY_FILE. This project ships no key and none is invented here.",
             file=sys.stderr,
         )
         return 1

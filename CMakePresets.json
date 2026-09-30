@@ -10,13 +10,13 @@
     {
       "name": "core",
       "hidden": true,
-      "description": "Shared configuration for every platform/compiler preset. NOTE: VCPKG_CHAINLOAD_TOOLCHAIN_FILE is the single source of truth for the chainloaded compiler toolchain and is set per concrete preset; the vcpkg overlay triplets must NOT also set it. VCPKG_MANIFEST_FEATURES defaults to Hearth's \"hearth\" feature (vcpkg.json) so AC3FORGE_BUILD_HEARTH's own ON default (root CMakeLists.txt) resolves everywhere without a hand-passed -D; a preset that cannot or should not build Hearth sets AC3FORGE_BUILD_HEARTH back to OFF itself - minimal-decoder and minimal-encoder also clear this string back to empty (turning AC3FORGE_BUILD_HEARTH off alone leaves vcpkg still installing cpp-httplib/mbedTLS/mdns/libFLAC/Opus for nothing, since vcpkg's own feature resolution runs independently of which CMake option ends up consuming the result), wasm-emscripten does not inherit core at all so the question does not arise, and config-windows-llvm-coverage already clears it for its own Crucible-only reason. config-linux-gcc-coverage instead overrides this string to add its own \"adm\" feature alongside \"hearth\".",
+      "description": "Shared configuration for every platform/compiler preset. NOTE: VCPKG_CHAINLOAD_TOOLCHAIN_FILE is the single source of truth for the chainloaded compiler toolchain and is set per concrete preset; the vcpkg overlay triplets must NOT also set it. VCPKG_MANIFEST_FEATURES defaults to Hearth's \"hearth\" feature (vcpkg.json) so ICLFORGE_BUILD_HEARTH's own ON default (root CMakeLists.txt) resolves everywhere without a hand-passed -D; a preset that cannot or should not build Hearth sets ICLFORGE_BUILD_HEARTH back to OFF itself - minimal-decoder and minimal-encoder also clear this string back to empty (turning ICLFORGE_BUILD_HEARTH off alone leaves vcpkg still installing cpp-httplib/mbedTLS/mdns/libFLAC/Opus for nothing, since vcpkg's own feature resolution runs independently of which CMake option ends up consuming the result), wasm-emscripten does not inherit core at all so the question does not arise, and config-windows-llvm-coverage already clears it for its own Crucible-only reason. config-linux-gcc-coverage instead overrides this string to add its own \"adm\" feature alongside \"hearth\".",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "AC3FORGE_BUILD_CLI": "ON",
-        "AC3FORGE_BUILD_TESTS": "ON",
+        "ICLFORGE_BUILD_CLI": "ON",
+        "ICLFORGE_BUILD_TESTS": "ON",
         "VCPKG_MANIFEST_FEATURES": "hearth",
         "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/vcpkg/triplets",
         "VCPKG_OVERLAY_PORTS": "${sourceDir}/cmake/vcpkg/ports"
@@ -40,7 +40,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-windows-msvc",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/windows.msvc.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "ON"
+        "ICLFORGE_BUILD_GUI": "ON"
       },
       "condition": {
         "type": "equals",
@@ -51,11 +51,11 @@
     {
       "name": "windows-msvc-arm64",
       "hidden": true,
-      "description": "Windows/MSVC toolchain selection, arm64 target (Windows ARM64 / reach builds, GitHub's hosted windows-11-vs2026-arm runner). Same chainloaded toolchain file as windows-msvc - cmake/toolchains/windows.msvc.toolchain.cmake resolves the target-appropriate MSVC tools subdirectory from AC3_MSVC_TARGET_ARCH the same way linux.gcc.toolchain.cmake/macos.llvm.toolchain.cmake already resolve their own arm64 legs from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. AC3FORGE_BUILD_GUI is OFF here, unlike windows-msvc: not because ac3gui cannot be built for arm64, but because at authoring time Qt's only Windows arm64 kit for the pinned 6.9.3 (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit expecting a paired win64_msvc2022_64 install for its host tools, and aqtinstall has a documented CI bug against exactly that combination - real complexity this leg's native-arm64-host build doesn't need to take on for a first pass. The same 'Qt kit not assumed present' shape linux-gcc/linux-llvm/macos-llvm already use, not a new pattern - see those presets' own descriptions and docs/platforms/windows.md's ARM64 section.",
+      "description": "Windows/MSVC toolchain selection, arm64 target (Windows ARM64 / reach builds, GitHub's hosted windows-11-vs2026-arm runner). Same chainloaded toolchain file as windows-msvc - cmake/toolchains/windows.msvc.toolchain.cmake resolves the target-appropriate MSVC tools subdirectory from AC3_MSVC_TARGET_ARCH the same way linux.gcc.toolchain.cmake/macos.llvm.toolchain.cmake already resolve their own arm64 legs from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. ICLFORGE_BUILD_GUI is OFF here, unlike windows-msvc: not because ac3gui cannot be built for arm64, but because at authoring time Qt's only Windows arm64 kit for the pinned 6.9.3 (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit expecting a paired win64_msvc2022_64 install for its host tools, and aqtinstall has a documented CI bug against exactly that combination - real complexity this leg's native-arm64-host build doesn't need to take on for a first pass. The same 'Qt kit not assumed present' shape linux-gcc/linux-llvm/macos-llvm already use, not a new pattern - see those presets' own descriptions and docs/platforms/windows.md's ARM64 section.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-windows-msvc",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/windows.msvc.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "OFF"
+        "ICLFORGE_BUILD_GUI": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -70,7 +70,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-windows-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/windows.llvm.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "ON"
+        "ICLFORGE_BUILD_GUI": "ON"
       },
       "condition": {
         "type": "equals",
@@ -81,11 +81,11 @@
     {
       "name": "linux-gcc",
       "hidden": true,
-      "description": "Linux/GCC 16 toolchain selection. The GUI is off because a Qt kit is not assumed present, NOT because it cannot be built: cmake/FindQt6.cmake resolves Linux kits fine (distro packages land on CMake's own prefixes, and relocated / aqtinstall kits are searched under ~/Qt, /opt/Qt and friends), and ac3gui builds under both Linux presets and passes its headless --smoke run against Ubuntu 26.04's Qt 6.10. Add -DAC3FORGE_BUILD_GUI=ON on a machine that has Qt 6.5+; a preset that cannot find Qt should still say so by not asking for it rather than by failing to configure.",
+      "description": "Linux/GCC 16 toolchain selection. The GUI is off because a Qt kit is not assumed present, NOT because it cannot be built: cmake/FindQt6.cmake resolves Linux kits fine (distro packages land on CMake's own prefixes, and relocated / aqtinstall kits are searched under ~/Qt, /opt/Qt and friends), and ac3gui builds under both Linux presets and passes its headless --smoke run against Ubuntu 26.04's Qt 6.10. Add -DICLFORGE_BUILD_GUI=ON on a machine that has Qt 6.5+; a preset that cannot find Qt should still say so by not asking for it rather than by failing to configure.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-linux-gcc",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.gcc.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "OFF"
+        "ICLFORGE_BUILD_GUI": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -100,7 +100,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-linux-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.llvm.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "OFF"
+        "ICLFORGE_BUILD_GUI": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -115,7 +115,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux-gcc",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.gcc.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "OFF"
+        "ICLFORGE_BUILD_GUI": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -130,7 +130,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.llvm.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "OFF"
+        "ICLFORGE_BUILD_GUI": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -141,11 +141,11 @@
     {
       "name": "macos-llvm",
       "hidden": true,
-      "description": "macOS (Apple Silicon)/Homebrew LLVM toolchain selection. Verified via CI only (this project has no local macOS host) - see docs/building.md's Verified configuration section. GUI off by default for the same reason as linux-gcc - not because it cannot be built, but because a Qt kit is not assumed present on every Mac. CI's macos-llvm leg installs the official Qt kit via install-qt-action (not Homebrew's qt formula - see _ci-macos.yml) and passes -DAC3FORGE_BUILD_GUI=ON, the same opt-in shape as the four Linux build legs.",
+      "description": "macOS (Apple Silicon)/Homebrew LLVM toolchain selection. Verified via CI only (this project has no local macOS host) - see docs/building.md's Verified configuration section. GUI off by default for the same reason as linux-gcc - not because it cannot be built, but because a Qt kit is not assumed present on every Mac. CI's macos-llvm leg installs the official Qt kit via install-qt-action (not Homebrew's qt formula - see _ci-macos.yml) and passes -DICLFORGE_BUILD_GUI=ON, the same opt-in shape as the four Linux build legs.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-macos-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/macos.llvm.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "OFF"
+        "ICLFORGE_BUILD_GUI": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -160,7 +160,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-macos-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/macos.llvm.toolchain.cmake",
-        "AC3FORGE_BUILD_GUI": "OFF"
+        "ICLFORGE_BUILD_GUI": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -172,20 +172,20 @@
     {
       "name": "wasm-emscripten",
       "hidden": true,
-      "description": "Emscripten/WASM toolchain selection for the browser decode demo. Unlike every other platform preset here, this does NOT inherit \"core\": there is no host-OS condition (Emscripten cross-compiles from any host with $EMSDK set) and, more importantly, no vcpkg toolchainFile - see cmake/toolchains/wasm.emscripten.toolchain.cmake's own header for why going through vcpkg's community wasm32-emscripten triplet would be pure cost for zero benefit here. Everything \"core\" would otherwise supply (Ninja generator, binaryDir, the default ON options) is set directly below instead, deliberately turning off everything this preset does not need (CLI/GUI/tests/live-audio-linking containers) rather than inheriting defaults meant for a full desktop build. The AC-4 libraries (src/ac4, src/ac4dec, src/ac4enc) build here from the root default (AC3FORGE_BUILD_AC4 ON, unlisted below) for the apps/wasm/ ac3forge_wasm_ac4 embind target (plan phase I4).",
+      "description": "Emscripten/WASM toolchain selection for the browser decode demo. Unlike every other platform preset here, this does NOT inherit \"core\": there is no host-OS condition (Emscripten cross-compiles from any host with $EMSDK set) and, more importantly, no vcpkg toolchainFile - see cmake/toolchains/wasm.emscripten.toolchain.cmake's own header for why going through vcpkg's community wasm32-emscripten triplet would be pure cost for zero benefit here. Everything \"core\" would otherwise supply (Ninja generator, binaryDir, the default ON options) is set directly below instead, deliberately turning off everything this preset does not need (CLI/GUI/tests/live-audio-linking containers) rather than inheriting defaults meant for a full desktop build. The AC-4 libraries (src/ac4, src/ac4dec, src/ac4enc) build here from the root default (ICLFORGE_BUILD_AC4 ON, unlisted below) for the apps/wasm/ iclforge_wasm_ac4 embind target (plan phase I4).",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/toolchains/wasm.emscripten.toolchain.cmake",
       "cacheVariables": {
-        "AC3FORGE_BUILD_HEARTH": "OFF",
-        "AC3FORGE_BUILD_CLI": "OFF",
-        "AC3FORGE_BUILD_GUI": "OFF",
-        "AC3FORGE_BUILD_TESTS": "OFF",
-        "AC3FORGE_BUILD_EXAMPLES": "OFF",
-        "AC3FORGE_BUILD_MATROSKA": "OFF",
-        "AC3FORGE_BUILD_MP4": "OFF",
-        "AC3FORGE_BUILD_MPEGTS": "OFF",
-        "AC3FORGE_BUILD_CAPI": "OFF"
+        "ICLFORGE_BUILD_HEARTH": "OFF",
+        "ICLFORGE_BUILD_CLI": "OFF",
+        "ICLFORGE_BUILD_GUI": "OFF",
+        "ICLFORGE_BUILD_TESTS": "OFF",
+        "ICLFORGE_BUILD_EXAMPLES": "OFF",
+        "ICLFORGE_BUILD_MATROSKA": "OFF",
+        "ICLFORGE_BUILD_MP4": "OFF",
+        "ICLFORGE_BUILD_MPEGTS": "OFF",
+        "ICLFORGE_BUILD_CAPI": "OFF"
       }
     },
 
@@ -194,7 +194,7 @@
       "hidden": true,
       "description": "AddressSanitizer + UndefinedBehaviorSanitizer, fatal on first violation (-fno-sanitize-recover=all in cmake/Sanitizers.cmake) rather than logging and continuing. Deliberately does NOT add -fsanitize=integer's unsigned-integer-overflow check: this codec relies on intentional unsigned wraparound (CRC16, ring-buffer indices, the splice counter), and blanket-enabling it drowns real findings in expected wraparound. Signed overflow and out-of-range shifts - the precedent bug's own category (commit 8386c8f) - are already part of the default 'undefined' set.",
       "cacheVariables": {
-        "AC3FORGE_SANITIZERS": "address,undefined"
+        "ICLFORGE_SANITIZERS": "address,undefined"
       }
     },
     {
@@ -202,18 +202,18 @@
       "hidden": true,
       "description": "ThreadSanitizer. A SEPARATE preset from sanitize-asan-ubsan rather than more entries in its list, because the two runtimes are mutually exclusive - clang refuses -fsanitize=address,thread outright - and because they answer different questions: ASan/UBSan ask whether a single thread's memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing in the ASan+UBSan leg can see a data race, which is the whole reason this exists: src/audio is a lock-free SPSC ring, a silence watchdog and a clock-drift servo shared between a real-time callback thread and the encoder thread, and a missing acquire/release there is invisible to every other gate in this repository. cmake/Sanitizers.cmake already took an arbitrary comma-separated list, so this preset adds no build-system machinery of its own.",
       "cacheVariables": {
-        "AC3FORGE_SANITIZERS": "thread"
+        "ICLFORGE_SANITIZERS": "thread"
       }
     },
     {
       "name": "coverage",
       "hidden": true,
-      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - iclforge::ac3, iclforge::audio, iclforge::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (coverage floors): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
+      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - iclforge::ac3, iclforge::audio, iclforge::signing, matroska/mp4/mpegts, the C API, and (via ICLFORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. ICLFORGE_BUILD_CLI is ON here (coverage floors): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. ICLFORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
       "cacheVariables": {
-        "AC3FORGE_ENABLE_COVERAGE": "ON",
-        "AC3FORGE_BUILD_CLI": "ON",
-        "AC3FORGE_BUILD_EXAMPLES": "OFF",
-        "AC3FORGE_BUILD_ADM": "ON",
+        "ICLFORGE_ENABLE_COVERAGE": "ON",
+        "ICLFORGE_BUILD_CLI": "ON",
+        "ICLFORGE_BUILD_EXAMPLES": "OFF",
+        "ICLFORGE_BUILD_ADM": "ON",
         "VCPKG_MANIFEST_FEATURES": "adm"
       }
     },
@@ -222,27 +222,27 @@
       "hidden": true,
       "description": "The minimum-footprint decoder profile: ONE decode-only static library (iclforge::ac3_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
       "cacheVariables": {
-        "AC3FORGE_MINIMAL_DECODER": "ON",
-        "AC3FORGE_BUILD_HEARTH": "OFF",
+        "ICLFORGE_MINIMAL_DECODER": "ON",
+        "ICLFORGE_BUILD_HEARTH": "OFF",
         "VCPKG_MANIFEST_FEATURES": "",
-        "AC3FORGE_BUILD_CLI": "OFF",
-        "AC3FORGE_BUILD_GUI": "OFF",
-        "AC3FORGE_BUILD_TESTS": "OFF",
-        "AC3FORGE_BUILD_EXAMPLES": "OFF",
-        "AC3FORGE_BUILD_MATROSKA": "OFF",
-        "AC3FORGE_BUILD_MP4": "OFF",
-        "AC3FORGE_BUILD_MPEGTS": "OFF",
-        "AC3FORGE_BUILD_IAB": "OFF",
-        "AC3FORGE_BUILD_IAMF": "OFF",
-        "AC3FORGE_BUILD_CAPI": "OFF",
-        "AC3FORGE_BUILD_AC4": "OFF"
+        "ICLFORGE_BUILD_CLI": "OFF",
+        "ICLFORGE_BUILD_GUI": "OFF",
+        "ICLFORGE_BUILD_TESTS": "OFF",
+        "ICLFORGE_BUILD_EXAMPLES": "OFF",
+        "ICLFORGE_BUILD_MATROSKA": "OFF",
+        "ICLFORGE_BUILD_MP4": "OFF",
+        "ICLFORGE_BUILD_MPEGTS": "OFF",
+        "ICLFORGE_BUILD_IAB": "OFF",
+        "ICLFORGE_BUILD_IAMF": "OFF",
+        "ICLFORGE_BUILD_CAPI": "OFF",
+        "ICLFORGE_BUILD_AC4": "OFF"
       }
     },
 
     {
       "name": "shared-libs",
       "hidden": true,
-      "description": "BUILD_SHARED_LIBS=ON, proving iclforge::ac3_shared/iclforge::matroska_shared actually work - not just that the CMake topology configures, but that every in-tree consumer (ac3cli/ac3gui/ac3tests/examples) links and runs against the real .so, including the one example that also needs matroska's .so alongside ac3forge's. For ac3tests that is checked rather than assumed: tools/checks/check_shared_forge_binding.sh fails the pass if the test binary binds an ac3:: symbol anywhere but libac3forge.so or carries a copy of the codec itself. The few tests that reach library internals (the AC-4 syntax cases, core/test_fixed32_ecpl.cpp) are built only against the static libraries, since a .so exports none of that. See .github/workflows/_build.yml's 'Configure, build and test with BUILD_SHARED_LIBS=ON' step, which runs this as an extra pass inside the existing linux-llvm leg rather than a new matrix entry - the same shape as the alsa_fallback step below it.",
+      "description": "BUILD_SHARED_LIBS=ON, proving iclforge::ac3_shared/iclforge::matroska_shared actually work - not just that the CMake topology configures, but that every in-tree consumer (ac3cli/ac3gui/ac3tests/examples) links and runs against the real .so, including the one example that also needs matroska's .so alongside iclforge's. For ac3tests that is checked rather than assumed: tools/checks/check_shared_forge_binding.sh fails the pass if the test binary binds an ac3:: symbol anywhere but libiclforge_ac3.so or carries a copy of the codec itself. The few tests that reach library internals (the AC-4 syntax cases, core/test_fixed32_ecpl.cpp) are built only against the static libraries, since a .so exports none of that. See .github/workflows/_build.yml's 'Configure, build and test with BUILD_SHARED_LIBS=ON' step, which runs this as an extra pass inside the existing linux-llvm leg rather than a new matrix entry - the same shape as the alsa_fallback step below it.",
       "cacheVariables": {
         "BUILD_SHARED_LIBS": "ON"
       }
@@ -284,9 +284,9 @@
       "displayName": "Windows LLVM coverage (clang-cl, llvm-cov)",
       "description": "The Windows counterpart of config-linux-gcc-coverage, for AC3Forge Crucible's Windows half (apps/crucible, docs/crucible/index.md) and the GUI as built here. clang-cl's -fprofile-instr-generate/-fcoverage-mapping rather than gcov, read with tools/checks/coverage_crucible.ps1, which is how Crucible gets line AND branch figures. Inherits the RELEASE base, not debug, on purpose: LLVM ships clang_rt.profile against the release CRT, and an instrumented /MDd binary runs to completion and then dies in the profile writer at exit (access violation, no profile written); cmake/Coverage.cmake's clang-cl arm turns optimisation off again (/Od /Ob0) so line and branch attribution stays exact. ADM and Hearth both stay off: vcpkg's adm and hearth features are Linux-leg concerns (Hearth's own floor lives on config-linux-gcc-coverage, see tools/checks/coverage_report.sh) and this preset exists for apps/crucible.",
       "cacheVariables": {
-        "AC3FORGE_BUILD_CRUCIBLE": "ON",
-        "AC3FORGE_BUILD_ADM": "OFF",
-        "AC3FORGE_BUILD_HEARTH": "OFF",
+        "ICLFORGE_BUILD_CRUCIBLE": "ON",
+        "ICLFORGE_BUILD_ADM": "OFF",
+        "ICLFORGE_BUILD_HEARTH": "OFF",
         "VCPKG_MANIFEST_FEATURES": ""
       }
     },
@@ -369,9 +369,9 @@
       "name": "config-linux-gcc-coverage",
       "inherits": [ "debug", "linux-gcc", "coverage", "core" ],
       "displayName": "Linux GCC Coverage",
-      "description": "AC3FORGE_BUILD_HEARTH is ON here (like everywhere else, via the root CMakeLists.txt default) with VCPKG_MANIFEST_FEATURES overridden to carry both opt-in features this leg wants (\"adm\" from the coverage fragment, plus \"hearth\") rather than just the one - src/sendspin and apps/hearth/engine link ac3::coverage the same way apps/cli does, so iclforge::sendspin and apps/hearth get their own gated rows in tools/checks/coverage_report.sh alongside ac3adm/admbridge.",
+      "description": "ICLFORGE_BUILD_HEARTH is ON here (like everywhere else, via the root CMakeLists.txt default) with VCPKG_MANIFEST_FEATURES overridden to carry both opt-in features this leg wants (\"adm\" from the coverage fragment, plus \"hearth\") rather than just the one - src/sendspin and apps/hearth/engine link iclforge::coverage the same way apps/cli does, so iclforge::sendspin and apps/hearth get their own gated rows in tools/checks/coverage_report.sh alongside ac3adm/admbridge.",
       "cacheVariables": {
-        "AC3FORGE_BUILD_HEARTH": "ON",
+        "ICLFORGE_BUILD_HEARTH": "ON",
         "VCPKG_MANIFEST_FEATURES": "adm;hearth"
       }
     },
@@ -380,20 +380,20 @@
       "hidden": true,
       "description": "The minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (iclforge::ac3_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/ac3/minimal.cmake and docs/building.md.",
       "cacheVariables": {
-        "AC3FORGE_MINIMAL_ENCODER": "ON",
-        "AC3FORGE_BUILD_HEARTH": "OFF",
+        "ICLFORGE_MINIMAL_ENCODER": "ON",
+        "ICLFORGE_BUILD_HEARTH": "OFF",
         "VCPKG_MANIFEST_FEATURES": "",
-        "AC3FORGE_BUILD_CLI": "OFF",
-        "AC3FORGE_BUILD_GUI": "OFF",
-        "AC3FORGE_BUILD_TESTS": "OFF",
-        "AC3FORGE_BUILD_EXAMPLES": "OFF",
-        "AC3FORGE_BUILD_MATROSKA": "OFF",
-        "AC3FORGE_BUILD_MP4": "OFF",
-        "AC3FORGE_BUILD_MPEGTS": "OFF",
-        "AC3FORGE_BUILD_IAB": "OFF",
-        "AC3FORGE_BUILD_IAMF": "OFF",
-        "AC3FORGE_BUILD_CAPI": "OFF",
-        "AC3FORGE_BUILD_AC4": "OFF"
+        "ICLFORGE_BUILD_CLI": "OFF",
+        "ICLFORGE_BUILD_GUI": "OFF",
+        "ICLFORGE_BUILD_TESTS": "OFF",
+        "ICLFORGE_BUILD_EXAMPLES": "OFF",
+        "ICLFORGE_BUILD_MATROSKA": "OFF",
+        "ICLFORGE_BUILD_MP4": "OFF",
+        "ICLFORGE_BUILD_MPEGTS": "OFF",
+        "ICLFORGE_BUILD_IAB": "OFF",
+        "ICLFORGE_BUILD_IAMF": "OFF",
+        "ICLFORGE_BUILD_CAPI": "OFF",
+        "ICLFORGE_BUILD_AC4": "OFF"
       }
     },
     {
@@ -405,10 +405,10 @@
       "name": "config-linux-gcc-minimal-ac4",
       "inherits": [ "config-linux-gcc-minimal" ],
       "displayName": "Linux GCC minimum-footprint AC-4 decoder",
-      "description": "The decode profile carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: iclforge::ac4dec, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4 --host. AC-4 shares nothing with iclforge::ac3, so the two probes are two builds. The AC-4 encoder is built for none of the parts.",
+      "description": "The decode profile carrying the AC-4 decoder (ICLFORGE_MINIMAL_AC4: iclforge::ac4dec, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4 --host. AC-4 shares nothing with iclforge::ac3, so the two probes are two builds. The AC-4 encoder is built for none of the parts.",
       "cacheVariables": {
-        "AC3FORGE_MINIMAL_AC4": "ON",
-        "AC3FORGE_DECODE_SCALAR": "float"
+        "ICLFORGE_MINIMAL_AC4": "ON",
+        "ICLFORGE_DECODE_SCALAR": "float"
       }
     },
     {
@@ -439,17 +439,17 @@
       "displayName": "arm-none-eabi minimum-footprint decoder, instruction-counting clock",
       "description": "The decoder preset above with the probe's clock on the mps2-an385's CMSDK timer instead of semihosting, for tools/checks/run_baremetal_probe.sh --icount: under QEMU -icount that timer counts instructions, deterministically, where semihosting's clock reports host time. Its own build directory so a plain run and an --icount run never share a cache.",
       "cacheVariables": {
-        "AC3FORGE_BAREMETAL_CLOCK": "timer"
+        "ICLFORGE_BAREMETAL_CLOCK": "timer"
       }
     },
     {
       "name": "config-arm-none-eabi-minimal-ac4",
       "inherits": [ "config-arm-none-eabi-minimal" ],
       "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint AC-4 decoder",
-      "description": "The decoder preset above carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: iclforge::ac4dec, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4. Its own build directory, since it is a different probe.",
+      "description": "The decoder preset above carrying the AC-4 decoder (ICLFORGE_MINIMAL_AC4: iclforge::ac4dec, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4. Its own build directory, since it is a different probe.",
       "cacheVariables": {
-        "AC3FORGE_MINIMAL_AC4": "ON",
-        "AC3FORGE_DECODE_SCALAR": "float"
+        "ICLFORGE_MINIMAL_AC4": "ON",
+        "ICLFORGE_DECODE_SCALAR": "float"
       }
     },
     {
@@ -458,7 +458,7 @@
       "displayName": "arm-none-eabi minimum-footprint AC-4 decoder, instruction-counting clock",
       "description": "The AC-4 preset above with the probe's clock on the mps2-an385's CMSDK timer, for tools/checks/run_baremetal_probe.sh --ac4 --icount: instructions per frame, deterministically.",
       "cacheVariables": {
-        "AC3FORGE_BAREMETAL_CLOCK": "timer"
+        "ICLFORGE_BAREMETAL_CLOCK": "timer"
       }
     },
     {
@@ -479,7 +479,7 @@
       "displayName": "arm-none-eabi minimum-footprint encoder, instruction-counting clock",
       "description": "The encoder preset above with the probe's clock on the mps2-an385's CMSDK timer, for tools/checks/run_baremetal_probe.sh --encoder --icount: instructions per encoded frame, deterministically. Its own build directory for the same reason the decoder's icount preset has one.",
       "cacheVariables": {
-        "AC3FORGE_BAREMETAL_CLOCK": "timer"
+        "ICLFORGE_BAREMETAL_CLOCK": "timer"
       }
     },
     {

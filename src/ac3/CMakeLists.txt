@@ -51,52 +51,52 @@ set(_ac3_export_custom_content [[
 # different shape from a hand-picked list of this library's and its neighbours' sources, so it has its
 # own file. Off by default; the root CMakeLists.txt refuses the combination of these options with
 # anything that would need the full library.
-if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
+if(ICLFORGE_MINIMAL_DECODER OR ICLFORGE_MINIMAL_ENCODER)
     include("${CMAKE_CURRENT_SOURCE_DIR}/minimal.cmake")
     return()
 endif()
 
 # --- Version + git stamp ---------------------------------------------------
 find_package(Git QUIET)
-set(AC3FORGE_VERSION_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/include/iclforge/ac3/version.hpp.in")
-set(AC3FORGE_VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac3/version.hpp")
+set(ICLFORGE_VERSION_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/include/iclforge/ac3/version.hpp.in")
+set(ICLFORGE_VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/ac3/version.hpp")
 
 # OS/architecture/compiler this binary is built for, for version_details()'s --version/About-dialog
 # output. Computed here (CMake already knows all three from the toolchain it configured) rather than
 # read back with predefined macros at compile time, so version.cpp needs no #ifdef.
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(AC3FORGE_BUILD_OS "macOS")
+    set(ICLFORGE_BUILD_OS "macOS")
 else()
-    set(AC3FORGE_BUILD_OS "${CMAKE_SYSTEM_NAME}")
+    set(ICLFORGE_BUILD_OS "${CMAKE_SYSTEM_NAME}")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(AC3FORGE_BUILD_COMPILER "GCC ${CMAKE_CXX_COMPILER_VERSION}")
+    set(ICLFORGE_BUILD_COMPILER "GCC ${CMAKE_CXX_COMPILER_VERSION}")
 else()
     # AppleClang, Clang and MSVC already spell their own CMAKE_CXX_COMPILER_ID the way version_details() wants it.
-    set(AC3FORGE_BUILD_COMPILER "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+    set(ICLFORGE_BUILD_COMPILER "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 endif()
 
-set(AC3FORGE_BUILD_TARGET "${AC3FORGE_BUILD_OS} ${AC3FORGE_BUILD_ARCH} (${AC3FORGE_BUILD_COMPILER})")
+set(ICLFORGE_BUILD_TARGET "${ICLFORGE_BUILD_OS} ${ICLFORGE_BUILD_ARCH} (${ICLFORGE_BUILD_COMPILER})")
 
 # Generate once at configure time so the header exists for the first build.
-set(AC3FORGE_VERSION "${PROJECT_VERSION}")
-set(AC3FORGE_VERSION_FULL "${PROJECT_VERSION_FULL}")
-set(SRC "${AC3FORGE_VERSION_TEMPLATE}")
-set(DST "${AC3FORGE_VERSION_HEADER}")
+set(ICLFORGE_VERSION "${PROJECT_VERSION}")
+set(ICLFORGE_VERSION_FULL "${PROJECT_VERSION_FULL}")
+set(SRC "${ICLFORGE_VERSION_TEMPLATE}")
+set(DST "${ICLFORGE_VERSION_HEADER}")
 set(WORKDIR "${PROJECT_SOURCE_DIR}")
 include("${PROJECT_SOURCE_DIR}/cmake/GenerateVersion.cmake")
 
 # Re-stamp on every build so the git information tracks new commits without a reconfigure.
 # configure_file only rewrites when the content changes, so this does not recompile dependants.
-add_custom_target(ac3forge_version ALL
-    BYPRODUCTS "${AC3FORGE_VERSION_HEADER}"
+add_custom_target(iclforge_version ALL
+    BYPRODUCTS "${ICLFORGE_VERSION_HEADER}"
     COMMAND "${CMAKE_COMMAND}"
-        "-DAC3FORGE_VERSION=${PROJECT_VERSION}"
-        "-DAC3FORGE_VERSION_FULL=${PROJECT_VERSION_FULL}"
-        "-DAC3FORGE_BUILD_TARGET=${AC3FORGE_BUILD_TARGET}"
-        "-DSRC=${AC3FORGE_VERSION_TEMPLATE}"
-        "-DDST=${AC3FORGE_VERSION_HEADER}"
+        "-DICLFORGE_VERSION=${PROJECT_VERSION}"
+        "-DICLFORGE_VERSION_FULL=${PROJECT_VERSION_FULL}"
+        "-DICLFORGE_BUILD_TARGET=${ICLFORGE_BUILD_TARGET}"
+        "-DSRC=${ICLFORGE_VERSION_TEMPLATE}"
+        "-DDST=${ICLFORGE_VERSION_HEADER}"
         "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
         "-DWORKDIR=${PROJECT_SOURCE_DIR}"
         -P "${PROJECT_SOURCE_DIR}/cmake/GenerateVersion.cmake"
@@ -111,31 +111,31 @@ add_custom_target(ac3forge_version ALL
 # double is the default and stays it for every ordinary build: the gold references, the quality trend
 # and the cross-platform bitstream hashes are all stated in terms of that arithmetic.
 # iclforge_ac3_minimal picks float32 unconditionally - see minimal.cmake.
-set(AC3FORGE_DECODE_SCALAR "double" CACHE STRING
+set(ICLFORGE_DECODE_SCALAR "double" CACHE STRING
     "Scalar the decoder carries coefficients in: double (default), float, or fixed (Q7.24 in an int32, for parts with no FPU)")
-set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
-if(AC3FORGE_DECODE_SCALAR STREQUAL "float")
+set_property(CACHE ICLFORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
+if(ICLFORGE_DECODE_SCALAR STREQUAL "float")
     set(_ac3_scalar_dir "float32")
-elseif(AC3FORGE_DECODE_SCALAR STREQUAL "double")
+elseif(ICLFORGE_DECODE_SCALAR STREQUAL "double")
     set(_ac3_scalar_dir "float64")
-elseif(AC3FORGE_DECODE_SCALAR STREQUAL "fixed")
+elseif(ICLFORGE_DECODE_SCALAR STREQUAL "fixed")
     # iclforge::arithmetic's Fixed32 - the third tier (planning/arithmetic-tiers.md).
     set(_ac3_scalar_dir "fixed32")
 else()
     message(FATAL_ERROR
-        "AC3FORGE_DECODE_SCALAR is 'double', 'float' or 'fixed' (got '${AC3FORGE_DECODE_SCALAR}')")
+        "ICLFORGE_DECODE_SCALAR is 'double', 'float' or 'fixed' (got '${ICLFORGE_DECODE_SCALAR}')")
 endif()
 
-set(AC3FORGE_ENCODE_SCALAR "double" CACHE STRING
+set(ICLFORGE_ENCODE_SCALAR "double" CACHE STRING
     "Scalar the encoders' analysis front end runs in: double (default) or float")
-set_property(CACHE AC3FORGE_ENCODE_SCALAR PROPERTY STRINGS double float)
-if(AC3FORGE_ENCODE_SCALAR STREQUAL "float")
+set_property(CACHE ICLFORGE_ENCODE_SCALAR PROPERTY STRINGS double float)
+if(ICLFORGE_ENCODE_SCALAR STREQUAL "float")
     set(_ac3_encode_scalar_dir "float32")
-elseif(AC3FORGE_ENCODE_SCALAR STREQUAL "double")
+elseif(ICLFORGE_ENCODE_SCALAR STREQUAL "double")
     set(_ac3_encode_scalar_dir "float64")
 else()
     message(FATAL_ERROR
-        "AC3FORGE_ENCODE_SCALAR is 'double' or 'float' (got '${AC3FORGE_ENCODE_SCALAR}')")
+        "ICLFORGE_ENCODE_SCALAR is 'double' or 'float' (got '${ICLFORGE_ENCODE_SCALAR}')")
 endif()
 
 iclforge_add_library(ac3
@@ -201,10 +201,10 @@ iclforge_add_library(ac3
         # mdct_avx2.hpp's plain-signature declarations must resolve for mdct.cpp on every configuration.
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2"
     LINK_PRIVATE
-        "$<BUILD_INTERFACE:ac3::tracy>"
-        "$<BUILD_INTERFACE:ac3::fmt_private>"
+        "$<BUILD_INTERFACE:iclforge::tracy>"
+        "$<BUILD_INTERFACE:iclforge::fmt_private>"
         "$<BUILD_INTERFACE:iclforge::arithmetic>")
-add_dependencies(iclforge_ac3_objects ac3forge_version)
+add_dependencies(iclforge_ac3_objects iclforge_version)
 target_include_directories(iclforge_ac3_objects PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>")
 
@@ -213,7 +213,7 @@ target_include_directories(iclforge_ac3_objects PUBLIC
 # The one target in the whole build that ever sees an AVX2 compiler flag: an AVX2 flag applied to the
 # codec's other files would compile them for a feature the deployment machine might not have, which
 # iclforge/base/detail/cpu_features.hpp's has_avx2() exists to let this project avoid.
-if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
+if(ICLFORGE_SIMD_RESOLVED STREQUAL "x86_64" AND ICLFORGE_AVX2)
     add_library(iclforge_ac3_simd_avx2 OBJECT
         src/internal/avx2/avx2_probe.cpp
         src/internal/avx2/mdct_avx2.cpp)
@@ -229,12 +229,12 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
     target_link_libraries(iclforge_ac3_simd_avx2 PRIVATE
         "$<COMPILE_ONLY:iclforge::base>" "$<COMPILE_ONLY:iclforge::render>"
         "$<COMPILE_ONLY:iclforge::objects>" "$<COMPILE_ONLY:iclforge::dsp>"
-        "$<BUILD_INTERFACE:ac3::warnings>")
+        "$<BUILD_INTERFACE:iclforge::warnings>")
 
     # /arch:AVX2 for MSVC and clang-cl, -mavx2 for GCC/Clang/AppleClang. Deliberately never -mfma
     # alongside it: the project's own code must never call an FMA intrinsic, and not requesting it keeps
     # has_avx2()'s CPUID gate to the single AVX2 bit.
-    if(AC3FORGE_IS_MSVC_LIKE)
+    if(ICLFORGE_IS_MSVC_LIKE)
         target_compile_options(iclforge_ac3_simd_avx2 PRIVATE /arch:AVX2)
     else()
         target_compile_options(iclforge_ac3_simd_avx2 PRIVATE -mavx2)
@@ -251,7 +251,7 @@ if(AC3FORGE_SIMD_RESOLVED STREQUAL "x86_64" AND AC3FORGE_AVX2)
 
     target_link_libraries(iclforge_ac3_static PUBLIC iclforge_ac3_simd_avx2)
     target_link_libraries(iclforge_ac3_shared PUBLIC iclforge_ac3_simd_avx2)
-    set(AC3FORGE_AVX2_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2" PARENT_SCOPE)
+    set(ICLFORGE_AVX2_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/avx2" PARENT_SCOPE)
 else()
     # mdct.cpp's call sites still need something to link against: the unreachable-body stub, compiled
     # straight into the objects with no AVX2 flag.

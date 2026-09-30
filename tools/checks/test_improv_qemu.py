@@ -2,7 +2,7 @@
 
 stdlib `unittest`, as the other suites here are: this runs in ci.yml's
 script-lint job. The packets are written out byte for byte, with checksums
-worked by hand from ac3forge/improv.hpp's rule, so a test cannot pass by
+worked by hand from iclforge/improv.hpp's rule, so a test cannot pass by
 agreeing with the code under test. The scenarios run against a board played
 by a thread on two local sockets, one for the console and one for QEMU's
 monitor.

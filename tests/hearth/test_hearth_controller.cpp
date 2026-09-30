@@ -671,7 +671,7 @@ TEST_CASE("media_ac4_to_map: a DEE stream's frame rate, I-frames, presentation a
     // Its manifest entry (tests/golden/external-baseline/ac4-manifest.json):
     // 5.1 at 192 kbit/s, 120 frames at frame_rate_index 13, Lt/Rt preferred.
     const std::vector<std::byte> bytes =
-        read_bytes(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} /
+        read_bytes(std::filesystem::path{ICLFORGE_GOLDEN_EXTERNAL_BASELINE_DIR} /
                    "ac4-51-drc-ltrt-192" / "dee.ac4");
     const iclforge::apps::probe_json::Ac4Summary summary =
         iclforge::apps::probe_json::summarize_ac4(bytes);

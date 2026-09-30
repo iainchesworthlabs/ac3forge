@@ -51,7 +51,7 @@
 namespace perf {
 
 inline constexpr const char* kReference51Wav =
-    AC3FORGE_SOURCE_DIR "/tests/golden/audio/reference_51.wav";
+    ICLFORGE_SOURCE_DIR "/tests/golden/audio/reference_51.wav";
 
 // Which of the fixture's channels a workload takes, named in A/52 Table 5.8
 // order (L, C, R, SL, SR, LFE) rather than the WAV's own - FrameSource does

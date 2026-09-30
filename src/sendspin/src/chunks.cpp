@@ -102,7 +102,7 @@ bool write_player_chunk_header(std::span<std::uint8_t> out, std::int64_t timesta
 }
 
 std::expected<BurstChunk, ChunkError> parse_burst_chunk(std::span<const std::uint8_t> message) {
-    if (message.empty() || message.front() != message_id::kAc3forgeBurst) {
+    if (message.empty() || message.front() != message_id::kIclforgeBurst) {
         return std::unexpected(message.empty() ? ChunkError::kTooShort : ChunkError::kWrongId);
     }
     if (message.size() <= kBurstChunkHeaderBytes) {
@@ -171,7 +171,7 @@ bool write_burst_chunk_header(std::span<std::uint8_t> out, std::int64_t timestam
     if (out.size() < kBurstChunkHeaderBytes) {
         return false;
     }
-    write_header(out, message_id::kAc3forgeBurst, timestamp_us, send_ahead_us);
+    write_header(out, message_id::kIclforgeBurst, timestamp_us, send_ahead_us);
     write_be(out.subspan(13, 2), pc);
     write_be(out.subspan(15, 2), pd);
     return true;

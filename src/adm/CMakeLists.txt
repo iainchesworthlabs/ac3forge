@@ -18,7 +18,7 @@
 # Iterator, Functional, Format, Integer, Rational - see vcpkg.json's "adm"
 # feature comment for how this exact list was confirmed, rather than guessed,
 # against libadm's own source). That dependency is DELIBERATELY opt-in, not
-# default-on the way matroska/mp4/mpegts are - AC3FORGE_BUILD_ADM defaults
+# default-on the way matroska/mp4/mpegts are - ICLFORGE_BUILD_ADM defaults
 # OFF (see root CMakeLists.txt's own option()), and even turning it ON
 # additionally needs -DVCPKG_MANIFEST_FEATURES=adm (see vcpkg.json's "adm"
 # feature) to resolve the Boost packages - the guard immediately below fails
@@ -42,9 +42,9 @@
 # less NDK-friendly dependency (Boost) on top of a capability (ADM ingest)
 # the Android app has no use for at all either.
 #
-# Installed/exported via find_package(ac3forge) (cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
+# Installed/exported via find_package(iclforge) (cmake/InstallLibrary.cmake's ICLFORGE_BUILD_ADM
 # block) as iclforge::adm_shared ONLY - never iclforge::adm_static, regardless of
-# AC3FORGE_INSTALL_BOTH_LINKAGES. bw64/adm are third-party FetchContent targets this project
+# ICLFORGE_INSTALL_BOTH_LINKAGES. bw64/adm are third-party FetchContent targets this project
 # doesn't install or export in their own right (re-exporting libbw64/libadm as first-class
 # packages of their own - including libadm's Boost header dependency - was judged out of scope
 # for this module). A STATIC ac3adm still has genuinely unresolved symbol references into adm's
@@ -55,16 +55,16 @@
 # below for how bw64/adm are kept out of the exported package's Targets.cmake entirely.
 # ---------------------------------------------------------------------------
 
-# Only checked when this module is actually being configured - AC3FORGE_BUILD_ADM=OFF
+# Only checked when this module is actually being configured - ICLFORGE_BUILD_ADM=OFF
 # (the default) never touches find_package(Boost) at all.
 find_package(Boost 1.57 QUIET)
 if(NOT Boost_FOUND)
     message(FATAL_ERROR
-        "AC3FORGE_BUILD_ADM=ON needs libadm's Boost header dependencies (Optional, "
+        "ICLFORGE_BUILD_ADM=ON needs libadm's Boost header dependencies (Optional, "
         "Variant, Range, Iterator, Functional, Format, Integer, Rational), which were not "
         "found. If using vcpkg, reconfigure with -DVCPKG_MANIFEST_FEATURES=adm (see "
         "vcpkg.json's \"adm\" feature) so those packages resolve, or build with "
-        "-DAC3FORGE_BUILD_ADM=OFF.")
+        "-DICLFORGE_BUILD_ADM=OFF.")
 endif()
 
 include(FetchContent)
@@ -75,9 +75,9 @@ include(FetchContent)
 # since the workaround costs nothing extra either way) has a real bug that breaks that: its
 # configure_package_config_file() call resolves
 # "config/libbw64Config.cmake.in" against CMAKE_SOURCE_DIR (this whole build's top-level source
-# dir - i.e. ac3forge's own repo root, once libbw64 is pulled in as a subdirectory of it) instead
+# dir - i.e. iclforge's own repo root, once libbw64 is pulled in as a subdirectory of it) instead
 # of PROJECT_SOURCE_DIR/CMAKE_CURRENT_SOURCE_DIR (libbw64's own tree), so it fails outright with
-# a missing-file configure error ("File .../ac3forge/config/libbw64Config.cmake.in does not
+# a missing-file configure error ("File .../iclforge/config/libbw64Config.cmake.in does not
 # exist") the moment it is add_subdirectory()'d into a larger project rather than configured
 # stand-alone - confirmed by actually trying it, not assumed. (Its EXAMPLES/UNIT_TESTS options
 # also turned out to have no "BW64_" prefix, unlike what their own generic naming style might
@@ -131,7 +131,7 @@ unset(_ac3adm_libbw64_patch_sha)
 add_library(bw64 INTERFACE)
 # SYSTEM (via the include-directories SYSTEM keyword, FetchContent's own SYSTEM option is not
 # available on the Populate-only path used above) keeps libbw64's headers out of reach of
-# ac3::warnings' -Werror, matching every other vendored dependency in this build.
+# iclforge::warnings' -Werror, matching every other vendored dependency in this build.
 target_include_directories(bw64 SYSTEM INTERFACE "${libbw64_SOURCE_DIR}/include")
 
 # libadm has no such bug - its own CMakeLists.txt genuinely honors ADM_UNIT_TESTS/ADM_EXAMPLES/
@@ -153,7 +153,7 @@ FetchContent_Declare(libadm
 # target in this build) - see its own src/CMakeLists.txt for why that is the exact name, not
 # `libadm`. Forced STATIC here regardless of this project's own ambient BUILD_SHARED_LIBS
 # (save/restore around just this one call): iclforge_adm_shared (below) is the only installed/exported
-# variant of this module (see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM block), and it has
+# variant of this module (see cmake/InstallLibrary.cmake's ICLFORGE_BUILD_ADM block), and it has
 # to be self-contained - a downstream consumer of the installed package never gets a libadm.so of
 # its own to link against (this project never install()s adm/bw64, see the target_link_libraries
 # comment below). If adm followed BUILD_SHARED_LIBS=ON here, iclforge_adm_shared would gain a genuine
@@ -210,7 +210,7 @@ target_include_directories(iclforge_adm_objects
 
 target_compile_features(iclforge_adm_objects PUBLIC cxx_std_23)
 
-# $<BUILD_INTERFACE:...> wrapping ac3::warnings - see src/ac3/CMakeLists.txt's identical
+# $<BUILD_INTERFACE:...> wrapping iclforge::warnings - see src/ac3/CMakeLists.txt's identical
 # iclforge_ac3_objects treatment for why a plain PRIVATE link isn't enough for an OBJECT
 # library that's part of an install(EXPORT) set. bw64/adm are PRIVATE too: neither
 # library's types cross ac3adm's own public API (see this file's header comment), so
@@ -229,20 +229,20 @@ target_compile_features(iclforge_adm_objects PUBLIC cxx_std_23)
 # to this target rather than widening that project-wide guard: nothing else in this project has
 # hit it on GCC 15, so silencing it everywhere would risk hiding a genuine one elsewhere.
 #
-# A separate INTERFACE library linked AFTER ac3::warnings, not a plain target_compile_options()
+# A separate INTERFACE library linked AFTER iclforge::warnings, not a plain target_compile_options()
 # call on iclforge_adm_objects itself - confirmed by inspecting the generated compile_commands.json that
 # a target's own COMPILE_OPTIONS always land BEFORE the INTERFACE_COMPILE_OPTIONS propagated from
 # its linked libraries on the actual command line, regardless of which order the CMakeLists.txt
 # calls target_compile_options()/target_link_libraries() in - so a plain target_compile_options()
-# call here would be overridden right back by ac3::warnings' own -Wnull-dereference. Putting the
-# override in its own link dependency, listed after ac3::warnings, makes it win the last-flag-wins
+# call here would be overridden right back by iclforge::warnings' own -Wnull-dereference. Putting the
+# override in its own link dependency, listed after iclforge::warnings, makes it win the last-flag-wins
 # rule instead.
 add_library(ac3adm_suppress_gcc15_null_deref INTERFACE)
 target_compile_options(ac3adm_suppress_gcc15_null_deref INTERFACE
     "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
 # bw64/adm/ac3adm_suppress_gcc15_null_deref are all wrapped in $<BUILD_INTERFACE:...>, not just
-# ac3::warnings/ac3::coverage: iclforge_adm_objects is an OBJECT library, which has no link step of its
+# iclforge::warnings/iclforge::coverage: iclforge_adm_objects is an OBJECT library, which has no link step of its
 # own to hide a PRIVATE dependency behind - a PRIVATE link on an OBJECT library still leaks into
 # that library's own INTERFACE_LINK_LIBRARIES (see src/capi/CMakeLists.txt's iclforge_capi_objects/
 # iclforge::ac3_static for the same leak forcing a real export-set fix there). Since iclforge_adm_objects
@@ -256,8 +256,8 @@ target_compile_options(ac3adm_suppress_gcc15_null_deref INTERFACE
 # it's built; a downstream consumer never needs bw64/adm on their own link line.
 target_link_libraries(iclforge_adm_objects
     PRIVATE
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>"
+        "$<BUILD_INTERFACE:iclforge::warnings>"
+        "$<BUILD_INTERFACE:iclforge::coverage>"
         "$<BUILD_INTERFACE:bw64>"
         "$<BUILD_INTERFACE:adm>"
         "$<BUILD_INTERFACE:ac3adm_suppress_gcc15_null_deref>")
@@ -268,15 +268,15 @@ set_target_properties(iclforge_adm_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_adm_shared PROPERTIES DEFINE_SYMBOL "AC3ADM_BUILDING_SHARED")
+set_target_properties(iclforge_adm_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_ADM_BUILDING_SHARED")
 generate_export_header(iclforge_adm_shared
-    BASE_NAME AC3ADM
-    EXPORT_MACRO_NAME AC3ADM_EXPORT
+    BASE_NAME ICLFORGE_ADM
+    EXPORT_MACRO_NAME ICLFORGE_ADM_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/adm/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC3ADM_STATIC_DEFINE)
-target_compile_definitions(iclforge_adm_objects PRIVATE AC3ADM_BUILDING_SHARED)
-target_compile_definitions(iclforge_adm_static PUBLIC AC3ADM_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_ADM_STATIC_DEFINE)
+target_compile_definitions(iclforge_adm_objects PRIVATE ICLFORGE_ADM_BUILDING_SHARED)
+target_compile_definitions(iclforge_adm_static PUBLIC ICLFORGE_ADM_STATIC_DEFINE)
 
 set_target_properties(iclforge_adm_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

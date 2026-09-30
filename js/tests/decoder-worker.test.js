@@ -1,7 +1,7 @@
 // decoder-worker.ts's message protocol, run in Node with the Worker globals
 // it touches (self, postMessage, fetch, Blob/URL.createObjectURL) replaced by
 // fakes. The Emscripten glue it fetches is a two-line script defining
-// `createAc3ForgeModule`, which resolves to the scripted Embind stand-in from
+// `createIclForgeModule`, which resolves to the scripted Embind stand-in from
 // fake-embind.js - so what runs here is the worker's real glue loading
 // (fetch, re-export through an object URL, dynamic import), its ring-buffer
 // writes and its replies, with only the codec swapped out.
@@ -24,7 +24,7 @@ let fake = null;
 // The glue's module factory, reachable from the data: URL the fake
 // createObjectURL below produces (a data: module cannot close over this
 // file's scope, so it reads it off globalThis).
-globalThis.__ac3forgeFakeFactory = async (overrides) => {
+globalThis.__iclforgeFakeFactory = async (overrides) => {
   factoryArgs = overrides;
   return fake.module;
 };
@@ -41,7 +41,7 @@ globalThis.self = {
 globalThis.postMessage = (message) => posted.push(message);
 globalThis.fetch = async (url) => {
   fetched.push(String(url));
-  return { text: async () => "var createAc3ForgeModule = globalThis.__ac3forgeFakeFactory;" };
+  return { text: async () => "var createIclForgeModule = globalThis.__iclforgeFakeFactory;" };
 };
 
 // Node can import data: URLs but not blob: URLs, so the object URL the worker
@@ -75,7 +75,7 @@ async function init(fakeModule, { writeTarget = "channels", channelCount = 2, ca
   fake = fakeModule;
   posted.length = 0;
   const r = ring(channelCount, capacityFrames);
-  send({ type: "init", glueUrl: "https://example.test/wasm/ac3forge_decode.js", sab: r.sab, layout: r.layout, writeTarget, fold });
+  send({ type: "init", glueUrl: "https://example.test/wasm/iclforge_decode.js", sab: r.sab, layout: r.layout, writeTarget, fold });
   await flushTasks();
   return r;
 }
@@ -97,8 +97,8 @@ test("a flush before init is ignored", async () => {
 
 test("init loads the glue from its URL, resolves the wasm beside it, and reports ready", async () => {
   await init(makeFakeModule(), { fold: { target: 1 } });
-  assert.deepEqual(fetched.at(-1), "https://example.test/wasm/ac3forge_decode.js");
-  assert.equal(factoryArgs.locateFile("ac3forge_decode.wasm"), "https://example.test/wasm/ac3forge_decode.wasm");
+  assert.deepEqual(fetched.at(-1), "https://example.test/wasm/iclforge_decode.js");
+  assert.equal(factoryArgs.locateFile("iclforge_decode.wasm"), "https://example.test/wasm/iclforge_decode.wasm");
   assert.equal(revoked.length > 0, true, "the object URL is revoked once imported");
   assert.equal(fake.log.constructed[0].foldTarget, 1);
   assert.deepEqual(posted, [{ type: "ready" }]);

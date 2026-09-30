@@ -528,7 +528,7 @@ TestCase {
     // outputs, its crossover range. This sink's state does not list the
     // Settings command, so nothing on the tab can reach it: the controls are
     // disabled and the tab says why. Regression: they used to be enabled,
-    // and an edit was silently dropped (ServerSession::ac3forge_command()
+    // and an edit was silently dropped (ServerSession::iclforge_command()
     // refuses a command the sink does not list) with the report still
     // saying "Nothing sent yet.".
     function test_pairedSinkSpeakersTabIsDisabledWhenTheSinkTakesNoSettings() {

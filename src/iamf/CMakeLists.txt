@@ -57,13 +57,13 @@ target_include_directories(iclforge_iamf_objects
 
 target_compile_features(iclforge_iamf_objects PUBLIC cxx_std_23)
 
-# $<BUILD_INTERFACE:...> wrapping ac3::warnings/ac3::coverage - see
+# $<BUILD_INTERFACE:...> wrapping iclforge::warnings/iclforge::coverage - see
 # src/ac3/CMakeLists.txt's identical iclforge_ac3_objects treatment for why a
 # plain PRIVATE link isn't enough for an OBJECT library that's part of an
 # install(EXPORT) set.
 target_link_libraries(iclforge_iamf_objects PRIVATE
-    "$<BUILD_INTERFACE:ac3::warnings>"
-    "$<BUILD_INTERFACE:ac3::coverage>")
+    "$<BUILD_INTERFACE:iclforge::warnings>"
+    "$<BUILD_INTERFACE:iclforge::coverage>")
 
 set_target_properties(iclforge_iamf_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -71,15 +71,15 @@ set_target_properties(iclforge_iamf_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_iamf_shared PROPERTIES DEFINE_SYMBOL "IAMF_BUILDING_SHARED")
+set_target_properties(iclforge_iamf_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_IAMF_BUILDING_SHARED")
 generate_export_header(iclforge_iamf_shared
-    BASE_NAME IAMF
-    EXPORT_MACRO_NAME IAMF_EXPORT
+    BASE_NAME ICLFORGE_IAMF
+    EXPORT_MACRO_NAME ICLFORGE_IAMF_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge/iamf/export.hpp"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE IAMF_STATIC_DEFINE)
-target_compile_definitions(iclforge_iamf_objects PRIVATE IAMF_BUILDING_SHARED)
-target_compile_definitions(iclforge_iamf_static PUBLIC IAMF_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_IAMF_STATIC_DEFINE)
+target_compile_definitions(iclforge_iamf_objects PRIVATE ICLFORGE_IAMF_BUILDING_SHARED)
+target_compile_definitions(iclforge_iamf_static PUBLIC ICLFORGE_IAMF_STATIC_DEFINE)
 
 set_target_properties(iclforge_iamf_shared PROPERTIES
     VERSION "${PROJECT_VERSION}"

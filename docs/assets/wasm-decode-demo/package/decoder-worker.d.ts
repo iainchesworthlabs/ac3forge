@@ -3,7 +3,7 @@ import type { FoldOptions, WriteTarget } from "./types.js";
 export interface InitMessage {
     type: "init";
     /**
-     * URL of the Emscripten glue (`ac3forge_decode.js`) built from apps/wasm/.
+     * URL of the Emscripten glue (`iclforge_decode.js`) built from apps/wasm/.
      *
      * TRUST BOUNDARY: the worker fetches this URL and evaluates what comes back
      * as JavaScript (the glue is `MODULARIZE`d, so it is re-exported through a

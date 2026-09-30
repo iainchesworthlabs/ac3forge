@@ -13,7 +13,7 @@
 # without this library existing for their platform yet. iclforge::audio is what
 # ac3cli/ac3gui link for their live-capture/monitor/passthrough commands
 # (record, live, devices, outputs, play, monitor) and for `live`'s
-# `positions=osc:<port>` - it is not part of the distributed ac3forge-dev
+# `positions=osc:<port>` - it is not part of the distributed iclforge-dev
 # package (see docs/library/index.md).
 #
 # PUBLIC-links ac3::forge: live_positions.hpp names ac3::oba::SceneCursor in
@@ -70,12 +70,12 @@ target_sources(iclforge_audio PRIVATE src/render_devices.cpp)
 
 target_compile_features(iclforge_audio PUBLIC cxx_std_23)
 
-# ac3::coverage is a no-op unless AC3FORGE_ENABLE_COVERAGE is on (see
+# iclforge::coverage is a no-op unless ICLFORGE_ENABLE_COVERAGE is on (see
 # cmake/Coverage.cmake). Plain, not $<BUILD_INTERFACE:...>-wrapped: this
 # target is never installed (see the header comment above), so it has no
 # install(EXPORT) graph to keep the dependency out of.
 target_link_libraries(iclforge_audio PUBLIC iclforge::render iclforge::iec61937 iclforge::objects)
-target_link_libraries(iclforge_audio PRIVATE ac3::warnings ac3::coverage ac3::fmt)
+target_link_libraries(iclforge_audio PRIVATE iclforge::warnings iclforge::coverage iclforge::fmt)
 
 # live_positions.cpp: platform-independent by construction (it names
 # UdpSocket and ac3::oba, never a socket API directly), and the first source
@@ -113,7 +113,7 @@ target_sources(iclforge_audio PRIVATE src/live_positions.cpp)
 # still builds a complete library, so both Linux dependencies are optional
 # rather than required.
 #
-# AC3FORGE_AUDIO_BACKEND names the selected directory and is published to the
+# ICLFORGE_AUDIO_BACKEND names the selected directory and is published to the
 # parent scope: tests/CMakeLists.txt reads it to add that backend's own
 # device-free tests, the same way this file adds its sources.
 # ---------------------------------------------------------------------------
@@ -147,7 +147,7 @@ if(WIN32)
     # tap).
     target_link_libraries(iclforge_audio PRIVATE ole32 avrt mmdevapi)
 
-    set(AC3FORGE_AUDIO_BACKEND windows)
+    set(ICLFORGE_AUDIO_BACKEND windows)
 endif(WIN32)
 
 if(LINUX)
@@ -165,9 +165,9 @@ if(LINUX)
     # Ubuntu) or alsa-lib-devel (Fedora) is a small and universally packaged
     # dependency, but a machine that has not installed it must still
     # configure and build - iclforge::ac3, the codec itself, does not need a
-    # sound card to exist. So AC3FORGE_WITH_ALSA defaults to AUTO: a missing
+    # sound card to exist. So ICLFORGE_WITH_ALSA defaults to AUTO: a missing
     # ALSA falls back to pipewire/ or posix/ with a message saying what was
-    # lost, and only -DAC3FORGE_WITH_ALSA=ON turns that into an error - which
+    # lost, and only -DICLFORGE_WITH_ALSA=ON turns that into an error - which
     # is what a packaging build wants, so a machine that has quietly lost the
     # headers fails loudly rather than shipping a binary with no audio in it.
     #
@@ -175,13 +175,13 @@ if(LINUX)
     # system library that comes with the distribution, and vcpkg.json stays
     # free of it.
     # -----------------------------------------------------------------------
-    set(AC3FORGE_WITH_ALSA "AUTO" CACHE STRING
+    set(ICLFORGE_WITH_ALSA "AUTO" CACHE STRING
         "ALSA backend: AUTO uses it when found, ON requires it, OFF never builds it")
-    set_property(CACHE AC3FORGE_WITH_ALSA PROPERTY STRINGS AUTO ON OFF)
+    set_property(CACHE ICLFORGE_WITH_ALSA PROPERTY STRINGS AUTO ON OFF)
 
-    if(AC3FORGE_WITH_ALSA STREQUAL "OFF")
+    if(ICLFORGE_WITH_ALSA STREQUAL "OFF")
         set(ALSA_FOUND FALSE)
-    elseif(AC3FORGE_WITH_ALSA STREQUAL "ON")
+    elseif(ICLFORGE_WITH_ALSA STREQUAL "ON")
         find_package(ALSA REQUIRED)
     else()
         find_package(ALSA)
@@ -200,7 +200,7 @@ if(LINUX)
     # precedence below rather than "PipeWire is what most desktops run
     # today" winning by default.
     #
-    # Same AUTO/ON/OFF shape as AC3FORGE_WITH_ALSA and resolved the same
+    # Same AUTO/ON/OFF shape as ICLFORGE_WITH_ALSA and resolved the same
     # independent way - probed (or required, or skipped) on its own, with no
     # regard for whether ALSA was also found - so each option's own meaning
     # never depends on the other's outcome; only the SELECTION below (which
@@ -214,11 +214,11 @@ if(LINUX)
     # own FindPkgConfig module instead of a dedicated Find module because
     # upstream provides no such module to find.
     # -----------------------------------------------------------------------
-    set(AC3FORGE_WITH_PIPEWIRE "AUTO" CACHE STRING
+    set(ICLFORGE_WITH_PIPEWIRE "AUTO" CACHE STRING
         "PipeWire backend: AUTO uses it when found, ON requires it, OFF never builds it")
-    set_property(CACHE AC3FORGE_WITH_PIPEWIRE PROPERTY STRINGS AUTO ON OFF)
+    set_property(CACHE ICLFORGE_WITH_PIPEWIRE PROPERTY STRINGS AUTO ON OFF)
 
-    if(AC3FORGE_WITH_PIPEWIRE STREQUAL "OFF")
+    if(ICLFORGE_WITH_PIPEWIRE STREQUAL "OFF")
         set(PipeWire_FOUND FALSE)
     else()
         find_package(PkgConfig)
@@ -229,15 +229,15 @@ if(LINUX)
             # not a descendant - an imported target created without GLOBAL is
             # only visible to this directory and its own subdirectories, so
             # tests/ would not see it otherwise.
-            if(AC3FORGE_WITH_PIPEWIRE STREQUAL "ON")
+            if(ICLFORGE_WITH_PIPEWIRE STREQUAL "ON")
                 pkg_check_modules(PipeWire REQUIRED IMPORTED_TARGET GLOBAL libpipewire-0.3)
             else()
                 pkg_check_modules(PipeWire QUIET IMPORTED_TARGET GLOBAL libpipewire-0.3)
             endif()
-        elseif(AC3FORGE_WITH_PIPEWIRE STREQUAL "ON")
+        elseif(ICLFORGE_WITH_PIPEWIRE STREQUAL "ON")
             message(FATAL_ERROR
-                "AC3FORGE_WITH_PIPEWIRE=ON but pkg-config itself was not found, and it is what "
-                "locates libpipewire-0.3. Install pkg-config, or set AC3FORGE_WITH_PIPEWIRE=AUTO "
+                "ICLFORGE_WITH_PIPEWIRE=ON but pkg-config itself was not found, and it is what "
+                "locates libpipewire-0.3. Install pkg-config, or set ICLFORGE_WITH_PIPEWIRE=AUTO "
                 "or =OFF.")
         else()
             set(PipeWire_FOUND FALSE)
@@ -262,8 +262,8 @@ if(LINUX)
     # The escape hatch for a machine where PipeWire is deliberately preferred
     # anyway (its compressed codecs ARE configured, say) is explicit rather
     # than inferred from which cache variable looks "more default":
-    # -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON forces the
-    # selection the other way, the same way -DAC3FORGE_WITH_ALSA=OFF alone
+    # -DICLFORGE_WITH_ALSA=OFF -DICLFORGE_WITH_PIPEWIRE=ON forces the
+    # selection the other way, the same way -DICLFORGE_WITH_ALSA=OFF alone
     # already forces posix/ today.
     # -----------------------------------------------------------------------
     if(ALSA_FOUND)
@@ -277,7 +277,7 @@ if(LINUX)
                 src/backend/alsa/spatial.cpp
                 src/backend/alsa/device_watcher.cpp)
         target_link_libraries(iclforge_audio PRIVATE ALSA::ALSA)
-        set(AC3FORGE_AUDIO_BACKEND alsa)
+        set(ICLFORGE_AUDIO_BACKEND alsa)
         message(STATUS
             "ALSA ${ALSA_VERSION_STRING}: live capture, monitor playback and IEC 61937 "
             "passthrough enabled")
@@ -292,7 +292,7 @@ if(LINUX)
                 src/backend/pipewire/spatial.cpp
                 src/backend/pipewire/device_watcher.cpp)
         target_link_libraries(iclforge_audio PRIVATE PkgConfig::PipeWire)
-        set(AC3FORGE_AUDIO_BACKEND pipewire)
+        set(ICLFORGE_AUDIO_BACKEND pipewire)
         message(STATUS
             "PipeWire ${PipeWire_VERSION}: live capture and monitor playback enabled; IEC "
             "61937 passthrough negotiates for real but needs a compressed codec enabled on "
@@ -308,12 +308,12 @@ if(LINUX)
                 src/backend/posix/sink_capabilities.cpp
                 src/backend/posix/spatial.cpp
                 src/backend/posix/device_watcher.cpp)
-        set(AC3FORGE_AUDIO_BACKEND posix)
+        set(ICLFORGE_AUDIO_BACKEND posix)
         message(STATUS
             "Neither ALSA nor PipeWire headers were found; building without live capture, "
             "monitor playback or IEC 61937 passthrough. Install libasound2-dev/alsa-lib-devel "
             "or libpipewire-0.3-dev/pipewire-devel to enable them, or set "
-            "-DAC3FORGE_WITH_ALSA=ON / -DAC3FORGE_WITH_PIPEWIRE=ON to make their absence an "
+            "-DICLFORGE_WITH_ALSA=ON / -DICLFORGE_WITH_PIPEWIRE=ON to make their absence an "
             "error.")
     endif()
 endif(LINUX)
@@ -370,7 +370,7 @@ if(APPLE)
     # same call in its own APPLE arm rather than relying on this one. Both
     # macOS CI legs have since configured, generated and built this way, so
     # the reading holds where it has been tried - with the caveat that both
-    # legs set AC3FORGE_BUILD_CRUCIBLE=ON (.github/workflows/_build.yml), so
+    # legs set ICLFORGE_BUILD_CRUCIBLE=ON (.github/workflows/_build.yml), so
     # the two calls have only ever been reached together and this one has
     # never been exercised alone. If a macOS configure ever fails at generate
     # time with anything about OBJCXX being unknown or unconfigured in another
@@ -455,7 +455,7 @@ if(APPLE)
     target_link_libraries(iclforge_audio
         PRIVATE "-framework CoreAudio" "-framework CoreFoundation" "-framework Foundation")
 
-    set(AC3FORGE_AUDIO_BACKEND macos)
+    set(ICLFORGE_AUDIO_BACKEND macos)
 endif(APPLE)
 
 if(ANDROID)
@@ -491,11 +491,11 @@ if(ANDROID)
     # throughout the backend for diagnostics visible in `adb logcat`.
     target_link_libraries(iclforge_audio PRIVATE aaudio log)
 
-    set(AC3FORGE_AUDIO_BACKEND android)
+    set(ICLFORGE_AUDIO_BACKEND android)
 endif(ANDROID)
 
-set(AC3FORGE_AUDIO_BACKEND "${AC3FORGE_AUDIO_BACKEND}" PARENT_SCOPE)
-set(AC3FORGE_AUDIO_BACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/backend/${AC3FORGE_AUDIO_BACKEND}"
+set(ICLFORGE_AUDIO_BACKEND "${ICLFORGE_AUDIO_BACKEND}" PARENT_SCOPE)
+set(ICLFORGE_AUDIO_BACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/backend/${ICLFORGE_AUDIO_BACKEND}"
     PARENT_SCOPE)
 
 # ---------------------------------------------------------------------------
@@ -528,10 +528,10 @@ else()
     target_sources(iclforge_audio PRIVATE src/net/posix/udp_socket.cpp)
 endif()
 
-# Published the same way AC3FORGE_AUDIO_BACKEND_DIR is (see above):
+# Published the same way ICLFORGE_AUDIO_BACKEND_DIR is (see above):
 # tests/CMakeLists.txt puts this on ac3tests' own include path so
 # tests/audio/test_live_positions.cpp can open a second, independent
 # UdpSocket to send itself test datagrams over real loopback - reusing the
 # exact class LivePositionSource is built on rather than hand-rolling a
 # second raw-socket implementation just for the test.
-set(AC3FORGE_AUDIO_NET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/net" PARENT_SCOPE)
+set(ICLFORGE_AUDIO_NET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/net" PARENT_SCOPE)

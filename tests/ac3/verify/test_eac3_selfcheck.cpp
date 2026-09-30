@@ -79,7 +79,7 @@ iclforge::verify::Eac3AccessUnitTrace flat_unit(int dependents) {
 }
 
 std::vector<std::vector<float>> golden_audio(const std::string& name) {
-    auto wav = iclforge::io::read_wav(std::string{AC3FORGE_GOLDEN_AUDIO_DIR} + "/" + name);
+    auto wav = iclforge::io::read_wav(std::string{ICLFORGE_GOLDEN_AUDIO_DIR} + "/" + name);
     REQUIRE(wav.has_value());
     return wav->channels;
 }

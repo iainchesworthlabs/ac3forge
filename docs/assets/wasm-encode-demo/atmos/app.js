@@ -276,7 +276,7 @@ function downloadStream() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'ac3forge-atmos.ec3';
+    a.download = 'iclforge-atmos.ec3';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -357,8 +357,8 @@ async function previewRoundTrip() {
     });
 
     try {
-        encodeModule = await createAc3ForgeEncodeModule();
-        decodeModule = await createAc3ForgeModule();
+        encodeModule = await createIclForgeEncodeModule();
+        decodeModule = await createIclForgeModule();
         setStatus('Ready - press "Start encoding" and drag the objects.', false);
     } catch (error) {
         el('startBtn').disabled = true;

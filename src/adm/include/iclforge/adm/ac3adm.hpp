@@ -72,10 +72,10 @@ enum class AdmError : std::uint8_t {
                          // header's own top comment on why not).
 };
 
-[[nodiscard]] AC3ADM_EXPORT std::string_view describe(AdmError error);
+[[nodiscard]] ICLFORGE_ADM_EXPORT std::string_view describe(AdmError error);
 
 // Parses a whole BW64/RF64/RIFF file from `path`.
-[[nodiscard]] AC3ADM_EXPORT std::expected<AdmDocument, AdmError> parse_bw64(const std::string& path);
+[[nodiscard]] ICLFORGE_ADM_EXPORT std::expected<AdmDocument, AdmError> parse_bw64(const std::string& path);
 
 // Same parse, from an already-open stream - e.g. an in-memory buffer via
 // std::istringstream for testing without touching a disk. Implemented by
@@ -83,7 +83,7 @@ enum class AdmError : std::uint8_t {
 // overload: libbw64's own reader opens a file by path internally (it has no
 // istream constructor), so there is no way to hand it an in-memory buffer
 // directly.
-[[nodiscard]] AC3ADM_EXPORT std::expected<AdmDocument, AdmError> parse_bw64(std::istream& in);
+[[nodiscard]] ICLFORGE_ADM_EXPORT std::expected<AdmDocument, AdmError> parse_bw64(std::istream& in);
 
 // Roadmap item IM2 ("JOC -> ADM BWF writer"): the write-side counterpart of parse_bw64, using the
 // same two vendored libraries in the other direction - libadm's document-builder API
@@ -107,7 +107,7 @@ enum class AdmWriteError : std::uint8_t {
                        // kOther above.
 };
 
-[[nodiscard]] AC3ADM_EXPORT std::string_view describe(AdmWriteError error);
+[[nodiscard]] ICLFORGE_ADM_EXPORT std::string_view describe(AdmWriteError error);
 
 // The bits per sample write_bw64() stores <data> at: the width its <fmt > chunk declares, and the
 // bitDepth attribute every audioTrackUID it writes carries. 24-bit integer PCM is what real ADM
@@ -140,7 +140,7 @@ inline constexpr std::uint16_t kWriteBitDepth = 24;
 // ADM Profile expects the two to agree - Dolby Encoding Engine refuses a master whose
 // audioTrackUIDs leave bitDepth out ("Mismatched track bit depth between ADM and WAV"). sampleRate
 // is still written from the model, and only where `has_sample_rate` is set.
-[[nodiscard]] AC3ADM_EXPORT std::expected<void, AdmWriteError> write_bw64(const std::string& path,
-                                                                          const AdmDocument& document);
+[[nodiscard]] ICLFORGE_ADM_EXPORT std::expected<void, AdmWriteError> write_bw64(
+    const std::string& path, const AdmDocument& document);
 
 }  // namespace iclforge::adm

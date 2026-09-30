@@ -73,12 +73,12 @@ what a board is:
 
 - its name, network, slot width and wiring (namespace `hearth_sink`, `main/settings.cpp`);
 - its Sendspin identity and pairing records (namespace `sendspin`,
-  `esp-idf/ac3forge/src/sendspin_store.cpp`).
+  `esp-idf/iclforge/src/sendspin_store.cpp`).
 
 A USB flash leaves NVS alone, because `flash_args` has no region there. The migration below keeps
 it that way.
 
-The control surface ([control.hpp](../esp-idf/ac3forge/include/ac3forge/control.hpp)) is
+The control surface ([control.hpp](../esp-idf/iclforge/include/iclforge/control.hpp)) is
 `esp_http_server` on port 80:
 
 - three sockets, least-recently-used purge, a 6,144-byte task stack;
@@ -776,7 +776,7 @@ sink:
   Sendspin.
 - It reads GET /firmware into `ac3forge::FirmwareStatus`, the struct the board renders it from, and
   holds an image to the board's own rules in `firmware_image.hpp`. Both headers are in
-  `esp-idf/ac3forge/include` and have no ESP-IDF in them. So the app reads what the board writes,
+  `esp-idf/iclforge/include` and have no ESP-IDF in them. So the app reads what the board writes,
   and refuses what the board would refuse.
 - Its checks before an upload are `ota.py`'s for a bare image:
   - the file is an application image, and its checksum and appended SHA-256 check out;
@@ -1215,7 +1215,7 @@ the network, the upload would pass through the chip being rewritten.
 
 ## Tests
 
-**On the host.** The logic that needs no ESP-IDF goes in `esp-idf/ac3forge/include/ac3forge/firmware_image.hpp`,
+**On the host.** The logic that needs no ESP-IDF goes in `esp-idf/iclforge/include/iclforge/firmware_image.hpp`,
 the way `hardware_info.hpp` is kept free of it:
 
 - parsing an image header;

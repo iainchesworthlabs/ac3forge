@@ -1,7 +1,7 @@
 #pragma once
 
 // Build-profile facts, in the MINIMUM-FOOTPRINT DECODER variant
-// (AC3FORGE_MINIMAL_DECODER, minimum-footprint decoder profile). Every ordinary build compiles the
+// (ICLFORGE_MINIMAL_DECODER, minimum-footprint decoder profile). Every ordinary build compiles the
 // identically-pathed header under src/internal/profile/full/ instead;
 // src/ac3/CMakeLists.txt picks the directory, so no source file here asks
 // which profile it is in with a preprocessor conditional
@@ -15,7 +15,7 @@
 
 namespace iclforge::internal {
 
-// AC3FORGE_MINIMAL_DECODER. True here: this build is decode-only, has no
+// ICLFORGE_MINIMAL_DECODER. True here: this build is decode-only, has no
 // direct-form transform tables, and is compiled without exceptions or RTTI.
 // See docs/building.md's "Minimum-footprint decoder profile".
 inline constexpr bool kMinimalDecoderProfile = true;

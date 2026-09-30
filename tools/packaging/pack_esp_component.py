@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Stage and pack ac3forge as a self-contained ESP-IDF component archive.
+"""Stage and pack iclforge as a self-contained ESP-IDF component archive.
 
 WHY THIS EXISTS. `compote component pack` roots its archive at the component
-directory and cannot reach above it. ac3forge's component at esp-idf/ac3forge/
+directory and cannot reach above it. iclforge's component at esp-idf/iclforge/
 is a thin wrapper that add_subdirectory()s the repo root, so packing it directly
 produces an archive of three files - CMakeLists.txt, idf_component.yml and the
 directory entry - which installs happily and then fails to configure, because
-AC3FORGE_ROOT points outside the installed tree. That was the state of the
+ICLFORGE_ROOT points outside the installed tree. That was the state of the
 manifest until this script existed, and nothing said so: the pack SUCCEEDS.
 
 So the sources are staged INTO a copy of the component first. The staged tree is
@@ -27,7 +27,7 @@ archive, which is the only check that actually establishes the thing this script
 is for. Needs an exported IDF environment; without one it says so and stops.
 
 --with-ac4 also stages the AC-4 inspector, core and decoder, for a project that
-turns on CONFIG_AC3FORGE_AC4 (planning/ac4.md, D14b). Without it the archive is
+turns on CONFIG_ICLFORGE_AC4 (planning/ac4.md, D14b). Without it the archive is
 what it was before that option existed: the option is off by default, and a
 project that turns it on against an archive packed without the AC-4 sources is
 told so at configure.
@@ -45,7 +45,7 @@ import tarfile
 import tempfile
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-COMPONENT = REPO / "esp-idf" / "ac3forge"
+COMPONENT = REPO / "esp-idf" / "iclforge"
 
 # Whole directories copied verbatim. Directories rather than a file list on
 # purpose: src/ac3/minimal.cmake names its own sources and changes without
@@ -78,7 +78,7 @@ STAGED_TREES = (
 # What --with-ac4 adds: the AC-4 inspector, the core both AC-4 libraries link and
 # the decoder, whole, as the trees above are. Not src/ac4enc, which no ESP32 part
 # builds (planning/ac4.md, decision 34); the root adds it only under
-# AC3FORGE_BUILD_AC4, which the component keeps off. Off by default, so an
+# ICLFORGE_BUILD_AC4, which the component keeps off. Off by default, so an
 # archive packed without the flag holds exactly the trees it always did.
 STAGED_AC4_TREES = (
     "src/ac4",
@@ -156,7 +156,7 @@ def stage(destination: pathlib.Path, with_ac4: bool = False) -> None:
 
 def pack(staged: pathlib.Path, version: str) -> pathlib.Path:
     subprocess.run(
-        ["compote", "component", "pack", "--name", "ac3forge", "--version", version],
+        ["compote", "component", "pack", "--name", "iclforge", "--version", version],
         cwd=staged,
         check=True,
     )
@@ -181,7 +181,7 @@ def verify(archive: pathlib.Path, with_ac4: bool = False, targets: list[str] | N
     counts, file lists - can pass on an archive that does not configure.
 
     With `with_ac4` the parts that have a floating-point unit (the component's
-    Kconfig offers CONFIG_AC3FORGE_AC4 to no others) turn the AC-4 decoder on, and
+    Kconfig offers CONFIG_ICLFORGE_AC4 to no others) turn the AC-4 decoder on, and
     the throwaway application constructs one and calls it, for the reason the
     AC-3 decoder is called: an archive whose AC-4 headers or archives were left
     out would still link an application that never named them.
@@ -192,24 +192,24 @@ def verify(archive: pathlib.Path, with_ac4: bool = False, targets: list[str] | N
     if "IDF_PATH" not in os.environ:
         raise SystemExit("--verify needs an exported ESP-IDF environment (IDF_PATH is unset)")
 
-    with tempfile.TemporaryDirectory(prefix="ac3forge-verify-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="iclforge-verify-") as tmp:
         root = pathlib.Path(tmp)
         components = root / "components"
-        unpacked = components / "ac3forge"
+        unpacked = components / "iclforge"
         unpacked.mkdir(parents=True)
         with tarfile.open(archive) as tar:
             tar.extractall(unpacked, filter="data")
 
         (root / "main").mkdir()
         (root / "main" / "CMakeLists.txt").write_text(
-            'idf_component_register(SRCS "main.cpp" REQUIRES ac3forge)\n', encoding="utf-8"
+            'idf_component_register(SRCS "main.cpp" REQUIRES iclforge)\n', encoding="utf-8"
         )
         (root / "CMakeLists.txt").write_text(
             "\n".join(
                 [
                     "cmake_minimum_required(VERSION 3.28)",
                     "include($ENV{IDF_PATH}/tools/cmake/project.cmake)",
-                    "project(ac3forge_component_verify LANGUAGES C CXX)",
+                    "project(iclforge_component_verify LANGUAGES C CXX)",
                 ]
             )
             + "\n",
@@ -233,7 +233,7 @@ def verify(archive: pathlib.Path, with_ac4: bool = False, targets: list[str] | N
             ac4_here = with_ac4 and target_has_fpu(target)
             defaults = f'CONFIG_IDF_TARGET="{target}"\nCONFIG_COMPILER_OPTIMIZATION_SIZE=y\n'
             if ac4_here:
-                defaults += "CONFIG_AC3FORGE_AC4=y\n"
+                defaults += "CONFIG_ICLFORGE_AC4=y\n"
             (root / "sdkconfig.defaults").write_text(defaults, encoding="utf-8")
             (root / "main" / "main.cpp").write_text(main_source(ac4_here), encoding="utf-8")
             for command in (["set-target", target], ["build"]):
@@ -281,7 +281,7 @@ def main_source(with_ac4: bool) -> str:
 def target_has_fpu(target: str) -> bool:
     """Whether ESP-IDF's soc component says `target` has a floating-point unit.
 
-    The same fact the component keys its decode arithmetic and CONFIG_AC3FORGE_AC4
+    The same fact the component keys its decode arithmetic and CONFIG_ICLFORGE_AC4
     on (CONFIG_SOC_CPU_HAS_FPU, which Kconfig generates from this header), read
     from where it is written so that a part added to the manifest needs nothing
     added here.
@@ -303,7 +303,7 @@ def target_has_fpu(target: str) -> bool:
 
 
 def manifest_targets() -> list[str]:
-    """The `targets:` list from esp-idf/ac3forge/idf_component.yml.
+    """The `targets:` list from esp-idf/iclforge/idf_component.yml.
 
     Read rather than restated, and parsed by hand rather than with PyYAML: this
     script has no third-party dependency and the block it needs is a flat list
@@ -311,7 +311,7 @@ def manifest_targets() -> list[str]:
     default - silently verifying nothing is how a target ends up claimed and
     unbuilt.
     """
-    manifest = (REPO / "esp-idf" / "ac3forge" / "idf_component.yml").read_text(encoding="utf-8")
+    manifest = (REPO / "esp-idf" / "iclforge" / "idf_component.yml").read_text(encoding="utf-8")
     targets: list[str] = []
     inside = False
     for line in manifest.splitlines():
@@ -325,7 +325,7 @@ def manifest_targets() -> list[str]:
             elif stripped and not stripped.startswith("#"):
                 break
     if not targets:
-        raise SystemExit("no targets: block in esp-idf/ac3forge/idf_component.yml")
+        raise SystemExit("no targets: block in esp-idf/iclforge/idf_component.yml")
     return targets
 
 
@@ -347,14 +347,14 @@ def main() -> int:
     parser.add_argument(
         "--with-ac4",
         action="store_true",
-        help="also stage the AC-4 inspector, core and decoder, for CONFIG_AC3FORGE_AC4 "
+        help="also stage the AC-4 inspector, core and decoder, for CONFIG_ICLFORGE_AC4 "
         "(off by default: the archive is then what it was before that option)",
     )
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="ac3forge-stage-") as tmp:
-        staged = pathlib.Path(tmp) / "ac3forge"
+    with tempfile.TemporaryDirectory(prefix="iclforge-stage-") as tmp:
+        staged = pathlib.Path(tmp) / "iclforge"
         stage(staged, args.with_ac4)
         archive = pack(staged, args.version)
         entries, sources = describe(archive)

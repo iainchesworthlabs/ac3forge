@@ -103,7 +103,7 @@ TEST_CASE("the gui report carries the named facts and no signing value",
     // named field, and the reason scrub() exists: the library's key resolver
     // names the variable it read from in its own error text.
     log.note("status: could not load the key from D:/keys/private.pem "
-             "(from AC3FORGE_SIGNING_KEY_FILE)");
+             "(from ICLFORGE_SIGNING_KEY_FILE)");
 
     ReportFacts facts;
     facts.written_at = "2026-09-06T12:00:00.000";
@@ -154,14 +154,14 @@ TEST_CASE("the gui report carries the named facts and no signing value",
     REQUIRE(has(report, "Choose a capture device first."));
 
     // Whether the variables are set, never what they hold.
-    REQUIRE(has(report, "AC3FORGE_SIGNING_KEY_FILE: set"));
-    REQUIRE(has(report, "AC3FORGE_SIGNING_KEY: not set"));
+    REQUIRE(has(report, "ICLFORGE_SIGNING_KEY_FILE: set"));
+    REQUIRE(has(report, "ICLFORGE_SIGNING_KEY: not set"));
 
     // And the key path is gone from BOTH the whitelisted setting (structurally,
     // by the signing/ rule) and the ring's message (by the scrub).
     REQUIRE(has(report, "signing/keyPath = <withheld>"));
     REQUIRE_FALSE(has(lowercase(report), "private.pem"));
-    REQUIRE(has(report, "from AC3FORGE_SIGNING_KEY_FILE"));
+    REQUIRE(has(report, "from ICLFORGE_SIGNING_KEY_FILE"));
 }
 
 TEST_CASE("the gui report says so when there is nothing to report", "[gui][diagnostics]") {

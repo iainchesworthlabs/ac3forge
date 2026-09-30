@@ -9,12 +9,12 @@
 // decoder-node.ts's own comment on resolving this file's URL from a bundled
 // consumer.
 import { RingBufferReader } from "./ring-buffer.js";
-class Ac3ForgeSourceProcessor extends AudioWorkletProcessor {
+class IclForgeSourceProcessor extends AudioWorkletProcessor {
     #reader;
     constructor(options) {
         super(options);
         if (!options?.processorOptions) {
-            throw new Error("ac3forge-pcm-source requires processorOptions: { sab, layout }");
+            throw new Error("iclforge-pcm-source requires processorOptions: { sab, layout }");
         }
         const { sab, layout } = options.processorOptions;
         this.#reader = new RingBufferReader(sab, layout);
@@ -33,5 +33,5 @@ class Ac3ForgeSourceProcessor extends AudioWorkletProcessor {
         return true; // Keep the node alive across silence/underruns.
     }
 }
-registerProcessor("ac3forge-pcm-source", Ac3ForgeSourceProcessor);
+registerProcessor("iclforge-pcm-source", IclForgeSourceProcessor);
 //# sourceMappingURL=worklet-processor.js.map

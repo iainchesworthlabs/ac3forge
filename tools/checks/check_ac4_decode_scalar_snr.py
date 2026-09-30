@@ -1,7 +1,7 @@
 """Gate the AC-4 decoder's float build against its double build, on every committed stream
 (planning/ac4.md, D14a).
 
-`AC3FORGE_DECODE_SCALAR=float` builds the decoder's QMF banks, transforms, A-SPX, A-CPL and
+`ICLFORGE_DECODE_SCALAR=float` builds the decoder's QMF banks, transforms, A-SPX, A-CPL and
 the rest of src/ac4dec/src/pcm in `float`; the default builds them in `double`. This decodes
 each committed AC-4 stream with a CLI of each and holds the float decode to the double one, in
 two regions of each channel's spectrum:

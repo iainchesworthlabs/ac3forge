@@ -618,7 +618,7 @@ int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& met
     if (meta.json) {
         JsonWriter json{stdout};
         json.begin_object();
-        json.member("schema", "ac3forge.probe/1");
+        json.member("schema", "iclforge.probe/1");
         json.member("generator", iclforge::version_full);
         json.member("file", in_path);
         // null for a bare stream: the schema's members are never omitted.
@@ -717,7 +717,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     JsonWriter json{stdout};
     if (meta.json) {
         json.begin_object();
-        json.member("schema", "ac3forge.probe/1");
+        json.member("schema", "iclforge.probe/1");
         json.member("generator", iclforge::version_full);
         json.member("file", in_path);
         // null for a bare stream: the schema's members are never omitted.

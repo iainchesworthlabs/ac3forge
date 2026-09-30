@@ -20,7 +20,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 SPEC_TXT = REPO / "spec" / "A52-2018.txt"
-OUT = REPO / "src" / "lib" / "include" / "ac3" / "core" / "aht_tables.hpp"
+OUT = REPO / "src" / "ac3" / "include" / "iclforge" / "ac3" / "core" / "aht_tables.hpp"
 
 # Table E3.2: bits in the VQ index for hebap 1-7, which fixes each
 # codebook's size.

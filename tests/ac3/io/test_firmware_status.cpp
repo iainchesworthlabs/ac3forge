@@ -1,18 +1,18 @@
-// GET /firmware's body, tested on the host - see ac3forge/firmware_status.hpp.
+// GET /firmware's body, tested on the host - see iclforge/firmware_status.hpp.
 
 #include <string>
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/firmware_status.hpp"
+#include "iclforge/firmware_status.hpp"
 
-using ac3forge::FirmwareLastUpdate;
-using ac3forge::FirmwarePartition;
-using ac3forge::FirmwareSlot;
-using ac3forge::FirmwareStatus;
-using ac3forge::FirmwareTrial;
-using ac3forge::FirmwareUpload;
-using ac3forge::render_firmware_status;
+using iclforge::FirmwareLastUpdate;
+using iclforge::FirmwarePartition;
+using iclforge::FirmwareSlot;
+using iclforge::FirmwareStatus;
+using iclforge::FirmwareTrial;
+using iclforge::FirmwareUpload;
+using iclforge::render_firmware_status;
 
 TEST_CASE("a board with nothing to report has every key, the parts that do not apply null",
           "[io][firmware_status]") {
@@ -35,7 +35,7 @@ TEST_CASE("why the board last started, and how long ago, end the document", "[io
 
 TEST_CASE("a core dump the last crash left is reported with where it came from", "[io][firmware_status]") {
     FirmwareStatus status;
-    status.coredump = ac3forge::FirmwareCoredump{23'456, true, "fw_trial", "0x4037a1b2",
+    status.coredump = iclforge::FirmwareCoredump{23'456, true, "fw_trial", "0x4037a1b2",
                                                  "abort() was called at PC 0x4200abcd on core 0", "2366bde99"};
     const std::string body = render_firmware_status(status);
     CHECK(body.find("\"last_update\":null,\"coredump\":{\"bytes\":23456,\"intact\":true,\"task\":\"fw_trial\","
@@ -50,7 +50,7 @@ TEST_CASE("a board on trial reports both slots, the trial and the table", "[io][
     running.label = "ota_1";
     running.state = "trial";
     running.version = "v0.10.0-beta.1-1900-gabc";
-    running.project = "ac3forge_hearth_sink";
+    running.project = "iclforge_hearth_sink";
     running.idf_version = "v6.1";
     running.elf_sha256 = "aa";
     running.image_sha256 = "bb";
@@ -71,7 +71,7 @@ TEST_CASE("a board on trial reports both slots, the trial and the table", "[io][
 
     const std::string body = render_firmware_status(status);
     CHECK(body.find("\"running\":{\"label\":\"ota_1\",\"state\":\"trial\",\"version\":"
-                    "\"v0.10.0-beta.1-1900-gabc\",\"project\":\"ac3forge_hearth_sink\",\"idf_version\":"
+                    "\"v0.10.0-beta.1-1900-gabc\",\"project\":\"iclforge_hearth_sink\",\"idf_version\":"
                     "\"v6.1\",\"elf_sha256\":\"aa\",\"image_sha256\":\"bb\",\"intact\":true}") !=
           std::string::npos);
     CHECK(body.find("\"other\":{\"label\":\"ota_0\",\"state\":\"valid\"") != std::string::npos);

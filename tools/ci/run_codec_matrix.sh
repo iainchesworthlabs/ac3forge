@@ -33,7 +33,7 @@
 #     still covers them.
 #   - Two whole COMMANDS, not just one FFmpeg check each, are conditional:
 #     `atmos-adm` (ADM BWF reader) and `atmos-iab` (IAB reader phase 3) only run
-#     for real when this build was configured with -DAC3FORGE_BUILD_ADM=ON,
+#     for real when this build was configured with -DICLFORGE_BUILD_ADM=ON,
 #     which neither of this script's two CI callers' presets turn on - see
 #     each command's own block below for the detection and the reasoning.
 #
@@ -43,11 +43,11 @@
 # plain crash, a refused command that should have succeeded, or an FFmpeg
 # decode that should have succeeded but didn't).
 #
-# AC3FORGE_CROSS_TIER_CHECK=1 switches this script into a different mode: run
+# ICLFORGE_CROSS_TIER_CHECK=1 switches this script into a different mode: run
 # the entire matrix below TWICE from the SAME binary, once with
-# AC3FORGE_SIMD_TIER=sse2 and once with =avx2 (see
+# ICLFORGE_SIMD_TIER=sse2 and once with =avx2 (see
 # src/base/include/iclforge/base/detail/cpu_features.hpp), then byte-diff the two output
-# trees. This is the runtime-dispatch analogue of the -DAC3FORGE_SIMD=generic
+# trees. This is the runtime-dispatch analogue of the -DICLFORGE_SIMD=generic
 # cross-build check documented above: that one proves two different binaries
 # (SIMD tier baked in at compile time) agree bit-for-bit; this one proves the
 # SAME binary agrees with itself across the two runtime code paths
@@ -66,7 +66,7 @@ case "$CLI" in
     *) CLI="$PWD/$CLI" ;;
 esac
 
-if [[ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]]; then
+if [[ "${ICLFORGE_CROSS_TIER_CHECK:-0}" = "1" ]]; then
     # This script's own path, resolved the same way FIXTURES below resolves
     # its own - so re-invoking it works regardless of where THIS invocation
     # was launched from.
@@ -74,15 +74,15 @@ if [[ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]]; then
     sse2_dir="$(mktemp -d)"
     avx2_dir="$(mktemp -d)"
 
-    echo "cross-tier: pass 1/2, AC3FORGE_SIMD_TIER=sse2"
-    AC3FORGE_SIMD_TIER=sse2 AC3FORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$sse2_dir"
+    echo "cross-tier: pass 1/2, ICLFORGE_SIMD_TIER=sse2"
+    ICLFORGE_SIMD_TIER=sse2 ICLFORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$sse2_dir"
 
     # ac3cli does not itself expose cpu::has_avx2() (Phase 2 wires the
     # dispatch mechanism, not yet any real kernel - see the roadmap plan),
     # so there is no CLI invocation whose exit code would tell us whether
     # this host can run AVX2. /proc/cpuinfo is the direct answer instead;
     # both of this script's CI callers only ever run this mode on Linux
-    # (grep this repo's workflows for AC3FORGE_CROSS_TIER_CHECK), so this
+    # (grep this repo's workflows for ICLFORGE_CROSS_TIER_CHECK), so this
     # does not need a portable fallback. Anywhere else - including a
     # by-hand run on a platform without /proc/cpuinfo - this degrades to a
     # skip, exactly like genuinely lacking AVX2 hardware would.
@@ -97,8 +97,8 @@ if [[ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]]; then
         exit 0
     fi
 
-    echo "cross-tier: pass 2/2, AC3FORGE_SIMD_TIER=avx2"
-    AC3FORGE_SIMD_TIER=avx2 AC3FORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$avx2_dir"
+    echo "cross-tier: pass 2/2, ICLFORGE_SIMD_TIER=avx2"
+    ICLFORGE_SIMD_TIER=avx2 ICLFORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$avx2_dir"
 
     echo "cross-tier: diffing $sse2_dir against $avx2_dir"
     if diff -rq "$sse2_dir" "$avx2_dir"; then
@@ -732,7 +732,7 @@ run_ffmpeg_check atmos_path.ec3
 
 # atmos-adm (ADM BWF reader): only exercised for real when THIS build actually has it.
 # iclforge::adm/iclforge::admbridge are this project's one opt-in, non-default library
-# (AC3FORGE_BUILD_ADM, default off - see the root CMakeLists.txt's own option()), and it needs
+# (ICLFORGE_BUILD_ADM, default off - see the root CMakeLists.txt's own option()), and it needs
 # Boost plus a dedicated vcpkg feature neither of this script's two CI callers (the ASan+UBSan
 # leg, the FFmpeg-oracle leg this file's own header describes) pulls in - both build the plain
 # default preset. Detected the same way ac3cli's own usage listing already answers this
@@ -753,9 +753,9 @@ run_ffmpeg_check atmos_path.ec3
 # flat bin/ directory regardless of which source subdirectory built it.
 ADM_FIXTURE_TOOL="$(dirname "$CLI")/encode_adm"
 if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-adm[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
-    echo "    [skip] atmos-adm: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_adm.hpp) - covered instead by the adm-validate CI job and tests/cli/test_cli_atmos_adm.cpp, which do build with it"
+    echo "    [skip] atmos-adm: this ac3cli build has no -DICLFORGE_BUILD_ADM=ON (apps/cli/adm/atmos_adm.hpp) - covered instead by the adm-validate CI job and tests/cli/test_cli_atmos_adm.cpp, which do build with it"
 elif [[ ! -x "$ADM_FIXTURE_TOOL" ]]; then
-    echo "    [skip] atmos-adm: examples/encode_adm was not built alongside this ac3cli (AC3FORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real ADM file"
+    echo "    [skip] atmos-adm: examples/encode_adm was not built alongside this ac3cli (ICLFORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real ADM file"
 else
     "$ADM_FIXTURE_TOOL" --write-fixture atmos_adm_fixture.wav
     run atmos-adm atmos_adm_fixture.wav atmos_adm.ec3 256
@@ -774,7 +774,7 @@ fi
 
 # atmos-iab (IAB reader phase 3): the identical conditional-command shape atmos-adm above uses,
 # and for the same reason - it needs iclforge::admbridge's own IAB mapping, gated by the same
-# AC3FORGE_BUILD_ADM flag (see apps/cli/adm/atmos_iab.hpp's own header comment: iclforge::iab
+# ICLFORGE_BUILD_ADM flag (see apps/cli/adm/atmos_iab.hpp's own header comment: iclforge::iab
 # itself is on by default, but build_iab() only exists once admbridge is). Detected the same
 # "ask the real usage listing" way, not guessed from a preset name. examples/encode_iab's own
 # --write-fixture mode produces a real elementary IAB file on disk, so this is driven through a
@@ -782,9 +782,9 @@ fi
 # itself - see ADM_FIXTURE_TOOL's own comment above for why.
 IAB_FIXTURE_TOOL="$(dirname "$CLI")/encode_iab"
 if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-iab[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
-    echo "    [skip] atmos-iab: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_iab.hpp) - covered instead by tests/cli/test_cli_atmos_iab.cpp, which does build with it"
+    echo "    [skip] atmos-iab: this ac3cli build has no -DICLFORGE_BUILD_ADM=ON (apps/cli/adm/atmos_iab.hpp) - covered instead by tests/cli/test_cli_atmos_iab.cpp, which does build with it"
 elif [[ ! -x "$IAB_FIXTURE_TOOL" ]]; then
-    echo "    [skip] atmos-iab: examples/encode_iab was not built alongside this ac3cli (AC3FORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real IAB file"
+    echo "    [skip] atmos-iab: examples/encode_iab was not built alongside this ac3cli (ICLFORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real IAB file"
 else
     "$IAB_FIXTURE_TOOL" --write-fixture atmos_iab_fixture.iab
     run atmos-iab atmos_iab_fixture.iab atmos_iab.ec3 256
@@ -1195,7 +1195,7 @@ run probe ac4_514_256.ac4
 # Objects (planning/ac4.md, phase I5): experimental=objects/objects=<scene>, E9's own CLI surface
 # (apps/cli/commands/ac4_encode_objects.cpp), A-JOC by default and direct-coded as the explicit
 # second leg - then back through decode's objects_dir, unconditionally available (unlike adm_out,
-# which needs -DAC3FORGE_BUILD_ADM=ON and is covered by the atmos-adm/atmos-iab AC-4 legs above).
+# which needs -DICLFORGE_BUILD_ADM=ON and is covered by the atmos-adm/atmos-iab AC-4 legs above).
 cat > ac4_objects_scene.txt <<'SCENE'
 object 0 dynamic 0.2 0.3 0.0 -3
 object 1 dynamic 0.8 0.3 0.0 -3

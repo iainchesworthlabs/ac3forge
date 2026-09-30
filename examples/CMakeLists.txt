@@ -4,12 +4,12 @@
 # They exist to be compiled: a snippet in a document rots silently, and one
 # that is a build target cannot. Each is also runnable and prints what it
 # produced (via fmt::print, not std::print - see cmake/Fmt.cmake), so the
-# documented API is exercised and not merely parsed. They link ac3::warnings
+# documented API is exercised and not merely parsed. They link iclforge::warnings
 # like every other first-party target, so a documented call that would make
 # a caller's build noisy fails here first.
 # ---------------------------------------------------------------------------
 
-set(AC3FORGE_EXAMPLES
+set(ICLFORGE_EXAMPLES
     encode_ac3
     encode_eac3
     decode_stream
@@ -38,62 +38,62 @@ set(AC3FORGE_EXAMPLES
 # example in the list above. encode_adm (ADM BWF reader phase 3) is the end-to-end
 # counterpart: ac3adm::parse_bw64 -> ac3::admbridge::build -> ac3::oba::AtmosEncoder, so unlike
 # every other entry here (including read_adm) it needs BOTH iclforge::ac3 and the opt-in ADM modules
-# together. Both are only added when AC3FORGE_BUILD_ADM turned those modules on (default OFF - see
+# together. Both are only added when ICLFORGE_BUILD_ADM turned those modules on (default OFF - see
 # root CMakeLists.txt's own option() for why), so the foreach below cannot assume either is always
 # present the way it can for e.g. mux_mkv.
-if(AC3FORGE_BUILD_ADM)
-    list(APPEND AC3FORGE_EXAMPLES read_adm encode_adm)
+if(ICLFORGE_BUILD_ADM)
+    list(APPEND ICLFORGE_EXAMPLES read_adm encode_adm)
     # encode_iab (IAB reader phase 3) needs iclforge::admbridge's own IAB mapping (build_iab), gated
     # the same way encode_adm needs the ADM one - see src/admbridge/CMakeLists.txt's own header
-    # comment for why that whole module rides AC3FORGE_BUILD_ADM. Unlike encode_adm it does NOT
+    # comment for why that whole module rides ICLFORGE_BUILD_ADM. Unlike encode_adm it does NOT
     # need iclforge::adm directly (iclforge::iab, its own container reader, is always available -
-    # AC3FORGE_BUILD_IAB defaults ON).
-    list(APPEND AC3FORGE_EXAMPLES encode_iab)
+    # ICLFORGE_BUILD_IAB defaults ON).
+    list(APPEND ICLFORGE_EXAMPLES encode_iab)
 endif()
 
 # mux_iamf demonstrates IAMF writer phase 1's decode -> IAMF bridge: it encodes a synthetic
 # 7.1.4 E-AC-3 stream, decodes it back with ac3::Eac3Decoder, permutes the result into iamf::'s
 # own channel order and calls iamf::mux() - so, like encode_adm above, it needs BOTH iclforge::ac3
-# and the standalone writer module together, and only exists to build when AC3FORGE_BUILD_IAMF
+# and the standalone writer module together, and only exists to build when ICLFORGE_BUILD_IAMF
 # (default ON, see the root CMakeLists.txt's own option()) turned iclforge::iamf on.
-if(AC3FORGE_BUILD_IAMF)
-    list(APPEND AC3FORGE_EXAMPLES mux_iamf)
+if(ICLFORGE_BUILD_IAMF)
+    list(APPEND ICLFORGE_EXAMPLES mux_iamf)
 endif()
 
 # read_iab demonstrates iclforge::iab (src/iab), IAB reader phases 1-2 - "standalone" meaning
 # zero dependency on iclforge::ac3, the same shape read_adm has for iclforge::adm above. Unlike
-# AC3FORGE_BUILD_ADM (default OFF), AC3FORGE_BUILD_IAB defaults ON, so this is unconditional like
+# ICLFORGE_BUILD_ADM (default OFF), ICLFORGE_BUILD_IAB defaults ON, so this is unconditional like
 # mux_mkv rather than gated in the foreach below.
-if(AC3FORGE_BUILD_IAB)
-    list(APPEND AC3FORGE_EXAMPLES read_iab)
+if(ICLFORGE_BUILD_IAB)
+    list(APPEND ICLFORGE_EXAMPLES read_iab)
 endif()
 
-foreach(example IN LISTS AC3FORGE_EXAMPLES)
+foreach(example IN LISTS ICLFORGE_EXAMPLES)
     add_executable(${example} "${example}.cpp")
     if(example STREQUAL "read_adm")
         # No iclforge::ac3 here - src/adm is deliberately independent of it (see
         # src/adm/CMakeLists.txt's header comment), so this example only needs
-        # the parser itself plus the same ac3::warnings every other example gets.
-        target_link_libraries(${example} PRIVATE iclforge::adm ac3::warnings ac3::fmt)
+        # the parser itself plus the same iclforge::warnings every other example gets.
+        target_link_libraries(${example} PRIVATE iclforge::adm iclforge::warnings iclforge::fmt)
     elseif(example STREQUAL "encode_adm")
         # The one example (and ADM BWF reader's own phase-3 deliverable) needing iclforge::ac3
         # (AtmosEncoder) and the ADM modules (parse/bridge) at the same time.
         target_link_libraries(${example} PRIVATE iclforge::ac3 iclforge::adm iclforge::admbridge
-                                                  ac3::warnings ac3::fmt)
+                                                  iclforge::warnings iclforge::fmt)
     elseif(example STREQUAL "mux_iamf")
-        target_link_libraries(${example} PRIVATE iclforge::ac3 iclforge::iamf ac3::warnings ac3::fmt)
+        target_link_libraries(${example} PRIVATE iclforge::ac3 iclforge::iamf iclforge::warnings iclforge::fmt)
     elseif(example STREQUAL "read_iab")
         # No iclforge::ac3 here either - src/iab is deliberately independent of it (see
         # src/iab/CMakeLists.txt's header comment), the same reason read_adm above needs none.
-        target_link_libraries(${example} PRIVATE iclforge::iab ac3::warnings ac3::fmt)
+        target_link_libraries(${example} PRIVATE iclforge::iab iclforge::warnings iclforge::fmt)
     elseif(example STREQUAL "encode_iab")
         # The one example (and IAB reader's own phase-3 deliverable) needing iclforge::ac3
         # (AtmosEncoder), iclforge::iab (its own container reader) and iclforge::admbridge (build_iab)
         # at the same time - the IAB mirror of encode_adm above.
         target_link_libraries(${example} PRIVATE iclforge::ac3 iclforge::iab iclforge::admbridge
-                                                  ac3::warnings ac3::fmt)
+                                                  iclforge::warnings iclforge::fmt)
     else()
-        target_link_libraries(${example} PRIVATE iclforge::ac3 ac3::warnings ac3::fmt)
+        target_link_libraries(${example} PRIVATE iclforge::ac3 iclforge::warnings iclforge::fmt)
     endif()
     set_target_properties(${example} PROPERTIES FOLDER examples)
 endforeach()
@@ -108,26 +108,26 @@ target_link_libraries(mux_ts PRIVATE iclforge::mpegts)
 target_link_libraries(object_signing PRIVATE iclforge::signing)
 
 # capi_encode_decode (C API) is a plain C source, not C++ - the .c extension is what actually
-# proves ac3forge_c/ac3forge.h compiles under a C toolchain rather than merely under a C++ one
-# parsing valid-C syntax, so it cannot join the foreach()/AC3FORGE_EXAMPLES list above (that loop
+# proves iclforge_c/iclforge.h compiles under a C toolchain rather than merely under a C++ one
+# parsing valid-C syntax, so it cannot join the foreach()/ICLFORGE_EXAMPLES list above (that loop
 # hardcodes add_executable(${example} "${example}.cpp")) and gets its own block instead. It links
 # iclforge::c only, never iclforge::ac3 - the whole point of the C API is that a consumer needs
 # nothing else.
-if(AC3FORGE_BUILD_CAPI)
+if(ICLFORGE_BUILD_CAPI)
     # The only C (not C++) source anywhere in this tree - the project() call in the root
     # CMakeLists.txt only declares CXX, so the C compiler has to be brought in explicitly before
     # CMake will generate a compile rule for a .c file at all.
     enable_language(C)
     add_executable(capi_encode_decode capi_encode_decode.c)
-    target_link_libraries(capi_encode_decode PRIVATE iclforge::c ac3::warnings)
+    target_link_libraries(capi_encode_decode PRIVATE iclforge::c iclforge::warnings)
 
     add_executable(capi_encode_eac3 capi_encode_eac3.c)
-    target_link_libraries(capi_encode_eac3 PRIVATE iclforge::c ac3::warnings)
+    target_link_libraries(capi_encode_eac3 PRIVATE iclforge::c iclforge::warnings)
 
     # AP4: pin the dialect rather than riding whatever the compiler defaults to
     # (gnu17 on GCC/Clang, an unspecified MSVC default) - this is the project's
-    # one standing proof that ac3forge_c/ac3forge.h is valid strict C11 (with
-    # -Wpedantic from ac3::warnings above) on every desktop leg, not merely
+    # one standing proof that iclforge_c/iclforge.h is valid strict C11 (with
+    # -Wpedantic from iclforge::warnings above) on every desktop leg, not merely
     # valid under whichever superset dialect happened to be the default.
     foreach(capi_example IN ITEMS capi_encode_decode capi_encode_eac3)
         set_target_properties(${capi_example} PROPERTIES
@@ -144,7 +144,7 @@ if(AC3FORGE_BUILD_CAPI)
         endif()
     endforeach()
 
-    if(AC3FORGE_BUILD_TESTS)
+    if(ICLFORGE_BUILD_TESTS)
         add_test(NAME "example.capi_encode_decode" COMMAND capi_encode_decode)
         add_test(NAME "example.capi_encode_eac3" COMMAND capi_encode_eac3)
     endif()
@@ -153,12 +153,12 @@ endif()
 # decode_ac4 demonstrates the AC-4 inspector and decoder (src/ac4, src/ac4dec), which link nothing
 # of iclforge::ac3, as read_iab links nothing of it. It decodes the stream it is given, so it keeps out
 # of the list above, whose programs ctest runs with no arguments, and ctest hands it a committed DEE
-# stream. AC3FORGE_BUILD_AC4 defaults ON, and with it off there is no decoder to link.
-if(AC3FORGE_BUILD_AC4)
+# stream. ICLFORGE_BUILD_AC4 defaults ON, and with it off there is no decoder to link.
+if(ICLFORGE_BUILD_AC4)
     add_executable(decode_ac4 decode_ac4.cpp)
-    target_link_libraries(decode_ac4 PRIVATE iclforge::ac4dec ac3::warnings ac3::fmt)
+    target_link_libraries(decode_ac4 PRIVATE iclforge::ac4dec iclforge::warnings iclforge::fmt)
     set_target_properties(decode_ac4 PROPERTIES FOLDER examples)
-    if(AC3FORGE_BUILD_TESTS)
+    if(ICLFORGE_BUILD_TESTS)
         add_test(NAME "example.decode_ac4" COMMAND decode_ac4
             "${PROJECT_SOURCE_DIR}/tests/golden/external-baseline/ac4-51-film-96/dee.ac4")
     endif()
@@ -166,8 +166,8 @@ endif()
 
 # Run them under ctest when tests are on, so "the examples still work" is
 # checked by the same command as everything else.
-if(AC3FORGE_BUILD_TESTS)
-    foreach(example IN LISTS AC3FORGE_EXAMPLES)
+if(ICLFORGE_BUILD_TESTS)
+    foreach(example IN LISTS ICLFORGE_EXAMPLES)
         add_test(NAME "example.${example}" COMMAND ${example})
     endforeach()
 endif()

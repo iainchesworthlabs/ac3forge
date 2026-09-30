@@ -250,7 +250,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     // frame is AC-3, but FrameDecoder refuses the Annex E dependent behind it.
     // The same test 'decode' makes. A fold below is no reason to hand the
     // core's frames to FrameDecoder the way the ESP32 player hands it a lone
-    // AC-3 syncframe (esp-idf/ac3forge/include/ac3forge/player.hpp):
+    // AC-3 syncframe (esp-idf/iclforge/include/iclforge/player.hpp):
     // Eac3Decoder has folded a core correctly since #690.
     const bool access_units = iclforge::apps::reads_as_access_units(stream);
 

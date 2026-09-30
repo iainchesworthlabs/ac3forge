@@ -64,7 +64,7 @@ enum class DemuxError : std::uint8_t {
     kMoovAfterMdat,    // Reader only: the sample table follows the data it indexes
 };
 
-[[nodiscard]] MP4_EXPORT std::string_view describe(DemuxError error);
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string_view describe(DemuxError error);
 
 // The parsed dac3/dec3 sample-entry configuration box - the read twin of
 // iclforge::io::build_codec_config_box, whose own comments carry the field
@@ -188,7 +188,7 @@ struct Demuxed {
 // moov/mdat file (sample table walked through stsc/stsz/stco or co64) and a
 // fragmented one (an init segment's mvex/trex defaults plus every
 // moof/traf/tfhd/trun that follows). moov may sit either side of mdat.
-[[nodiscard]] MP4_EXPORT std::expected<Demuxed, DemuxError> demux(
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::expected<Demuxed, DemuxError> demux(
     std::span<const std::byte> file, const ReadOptions& options = {});
 
 // Incrementally reads samples out of an MP4 as its bytes arrive, for a file
@@ -202,7 +202,7 @@ struct Demuxed {
 // back for it. Use demux() for those.
 //
 // Move-only: the parse state lives behind a pointer.
-class MP4_EXPORT Reader {
+class ICLFORGE_MP4_EXPORT Reader {
    public:
     using SampleFn = std::function<void(std::span<const std::byte>)>;
 

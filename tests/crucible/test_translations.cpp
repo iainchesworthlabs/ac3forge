@@ -74,7 +74,7 @@ struct Message {
 };
 
 [[nodiscard]] fs::path catalogue_path(std::string_view code) {
-    return fs::path{AC3FORGE_CRUCIBLE_TS_DIR} / ("ac3crucible_" + std::string{code} + ".ts");
+    return fs::path{ICLFORGE_CRUCIBLE_TS_DIR} / ("ac3crucible_" + std::string{code} + ".ts");
 }
 
 [[nodiscard]] std::string read_catalogue(std::string_view code) {
@@ -272,7 +272,7 @@ TEST_CASE("gui translation catalogues carry no unfinished or dead entry",
                                                                    "he", "xx", "yi"};
     std::vector<std::string> offenders;
     for (const std::string_view code : kGuiLanguages) {
-        const auto path = fs::path{AC3FORGE_GUI_TS_DIR} / ("ac3gui_" + std::string{code} + ".ts");
+        const auto path = fs::path{ICLFORGE_GUI_TS_DIR} / ("ac3gui_" + std::string{code} + ".ts");
         std::ifstream in(path, std::ios::binary);
         INFO("catalogue " << path.string());
         REQUIRE(in.is_open());

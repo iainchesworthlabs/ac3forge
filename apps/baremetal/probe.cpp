@@ -296,7 +296,7 @@ void report_hash(const char* codec, const PcmHash& hash) {
 // apps/baremetal/CMakeLists.txt's cache variable and each ESP-IDF app through
 // its own main/CMakeLists.txt. A conditional would put the platform back in
 // the translation unit, which is the rule Platform Macros enforces.
-constexpr std::size_t kHeapBudgetBytes = AC3FORGE_PROBE_HEAP_BUDGET_BYTES;
+constexpr std::size_t kHeapBudgetBytes = ICLFORGE_PROBE_HEAP_BUDGET_BYTES;
 
 // True when this fixture asks for more than the part has. `needed` is the peak
 // the fixture is measured to reach - the same figure the probe prints as
@@ -516,7 +516,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
     // Where the time above went, when the library was built to say
-    // (AC3FORGE_STAGE_TIMERS); silent otherwise.
+    // (ICLFORGE_STAGE_TIMERS); silent otherwise.
     ac3probe::report_stages(codec, churn.frames);
     return 0;
 }
@@ -609,7 +609,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
     // Where the time above went, when the library was built to say
-    // (AC3FORGE_STAGE_TIMERS); silent otherwise.
+    // (ICLFORGE_STAGE_TIMERS); silent otherwise.
     ac3probe::report_stages(codec, churn.frames);
     return 0;
 }
@@ -1127,7 +1127,7 @@ int ac3probe::run() {
     // Not failed here. Retained bytes are a FOOTPRINT number, and every other
     // footprint ceiling in this profile lives in the runner scripts where it can
     // be overridden and read next to the rest - see
-    // AC3FORGE_MAX_RETAINED_BYTES in tools/checks/run_baremetal_probe.sh. What
+    // ICLFORGE_MAX_RETAINED_BYTES in tools/checks/run_baremetal_probe.sh. What
     // this function fails on is correctness: levels, frame and channel counts,
     // and the direct-form transform being refused.
 

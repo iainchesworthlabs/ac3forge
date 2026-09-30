@@ -1,7 +1,7 @@
 """A hearth_sink build directory made from nothing, for the tests of
 package_firmware.py and tools/ci/check_firmware_package.py.
 
-It holds what an ESP-IDF v6.1 build of esp-idf/ac3forge/examples/hearth_sink
+It holds what an ESP-IDF v6.1 build of esp-idf/iclforge/examples/hearth_sink
 leaves that packaging reads: project_description.json, flash_args, the
 sdkconfig, the bootloader, the partition table, the empty otadata, the app
 image and its ELF, the FAT image, and the audio partition's source outside
@@ -23,7 +23,7 @@ from pathlib import Path
 CHIP_IDS = {"esp32s3": 0x0009, "esp32c6": 0x000D, "esp32p4": 0x0012}
 FLASH_CODES = {"4MB": 2, "16MB": 4}
 
-# The tables O1 gave the boards, as esp-idf/ac3forge/examples/hearth_sink's
+# The tables O1 gave the boards, as esp-idf/iclforge/examples/hearth_sink's
 # partitions.csv (16 MB) and partitions_c6.csv (4 MB) have them: label, type,
 # subtype, offset, size.
 TABLE_16MB = [
@@ -53,7 +53,7 @@ def app_image(
     chip_id: int,
     version: str,
     *,
-    project: str = "ac3forge_hearth_sink",
+    project: str = "iclforge_hearth_sink",
     min_rev: int = 0,
     max_rev: int = 99,
     flash_code: int = 4,
@@ -126,8 +126,8 @@ def make_build(
     (build / "bootloader" / "bootloader.bin").write_bytes(bytes(range(256)) * 20)
     (build / "partition_table" / "partition-table.bin").write_bytes(partition_table(table))
     (build / "ota_data_initial.bin").write_bytes(b"\xff" * 0x2000)
-    (build / "ac3forge_hearth_sink.bin").write_bytes(app)
-    (build / "ac3forge_hearth_sink.elf").write_bytes(b"\x7fELF" + bytes(2000))
+    (build / "iclforge_hearth_sink.bin").write_bytes(app)
+    (build / "iclforge_hearth_sink.elf").write_bytes(b"\x7fELF" + bytes(2000))
     (build / "storage.bin").write_bytes(b"\xeb\x3c\x90" + bytes(4093))
     (root / "stream" / "sample.ac3").write_bytes(b"\x0b\x77" + bytes(1022))
     audio_at = next(offset for label, _, _, offset, _ in table if label == "audio")
@@ -137,7 +137,7 @@ def make_build(
         f"{bootloader_at:#x} bootloader/bootloader.bin\n"
         "0x8000 partition_table/partition-table.bin\n"
         "0x10000 ota_data_initial.bin\n"
-        "0x20000 ac3forge_hearth_sink.bin\n"
+        "0x20000 iclforge_hearth_sink.bin\n"
         f"{audio_at:#x} ../stream/sample.ac3\n"
         f"{storage_at:#x} storage.bin\n",
         "utf-8",
@@ -146,18 +146,18 @@ def make_build(
         f'CONFIG_IDF_TARGET="{target}"\n'
         f'CONFIG_ESPTOOLPY_FLASHSIZE="{flash_size}"\n'
         + ("CONFIG_SPIRAM=y\n" if psram else "# CONFIG_SPIRAM is not set\n")
-        + f'CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID="{wifi_ssid}"\n'
-        'CONFIG_AC3FORGE_EXAMPLE_WIFI_PASSWORD=""\n',
+        + f'CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID="{wifi_ssid}"\n'
+        'CONFIG_ICLFORGE_EXAMPLE_WIFI_PASSWORD=""\n',
         "utf-8",
     )
     (build / "project_description.json").write_text(
         json.dumps(
             {
                 "target": target,
-                "app_bin": "ac3forge_hearth_sink.bin",
-                "app_elf": "ac3forge_hearth_sink.elf",
+                "app_bin": "iclforge_hearth_sink.bin",
+                "app_elf": "iclforge_hearth_sink.elf",
                 "config_file": str(build / "sdkconfig"),
-                "project_name": "ac3forge_hearth_sink",
+                "project_name": "iclforge_hearth_sink",
             }
         ),
         "utf-8",

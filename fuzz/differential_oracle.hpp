@@ -1,6 +1,6 @@
 #pragma once
 
-// Shared FFmpeg-oracle plumbing for ac3forge's differential fuzzing harnesses
+// Shared FFmpeg-oracle plumbing for iclforge's differential fuzzing harnesses
 // (fuzz_differential_ac3_decode.cpp, fuzz_differential_eac3_decode.cpp - see
 // each one's own module comment for what it drives). Both harnesses decode
 // the SAME mutated bytes twice: once with this project's own decoder,
@@ -56,7 +56,7 @@
 // tools/ci/quality_race.py's broadband synthetic material, and an early
 // version of this harness reused tools/checks/verify_gold_reference.sh's
 // CPLBNDSTRCE0_MIN_SNR_DB=15 precedent on that basis - then
-// fuzz/measure-agreement.sh (AC3FORGE_DIFF_MEASURE_ONLY=1, see
+// fuzz/measure-agreement.sh (ICLFORGE_DIFF_MEASURE_ONLY=1, see
 // run_differential below) run once over every file in
 // fuzz/seeds/fuzz_ac3_decode/ and fuzz/seeds/fuzz_eac3_decode/ - real,
 // already-shipping, unmutated content this project has never doubted - found
@@ -109,7 +109,7 @@
 
 extern char** environ;
 
-namespace ac3forge::fuzzdiff {
+namespace iclforge::fuzzdiff {
 
 // Below this, two decoders' agreement on the SAME bitstream has stopped
 // looking like "two spec-correct implementations reconstructing a
@@ -133,7 +133,7 @@ inline const char* scratch_dir() {
 // tools/checks/verify_gold_reference.sh all hand it a real path rather than
 // piping stdin). Empty string on failure.
 inline std::string make_scratch_path(const char* suffix) {
-    std::string tmpl = std::string(scratch_dir()) + "/ac3forge-diff-XXXXXX";
+    std::string tmpl = std::string(scratch_dir()) + "/iclforge-diff-XXXXXX";
     std::vector<char> buf(tmpl.begin(), tmpl.end());
     buf.push_back('\0');
     const int fd = ::mkstemp(buf.data());
@@ -342,7 +342,7 @@ inline CompareResult compare_pcm(const std::vector<std::vector<float>>& ours,
 // by once), so an assert() here would silently compile out.
 [[noreturn]] inline void report_divergence(const char* codec_label, double worst_channel_snr_db) {
     std::fprintf(stderr,
-                 "ac3forge differential fuzzer: %s decode diverges from FFmpeg's own decode of "
+                 "iclforge differential fuzzer: %s decode diverges from FFmpeg's own decode of "
                  "the SAME bitstream (worst-channel agreement %.2f dB, floor %.2f dB) - both "
                  "decoders accepted this input as valid. See fuzz/README.md's \"when a fuzzer "
                  "finds something\" section.\n",
@@ -363,9 +363,9 @@ inline CompareResult compare_pcm(const std::vector<std::vector<float>>& ours,
 // Two environment variables change this function's behaviour for a human
 // investigating a specific input rather than for a fuzzing run - neither is
 // ever set by fuzz.yml or a normal `fuzz/run.sh` invocation:
-//   AC3FORGE_DIFF_MEASURE_ONLY  prints every comparable result and never
+//   ICLFORGE_DIFF_MEASURE_ONLY  prints every comparable result and never
 //                               aborts - see fuzz/measure-agreement.sh.
-//   AC3FORGE_DIFF_DEBUG         keeps the three scratch files instead of
+//   ICLFORGE_DIFF_DEBUG         keeps the three scratch files instead of
 //                               deleting them and prints their paths, so a
 //                               specific divergence (or a specific seed
 //                               during calibration) can be inspected by
@@ -380,12 +380,12 @@ inline void run_differential(const char* codec_label, std::span<const std::byte>
     const std::string ffmpeg_wav_path = make_scratch_path(".wav");
     const std::string ours_wav_path = make_scratch_path(".wav");
 
-    // AC3FORGE_DIFF_MEASURE_ONLY: prints every comparable result without
+    // ICLFORGE_DIFF_MEASURE_ONLY: prints every comparable result without
     // ever aborting - a calibration aid for picking kMinAgreementDb from
     // real measurements across a whole corpus rather than guessing (see
     // this header's own module comment), not something either the CI job or
     // a normal local run ever sets.
-    const bool measure_only = ::getenv("AC3FORGE_DIFF_MEASURE_ONLY") != nullptr;
+    const bool measure_only = ::getenv("ICLFORGE_DIFF_MEASURE_ONLY") != nullptr;
 
     bool divergence = false;
     double snr = 0.0;
@@ -399,7 +399,7 @@ inline void run_differential(const char* codec_label, std::span<const std::byte>
         if (ffmpeg_wav && ours_wav && ffmpeg_wav->sample_rate == ours_wav->sample_rate) {
             const auto result = compare_pcm(ours_wav->channels, ffmpeg_wav->channels);
             if (measure_only) {
-                std::fprintf(stderr, "AC3FORGE_DIFF_MEASURE_ONLY: %s comparable=%d worst_db=%.2f\n",
+                std::fprintf(stderr, "ICLFORGE_DIFF_MEASURE_ONLY: %s comparable=%d worst_db=%.2f\n",
                              codec_label, static_cast<int>(result.comparable),
                              result.worst_channel_snr_db);
             }
@@ -413,7 +413,7 @@ inline void run_differential(const char* codec_label, std::span<const std::byte>
         divergence = false;  // never abort in calibration mode
     }
 
-    if (::getenv("AC3FORGE_DIFF_DEBUG") == nullptr) {
+    if (::getenv("ICLFORGE_DIFF_DEBUG") == nullptr) {
         ::unlink(coded_path.c_str());
         if (!ffmpeg_wav_path.empty()) {
             ::unlink(ffmpeg_wav_path.c_str());
@@ -422,7 +422,7 @@ inline void run_differential(const char* codec_label, std::span<const std::byte>
             ::unlink(ours_wav_path.c_str());
         }
     } else {
-        std::fprintf(stderr, "AC3FORGE_DIFF_DEBUG: coded=%s ffmpeg_wav=%s ours_wav=%s\n",
+        std::fprintf(stderr, "ICLFORGE_DIFF_DEBUG: coded=%s ffmpeg_wav=%s ours_wav=%s\n",
                      coded_path.c_str(), ffmpeg_wav_path.c_str(), ours_wav_path.c_str());
     }
 
@@ -431,4 +431,4 @@ inline void run_differential(const char* codec_label, std::span<const std::byte>
     }
 }
 
-}  // namespace ac3forge::fuzzdiff
+}  // namespace iclforge::fuzzdiff

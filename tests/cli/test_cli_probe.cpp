@@ -36,7 +36,7 @@
 // not a format - and the "describes a stream it cannot decode" claim is only
 // testable against a stream that really does not decode.
 //
-// AC3CLI_EXE and AC3FORGE_EXTERNAL_BASELINE_DIR come from tests/CMakeLists.txt;
+// AC3CLI_EXE and ICLFORGE_EXTERNAL_BASELINE_DIR come from tests/CMakeLists.txt;
 // run_cli below is a trimmed copy of test_cli.cpp's helper of the same name,
 // duplicated per this project's own per-file test-helper convention (see
 // test_cli_atmos_adm.cpp, which does the same), including its Windows
@@ -52,7 +52,7 @@ namespace {
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_probe_" + scratch_pid_suffix());
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_probe_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }
@@ -138,7 +138,7 @@ std::string json_array(std::string_view document, std::string_view key) {
 }
 
 fs::path baseline(std::string_view leg, std::string_view file) {
-    return fs::path{AC3FORGE_EXTERNAL_BASELINE_DIR} / leg / file;
+    return fs::path{ICLFORGE_EXTERNAL_BASELINE_DIR} / leg / file;
 }
 
 // A short stream from ac3cli itself, so a test that only needs "some valid
@@ -164,7 +164,7 @@ TEST_CASE("probe's JSON document carries the schema docs/forge/cli/commands.md p
 
     // The version marker is the contract itself: a consumer keys off it, so a
     // change to it is a change to the promise.
-    CHECK(json_field(document, "schema") == "\"ac3forge.probe/1\"");
+    CHECK(json_field(document, "schema") == "\"iclforge.probe/1\"");
 
     // Identity. Cross-checked against ffprobe on this same file, which reports
     // codec_name=ac3, sample_rate=48000, channels=6, bit_rate=448000.
@@ -713,7 +713,7 @@ TEST_CASE("probe reads a real AC-4 stream, in table and JSON form", "[cli][probe
     REQUIRE(run_cli("probe \"" + input.string() + "\" json=1", json_log) == 0);
     const auto document = read_log(json_log);
     INFO(document);
-    CHECK(json_field(document, "schema") == "\"ac3forge.probe/1\"");
+    CHECK(json_field(document, "schema") == "\"iclforge.probe/1\"");
     const auto stream = json_section(document, "stream");
     CHECK(json_field(stream, "codec") == "\"ac4\"");
     // Cross-checked against tests/ac4/test_ac4.cpp's own scan() of this same

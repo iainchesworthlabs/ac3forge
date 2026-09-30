@@ -294,7 +294,7 @@ private:
                    dir / "Package" / "x64" / "Release" / "package" / "Ac3ForgeNullSink.inf", ec);
     }
 
-    // %LOCALAPPDATA%\ac3forge\driver-<verb>.log. The engine library has no Qt,
+    // %LOCALAPPDATA%\iclforge\driver-<verb>.log. The engine library has no Qt,
     // so this is the environment rather than QStandardPaths.
     [[nodiscard]] std::wstring log_path() const {
         wchar_t base[MAX_PATH] = {};

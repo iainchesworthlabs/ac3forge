@@ -1,6 +1,6 @@
 # ESPHome
 
-`esphome/components/ac3forge/` is an ESPHome external component. It is the plumbing:
+`esphome/components/iclforge/` is an ESPHome external component. It is the plumbing:
 `Ac3ForgeComponent` owns an `ac3::FrameDecoder` and an `ac3::io::AccessUnitAccumulator`, takes
 bytes and hands back planar float PCM. It is **not** a `media_player` or a `speaker` source —
 ESPHome's `speaker` platform is ESP-IDF-only, so that is the obvious next step rather than a
@@ -43,7 +43,7 @@ The component reaches the library by git reference rather than the registry:
 `idf_component.yml`, which is the form the IDF component manager wants for a component in a
 subdirectory. Nothing here is blocked on [publishing](esp32-s3.md#the-esp-idf-component).
 
-CI runs `esphome config` over `esphome/tests/ac3forge-test.yaml` against a local source pointing
+CI runs `esphome config` over `esphome/tests/iclforge-test.yaml` against a local source pointing
 at the working tree, which exercises the schema and `to_code` including the `add_idf_component`
 call, and asserts that a `buffer_size` no access unit fits in is rejected. It does **not** compile
 the firmware: that would clone ac3forge at the configured ref and build the whole IDF project,

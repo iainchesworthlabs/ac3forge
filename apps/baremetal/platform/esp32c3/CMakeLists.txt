@@ -29,11 +29,11 @@
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28)
 
-get_filename_component(AC3FORGE_ESP_COMPONENTS
+get_filename_component(ICLFORGE_ESP_COMPONENTS
                        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../esp-idf" ABSOLUTE)
-set(EXTRA_COMPONENT_DIRS "${AC3FORGE_ESP_COMPONENTS}")
+set(EXTRA_COMPONENT_DIRS "${ICLFORGE_ESP_COMPONENTS}")
 
-set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
+set(ICLFORGE_ESP_PROFILE "decoder" CACHE STRING
     "Which probe to build: decoder or encoder")
 
 # The fixed-point tier, and not as a suggestion: this part has no FPU, so the
@@ -41,18 +41,18 @@ set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
 # compiled subroutine. Set here rather than left to the command line so that a
 # bare `idf.py build` for this target builds the thing the target is for.
 #
-# It is still an override, not a hard-wire - `idf.py -DAC3FORGE_DECODE_SCALAR=float
+# It is still an override, not a hard-wire - `idf.py -DICLFORGE_DECODE_SCALAR=float
 # build` measures the float tier on the same part, which is the comparison
 # docs/platforms/bare-metal/esp32-c3.md's own row is made of. src/ac3/minimal.cmake is what
 # honours it; every other value of the option resolves to float32 there.
-set(AC3FORGE_DECODE_SCALAR "fixed" CACHE STRING
+set(ICLFORGE_DECODE_SCALAR "fixed" CACHE STRING
     "Decode arithmetic: fixed (this part has no FPU), float, or double")
 
 # The decode-critical sources at -O2, as on the S3 and for the same reason:
 # the code is in flash, of which a C3 module has 4 MB, and the internal SRAM
 # the footprint ceilings guard is untouched by it. On a part with no FPU the
 # question this answers is sharper - see src/ac3/minimal.cmake's list.
-set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
+set(ICLFORGE_MINIMAL_HOT_O2 ON CACHE BOOL
     "Decode-critical sources at -O2; see src/ac3/minimal.cmake")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

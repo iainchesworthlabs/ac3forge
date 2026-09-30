@@ -16,7 +16,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 SPEC_TXT = REPO / "spec" / "A52-2018.txt"
-OUT = REPO / "src" / "lib" / "include" / "ac3" / "core" / "bitalloc_tables.hpp"
+OUT = REPO / "src" / "ac3" / "include" / "iclforge" / "ac3" / "core" / "bitalloc_tables.hpp"
 
 
 def _lines():

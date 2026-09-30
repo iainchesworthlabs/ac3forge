@@ -1,6 +1,6 @@
 // The Sendspin player's playout on the host: the DMA ring's clock, the DAC
 // that is not there, and the scheduler that places decoded frames in time
-// (esp-idf/ac3forge/include/ac3forge/playout.hpp).
+// (esp-idf/iclforge/include/iclforge/playout.hpp).
 //
 // The header includes nothing from ESP-IDF, the arrangement
 // test_dac_queue_model.cpp has. The I2S channel below is ESP-IDF v6.1's as
@@ -21,16 +21,16 @@
 #include <span>
 #include <vector>
 
-#include "ac3forge/playout.hpp"
+#include "iclforge/playout.hpp"
 
 namespace {
 
-using ac3forge::DmaClock;
-using ac3forge::DmaRing;
-using ac3forge::Playout;
-using ac3forge::PlayoutSink;
-using ac3forge::PlayoutWrite;
-using ac3forge::VirtualDac;
+using iclforge::DmaClock;
+using iclforge::DmaRing;
+using iclforge::Playout;
+using iclforge::PlayoutSink;
+using iclforge::PlayoutWrite;
+using iclforge::VirtualDac;
 
 constexpr std::uint32_t kRate = 48'000;
 constexpr std::size_t kBlock = Playout::kBlockFrames;

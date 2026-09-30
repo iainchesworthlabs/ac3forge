@@ -10,7 +10,7 @@ deliberately: the MDCT/IMDCT pair carries a real, and real-but-unstated-here, bl
 this test cares about "the codec faithfully reproduced the tone", not the exact delay in samples.
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 
 

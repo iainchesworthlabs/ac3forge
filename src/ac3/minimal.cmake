@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # iclforge::ac3_minimal - the whole of src/ac3 under the minimum-footprint
-# profile (AC3FORGE_MINIMAL_DECODER, or AC3FORGE_MINIMAL_ENCODER for the
+# profile (ICLFORGE_MINIMAL_DECODER, or ICLFORGE_MINIMAL_ENCODER for the
 # encode-only archive). Included and returned from by CMakeLists.txt in this
 # directory, so the ordinary static+shared build below it cannot be perturbed
 # by this profile at all:
@@ -26,7 +26,7 @@
 #     CMake-selected variants that carry the profile's one behavioural
 #     difference. See src/core/reference_transform.hpp.
 #
-#   - cmake/MinimalDecoder.cmake's ac3::minimal_profile compile options, and
+#   - cmake/MinimalDecoder.cmake's iclforge::minimal_profile compile options, and
 #     PUBLIC rather than PRIVATE: -fno-exceptions is not a private
 #     implementation detail of an archive, it is a property a consumer has to
 #     share or the two disagree about whether a call can throw.
@@ -36,13 +36,13 @@ add_library(iclforge_ac3_minimal STATIC)
 add_library(iclforge::ac3_minimal ALIAS iclforge_ac3_minimal)
 
 # Which "ac3/internal/profiling.hpp" the profile's sources see. Off, the
-# markers expand to nothing (tracy_disabled/); with AC3FORGE_STAGE_TIMERS they
+# markers expand to nothing (tracy_disabled/); with ICLFORGE_STAGE_TIMERS they
 # become calls into whatever application links this archive
 # (stage_timers/, and apps/baremetal/stage_timers.cpp for the probe). A
 # directory choice rather than a define, per the platform-tree rule
 # (tools/checks/check_platform_macros.ps1), and the root CMakeLists.txt has
 # already refused the option outside this profile.
-if(AC3FORGE_STAGE_TIMERS)
+if(ICLFORGE_STAGE_TIMERS)
     set(_ac3_minimal_profiling_dir
         "${PROJECT_SOURCE_DIR}/src/base/variants/profiling-stage_timers")
     message(STATUS "Minimum-footprint profile: zone markers routed to the stage-timer backend")
@@ -81,7 +81,7 @@ target_sources(iclforge_ac3_minimal
         # compile.
         #
         # The MINIMAL variant of the probe, not the shared one: the shared
-        # implementation reports a bad AC3FORGE_SIMD_TIER through fmt, which
+        # implementation reports a bad ICLFORGE_SIMD_TIER through fmt, which
         # this profile does not carry and whose formatted-output machinery it
         # cannot afford. See that file's own header for why this is a separate
         # translation unit rather than a branch. none/mdct_avx2.cpp supplies
@@ -94,11 +94,11 @@ target_sources(iclforge_ac3_minimal
 #
 # The list above is what BOTH need: the bitstream layer, the shared coding
 # tools, the transform. What follows is the half that differs, and the two are
-# never both added - AC3FORGE_MINIMAL_DECODER and AC3FORGE_MINIMAL_ENCODER are
+# never both added - ICLFORGE_MINIMAL_DECODER and ICLFORGE_MINIMAL_ENCODER are
 # mutually exclusive at the root, because measured on an ESP32-S3 no two of
 # these shapes fit in internal SRAM at once (233,546 / 201,770 / 243,770 peak
 # against 277,400 free).
-if(AC3FORGE_MINIMAL_DECODER)
+if(ICLFORGE_MINIMAL_DECODER)
 target_sources(iclforge_ac3_minimal
     PRIVATE
         # --- decode ------------------------------------------------------
@@ -174,8 +174,8 @@ endif()
 # internal SRAM until the decode path moved to float, so double is not a shape
 # a caller can configure it into. The fixed-point tier is the profile's other
 # legitimate shape - a part with no FPU at all (planning/arithmetic-tiers.md) -
-# and is the one value of AC3FORGE_DECODE_SCALAR honoured here.
-if(AC3FORGE_DECODE_SCALAR STREQUAL "fixed")
+# and is the one value of ICLFORGE_DECODE_SCALAR honoured here.
+if(ICLFORGE_DECODE_SCALAR STREQUAL "fixed")
     set(_ac3_minimal_scalar_dir "fixed32")
 else()
     set(_ac3_minimal_scalar_dir "float32")
@@ -216,7 +216,7 @@ target_include_directories(iclforge_ac3_minimal
         # Both of the profile's bare-metal targets resolve to generic/ - an
         # arm-none-eabi Cortex-M3 has no vector unit at all, and the ESP32-S3's PIE
         # is fixed-point, so its float32 path is the scalar FPU either way
-        # (docs/platforms/bare-metal/esp32-s3.md) - through AC3FORGE_SIMD's own
+        # (docs/platforms/bare-metal/esp32-s3.md) - through ICLFORGE_SIMD's own
         # "anything else lands on generic" arm rather than by being spelled out
         # here; a minimum-footprint build for aarch64 takes the NEON directory, whose
         # float32 decode path holds four lanes.
@@ -252,10 +252,10 @@ target_compile_features(iclforge_ac3_minimal PUBLIC cxx_std_23)
 # 1.53 -> 0.83 ms for 2,688 bytes of flash. The cost is flash, not SRAM -
 # the code lives in flash on every part this profile targets - and it is
 # stated on the board page beside the gain.
-option(AC3FORGE_MINIMAL_HOT_O2
+option(ICLFORGE_MINIMAL_HOT_O2
     "Minimum-footprint profile: compile the decode-critical sources at -O2 (costs flash, not SRAM)"
     OFF)
-if(AC3FORGE_MINIMAL_HOT_O2)
+if(ICLFORGE_MINIMAL_HOT_O2)
     set_source_files_properties(
         src/core/bitalloc.cpp
         src/core/eac3_tools.cpp
@@ -269,8 +269,8 @@ if(AC3FORGE_MINIMAL_HOT_O2)
 endif()
 
 target_link_libraries(iclforge_ac3_minimal
-    PUBLIC ac3::minimal_profile
-    PRIVATE "$<BUILD_INTERFACE:ac3::warnings>" "$<BUILD_INTERFACE:iclforge::arithmetic>")
+    PUBLIC iclforge::minimal_profile
+    PRIVATE "$<BUILD_INTERFACE:iclforge::warnings>" "$<BUILD_INTERFACE:iclforge::arithmetic>")
 
 # iclforge/<library>/export.hpp is generated for each of the six libraries the archive holds, and
 # every annotated header includes its own. This profile is static-only, so each is asked for the

@@ -94,11 +94,11 @@ fi
 # Release so our own frames in the backtrace carry line numbers.
 cmake --preset config-linux-gcc -B "$builddir" -S "$SRC" \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DAC3FORGE_BUILD_CRUCIBLE=ON \
-    -DAC3FORGE_BUILD_TESTS=OFF \
-    -DAC3FORGE_BUILD_CLI=OFF \
-    -DAC3FORGE_WITH_ALSA=OFF \
-    -DAC3FORGE_WITH_PIPEWIRE=ON \
+    -DICLFORGE_BUILD_CRUCIBLE=ON \
+    -DICLFORGE_BUILD_TESTS=OFF \
+    -DICLFORGE_BUILD_CLI=OFF \
+    -DICLFORGE_WITH_ALSA=OFF \
+    -DICLFORGE_WITH_PIPEWIRE=ON \
     "${flags[@]}"
 cmake --build "$builddir" --target ac3crucible -- -j"$(nproc)"
 

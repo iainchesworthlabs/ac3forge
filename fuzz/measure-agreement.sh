@@ -3,7 +3,7 @@
 # differential_oracle.hpp's kMinAgreementDb (differential decoder fuzzing). Runs every file in
 # fuzz/seeds/fuzz_ac3_decode/ and fuzz/seeds/fuzz_eac3_decode/ - real,
 # already-shipping, unmutated content - through the differential harnesses
-# once each with AC3FORGE_DIFF_MEASURE_ONLY=1 (measures and prints; never
+# once each with ICLFORGE_DIFF_MEASURE_ONLY=1 (measures and prints; never
 # aborts, unlike a normal run) and reports the worst-channel SNR FFmpeg and
 # this project's own decoder land on for each one.
 #
@@ -27,7 +27,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUILD_DIR="${AC3FORGE_FUZZ_BUILD_DIR:-$REPO_ROOT/build/fuzz}"
+BUILD_DIR="${ICLFORGE_FUZZ_BUILD_DIR:-$REPO_ROOT/build/fuzz}"
 
 command -v ffmpeg >/dev/null 2>&1 || {
     echo "error: ffmpeg not found on PATH - required as the oracle being measured against" >&2
@@ -46,8 +46,8 @@ measure() {
     for f in "$seeds_dir"/*; do
         [ -f "$f" ] || continue
         local line
-        line="$(AC3FORGE_DIFF_MEASURE_ONLY=1 "$binary" -runs=1 "$f" 2>&1 \
-            | grep 'AC3FORGE_DIFF_MEASURE_ONLY' || true)"
+        line="$(ICLFORGE_DIFF_MEASURE_ONLY=1 "$binary" -runs=1 "$f" 2>&1 \
+            | grep 'ICLFORGE_DIFF_MEASURE_ONLY' || true)"
         if [ -z "$line" ]; then
             printf '  %-40s (our own decoder declined, or FFmpeg has no oracle here)\n' "$(basename "$f")"
             continue

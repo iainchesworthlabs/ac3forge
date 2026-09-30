@@ -98,7 +98,7 @@ jobs:
             echo "SOURCE_SHA256=$(sha256sum source.tar.gz | cut -d' ' -f1)"
           } >> "$GITHUB_ENV"
 
-      # ac3forge-*-Darwin.dmg (the Homebrew cask) and ac3forge-*-win64.zip (winget) ARE
+      # iclforge-*-Darwin.dmg (the Homebrew cask) and iclforge-*-win64.zip (winget) ARE
       # real CI-built packages, so - unlike the source tarball above - the release's own
       # SHA512SUMS is a second, independently-computed source to check the freshly
       # downloaded bytes against, and this refuses to proceed on a mismatch rather than
@@ -113,8 +113,8 @@ jobs:
         run: |
           set -euo pipefail
           bare_version="${VERSION%%-*}"
-          dmg_name="ac3forge-${bare_version}-Darwin.dmg"
-          zip_name="ac3forge-${bare_version}-win64.zip"
+          dmg_name="iclforge-${bare_version}-Darwin.dmg"
+          zip_name="iclforge-${bare_version}-win64.zip"
 
           assets="$(gh release view "$VERSION_TAG" --repo "$REPO" --json assets \
                      --jq '.assets[].name')"
@@ -232,8 +232,8 @@ jobs:
               if [ "$HAVE_TAP_TOKEN" != "true" ]; then
                 echo
                 echo "HOMEBREW_TAP_TOKEN is not set, so the live iainchesworthlabs/homebrew-ac3forge"
-                echo "tap was NOT pushed - copy packaging/homebrew/Formula/ac3forge.rb and"
-                echo "packaging/homebrew/Casks/ac3gui.rb into it by hand (see"
+                echo "tap was NOT pushed - copy packaging/homebrew/Formula/iclforge.rb and"
+                echo "packaging/homebrew/Casks/iclforge.rb into it by hand (see"
                 echo "docs/releasing.md#homebrew-formula-and-cask)."
               fi
             } > pr-body.md
@@ -280,15 +280,20 @@ jobs:
             "https://x-access-token:${TAP_TOKEN}@github.com/${tap}.git" \
             "$tapdir"
 
-          cp packaging/homebrew/Formula/ac3forge.rb "$tapdir/Formula/ac3forge.rb"
+          cp packaging/homebrew/Formula/iclforge.rb "$tapdir/Formula/iclforge.rb"
           if [ -n "${DMG_SHA256:-}" ]; then
-            cp packaging/homebrew/Casks/ac3gui.rb "$tapdir/Casks/ac3gui.rb"
+            cp packaging/homebrew/Casks/iclforge.rb "$tapdir/Casks/iclforge.rb"
           fi
+          # what maps the old names (ac3forge, ac3gui) to the new ones goes to the tap's root
+          cp packaging/homebrew/tap_migrations.json "$tapdir/tap_migrations.json"
 
           cd "$tapdir"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/ac3forge.rb Casks/ac3gui.rb
+          # the old names leave the tap: tap_migrations.json is what answers for them, and Homebrew
+          # only reads it for a name that has no file
+          git rm -q --ignore-unmatch Formula/ac3forge.rb Casks/ac3gui.rb
+          git add Formula/iclforge.rb Casks/iclforge.rb tap_migrations.json
           if git diff --cached --quiet; then
             echo "tap already up to date for $VERSION_TAG"
             exit 0
@@ -296,7 +301,7 @@ jobs:
 
           branch="bump-${VERSION_TAG}"
           git checkout -q -b "$branch"
-          git commit -q -m "ac3forge ${VERSION_TAG}"
+          git commit -q -m "iclforge ${VERSION_TAG}"
           # --force so a re-run of a failed release replaces its own stale branch
           # rather than dying on a non-fast-forward against the previous attempt.
           git push --force origin "$branch"
@@ -308,7 +313,7 @@ jobs:
             exit 0
           fi
           gh pr create --repo "$tap" --base main --head "$branch" \
-            --title "ac3forge + ac3gui: bump to ${VERSION_TAG}" \
+            --title "iclforge (formula and cask): bump to ${VERSION_TAG}" \
             --body "Automated bump for [\`${VERSION_TAG}\`](https://github.com/${REPO}/releases/tag/${VERSION_TAG}), copied from that release run's own staged manifests.
 
           Needs a human: \`brew audit\`, \`brew install --build-from-source\` and \`brew test\` (plus the cask equivalents) from a real macOS machine. There is no Homebrew on any of this project's CI runners, so nothing here validates the formula."

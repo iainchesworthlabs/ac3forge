@@ -2,7 +2,7 @@
 checking that OAMD (object_metadata) and JOC (object_audio) both come back populated.
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 
 

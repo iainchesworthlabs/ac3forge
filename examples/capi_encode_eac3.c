@@ -27,46 +27,46 @@ static const double kTonesHz[kNumChannels] = {1000.0, 1200.0, 800.0,  600.0,
 
 static void fill_with_audio(float* channels[kNumChannels], int frame, double rate) {
     for (int ch = 0; ch < kNumChannels; ++ch) {
-        for (int n = 0; n < AC3FORGE_SAMPLES_PER_FRAME; ++n) {
-            const double t = (frame * AC3FORGE_SAMPLES_PER_FRAME + n) / rate;
+        for (int n = 0; n < ICLFORGE_SAMPLES_PER_FRAME; ++n) {
+            const double t = (frame * ICLFORGE_SAMPLES_PER_FRAME + n) / rate;
             channels[ch][n] = (float)(0.3 * sin(2.0 * kPi * kTonesHz[ch] * t));
         }
     }
 }
 
 int main(void) {
-    ac3forge_eac3_frame_config_t independent;
-    ac3forge_eac3_frame_config_init(&independent);
+    iclforge_eac3_frame_config_t independent;
+    iclforge_eac3_frame_config_init(&independent);
     independent.bitrate_kbps = 448;
-    independent.acmod = AC3FORGE_ACMOD_3_2; /* L, C, R, Ls, Rs */
+    independent.acmod = ICLFORGE_ACMOD_3_2; /* L, C, R, Ls, Rs */
     independent.lfe = 1;
 
-    ac3forge_eac3_frame_config_t dependent;
-    ac3forge_eac3_frame_config_init(&dependent);
+    iclforge_eac3_frame_config_t dependent;
+    iclforge_eac3_frame_config_init(&dependent);
     dependent.bitrate_kbps = 192;
-    dependent.acmod = AC3FORGE_ACMOD_2_0;
+    dependent.acmod = ICLFORGE_ACMOD_2_0;
     dependent.has_chanmap = 1;
-    dependent.chanmap = AC3FORGE_CHANMAP_512_HEIGHT; /* Vhl, Vhr -> 5.1.2 */
+    dependent.chanmap = ICLFORGE_CHANMAP_512_HEIGHT; /* Vhl, Vhr -> 5.1.2 */
 
-    ac3forge_eac3_access_unit_encoder_t* encoder = NULL;
-    ac3forge_status_t status =
-        ac3forge_eac3_access_unit_encoder_create(&independent, &dependent, 1, &encoder);
-    if (status != AC3FORGE_OK) {
-        fprintf(stderr, "access-unit encoder create failed: %s\n", ac3forge_status_message(status));
+    iclforge_eac3_access_unit_encoder_t* encoder = NULL;
+    iclforge_status_t status =
+        iclforge_eac3_access_unit_encoder_create(&independent, &dependent, 1, &encoder);
+    if (status != ICLFORGE_OK) {
+        fprintf(stderr, "access-unit encoder create failed: %s\n", iclforge_status_message(status));
         return 1;
     }
 
-    ac3forge_decoder_config_t decoder_config;
-    ac3forge_decoder_config_init(&decoder_config);
-    ac3forge_eac3_decoder_t* decoder = NULL;
-    status = ac3forge_eac3_decoder_create(&decoder_config, &decoder);
-    if (status != AC3FORGE_OK) {
-        fprintf(stderr, "decoder create failed: %s\n", ac3forge_status_message(status));
-        ac3forge_eac3_access_unit_encoder_destroy(encoder);
+    iclforge_decoder_config_t decoder_config;
+    iclforge_decoder_config_init(&decoder_config);
+    iclforge_eac3_decoder_t* decoder = NULL;
+    status = iclforge_eac3_decoder_create(&decoder_config, &decoder);
+    if (status != ICLFORGE_OK) {
+        fprintf(stderr, "decoder create failed: %s\n", iclforge_status_message(status));
+        iclforge_eac3_access_unit_encoder_destroy(encoder);
         return 1;
     }
 
-    float storage[kNumChannels][AC3FORGE_SAMPLES_PER_FRAME];
+    float storage[kNumChannels][ICLFORGE_SAMPLES_PER_FRAME];
     float* channels[kNumChannels];
     for (int ch = 0; ch < kNumChannels; ++ch) {
         channels[ch] = storage[ch];
@@ -76,46 +76,46 @@ int main(void) {
     for (int frame = 0; frame < kNumFrames; ++frame) {
         fill_with_audio(channels, frame, 48000.0);
 
-        ac3forge_eac3_access_unit_t* unit = NULL;
-        status = ac3forge_eac3_access_unit_encoder_encode(
-            encoder, (const float* const*)channels, kNumChannels, AC3FORGE_SAMPLES_PER_FRAME, NULL,
+        iclforge_eac3_access_unit_t* unit = NULL;
+        status = iclforge_eac3_access_unit_encoder_encode(
+            encoder, (const float* const*)channels, kNumChannels, ICLFORGE_SAMPLES_PER_FRAME, NULL,
             0, &unit);
-        if (status != AC3FORGE_OK) {
-            fprintf(stderr, "encode failed: %s\n", ac3forge_status_message(status));
-            ac3forge_eac3_decoder_destroy(decoder);
-            ac3forge_eac3_access_unit_encoder_destroy(encoder);
+        if (status != ICLFORGE_OK) {
+            fprintf(stderr, "encode failed: %s\n", iclforge_status_message(status));
+            iclforge_eac3_decoder_destroy(decoder);
+            iclforge_eac3_access_unit_encoder_destroy(encoder);
             return 1;
         }
-        total_bytes += ac3forge_eac3_access_unit_size(unit);
+        total_bytes += iclforge_eac3_access_unit_size(unit);
 
-        ac3forge_decoded_access_unit_t* decoded = NULL;
-        status = ac3forge_eac3_decoder_decode_access_unit(
-            decoder, ac3forge_eac3_access_unit_data(unit), ac3forge_eac3_access_unit_size(unit),
+        iclforge_decoded_access_unit_t* decoded = NULL;
+        status = iclforge_eac3_decoder_decode_access_unit(
+            decoder, iclforge_eac3_access_unit_data(unit), iclforge_eac3_access_unit_size(unit),
             &decoded);
-        ac3forge_eac3_access_unit_destroy(unit);
-        if (status != AC3FORGE_OK) {
-            fprintf(stderr, "decode failed: %s\n", ac3forge_status_message(status));
-            ac3forge_eac3_decoder_destroy(decoder);
-            ac3forge_eac3_access_unit_encoder_destroy(encoder);
+        iclforge_eac3_access_unit_destroy(unit);
+        if (status != ICLFORGE_OK) {
+            fprintf(stderr, "decode failed: %s\n", iclforge_status_message(status));
+            iclforge_eac3_decoder_destroy(decoder);
+            iclforge_eac3_access_unit_encoder_destroy(encoder);
             return 1;
         }
 
         if (frame == 0 && decoded != NULL) {
             printf("decoded acmod=%d substreams=%d channels=%zu dialnorm=%d\n",
-                   (int)ac3forge_decoded_access_unit_acmod(decoded),
-                   ac3forge_decoded_access_unit_substream_count(decoded),
-                   ac3forge_decoded_access_unit_channel_count(decoded),
-                   ac3forge_decoded_access_unit_dialnorm(decoded));
+                   (int)iclforge_decoded_access_unit_acmod(decoded),
+                   iclforge_decoded_access_unit_substream_count(decoded),
+                   iclforge_decoded_access_unit_channel_count(decoded),
+                   iclforge_decoded_access_unit_dialnorm(decoded));
         }
         if (decoded != NULL) {
-            ac3forge_decoded_access_unit_destroy(decoded);
+            iclforge_decoded_access_unit_destroy(decoded);
         }
     }
 
-    ac3forge_eac3_decoder_destroy(decoder);
-    ac3forge_eac3_access_unit_encoder_destroy(encoder);
+    iclforge_eac3_decoder_destroy(decoder);
+    iclforge_eac3_access_unit_encoder_destroy(encoder);
 
-    printf("%zu bytes of E-AC-3 (5.1.2), decoded via ac3forge_c %s\n", total_bytes,
-           ac3forge_version().full);
+    printf("%zu bytes of E-AC-3 (5.1.2), decoded via iclforge_c %s\n", total_bytes,
+           iclforge_version().full);
     return 0;
 }

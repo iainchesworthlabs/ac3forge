@@ -7,22 +7,22 @@
 // audio thread proper, only drains the RingBuffer this file writes into.
 //
 // The Emscripten glue (apps/wasm/decoder_bindings.cpp's compiled output,
-// `ac3forge_decode.js`) is a MODULARIZE-style script, not an ES module
+// `iclforge_decode.js`) is a MODULARIZE-style script, not an ES module
 // (apps/wasm/CMakeLists.txt does not set -sEXPORT_ES6) - so it can't be
 // `import`ed directly here the way ring-buffer.ts/push-decoder.ts can. It's
 // loaded by fetching its source as text and re-exporting the
-// `createAc3ForgeModule` global it defines as a Blob-URL ES module - a
+// `createIclForgeModule` global it defines as a Blob-URL ES module - a
 // well-known technique for consuming a classic/UMD script from a module
 // context without eval() or a bundler-specific loader.
 import { PushDecoder } from "./push-decoder.js";
 import { RingBufferWriter } from "./ring-buffer.js";
 async function loadEmscriptenGlue(glueUrl) {
     const source = await (await fetch(glueUrl)).text();
-    // createAc3ForgeModule is the MODULARIZE+EXPORT_NAME global the glue
+    // createIclForgeModule is the MODULARIZE+EXPORT_NAME global the glue
     // defines when evaluated as a plain script (apps/wasm/CMakeLists.txt's
     // link options) - re-exporting it is what makes the Blob URL below
     // `import`able.
-    const blob = new Blob([source, "\nexport default createAc3ForgeModule;\n"], {
+    const blob = new Blob([source, "\nexport default createIclForgeModule;\n"], {
         type: "text/javascript",
     });
     const blobUrl = URL.createObjectURL(blob);

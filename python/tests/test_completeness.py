@@ -2,7 +2,7 @@
 context manager - each through a real encode, never silence and never only frame 0 (see
 CONTRIBUTING.md's "Test with real audio")."""
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

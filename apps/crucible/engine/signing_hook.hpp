@@ -28,8 +28,8 @@ public:
     // them - so the controller reads that from the environment itself.
     enum class Source : std::uint8_t { kNone, kFile, kEnvironment };
 
-    // Loads from `explicit_path` if non-empty, else $AC3FORGE_SIGNING_KEY_FILE,
-    // else $AC3FORGE_SIGNING_KEY (iclforge::signing::load_signing_key's own order).
+    // Loads from `explicit_path` if non-empty, else $ICLFORGE_SIGNING_KEY_FILE,
+    // else $ICLFORGE_SIGNING_KEY (iclforge::signing::load_signing_key's own order).
     // Returns a one-line status for the UI either way.
     std::string load(std::string_view explicit_path);
     void clear();

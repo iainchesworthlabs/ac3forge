@@ -326,7 +326,7 @@ Item {
         NetworkSinkSettings { }
     }
 
-    // A sink already paired and idle, but not offering _ac3forge_player@v1
+    // A sink already paired and idle, but not offering _iclforge_player@v1
     // (a standard Sendspin player, e.g. "Kitchen speaker" in the mockups) -
     // nothing to decide for it: it takes stereo only, and has no settings
     // command to speak of. Small enough, and specific enough to this state,

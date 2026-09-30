@@ -89,11 +89,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         // §E1.3: two unrelated programmes, no Table E2.5 location to order
         // by - Ch1/Ch2 go out in coded order, the identity write_wav_f32's
         // default (empty channel_order) already gives.
-        ac3forge::fuzzdiff::run_differential("eac3", bytes, ".ec3", pcm, sample_rate, {});
+        iclforge::fuzzdiff::run_differential("eac3", bytes, ".ec3", pcm, sample_rate, {});
         return 0;
     }
     const auto map = iclforge::plan::wav_order(
         std::span{first.layout.items}.first(static_cast<std::size_t>(first.layout.count)));
-    ac3forge::fuzzdiff::run_differential("eac3", bytes, ".ec3", pcm, sample_rate, map);
+    iclforge::fuzzdiff::run_differential("eac3", bytes, ".ec3", pcm, sample_rate, map);
     return 0;
 }

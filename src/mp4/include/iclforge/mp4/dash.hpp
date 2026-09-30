@@ -136,12 +136,12 @@ struct MpdOptions {
 // both come from the segments handed in rather than being assumed to start at
 // the beginning of the track, which is what lets a rolling live WINDOW (see
 // iclforge::mp4::FragmentWriter::window()) describe itself correctly.
-[[nodiscard]] MP4_EXPORT std::string build_dash_adaptation_set(
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_dash_adaptation_set(
     const AudioTrack& track, std::span<const SegmentInfo> segments,
     const DashOptions& options = {});
 
 // Convenience overload for a caller holding iclforge::mp4::fragment()'s batch output.
-[[nodiscard]] MP4_EXPORT std::string build_dash_adaptation_set(
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_dash_adaptation_set(
     const AudioTrack& track, std::span<const MediaSegment> segments,
     const DashOptions& options = {});
 
@@ -149,12 +149,12 @@ struct MpdOptions {
 // snippet - the file a packager or origin serves as "manifest.mpd". Static by
 // default (mediaPresentationDuration summed from the segments handed in);
 // MpdOptions::is_static = false makes it the live/dynamic form instead.
-[[nodiscard]] MP4_EXPORT std::string build_dash_mpd(const AudioTrack& track,
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_dash_mpd(const AudioTrack& track,
                                                     std::span<const SegmentInfo> segments,
                                                     std::string_view adaptation_set,
                                                     const MpdOptions& options = {});
 
-[[nodiscard]] MP4_EXPORT std::string build_dash_mpd(const AudioTrack& track,
+[[nodiscard]] ICLFORGE_MP4_EXPORT std::string build_dash_mpd(const AudioTrack& track,
                                                     std::span<const MediaSegment> segments,
                                                     std::string_view adaptation_set,
                                                     const MpdOptions& options = {});

@@ -133,7 +133,7 @@ inline constexpr int kMaxAbsoluteExponent = 15;  // 4-bit exps[ch][0] field, §7
 // a multiple of scaled's own ulp with magnitude below 1), so the two
 // comparisons against +-0.5 below decide the tie exactly.
 //
-// A template so the float encode path (AC3FORGE_ENCODE_SCALAR, see
+// A template so the float encode path (ICLFORGE_ENCODE_SCALAR, see
 // docs/building.md) rounds its own scalar rather than widening every bin.
 // Each step is exact in float for the reason it is exact in double: the scale
 // is a power of two, and the clamp keeps |scaled| below 2^24, so both the

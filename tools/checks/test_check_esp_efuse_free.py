@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import check_esp_efuse_free
 
-HEARTH = "esp-idf/ac3forge/examples/hearth_sink"
+HEARTH = "esp-idf/iclforge/examples/hearth_sink"
 
 
 def _write(root: Path, relative: str, text: str) -> Path:

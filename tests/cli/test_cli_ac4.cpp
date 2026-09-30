@@ -37,7 +37,7 @@ namespace {
 // tests/cli/test_cli_containers.cpp, whose shapes these copy).
 fs::path scratch_dir() {
     auto dir =
-        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_ac4_" + iclforge::test::platform::process_id());
+        fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("cli_ac4_" + iclforge::test::platform::process_id());
     fs::create_directories(dir);
     return dir;
 }

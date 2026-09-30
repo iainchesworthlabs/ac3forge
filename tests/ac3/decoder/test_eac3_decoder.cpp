@@ -1014,7 +1014,7 @@ TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decode
     // actually rewards, so this drives the same golden `reference_stereo.wav`
     // other coupling tests already trust, looped to give the low real hit
     // rate enough tries to land at least once.
-    const auto fixture = iclforge::io::read_wav(std::string{AC3FORGE_GOLDEN_AUDIO_DIR} +
+    const auto fixture = iclforge::io::read_wav(std::string{ICLFORGE_GOLDEN_AUDIO_DIR} +
                                            "/reference_stereo.wav");
     REQUIRE(fixture.has_value());
     const auto& source = fixture->channels;

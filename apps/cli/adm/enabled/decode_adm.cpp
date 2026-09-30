@@ -6,7 +6,7 @@
 #include "iclforge/admbridge/bridge.hpp"
 #include "iclforge/adm/ac3adm.hpp"
 
-// Compiled only when AC3FORGE_BUILD_ADM turned iclforge::adm/iclforge::admbridge on (see
+// Compiled only when ICLFORGE_BUILD_ADM turned iclforge::adm/iclforge::admbridge on (see
 // apps/cli/CMakeLists.txt) - see ../decode_adm.hpp's own top comment for why this file, rather
 // than a preprocessor conditional inside decode.cpp, is the mechanism.
 

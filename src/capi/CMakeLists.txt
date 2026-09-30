@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
-# ac3forge_c - C API: a stable, minimal C-callable surface over
+# iclforge_c - C API: a stable, minimal C-callable surface over
 # iclforge::ac3's encode/decode core (AC-3, E-AC-3, Atmos/OAMD/JOC), for bindings
 # and embedding by callers that cannot or do not want to link C++23. The
-# public header (include/ac3forge_c/ac3forge.h) is plain C11 - no C++ type
+# public header (include/iclforge_c/iclforge.h) is plain C11 - no C++ type
 # ever crosses it, only opaque handles and POD structs - so this is the one
 # target in the tree meant to be consumed by a non-C++ toolchain directly.
 #
@@ -16,20 +16,20 @@
 # include path) rather than tracking BUILD_SHARED_LIBS. A binding or embedder
 # reaching for a C ABI wants exactly one library to load (dlopen/ctypes/
 # ffi.dlopen all expect a single self-contained module) - making
-# ac3forge_c_shared's own linkage depend on a separately-shipped
-# libac3forge.so would defeat that. iclforge_ac3_static's objects are already built
+# iclforge_c_shared's own linkage depend on a separately-shipped
+# libiclforge_ac3.so would defeat that. iclforge_ac3_static's objects are already built
 # PIC (src/ac3/CMakeLists.txt), so embedding them in a shared library is
 # safe on every platform this project targets.
 #
 # The embedded codec has to stay private to this library, or a program that
 # links iclforge::ac3_shared and this library together can run the C++ API on the
 # copy inside this one. Two things keep it private:
-#  - linking iclforge::c_shared must not put libac3forge_static.a on the
-#    consumer's link line, where it beats a libac3forge.so listed after it
+#  - linking iclforge::c_shared must not put libiclforge_ac3_static.a on the
+#    consumer's link line, where it beats a libiclforge_ac3.so listed after it
 #    (iclforge_capi_objects, below);
-#  - libac3forge_c.so exports the C API and nothing else (the end of this file).
+#  - libiclforge_c.so exports the C API and nothing else (the end of this file).
 # Without them ac3tests in the BUILD_SHARED_LIBS=ON pass bound none of its
-# ac3:: symbols to libac3forge.so; tools/checks/check_shared_forge_binding.sh
+# ac3:: symbols to libiclforge_ac3.so; tools/checks/check_shared_forge_binding.sh
 # checks that it does.
 # ---------------------------------------------------------------------------
 add_library(iclforge_capi_objects OBJECT)
@@ -62,15 +62,15 @@ target_sources(iclforge_capi_objects
 
 # AC-4 (decision 21, planning/ac4.md phase I4): embedded the same way
 # iclforge::ac3_static is - see the target_link_libraries() calls below - so a
-# caller loading this one library gets AC-4 too. ac3forge.h's AC-4 section is
+# caller loading this one library gets AC-4 too. iclforge.h's AC-4 section is
 # declared either way (that header's own comment: this codebase selects a
 # variant by CMake, never by preprocessor conditional - see
 # tools/checks/check_platform_macros.ps1), so the choice below is which
 # translation unit answers those 76 functions, not whether they exist:
-# ac4.cpp/ac4_encoder.cpp with AC3FORGE_BUILD_AC4 on, ac4_absent.cpp (which
+# ac4.cpp/ac4_encoder.cpp with ICLFORGE_BUILD_AC4 on, ac4_absent.cpp (which
 # names no ac4:: C++ type, so it needs neither the AC-4 headers nor the
 # static libraries linked below) with it off.
-if(AC3FORGE_BUILD_AC4)
+if(ICLFORGE_BUILD_AC4)
     target_sources(iclforge_capi_objects
         PRIVATE
             src/ac4.cpp
@@ -91,26 +91,26 @@ target_compile_features(iclforge_capi_objects PUBLIC cxx_std_23)
 # embed the static codec rather than tracking BUILD_SHARED_LIBS.
 #
 # iclforge_capi_objects takes only iclforge::ac3_static's usage requirements (include
-# path, AC3FORGE_STATIC_DEFINE, C++23), through $<COMPILE_ONLY:...>. It must not
+# path, ICLFORGE_AC3_STATIC_DEFINE, C++23), through $<COMPILE_ONLY:...>. It must not
 # link it: an OBJECT library has no link step to hide a PRIVATE dependency
 # behind, so the dependency lands in its INTERFACE_LINK_LIBRARIES, and both
 # libraries below link iclforge_capi_objects PUBLIC for its include path. Linked
 # PRIVATE here, iclforge::ac3_static reached every consumer of
-# iclforge::c_shared, and ac3tests' link line carried libac3forge_static.a
-# ahead of libac3forge.so, so the archive supplied the symbols the tests call.
+# iclforge::c_shared, and ac3tests' link line carried libiclforge_ac3_static.a
+# ahead of libiclforge_ac3.so, so the archive supplied the symbols the tests call.
 # The two libraries link it themselves instead, where PRIVATE means what it
 # says: a shared library keeps it to itself, and a static one passes it on to
 # its consumers as a link-only dependency, which they need.
 #
-# $<BUILD_INTERFACE:...> wraps ac3::warnings and ac3::coverage for the "dev-only,
+# $<BUILD_INTERFACE:...> wraps iclforge::warnings and iclforge::coverage for the "dev-only,
 # must not enter the export graph" reason src/ac3/CMakeLists.txt's identical
 # iclforge_ac3_objects treatment documents, and the compile-only iclforge::ac3_static
 # because nothing that uses the installed package compiles these objects.
 target_link_libraries(iclforge_capi_objects
     PRIVATE
         "$<BUILD_INTERFACE:$<COMPILE_ONLY:iclforge::ac3_static>>"
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>")
+        "$<BUILD_INTERFACE:iclforge::warnings>"
+        "$<BUILD_INTERFACE:iclforge::coverage>")
 target_link_libraries(iclforge_capi_static PRIVATE iclforge::ac3_static)
 target_link_libraries(iclforge_capi_shared PRIVATE iclforge::ac3_static)
 
@@ -124,7 +124,7 @@ target_link_libraries(iclforge_capi_shared PRIVATE iclforge::ac3_static)
 # link-only, so naming the decoder and encoder archives here is enough to
 # pull in the inspector and the DSP core transitively - apps/cli/CMakeLists.txt
 # relies on the same transitive closure for iclforge::ac4dec/iclforge::ac4enc.
-if(AC3FORGE_BUILD_AC4)
+if(ICLFORGE_BUILD_AC4)
     target_link_libraries(iclforge_capi_objects
         PRIVATE
             "$<BUILD_INTERFACE:$<COMPILE_ONLY:iclforge::ac4dec_static>>"
@@ -139,33 +139,33 @@ set_target_properties(iclforge_capi_objects PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
-set_target_properties(iclforge_capi_shared PROPERTIES DEFINE_SYMBOL "AC3FORGEC_BUILDING_SHARED")
+set_target_properties(iclforge_capi_shared PROPERTIES DEFINE_SYMBOL "ICLFORGE_C_BUILDING_SHARED")
 generate_export_header(iclforge_capi_shared
-    BASE_NAME AC3FORGEC
-    EXPORT_MACRO_NAME AC3FORGEC_EXPORT
+    BASE_NAME ICLFORGE_C
+    EXPORT_MACRO_NAME ICLFORGE_C_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge_c/export.h"
     DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC3FORGEC_STATIC_DEFINE)
-target_compile_definitions(iclforge_capi_objects PRIVATE AC3FORGEC_BUILDING_SHARED)
-target_compile_definitions(iclforge_capi_static PUBLIC AC3FORGEC_STATIC_DEFINE)
+    STATIC_DEFINE ICLFORGE_C_STATIC_DEFINE)
+target_compile_definitions(iclforge_capi_objects PRIVATE ICLFORGE_C_BUILDING_SHARED)
+target_compile_definitions(iclforge_capi_static PUBLIC ICLFORGE_C_STATIC_DEFINE)
 
 # generate_export_header() emits a C++-flavoured export.h ("#ifdef __cplusplus
 # extern \"C\" {") by default only for the dllexport/dllimport attribute
-# syntax itself, which is fine - the macro it defines (AC3FORGEC_EXPORT) is a
+# syntax itself, which is fine - the macro it defines (ICLFORGE_C_EXPORT) is a
 # plain object-like #define either way, usable from a .c translation unit
-# exactly like from a .cpp one. ac3forge.h's own extern "C" block (guarded on
+# exactly like from a .cpp one. iclforge.h's own extern "C" block (guarded on
 # __cplusplus) is what actually matters for C linkage, not this header.
 
 # Compile-time version macros (AP1) - a plain configure_file rather than
 # GenerateVersion.cmake's restamp-every-build machinery, since PROJECT_VERSION
 # only changes on a reconfigure anyway (unlike the git provenance
 # ac3/version.hpp also carries, which this header does not need).
-string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" AC3FORGEC_VERSION_MATCH "${PROJECT_VERSION}")
-set(AC3FORGEC_VERSION_MAJOR "${CMAKE_MATCH_1}")
-set(AC3FORGEC_VERSION_MINOR "${CMAKE_MATCH_2}")
-set(AC3FORGEC_VERSION_PATCH "${CMAKE_MATCH_3}")
-# Feeds version.h.in's #cmakedefine AC3FORGE_HAS_AC4 - see that file's comment.
-set(AC3FORGE_HAS_AC4 ${AC3FORGE_BUILD_AC4})
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" ICLFORGE_C_VERSION_MATCH "${PROJECT_VERSION}")
+set(ICLFORGE_C_VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(ICLFORGE_C_VERSION_MINOR "${CMAKE_MATCH_2}")
+set(ICLFORGE_C_VERSION_PATCH "${CMAKE_MATCH_3}")
+# Feeds version.h.in's #cmakedefine ICLFORGE_HAS_AC4 - see that file's comment.
+set(ICLFORGE_HAS_AC4 ${ICLFORGE_BUILD_AC4})
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/include/iclforge_c/version.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/iclforge_c/version.h"
@@ -178,12 +178,12 @@ set_target_properties(iclforge_capi_shared PROPERTIES
 set_target_properties(iclforge_capi_shared PROPERTIES OUTPUT_NAME "iclforge_c")
 set_target_properties(iclforge_capi_static PROPERTIES OUTPUT_NAME "iclforge_c_static")
 
-# libac3forge_c.so exports the C API and nothing else. iclforge_ac3_static's objects are
-# compiled once, for iclforge_ac3_shared as well, with AC3FORGE_EXPORT marking the C++
+# libiclforge_c.so exports the C API and nothing else. iclforge_ac3_static's objects are
+# compiled once, for iclforge_ac3_shared as well, with ICLFORGE_AC3_EXPORT marking the C++
 # API for export, so without --exclude-libs the linker exports every one of them
 # that the embedded copy pulled in: 346 of the 562 lines of this library's ABI
 # allowlist were codec symbols, beside its 216 C functions. A process that then
-# loaded libac3forge.so had the C++ API, and libac3forge.so's own calls to
+# loaded libiclforge_ac3.so had the C++ API, and libiclforge_ac3.so's own calls to
 # itself, bound to the copy in this library. --exclude-libs makes the linker
 # treat every symbol it takes from an archive as local; src/adm/CMakeLists.txt
 # does the same for the same reason. ELF linkers only (GNU ld, gold, lld, mold):

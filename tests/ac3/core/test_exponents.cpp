@@ -258,7 +258,7 @@ TEST_CASE("encode/decode properties over random exponent sets", "[exponents]") {
     }
 }
 
-// The float forms (AC3FORGE_ENCODE_SCALAR's path) against the double ones on
+// The float forms (ICLFORGE_ENCODE_SCALAR's path) against the double ones on
 // the same float values: to_fixed25's float instantiation is exact for the
 // same reasons the double one is (exponents.hpp), so the two must agree on
 // every input, ties included.

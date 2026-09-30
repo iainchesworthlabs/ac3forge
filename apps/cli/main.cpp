@@ -136,7 +136,7 @@ struct Args {
 //
 // kAdm ('atmos-adm', ADM BWF reader phase 3): unlike the three audio ones, this is not a hardware
 // question - it is whether iclforge::adm/iclforge::admbridge were linked into this build at all
-// (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own option()). Answered the
+// (ICLFORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own option()). Answered the
 // same way regardless: adm/atmos_adm.hpp's ac3cli::adm_capability(), backed by exactly one of
 // adm/enabled/atmos_adm.cpp or adm/disabled/atmos_adm.cpp (see run_atmos_adm's own comment for
 // why a CMake-selected file, not a preprocessor conditional, decides this).
@@ -193,7 +193,7 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 44 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
+// 44 commands, always - including atmos-adm and atmos-iab, whether or not ICLFORGE_BUILD_ADM
 // linked iclforge::adm/iclforge::admbridge into this particular build (see Needs::kAdm/unmet()
 // above and run_atmos_adm's own comment): a command this build cannot run is listed with Needs
 // gating it, never sized out of the table entirely - the identical "listed, not hidden" treatment
@@ -257,7 +257,7 @@ constexpr std::array<Command, 44> kCommands{{
      "E-AC-3 (default) or, with codec=ac4, to an AC-4 A-JOC or direct-coded object substream "
      "(coding=ajoc, the default, or coding=direct); every bed/object channel the resolved "
      "audioProgramme names becomes a dynamic object, driven by the file's own authored automation "
-     "- no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON",
+     "- no scene file needed. Only in builds with -DICLFORGE_BUILD_ADM=ON",
      topic::kAtmos | topic::kMeta | topic::kObjects,
      Needs::kAdm,
      [](const Args& x) {
@@ -269,7 +269,7 @@ constexpr std::array<Command, 44> kCommands{{
      "E-AC-3 (default) or, with codec=ac4, to an AC-4 A-JOC or direct-coded object substream "
      "(coding=ajoc, the default, or coding=direct); every Bed channel/Object the file names "
      "becomes a dynamic object, driven by the file's own authored panning - no scene file needed. "
-     "Only in builds with -DAC3FORGE_BUILD_ADM=ON",
+     "Only in builds with -DICLFORGE_BUILD_ADM=ON",
      topic::kAtmos | topic::kMeta | topic::kObjects,
      Needs::kAdm,
      [](const Args& x) { return run_atmos_iab(x.str(1), x.str(2), x.u32(3, 448), x.meta); }},
@@ -366,7 +366,7 @@ constexpr std::array<Command, 44> kCommands{{
      "direct-coded objects renders them to the output's speakers as coded (7.1.4 by default), and "
      "syntax-trace=<file> writes what the decoder reads. "
      "objects_dir: export each object's own PCM as its own object_NN.wav there - JOC-reconstructed "
-     "for E-AC-3 Atmos, D10's decoded objects for AC-4. adm_out (needs -DAC3FORGE_BUILD_ADM=ON): "
+     "for E-AC-3 Atmos, D10's decoded objects for AC-4. adm_out (needs -DICLFORGE_BUILD_ADM=ON): "
      "write a Dolby Atmos Master ADM Profile BW64 there (legacy item IM2 for E-AC-3; for AC-4, "
      "every bed and dynamic object with its own decoded Annex F properties) - bed/LFE channels "
      "pinned to their speaker, dynamic objects positioned by their own timeline",

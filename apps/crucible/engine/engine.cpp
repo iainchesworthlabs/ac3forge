@@ -370,7 +370,7 @@ struct Engine::Impl {
             fullscreen_pid = latest_fullscreen_pid;
             sessions_fresh = false;
         }
-        AC3_ZONE_SCOPED_N("take sessions");
+        ICLFORGE_ZONE_SCOPED_N("take sessions");
         std::vector<AppId> ids;  // what to tap: applications with a session
         ids.reserve(apps.size());
         known.clear();
@@ -600,7 +600,7 @@ struct Engine::Impl {
                     keep = keep_ids;
                 }
                 {
-                    AC3_ZONE_SCOPED_N("session monitor");
+                    ICLFORGE_ZONE_SCOPED_N("session monitor");
                     apps = sessions->refresh(keep);
                 }
                 // The foreground in the same pass: what is in front of the
@@ -608,7 +608,7 @@ struct Engine::Impl {
                 // which is why it is here and not on the frame thread.
                 std::optional<std::uint32_t> fullscreen_pid;
                 {
-                    AC3_ZONE_SCOPED_N("foreground");
+                    ICLFORGE_ZONE_SCOPED_N("foreground");
                     fullscreen_pid = foreground->fullscreen_pid();
                 }
                 {
@@ -643,10 +643,10 @@ struct Engine::Impl {
         publish(StartState::kBuilt);
 
         while (!stop.stop_requested()) {
-            AC3_ZONE_SCOPED_N("crucible frame");
+            ICLFORGE_ZONE_SCOPED_N("crucible frame");
             const auto frame_start = std::chrono::steady_clock::now();
             {
-                AC3_ZONE_SCOPED_N("commands");
+                ICLFORGE_ZONE_SCOPED_N("commands");
                 std::vector<std::function<void()>> pending;
                 {
                     const std::lock_guard<std::mutex> lock(mutex);
@@ -677,7 +677,7 @@ struct Engine::Impl {
                     probe_thread.join();
                 }
                 probe_thread = std::jthread([this] {
-                    AC3_ZONE_SCOPED_N("probe (off-thread)");
+                    ICLFORGE_ZONE_SCOPED_N("probe (off-thread)");
                     auto facts = output->enumerate();
                     {
                         const std::lock_guard<std::mutex> lock(probe_mutex);
@@ -695,7 +695,7 @@ struct Engine::Impl {
                     facts.swap(probe_result);
                 }
                 if (facts.has_value()) {
-                    AC3_ZONE_SCOPED_N("apply probe");
+                    ICLFORGE_ZONE_SCOPED_N("apply probe");
                     const auto before = output->status().mode;
                     const auto before_endpoint = output->status().endpoint_id;
                     output->apply(std::move(*facts), signing.available());
@@ -767,10 +767,10 @@ struct Engine::Impl {
             }
             if (taps.size() == 0) {
                 // Nothing to tap: keep the stream alive at real time anyway.
-                AC3_ZONE_SCOPED_N("idle");
+                ICLFORGE_ZONE_SCOPED_N("idle");
                 std::this_thread::sleep_for(frame_duration);
             } else {
-                AC3_ZONE_SCOPED_N("taps");
+                ICLFORGE_ZONE_SCOPED_N("taps");
                 for (const auto& read : taps.read(frames_per, kTapWaitMs)) {
                     if (read.starved) {
                         ++starved;
@@ -800,9 +800,9 @@ struct Engine::Impl {
             placement.step(placements);
 
             const auto encode_start = std::chrono::steady_clock::now();
-            AC3_ZONE_BEGIN(encode_zone, "encode");
+            ICLFORGE_ZONE_BEGIN(encode_zone, "encode");
             auto unit = encoder->encode_frame(views, placements);
-            AC3_ZONE_END(encode_zone);
+            ICLFORGE_ZONE_END(encode_zone);
             const double encode_ms = std::chrono::duration<double, std::milli>(
                                          std::chrono::steady_clock::now() - encode_start)
                                          .count();
@@ -825,11 +825,11 @@ struct Engine::Impl {
                 bed_views[ch] = bed_channels[ch];
             }
             {
-                AC3_ZONE_SCOPED_N("submit");
+                ICLFORGE_ZONE_SCOPED_N("submit");
                 output->submit(unit_bytes, RawFrame{.objects = views, .placements = placements, .bed = bed_views});
             }
             ++frames_encoded;
-            AC3_FRAME_MARK();
+            ICLFORGE_FRAME_MARK();
 
             const double ms = std::chrono::duration<double, std::milli>(
                                   std::chrono::steady_clock::now() - frame_start)

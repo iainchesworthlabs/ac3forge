@@ -25,7 +25,7 @@ the float32 path worth having and real-time decode worth measuring.
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
 | Sendspin sink | `hearth_sink` requires an ESP32-S3 board with 8 MB of PSRAM and plays as a Sendspin player on Wi-Fi. Two boards played one E-AC-3 JOC programme as a group for ten minutes with no underrun and their play times within 549 µs — see [As a Sendspin sink](#as-a-sendspin-sink) and [the sink guide](../../hearth/sink-esp32-s3.md) |
 | Real time | **Decode, yes, on a board**, at 240 MHz, every one of the fourteen fixtures: from 0.07x for AC-3 mono to 0.92x for E-AC-3 7.1.4 folded to stereo, with objects placed onto 7.1.4 at 0.78x — see [Timing](#timing). The probe's board timings on this page are those of 2026-09-09 to 2026-09-11. **Encode: AC-3 2/0 and E-AC-3 2/0, yes**, 0.35x and 0.73x with the encoders in `float` end to end and the search made cheaper; AC-3 5.1 at 1.01x sits at the line, 2/0 with tools 1.3x to 1.6x and E-AC-3 5.1 1.7x over, what remains being the exponent-run planner and the allocation candidates — see [Encoding](#encoding) |
-| ESPHome | An external component, `esphome/components/ac3forge/` — an AC-3 decoder and framer, not a `speaker` source. See [ESPHome](esphome.md) |
+| ESPHome | An external component, `esphome/components/iclforge/` — an AC-3 decoder and framer, not a `speaker` source. See [ESPHome](esphome.md) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU, and `hearth-esp32s3` after it, which plays to the Sendspin sink from the host; `esphome config` and the component pack in `esp-component.yml`. All are in the `esp` lane of `ci.yml`, which runs after a merge to main that changes the ESP32 trees or a tree its component ships (the [lane table](../../ci-lanes.md#lane-table) lists them), and nightly ([CI for many agents](../../ci-agentic.md#the-tiers)); a pull request's gate builds none of them |
 
 Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
@@ -67,7 +67,7 @@ ac3forge preset for this target and no entry in `cmake/toolchains/`.
 
 ### The ESP-IDF component
 
-[`esp-idf/ac3forge/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/README.md)
+[`esp-idf/iclforge/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/README.md)
 is the profile packaged as a component. A project outside this repository
 builds against it in two lines, without vendoring the source list:
 
@@ -127,7 +127,7 @@ does not apply.
 
 ## Examples
 
-Both live under `esp-idf/ac3forge/examples/` and are built by CI.
+Both live under `esp-idf/iclforge/examples/` and are built by CI.
 
 ### I2S player
 
@@ -172,7 +172,7 @@ with the dependents that extend it (§E3.8.2).
 CI runs the example under QEMU in seven shapes, each a step of `build-esp32s3` in
 `.github/workflows/_build.yml` with its own overlay on `sdkconfig.defaults`. All seven write to the
 `capture` sink, since QEMU has no I2S peripheral. The capture sink calls the same conversion
-functions as the `i2s` sink (`esp-idf/ac3forge/include/ac3forge/interleave.hpp`) and checks what
+functions as the `i2s` sink (`esp-idf/iclforge/include/iclforge/interleave.hpp`) and checks what
 they produce:
 
 - `sdkconfig.ci`: the `partition` source and the AC-3 5.1 sample, folded to Lo/Ro. Two passes, so
@@ -198,7 +198,7 @@ they produce:
   the control surface through a port forward: `GET /status`, `POST /volume` with 0.5, a replay
   through `POST /play` whose levels must come out at half, and `POST /stop`. A further step drives
   the board's web page against the same build with Playwright.
-- `sdkconfig.ci-http` with `sdkconfig.ci-http714`: the [stream set](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/www/README.md)
+- `sdkconfig.ci-http` with `sdkconfig.ci-http714`: the [stream set](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/www/README.md)
   over the same network onto 7.1.4 in twelve slots, one `POST /play` a stream, each slot's level
   held to `www/streams.json` (`tools/checks/check_stream_set.py`); a stream the manifest marks
   refused has to fail for the reason it names.
@@ -212,10 +212,10 @@ with slot padding is where the bugs are; so is the arithmetic that picks standar
 the slot count from the layout (`tests/ac3/io/test_sink_plan.cpp`). A 5.1 programme on an 8-slot bus leaves two
 slots that must be written as zeros rather than skipped: the DMA buffer is reused, so whatever the
 previous block left is what the DAC clocks out. The queue model the `i2s` sink keeps for its
-`sink.*` line (`esp-idf/ac3forge/include/ac3forge/dac_queue_model.hpp`) is unit-tested on the host
+`sink.*` line (`esp-idf/iclforge/include/iclforge/dac_queue_model.hpp`) is unit-tested on the host
 as well (`tests/ac3/io/test_dac_queue_model.cpp`), against a simulated DMA. The sink itself has run on
 two S3 boards, in standard mode and in TDM on eight 16-bit slots, with no DAC on the pins
-([On two boards](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards)).
+([On two boards](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-two-boards)).
 
 CI compares the sink's per-channel RMS against the host's answer for the same file through the
 same configuration (`ac3cli decode … downmix=loro drcmode=line`). A `result=pass` alone would be
@@ -252,7 +252,7 @@ Wi-Fi ([the Hearth plan](https://github.com/iainchesworthlabs/ac3forge/blob/main
 [An ESP32-S3 sink](../../hearth/sink-esp32-s3.md) sets a board up.
 
 The player schedules each block against the I2S channel's end-of-frame interrupts. It works from a
-model of ESP-IDF v6.1's DMA ring (`esp-idf/ac3forge/include/ac3forge/playout.hpp`), which
+model of ESP-IDF v6.1's DMA ring (`esp-idf/iclforge/include/iclforge/playout.hpp`), which
 `tests/ac3/io/test_playout.cpp` tests on the host against a simulated ring. It corrects its error in
 the decoded PCM, by dropping or repeating one frame in 256.
 
@@ -270,7 +270,7 @@ At each of the 602 seconds the server compared, the boards' reported play times 
 549 µs of each other. The 2.0 board's levels were the test sink's to the digit. Four things on
 the boards broke playback, and no host test or QEMU run showed any of them: Wi-Fi modem sleep,
 Nagle's algorithm on the player's sockets, lwIP's task on the decoder's core, and clock replies
-delayed behind a stream's chunks. [The example's README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards) describes each.
+delayed behind a stream's chunks. [The example's README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-two-boards) describes each.
 
 CI runs the same player on QEMU's Ethernet (`sdkconfig.ci-sendspin`) in `hearth-esp32s3`, a job
 that runs after `build-esp32s3`. `tools/checks/run_sendspin_qemu.sh` has `ac3hearth-testserver`

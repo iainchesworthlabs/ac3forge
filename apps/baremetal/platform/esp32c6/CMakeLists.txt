@@ -35,21 +35,21 @@
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28)
 
-get_filename_component(AC3FORGE_ESP_COMPONENTS
+get_filename_component(ICLFORGE_ESP_COMPONENTS
                        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../esp-idf" ABSOLUTE)
-set(EXTRA_COMPONENT_DIRS "${AC3FORGE_ESP_COMPONENTS}")
+set(EXTRA_COMPONENT_DIRS "${ICLFORGE_ESP_COMPONENTS}")
 
-set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
+set(ICLFORGE_ESP_PROFILE "decoder" CACHE STRING
     "Which probe to build: decoder or encoder")
 
 # The fixed-point tier by default, as on the C3 and for the same reason: no FPU.
-# `idf.py -DAC3FORGE_DECODE_SCALAR=float build` measures the float tier on the
+# `idf.py -DICLFORGE_DECODE_SCALAR=float build` measures the float tier on the
 # same part, which is the comparison docs/platforms/bare-metal/esp32-c6.md's
 # tables are made of.
-set(AC3FORGE_DECODE_SCALAR "fixed" CACHE STRING
+set(ICLFORGE_DECODE_SCALAR "fixed" CACHE STRING
     "Decode arithmetic: fixed (this part has no FPU), float, or double")
 
-set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
+set(ICLFORGE_MINIMAL_HOT_O2 ON CACHE BOOL
     "Decode-critical sources at -O2; see src/ac3/minimal.cmake")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

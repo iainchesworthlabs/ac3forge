@@ -68,7 +68,7 @@ export class RingBufferWriter extends RingBufferEnd {
    * Writes as many of `frameCount` frames as fit; returns how many were
    * actually written. A return value below `frameCount` means the reader
    * isn't draining fast enough - the caller decides whether to drop the
-   * remainder or apply backpressure (Ac3ForgeDecoderNode drops it and
+   * remainder or apply backpressure (IclForgeDecoderNode drops it and
    * reports it as an overrun, since realtime playback has no use for stale
    * audio arriving late).
    */

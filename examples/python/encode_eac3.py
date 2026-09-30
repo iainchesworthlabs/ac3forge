@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 
 # L, C, R, Ls, Rs, LFE (the 3/2+LFE bed, 6 channels), then the dependent's own acmod 2/2 (4

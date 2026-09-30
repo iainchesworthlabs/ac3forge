@@ -11,8 +11,8 @@
 #include <thread>
 #include <vector>
 
-#include "ac3forge/firmware_image.hpp"
-#include "ac3forge/firmware_status.hpp"
+#include "iclforge/firmware_image.hpp"
+#include "iclforge/firmware_status.hpp"
 
 // A Hearth sink's firmware, from this computer (planning/esp32-ota.md, O5).
 //
@@ -22,8 +22,8 @@
 // through Sendspin: an update stops the board's Sendspin player and restarts
 // the board, and the Network page has to go on following it through that.
 //
-// GET /firmware's answer is read into ac3forge::FirmwareStatus, the struct the
-// board renders it from (esp-idf/ac3forge/include/ac3forge/
+// GET /firmware's answer is read into iclforge::FirmwareStatus, the struct the
+// board renders it from (esp-idf/iclforge/include/iclforge/
 // firmware_status.hpp), and an image is held to the board's own rules
 // (firmware_image.hpp) before a byte of it is sent. The rest is ota.py's push
 // in C++: the checks it makes before an upload, the upload with its
@@ -38,7 +38,7 @@ struct SinkHardware {
     std::string target{};    // "esp32s3": what the running image was built for
     std::string chip{};      // "ESP32-S3": what runs it
     std::string revision{};  // "0.2"
-    std::string project{};   // "ac3forge_hearth_sink"
+    std::string project{};   // "iclforge_hearth_sink"
     std::string version{};
 };
 
@@ -50,17 +50,17 @@ struct SinkHardware {
 
 // A trial in ota.py's words: "healthy for 12s of 30s, waiting for a network
 // address (274s left)".
-[[nodiscard]] std::string trial_words(const ac3forge::FirmwareTrial& trial);
+[[nodiscard]] std::string trial_words(const iclforge::FirmwareTrial& trial);
 
 // Nothing when `json` is not a GET /firmware answer at all. Keys a board does
 // not send are left at their defaults: firmware from before O4 has no
 // `coredump`, and firmware_status.hpp says every other key is always there.
-[[nodiscard]] std::optional<ac3forge::FirmwareStatus> parse_firmware_status(std::string_view json);
+[[nodiscard]] std::optional<iclforge::FirmwareStatus> parse_firmware_status(std::string_view json);
 
 // An application image, read and checked on this computer.
 struct FirmwareFile {
     std::vector<std::uint8_t> data{};
-    ac3forge::ImageHead head{};
+    iclforge::ImageHead head{};
     // Of the whole file: the upload's Content-Digest, which the board checks
     // against what it received.
     std::array<std::uint8_t, 32> file_sha256{};
@@ -87,7 +87,7 @@ struct ReadFirmwareFile {
 // busy with another update, one app slot, or a network the board keeps only
 // in its running image (a bare .bin cannot say whether it has one).
 [[nodiscard]] std::optional<std::string> refuse_update(const FirmwareFile& file, const SinkHardware& hardware,
-                                                       const ac3forge::FirmwareStatus& firmware);
+                                                       const iclforge::FirmwareStatus& firmware);
 
 enum class UpdateOutcome : std::uint8_t {
     kNone,        // not decided yet
@@ -118,17 +118,17 @@ struct WaitContext {
     // running then refused the image, and one that still reports
     // `last_before` never had it.
     bool reply_lost = false;
-    std::optional<ac3forge::FirmwareLastUpdate> last_before = std::nullopt;
+    std::optional<iclforge::FirmwareLastUpdate> last_before = std::nullopt;
     // The wait for the board's check of the slot is over: an accepted image
     // is an update whether or not the check has reported.
     bool sha_wait_over = false;
 };
 
-[[nodiscard]] WaitVerdict judge_wait(const ac3forge::FirmwareStatus* firmware, const FirmwareFile& file,
+[[nodiscard]] WaitVerdict judge_wait(const iclforge::FirmwareStatus* firmware, const FirmwareFile& file,
                                      const WaitContext& context);
 
 // What to say when the wait ran out, from the last answer there was.
-[[nodiscard]] std::string silent_text(const ac3forge::FirmwareStatus* last, const FirmwareFile& file,
+[[nodiscard]] std::string silent_text(const iclforge::FirmwareStatus* last, const FirmwareFile& file,
                                       const WaitContext& context, std::chrono::seconds waited);
 
 // What became of an upload that broke off, from one GET /firmware answer or
@@ -149,7 +149,7 @@ struct BreakVerdict {
 // `since_upload` is how long ago the upload began: a board up for less than
 // that restarted in between. `wait_over` is SinkFirmwareTiming::refusal_wait
 // having run out, when the last answer decides as it is.
-[[nodiscard]] BreakVerdict judge_break(const ac3forge::FirmwareStatus* firmware, std::chrono::milliseconds since_upload,
+[[nodiscard]] BreakVerdict judge_break(const iclforge::FirmwareStatus* firmware, std::chrono::milliseconds since_upload,
                                        bool wait_over);
 
 // How often and how long SinkFirmware asks; the defaults are ota.py's.
@@ -212,7 +212,7 @@ class SinkFirmware {
         // update (a 404 from a board without O1).
         std::string error{};
         std::optional<SinkHardware> hardware = std::nullopt;
-        std::optional<ac3forge::FirmwareStatus> firmware = std::nullopt;
+        std::optional<iclforge::FirmwareStatus> firmware = std::nullopt;
         std::optional<Update> update = std::nullopt;
         // The board's answer to the last restart or rollback asked for here.
         std::string action{};

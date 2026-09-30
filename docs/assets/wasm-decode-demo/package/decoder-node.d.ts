@@ -1,16 +1,16 @@
 import type { FoldOptions } from "./types.js";
-export interface Ac3ForgeDecoderNodeOptions {
+export interface IclForgeDecoderNodeOptions {
     /**
      * URL of this package's compiled `worklet-processor.js` - passed to
      * `audioContext.audioWorklet.addModule()`. A bundler resolves this from
-     * `new URL("ac3forge-wasm-decoder/worklet-processor", import.meta.url)`
+     * `new URL("iclforge-wasm-decoder/worklet-processor", import.meta.url)`
      * or the package's own `exports["./worklet-processor"]` entry; a plain
      * static site copies the file next to its own script and points here.
      */
     workletProcessorUrl: string | URL;
     /** URL of this package's compiled `decoder-worker.js` - same resolution story as workletProcessorUrl. */
     workerUrl: string | URL;
-    /** URL of the Emscripten glue (`ac3forge_decode.js`) built from apps/wasm/ - this package embeds no compiled binary of its own. */
+    /** URL of the Emscripten glue (`iclforge_decode.js`) built from apps/wasm/ - this package embeds no compiled binary of its own. */
     wasmGlueUrl: string | URL;
     /** Default: no fold (raw/coded channels), so `channelCount` must be supplied. */
     fold?: FoldOptions;
@@ -32,11 +32,11 @@ export interface StreamInfoEventDetail {
  * Web Audio graph. Decoding happens in a Worker; only ring-buffer draining
  * happens on the audio rendering thread itself.
  */
-export declare class Ac3ForgeDecoderNode extends EventTarget {
+export declare class IclForgeDecoderNode extends EventTarget {
     #private;
     readonly node: AudioWorkletNode;
     private constructor();
-    static create(audioContext: BaseAudioContext, options: Ac3ForgeDecoderNodeOptions): Promise<Ac3ForgeDecoderNode>;
+    static create(audioContext: BaseAudioContext, options: IclForgeDecoderNodeOptions): Promise<IclForgeDecoderNode>;
     /**
      * Decodes one access unit and streams its PCM into the audio graph.
      * `unit` is copied (once, here) into its own `ArrayBuffer` before being

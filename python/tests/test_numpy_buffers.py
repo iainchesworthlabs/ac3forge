@@ -10,7 +10,7 @@ checks): the C++ decode/encode call is never reached on the invalid path, so the
 left that could crash the interpreter.
 """
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 import pytest
 

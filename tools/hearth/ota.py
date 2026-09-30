@@ -188,7 +188,7 @@ CHIPS: dict[int, tuple[str, str]] = {
 }
 
 # The Kconfig option that builds a Wi-Fi network into the image (net/wifi).
-WIFI_SSID_OPTION = "CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID"
+WIFI_SSID_OPTION = "CONFIG_ICLFORGE_EXAMPLE_WIFI_SSID"
 
 
 class ImageError(Exception):
@@ -313,7 +313,7 @@ def parse_image(data: bytes, path: Path) -> Image:
     if data[0] != IMAGE_MAGIC:
         raise ImageError(
             "it is not an ESP-IDF application image (its first byte is not 0xE9); push "
-            "ac3forge_hearth_sink.bin, not the merged factory image or the ELF"
+            "iclforge_hearth_sink.bin, not the merged factory image or the ELF"
         )
     segments = data[1]
     if not 1 <= segments <= MAX_SEGMENTS:
@@ -1449,7 +1449,7 @@ class Published:
 
 
 def github_request(url: str) -> urllib.request.Request:
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "ac3forge-ota.py"}
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "iclforge-ota.py"}
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -1714,7 +1714,7 @@ def build_parser() -> Parser:
         nargs="?",
         type=Path,
         metavar="IMAGE",
-        help="an app image (ac3forge_hearth_sink.bin) on its own",
+        help="an app image (iclforge_hearth_sink.bin) on its own",
     )
     source.add_argument(
         "--release",

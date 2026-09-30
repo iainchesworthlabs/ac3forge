@@ -19,9 +19,9 @@
 // matching DecoderConfig::trace/syntax's own pointer convention immediately
 // above this field, this costs one null check and no allocation on a path
 // that has to run from the minimum-footprint decoder profile
-// (AC3FORGE_MINIMAL_DECODER: no exceptions, no RTTI) and from a real-time
+// (ICLFORGE_MINIMAL_DECODER: no exceptions, no RTTI) and from a real-time
 // caller. Distinct from Tracy (ac3/internal/profiling.hpp): that answers
-// "how fast", built only when AC3FORGE_ENABLE_TRACY is on and absent from
+// "how fast", built only when ICLFORGE_ENABLE_TRACY is on and absent from
 // the minimal profile entirely; this answers "what happened", always
 // compiled in, and aimed at production rather than development.
 

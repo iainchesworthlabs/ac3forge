@@ -2,7 +2,7 @@
 
 The minimum-footprint decoder on an Espressif ESP32-P4: a dual-core RISC-V (RV32IMAFC) with a
 single-precision FPU, 768 KB of L2MEM, and no radio of its own. It decodes in the float tier, as
-the [ESP32-S3](esp32-s3.md) does, from the same `esp-idf/ac3forge/` component, whose manifest
+the [ESP32-S3](esp32-s3.md) does, from the same `esp-idf/iclforge/` component, whose manifest
 lists `esp32p4` beside `esp32s3`, `esp32c3` and `esp32c6`.
 
 It is the "best" tier of the shared C6/S3/P4 sink family
@@ -38,7 +38,7 @@ and display, GPIO headers along both edges, no separate UART bridge chip). It ca
 - An ESP32-C6-MINI-1 module wired to the P4 over SDIO (`GPIO14`-`GPIO19`) for Wi-Fi 6 and
   Bluetooth LE, per DFRobot's documentation. This probe does not touch it. `hearth_sink` does: it
   reaches Wi-Fi through `esp_hosted` over that link ([the example's
-  README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-p4)),
+  README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-p4)),
   and the [AC-4](#ac-4) figures were measured that way.
 - **Two USB-C connectors**, wired to two different on-die USB peripherals, not one connector
   shared between them: one silkscreened "USB 2.0 OTG", reaching the part's native high-speed
@@ -563,7 +563,7 @@ idf.py -DIDF_TARGET=esp32p4 \
   -DAC3FORGE_STAGE_TIMERS=ON build
 ```
 
-from `esp-idf/ac3forge/examples/hearth_sink/`. `sdkconfig.ac4` turns on `CONFIG_AC3FORGE_AC4` and a
+from `esp-idf/iclforge/examples/hearth_sink/`. `sdkconfig.ac4` turns on `CONFIG_AC3FORGE_AC4` and a
 40 KB decode stack. The measurement image adds `AC3FORGE_EXAMPLE_SINK_NULL`,
 `AC3FORGE_EXAMPLE_AC4_PCM_HASH`, `ESP_TASK_WDT_INIT=n`, a 64 KB stack and the network's credentials,
 and goes to the board with `tools/hearth/ota.py push`. A play's location can carry `?decoding=core`
@@ -592,7 +592,7 @@ idf.py build                                  # -DAC3FORGE_ESP_PROFILE=decoder b
 ```
 
 The decode arithmetic needs no override: the component
-(`esp-idf/ac3forge/CMakeLists.txt`) picks `float` from `SOC_CPU_HAS_FPU`, which this part has, the
+(`esp-idf/iclforge/CMakeLists.txt`) picks `float` from `SOC_CPU_HAS_FPU`, which this part has, the
 same as the S3 — see [ESP32-S3 → The ESP-IDF component](esp32-s3.md#the-esp-idf-component).
 
 On a board reached over its OTG connector held in the ROM's manual download mode (see

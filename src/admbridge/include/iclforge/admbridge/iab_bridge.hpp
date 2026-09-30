@@ -17,8 +17,8 @@
 // the same destination shape build() (bridge.hpp) already produces for ADM. This is still the one
 // place iclforge::iab and iclforge::ac3/iclforge::oba are allowed to meet - see bridge.hpp's own
 // top comment on why that boundary exists - just a second source feeding it. Gated by the same
-// AC3FORGE_BUILD_ADM flag as the rest of iclforge::admbridge (this module's own CMakeLists.txt has
-// the full reasoning); AC3FORGE_BUILD_IAB (default ON) is a separate, always-satisfied prerequisite
+// ICLFORGE_BUILD_ADM flag as the rest of iclforge::admbridge (this module's own CMakeLists.txt has
+// the full reasoning); ICLFORGE_BUILD_IAB (default ON) is a separate, always-satisfied prerequisite
 // this module's own CMakeLists.txt now enforces with a FATAL_ERROR guard.
 //
 // What is structurally different from build()'s own ADM mapping, and why:
@@ -102,7 +102,7 @@ struct IabBridgeResult {
 // iclforge::iab::parse_mxf_iab()'s own return value, unmodified - onto AtmosEncoder's input shape.
 // Channel count is capped at the same 15 build() itself enforces, for the identical reason (see
 // bridge.cpp's own kMaxChannels comment).
-[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<IabBridgeResult, BridgeError> build_iab(
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT std::expected<IabBridgeResult, BridgeError> build_iab(
     std::span<const iclforge::iab::IABitstreamFrame> frames);
 
 }  // namespace iclforge::admbridge

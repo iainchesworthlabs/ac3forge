@@ -1,5 +1,5 @@
 // The checks an update over the network makes before it writes anything,
-// tested on the host from synthetic bytes - see ac3forge/firmware_image.hpp's
+// tested on the host from synthetic bytes - see iclforge/firmware_image.hpp's
 // own header comment for why this can be.
 
 #include <algorithm>
@@ -14,16 +14,16 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/firmware_image.hpp"
+#include "iclforge/firmware_image.hpp"
 
-using ac3forge::BoardFacts;
-using ac3forge::ContentDigest;
-using ac3forge::host_is_the_board;
-using ac3forge::ImageHead;
-using ac3forge::kImageHeadBytes;
-using ac3forge::parse_content_digest;
-using ac3forge::parse_image_head;
-using ac3forge::refuse_image;
+using iclforge::BoardFacts;
+using iclforge::ContentDigest;
+using iclforge::host_is_the_board;
+using iclforge::ImageHead;
+using iclforge::kImageHeadBytes;
+using iclforge::parse_content_digest;
+using iclforge::parse_image_head;
+using iclforge::refuse_image;
 
 namespace {
 
@@ -41,7 +41,7 @@ struct HeadSpec {
     bool hash_appended = true;
     std::uint8_t segments = 5;
     std::string version = "v0.10.0-beta.1-1858-gb49a966c";
-    std::string project = "ac3forge_hearth_sink";
+    std::string project = "iclforge_hearth_sink";
     std::string idf = "v6.1";
 };
 
@@ -88,7 +88,7 @@ BoardFacts s3_board() {
     board.chip_id = kEsp32s3;
     board.revision_full = 2;
     board.flash_size = k16MB;
-    board.project = "ac3forge_hearth_sink";
+    board.project = "iclforge_hearth_sink";
     return board;
 }
 
@@ -115,7 +115,7 @@ TEST_CASE("an application image's head is read field by field", "[io][firmware_i
     CHECK(head.flash_size == k16MB);
     CHECK(head.hash_appended);
     CHECK(head.version == "v0.10.0-beta.1-1858-gb49a966c");
-    CHECK(head.project == "ac3forge_hearth_sink");
+    CHECK(head.project == "iclforge_hearth_sink");
     CHECK(head.idf_version == "v6.1");
     CHECK(head.elf_sha256[0] == 1);
     CHECK(head.elf_sha256[31] == 32);
@@ -141,7 +141,7 @@ TEST_CASE("bytes that are not an application image's head are refused, saying wh
         const auto result = parse_image_head(bytes);
         CHECK_FALSE(result.head.has_value());
         CHECK(result.why.find("not an ESP-IDF application image") != std::string::npos);
-        CHECK(result.why.find("ac3forge_hearth_sink.bin") != std::string::npos);
+        CHECK(result.why.find("iclforge_hearth_sink.bin") != std::string::npos);
     }
     SECTION("a segment count no application has") {
         HeadSpec spec;
@@ -220,7 +220,7 @@ TEST_CASE("another project, another flash size and a missing SHA-256 are each re
     HeadSpec other_project;
     other_project.project = "i2s_player";
     CHECK(refuse_image(parsed(other_project), s3_board()) ==
-          std::optional<std::string>("this image is i2s_player, not ac3forge_hearth_sink"));
+          std::optional<std::string>("this image is i2s_player, not iclforge_hearth_sink"));
 
     HeadSpec small_flash;
     small_flash.flash_size = k4MB;
@@ -259,15 +259,15 @@ void put32(std::vector<std::uint8_t>& bytes, std::size_t at, std::uint32_t value
 std::vector<std::uint8_t> slot_holding(std::initializer_list<std::uint32_t> lengths, std::size_t slot_bytes,
                                        bool hash_appended = true) {
     std::vector<std::uint8_t> slot(slot_bytes, 0xFF);
-    std::fill_n(slot.begin(), ac3forge::kImageHeaderBytes, std::uint8_t{0});
+    std::fill_n(slot.begin(), iclforge::kImageHeaderBytes, std::uint8_t{0});
     slot[0] = 0xE9;
     slot[1] = static_cast<std::uint8_t>(lengths.size());
     slot[23] = hash_appended ? 1 : 0;
-    std::size_t at = ac3forge::kImageHeaderBytes;
+    std::size_t at = iclforge::kImageHeaderBytes;
     for (const std::uint32_t length : lengths) {
         put32(slot, at, 0x3C000020);
         put32(slot, at + 4, length);
-        at += ac3forge::kSegmentHeaderBytes;
+        at += iclforge::kSegmentHeaderBytes;
         std::fill_n(slot.begin() + static_cast<std::ptrdiff_t>(at), length, std::uint8_t{0x5A});
         at += length;
     }
@@ -299,7 +299,7 @@ TEST_CASE("an image in a slot is walked to where its own SHA-256 lies", "[io][fi
         // 24 + (8 + 4) + (8 + 20) + (8 + 36) = 108; the checksum byte ends
         // the block at 112.
         const auto slot = slot_holding({4, 20, 36}, 4096);
-        const auto walked = ac3forge::walk_image(reader(slot), slot.size());
+        const auto walked = iclforge::walk_image(reader(slot), slot.size());
         REQUIRE(walked.extent.has_value());
         CHECK(walked.why.empty());
         CHECK(walked.extent->hashed_bytes == 112);
@@ -309,13 +309,13 @@ TEST_CASE("an image in a slot is walked to where its own SHA-256 lies", "[io][fi
     SECTION("segments that end on a block's boundary take a whole block more") {
         // 24 + (8 + 36) + (8 + 36) = 112: fifteen zeros and the checksum.
         const auto slot = slot_holding({36, 36}, 4096);
-        const auto walked = ac3forge::walk_image(reader(slot), slot.size());
+        const auto walked = iclforge::walk_image(reader(slot), slot.size());
         REQUIRE(walked.extent.has_value());
         CHECK(walked.extent->hashed_bytes == 128);
     }
     SECTION("an image without an appended SHA-256 says so") {
         const auto slot = slot_holding({4}, 4096, false);
-        const auto walked = ac3forge::walk_image(reader(slot), slot.size());
+        const auto walked = iclforge::walk_image(reader(slot), slot.size());
         REQUIRE(walked.extent.has_value());
         CHECK(walked.extent->hashed_bytes == 48);
         CHECK_FALSE(walked.extent->hash_appended);
@@ -324,7 +324,7 @@ TEST_CASE("an image in a slot is walked to where its own SHA-256 lies", "[io][fi
 
 TEST_CASE("a slot with no image, or one that runs past its end, is not walked", "[io][firmware_image]") {
     const auto why = [](const std::vector<std::uint8_t>& slot, std::size_t limit) {
-        const auto walked = ac3forge::walk_image(reader(slot), limit);
+        const auto walked = iclforge::walk_image(reader(slot), limit);
         CHECK_FALSE(walked.extent.has_value());
         return walked.why;
     };
@@ -347,7 +347,7 @@ TEST_CASE("a slot with no image, or one that runs past its end, is not walked", 
         // hashed_bytes is 112, so the SHA-256 would end at 144.
         const auto slot = slot_holding({4, 20, 36}, 4096);
         CHECK(why(slot, 143) == "its image runs past the end of the slot");
-        CHECK(ac3forge::walk_image(reader(slot), 144).extent.has_value());
+        CHECK(iclforge::walk_image(reader(slot), 144).extent.has_value());
     }
     SECTION("a slot that cannot be read") {
         const std::vector<std::uint8_t> nothing;

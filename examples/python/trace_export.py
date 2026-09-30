@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 
-import ac3forge as ac3
+import iclforge as ac3
 import numpy as np
 
 FRAME_COUNT = 3

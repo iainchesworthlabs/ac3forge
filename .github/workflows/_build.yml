@@ -1,4 +1,4 @@
-# Reusable configure/build/test workflow — the single definition of how ac3forge
+# Reusable configure/build/test workflow — the single definition of how iclforge
 # is built and tested on each platform. Called by ci.yml (do_package defaults
 # false: only windows-msvc packages, continuously, as a packaging smoke test)
 # and by release.yml (do_package: true: the release_package legs — one
@@ -174,7 +174,7 @@ jobs:
   #     `self-hosted`, or `github-hosted`) let a forced mode skip the live
   #     check entirely - an explicit override is trusted outright.
   #   - `auto` counts this repo's own registered runners (works today, empty
-  #     until a runner is actually registered against ac3forge) and, if the
+  #     until a runner is actually registered against iclforge) and, if the
   #     optional ORG_RUNNERS_TOKEN secret is set, the iainchesworthlabs org's
   #     runners too (what actually matters once the org migration in
   #     iainchesworthlabs/ci-runners lands - see that repo for the fleet
@@ -551,7 +551,7 @@ jobs:
             if [ -n "$qt_core" ]; then
               check "$qt_core"
             else
-              echo "::warning::no QtCore framework binary found under ac3gui.app/Contents/Frameworks - was AC3FORGE_BUILD_GUI actually ON for both legs?"
+              echo "::warning::no QtCore framework binary found under ac3gui.app/Contents/Frameworks - was ICLFORGE_BUILD_GUI actually ON for both legs?"
             fi
           else
             echo "::warning::no ac3gui.app in the merged tree - CLI-only merge, nothing to verify there"
@@ -638,8 +638,8 @@ jobs:
           version_tag="${VERSION_TAG_INPUT:-v0.0.0-dev}"
           full_version="${version_tag#v}"
           bare_version="${full_version%%-*}"
-          dmg="ac3forge-${bare_version}-Darwin.dmg"
-          hdiutil create -volname ac3forge -srcfolder merged -ov -format UDZO -o "$dmg"
+          dmg="iclforge-${bare_version}-Darwin.dmg"
+          hdiutil create -volname iclforge -srcfolder merged -ov -format UDZO -o "$dmg"
           shasum -a 512 "$dmg" > "$dmg.sha512"
 
       # Best-effort dev archive: library+libruntime installed and lipo-merged
@@ -704,7 +704,7 @@ jobs:
 
           version_tag="${VERSION_TAG_INPUT:-v0.0.0-dev}"
           full_version="${version_tag#v}"
-          zip_name="ac3forge-dev-${full_version}-Darwin.zip"
+          zip_name="iclforge-dev-${full_version}-Darwin.zip"
           ( cd merged-dev && zip -qry "../${zip_name}" . )
           shasum -a 512 "$zip_name" > "$zip_name.sha512"
 
@@ -726,10 +726,10 @@ jobs:
         with:
           name: packages-macos-llvm
           path: |
-            ac3forge-*-Darwin.dmg
-            ac3forge-*-Darwin.dmg.sha512
-            ac3forge-dev-*-Darwin.zip
-            ac3forge-dev-*-Darwin.zip.sha512
+            iclforge-*-Darwin.dmg
+            iclforge-*-Darwin.dmg.sha512
+            iclforge-dev-*-Darwin.zip
+            iclforge-dev-*-Darwin.zip.sha512
           if-no-files-found: error
 
   # Windows ARM64 / reach builds (Reach): a self-contained AppImage for ac3gui, so a user on a
@@ -887,7 +887,7 @@ jobs:
           cmake --version
           cat > "${RUNNER_TEMP}/assert-cmake-version.cmake" <<EOF
           if(CMAKE_VERSION VERSION_LESS ${CMAKE_MIN})
-            message(FATAL_ERROR "CMake \${CMAKE_VERSION} is too old; ac3forge needs >= ${CMAKE_MIN}")
+            message(FATAL_ERROR "CMake \${CMAKE_VERSION} is too old; iclforge needs >= ${CMAKE_MIN}")
           endif()
           EOF
           cmake -P "${RUNNER_TEMP}/assert-cmake-version.cmake"
@@ -945,7 +945,7 @@ jobs:
             extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")
           fi
           cmake --preset config-linux-gcc \
-            -DAC3FORGE_BUILD_GUI=ON \
+            -DICLFORGE_BUILD_GUI=ON \
             -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
             "${extra_args[@]}"
 
@@ -974,7 +974,7 @@ jobs:
           cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component runtime
           echo "ldd build/config-linux-gcc/bin/ac3gui:"
           ldd build/config-linux-gcc/bin/ac3gui
-          if ldd build/config-linux-gcc/bin/ac3gui | grep -qE 'libac3forge|libmatroska\.so|libmp4\.so|libmpegts\.so'; then
+          if ldd build/config-linux-gcc/bin/ac3gui | grep -qE 'libiclforge|libmatroska\.so|libmp4\.so|libmpegts\.so'; then
             echo "ac3gui links a project .so - installing the library/libruntime components too"
             cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component library
             cmake --install build/config-linux-gcc --prefix "$PWD/AppDir/usr" --component libruntime
@@ -1623,7 +1623,7 @@ jobs:
 
       # Moved ahead of the CMake build (unlike the setup-node this job used
       # to do only for the Playwright harness below): WASM streaming decoder package's
-      # ac3forge-wasm-decoder package (js/) has to be built before the
+      # iclforge-wasm-decoder package (js/) has to be built before the
       # "Assemble" step further down can copy its dist/ into the servable
       # wasm_decode_demo/ directory - the demo is a consumer of the package
       # (see docs/platforms/wasm.md), not a parallel implementation, so its
@@ -1636,7 +1636,7 @@ jobs:
             js/package-lock.json
             apps/wasm/tests/package-lock.json
 
-      - name: Build ac3forge-wasm-decoder package
+      - name: Build iclforge-wasm-decoder package
         working-directory: js
         run: |
           set -euo pipefail
@@ -1647,7 +1647,7 @@ jobs:
       - name: Configure
         run: cmake --preset config-wasm-emscripten
 
-      # Builds both demos - ac3forge_wasm_encode depends on ac3forge_wasm_decode
+      # Builds both demos - iclforge_wasm_encode depends on iclforge_wasm_decode
       # (apps/wasm/CMakeLists.txt's add_dependencies, so its round-trip preview's
       # copy of the decode module is always available), so one `cmake --build`
       # over the whole preset orders them correctly with no --target list to
@@ -1657,11 +1657,11 @@ jobs:
 
       # apps/wasm/CMakeLists.txt only knows how to assemble ITS OWN static
       # files (index.html/demo.js/favicons/the demo bitstream) plus whatever
-      # RUNTIME_OUTPUT_DIRECTORY put there (ac3forge_decode.js/.wasm) - it
+      # RUNTIME_OUTPUT_DIRECTORY put there (iclforge_decode.js/.wasm) - it
       # has no reason to learn about npm. This step is the same idea
       # docs.yml's own deploy job already uses for its gh-pages assembly:
       # plain shell, not a build-system feature.
-      - name: Assemble ac3forge-wasm-decoder into the demo directory
+      - name: Assemble iclforge-wasm-decoder into the demo directory
         run: |
           set -euo pipefail
           mkdir -p build/config-wasm-emscripten/bin/wasm_decode_demo/package
@@ -1719,7 +1719,7 @@ jobs:
           CI: "1"
         run: npm test
 
-  # The ESP32 player's web page (esp-idf/ac3forge/ui/, planning/esp32-device-ui.md)
+  # The ESP32 player's web page (esp-idf/iclforge/ui/, planning/esp32-device-ui.md)
   # in Chromium, against a stand-in for the firmware's REST routes that each test
   # starts for itself: every action and its error paths, the polling, the status
   # payloads recorded from the emulated board, accessibility and the flash
@@ -1779,7 +1779,7 @@ jobs:
   # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
   # of the desktop workflows' steps apply (no ctest suite, no cpack package, no gold-reference
-  # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
+  # gate) - rust/iclforge-sys/build.rs drives its own trimmed CMake configure of just
   # iclforge::c_shared rather than reusing a desktop preset.
   #
   # All three desktop OSes, one job each (Rust bindings's completeness pass): the
@@ -1830,7 +1830,7 @@ jobs:
         working-directory: rust
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      # Mirrors ac3::warnings' project-wide "warnings are errors" stance (clippy above) and
+      # Mirrors iclforge::warnings' project-wide "warnings are errors" stance (clippy above) and
       # .clang-format's "checked in, run it" rule (rustfmt here).
       - name: cargo fmt --check
         working-directory: rust
@@ -1901,8 +1901,8 @@ jobs:
           $cer = Get-ChildItem (Split-Path $dir) -Filter '*.cer' | Select-Object -First 1
           if (-not $cer) { throw 'no test certificate beside the package' }
           Get-ChildItem $dir | Format-Table Name, Length | Out-String | Write-Host
-          "AC3FORGE_DRIVER_PACKAGE=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "AC3FORGE_DRIVER_CERT=$($cer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ICLFORGE_DRIVER_PACKAGE=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ICLFORGE_DRIVER_CERT=$($cer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       # The same rule set and the same "any defect fails" bar Analyze-Driver.ps1
       # applies locally; the reports are the per-file *.nativecodeanalysis.xml
@@ -1931,8 +1931,8 @@ jobs:
         with:
           name: ac3forge-nullsink-driver-testsigned
           path: |
-            ${{ env.AC3FORGE_DRIVER_PACKAGE }}
-            ${{ env.AC3FORGE_DRIVER_CERT }}
+            ${{ env.ICLFORGE_DRIVER_PACKAGE }}
+            ${{ env.ICLFORGE_DRIVER_CERT }}
           if-no-files-found: error
 
   # The minimum-footprint decoder profile (minimum-footprint decoder profile, docs/building.md) built
@@ -2030,7 +2030,7 @@ jobs:
           # the upload step could not then find. The build directory is the one
           # place both agree on, it is gitignored already, and it puts the
           # summary beside the map it belongs with.
-          AC3FORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
+          ICLFORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
@@ -2048,13 +2048,13 @@ jobs:
       #
       # This is also the leg that exercises the RELOCATED component the way an
       # integrator reaches it: the project points EXTRA_COMPONENT_DIRS at
-      # esp-idf/ and selects a profile through AC3FORGE_ESP_PROFILE, which is
+      # esp-idf/ and selects a profile through ICLFORGE_ESP_PROFILE, which is
       # exactly the two lines a consuming project writes. If the published shape
       # breaks, this goes red rather than the break waiting for someone to try
       # it.
       - name: Build and run the ENCODE probe under QEMU
         env:
-          AC3FORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
+          ICLFORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
@@ -2076,7 +2076,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/i2s_player
+          cd esp-idf/iclforge/examples/i2s_player
           idf.py set-target esp32s3
           idf.py build
           idf.py size | tee "$GITHUB_STEP_SUMMARY"
@@ -2090,7 +2090,7 @@ jobs:
       # sink's first write blocks on a DMA that never drains.
       #
       # sdkconfig.ci supplies exactly that: the capture sink, which converts
-      # with the code the sinks share (ac3forge/interleave.hpp) and checks the
+      # with the code the sinks share (iclforge/interleave.hpp) and checks the
       # result with no peripheral behind it, and a two-lap limit so the
       # application stops with a verdict instead of playing forever. Two laps
       # rather than one so the rewind at end of stream is exercised. This step
@@ -2102,7 +2102,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           idf.py set-target esp32s3
           idf.py build
           idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
@@ -2218,7 +2218,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2291,7 +2291,7 @@ jobs:
           fi
 
       # The same capture shape at 16-bit slots: the eight a TDM line carries at
-      # that width, through ac3forge::interleave_16in16 (sdkconfig.ci-tdm16).
+      # that width, through iclforge::interleave_16in16 (sdkconfig.ci-tdm16).
       # The checks are the step above's on 16-bit integers, where a slot has no
       # low byte to leave clear: padding written as zeros, carried slots
       # nonzero, and the converted level against the host's.
@@ -2301,7 +2301,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2357,7 +2357,7 @@ jobs:
           fi
 
       # The widest frame the part reaches: sixteen 16-bit slots, two lines of
-      # eight (ac3forge::sink_ceiling(16, true)), onto a sixteen-speaker 9.1.6
+      # eight (iclforge::sink_ceiling(16, true)), onto a sixteen-speaker 9.1.6
       # layout so every slot carries a channel rather than padding
       # (sdkconfig.ci-tdm916). The i2s sink cannot run here - QEMU emulates no
       # I2S - so what this holds is everything up to the peripheral: the
@@ -2371,7 +2371,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2451,7 +2451,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2545,14 +2545,14 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
 
           # QEMU by hand rather than `idf.py qemu`, for one reason: the port
           # forward. idf.py fixes the network options, and the control surface
-          # (ac3forge::Control, on port 80 in this shape) is only reachable from
+          # (iclforge::Control, on port 80 in this shape) is only reachable from
           # the runner through hostfwd. The flash image is the same merge idf.py
           # performs, from the build's own flash_args; the eFuse image is
           # idf.py's own default blob, read from its module rather than pasted.
@@ -2643,7 +2643,7 @@ jobs:
       # The web page (planning/esp32-device-ui.md) on the emulated board: the
       # image the step above built, booted again with the same port forward,
       # and the page the firmware serves driven by Playwright - the only place
-      # CI runs the routes ac3forge::Control serves it on. A step of its own so
+      # CI runs the routes iclforge::Control serves it on. A step of its own so
       # the one above stays as it is. The WASM demos' Playwright harness
       # (apps/wasm/tests, device-ui.config.js's board project) comes into this
       # container with Node, which the IDF image does not carry.
@@ -2661,7 +2661,7 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           if [ ! -f build/qemu_flash.bin ] || [ ! -f build/qemu_efuse.bin ]; then
             echo "::error title=ESP32-S3 web page::the HTTP step's QEMU images are not in build/" >&2
             exit 1
@@ -2707,7 +2707,7 @@ jobs:
           # over REST reads back, and a play started over REST finishes at it;
           # Stop reads back as stopped, on the page too.
           # device-ui/board/smoke.spec.js has the details.
-          (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && AC3FORGE_DEVICE_URL=http://127.0.0.1:8080/ CI=1 npm run test:board) || fail "the page did not drive the board (Playwright's output is above)"
+          (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && ICLFORGE_DEVICE_URL=http://127.0.0.1:8080/ CI=1 npm run test:board) || fail "the page did not drive the board (Playwright's output is above)"
 
           # The play the test started, at the volume it set: a quarter of the
           # boot play's levels, 56,673 and 47,346.
@@ -2728,7 +2728,7 @@ jobs:
           python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt
           kill "$qemu" 2>/dev/null || true
 
-      # The stream set (esp-idf/ac3forge/examples/hearth_sink/www/,
+      # The stream set (esp-idf/iclforge/examples/hearth_sink/www/,
       # planning/esp32-stream-set.md) over the HTTP source, rendered onto
       # 7.1.4: sdkconfig.ci-http714 is the HTTP shape with the capture sink's
       # twelve-slot TDM conversion, levels as coded and objects as their bed,
@@ -2745,11 +2745,11 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          www="$GITHUB_WORKSPACE/esp-idf/ac3forge/examples/hearth_sink/www"
+          www="$GITHUB_WORKSPACE/esp-idf/iclforge/examples/hearth_sink/www"
           python3 -m http.server 8000 --bind 0.0.0.0 --directory "$www" >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2788,7 +2788,7 @@ jobs:
 
           # What the page says each output layout does with each stream, on
           # this board: device-ui/board/layouts.spec.js.
-          (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && AC3FORGE_DEVICE_URL=http://127.0.0.1:8080/ AC3FORGE_STREAM_BASE=http://10.0.2.2:8000 CI=1 npm run test:board-layouts) || fail "the page did not report the layouts (Playwright's output is above)"
+          (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && ICLFORGE_DEVICE_URL=http://127.0.0.1:8080/ ICLFORGE_STREAM_BASE=http://10.0.2.2:8000 CI=1 npm run test:board-layouts) || fail "the page did not report the layouts (Playwright's output is above)"
 
           # Then the console, once the page's last play has ended.
           settled=
@@ -2826,16 +2826,16 @@ jobs:
       #
       #   * i2s drives the I2S peripheral - standard mode or TDM, decided at
       #     RUNTIME by the layout it is asked to carry
-      #     (ac3forge/sink_plan.hpp), so one build here compiles both, not one
-      #     each. The conversion it calls (ac3forge/interleave.hpp) runs
+      #     (iclforge/sink_plan.hpp), so one build here compiles both, not one
+      #     each. The conversion it calls (iclforge/interleave.hpp) runs
       #     through the capture sink - stereo in the streaming and HTTP steps,
       #     8 and 12 TDM slots in the capture and render steps - and is
       #     unit-tested on the host (tests/ac3/io/test_interleave.cpp). The model
       #     of the DMA queue it keeps for its sink.* line
-      #     (ac3forge/dac_queue_model.hpp) runs in no QEMU step, since the
+      #     (iclforge/dac_queue_model.hpp) runs in no QEMU step, since the
       #     capture sink has no DMA, and is unit-tested on the host as well
       #     (tests/ac3/io/test_dac_queue_model.cpp). The mode/slot-count
-      #     arithmetic itself (ac3forge/sink_plan.hpp) is unit-tested on the
+      #     arithmetic itself (iclforge/sink_plan.hpp) is unit-tested on the
       #     host too (tests/ac3/io/test_sink_plan.cpp).
       #   * sd drives the SDMMC host. The file layer it shares with the
       #     flash-backed FAT source (main/source/file_common.hpp) runs in the
@@ -2858,12 +2858,12 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           for combo in \
-            "i2s:CONFIG_AC3FORGE_EXAMPLE_SINK_I2S=y" \
-            "sd:CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD=y" \
-            "http:CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP=y" \
-            "null:CONFIG_AC3FORGE_EXAMPLE_SINK_NULL=y"; do
+            "i2s:CONFIG_ICLFORGE_EXAMPLE_SINK_I2S=y" \
+            "sd:CONFIG_ICLFORGE_EXAMPLE_SOURCE_SD=y" \
+            "http:CONFIG_ICLFORGE_EXAMPLE_SOURCE_HTTP=y" \
+            "null:CONFIG_ICLFORGE_EXAMPLE_SINK_NULL=y"; do
             name="${combo%%:*}"
             setting="${combo#*:}"
             echo "--- $name ---"
@@ -2900,7 +2900,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth-sink-esp32s3"
           version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32s3 \
@@ -2930,7 +2930,7 @@ jobs:
           . "$IDF_PATH/export.sh"
           image="$GITHUB_WORKSPACE/sendspin-qemu-image"
           mkdir -p "$image"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2951,7 +2951,7 @@ jobs:
           . "$IDF_PATH/export.sh"
           image="$GITHUB_WORKSPACE/sendspin-qemu-image/wifi"
           mkdir -p "$image"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2966,7 +2966,7 @@ jobs:
       # with another PROJECT_VER), an image that never becomes healthy and one
       # that panics on its trial, with the refusals and rollbacks between, and
       # holds each to the plan. The three are rebuilds of A's build directory
-      # that change a file or two (main/CMakeLists.txt's AC3FORGE_FIRMWARE_TEST),
+      # that change a file or two (main/CMakeLists.txt's ICLFORGE_FIRMWARE_TEST),
       # so the step costs one full build. QEMU keeps its flash writes in its
       # image, which is what an update needs.
       - name: Update the Sendspin player over the network under QEMU
@@ -2977,19 +2977,19 @@ jobs:
           . "$IDF_PATH/export.sh"
           images="$GITHUB_WORKSPACE/ota-qemu-images"
           mkdir -p "$images"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
-          # name:PROJECT_VER:AC3FORGE_FIRMWARE_TEST
+          # name:PROJECT_VER:ICLFORGE_FIRMWARE_TEST
           for variant in a:ci-ota-a: b:ci-ota-b: unhealthy:ci-ota-unhealthy:unhealthy panic:ci-ota-panic:panic; do
             name="${variant%%:*}"
             rest="${variant#*:}"
             version="${rest%%:*}"
             test_switch="${rest#*:}"
-            idf.py "-DPROJECT_VER=$version" "-DAC3FORGE_FIRMWARE_TEST=$test_switch" build
-            cp build/ac3forge_hearth_sink.bin "$images/$name.bin"
+            idf.py "-DPROJECT_VER=$version" "-DICLFORGE_FIRMWARE_TEST=$test_switch" build
+            cp build/iclforge_hearth_sink.bin "$images/$name.bin"
             # For run_ota_qemu.py's report of where a hung board is.
-            cp build/ac3forge_hearth_sink.elf "$images/$name.elf"
+            cp build/iclforge_hearth_sink.elf "$images/$name.elf"
             if [ "$name" = a ]; then
               (cd build && esptool --chip esp32s3 merge-bin --output "$images/qemu_flash.bin" --pad-to-size 16MB @flash_args >/dev/null)
               PYTHONPATH="$IDF_PATH/tools" IMAGE="$images" python3 -c "import os; from idf_py_actions.qemu_ext import QEMU_TARGETS; open(os.path.join(os.environ['IMAGE'], 'qemu_efuse.bin'), 'wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
@@ -3031,13 +3031,13 @@ jobs:
             apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
             apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
-            esp-idf/ac3forge/examples/hearth_sink/qemu-stream.txt
-            esp-idf/ac3forge/examples/hearth_sink/qemu-capture.txt
-            esp-idf/ac3forge/examples/hearth_sink/qemu-capture16.txt
-            esp-idf/ac3forge/examples/hearth_sink/qemu-capture916.txt
-            esp-idf/ac3forge/examples/hearth_sink/qemu-render.txt
-            esp-idf/ac3forge/examples/hearth_sink/qemu-http.txt
-            esp-idf/ac3forge/examples/hearth_sink/qemu-set.txt
+            esp-idf/iclforge/examples/hearth_sink/qemu-stream.txt
+            esp-idf/iclforge/examples/hearth_sink/qemu-capture.txt
+            esp-idf/iclforge/examples/hearth_sink/qemu-capture16.txt
+            esp-idf/iclforge/examples/hearth_sink/qemu-capture916.txt
+            esp-idf/iclforge/examples/hearth_sink/qemu-render.txt
+            esp-idf/iclforge/examples/hearth_sink/qemu-http.txt
+            esp-idf/iclforge/examples/hearth_sink/qemu-set.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.
@@ -3106,8 +3106,8 @@ jobs:
           set -eu
           cmake --preset config-linux-gcc \
             -DVCPKG_MANIFEST_FEATURES=hearth \
-            -DAC3FORGE_BUILD_HEARTH=ON \
-            -DAC3FORGE_BUILD_EXAMPLES=OFF
+            -DICLFORGE_BUILD_HEARTH=ON \
+            -DICLFORGE_BUILD_EXAMPLES=OFF
           cmake --build --preset build-linux-gcc --target ac3hearth-testserver
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -3271,7 +3271,7 @@ jobs:
 
       # hearth_sink's actual Sendspin player, not the baremetal probe above - built and not
       # run, same reason: no qemu-riscv32 machine for esp32c6. The config combination is the
-      # one esp-idf/ac3forge/examples/hearth_sink/sdkconfig.c6 and sdkconfig.sendspin-c6 each
+      # one esp-idf/iclforge/examples/hearth_sink/sdkconfig.c6 and sdkconfig.sendspin-c6 each
       # name in their own header comments, and the one docs/hearth/index.md's "Where it runs"
       # table has flagged as "no C6 Sendspin CI job" - a board has built, run and measured
       # this combination (the README's "On the ESP32-C6" section, including a ten-minute
@@ -3288,7 +3288,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-c6-sendspin"
           version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
@@ -3309,7 +3309,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-c6-16mb-sendspin"
           version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
@@ -3335,7 +3335,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-p4-sendspin"
           version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 \
@@ -3344,7 +3344,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
             --name hearth-sink-esp32p4-rev1 --out "$GITHUB_WORKSPACE/esp32-firmware"
 
-      # The same sink with the AC-4 decoder in it (CONFIG_AC3FORGE_AC4, sdkconfig.ac4;
+      # The same sink with the AC-4 decoder in it (CONFIG_ICLFORGE_AC4, sdkconfig.ac4;
       # planning/ac4.md, D14b) and the stage timers on, built and not run, for the reason the
       # step above gives. What CI can hold is that the AC-4 archives still compile and link into
       # a firmware for this part - with the profile's compile options and the project's
@@ -3356,11 +3356,11 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-p4-ac4"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4" \
-            -DAC3FORGE_STAGE_TIMERS=ON build
+            -DICLFORGE_STAGE_TIMERS=ON build
 
       - name: Upload the C6 and P4 images for packaging
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -3507,7 +3507,7 @@ jobs:
 
       - name: Build and run the probe under QEMU
         env:
-          AC3FORGE_FOOTPRINT_SUMMARY: ${{ runner.temp }}/footprint.txt
+          ICLFORGE_FOOTPRINT_SUMMARY: ${{ runner.temp }}/footprint.txt
         run: ./tools/checks/run_baremetal_probe.sh
 
       # The other direction of the same profile, on the same target. A second
@@ -3527,7 +3527,7 @@ jobs:
         run: ./tools/checks/run_baremetal_probe.sh --encoder
 
       # The leg's one timing figure that reproduces: under QEMU -icount the
-      # probe's clock (its own preset, AC3FORGE_BAREMETAL_CLOCK=timer) counts
+      # probe's clock (its own preset, ICLFORGE_BAREMETAL_CLOCK=timer) counts
       # instructions, deterministically, and the runner gates each fixture's
       # count against docs/performance-trend.md's instructions-per-frame table.
       - name: Instructions per frame under QEMU -icount
@@ -3536,7 +3536,7 @@ jobs:
         # and since tee is last in the pipeline under `sh -e` its failure fails the
         # step - after the probe has already printed "pass", which makes it read as
         # a probe regression that it is not. Same reason, same fix as build-esp32s3's
-        # AC3FORGE_ESP32S3_SUMMARY above.
+        # ICLFORGE_ESP32S3_SUMMARY above.
         run: ./tools/checks/run_baremetal_probe.sh --icount | tee "build/config-arm-none-eabi-minimal/icount.txt"
 
       # The encode direction on the same terms. Both encoders are double
@@ -3547,7 +3547,7 @@ jobs:
         run: ./tools/checks/run_baremetal_probe.sh --encoder --icount | tee "build/config-arm-none-eabi-minimal/icount-encode.txt"
 
       # The fixed-point tier on the same leg (planning/arithmetic-tiers.md):
-      # the probe built with -DAC3FORGE_DECODE_SCALAR=fixed, every fixture's
+      # the probe built with -DICLFORGE_DECODE_SCALAR=fixed, every fixture's
       # levels gated as the float build's are, and its <codec>.pcm_hash lines
       # kept: the tier is integer arithmetic, so those hashes are the same on
       # this leg, on the host and on a RISC-V part by construction, and the

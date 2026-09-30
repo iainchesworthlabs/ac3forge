@@ -4,7 +4,7 @@
 
 // The probe's half of the stage-timer zone backend
 // (src/base/variants/profiling-stage_timers/, selected by
-// AC3FORGE_STAGE_TIMERS). The library's AC3_ZONE_SCOPED_N() markers call
+// ICLFORGE_STAGE_TIMERS). The library's ICLFORGE_ZONE_SCOPED_N() markers call
 // two functions this application defines - see stage_timers.cpp - and this
 // header is what the probe itself reads the result back through.
 //

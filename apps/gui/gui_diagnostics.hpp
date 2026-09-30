@@ -21,7 +21,7 @@
 //
 // It is held twice. First structurally - the report is composed from named
 // fields, and there is no field for key bytes, for a key path, for the inline
-// AC3FORGE_SIGNING_KEY value, or for one sample of audio; the settings
+// ICLFORGE_SIGNING_KEY value, or for one sample of audio; the settings
 // section is a fixed list the caller whitelists, and any key under "signing/"
 // is written as withheld whatever value arrived with it; the environment is
 // never enumerated, only asked whether the two named signing variables exist
@@ -132,8 +132,8 @@ struct ReportFacts {
     std::string version;         // iclforge::version_details()
     std::vector<std::pair<std::string, std::string>> platform;  // name/value rows, in order
     // Whether the two signing variables exist. Their values are never read.
-    bool env_key_file_set = false;    // AC3FORGE_SIGNING_KEY_FILE
-    bool env_key_inline_set = false;  // AC3FORGE_SIGNING_KEY
+    bool env_key_file_set = false;    // ICLFORGE_SIGNING_KEY_FILE
+    bool env_key_inline_set = false;  // ICLFORGE_SIGNING_KEY
     std::vector<SourceFacts> sources;
     // The encode plan and the window's own state, as named rows in order.
     std::vector<std::pair<std::string, std::string>> plan;
@@ -148,8 +148,8 @@ struct ReportFacts {
 };
 
 // Every spelling of a secret the report must not carry: the
-// AC3FORGE_SIGNING_KEY_FILE value with native and forward separators and in
-// its canonical form, and the AC3FORGE_SIGNING_KEY value. Empty strings are
+// ICLFORGE_SIGNING_KEY_FILE value with native and forward separators and in
+// its canonical form, and the ICLFORGE_SIGNING_KEY value. Empty strings are
 // ignored.
 struct Secrets {
     std::vector<std::string> strings;

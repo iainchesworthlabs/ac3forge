@@ -12,7 +12,7 @@ const { pathToFileURL } = require('url');
 const base = require('@playwright/test');
 const { startStub, UI_DIR } = require('./stub');
 
-const SCRIPT_URL = pathToFileURL(path.join(UI_DIR, 'ac3forge_ui.js')).href;
+const SCRIPT_URL = pathToFileURL(path.join(UI_DIR, 'iclforge_ui.js')).href;
 const COVERAGE_DIR = path.resolve(__dirname, '..', 'test-results', 'device-ui-coverage', 'tmp');
 
 const test = base.test.extend({

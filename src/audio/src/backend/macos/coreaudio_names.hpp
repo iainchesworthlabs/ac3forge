@@ -204,7 +204,7 @@ inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
     "per-process loopback capture is off on macOS: the one machine that has run it "
     "(macOS 26.6.2) never returned from AudioDeviceCreateIOProcID on the tap's aggregate "
     "device and took the rest of this process's Core Audio with it, so the path is not "
-    "entered until a Mac has been seen to complete it; set AC3FORGE_MACOS_PROCESS_TAP to "
+    "entered until a Mac has been seen to complete it; set ICLFORGE_MACOS_PROCESS_TAP to "
     "try it";
 
 // Whether this OS build is new enough to expose that API. A version gate
@@ -254,14 +254,14 @@ inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
 // through a tap. Two variables separate those legs, the OS version and the
 // architecture, and nothing here can say which matters.
 //
-// AC3FORGE_MACOS_PROCESS_TAP in the environment turns the path back on for
+// ICLFORGE_MACOS_PROCESS_TAP in the environment turns the path back on for
 // whoever has a Mac to settle it on. Read once, at first use, because
 // audio_backend()'s table is built once per process; it is a decision about
 // the run, not a setting to toggle inside one. Whoever gets a tap to deliver
 // samples on real hardware should delete this gate and the paragraph above
 // rather than leave the opt-in in place.
 [[nodiscard]] inline bool system_audio_tap_enabled() {
-    return std::getenv("AC3FORGE_MACOS_PROCESS_TAP") != nullptr;
+    return std::getenv("ICLFORGE_MACOS_PROCESS_TAP") != nullptr;
 }
 
 // Which of the two gates is turning a caller away, as the sentence to print.

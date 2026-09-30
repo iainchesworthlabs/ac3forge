@@ -67,6 +67,9 @@ CROSS_DETAIL = {
 }
 
 _VARIANT_TAIL = re.compile(r"/(ac3/internal/.+|ac4/detail/.+)$")
+# The ESP-IDF component's two copies of one header, chosen by an include directory of its own
+# (`conversion/bits`, `conversion/float`): the spelling starts below that directory.
+_CONVERSION_TAIL = re.compile(r"^esp-idf/[^/]+/conversion/[^/]+/(.+)$")
 
 
 def forge_lib(path: str) -> str:
@@ -96,6 +99,9 @@ def spelling_of(path: str) -> str | None:
     g = path[:-3] if path.endswith((".hpp.in", ".h.in")) else path
     if "/include/" in g:
         return g.split("/include/", 1)[1]
+    m = _CONVERSION_TAIL.match(g)
+    if m:
+        return m.group(1)
     if "/variants/" in g:
         tail = g.split("/variants/", 1)[1]
         return tail.split("/", 1)[1] if "/" in tail else None
@@ -243,21 +249,53 @@ def l2_new(path: str, split: bool = True) -> str | None:
     return None
 
 
+# The renames of stage S4: in these trees a path component that carries the old family name takes
+# the new one. They are the packages and the bindings (the ESP-IDF component, the Rust crates, the
+# Python package and its extension, the ESPHome component, the packaging files), and a few files
+# elsewhere whose names are a package's or the wire extension's. What is not here does not move: the
+# historic winget manifests (versions already released, whose identifiers stay as they were
+# published) and every path N1A renames with a program or a registration (the Android package
+# directory, the Windows driver, a program's icons, a desktop entry).
+OLD_BRAND = "ac3forge"
+PACKAGE_TREES = (
+    "esp-idf/ac3forge/",
+    "rust/ac3forge/",
+    "rust/ac3forge-sys/",
+    "python/src/ac3forge/",
+    "python/src/ac3forge_ext/",
+    "esphome/components/ac3forge/",
+    "packaging/",
+)
+KEEP_PACKAGE_PATHS = ("packaging/winget/",)
+# Files outside the trees above, named one by one. The cask is renamed with the formula
+# (planning/ac4.md, decision 41): its file is named for the program it installs, not for a brand.
+PACKAGE_FILES = {
+    "cmake/ac3forgeConfig.cmake.in": "cmake/iclforgeConfig.cmake.in",
+    "esphome/tests/ac3forge-test.yaml": "esphome/tests/iclforge-test.yaml",
+    "packaging/homebrew/Casks/ac3gui.rb": "packaging/homebrew/Casks/iclforge.rb",
+}
+# The wire extension `_ac3forge_player@v1` names its header, its source and its test, and the seeds
+# and the regression of the message fuzzer that carry it. The committed WASM fallbacks of the docs
+# site (docs/assets/wasm-*-demo, which docs.yml replaces with a fresh build at every deploy) are
+# named for the modules apps/wasm builds, so they follow the build's output names.
+_WIRE_FILES = re.compile(
+    r"^(?:src/sendspin/(?:include/iclforge/sendspin|src)/ac3forge_player\.(?:hpp|cpp)"
+    r"|tests/sendspin/test_ac3forge_player\.cpp"
+    r"|fuzz/(?:seeds|regressions)/fuzz_sendspin_messages/[^/]*ac3forge[^/]*"
+    r"|docs/assets/wasm-(?:decode|encode)-demo/ac3forge_(?:decode|encode)\.(?:js|wasm))$"
+)
+
+
 def package_new(path: str) -> str | None:
-    """Package-level directory renames (esp-idf, bindings, packaging): common to every layout."""
-    p = path.split("/")
-    if p[0] == "esp-idf" and len(p) > 2 and p[1] == "ac3forge":
-        return "esp-idf/iclforge/" + "/".join(p[2:]).replace(
-            "include/ac3forge/", f"include/{FAMILY}/"
-        )
-    if p[0] == "rust" and len(p) > 2 and p[1] in ("ac3forge", "ac3forge-sys"):
-        return f"rust/{p[1].replace('ac3forge', 'iclforge')}/" + "/".join(p[2:])
-    if p[0] == "python" and len(p) > 3 and p[1] == "src" and p[2] in ("ac3forge_ext", "ac3forge"):
-        return f"python/src/{p[2].replace('ac3forge', 'iclforge')}/" + "/".join(p[3:])
-    if p[0] == "packaging" and "ac3forge" in path:
-        return path.replace("ac3forge", "iclforge")
-    if path == "cmake/ac3forgeConfig.cmake.in":
-        return "cmake/iclforgeConfig.cmake.in"
+    """The renames of stage S4 (packages and bindings, and the files named for the wire extension):
+    common to every layout. A second run finds nothing, since a renamed path no longer matches."""
+    if path in PACKAGE_FILES:
+        return PACKAGE_FILES[path]
+    if path.startswith(KEEP_PACKAGE_PATHS):
+        return None
+    if path.startswith(PACKAGE_TREES) or _WIRE_FILES.match(path):
+        new = "/".join(part.replace(OLD_BRAND, FAMILY) for part in path.split("/"))
+        return new if new != path else None
     return None
 
 

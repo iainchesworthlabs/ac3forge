@@ -54,7 +54,7 @@ using namespace std::chrono_literals;
 
 // See tests/cli/test_cli.cpp's own scratch_dir comment for why the TEST_CASE
 // below folds this into its scratch leaf, on top of
-// AC3FORGE_TEST_SCRATCH_DIR's build-tree rooting.
+// ICLFORGE_TEST_SCRATCH_DIR's build-tree rooting.
 std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
@@ -138,7 +138,7 @@ std::vector<std::int32_t> tone() {
 TEST_CASE("test sink: paired by its token over loopback, it writes what it plays", "[hearth][testsink][websocket]") {
     const m::Codec kind = GENERATE(m::Codec::kPcm, m::Codec::kFlac, m::Codec::kOpus);
     const m::AudioFormat format{.codec = kind, .channels = 2, .sample_rate = 48000, .bit_depth = 16};
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_testsink_" + scratch_pid_suffix());
+    const fs::path scratch = fs::path{ICLFORGE_TEST_SCRATCH_DIR} / ("hearth_testsink_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     testsink::SinkOptions options;
     options.name = "Loopback sink";

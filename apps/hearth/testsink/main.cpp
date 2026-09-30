@@ -28,7 +28,7 @@ using namespace std::chrono_literals;
 constexpr std::string_view kUsage = R"(usage: ac3hearth-testsink [options]
 
 A Sendspin player that writes each stream it plays to a WAV file: PCM, FLAC or
-Opus over player@v1, and AC-3 or E-AC-3 over _ac3forge_player@v1, rendered to
+Opus over player@v1, and AC-3 or E-AC-3 over _iclforge_player@v1, rendered to
 its speaker layout.
 
   --name NAME            the name servers show (default "Hearth test sink")
@@ -44,7 +44,7 @@ its speaker layout.
                          flac and opus (default pcm,flac,opus)
   --layout LAYOUT        the speaker layout AC-3 and E-AC-3 are rendered to,
                          such as 5.1 or L,R,C,LFE,Ls,Rs (default 7.1.4)
-  --no-extension         offer player@v1 only, not _ac3forge_player@v1
+  --no-extension         offer player@v1 only, not _iclforge_player@v1
   --roles LIST           other roles to list, from controller, metadata, color,
                          artwork and visualizer, separated by commas: artwork
                          asks for the album's image as a 300x300 JPEG, and

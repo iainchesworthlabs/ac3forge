@@ -71,9 +71,9 @@
 //
 // A sink's own settings pages (issue #875, push_sink_settings()/
 // push_sink_identify() below) need a live connection offering
-// _ac3forge_player@v1: ServerHost::ac3forge_command() resolves by client_id
-// alone (server_host.cpp), and ClientView carries ac3forge_support/
-// ac3forge_state as soon as such a client connects, neither Group-gated.
+// _iclforge_player@v1: ServerHost::iclforge_command() resolves by client_id
+// alone (server_host.cpp), and ClientView carries iclforge_support/
+// iclforge_state as soon as such a client connects, neither Group-gated.
 //
 // What A6 still does not have: a warning BEFORE this computer takes a paired
 // sink that another server is playing to (network-in-use.png). The wire has no
@@ -188,26 +188,26 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     void keep_sink(const std::string& id, bool keep);
 
     // Sends `settings` to sink `id` as a complete replacement - Settings
-    // "replaces the sink's settings whole" (ac3forge_player.hpp's own
+    // "replaces the sink's settings whole" (iclforge_player.hpp's own
     // comment), so this is never a sparse patch: NetworkController reads
     // status()'s own intended_settings first and merges a page edit onto it
     // before calling this, the same "whole struct, apply what changed"
     // shape HearthController::setDecoderSettings() already uses locally.
     // `settings.revision` is overwritten with this sink's own next number -
     // the caller does not choose it. False, nothing sent, for a sink that is
-    // not connected or does not offer _ac3forge_player@v1; true updates
+    // not connected or does not offer _iclforge_player@v1; true updates
     // status()'s intended_settings to `settings` (with the assigned
     // revision) so the page shows it as "current" at once, optimistically -
     // there is no read-back to confirm it with (see SinkFacts::
     // intended_settings's own comment). Whether the sink actually applied it
-    // shows up later, separately, in status()'s ac3forge_state.
-    bool push_sink_settings(const std::string& id, sendspin::ac3forge::Settings settings);
+    // shows up later, separately, in status()'s iclforge_state.
+    bool push_sink_settings(const std::string& id, sendspin::player::Settings settings);
     // Starts the identify tone on `output`, moving it there if another
     // output was already sounding it, or stops it with std::nullopt - same
     // connectedness and return-value terms as push_sink_settings(). Tracked
     // optimistically the same way, in status()'s identify_slot, since the
     // wire has no "identify state" to read back either.
-    bool push_sink_identify(const std::string& id, std::optional<sendspin::ac3forge::Identify> identify);
+    bool push_sink_identify(const std::string& id, std::optional<sendspin::player::Identify> identify);
 
     // Makes a new, empty group (ServerHost::make_group()) and selects it;
     // empty string if the host never started. Not persisted across a run.
@@ -315,7 +315,7 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
         // when the sink's connection drops and reconnects (on_client() keeps
         // the same Entry, keyed by mDNS instance, not by client_id), so a
         // brief reconnect does not forget what was last pushed.
-        std::optional<sendspin::ac3forge::Settings> intended_settings{};
+        std::optional<sendspin::player::Settings> intended_settings{};
         std::int64_t next_settings_revision = 1;
         std::optional<std::int32_t> identify_slot{};
     };

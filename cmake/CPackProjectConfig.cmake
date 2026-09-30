@@ -28,7 +28,7 @@ endif()
 # CPACK_COMPONENT_LIBRARY_GROUP/CPACK_COMPONENT_LIBRUNTIME_GROUP "dev" merges
 # library+libruntime into one archive for ZIP/TGZ - correct there, but DEB/
 # RPM want those same two components to stay three independent .deb/.rpm
-# files (runtime, libac3forge0, libac3forge-dev/ac3forge-devel), which is the
+# files (runtime, libiclforge0, libiclforge-dev/iclforge-devel), which is the
 # entire reason they're split into their own CPack components in the first
 # place (see cmake/InstallLibrary.cmake). IGNORE - one package per component,
 # not per group - restores that for exactly these two generators' own passes,
@@ -41,7 +41,7 @@ endif()
 # CPACK_NSIS_COMPONENT_INSTALL is off (see Packaging.cmake), which makes that
 # generator monolithic - it installs every component in CPACK_COMPONENTS_ALL
 # into one installer - so the AC3Forge Crucible would otherwise land inside
-# the ac3cli/ac3gui installer the moment AC3FORGE_BUILD_CRUCIBLE is on for a
+# the ac3cli/ac3gui installer the moment ICLFORGE_BUILD_CRUCIBLE is on for a
 # packaging build. It ships as its own archive instead while its driver is
 # test-signed; the intended end state is the opposite (the installer
 # installs the Crucible and its signed driver, and removes them on

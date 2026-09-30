@@ -45,7 +45,7 @@ class PlatformOnlyChangeTest(unittest.TestCase):
         self.assertEqual(lit(hits, *ALL_LANES), {"android"})
 
     def test_esp_only_change_lights_only_esp(self):
-        hits = gate.classify(["esp-idf/ac3forge/CMakeLists.txt"])
+        hits = gate.classify(["esp-idf/iclforge/CMakeLists.txt"])
         self.assertEqual(lit(hits, *ALL_LANES), {"esp"})
 
     def test_esp_component_packaging_script_lights_only_esp(self):
@@ -61,7 +61,7 @@ class PlatformOnlyChangeTest(unittest.TestCase):
         self.assertEqual(lit(hits, *ALL_LANES), {"python"})
 
     def test_rust_only_change_lights_only_rust(self):
-        hits = gate.classify(["rust/ac3forge/src/lib.rs"])
+        hits = gate.classify(["rust/iclforge/src/lib.rs"])
         self.assertEqual(lit(hits, *ALL_LANES), {"rust"})
 
     def test_windows_driver_change_does_not_light_other_platforms(self):
@@ -184,16 +184,16 @@ class SatellitesDirectTest(unittest.TestCase):
     def test_a_satellites_own_tree_still_lights_it(self):
         for path, lane in (
             ("apps/android/app/build.gradle.kts", "android"),
-            ("esp-idf/ac3forge/CMakeLists.txt", "esp"),
-            ("rust/ac3forge/src/lib.rs", "rust"),
-            ("python/ac3forge/__init__.py", "python"),
+            ("esp-idf/iclforge/CMakeLists.txt", "esp"),
+            ("rust/iclforge/src/lib.rs", "rust"),
+            ("python/iclforge/__init__.py", "python"),
             ("apps/wasm/src/main.cpp", "wasm"),
         ):
             with self.subTest(path=path):
                 self.assertEqual(lit(self.classify(path), *ALL_LANES), {lane})
 
     def test_a_core_change_and_a_satellite_change_together_light_both(self):
-        hits = self.classify("src/coder/x.cpp", "rust/ac3forge/src/lib.rs")
+        hits = self.classify("src/coder/x.cpp", "rust/iclforge/src/lib.rs")
         self.assertEqual(lit(hits, *ALL_LANES), {"core", "windows", "linux", "macos", "rust"})
 
     def test_a_path_only_a_platform_owns_is_unchanged(self):

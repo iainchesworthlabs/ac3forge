@@ -1,8 +1,8 @@
 # Third-party decode interop against a corpus this project did not produce.
 #
-# Every other gate in this repository decodes something ac3forge (or, in the
+# Every other gate in this repository decodes something iclforge (or, in the
 # gold-reference gate's newer checks, FFmpeg and Dolby's Encoding Engine driven
-# BY ac3forge) encoded. tools/checks/verify_fate_interop.py decodes streams
+# BY iclforge) encoded. tools/checks/verify_fate_interop.py decodes streams
 # nobody here commissioned: pinned excerpts of commercially mastered programme
 # material from FFmpeg's FATE sample archive, encoded years ago by whatever
 # encoder the mastering house used. See that file's own header for what each

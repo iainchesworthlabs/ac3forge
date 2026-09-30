@@ -55,7 +55,7 @@ enum class MuxError : std::uint8_t {
     kFrameSizeMismatch,  // a Frame's channel did not carry exactly samples_per_frame samples
 };
 
-[[nodiscard]] IAMF_EXPORT std::string_view describe(MuxError error);
+[[nodiscard]] ICLFORGE_IAMF_EXPORT std::string_view describe(MuxError error);
 
 // One Temporal Unit's worth of PCM (IAMF §2.3.2.2/§2.4): samples_per_frame samples of each of
 // the 12 channels, already ordered the way this module's Audio Element OBU declares them (IAMF
@@ -91,14 +91,14 @@ struct AudioTrack {
     LoudnessInfo layout_714_loudness{};
     // Written into moov's hdlr name field (ISO/IEC 14496-12 §8.4.3), matching
     // iclforge::mp4::MuxOptions::writing_app's own use.
-    std::string writing_app{"ac3forge"};
+    std::string writing_app{"iclforge"};
 };
 
 // Mux `frames` into a complete IAMF ISOBMFF file (IAMF §6: `iamf`-branded ftyp, an `iamf`
 // IASampleEntry carrying an `iacb` IAConfigurationBox, one IA Sample per frame in mdat), returned
 // as bytes - no file I/O, matching iclforge::mp4::mux/iclforge::matroska::mux's own reasoning: this
 // stays testable without touching a disk.
-[[nodiscard]] IAMF_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
+[[nodiscard]] ICLFORGE_IAMF_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
     const AudioTrack& track, std::span<const Frame> frames);
 
 }  // namespace iclforge::iamf

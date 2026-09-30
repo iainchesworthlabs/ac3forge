@@ -46,7 +46,7 @@ using Location = iclforge::eac3::chanmap::Location;
 namespace {
 
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} /
+    auto dir = fs::path{ICLFORGE_TEST_SCRATCH_DIR} /
                ("cli_atmos_encode_ac4_" + iclforge::test::platform::process_id());
     fs::create_directories(dir);
     return dir;

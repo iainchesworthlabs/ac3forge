@@ -123,7 +123,7 @@ inline constexpr std::uint64_t kEac3ToolsHash = 1673449135140366971ULL;
 // Ls, Rs, Lrs and Rrs - 2,688 bytes a unit, 16,128 for six. The fixture that
 // holds two E-AC-3 FrameEncoders alive at once, which is what a layout wider
 // than 5.1 costs - and, measured, more than an ESP32-S3 has: OPT-IN through
-// AC3FORGE_PROBE_SEVEN_ONE, see encode_probe.cpp for the numbers. The hash is
+// ICLFORGE_PROBE_SEVEN_ONE, see encode_probe.cpp for the numbers. The hash is
 // the host's (Linux GCC 15, x86_64, 2026-09-10), taken the way the header
 // above describes.
 inline constexpr std::size_t kEac3SevenOneBytes = 16128;

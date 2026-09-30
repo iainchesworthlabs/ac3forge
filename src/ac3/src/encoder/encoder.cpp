@@ -391,7 +391,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // curves the runs cached for the last frame's searches are stale, and a
     // path that evaluates a cost without searching (VBR) must not read them.
     ++impl_->curve_generation_;
-    AC3_ZONE_SCOPED_N("iclforge::FrameEncoder::encode_frame");
+    ICLFORGE_ZONE_SCOPED_N("iclforge::FrameEncoder::encode_frame");
     // Before the first early return below, so a caller that keeps one trace
     // across a whole file never reads the previous frame's state back out of
     // a call that produced no frame at all.
@@ -448,7 +448,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // multi-channel layout's channels are (§7.7.2.2 for compr; the same
     // reasoning applies to dynrng, which has no channel-combining rule to
     // begin with once there is no single soundfield to describe a level for).
-    AC3_ZONE_BEGIN(zone_metadata, "step0_metadata");
+    ICLFORGE_ZONE_BEGIN(zone_metadata, "step0_metadata");
     std::array<std::uint8_t, kBlocksPerFrame> dynrng{};
     dynrng.fill(meta::kDynrngUnity);
     std::array<std::uint8_t, kBlocksPerFrame> dynrng2{};
@@ -532,7 +532,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         const double peak2 = meta::channel_peak_dbfs(std::span{impl_->history_[1]}, channels[1]);
         compr2 = impl_->heavy2_->next(peak2, *impl_->config_.dialnorm2);
     }
-    AC3_ZONE_END(zone_metadata);
+    ICLFORGE_ZONE_END(zone_metadata);
 
     // --- Block switching (§8.2.2/§7.9) --------------------------------------
     // Decided before the coupling decision below, because §8.2.4.1's basic-
@@ -543,7 +543,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // the whole frame. A channel that switches in ANY block is out for the
     // whole frame, because this encoder only ever sends coupling strategy
     // (and with it chincpl) in block 0.
-    AC3_ZONE_BEGIN(zone_transients, "step0_transient_detect");
+    ICLFORGE_ZONE_BEGIN(zone_transients, "step0_transient_detect");
     auto& blksw = impl_->blksw;
     blksw.assign(static_cast<std::size_t>(nfchans), {});
     // AC-3's widest acmod (3/2) codes five full-bandwidth channels.
@@ -566,10 +566,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 switched[static_cast<std::size_t>(ch)] || sw;
         }
     }
-    AC3_ZONE_END(zone_transients);
+    ICLFORGE_ZONE_END(zone_transients);
 
     // --- 1. MDCT per channel per block -------------------------------------
-    AC3_ZONE_BEGIN(zone_mdct, "step1_mdct");
+    ICLFORGE_ZONE_BEGIN(zone_mdct, "step1_mdct");
     // assign() keeps exactly the zero-fill the fresh vector used to provide
     // (bins outside a stream's coded range stay zero, whether or not any
     // reader depends on that today) - only the storage itself is the reused
@@ -593,7 +593,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // batched and one-at-a-time paths below share it verbatim.
         const auto gather_and_window = [&](int block, std::size_t lane) {
             auto& time = impl_->time_scratch_;
-            AC3_ZONE_BEGIN(zone_gather, "step1_gather");
+            ICLFORGE_ZONE_BEGIN(zone_gather, "step1_gather");
             for (int n = 0; n < 512; ++n) {
                 const int pos = block * 256 - 256 + n;
                 time[static_cast<std::size_t>(n)] =
@@ -603,10 +603,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                   channels[static_cast<std::size_t>(ch)]
                                           [static_cast<std::size_t>(pos)]);
             }
-            AC3_ZONE_END(zone_gather);
-            AC3_ZONE_BEGIN(zone_window, "step1_window");
+            ICLFORGE_ZONE_END(zone_gather);
+            ICLFORGE_ZONE_BEGIN(zone_window, "step1_window");
             apply_analysis_window(time, windowed[lane]);
-            AC3_ZONE_END(zone_window);
+            ICLFORGE_ZONE_END(zone_window);
         };
         const auto is_long = [&](int block) {
             return !(ch < nfchans &&
@@ -660,7 +660,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     channels[static_cast<std::size_t>(ch)][static_cast<std::size_t>(1280 + n)]);
         }
     }
-    AC3_ZONE_END(zone_mdct);
+    ICLFORGE_ZONE_END(zone_mdct);
 
     // Bandwidth: explicit config, or the rate AND the content. This comes
     // before the coupling decision because coupling inherits it - see
@@ -967,7 +967,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     };
 
     if (cplinu) {
-        AC3_ZONE_SCOPED_N("step2_coupling");
+        ICLFORGE_ZONE_SCOPED_N("step2_coupling");
         auto& values = impl_->cpl_values;
         values.assign(static_cast<std::size_t>(cplbands.count), 0.0);
 
@@ -1099,7 +1099,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     const bool rematrixing = impl_->config_.acmod == Acmod::k2_0;
     const int nrematbd = rematrix_band_count(cplinu, cplbegf);
     if (rematrixing) {
-        AC3_ZONE_SCOPED_N("step3_rematrix");
+        ICLFORGE_ZONE_SCOPED_N("step3_rematrix");
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             auto& left = coeffs_at(0, block);
             auto& right = coeffs_at(1, block);
@@ -1138,7 +1138,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
 
     // --- 4. Fixed point + per-block raw exponents --------------------------
-    AC3_ZONE_BEGIN(zone_fixed, "step4_fixed_exponents");
+    ICLFORGE_ZONE_BEGIN(zone_fixed, "step4_fixed_exponents");
     auto& fixed = impl_->fixed_;
     {
         // Sized once, up front: the exact total across ~10k bins is knowable
@@ -1197,7 +1197,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                               block_exps[slot]);
         }
     }
-    AC3_ZONE_END(zone_fixed);
+    ICLFORGE_ZONE_END(zone_fixed);
     // Indexed from the stream's own start bin.
     const auto fixed_at = [&](int s, int block, int offset) {
         return fixed[fixed_base[static_cast<std::size_t>(s) * kBlocksPerFrame +
@@ -1206,7 +1206,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     };
 
     // --- 5. Exponent strategy plan per stream (§8.2.8) ---------------------
-    AC3_ZONE_BEGIN(zone_strategy, "step5_exp_strategy");
+    ICLFORGE_ZONE_BEGIN(zone_strategy, "step5_exp_strategy");
     // The plan's stream slots and each slot's runs are rebuilt in place -
     // run_of_block is fully overwritten (the runs tile all six blocks), and
     // every ExponentRun field is explicitly re-set below, so a reused slot
@@ -1382,7 +1382,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // p.runs.size().
         p.runs.resize(used_runs);
     }
-    AC3_ZONE_END(zone_strategy);
+    ICLFORGE_ZONE_END(zone_strategy);
 
     // --- 6. Coupling leak seeds --------------------------------------------
     // The transmitted leaks continue the masking decay across the coupling
@@ -1838,7 +1838,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         bits += static_cast<std::uint32_t>(counter.bit_count());
         return bits;
     };
-    AC3_ZONE_BEGIN(zone_side_bits, "step8_side_bits");
+    ICLFORGE_ZONE_BEGIN(zone_side_bits, "step8_side_bits");
     std::uint32_t side_bits = measure_side_bits();
 
     // §7.2.2.6: delta bit allocation is a pure quality refinement, never
@@ -1868,7 +1868,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // Ended before the fit check below rather than after `budget`: the
     // check's failure path returns out of encode_frame, and a manual
     // TracyCZone must not be left open across a return.
-    AC3_ZONE_END(zone_side_bits);
+    ICLFORGE_ZONE_END(zone_side_bits);
     if (side_bits + detail::kTailBits > total_bits) {
         // The chosen configuration cannot fit its own headers at this rate.
         return std::unexpected(FrameError::kInvalidBitrate);
@@ -1879,7 +1879,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     std::uint32_t budget = total_bits - side_bits - detail::kTailBits;
 
     // --- 9. SNR-offset search ----------------------------------------------
-    AC3_ZONE_BEGIN(zone_snr_search, "step9_snr_search");
+    ICLFORGE_ZONE_BEGIN(zone_snr_search, "step9_snr_search");
     auto& run_bap = impl_->run_bap_;
     run_bap.resize(static_cast<std::size_t>(streams));
     for (int s = 0; s < streams; ++s) {
@@ -1890,7 +1890,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     bap_views.assign(static_cast<std::size_t>(streams), {});
 
     const auto bits_at = [&](int composite) {
-        AC3_ZONE_SCOPED_N("bits_at");
+        ICLFORGE_ZONE_SCOPED_N("bits_at");
         for (int s = 0; s < streams; ++s) {
             auto& p = plan[static_cast<std::size_t>(s)];
             const bool is_lfe = s < nchans && s >= nfchans;
@@ -2086,7 +2086,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // files; this asks the same question of THIS frame and answers it from
     // the error the decoder will reconstruct.
     if (impl_->config_.search != quality::Criterion::kNone) {
-        AC3_ZONE_SCOPED_N("step9a_codes_search");
+        ICLFORGE_ZONE_SCOPED_N("step9a_codes_search");
         // Per (stream, block), not per stream. Masking is a within-block
         // phenomenon, and a frame-summed threshold would let a loud block's
         // slack pay for a quiet block's excess - the same failure
@@ -2103,7 +2103,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // The measurement at whatever allocation run_bap currently holds -
         // which, after a settle(), is the winning composite offset's.
         const auto measure = [&] {
-            AC3_ZONE_SCOPED_N("step9a_measure");
+            ICLFORGE_ZONE_SCOPED_N("step9a_measure");
             for (auto& slot : measured) {
                 slot.reset();
             }
@@ -2131,7 +2131,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // a variable-length search, not a per-candidate cost.
         auto& thresholds = impl_->thresholds;
         if (impl_->config_.search == quality::Criterion::kPerceptual) {
-            AC3_ZONE_SCOPED_N("step9a_perceptual");
+            ICLFORGE_ZONE_SCOPED_N("step9a_perceptual");
             if (!impl_->perceptual.has_value()) {
                 // nchans + 1: every coded stream, with the coupling channel's
                 // slot present whether or not this frame uses it.
@@ -2293,7 +2293,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     csnroffst = lo >> 4;
     fsnroffst = lo & 15;
     assert(mantissa_bits <= budget);
-    AC3_ZONE_END(zone_snr_search);
+    ICLFORGE_ZONE_END(zone_snr_search);
 
     // --- 9b. Dither substitution per channel per block ---------------------
     // §7.3.4, decided from what the allocation above actually left out - see
@@ -2314,7 +2314,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // deterministic behaviour from before this feature existed, for a caller
     // that needs bit-for-bit agreement with an external decoder more than it
     // needs the flag itself (see EncoderConfig::dither's own comment).
-    AC3_ZONE_BEGIN(zone_dither, "step9a_dither_flags");
+    ICLFORGE_ZONE_BEGIN(zone_dither, "step9a_dither_flags");
     for (int ch = 0; ch < nfchans && impl_->config_.dither; ++ch) {
         const auto& p = plan[static_cast<std::size_t>(ch)];
         for (int block = 0; block < kBlocksPerFrame; ++block) {
@@ -2342,10 +2342,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 ballot.on();
         }
     }
-    AC3_ZONE_END(zone_dither);
+    ICLFORGE_ZONE_END(zone_dither);
 
     // --- 10. Mantissa tokens per block -------------------------------------
-    AC3_ZONE_BEGIN(zone_mantissa_tokens, "step10_mantissa_tokens");
+    ICLFORGE_ZONE_BEGIN(zone_mantissa_tokens, "step10_mantissa_tokens");
     // §5.3.3 ordering: each fbw channel's mantissas, with the coupling
     // channel's inserted right after the FIRST coupled channel, then the LFE.
     // One writer for all six blocks and member-owned token slots: reset()
@@ -2399,10 +2399,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         writer.take_tokens_into(block_tokens[static_cast<std::size_t>(block)]);
     }
     assert(token_bits_total == mantissa_bits);
-    AC3_ZONE_END(zone_mantissa_tokens);
+    ICLFORGE_ZONE_END(zone_mantissa_tokens);
 
     // --- 11. Pack ----------------------------------------------------------
-    AC3_ZONE_BEGIN(zone_pack, "step11_pack_bitstream_mux");
+    ICLFORGE_ZONE_BEGIN(zone_pack, "step11_pack_bitstream_mux");
     const auto plan_pad = detail::plan_padding(budget - mantissa_bits);
 
     BitWriter w;
@@ -2583,7 +2583,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     frame[total_bytes - 2] = static_cast<std::byte>(crc2 >> 8);
     frame[total_bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
-    AC3_ZONE_END(zone_pack);
+    ICLFORGE_ZONE_END(zone_pack);
     return frame;
 }
 

@@ -22,12 +22,12 @@ test('encodes a known stereo tone, QC verdict matches it, and it round-trip deco
     await page.goto('index.html');
 
     const result = await page.evaluate(async () => {
-        // @ts-ignore - both createAc3ForgeEncodeModule and createAc3ForgeModule
+        // @ts-ignore - both createIclForgeEncodeModule and createIclForgeModule
         // are the Emscripten MODULARIZE factories index.html's <script> tags
         // attach to window.
-        const encodeModule = await window.createAc3ForgeEncodeModule();
+        const encodeModule = await window.createIclForgeEncodeModule();
         // @ts-ignore
-        const decodeModule = await window.createAc3ForgeModule();
+        const decodeModule = await window.createIclForgeModule();
 
         const sampleRate = 48000;
         const seconds = 2;
@@ -205,9 +205,9 @@ test('encodes a 12-channel 7.1.4 WAV through the wide-layout plan routing', asyn
 
     const result = await page.evaluate(async () => {
         // @ts-ignore
-        const encodeModule = await window.createAc3ForgeEncodeModule();
+        const encodeModule = await window.createIclForgeEncodeModule();
         // @ts-ignore
-        const decodeModule = await window.createAc3ForgeModule();
+        const decodeModule = await window.createIclForgeModule();
 
         const sampleRate = 48000;
         const spf = 1536;

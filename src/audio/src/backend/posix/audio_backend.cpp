@@ -1,7 +1,7 @@
 #include "iclforge/audio/audio_backend.hpp"
 
 // This is now reachable only as iclforge::audio's Linux fallback, when
-// libasound's development headers are not present (see the AC3FORGE_WITH_ALSA
+// libasound's development headers are not present (see the ICLFORGE_WITH_ALSA
 // AUTO/ON/OFF block in src/audio/CMakeLists.txt) - macOS gets a real
 // CoreAudio backend of its own, src/audio/src/backend/macos/, unconditionally.
 //

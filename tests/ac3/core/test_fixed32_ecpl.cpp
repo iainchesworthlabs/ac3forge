@@ -5,7 +5,7 @@
 // Split out of test_fixed32.cpp because they are the one part of it that calls
 // into the library rather than into inline code. The functions are internal -
 // declared in a header under src/, not in the installed include tree - so they
-// are not exported from libac3forge.so, and tests/CMakeLists.txt builds
+// are not exported from libiclforge_ac3.so, and tests/CMakeLists.txt builds
 // this file only when iclforge::ac3 is the static library. The rest of
 // test_fixed32.cpp is inline arithmetic and runs in either build.
 

@@ -23,7 +23,7 @@ namespace iclforge::signing {
 // Owns the key bytes and zeroizes them on destruction, so a supplied key does
 // not linger in freed heap after signing finishes. Copyable/movable; every
 // copy scrubs its own bytes when it dies.
-class AC3SIGNING_EXPORT SigningKey {
+class ICLFORGE_SIGNING_EXPORT SigningKey {
 public:
     SigningKey() = default;
     explicit SigningKey(std::vector<std::byte> bytes);
@@ -73,17 +73,17 @@ struct KeyLoadError {
 // no "0x" prefix is deliberately not its own format: such a string is itself
 // valid base64, so the two cannot be auto-distinguished. See
 // docs/concepts/object-signing.md.
-[[nodiscard]] AC3SIGNING_EXPORT std::optional<SigningKey> decode_signing_key(
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT std::optional<SigningKey> decode_signing_key(
     std::span<const std::byte> content);
 
 // Resolves a key from, in order: `explicit_path` if non-empty (the CLI's
-// signing-key= option), then $AC3FORGE_SIGNING_KEY_FILE (a path), then
-// $AC3FORGE_SIGNING_KEY (inline). File and inline contents are decoded by
+// signing-key= option), then $ICLFORGE_SIGNING_KEY_FILE (a path), then
+// $ICLFORGE_SIGNING_KEY (inline). File and inline contents are decoded by
 // decode_signing_key() above (base64 or raw). The env fallbacks let CI provide
 // a key without a persisted file while the file form stays the documented
 // default (a value passed inline shows up in `ps`/shell history; a path does
 // not).
-[[nodiscard]] AC3SIGNING_EXPORT std::expected<SigningKey, KeyLoadError> load_signing_key(
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT std::expected<SigningKey, KeyLoadError> load_signing_key(
     std::string_view explicit_path);
 
 }  // namespace iclforge::signing

@@ -2,7 +2,7 @@
 #
 # Platform-isolation guard.
 #
-# ac3forge branches on the operating system in CMake, never in the preprocessor:
+# iclforge branches on the operating system in CMake, never in the preprocessor:
 # src/audio/CMakeLists.txt picks one src/audio/src/backend/<backend>/ directory
 # (alsa/android/macos/pipewire/posix/windows) for the target OS, so exactly one
 # audio_backend.cpp/capture.cpp/monitor.cpp/passthrough.cpp set is ever
@@ -25,7 +25,7 @@
 # assertions. Each is now the same directory-selected shape the rest of the
 # tree uses -- tests/platform/<os>/, tests/ac3/core/avx2/{present,absent}/,
 # tests/render/abi/{msvc,unknown}/ -- and python/ likewise
-# (python/src/ac3forge_ext/{signing,containers}/{present,absent}/), so every
+# (python/src/iclforge_ext/{signing,containers}/{present,absent}/), so every
 # tree here starts at zero rather than being grandfathered in with a waiver list.
 #
 # NOT scanned, deliberately: esp-idf/. That tree is an ESP-IDF component built
@@ -33,7 +33,7 @@
 # Kconfig symbols -- the documented IDF idiom, and in the CONFIG_SPIRAM case
 # load-bearing in a way a directory split would not reproduce: on a target with
 # no PSRAM bus, esp_psram_get_size() is never exposed to the linker at all
-# (see esp-idf/ac3forge/src/control.cpp's own comment). Holding this rule over
+# (see esp-idf/iclforge/src/control.cpp's own comment). Holding this rule over
 # somebody else's build system, with no toolchain here to verify against, would
 # be a change made blind.
 #
@@ -110,7 +110,7 @@ $files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', 
 # licence (see its README): a separate kernel-mode work that shares no code
 # with the rest of the tree, kept as close to the sample as possible so its
 # cuts read as a diff. It is written the way Windows drivers are written,
-# include guards and all, and the rule this check holds is about ac3forge's
+# include guards and all, and the rule this check holds is about iclforge's
 # own code selecting platforms in CMake - so the sample is left out.
 $driverRoot = Join-Path (Join-Path $Root 'apps') 'windows\driver'
 $files = @($files | Where-Object { -not $_.FullName.StartsWith($driverRoot, [System.StringComparison]::OrdinalIgnoreCase) })

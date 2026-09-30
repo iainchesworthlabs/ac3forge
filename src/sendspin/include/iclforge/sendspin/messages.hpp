@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "iclforge/sendspin/ac3forge_player.hpp"
+#include "iclforge/sendspin/iclforge_player.hpp"
 #include "iclforge/sendspin/dialect.hpp"
 #include "iclforge/sendspin/json.hpp"
 #include "iclforge/sendspin/state_roles.hpp"
@@ -17,7 +17,7 @@
 // roles/player/v1.md), each a struct with a writer and a reader, in both dialects where
 // they differ (planning/hearth-sendspin-extension.md, Music Assistant and aiosendspin
 // 9.1.1). The pairing messages have a header of their own, and so do the objects of the other
-// roles (state_roles.hpp, stream_roles.hpp) and of `_ac3forge_player@v1` (ac3forge_player.hpp),
+// roles (state_roles.hpp, stream_roles.hpp) and of `_iclforge_player@v1` (iclforge_player.hpp),
 // which the messages here carry.
 //
 // Every message is {"type": "<type>", "payload": {...}}. A session parses the text into a
@@ -144,16 +144,16 @@ struct ClientHello {
     DeviceInfo device_info;
     std::vector<std::string> supported_roles;
     std::optional<PlayerSupport> player_support;
-    // Read as nothing when the object is absent or one ac3forge::read_support refuses: the
+    // Read as nothing when the object is absent or one player::read_support refuses: the
     // message stands, and a server does not activate the role.
-    std::optional<ac3forge::Support> ac3forge_support;
+    std::optional<player::Support> iclforge_support;
     std::vector<PairMethodDescriptor> pair_methods;
     bool unpaired_access = false;
     // aiosendspin 9.1.1's `trust_level`: "user" on a long-term PSK connection, "none"
     // otherwise. Written and read in that dialect only.
     bool trusts_server = false;
     // The support objects of source@v1 and visualizer@v1, read as nothing when absent or refused,
-    // as ac3forge_support is.
+    // as iclforge_support is.
     std::optional<source::Support> source_support = std::nullopt;
     std::optional<visualizer::Support> visualizer_support = std::nullopt;
 };
@@ -251,7 +251,7 @@ struct PlayerState {
 struct ClientState {
     bool available = false;
     std::optional<PlayerState> player;
-    std::optional<ac3forge::State> ac3forge;
+    std::optional<player::State> iclforge;
     std::optional<source::State> source = std::nullopt;
     std::optional<artwork::Channels> artwork = std::nullopt;
     std::optional<visualizer::State> visualizer = std::nullopt;
@@ -276,16 +276,16 @@ struct PlayerCommandMessage {
 
 struct ServerCommand {
     std::optional<PlayerCommandMessage> player;
-    std::optional<ac3forge::CommandMessage> ac3forge;
-    // Read only: a settings command ac3forge::read_command refused, with the revision it named,
+    std::optional<player::CommandMessage> iclforge;
+    // Read only: a settings command player::read_command refused, with the revision it named,
     // for the sink's settings_error. The message is not malformed.
-    std::optional<ac3forge::SettingsError> ac3forge_refused;
+    std::optional<player::SettingsError> iclforge_refused;
     std::optional<source::Command> source = std::nullopt;
 };
 
 [[nodiscard]] std::string write_server_command(const ServerCommand& command, Dialect dialect);
 // A player command whose value is missing, or out of its range, is malformed, and so is an
-// `_ac3forge_player` command ac3forge::read_command finds malformed.
+// `_iclforge_player` command player::read_command finds malformed.
 [[nodiscard]] std::expected<ServerCommand, MessageError> read_server_command(json::Value payload,
                                                                             Dialect dialect);
 
@@ -325,7 +325,7 @@ struct PlayerStream {
 struct StreamStart {
     std::int64_t server_transmitted = 0;
     std::optional<PlayerStream> player;
-    std::optional<ac3forge::StreamStart> ac3forge;
+    std::optional<player::StreamStart> iclforge;
     std::optional<artwork::Channels> artwork = std::nullopt;
     std::optional<visualizer::StreamStart> visualizer = std::nullopt;
 };

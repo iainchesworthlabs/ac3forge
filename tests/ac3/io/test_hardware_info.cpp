@@ -1,14 +1,14 @@
 // The hardware self-report's arithmetic, tested on the host - see
-// ac3forge/hardware_info.hpp's own header comment for why this can be, and
+// iclforge/hardware_info.hpp's own header comment for why this can be, and
 // sink_plan.hpp's test beside this one for the same discipline on a chip's
 // I2S ceiling.
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "ac3forge/hardware_info.hpp"
+#include "iclforge/hardware_info.hpp"
 
-using ac3forge::describe_hardware;
-using ac3forge::HardwareFacts;
+using iclforge::describe_hardware;
+using iclforge::HardwareFacts;
 
 namespace {
 

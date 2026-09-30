@@ -71,7 +71,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 // names becomes an AtmosEncoder object, driven by the file's own authored panning, no scene file
 // needed. See adm/atmos_iab.hpp's own header comment for why this function is unconditional
 // (iclforge::iab/iclforge::admbridge linked-or-not is a build-time FILE choice, never a
-// preprocessor conditional) and why it rides run_atmos_adm's own AC3FORGE_BUILD_ADM gate rather
+// preprocessor conditional) and why it rides run_atmos_adm's own ICLFORGE_BUILD_ADM gate rather
 // than a new one.
 int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   const ac3cli::Options& meta);

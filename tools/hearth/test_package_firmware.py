@@ -47,7 +47,7 @@ class Package(unittest.TestCase):
                 "hearth-sink-esp32s3.json",
             ],
         )
-        app = (build / "ac3forge_hearth_sink.bin").read_bytes()
+        app = (build / "iclforge_hearth_sink.bin").read_bytes()
         self.assertEqual((self.out / "hearth-sink-esp32s3-v0.11.0.bin").read_bytes(), app)
         self.assertEqual(fragment["version"], "v0.11.0")
         self.assertEqual(fragment["target"], "esp32s3")
@@ -58,7 +58,7 @@ class Package(unittest.TestCase):
         self.assertTrue(fragment["psram"])
         self.assertEqual(fragment["slot_bytes"], 0x400000)
         self.assertFalse(fragment["network_built_in"])
-        self.assertEqual(fragment["project"], "ac3forge_hearth_sink")
+        self.assertEqual(fragment["project"], "iclforge_hearth_sink")
         self.assertEqual(fragment["elf_sha256"], bytes((1 + i) & 0xFF for i in range(32)).hex())
         self.assertEqual(
             [entry["label"] for entry in fragment["partitions"]][3:5], ["ota_0", "ota_1"]
@@ -69,7 +69,7 @@ class Package(unittest.TestCase):
                 (0x0, "bootloader.bin"),
                 (0x8000, "partition-table.bin"),
                 (0x10000, "ota_data_initial.bin"),
-                (0x20000, "ac3forge_hearth_sink.bin"),
+                (0x20000, "iclforge_hearth_sink.bin"),
                 (0x830000, "sample.ac3"),
                 (0x870000, "storage.bin"),
             ],
@@ -102,7 +102,7 @@ class Package(unittest.TestCase):
         )
         packager.package(build, "hearth-sink-esp32c6", self.out)
         factory = (self.out / "hearth-sink-esp32c6-v0.11.0-factory.bin").read_bytes()
-        app = (build / "ac3forge_hearth_sink.bin").read_bytes()
+        app = (build / "iclforge_hearth_sink.bin").read_bytes()
         storage = (build / "storage.bin").read_bytes()
         self.assertEqual(len(factory), 0x3C0000 + len(storage))
         self.assertEqual(factory[0x20000 : 0x20000 + len(app)], app)
@@ -135,7 +135,7 @@ class Package(unittest.TestCase):
         args = (
             (build / "flash_args")
             .read_text("utf-8")
-            .replace("0x20000 ac3forge_hearth_sink.bin\n", "")
+            .replace("0x20000 iclforge_hearth_sink.bin\n", "")
         )
         (build / "flash_args").write_text(args, "utf-8")
         with self.assertRaisesRegex(

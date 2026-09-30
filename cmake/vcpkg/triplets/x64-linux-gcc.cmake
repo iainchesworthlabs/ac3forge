@@ -14,5 +14,5 @@ set(VCPKG_LIBRARY_LINKAGE static)
 # So vcpkg builds Catch2 with its own default compiler rather than the pinned
 # gcc-15. That is safe for this project because both the GCC and the Clang
 # toolchain link the system libstdc++, so the port and the project agree on the
-# standard-library ABI. Should ac3forge ever take a port whose ABI is sensitive
+# standard-library ABI. Should iclforge ever take a port whose ABI is sensitive
 # to the exact compiler, that assumption is what has to be revisited.

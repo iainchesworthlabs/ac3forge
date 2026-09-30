@@ -80,7 +80,7 @@ enum class EncodeError : std::uint8_t {
     kInvalidInput,   // a channel count or lengths that do not match, or a sample that is not finite
 };
 
-[[nodiscard]] AC4ENC_EXPORT std::string_view describe(EncodeError error);
+[[nodiscard]] ICLFORGE_AC4ENC_EXPORT std::string_view describe(EncodeError error);
 
 // The channel element's codec mode (Part 1 clause 4.3.6.1), or the immersive
 // element's (Part 2 clause 6.3.5.1, Table 73).
@@ -746,7 +746,7 @@ struct EncodedFrame {
     bool iframe = false;   // b_iframe_global
 };
 
-class AC4ENC_EXPORT Encoder {
+class ICLFORGE_AC4ENC_EXPORT Encoder {
    public:
     // Fails with EncodeError::kInvalidConfig for a configuration outside what
     // the encoder writes (the rules this header states), or whose rate cannot
@@ -825,7 +825,7 @@ class AC4ENC_EXPORT Encoder {
 // Part 2 Annex G.3.1's ac4_syncframe(): the sync word 0xAC40, or 0xAC41 and a
 // trailing crc_word (Annex G.4.2) when `crc` is set, then frame_size and the
 // raw frame.
-[[nodiscard]] AC4ENC_EXPORT std::vector<std::byte> sync_frame(std::span<const std::byte> raw_ac4_frame,
+[[nodiscard]] ICLFORGE_AC4ENC_EXPORT std::vector<std::byte> sync_frame(std::span<const std::byte> raw_ac4_frame,
                                                               bool crc);
 
 }  // namespace iclforge::ac4
