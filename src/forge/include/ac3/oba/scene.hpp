@@ -11,8 +11,8 @@
 #include <vector>
 
 #include "ac3/export.hpp"
-#include "ac3/oba/atmos.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/placement.hpp"
 
 // An object scene: what is in the room, where each thing goes, and when.
 //

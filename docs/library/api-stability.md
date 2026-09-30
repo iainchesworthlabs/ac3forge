@@ -52,6 +52,7 @@ it directly. Four tiers, assigned per header below:
 | `ac3/oba/joc_domain.hpp` | Public — `joc::Domain` is selected through `AtmosConfig` and `reconstruct()`, as it was in `joc.hpp`. |
 | `ac3/emdf/emdf.hpp` | Public. |
 | `ac3/emdf/frame_layout.hpp` | Internal — the bit-accurate frame walk `strip_objects` and `ac3::signing` share; a caller uses them, not it. |
+| `ac3/oba/placement.hpp` | Public — `ObjectPlacement` is what `AtmosEncoder::encode_frame` takes, as it was when `atmos.hpp` declared it. |
 | `ac3/iec61937/iec61937.hpp` | Public. |
 | `ac3/dsp/qmf.hpp` | Public — `oba::joc::Domain::kQmf` is selected through public `AtmosConfig`. |
 | `ac3/dsp/biquad.hpp`, `resampler.hpp` | Public — `dsp::resample`/`resample_planar` is a documented multi-source-rate-conversion utility, not purely an implementation detail (see `header-map.md`). |
