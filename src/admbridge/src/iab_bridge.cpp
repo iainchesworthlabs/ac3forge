@@ -48,7 +48,8 @@ struct IabChannelKeyHash {
 // front row, versus the explicitly-qualified "Surround Height"/"Side Surround Height"/"Rear
 // Surround Height" variants below 0x11) are the front-height pair, matching 0x80/0x81's own "Top
 // Front" naming for the identical position.
-[[nodiscard]] std::optional<iclforge::oba::BedLabel> bed_label_for_channel_id(std::uint32_t channel_id) {
+[[nodiscard]] std::optional<iclforge::oba::BedLabel> bed_label_for_channel_id(
+    std::uint32_t channel_id) {
     switch (channel_id) {
         case 0x0: return iclforge::oba::BedLabel::kL;               // Left
         case 0x2: return iclforge::oba::BedLabel::kC;               // Center
@@ -86,8 +87,8 @@ struct ChannelIdentity {
 // Pass 1: unions every unconditionally-Activated top-level Bed channel / Object across the whole
 // sequence, in first-seen order - see iab_bridge.hpp's own top comment for why this is a union
 // over the WHOLE sequence (MetaID identity) rather than per-frame, and why conditional elements are
-// excluded rather than represented. Only top-level iclforge::iab::IaFrame::beds/objects are walked -
-// nested BedDefinition/BedRemap/ObjectDefinition/ObjectZoneDefinition19 children (§9 Table 4) are
+// excluded rather than represented. Only top-level iclforge::iab::IaFrame::beds/objects are walked
+// - nested BedDefinition/BedRemap/ObjectDefinition/ObjectZoneDefinition19 children (§9 Table 4) are
 // deliberately not recursed into: Annex C.1 items 3a/3b's own nesting allowance exists for
 // alternate/derived submixes, not the primary content this bridge selects one of (the same "pick
 // the primary set" scoping this function's Activation handling already applies).
@@ -134,7 +135,8 @@ struct ChannelIdentity {
 // BridgeError::kNoIabEssenceForChannel (an AudioDataDLC-only reference is exactly this case, since
 // phase 1 does not decode that element - see model.hpp's own AudioDataDlc comment).
 [[nodiscard]] std::expected<std::vector<float>, BridgeError> resolve_essence(
-    const iclforge::iab::IaFrame& frame, std::uint32_t audio_data_id, std::uint32_t samples_per_frame) {
+    const iclforge::iab::IaFrame& frame, std::uint32_t audio_data_id,
+    std::uint32_t samples_per_frame) {
     if (audio_data_id == 0) {
         return std::vector<float>(samples_per_frame, 0.0f);
     }

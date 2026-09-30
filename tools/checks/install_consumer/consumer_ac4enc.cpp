@@ -45,10 +45,12 @@ int main() {
     const std::vector<std::span<const float>> channels{input[0], input[1]};
 
     // Four channels are no layout the encoder writes, and it says so.
-    if (iclforge::ac4::Encoder::refusal_reason(iclforge::ac4::EncoderConfig{.channels = 4}).empty()) {
+    if (iclforge::ac4::Encoder::refusal_reason(iclforge::ac4::EncoderConfig{.channels = 4})
+            .empty()) {
         return fail("the encoder gave no reason for refusing four channels");
     }
-    auto encoder = iclforge::ac4::Encoder::create(iclforge::ac4::EncoderConfig{.channels = 2, .bitrate_kbps = 128});
+    auto encoder = iclforge::ac4::Encoder::create(
+        iclforge::ac4::EncoderConfig{.channels = 2, .bitrate_kbps = 128});
     if (!encoder) {
         return fail("the encoder refused stereo at 128 kbps");
     }

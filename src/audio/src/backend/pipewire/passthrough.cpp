@@ -197,7 +197,8 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
 const spa_pod* build_iec958_pod(spa_pod_builder& builder, BitstreamFormat format,
                                  std::uint32_t carrier) {
     spa_audio_info_iec958 info{};
-    info.codec = iclforge::pipewire::iec958_codec_for(format).value_or(SPA_AUDIO_IEC958_CODEC_UNKNOWN);
+    info.codec =
+        iclforge::pipewire::iec958_codec_for(format).value_or(SPA_AUDIO_IEC958_CODEC_UNKNOWN);
     info.rate = carrier;
     return spa_format_audio_iec958_build(&builder, SPA_PARAM_EnumFormat, &info);
 }

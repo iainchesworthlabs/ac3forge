@@ -48,7 +48,8 @@ namespace {
 // message nothing else in the tree needs yet.
 std::string_view describe_frame_error(iclforge::FrameError error) {
     switch (error) {
-        case iclforge::FrameError::kInvalidBitrate: return "bitrate is not valid for this configuration";
+        case iclforge::FrameError::kInvalidBitrate:
+            return "bitrate is not valid for this configuration";
         case iclforge::FrameError::kInvalidDialnorm: return "dialnorm is out of range (1..31)";
         case iclforge::FrameError::kInvalidSubstream: return "invalid substream configuration";
         case iclforge::FrameError::kInvalidChannelMap: return "channel map does not match the coding mode";
@@ -376,7 +377,8 @@ class WasmAtmosBedEncoder {
         }
         const auto spans = spans_of(storage);
 
-        std::vector<iclforge::oba::ObjectPlacement> placement(static_cast<std::size_t>(object_count_));
+        std::vector<iclforge::oba::ObjectPlacement> placement(
+            static_cast<std::size_t>(object_count_));
         for (int i = 0; i < object_count_; ++i) {
             const emscripten::val entry = placements_js[i];
             placement[static_cast<std::size_t>(i)].position = {
@@ -500,7 +502,8 @@ class WasmQcMeter {
             row.set("source", std::string(preset.source));
             row.set("targetLkfs", preset.target_lkfs);
             row.set("toleranceLu", preset.tolerance_lu);
-            row.set("isCeiling", preset.loudness_limit == iclforge::meta::QcLoudnessLimit::kCeiling);
+            row.set("isCeiling",
+                    preset.loudness_limit == iclforge::meta::QcLoudnessLimit::kCeiling);
             row.set("maxTruePeakDbtp", preset.max_true_peak_dbtp);
             row.set("loudnessDeltaLu", optional_to_val(verdict.loudness_delta_lu));
             row.set("loudnessPass", verdict.loudness_pass);

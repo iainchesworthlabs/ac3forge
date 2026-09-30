@@ -116,11 +116,12 @@ TEST_CASE("the encoder's presentations and DEE's substreams, made for the race",
                                                       .language = {},
                                                       .dialogue = std::nullopt,
                                                       .de = std::nullopt});
-        layout.groups.push_back(ac4dec_test::MuxGroup{.source = 1,
-                                                      .content_classifier = 4,
-                                                      .language = "en",
-                                                      .dialogue = iclforge::ac4::detail::DialogueMixCodes{},
-                                                      .de = std::nullopt});
+        layout.groups.push_back(
+            ac4dec_test::MuxGroup{.source = 1,
+                                  .content_classifier = 4,
+                                  .language = "en",
+                                  .dialogue = iclforge::ac4::detail::DialogueMixCodes{},
+                                  .de = std::nullopt});
         layout.groups.push_back(ac4dec_test::MuxGroup{.source = 2,
                                                       .content_classifier = 2,
                                                       .language = "qad",

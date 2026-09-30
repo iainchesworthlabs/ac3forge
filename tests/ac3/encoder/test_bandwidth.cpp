@@ -61,7 +61,8 @@ std::vector<float> band_limited_noise(std::uint64_t& n, double top_hz, double am
     return samples;
 }
 
-std::vector<std::byte> encode_ac3(const iclforge::EncoderConfig& config, double top_hz, int frames) {
+std::vector<std::byte> encode_ac3(const iclforge::EncoderConfig& config, double top_hz,
+                                  int frames) {
     iclforge::FrameEncoder encoder(config);
     std::uint64_t n = 0;
     std::vector<std::byte> last;

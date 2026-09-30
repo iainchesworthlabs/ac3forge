@@ -126,7 +126,8 @@ TEST_CASE("session: each unit the item plays is reported with its frames, and no
           "[hearth][session]") {
     // The same stream a frame behind, with the start and the end trimmed off.
     const std::vector<std::byte> stream = joined(held_back_frames());
-    constexpr std::uint64_t kTotal = static_cast<std::uint64_t>(kFrames) * iclforge::kSamplesPerFrame;
+    constexpr std::uint64_t kTotal =
+        static_cast<std::uint64_t>(kFrames) * iclforge::kSamplesPerFrame;
     const ItemLoader loader = [&stream](const std::string&) -> std::expected<LoadedItem, std::string> {
         return LoadedItem{.bytes = stream, .skip_samples = 700, .play_samples = kTotal - 700 - 1000};
     };

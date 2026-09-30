@@ -75,8 +75,9 @@ std::vector<std::byte> encode_ac3(int frames, bool coupling) {
         std::vector<std::span<const float>> block;
         block.reserve(views.size());
         for (const auto& view : views) {
-            block.emplace_back(view.subspan(
-                static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame, iclforge::kSamplesPerFrame));
+            block.emplace_back(
+                view.subspan(static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
+                             iclforge::kSamplesPerFrame));
         }
         const auto encoded = encoder.encode_frame(block);
         REQUIRE(encoded.has_value());
@@ -95,7 +96,8 @@ std::vector<std::byte> encode_with(Encoder& encoder, int channels, int frames) {
         block.reserve(pcm.size());
         for (const auto& channel : pcm) {
             block.emplace_back(std::span{channel}.subspan(
-                static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame, iclforge::kSamplesPerFrame));
+                static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
+                iclforge::kSamplesPerFrame));
         }
         const auto encoded = encoder.encode_frame(block);
         REQUIRE(encoded.has_value());
@@ -390,7 +392,8 @@ TEST_CASE("probe reports the lead programme's dmixmod, the reserved code include
     // '00' would describe a different stream from the one it was given.
     SECTION("AC-3, in Annex D's xbsi1") {
         const auto encode = [](iclforge::meta::DownmixMode dmixmod) {
-            iclforge::EncoderConfig config{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true};
+            iclforge::EncoderConfig config{
+                .bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true};
             iclforge::meta::AlternateBsi alternate;
             alternate.mix = iclforge::meta::MixMetadata{.dmixmod = dmixmod};
             config.alternate_bsi = alternate;

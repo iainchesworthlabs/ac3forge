@@ -162,7 +162,8 @@ TEST_CASE("an average rate stream never needs more than the buffer it signals", 
         config.bitrate_kbps = leg.kbps;
         config.frame_rate_index = leg.frame_rate_index;
         config.rate_mode = iclforge::ac4::RateMode::kAverage;
-        const std::vector<iclforge::ac4::EncodedFrame> frames = encode(config, programme(leg.channels));
+        const std::vector<iclforge::ac4::EncodedFrame> frames =
+            encode(config, programme(leg.channels));
         std::vector<std::size_t> sizes;
         std::vector<int> waits;
         std::vector<int> codes;

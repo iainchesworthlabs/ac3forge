@@ -322,32 +322,37 @@ TEST_CASE("derive_codec stays AC-3 until something actually needs E-AC-3", "[ass
     SECTION("an immersive target promotes") {
         const auto wide = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k71);
         CHECK(iclforge::plan::derive_codec(wide, no_tools, plain_meta, std::nullopt,
-                                      iclforge::SampleRate::k48000) == iclforge::plan::Codec::kEac3);
+                                           iclforge::SampleRate::k48000) ==
+              iclforge::plan::Codec::kEac3);
     }
 
     SECTION("a ticked Annex E tool promotes") {
         iclforge::plan::Tools tools{};
         tools.coupling = true;
         CHECK(iclforge::plan::derive_codec(narrow, tools, plain_meta, std::nullopt,
-                                      iclforge::SampleRate::k48000) == iclforge::plan::Codec::kEac3);
+                                           iclforge::SampleRate::k48000) ==
+              iclforge::plan::Codec::kEac3);
     }
 
     SECTION("VBR promotes") {
         const iclforge::eac3::VbrConfig vbr{.quality = 0.75};
         CHECK(iclforge::plan::derive_codec(narrow, no_tools, plain_meta, vbr,
-                                      iclforge::SampleRate::k48000) == iclforge::plan::Codec::kEac3);
+                                           iclforge::SampleRate::k48000) ==
+              iclforge::plan::Codec::kEac3);
     }
 
     SECTION("mixing metadata promotes") {
         iclforge::plan::Metadata meta{};
         meta.mixmeta = true;
         CHECK(iclforge::plan::derive_codec(narrow, no_tools, meta, std::nullopt,
-                                      iclforge::SampleRate::k48000) == iclforge::plan::Codec::kEac3);
+                                           iclforge::SampleRate::k48000) ==
+              iclforge::plan::Codec::kEac3);
     }
 
     SECTION("a reduced sample rate promotes") {
         CHECK(iclforge::plan::derive_codec(narrow, no_tools, plain_meta, std::nullopt,
-                                      iclforge::SampleRate::k24000) == iclforge::plan::Codec::kEac3);
+                                           iclforge::SampleRate::k24000) ==
+              iclforge::plan::Codec::kEac3);
     }
 }
 
@@ -391,7 +396,8 @@ TEST_CASE("a trim suffix formats compactly and parses back exactly", "[assignmen
     // format_destination's spelling: whole dB values print with no decimal,
     // fractional ones with exactly one - never float-formatting noise like
     // "-3.50" or "-3.4999999999999996".
-    CHECK(iclforge::plan::format_destination(to_location(Location::kLeft)) == "L");  // no trim -> no @
+    CHECK(iclforge::plan::format_destination(to_location(Location::kLeft)) ==
+          "L");  // no trim -> no @
     CHECK(iclforge::plan::format_destination(
               {.kind = DestinationKind::kLocation, .location = Location::kLeft, .trim_db = -3.5}) ==
           "L@-3.5");

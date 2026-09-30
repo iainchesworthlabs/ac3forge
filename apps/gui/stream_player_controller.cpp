@@ -52,7 +52,8 @@ bool layout_has_lfe(const iclforge::eac3::chanmap::Layout& layout) {
     return layout.index_of(Location::kLfe) >= 0 || layout.index_of(Location::kLfe2) >= 0;
 }
 
-QString channel_label(const std::vector<iclforge::eac3::chanmap::Location>& locations, std::size_t at) {
+QString channel_label(const std::vector<iclforge::eac3::chanmap::Location>& locations,
+                      std::size_t at) {
     if (at < locations.size()) {
         return to_qstring(iclforge::eac3::chanmap::name(locations[at]));
     }
@@ -107,10 +108,11 @@ bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream
     std::vector<std::size_t> order;
     std::vector<iclforge::ac4::Speaker> layout;
     // Whether the frame-1 setup below has run - NOT order.empty(): a presentation of objects
-    // alone has no speakers or channels at all (iclforge::ac4::DecodedFrame's own comment), so `order`
-    // legitimately stays empty for the life of the decode (planning/ac4.md, I5). Before this fix,
-    // such a stream re-ran the block below on every frame and still read as "no frame decoded" at
-    // the end, since nothing ever made `order` non-empty to signal that decoding had succeeded.
+    // alone has no speakers or channels at all (iclforge::ac4::DecodedFrame's own comment), so
+    // `order` legitimately stays empty for the life of the decode (planning/ac4.md, I5). Before
+    // this fix, such a stream re-ran the block below on every frame and still read as "no frame
+    // decoded" at the end, since nothing ever made `order` non-empty to signal that decoding had
+    // succeeded.
     bool initialized = false;
     double time_s = 0.0;
     std::size_t number = 0;
@@ -131,11 +133,13 @@ bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream
         if (!initialized) {
             initialized = true;
             layout = pcm.speakers;
-            order = iclforge::apps::ac4_order(std::span{pcm.speakers}, iclforge::apps::ac4_wav_rank);
+            order =
+                iclforge::apps::ac4_order(std::span{pcm.speakers}, iclforge::apps::ac4_wav_rank);
             result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
             result.presentation = pcm.presentation;
             result.acmod = iclforge::apps::ac4_bed_acmod(pcm.speakers);
-            result.lfe = std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
+            result.lfe =
+                std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
             result.layout_label = to_qstring(ac3gui::ac4_speaker_names(pcm.speakers));
             for (const std::size_t c : order) {
                 result.locations.push_back(iclforge::apps::ac4_location(pcm.speakers[c]));
@@ -322,8 +326,8 @@ DecodeOutcome decode_stream_to_memory(const QString& path,
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded) {
-                outcome.error =
-                    QStringLiteral("%1: %2").arg(path, to_qstring(iclforge::describe(decoded.error())));
+                outcome.error = QStringLiteral("%1: %2").arg(
+                    path, to_qstring(iclforge::describe(decoded.error())));
                 return outcome;
             }
             if (!have_first) {
@@ -421,8 +425,9 @@ QVariantList StreamPlayerController::channelMeta() const {
 
 double StreamPlayerController::meterFloorDb() const { return kMeterFloorDb; }
 
-void StreamPlayerController::publishLevels(const splayer_detail::RawResult& source,
-                                           std::span<const iclforge::analysis::ChannelLevel> levels) {
+void StreamPlayerController::publishLevels(
+    const splayer_detail::RawResult& source,
+    std::span<const iclforge::analysis::ChannelLevel> levels) {
     AC3_ZONE_SCOPED_N("stream player publish");
     clip_latched_.resize(levels.size(), false);
 
@@ -441,9 +446,12 @@ void StreamPlayerController::publishLevels(const splayer_detail::RawResult& sour
             {QStringLiteral("rmsDb"), level.rms_db},
             {QStringLiteral("holdDb"), level.hold_db},
             {QStringLiteral("clipped"), static_cast<bool>(clip_latched_[ch])},
-            {QStringLiteral("peak"), iclforge::analysis::meter_fraction(level.peak_db, kMeterFloorDb)},
-            {QStringLiteral("rms"), iclforge::analysis::meter_fraction(level.rms_db, kMeterFloorDb)},
-            {QStringLiteral("hold"), iclforge::analysis::meter_fraction(level.hold_db, kMeterFloorDb)},
+            {QStringLiteral("peak"),
+             iclforge::analysis::meter_fraction(level.peak_db, kMeterFloorDb)},
+            {QStringLiteral("rms"),
+             iclforge::analysis::meter_fraction(level.rms_db, kMeterFloorDb)},
+            {QStringLiteral("hold"),
+             iclforge::analysis::meter_fraction(level.hold_db, kMeterFloorDb)},
             {QStringLiteral("azimuthDeg"), azimuth.value_or(0.0)},
             {QStringLiteral("directional"), azimuth.has_value()},
             {QStringLiteral("ceiling"), ceiling},
@@ -748,8 +756,8 @@ void StreamPlayerController::exportObjects(const QUrl& url) {
                 QStringLiteral("%1/object_%2.wav")
                     .arg(dir, QString::number(i).rightJustified(2, QLatin1Char('0')));
             const std::vector<std::vector<float>> mono{result->object_audio[i]};
-            const auto written =
-                iclforge::io::write_wav_f32(object_path.toStdString(), mono, result->sample_rate_hz);
+            const auto written = iclforge::io::write_wav_f32(object_path.toStdString(), mono,
+                                                             result->sample_rate_hz);
             if (!written) {
                 error = QStringLiteral("Could not write %1: %2")
                             .arg(object_path, to_qstring(iclforge::io::describe(written.error())));

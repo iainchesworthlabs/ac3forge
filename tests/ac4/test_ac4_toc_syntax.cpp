@@ -64,7 +64,8 @@ void content_type_with_language(BitWriter& w, int classifier, bool serialized) {
 }  // namespace
 
 TEST_CASE("describe names an Error value outside the enumeration as unknown", "[ac4][toc]") {
-    CHECK(iclforge::ac4::describe(static_cast<iclforge::ac4::Error>(42)) == "unknown iclforge::ac4::Error");
+    CHECK(iclforge::ac4::describe(static_cast<iclforge::ac4::Error>(42)) ==
+          "unknown iclforge::ac4::Error");
 }
 
 TEST_CASE("scan reads a sync frame's extended frame_size and refuses short ones", "[ac4][toc]") {

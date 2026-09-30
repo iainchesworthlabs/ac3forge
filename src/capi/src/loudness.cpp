@@ -17,8 +17,8 @@ ac3forge_status_t ac3forge_loudness_meter_create(ac3forge_sample_rate_t sample_r
     }
     return guard([&sample_rate, &acmod, &lfe, &out_meter] {
         auto owned = std::make_unique<ac3forge_loudness_meter>();
-        owned->impl = std::make_unique<iclforge::meta::LoudnessMeter>(to_cpp(sample_rate), to_cpp(acmod),
-                                                                  lfe != 0);
+        owned->impl = std::make_unique<iclforge::meta::LoudnessMeter>(to_cpp(sample_rate),
+                                                                      to_cpp(acmod), lfe != 0);
         *out_meter = owned.release();
         return AC3FORGE_OK;
     });

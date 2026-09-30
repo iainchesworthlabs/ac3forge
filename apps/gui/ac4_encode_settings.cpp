@@ -16,22 +16,29 @@ constexpr double kOff = -std::numeric_limits<double>::infinity();
 constexpr std::array<double, 8> kCentreDb{3.0, 1.5, 0.0, -1.5, -3.0, -4.5, -6.0, kOff};
 constexpr std::array<double, 6> kSurroundDb{0.0, -1.5, -3.0, -4.5, -6.0, kOff};
 
-constexpr std::array<iclforge::ac4::RateMode, 3> kRateModes{
-    iclforge::ac4::RateMode::kConstant, iclforge::ac4::RateMode::kAverage, iclforge::ac4::RateMode::kVariable};
+constexpr std::array<iclforge::ac4::RateMode, 3> kRateModes{iclforge::ac4::RateMode::kConstant,
+                                                            iclforge::ac4::RateMode::kAverage,
+                                                            iclforge::ac4::RateMode::kVariable};
 constexpr std::array<iclforge::ac4::CodecMode, 6> kCodecModes{
-    iclforge::ac4::CodecMode::kAuto,      iclforge::ac4::CodecMode::kSimple,    iclforge::ac4::CodecMode::kAspx,
-    iclforge::ac4::CodecMode::kAspxAcpl1, iclforge::ac4::CodecMode::kAspxAcpl2, iclforge::ac4::CodecMode::kAspxAcpl3};
+    iclforge::ac4::CodecMode::kAuto,      iclforge::ac4::CodecMode::kSimple,
+    iclforge::ac4::CodecMode::kAspx,      iclforge::ac4::CodecMode::kAspxAcpl1,
+    iclforge::ac4::CodecMode::kAspxAcpl2, iclforge::ac4::CodecMode::kAspxAcpl3};
 constexpr std::array<iclforge::ac4::LoudnessPractice, 7> kPractices{
-    iclforge::ac4::LoudnessPractice::kEbuR128,    iclforge::ac4::LoudnessPractice::kAtscA85,
-    iclforge::ac4::LoudnessPractice::kAribTrB32,  iclforge::ac4::LoudnessPractice::kFreeTvOp59,
-    iclforge::ac4::LoudnessPractice::kManual,     iclforge::ac4::LoudnessPractice::kConsumerLeveller,
+    iclforge::ac4::LoudnessPractice::kEbuR128,
+    iclforge::ac4::LoudnessPractice::kAtscA85,
+    iclforge::ac4::LoudnessPractice::kAribTrB32,
+    iclforge::ac4::LoudnessPractice::kFreeTvOp59,
+    iclforge::ac4::LoudnessPractice::kManual,
+    iclforge::ac4::LoudnessPractice::kConsumerLeveller,
     iclforge::ac4::LoudnessPractice::kNotIndicated};
 constexpr std::array<iclforge::ac4::DrcProfile, 5> kProfiles{
-    iclforge::ac4::DrcProfile::kFilmStandard, iclforge::ac4::DrcProfile::kFilmLight, iclforge::ac4::DrcProfile::kMusicStandard,
-    iclforge::ac4::DrcProfile::kMusicLight, iclforge::ac4::DrcProfile::kSpeech};
+    iclforge::ac4::DrcProfile::kFilmStandard, iclforge::ac4::DrcProfile::kFilmLight,
+    iclforge::ac4::DrcProfile::kMusicStandard, iclforge::ac4::DrcProfile::kMusicLight,
+    iclforge::ac4::DrcProfile::kSpeech};
 constexpr std::array<iclforge::ac4::PreferredDownmix, 4> kPreferred{
     iclforge::ac4::PreferredDownmix::kLoRo, iclforge::ac4::PreferredDownmix::kLtRt,
-    iclforge::ac4::PreferredDownmix::kLtRtProLogicII, iclforge::ac4::PreferredDownmix::kNotIndicated};
+    iclforge::ac4::PreferredDownmix::kLtRtProLogicII,
+    iclforge::ac4::PreferredDownmix::kNotIndicated};
 
 // The index `at` of a table of `size` entries, or the first where it is past
 // the end.
@@ -64,7 +71,8 @@ bool ac4_dialogue_named(const Ac4EncodeSettings& settings) {
     return settings.dialogue_left || settings.dialogue_right || settings.dialogue_centre;
 }
 
-std::optional<iclforge::ac4::LoudnessPractice> ac4_loudness_practice(const Ac4EncodeSettings& settings) {
+std::optional<iclforge::ac4::LoudnessPractice> ac4_loudness_practice(
+    const Ac4EncodeSettings& settings) {
     if (!settings.loudness) {
         return std::nullopt;
     }
@@ -198,8 +206,8 @@ iclforge::apps::Ac4ObjectsParams ac4_objects_params(const Ac4EncodeSettings& s,
     return params;
 }
 
-iclforge::ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& s, int channels, int sample_rate_hz,
-                                      int bitrate_kbps) {
+iclforge::ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& s, int channels,
+                                                int sample_rate_hz, int bitrate_kbps) {
     iclforge::ac4::EncoderConfig config;
     config.channels = channels;
     config.sample_rate_hz = sample_rate_hz;
@@ -214,7 +222,8 @@ iclforge::ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& s, int 
         iclforge::ac4::DrcConfig drc;
         drc.profile = kProfiles[within(*s.drc, kProfiles.size())];
         for (int id = 0; id < 4; ++id) {
-            drc.modes.push_back(iclforge::ac4::DrcModeConfig{.id = id, .gains_config = std::nullopt});
+            drc.modes.push_back(
+                iclforge::ac4::DrcModeConfig{.id = id, .gains_config = std::nullopt});
         }
         config.drc = drc;
     }
@@ -233,8 +242,8 @@ iclforge::ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& s, int 
     }
     if (ac4_dialogue_named(s)) {
         iclforge::ac4::DialogueConfig dialogue;
-        dialogue.method =
-            s.dialogue_mid ? iclforge::ac4::DialogueMethod::kMid : iclforge::ac4::DialogueMethod::kChannelIndependent;
+        dialogue.method = s.dialogue_mid ? iclforge::ac4::DialogueMethod::kMid
+                                         : iclforge::ac4::DialogueMethod::kChannelIndependent;
         dialogue.source = iclforge::ac4::DialogueSource::kMarkedChannels;
         dialogue.max_gain_db =
             kAc4DialogueMaxGains[within(s.dialogue_max_gain, kAc4DialogueMaxGains.size())];

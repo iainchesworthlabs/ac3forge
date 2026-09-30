@@ -624,8 +624,8 @@ TEST_CASE("decode stops on a damaged AC-4 frame and conceal= carries on through 
     const std::span<const std::byte> raw = scan.frames[10].raw_ac4_frame;
     const auto parsed = iclforge::ac4::parse_raw_frame(raw);
     REQUIRE(parsed.has_value());
-    const auto audio = std::ranges::find_if(parsed->substreams,
-                                            [](const iclforge::ac4::Substream& s) { return s.is_audio; });
+    const auto audio = std::ranges::find_if(
+        parsed->substreams, [](const iclforge::ac4::Substream& s) { return s.is_audio; });
     REQUIRE(audio != parsed->substreams.end());
     const auto at = static_cast<std::size_t>(raw.data() - bytes.data()) + audio->offset;
     bytes[at] = std::byte{0xFF};

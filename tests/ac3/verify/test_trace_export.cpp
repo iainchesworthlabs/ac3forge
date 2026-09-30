@@ -96,7 +96,8 @@ bool any_mask_populated(const iclforge::verify::FrameTrace& trace) {
 }  // namespace
 
 TEST_CASE("trace_csv_header names every column", "[verify][trace_export]") {
-    CHECK(iclforge::verify::trace_csv_header() == "frame,substream,block,stream,kind,index,value\n");
+    CHECK(iclforge::verify::trace_csv_header() ==
+          "frame,substream,block,stream,kind,index,value\n");
 }
 
 TEST_CASE("append_trace_csv writes exactly the rows a hand-built trace holds",

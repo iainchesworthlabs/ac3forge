@@ -757,8 +757,8 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
                               : iclforge::render::IdentifyTone::Band::kFull;
         for (std::size_t block = 0; block < blocks; ++block) {
             tone.fill(writable, slot, band);
-            if (!iclforge::apps::submit_while_running(output, std::chrono::milliseconds(4), readable,
-                                                 kBlockFrames)) {
+            if (!iclforge::apps::submit_while_running(output, std::chrono::milliseconds(4),
+                                                      readable, kBlockFrames)) {
                 break;  // the device went away; reported below
             }
         }

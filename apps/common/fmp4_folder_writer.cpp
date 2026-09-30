@@ -81,11 +81,12 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
         return "Could not describe the encoded stream for the fragmented MP4 folder.";
     }
     const bool eac3 = scanned->kind == iclforge::io::StreamKind::kEac3;
-    track_ = iclforge::mp4::AudioTrack{.codec_id = std::string{eac3 ? iclforge::mp4::kCodecEac3 : iclforge::mp4::kCodecAc3},
-                             .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
-                             .channels = scanned->channels,
-                             .samples_per_frame = iclforge::kSamplesPerFrame,
-                             .codec_config = iclforge::io::build_codec_config_box(*scanned)};
+    track_ = iclforge::mp4::AudioTrack{
+        .codec_id = std::string{eac3 ? iclforge::mp4::kCodecEac3 : iclforge::mp4::kCodecAc3},
+        .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
+        .channels = scanned->channels,
+        .samples_per_frame = iclforge::kSamplesPerFrame,
+        .codec_config = iclforge::io::build_codec_config_box(*scanned)};
     // The Atmos/JOC signalling, identical to what
     // EncoderController::writeOutput's own fMP4 branch and ac3cli's fmp4
     // build: CHANNELS="<N>/JOC" for HLS (mp4/hls.hpp), TS 103 420 §D.2's two
@@ -101,9 +102,9 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
         .dolby_channel_configuration = iclforge::io::dash_channel_configuration(*scanned)};
 
     auto writer = iclforge::mp4::FragmentWriter::create(
-        track_,
-        iclforge::mp4::FragmentOptions{.object_audio_brand = scanned->oba_complexity_index.has_value(),
-                             .playlist_window_segments = window_segments_});
+        track_, iclforge::mp4::FragmentOptions{
+                    .object_audio_brand = scanned->oba_complexity_index.has_value(),
+                    .playlist_window_segments = window_segments_});
     if (!writer.has_value()) {
         return std::string{iclforge::mp4::describe(writer.error())};
     }
@@ -121,7 +122,8 @@ std::string Fmp4FolderWriter::write_manifests(const iclforge::mp4::FragmentWrite
     const auto window = writer.window();
     auto hls = hls_;
     hls.vod = finished;
-    if (!write_text(dir_ / "audio.m3u8", iclforge::mp4::build_hls_media_playlist(track_, window, hls)) ||
+    if (!write_text(dir_ / "audio.m3u8",
+                    iclforge::mp4::build_hls_media_playlist(track_, window, hls)) ||
         !write_text(dir_ / "master.m3u8",
                     iclforge::mp4::build_hls_master_playlist(track_, window, "audio.m3u8", hls))) {
         return kWriteFailed;
@@ -132,12 +134,12 @@ std::string Fmp4FolderWriter::write_manifests(const iclforge::mp4::FragmentWrite
     // timeShiftBufferDepth matches the rolling window when there is one;
     // with window_segments_ == 0 every segment stays listed, so the depth is
     // the whole take so far.
-    const double window_seconds = window.empty()
-                                      ? 0.0
-                                      : static_cast<double>(window.back().base_media_decode_time +
-                                                            window.back().duration_samples -
-                                                            window.front().base_media_decode_time) /
-                                            static_cast<double>(iclforge::mp4::timescale_of(track_));
+    const double window_seconds =
+        window.empty() ? 0.0
+                       : static_cast<double>(window.back().base_media_decode_time +
+                                             window.back().duration_samples -
+                                             window.front().base_media_decode_time) /
+                             static_cast<double>(iclforge::mp4::timescale_of(track_));
     const iclforge::mp4::MpdOptions mpd_options{.is_static = finished,
                                       .availability_start_time = availability_start_,
                                       .time_shift_buffer_depth_seconds = window_seconds};

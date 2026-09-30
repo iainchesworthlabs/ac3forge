@@ -25,7 +25,8 @@ namespace ac3gui {
 // never appeared on the ring, ceiling or otherwise. LFE/LFE2 stay
 // non-directional; every other location gets a plausible placement instead
 // of vanishing.
-[[nodiscard]] std::optional<double> location_azimuth_deg(iclforge::eac3::chanmap::Location location);
+[[nodiscard]] std::optional<double> location_azimuth_deg(
+    iclforge::eac3::chanmap::Location location);
 
 // The two soundfield rings: everything overhead goes on the ceiling plan,
 // everything else - however far back or wide - stays on the ear-level one.
@@ -36,7 +37,7 @@ namespace ac3gui {
 // does to a wide E-AC-3 stream's own eac3::chanmap::Layout. Coded order:
 // the full-bandwidth channels acmod names, LFE last when present - the same
 // order DecodedFrame::channels/DecodedAccessUnit::channels arrive in.
-[[nodiscard]] std::vector<iclforge::eac3::chanmap::Location> ac3_bed_locations(iclforge::Acmod acmod,
-                                                                          bool lfe);
+[[nodiscard]] std::vector<iclforge::eac3::chanmap::Location> ac3_bed_locations(
+    iclforge::Acmod acmod, bool lfe);
 
 }  // namespace ac3gui

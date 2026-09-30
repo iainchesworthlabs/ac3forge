@@ -70,7 +70,8 @@ class SendspinEvents {
     virtual void on_burst_stream_end() = 0;
     virtual void on_burst(const iclforge::sendspin::BurstChunk& chunk, std::int64_t local_time) = 0;
     virtual void on_invalid_burst() = 0;
-    virtual void on_ac3forge_command(const iclforge::sendspin::ac3forge::CommandMessage& command) = 0;
+    virtual void on_ac3forge_command(
+        const iclforge::sendspin::ac3forge::CommandMessage& command) = 0;
     virtual void on_settings_refused(const iclforge::sendspin::ac3forge::SettingsError& error) = 0;
 
     // A pairing attempt showed a dynamic code (digits), was held back for the

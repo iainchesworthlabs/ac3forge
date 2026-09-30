@@ -61,7 +61,8 @@ TEST_CASE("stereo_downmix: 2/0 source passes straight through, unattenuated", "[
 
 TEST_CASE("stereo_downmix: 1+1 dual mono has no defined downmix and returns all zeros",
          "[mixing]") {
-    const auto dm = iclforge::meta::stereo_downmix(iclforge::Acmod::kDualMono, kMinus3dB, kMinus3dB);
+    const auto dm =
+        iclforge::meta::stereo_downmix(iclforge::Acmod::kDualMono, kMinus3dB, kMinus3dB);
     CHECK(dm.left == std::array<double, 5>{});
     CHECK(dm.right == std::array<double, 5>{});
 }
@@ -194,8 +195,9 @@ TEST_CASE("mono_downmix_peak_dbfs: in-phase L/R sums to full scale, 0 dBFS", "[m
                                                        std::span<const float>{right}};
     // 2/0's mono downmix is [0.5, 0.5] regardless of clev/slev (no centre or
     // surround exists to depend on them) - 0.5*1 + 0.5*1 = 1.0 = 0 dBFS.
-    const double peak = iclforge::meta::mono_downmix_peak_dbfs(
-        std::span<const std::span<const float>>{chans}, iclforge::Acmod::k2_0, kMinus3dB, kMinus3dB);
+    const double peak =
+        iclforge::meta::mono_downmix_peak_dbfs(std::span<const std::span<const float>>{chans},
+                                               iclforge::Acmod::k2_0, kMinus3dB, kMinus3dB);
     CHECK(peak == Approx(0.0).margin(1e-6));
 }
 
@@ -203,8 +205,9 @@ TEST_CASE("mono_downmix_peak_dbfs: out-of-phase L/R cancels in the mono sum", "[
     const std::vector<float> left(64, 1.0f), right(64, -1.0f);
     const std::array<std::span<const float>, 2> chans{std::span<const float>{left},
                                                        std::span<const float>{right}};
-    const double peak = iclforge::meta::mono_downmix_peak_dbfs(
-        std::span<const std::span<const float>>{chans}, iclforge::Acmod::k2_0, kMinus3dB, kMinus3dB);
+    const double peak =
+        iclforge::meta::mono_downmix_peak_dbfs(std::span<const std::span<const float>>{chans},
+                                               iclforge::Acmod::k2_0, kMinus3dB, kMinus3dB);
     // Exactly cancels (0.5*1 + 0.5*(-1) == 0 for every sample) - to_db's
     // documented silence sentinel, not -inf.
     CHECK(peak == -200.0);
@@ -216,8 +219,9 @@ TEST_CASE("mono_downmix_peak_dbfs: the two-history-block overload delegates to t
     const std::vector<float> left(32, 0.3f), right(32, -0.1f);
     const std::array<std::span<const float>, 2> chans{std::span<const float>{left},
                                                        std::span<const float>{right}};
-    const double via_short = iclforge::meta::mono_downmix_peak_dbfs(
-        std::span<const std::span<const float>>{chans}, iclforge::Acmod::k2_0, kMinus3dB, kMinus3dB);
+    const double via_short =
+        iclforge::meta::mono_downmix_peak_dbfs(std::span<const std::span<const float>>{chans},
+                                               iclforge::Acmod::k2_0, kMinus3dB, kMinus3dB);
     const double via_long = iclforge::meta::mono_downmix_peak_dbfs(
         std::span<const std::array<double, 256>>{}, std::span<const std::span<const float>>{chans},
         iclforge::Acmod::k2_0, kMinus3dB, kMinus3dB);

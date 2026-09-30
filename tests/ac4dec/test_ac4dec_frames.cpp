@@ -759,7 +759,8 @@ std::vector<std::byte> ajoc_audio() {
     w.put(1, 1);    // ajoc_quant_select: coarse
     w.put(0, 1);    // ajoc_sparse_select
     w.flag(true);   // ajoc_b_nodt: the first data point frequency-differential only
-    const iclforge::ac4::detail::HuffCode centre = iclforge::ac4::detail::tables::kAjocHcbDryCoarseF0Codes[25];
+    const iclforge::ac4::detail::HuffCode centre =
+        iclforge::ac4::detail::tables::kAjocHcbDryCoarseF0Codes[25];
     w.put(centre.code, centre.bits);  // ajoc_hcw
     w.flag(true);                     // b_dmx_de_cfg
     w.flag(false);                    // b_keep_dmx_de_coeffs
@@ -922,7 +923,9 @@ TEST_CASE("an object group of A-JOC and direct-coded substreams and OAMD reads e
 
     std::vector<iclforge::ac4::SyntaxRecord> records;
     // A named callable: the sink refers to it and does not own it.
-    const auto keep = [&records](const iclforge::ac4::SyntaxRecord& record) { records.push_back(record); };
+    const auto keep = [&records](const iclforge::ac4::SyntaxRecord& record) {
+        records.push_back(record);
+    };
     iclforge::ac4::DecoderConfig config;
     config.syntax = keep;
     iclforge::ac4::Decoder decoder(config);

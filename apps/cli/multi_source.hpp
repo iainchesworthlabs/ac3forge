@@ -22,8 +22,8 @@
 // top comment for step 1 and the overall plan.
 //
 // Deliberately NOT unified with the classic single-file/in2.wav path (which stays in main.cpp,
-// untouched): the two have genuinely different data shapes (one iclforge::io::WavData vs several), and
-// duplicating the small amount that does overlap costs far less than a shared abstraction would
+// untouched): the two have genuinely different data shapes (one iclforge::io::WavData vs several),
+// and duplicating the small amount that does overlap costs far less than a shared abstraction would
 // risk - see this header's own struct/function comments, carried over verbatim from main.cpp.
 namespace ac3cli {
 

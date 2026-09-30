@@ -164,7 +164,8 @@ class FakeBoard {
                     return;
                 }
                 const std::vector<std::uint8_t> bytes(received.begin(), received.end());
-                iclforge::hearth::ReadFirmwareFile read = iclforge::hearth::read_firmware_file(bytes);
+                iclforge::hearth::ReadFirmwareFile read =
+                    iclforge::hearth::read_firmware_file(bytes);
                 uploaded_ = std::move(read.file);
                 uploaded_image_sha256_ = uploaded_ ? uploaded_->image_sha256 : std::string();
                 status_.mode = "flash";
@@ -428,7 +429,8 @@ TEST_CASE("sink firmware board: an update is sent with its digest and followed u
 
     CHECK(board.uploads() == 1);
     CHECK(board.body() == std::string(file.data.begin(), file.data.end()));
-    CHECK(board.digest() == "sha-256=:" + iclforge::sendspin::base64::encode(file.file_sha256) + ":");
+    CHECK(board.digest() ==
+          "sha-256=:" + iclforge::sendspin::base64::encode(file.file_sha256) + ":");
     CHECK(board.host() == "127.0.0.1:" + std::to_string(board.port()));
     CHECK(eventually([&] { return !firmware.busy(); }));
     CHECK(board.mode_requests() == 0);

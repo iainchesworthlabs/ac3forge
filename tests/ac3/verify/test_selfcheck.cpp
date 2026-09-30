@@ -413,8 +413,9 @@ TEST_CASE("the mirror check is off unless a trace is attached", "[verify]") {
     // here would make the checked build a different encoder from the shipped
     // one, which would make the check worthless.
     const auto channels = golden_audio("reference_stereo.wav");
-    std::vector<std::span<const float>> views{std::span{channels[0]}.first(iclforge::kSamplesPerFrame),
-                                              std::span{channels[1]}.first(iclforge::kSamplesPerFrame)};
+    std::vector<std::span<const float>> views{
+        std::span{channels[0]}.first(iclforge::kSamplesPerFrame),
+        std::span{channels[1]}.first(iclforge::kSamplesPerFrame)};
 
     iclforge::FrameEncoder plain{config};
     const auto without = plain.encode_frame(views);

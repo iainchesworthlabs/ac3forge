@@ -81,7 +81,8 @@ class Fmp4FolderWriter {
 
    private:
     [[nodiscard]] std::string start(std::span<const std::byte> first_frame);
-    [[nodiscard]] std::string write_manifests(const iclforge::mp4::FragmentWriter& writer, bool finished);
+    [[nodiscard]] std::string write_manifests(const iclforge::mp4::FragmentWriter& writer,
+                                              bool finished);
 
     std::filesystem::path dir_;
     std::uint32_t window_segments_ = 0;

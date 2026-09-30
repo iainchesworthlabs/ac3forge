@@ -34,8 +34,9 @@ iclforge::EncoderConfig encoder_config_to_cpp(const ac3forge_encoder_config_t& c
     out.drc2 = config.has_drc2
                    ? std::optional<iclforge::meta::Profile>(iclforge::meta::profile(to_cpp(config.drc2_profile)))
                    : std::nullopt;
-    out.heavy2 = config.has_heavy2 ? std::optional<iclforge::meta::HeavyConfig>(to_cpp(config.heavy2))
-                                    : std::nullopt;
+    out.heavy2 = config.has_heavy2
+                     ? std::optional<iclforge::meta::HeavyConfig>(to_cpp(config.heavy2))
+                     : std::nullopt;
     out.cmixlev = to_cpp(config.cmixlev);
     out.surmixlev = to_cpp(config.surmixlev);
     return out;

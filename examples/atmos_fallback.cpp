@@ -34,14 +34,16 @@ constexpr int kFrames = 31;  // one second
 
 // Encodes the same two-object programme under the given config and returns
 // the assembled stream plus the last frame's decoded 5.1 bed.
-std::pair<std::vector<std::byte>, iclforge::DecodedAccessUnit> run(const iclforge::oba::AtmosConfig& config) {
+std::pair<std::vector<std::byte>, iclforge::DecodedAccessUnit> run(
+    const iclforge::oba::AtmosConfig& config) {
     iclforge::oba::AtmosEncoder encoder{config, kObjects};
     // Heap-allocated (PREfast's C6262, alert #69): Eac3Decoder grew several
     // KB of per-block scratch members (alert #63's fix), which pushed this
     // one-shot stack declaration over the threshold - same pattern as PR #50.
     auto decoder = std::make_unique<iclforge::Eac3Decoder>();
 
-    std::vector<std::vector<float>> sources(kObjects, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> sources(kObjects,
+                                            std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (const auto& source : sources) {
         views.emplace_back(source);

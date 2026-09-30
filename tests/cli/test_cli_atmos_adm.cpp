@@ -311,9 +311,10 @@ TEST_CASE("ac3cli atmos-adm parses, bridges and encodes a real ADM BWF master en
     CHECK(fs::file_size(out_path) > 0);
 
     // Decode what the CLI actually wrote - not a re-run through the library API - so this test
-    // proves the real binary's argument parsing, iclforge::adm::parse_bw64 call, iclforge::admbridge::build
-    // call and per-frame AtmosEncoder loop are all wired together correctly, not just that each
-    // piece works in isolation (tests/admbridge/test_adm_bridge.cpp's own flagship test already covers that).
+    // proves the real binary's argument parsing, iclforge::adm::parse_bw64 call,
+    // iclforge::admbridge::build call and per-frame AtmosEncoder loop are all wired together
+    // correctly, not just that each piece works in isolation (tests/admbridge/test_adm_bridge.cpp's
+    // own flagship test already covers that).
     std::ifstream stream_in{out_path, std::ios::binary};
     const std::vector<char> raw{std::istreambuf_iterator<char>{stream_in},
                                 std::istreambuf_iterator<char>{}};

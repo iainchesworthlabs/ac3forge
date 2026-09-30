@@ -34,11 +34,13 @@ namespace iclforge::apps {
                                                            bool three_zero, bool back_pair);
 
 // The layout `ac4_input_speakers` makes of `count` channels, by name.
-[[nodiscard]] std::string_view ac4_layout_name(std::size_t count, iclforge::ac4::AdditionalPair pair);
+[[nodiscard]] std::string_view ac4_layout_name(std::size_t count,
+                                               iclforge::ac4::AdditionalPair pair);
 
 // For each of the encoder's input channels, the WAV file's channel it takes
 // (ac4_channels.hpp's order).
-[[nodiscard]] std::vector<std::size_t> ac4_wav_index(std::span<const iclforge::ac4::Speaker> speakers);
+[[nodiscard]] std::vector<std::size_t> ac4_wav_index(
+    std::span<const iclforge::ac4::Speaker> speakers);
 
 // BS.1770's measurements of the programme, for dialnorm=auto and loudness=:
 // the integrated loudness, the loudness range, the true peak, and the highest
@@ -66,8 +68,8 @@ struct Ac4Measured {
 // loudness='s values for a measured programme, each within what its code
 // holds: -102.4 to +102.3, the range 0 to 102.3 LU (Part 1 clauses 4.3.12.3.8
 // to 4.3.12.3.30).
-[[nodiscard]] iclforge::ac4::FurtherLoudness ac4_further_loudness(iclforge::ac4::LoudnessPractice practice,
-                                                        const Ac4Measured& measured);
+[[nodiscard]] iclforge::ac4::FurtherLoudness ac4_further_loudness(
+    iclforge::ac4::LoudnessPractice practice, const Ac4Measured& measured);
 
 // The encoded frames as a file: each a raw stream's sync frame, with the CRC
 // of TS 103 190-2 Annex G where `crc`, or together an MP4 file with Annex E's
@@ -85,7 +87,8 @@ struct Ac4PackageError {
 };
 
 [[nodiscard]] std::expected<Ac4Packaged, Ac4PackageError> package_ac4(
-    std::span<const iclforge::ac4::EncodedFrame> frames, const iclforge::ac4::Toc& toc, bool mp4, bool crc);
+    std::span<const iclforge::ac4::EncodedFrame> frames, const iclforge::ac4::Toc& toc, bool mp4,
+    bool crc);
 
 // Whether an output path names an MP4 file, as `remux` matches them: by the
 // path's extension, case kept, .mp4, .m4a or .mov. What ac3cli's ac4-encode and

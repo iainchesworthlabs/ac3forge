@@ -401,10 +401,10 @@ struct ScannedStream {
 //
 // Where access unit i starts and how long it lasts. Every container writer in
 // this project computes this privately from a samples_per_frame it was handed
-// (iclforge::mp4::AudioTrack, iclforge::mpegts::AudioTrack, iclforge::matroska::AudioTrack all take one),
-// which is correct only while every access unit is the same length - true of
-// everything this project's own encoders produce and not true in general, and
-// in any case not something a caller could ask about before this existed.
+// (iclforge::mp4::AudioTrack, iclforge::mpegts::AudioTrack, iclforge::matroska::AudioTrack all take
+// one), which is correct only while every access unit is the same length - true of everything this
+// project's own encoders produce and not true in general, and in any case not something a caller
+// could ask about before this existed.
 //
 // The arithmetic is deliberately integer: a frame duration is very often not
 // a whole number of ticks in whatever timescale a container uses (1536
@@ -475,9 +475,10 @@ struct AccessUnitTiming {
 
 // The one length every access unit shares, or nothing when they differ. This
 // is exactly the question a fixed-duration container track can answer and a
-// variable one cannot: iclforge::mp4::AudioTrack/iclforge::mpegts::AudioTrack/iclforge::matroska::AudioTrack
-// each hold a single samples_per_frame, so a stream this returns nothing for
-// cannot be described to them without per-sample durations they do not model.
+// variable one cannot:
+// iclforge::mp4::AudioTrack/iclforge::mpegts::AudioTrack/iclforge::matroska::AudioTrack each hold a
+// single samples_per_frame, so a stream this returns nothing for cannot be described to them
+// without per-sample durations they do not model.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::optional<std::uint32_t> uniform_access_unit_samples(
     const ScannedStream& stream);
 

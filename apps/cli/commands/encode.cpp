@@ -346,7 +346,8 @@ bool eac3_config_accepted(int channel_count, std::uint32_t bitrate, iclforge::Sa
                          "error: {} kbps at {} Hz needs {} words per syncframe, past the {} "
                          "that E-AC-3's 11-bit frmsiz (§E2.3.1.3) can signal - lower the "
                          "bitrate or raise the sample rate",
-                         bitrate, iclforge::sample_rate_hz(rate), words, iclforge::eac3::kMaxFrameWords);
+                         bitrate, iclforge::sample_rate_hz(rate), words,
+                         iclforge::eac3::kMaxFrameWords);
             return false;
         }
     }
@@ -1126,7 +1127,8 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
             whole.emplace(*sr, cp.bed_acmod, cp.bed_lfe);
         }
         Progress progress;
-        progress.start("measuring", (total + iclforge::kSamplesPerFrame - 1) / iclforge::kSamplesPerFrame);
+        progress.start("measuring",
+                       (total + iclforge::kSamplesPerFrame - 1) / iclforge::kSamplesPerFrame);
         for (std::size_t start = 0; start < total; start += iclforge::kSamplesPerFrame) {
             route_frame(start);
             if (whole.has_value()) {
@@ -1175,7 +1177,8 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
         return kExitOutput;
     }
     Progress progress;
-    progress.start("encoding", (total + iclforge::kSamplesPerFrame - 1) / iclforge::kSamplesPerFrame);
+    progress.start("encoding",
+                   (total + iclforge::kSamplesPerFrame - 1) / iclforge::kSamplesPerFrame);
     for (std::size_t start = 0; start < total; start += iclforge::kSamplesPerFrame) {
         const auto valid = std::min<std::size_t>(iclforge::kSamplesPerFrame, total - start);
         route_frame(start);
@@ -1381,7 +1384,8 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     std::vector<std::span<float>> stream_dst(src_channels);
     std::size_t consumed = 0;
     Progress progress;
-    progress.start("encoding", (total + iclforge::kSamplesPerFrame - 1) / iclforge::kSamplesPerFrame);
+    progress.start("encoding",
+                   (total + iclforge::kSamplesPerFrame - 1) / iclforge::kSamplesPerFrame);
     for (std::size_t start = 0; start < total; start += iclforge::kSamplesPerFrame) {
         // The tail frame is padded to a full 1536 samples; the meter sees only
         // the real ones, so the padding cannot pull the RMS down. Padding

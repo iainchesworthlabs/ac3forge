@@ -37,7 +37,8 @@ struct Encoded {
 
 // Encodes planar input in pieces of `piece` samples, with the dialogue in it
 // where there is a stem, then flushes.
-Encoded encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input,
+Encoded encode(const iclforge::ac4::EncoderConfig& base,
+               const std::vector<std::vector<float>>& input,
                const std::vector<std::vector<float>>* dialogue = nullptr,
                std::size_t piece = 4096) {
     Encoded out;
@@ -72,7 +73,8 @@ Encoded encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::
 // The decoder's output for the stream, as `output` configures it.
 std::vector<std::vector<float>> decode(const std::vector<iclforge::ac4::EncodedFrame>& frames,
                                        const iclforge::ac4::OutputConfig& output) {
-    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{.syntax = {}, .output = output, .concealment = {}});
+    iclforge::ac4::Decoder decoder(
+        iclforge::ac4::DecoderConfig{.syntax = {}, .output = output, .concealment = {}});
     std::vector<std::vector<float>> out;
     for (const iclforge::ac4::EncodedFrame& frame : frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
@@ -94,7 +96,8 @@ std::vector<iclforge::ac4::SyntaxRecord> read_back(const Encoded& encoded,
                                          std::vector<std::size_t>& frame_starts) {
     std::vector<iclforge::ac4::SyntaxRecord> read;
     const auto sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
-    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{.syntax = sink, .output = {}, .concealment = {}});
+    iclforge::ac4::Decoder decoder(
+        iclforge::ac4::DecoderConfig{.syntax = sink, .output = {}, .concealment = {}});
     for (const iclforge::ac4::EncodedFrame& frame : encoded.frames) {
         frame_starts.push_back(read.size());
         const auto report = decoder.parse(frame.raw_ac4_frame);
@@ -169,8 +172,8 @@ double tone_power(std::span<const float> samples, double hz) {
 
 // An output configuration: the level, DRC mode, dialogue enhancement and
 // downmix, the rest as the decoder's defaults.
-iclforge::ac4::OutputConfig output(std::optional<double> level, iclforge::ac4::DrcMode drc, double dialogue_db,
-                         iclforge::ac4::DownmixTarget target) {
+iclforge::ac4::OutputConfig output(std::optional<double> level, iclforge::ac4::DrcMode drc,
+                                   double dialogue_db, iclforge::ac4::DownmixTarget target) {
     iclforge::ac4::OutputConfig out;
     out.output_level_dbfs = level;
     out.drc = drc;
@@ -203,17 +206,18 @@ iclforge::ac4::EncoderConfig config_51() {
     config.bitrate_kbps = 384;
     config.codec_mode = iclforge::ac4::CodecMode::kSimple;
     config.dialnorm_db = -24.0;
-    config.loudness = iclforge::ac4::FurtherLoudness{.practice = iclforge::ac4::LoudnessPractice::kEbuR128,
-                                           .corrected_with_gating = std::nullopt,
-                                           .corrected_in_real_time = false,
-                                           .integrated_lkfs = -23.0,
-                                           .speech_gated_lkfs = -22.4,
-                                           .speech_gating = iclforge::ac4::DialogueGating::kLeftCentreRight,
-                                           .max_short_term_lufs = -18.5,
-                                           .max_true_peak_dbtp = -1.2,
-                                           .loudness_range_lu = 7.5,
-                                           .loudness_range_v2 = true,
-                                           .max_momentary_lufs = -16.3};
+    config.loudness = iclforge::ac4::FurtherLoudness{
+        .practice = iclforge::ac4::LoudnessPractice::kEbuR128,
+        .corrected_with_gating = std::nullopt,
+        .corrected_in_real_time = false,
+        .integrated_lkfs = -23.0,
+        .speech_gated_lkfs = -22.4,
+        .speech_gating = iclforge::ac4::DialogueGating::kLeftCentreRight,
+        .max_short_term_lufs = -18.5,
+        .max_true_peak_dbtp = -1.2,
+        .loudness_range_lu = 7.5,
+        .loudness_range_v2 = true,
+        .max_momentary_lufs = -16.3};
     config.drc = iclforge::ac4::DrcConfig{.profile = iclforge::ac4::DrcProfile::kMusicStandard,
                                 .modes = {{.id = 0,
                                            .output_level_from_db = 0,
@@ -247,11 +251,12 @@ iclforge::ac4::EncoderConfig config_51() {
                                         .preferred = iclforge::ac4::PreferredDownmix::kLtRt,
                                         .loro_correction_db2 = 1.5,
                                         .ltrt_correction_db2 = std::nullopt};
-    config.dialogue = iclforge::ac4::DialogueConfig{.source = iclforge::ac4::DialogueSource::kMarkedChannels,
-                                          .left = false,
-                                          .right = false,
-                                          .centre = true,
-                                          .max_gain_db = 12};
+    config.dialogue =
+        iclforge::ac4::DialogueConfig{.source = iclforge::ac4::DialogueSource::kMarkedChannels,
+                                      .left = false,
+                                      .right = false,
+                                      .centre = true,
+                                      .max_gain_db = 12};
     return config;
 }
 
@@ -359,8 +364,9 @@ TEST_CASE("the decoder applies the encoder's metadata with the gains its formula
     const auto level_db = [](double power) { return 10.0 * std::log10(power); };
 
     SECTION("the output level: 2^((Lout - dialnorm) / 6)") {
-        const std::vector<std::vector<float>> out = decode(
-            encoded.frames, output(-31.0, iclforge::ac4::DrcMode::kOff, 0.0, iclforge::ac4::DownmixTarget::kAsCoded));
+        const std::vector<std::vector<float>> out =
+            decode(encoded.frames, output(-31.0, iclforge::ac4::DrcMode::kOff, 0.0,
+                                          iclforge::ac4::DownmixTarget::kAsCoded));
         const double expected = 20.0 * std::log10(std::exp2((-31.0 + 24.0) / 6.0));
         for (std::size_t c = 0; c < 6; ++c) {
             CAPTURE(c);
@@ -374,9 +380,9 @@ TEST_CASE("the decoder applies the encoder's metadata with the gains its formula
             kSanitized ? std::vector<double>{6.0, 15.0} : std::vector<double>{6.0, 12.0, 15.0};
         for (const double asked : asks) {
             CAPTURE(asked);
-            const std::vector<std::vector<float>> out = decode(
-                encoded.frames,
-                output(std::nullopt, iclforge::ac4::DrcMode::kDefault, asked, iclforge::ac4::DownmixTarget::kAsCoded));
+            const std::vector<std::vector<float>> out =
+                decode(encoded.frames, output(std::nullopt, iclforge::ac4::DrcMode::kDefault, asked,
+                                              iclforge::ac4::DownmixTarget::kAsCoded));
             CHECK(std::abs(level_db(tone_power(out[2], kTone[2]) / tone_power(coded[2], kTone[2])) -
                            std::min(asked, 12.0)) < 0.01);
             CHECK(std::abs(level_db(tone_power(out[0], kTone[0]) /
@@ -400,7 +406,8 @@ TEST_CASE("the decoder applies the encoder's metadata with the gains its formula
               Case{iclforge::ac4::DownmixTarget::kLtRt, -3.0, -6.0, -6.0, -10.5}}) {
             CAPTURE(static_cast<int>(c.target));
             const std::vector<std::vector<float>> out =
-                decode(encoded.frames, output(std::nullopt, iclforge::ac4::DrcMode::kDefault, 0.0, c.target));
+                decode(encoded.frames,
+                       output(std::nullopt, iclforge::ac4::DrcMode::kDefault, 0.0, c.target));
             REQUIRE(out.size() == 2);
             const auto into_left = [&](std::size_t input) {
                 return level_db(tone_power(out[0], kTone[input]) /
@@ -434,9 +441,10 @@ TEST_CASE("dialogue enhancement from a stem raises the dialogue and leaves the r
         std::array<float, 2> pan;
         std::uint64_t de_method;
     };
-    for (const Method& m : {Method{iclforge::ac4::DialogueMethod::kChannelIndependent, {1.0F, 1.0F}, 0},
-                            Method{iclforge::ac4::DialogueMethod::kMid, {1.0F, 1.0F}, 0},
-                            Method{iclforge::ac4::DialogueMethod::kCrossChannel, {1.2F, 0.6F}, 1}}) {
+    for (const Method& m :
+         {Method{iclforge::ac4::DialogueMethod::kChannelIndependent, {1.0F, 1.0F}, 0},
+          Method{iclforge::ac4::DialogueMethod::kMid, {1.0F, 1.0F}, 0},
+          Method{iclforge::ac4::DialogueMethod::kCrossChannel, {1.2F, 0.6F}, 1}}) {
         CAPTURE(static_cast<int>(m.method));
         std::vector<std::vector<float>> programme(2, std::vector<float>(count));
         std::vector<std::vector<float>> dialogue(2, std::vector<float>(count));
@@ -461,14 +469,16 @@ TEST_CASE("dialogue enhancement from a stem raises the dialogue and leaves the r
         const std::vector<iclforge::ac4::SyntaxRecord> read = read_back(encoded, starts);
         CHECK(values(read, starts, 0, "de_method") == std::vector<std::uint64_t>{m.de_method});
         const std::vector<std::uint64_t> ms = values(read, starts, 0, "de_ms_proc_flag");
-        CHECK(ms ==
-              (m.de_method == 0
-                   ? std::vector<std::uint64_t>{m.method == iclforge::ac4::DialogueMethod::kMid ? 1U : 0U}
-                   : std::vector<std::uint64_t>{}));
+        CHECK(
+            ms ==
+            (m.de_method == 0
+                 ? std::vector<std::uint64_t>{m.method == iclforge::ac4::DialogueMethod::kMid ? 1U
+                                                                                              : 0U}
+                 : std::vector<std::uint64_t>{}));
         const std::vector<std::vector<float>> coded = decode(encoded.frames, {});
         const std::vector<std::vector<float>> raised =
-            decode(encoded.frames,
-                   output(std::nullopt, iclforge::ac4::DrcMode::kDefault, 9.0, iclforge::ac4::DownmixTarget::kAsCoded));
+            decode(encoded.frames, output(std::nullopt, iclforge::ac4::DrcMode::kDefault, 9.0,
+                                          iclforge::ac4::DownmixTarget::kAsCoded));
         for (std::size_t c = 0; c < 2; ++c) {
             CAPTURE(c);
             const double dialogue_db =
@@ -568,8 +578,9 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
             iclforge::ac4::DrcModeConfig repeat;
             repeat.id = 2;
             repeat.repeat_of = 0;
-            config.drc = iclforge::ac4::DrcConfig{.profile = iclforge::ac4::DrcProfile::kFilmStandard,
-                                        .modes = {gains, curve, repeat}};
+            config.drc =
+                iclforge::ac4::DrcConfig{.profile = iclforge::ac4::DrcProfile::kFilmStandard,
+                                         .modes = {gains, curve, repeat}};
             const Encoded encoded = encode(config, programme(channels, length));
             std::vector<std::size_t> starts;
             const std::vector<iclforge::ac4::SyntaxRecord> read = read_back(encoded, starts);
@@ -582,11 +593,13 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
             // whole dB2 steps, once the smoothing has settled, where the
             // profile moves the level by several dB.
             iclforge::ac4::OutputConfig as_gains =
-                output(-24.0, iclforge::ac4::DrcMode::kHomeTheatre, 0.0, iclforge::ac4::DownmixTarget::kAsCoded);
+                output(-24.0, iclforge::ac4::DrcMode::kHomeTheatre, 0.0,
+                       iclforge::ac4::DownmixTarget::kAsCoded);
             iclforge::ac4::OutputConfig as_curve =
-                output(-24.0, iclforge::ac4::DrcMode::kFlatPanelTv, 0.0, iclforge::ac4::DownmixTarget::kAsCoded);
-            iclforge::ac4::OutputConfig as_is =
-                output(-24.0, iclforge::ac4::DrcMode::kOff, 0.0, iclforge::ac4::DownmixTarget::kAsCoded);
+                output(-24.0, iclforge::ac4::DrcMode::kFlatPanelTv, 0.0,
+                       iclforge::ac4::DownmixTarget::kAsCoded);
+            iclforge::ac4::OutputConfig as_is = output(-24.0, iclforge::ac4::DrcMode::kOff, 0.0,
+                                                       iclforge::ac4::DownmixTarget::kAsCoded);
             const std::vector<std::vector<float>> by_gains = decode(encoded.frames, as_gains);
             const std::vector<std::vector<float>> by_curve = decode(encoded.frames, as_curve);
             const std::vector<std::vector<float>> plain = decode(encoded.frames, as_is);
@@ -622,7 +635,8 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
     config.channels = 2;
     iclforge::ac4::DrcModeConfig gains;
     gains.gains_config = 0;
-    config.drc = iclforge::ac4::DrcConfig{.profile = iclforge::ac4::DrcProfile::kFilmStandard, .modes = {gains}};
+    config.drc = iclforge::ac4::DrcConfig{.profile = iclforge::ac4::DrcProfile::kFilmStandard,
+                                          .modes = {gains}};
     CHECK_FALSE(iclforge::ac4::Encoder::create(config).has_value());
     config.experimental.drc_gains = true;
     CHECK(iclforge::ac4::Encoder::create(config).has_value());
@@ -633,7 +647,8 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
 TEST_CASE("the encoder refuses metadata the syntax cannot send", "[ac4enc][metadata]") {
     const auto refused = [](const iclforge::ac4::EncoderConfig& config) {
         const auto encoder = iclforge::ac4::Encoder::create(config);
-        return !encoder.has_value() && encoder.error() == iclforge::ac4::EncodeError::kInvalidConfig;
+        return !encoder.has_value() &&
+               encoder.error() == iclforge::ac4::EncodeError::kInvalidConfig;
     };
     iclforge::ac4::EncoderConfig stereo;
     stereo.channels = 2;
@@ -666,12 +681,13 @@ TEST_CASE("the encoder refuses metadata the syntax cannot send", "[ac4enc][metad
         // The Mid is L and R's alone; the cross-channel method pans over two
         // channels or three, from a stem.
         config = config_51();
-        config.dialogue = iclforge::ac4::DialogueConfig{.method = iclforge::ac4::DialogueMethod::kMid,
-                                              .source = iclforge::ac4::DialogueSource::kMarkedChannels,
-                                              .left = true,
-                                              .right = true,
-                                              .centre = true,
-                                              .max_gain_db = 9};
+        config.dialogue =
+            iclforge::ac4::DialogueConfig{.method = iclforge::ac4::DialogueMethod::kMid,
+                                          .source = iclforge::ac4::DialogueSource::kMarkedChannels,
+                                          .left = true,
+                                          .right = true,
+                                          .centre = true,
+                                          .max_gain_db = 9};
         CHECK(refused(config));
         config.dialogue->method = iclforge::ac4::DialogueMethod::kCrossChannel;
         CHECK(refused(config));

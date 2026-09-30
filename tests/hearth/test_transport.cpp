@@ -217,7 +217,8 @@ TEST_CASE("transport: a bitstream joins only the same stream, played the same wa
         return OpenOutputFormat{
             .sample_rate = 48000, .channels = 2, .mode = mode, .stream = stream};
     };
-    transport.set_open_format(link(iclforge::audio::BitstreamFormat::kEac3, OutputMode::kBitstream));
+    transport.set_open_format(
+        link(iclforge::audio::BitstreamFormat::kEac3, OutputMode::kBitstream));
 
     // E-AC-3 after E-AC-3, both bitstreamed: the link carries on.
     auto outcome = transport.item_finished(OutputMode::kBitstream);
@@ -262,7 +263,8 @@ TEST_CASE("transport: a bitstream joins only the same stream, played the same wa
     again.add(plain);
     Transport other{again};
     REQUIRE(other.play().action == TransportAction::kStartItem);
-    other.set_open_format(link(iclforge::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
+    other.set_open_format(
+        link(iclforge::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
     CHECK(other.item_finished(OutputMode::kBitstreamAsAc3).action ==
           TransportAction::kReopenForItem);
 }

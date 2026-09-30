@@ -1,9 +1,9 @@
 // Parses the same Immersive Audio Bitstream (SMPTE ST 2098-2:2022) content two ways: once as a
-// bare elementary `.iab` file (iclforge::iab::parse_iabitstream, IAB reader phase 1) and once wrapped in
-// a synthetic MXF IAB Track File (iclforge::iab::parse_mxf_iab, IAB reader phase 2), printing what each
-// found to show the two agree - the point being that SMPTE ST 2067-201 clip-wraps the whole
-// IABitstream as a single Generic Container KLV Value, so an MXF Track File's essence really is
-// the identical byte sequence an elementary `.iab` file already has (see
+// bare elementary `.iab` file (iclforge::iab::parse_iabitstream, IAB reader phase 1) and once
+// wrapped in a synthetic MXF IAB Track File (iclforge::iab::parse_mxf_iab, IAB reader phase 2),
+// printing what each found to show the two agree - the point being that SMPTE ST 2067-201
+// clip-wraps the whole IABitstream as a single Generic Container KLV Value, so an MXF Track File's
+// essence really is the identical byte sequence an elementary `.iab` file already has (see
 // src/iab/src/mxf_reader.cpp's own header comment for the full citation trail).
 //
 // iclforge::iab is codec-blind - this program does not either, it only proves both parsed graphs

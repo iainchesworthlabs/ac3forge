@@ -165,7 +165,8 @@ TEST_CASE("sf_info groups the windows of a differently framed short frame", "[ac
         SfData out;
         HsfSfData hsf;
         REQUIRE(read(d, [&](BitReader& r) {
-                    return iclforge::ac4::detail::parse_sf_data(r, ctx, info, false, nullptr, out, hsf);
+                    return iclforge::ac4::detail::parse_sf_data(r, ctx, info, false, nullptr, out,
+                                                                hsf);
                 }).has_value());
         CHECK(out.sections[0].size() == 1);
         CHECK(out.sections[1].size() == 1);
@@ -332,7 +333,8 @@ TEST_CASE("sf_info at the shorter frame lengths reads one transform length", "[a
         SfData data;
         HsfSfData hsf;
         const auto refused = read(w, [&](BitReader& r) {
-            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, data, hsf);
+            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr,
+                                                        data, hsf);
         });
         REQUIRE_FALSE(refused.has_value());
         CHECK(refused.error().error == DecodeError::kUnsupported);
@@ -482,7 +484,8 @@ TEST_CASE("sf_data escapes a long section and refuses malformed ones", "[ac4dec]
         SfData out;
         HsfSfData hsf;
         const auto result = read(w, [&](BitReader& r) {
-            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
+            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out,
+                                                        hsf);
         });
         REQUIRE_FALSE(result.has_value());
         return result.error().error;
@@ -641,7 +644,8 @@ TEST_CASE("the HSF extension at 192 kHz and its limits", "[ac4dec][asf]") {
         SfData out;
         HsfSfData hsf;
         REQUIRE(read(core, [&](BitReader& r) {
-                    return iclforge::ac4::detail::parse_sf_data(r, ctx, info, false, &header, out, hsf);
+                    return iclforge::ac4::detail::parse_sf_data(r, ctx, info, false, &header, out,
+                                                                hsf);
                 }).has_value());
         CHECK(hsf.start_sfb[0] == 14);
         CHECK(hsf.max_sfb_hsf[0] == 2);
@@ -753,7 +757,8 @@ TEST_CASE("an ASF codeword the substream ends inside fails as truncated as in ev
     HsfSfData hsf;
     const auto sf_data = [&](const SfInfo& info) {
         return [&out, &hsf, info](BitReader& r) {
-            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
+            return iclforge::ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out,
+                                                        hsf);
         };
     };
     std::size_t start = 0;

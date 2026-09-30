@@ -222,11 +222,12 @@ std::vector<Bytes> read_in_chunks(std::span<const std::byte> file, std::size_t c
 TEST_CASE("Matroska round-trips mux()'s frames back byte-for-byte", "[matroska][reader]") {
     const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(512, 0x22),
                                     frame_of(1024, 0x33), frame_of(64, 0x44)};
-    const iclforge::matroska::AudioTrack track{.codec_id = std::string{iclforge::matroska::kCodecEac3},
-                                     .sample_rate = 48000,
-                                     .channels = 6,
-                                     .samples_per_frame = 1536,
-                                     .language = "eng"};
+    const iclforge::matroska::AudioTrack track{
+        .codec_id = std::string{iclforge::matroska::kCodecEac3},
+        .sample_rate = 48000,
+        .channels = 6,
+        .samples_per_frame = 1536,
+        .language = "eng"};
     const auto file = iclforge::matroska::mux(track, views_of(frames));
     REQUIRE(file.has_value());
 
@@ -279,11 +280,12 @@ TEST_CASE("Matroska Reader over arbitrary chunk boundaries matches demux()",
                                     frame_of(64, 0x44), frame_of(900, 0x55)};
     const auto file = iclforge::matroska::mux(
         iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecEac3},
-                             .sample_rate = 48000,
-                             .channels = 6,
-                             .samples_per_frame = 1536,
-                             .language = "und"},
-        views_of(frames), iclforge::matroska::MuxOptions{.cluster_ms = 50, .writing_app = "ac3forge"});
+                                       .sample_rate = 48000,
+                                       .channels = 6,
+                                       .samples_per_frame = 1536,
+                                       .language = "und"},
+        views_of(frames),
+        iclforge::matroska::MuxOptions{.cluster_ms = 50, .writing_app = "ac3forge"});
     REQUIRE(file.has_value());
 
     // 1 byte at a time splits every id, every size vint and every frame;
@@ -297,13 +299,13 @@ TEST_CASE("Matroska Reader over arbitrary chunk boundaries matches demux()",
 
 TEST_CASE("Matroska Reader reports the track and frame count it read", "[matroska][reader]") {
     const std::vector<Bytes> frames{frame_of(100, 1), frame_of(100, 2), frame_of(100, 3)};
-    const auto file =
-        iclforge::matroska::mux(iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecEac3},
-                                           .sample_rate = 48000,
-                                           .channels = 2,
-                                           .samples_per_frame = 1536,
-                                           .language = "und"},
-                      views_of(frames));
+    const auto file = iclforge::matroska::mux(
+        iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecEac3},
+                                       .sample_rate = 48000,
+                                       .channels = 2,
+                                       .samples_per_frame = 1536,
+                                       .language = "und"},
+        views_of(frames));
     REQUIRE(file.has_value());
 
     iclforge::matroska::Reader reader{};
@@ -484,7 +486,8 @@ TEST_CASE("Matroska track selection picks the audio AC-3 track", "[matroska][rea
     }
 
     SECTION("an explicit track number overrides the codec filter") {
-        const auto out = iclforge::matroska::demux(file, iclforge::matroska::ReadOptions{.track_number = 2});
+        const auto out =
+            iclforge::matroska::demux(file, iclforge::matroska::ReadOptions{.track_number = 2});
         REQUIRE(out.has_value());
         CHECK(out->track.codec_id == "A_AAC");
         REQUIRE(out->frames.size() == 1);
@@ -492,7 +495,8 @@ TEST_CASE("Matroska track selection picks the audio AC-3 track", "[matroska][rea
     }
 
     SECTION("a track number nothing matches is kNoAudioTrack") {
-        const auto out = iclforge::matroska::demux(file, iclforge::matroska::ReadOptions{.track_number = 99});
+        const auto out =
+            iclforge::matroska::demux(file, iclforge::matroska::ReadOptions{.track_number = 99});
         REQUIRE_FALSE(out.has_value());
         CHECK(out.error() == iclforge::matroska::DemuxError::kNoAudioTrack);
     }
@@ -604,13 +608,13 @@ TEST_CASE("Matroska truncated mid-cluster keeps the frames before the cut", "[ma
     // before the track was ever described has nothing to give back.
     const std::vector<Bytes> frames{frame_of(400, 0x11), frame_of(400, 0x22),
                                     frame_of(400, 0x33)};
-    const auto complete =
-        iclforge::matroska::mux(iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecEac3},
-                                           .sample_rate = 48000,
-                                           .channels = 2,
-                                           .samples_per_frame = 1536,
-                                           .language = "und"},
-                      views_of(frames), iclforge::matroska::MuxOptions{.cluster_ms = 30});
+    const auto complete = iclforge::matroska::mux(
+        iclforge::matroska::AudioTrack{.codec_id = std::string{iclforge::matroska::kCodecEac3},
+                                       .sample_rate = 48000,
+                                       .channels = 2,
+                                       .samples_per_frame = 1536,
+                                       .language = "und"},
+        views_of(frames), iclforge::matroska::MuxOptions{.cluster_ms = 30});
     REQUIRE(complete.has_value());
 
     SECTION("cut after some frames") {

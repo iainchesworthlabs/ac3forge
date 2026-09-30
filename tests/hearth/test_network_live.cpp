@@ -265,8 +265,10 @@ TEST_CASE("network sinks live: the sinks on this network are found, paired, play
             sinks,
             [&](const iclforge::hearth::NetworkStatus& status) {
                 const iclforge::hearth::SinkFacts* facts = row(status, id);
-                return facts != nullptr && facts->pair_state == iclforge::hearth::PairState::kPaired &&
-                       facts->link == iclforge::hearth::SinkLink::kConnected && facts->ac3forge_support.has_value();
+                return facts != nullptr &&
+                       facts->pair_state == iclforge::hearth::PairState::kPaired &&
+                       facts->link == iclforge::hearth::SinkLink::kConnected &&
+                       facts->ac3forge_support.has_value();
             },
             45s));
     }
@@ -327,7 +329,8 @@ TEST_CASE("network sinks live: the sinks on this network are found, paired, play
 
     // 5. Every sink played the programme's bursts, as it reports over this computer's own connection
     //    (its client/state counters - its page's counters are the last stream's, whoever sent it).
-    const auto counters = [&](const iclforge::hearth::NetworkStatus& status, const std::string& id) {
+    const auto counters = [&](const iclforge::hearth::NetworkStatus& status,
+                              const std::string& id) {
         const iclforge::hearth::SinkFacts* facts = row(status, id);
         return facts != nullptr && facts->ac3forge_state ? std::optional(facts->ac3forge_state->counters) : std::nullopt;
     };
@@ -364,7 +367,8 @@ TEST_CASE("network sinks live: the sinks on this network are found, paired, play
         [&](const iclforge::hearth::NetworkStatus& status) {
             return std::all_of(wanted.begin(), wanted.end(), [&](const std::string& id) {
                 const iclforge::hearth::SinkFacts* facts = row(status, id);
-                return facts != nullptr && facts->pair_state != iclforge::hearth::PairState::kPaired;
+                return facts != nullptr &&
+                       facts->pair_state != iclforge::hearth::PairState::kPaired;
             });
         },
         30s));

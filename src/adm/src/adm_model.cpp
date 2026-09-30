@@ -200,7 +200,8 @@ AudioBlockFormat convert(const ::adm::AudioBlockFormatObjects& src) {
         block.channel_lock = channel_lock.get<::adm::ChannelLockFlag>().get();
         if (channel_lock.has<::adm::MaxDistance>()) {
             block.has_channel_lock_max_distance = true;
-            block.channel_lock_max_distance = to_double(channel_lock.get<::adm::MaxDistance>().get());
+            block.channel_lock_max_distance =
+                to_double(channel_lock.get<::adm::MaxDistance>().get());
         }
     }
     if (src.has<::adm::JumpPosition>()) {
@@ -239,17 +240,19 @@ AudioBlockFormat convert(const ::adm::AudioBlockFormatHoa& src) {
 // content are both outside this phase's scope, per model.hpp's own header
 // comment.
 AudioBlockFormat convert(const ::adm::AudioBlockFormatMatrix& src) {
-    return convert_common(::adm::formatId(src.get<::adm::AudioBlockFormatId>()), src.get<::adm::Rtime>(),
-                           src.has<::adm::Duration>() ? boost::optional<::adm::Duration>(src.get<::adm::Duration>())
-                                                     : boost::none,
-                           src.get<::adm::Gain>(), src.get<::adm::Importance>());
+    return convert_common(
+        ::adm::formatId(src.get<::adm::AudioBlockFormatId>()), src.get<::adm::Rtime>(),
+        src.has<::adm::Duration>() ? boost::optional<::adm::Duration>(src.get<::adm::Duration>())
+                                   : boost::none,
+        src.get<::adm::Gain>(), src.get<::adm::Importance>());
 }
 
 AudioBlockFormat convert(const ::adm::AudioBlockFormatBinaural& src) {
-    return convert_common(::adm::formatId(src.get<::adm::AudioBlockFormatId>()), src.get<::adm::Rtime>(),
-                           src.has<::adm::Duration>() ? boost::optional<::adm::Duration>(src.get<::adm::Duration>())
-                                                     : boost::none,
-                           src.get<::adm::Gain>(), src.get<::adm::Importance>());
+    return convert_common(
+        ::adm::formatId(src.get<::adm::AudioBlockFormatId>()), src.get<::adm::Rtime>(),
+        src.has<::adm::Duration>() ? boost::optional<::adm::Duration>(src.get<::adm::Duration>())
+                                   : boost::none,
+        src.get<::adm::Gain>(), src.get<::adm::Importance>());
 }
 
 AudioChannelFormat convert(const std::shared_ptr<const ::adm::AudioChannelFormat>& src) {
@@ -367,8 +370,8 @@ AudioProgramme convert(const std::shared_ptr<const ::adm::AudioProgramme>& src) 
 
 namespace {
 
-// The write-side counterpart of to_seconds() above: an iclforge::adm::AudioBlockFormat's *_s fields are
-// plain seconds (model.hpp's own convention, chosen so nothing downstream of ac3adm has to know
+// The write-side counterpart of to_seconds() above: an iclforge::adm::AudioBlockFormat's *_s fields
+// are plain seconds (model.hpp's own convention, chosen so nothing downstream of ac3adm has to know
 // libadm's Time/FractionalTime split exists), so every rtime/duration/interpolationLength this
 // writer emits goes through this one conversion rather than five ad-hoc ones.
 ::adm::Time seconds_to_time(double seconds) {
@@ -407,7 +410,8 @@ namespace {
     return out;
 }
 
-::adm::AudioBlockFormatDirectSpeakers to_libadm_direct_speakers_block(const AudioBlockFormat& block) {
+::adm::AudioBlockFormatDirectSpeakers to_libadm_direct_speakers_block(
+    const AudioBlockFormat& block) {
     ::adm::AudioBlockFormatDirectSpeakers out{::adm::Rtime(seconds_to_time(block.rtime_s)), ::adm::Gain::fromLinear(block.gain)};
     if (block.has_duration) {
         out.set(::adm::Duration(seconds_to_time(block.duration_s)));

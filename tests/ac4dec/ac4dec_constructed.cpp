@@ -231,7 +231,8 @@ constexpr double kGamma = 6552.0 / 16384.0;
 
 // One track coded finely: each band's step a 2^-12 of its peak.
 [[nodiscard]] CodedTrack code(const Lines& lines, const FrameLayout& layout, int max_sfb) {
-    const iclforge::ac4::detail::Grouped grouped = iclforge::ac4::detail::regroup(lines, layout, {max_sfb, max_sfb});
+    const iclforge::ac4::detail::Grouped grouped =
+        iclforge::ac4::detail::regroup(lines, layout, {max_sfb, max_sfb});
     std::vector<std::vector<int>> sf(grouped.offset.size());
     for (std::size_t g = 0; g < grouped.offset.size(); ++g) {
         for (std::size_t b = 0; b + 1 < grouped.offset[g].size(); ++b) {
@@ -715,7 +716,8 @@ void write_5_x_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup
         write_companding(w, 2, c);
         e.stereo_data(S::kLeft, S::kRight);
         write_aspx_data(w, iframe, setup, c);
-        iclforge::ac4::detail::write_acpl_data_2ch(w, acpl_config_2ch_of(c), acpl_data_2ch_of(c, iframe));
+        iclforge::ac4::detail::write_acpl_data_2ch(w, acpl_config_2ch_of(c),
+                                                   acpl_data_2ch_of(c, iframe));
         return;
     }
     write_companding(w, 3, c);
@@ -830,7 +832,8 @@ struct AjccRoute {
 
 // ajcc_data() for the case's route, in both modules: each parameter one set,
 // along frequency in I-frames and along time, unchanged, after them.
-[[nodiscard]] iclforge::ac4::detail::AjccDataFields ajcc_data_of(const ElementCase& c, bool iframe) {
+[[nodiscard]] iclforge::ac4::detail::AjccDataFields ajcc_data_of(const ElementCase& c,
+                                                                 bool iframe) {
     iclforge::ac4::detail::AjccDataFields d;
     d.num_param_bands_id = c.acpl_bands_id;
     d.core_mode = c.ajcc_core_mode;
@@ -1249,7 +1252,8 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
     for (const Speaker speaker : out.speakers) {
         out.tone_hz.push_back(tone_for(c.ch_mode, speaker));
     }
-    const std::optional<AspxSetup> setup = iclforge::ac4::detail::aspx_setup_for(kAspxKbpsPerChannel, kRate);
+    const std::optional<AspxSetup> setup =
+        iclforge::ac4::detail::aspx_setup_for(kAspxKbpsPerChannel, kRate);
     if (!setup) {
         throw std::runtime_error("no A-SPX configuration at 48 kHz");
     }
@@ -1310,7 +1314,9 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
         fields.ch_mode = c.ch_mode;
         fields.add_ch_base = c.add_ch_base;
         std::vector<iclforge::ac4::SyntaxRecord>& trace = out.traces.emplace_back();
-        const auto keep = [&trace](const iclforge::ac4::SyntaxRecord& record) { trace.push_back(record); };
+        const auto keep = [&trace](const iclforge::ac4::SyntaxRecord& record) {
+            trace.push_back(record);
+        };
         auto raw = iclforge::ac4::detail::write_frame(fields, audio, 0, keep);
         if (!raw) {
             throw std::runtime_error("the frame writer refused a frame");

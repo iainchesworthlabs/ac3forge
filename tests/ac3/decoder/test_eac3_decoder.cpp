@@ -272,7 +272,8 @@ void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
                           : (target & static_cast<std::byte>(~mask));
     }
     const auto bytes = frame.size();
-    const std::uint16_t crc2 = iclforge::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
+    const std::uint16_t crc2 =
+        iclforge::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
     frame[bytes - 2] = static_cast<std::byte>(crc2 >> 8);
     frame[bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
 }
@@ -683,12 +684,13 @@ TEST_CASE("E-AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is no
 
     auto encode_and_get_compr2 = [](double heavy2_ceiling) -> std::uint8_t {
         const iclforge::eac3::AccessUnitConfig config{
-            .independent = {.bitrate_kbps = 192,
-                            .acmod = Acmod::kDualMono,
-                            .dialnorm = 24,
-                            .dialnorm2 = 24,
-                            .heavy = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = kLooseCeiling},
-                            .heavy2 = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = heavy2_ceiling}}};
+            .independent = {
+                .bitrate_kbps = 192,
+                .acmod = Acmod::kDualMono,
+                .dialnorm = 24,
+                .dialnorm2 = 24,
+                .heavy = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = kLooseCeiling},
+                .heavy2 = iclforge::meta::HeavyConfig{.peak_ceiling_dbfs = heavy2_ceiling}}};
         iclforge::eac3::AccessUnitEncoder encoder{config};
         REQUIRE(encoder.channel_count() == 2);
 
@@ -1032,7 +1034,8 @@ TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decode
     for (const std::uint32_t kbps : {96u, 128u, 192u}) {
         CAPTURE(kbps);
         iclforge::eac3::AccessUnitEncoder encoder{
-            {.independent = {.bitrate_kbps = kbps, .acmod = iclforge::Acmod::k2_0, .coupling = true}}};
+            {.independent = {
+                 .bitrate_kbps = kbps, .acmod = iclforge::Acmod::k2_0, .coupling = true}}};
         REQUIRE(encoder.channel_count() == 2);
 
         std::size_t cursor = 0;
@@ -1044,7 +1047,8 @@ TEST_CASE("E-AC-3 delta bit allocation rides alongside coupling", "[eac3][decode
                 pcm[0][static_cast<std::size_t>(i)] = source[0][idx];
                 pcm[1][static_cast<std::size_t>(i)] = source[1][idx];
             }
-            cursor = (cursor + static_cast<std::size_t>(iclforge::kSamplesPerFrame)) % source_samples;
+            cursor =
+                (cursor + static_cast<std::size_t>(iclforge::kSamplesPerFrame)) % source_samples;
             std::vector<std::span<const float>> views{pcm[0], pcm[1]};
             const auto unit = encoder.encode_access_unit(views);
             REQUIRE(unit.has_value());
@@ -1575,7 +1579,8 @@ TEST_CASE("the E-AC-3 decoder rejects malformed streams", "[eac3][decoder]") {
     }
     SECTION("a dependent substream with no parent") {
         std::vector<std::byte> orphan{whole.begin() + lead_bytes, whole.end()};
-        CHECK(iclforge::split_access_units(orphan).error() == iclforge::DecodeError::kInvalidStream);
+        CHECK(iclforge::split_access_units(orphan).error() ==
+              iclforge::DecodeError::kInvalidStream);
         CHECK(decoder.decode_access_unit(orphan).error() == iclforge::DecodeError::kInvalidStream);
     }
     SECTION("a chanmap that does not account for the coded channels") {
@@ -1724,7 +1729,9 @@ TEST_CASE("decode_access_unit queues a substream that keeps releasing while its 
     // that triggered the hold-back must survive until the independent catches
     // up, not get replaced by the dependent's NEXT release.
     const iclforge::eac3::AccessUnitConfig cfg{
-        .independent = {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .transient_prenoise = true},
+        .independent = {.bitrate_kbps = 192,
+                        .acmod = iclforge::Acmod::k2_0,
+                        .transient_prenoise = true},
         .dependents = {{.bitrate_kbps = 96,
                         .acmod = iclforge::Acmod::k2_0,
                         .chanmap = iclforge::eac3::chanmap::k512Height}}};
@@ -1933,7 +1940,8 @@ TEST_CASE("dithflag=1 substitutes dither at zero-bap bins instead of silence (E-
     // substitute into. Measured on this exact frame, dithered channel-0
     // energy falls smoothly with the band - 3.4e-11 at chbwcod 60, 1.2e-11
     // at 40, 1.5e-12 at 30 - and reaches exactly zero at 25 and below.
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .chbwcod = 60}};  // acmod k2_0, no LFE
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 192, .chbwcod = 60}};  // acmod k2_0, no LFE
     const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(2, silence);
     auto frame = encoder.encode_frame(views);
@@ -2183,7 +2191,8 @@ TEST_CASE("decode_access_unit_by_block hands over the identical program a block 
             ++blocks_seen;
             delivered.resize(pcm.channels.size());
             for (std::size_t slot = 0; slot < pcm.channels.size(); ++slot) {
-                CHECK(pcm.channels[slot].size() == static_cast<std::size_t>(iclforge::kSamplesPerBlock));
+                CHECK(pcm.channels[slot].size() ==
+                      static_cast<std::size_t>(iclforge::kSamplesPerBlock));
                 delivered[slot].insert(delivered[slot].end(), pcm.channels[slot].begin(),
                                        pcm.channels[slot].end());
             }
@@ -2368,8 +2377,10 @@ TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decode
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<std::vector<float>> bed_block(6, std::vector<float>(iclforge::kSamplesPerFrame));
-        std::vector<std::vector<float>> rear_block(4, std::vector<float>(iclforge::kSamplesPerFrame));
+        std::vector<std::vector<float>> bed_block(6,
+                                                  std::vector<float>(iclforge::kSamplesPerFrame));
+        std::vector<std::vector<float>> rear_block(4,
+                                                   std::vector<float>(iclforge::kSamplesPerFrame));
         for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             for (std::size_t ch = 0; ch < 6; ++ch) {
@@ -2466,8 +2477,10 @@ TEST_CASE(
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<std::vector<float>> bed_block(6, std::vector<float>(iclforge::kSamplesPerFrame));
-        std::vector<std::vector<float>> rear_block(4, std::vector<float>(iclforge::kSamplesPerFrame));
+        std::vector<std::vector<float>> bed_block(6,
+                                                  std::vector<float>(iclforge::kSamplesPerFrame));
+        std::vector<std::vector<float>> rear_block(4,
+                                                   std::vector<float>(iclforge::kSamplesPerFrame));
         for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
             const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
             for (std::size_t ch = 0; ch < 6; ++ch) {

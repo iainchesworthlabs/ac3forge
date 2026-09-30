@@ -110,12 +110,14 @@ int best_lag(std::span<const float> in, std::span<const float> out, int max_lag)
 }
 
 // Whole-stream AC-3 round trip of one mono channel.
-std::vector<float> ac3_round_trip(const iclforge::EncoderConfig& config, std::span<const float> pcm) {
+std::vector<float> ac3_round_trip(const iclforge::EncoderConfig& config,
+                                  std::span<const float> pcm) {
     iclforge::FrameEncoder encoder{config};
     iclforge::FrameDecoder decoder;
     std::vector<float> out;
     out.reserve(pcm.size());
-    for (int frame = 0; frame * iclforge::kSamplesPerFrame < static_cast<int>(pcm.size()); ++frame) {
+    for (int frame = 0; frame * iclforge::kSamplesPerFrame < static_cast<int>(pcm.size());
+         ++frame) {
         const std::span<const float> block =
             pcm.subspan(static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
                         static_cast<std::size_t>(iclforge::kSamplesPerFrame));
@@ -148,12 +150,14 @@ struct Eac3RoundTrip {
     int latency_at_end = 0;
 };
 
-Eac3RoundTrip eac3_round_trip(const iclforge::eac3::FrameConfig& config, std::span<const float> pcm) {
+Eac3RoundTrip eac3_round_trip(const iclforge::eac3::FrameConfig& config,
+                              std::span<const float> pcm) {
     iclforge::eac3::FrameEncoder encoder{config};
     iclforge::Eac3Decoder decoder;
     Eac3RoundTrip result;
     result.pcm.reserve(pcm.size());
-    for (int frame = 0; frame * iclforge::kSamplesPerFrame < static_cast<int>(pcm.size()); ++frame) {
+    for (int frame = 0; frame * iclforge::kSamplesPerFrame < static_cast<int>(pcm.size());
+         ++frame) {
         const std::span<const float> block =
             pcm.subspan(static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
                         static_cast<std::size_t>(iclforge::kSamplesPerFrame));
@@ -200,7 +204,8 @@ TEST_CASE("AC-3 encode->decode delays the signal by exactly one transform overla
     SECTION("tone burst, located by cross-correlation") {
         const auto in = burst(samples, kImpulseAt, 1200.0, 48000);
         const auto out = ac3_round_trip(config, in);
-        REQUIRE(best_lag(in, out, 2 * iclforge::kSamplesPerFrame) == iclforge::kTransformDelaySamples);
+        REQUIRE(best_lag(in, out, 2 * iclforge::kSamplesPerFrame) ==
+                iclforge::kTransformDelaySamples);
     }
 }
 
@@ -216,7 +221,8 @@ TEST_CASE("The AC-3 encoder reports the budget the round trip measures", "[laten
     REQUIRE(budget.lookahead_samples == 0);
     REQUIRE(budget.holdback_samples == 0);
     REQUIRE(budget.frame_samples == iclforge::kSamplesPerFrame);
-    REQUIRE(encoder.latency_samples() == iclforge::kSamplesPerFrame + iclforge::kTransformDelaySamples);
+    REQUIRE(encoder.latency_samples() ==
+            iclforge::kSamplesPerFrame + iclforge::kTransformDelaySamples);
     REQUIRE(iclforge::FrameDecoder::latency_samples() == 0);
 
     // 1792 samples at 48 kHz. Spelled out so a change to any term has to
@@ -365,7 +371,8 @@ TEST_CASE("JOC object reconstruction costs the QMF filterbank's own delay", "[la
     REQUIRE(peak_index(bed_out) > 0);
     REQUIRE(peak_index(object_out) > 0);
 
-    REQUIRE(best_lag(in, bed_out, 3 * iclforge::kSamplesPerFrame) == iclforge::kTransformDelaySamples);
+    REQUIRE(best_lag(in, bed_out, 3 * iclforge::kSamplesPerFrame) ==
+            iclforge::kTransformDelaySamples);
     REQUIRE(best_lag(in, object_out, 3 * iclforge::kSamplesPerFrame) ==
             iclforge::kTransformDelaySamples + iclforge::dsp::kQmfDelay);
 

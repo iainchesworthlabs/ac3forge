@@ -379,9 +379,10 @@ void OutputStage::submit_raw(const RawFrame& raw) {
         if (has_lfe) {
             impl.static_updates.push_back({.pcm = raw.bed[5], .channel = kSpeakerLowFrequency});
         }
-        submit_with_patience(*impl.spatial, status_.underruns,
-                             std::span<const iclforge::audio::DynamicObjectUpdate>(impl.dynamic_updates),
-                             std::span<const iclforge::audio::StaticObjectUpdate>(impl.static_updates));
+        submit_with_patience(
+            *impl.spatial, status_.underruns,
+            std::span<const iclforge::audio::DynamicObjectUpdate>(impl.dynamic_updates),
+            std::span<const iclforge::audio::StaticObjectUpdate>(impl.static_updates));
         return;
     }
     if (raw.bed.size() < 6) {
@@ -474,7 +475,8 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
     const auto& out = **decoded;
 
     if (status_.mode == OutputMode::kHeadphones) {
-        const bool has_lfe = out.object_metadata && iclforge::oba::has_lfe(out.object_metadata->program);
+        const bool has_lfe =
+            out.object_metadata && iclforge::oba::has_lfe(out.object_metadata->program);
         if (!ensure_spatial(has_lfe, out.object_audio.size())) {
             return;
         }
@@ -500,9 +502,10 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
             impl.static_updates.push_back(
                 {.pcm = impl.delayed_lfe, .channel = kSpeakerLowFrequency});
         }
-        submit_with_patience(*impl.spatial, status_.underruns,
-                             std::span<const iclforge::audio::DynamicObjectUpdate>(impl.dynamic_updates),
-                             std::span<const iclforge::audio::StaticObjectUpdate>(impl.static_updates));
+        submit_with_patience(
+            *impl.spatial, status_.underruns,
+            std::span<const iclforge::audio::DynamicObjectUpdate>(impl.dynamic_updates),
+            std::span<const iclforge::audio::StaticObjectUpdate>(impl.static_updates));
         return;
     }
 

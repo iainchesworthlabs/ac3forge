@@ -354,8 +354,9 @@ iclforge::ac4::OutputConfig make_output_config(double output_level_dbfs, int drc
     return config;
 }
 
-iclforge::ac4::PresentationChoice make_presentation_choice(int presentation_id, int presentation_index,
-                                                  const std::string& language) {
+iclforge::ac4::PresentationChoice make_presentation_choice(int presentation_id,
+                                                           int presentation_index,
+                                                           const std::string& language) {
     iclforge::ac4::PresentationChoice choice;
     if (presentation_id >= 0) {
         choice.presentation_id = presentation_id;
@@ -520,7 +521,8 @@ class Ac4Decoder {
         // channelLabels, rather than a numeric enum.
         auto speakers = emscripten::val::array();
         for (std::size_t i = 0; i < frame.speakers.size(); ++i) {
-            speakers.set(static_cast<unsigned>(i), std::string(iclforge::ac4::describe(frame.speakers[i])));
+            speakers.set(static_cast<unsigned>(i),
+                         std::string(iclforge::ac4::describe(frame.speakers[i])));
         }
         result.set("speakers", speakers);
 

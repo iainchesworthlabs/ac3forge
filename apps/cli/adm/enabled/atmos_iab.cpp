@@ -29,11 +29,12 @@ namespace {
 // §8.1.1) - the two are unambiguous by construction, not merely by convention, since a Preamble
 // segment beginning 06h or an MXF file beginning 01h would each already be malformed against its
 // own governing standard.
-[[nodiscard]] std::expected<std::vector<iclforge::iab::IABitstreamFrame>, std::string> parse_iab_source(
-    std::string_view path) {
+[[nodiscard]] std::expected<std::vector<iclforge::iab::IABitstreamFrame>, std::string>
+parse_iab_source(std::string_view path) {
     std::ifstream probe(std::string(path), std::ios::binary);
     if (!probe) {
-        return std::unexpected(std::string(iclforge::iab::describe(iclforge::iab::IabError::kCannotOpen)));
+        return std::unexpected(
+            std::string(iclforge::iab::describe(iclforge::iab::IabError::kCannotOpen)));
     }
     const int first_byte = probe.get();
     probe.close();

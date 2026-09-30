@@ -161,7 +161,8 @@ struct DecoderSetup {
 
 // The presentation an AC-4 decoder is asked for: DecoderSetup::ac4's
 // presentation, which does not depend on the layout.
-[[nodiscard]] iclforge::ac4::PresentationChoice presentation_choice(const DecoderSettings& settings);
+[[nodiscard]] iclforge::ac4::PresentationChoice presentation_choice(
+    const DecoderSettings& settings);
 
 // Every control's value on one line, for the diagnostics file: "line mode,
 // stereo fold Lo/Ro, no LFE in folds, the stream's mix levels, ...".

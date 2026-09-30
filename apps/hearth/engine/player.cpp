@@ -43,7 +43,8 @@ constexpr std::size_t kInitialPendingBlocks = 32;
     return "it could not be packed";
 }
 
-[[nodiscard]] bool same_choice(const iclforge::ac4::PresentationChoice& a, const iclforge::ac4::PresentationChoice& b) {
+[[nodiscard]] bool same_choice(const iclforge::ac4::PresentationChoice& a,
+                               const iclforge::ac4::PresentationChoice& b) {
     return a.presentation_id == b.presentation_id && a.index == b.index &&
            a.language == b.language && a.associated == b.associated &&
            a.associated_type == b.associated_type && a.headphones == b.headphones;

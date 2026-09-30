@@ -58,7 +58,8 @@ struct Decoded {
     std::vector<iclforge::DecodedSubstream> flushed;
 };
 
-Decoded decode_frames(iclforge::Eac3Decoder& decoder, std::span<const std::vector<std::byte>> frames) {
+Decoded decode_frames(iclforge::Eac3Decoder& decoder,
+                      std::span<const std::vector<std::byte>> frames) {
     Decoded out;
     for (const auto& frame : frames) {
         const auto decoded = decoder.decode_substream(frame);
@@ -249,7 +250,8 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
     iclforge::Eac3Decoder decoder;
     const auto decoded = decode_frames(decoder, frames);
     REQUIRE(decoded.pcm.size() == 1);
-    REQUIRE(decoded.pcm[0].size() == static_cast<std::size_t>(kFrames * iclforge::kSamplesPerFrame));
+    REQUIRE(decoded.pcm[0].size() ==
+            static_cast<std::size_t>(kFrames * iclforge::kSamplesPerFrame));
 
     // Frame 5's transient is kTransientPrenoiseOrigin into its output, pnlen a
     // block, translen 0: the correction writes [transient - 512, transient),
@@ -287,7 +289,8 @@ TEST_CASE("short syncframes hold 1536 samples back, and flush() hands them back 
     // samples into a one-block frame's buffers.
     constexpr int kSyncframes = 48;
     constexpr int kImpulseAt = 20 * iclforge::kSamplesPerBlock + 100;
-    iclforge::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k1_0, .numblkscod = 0};
+    iclforge::eac3::FrameConfig config{
+        .bitrate_kbps = 192, .acmod = iclforge::Acmod::k1_0, .numblkscod = 0};
     config.transient_prenoise = true;
     iclforge::eac3::FrameEncoder encoder{config};
     REQUIRE(encoder.samples_per_frame() == iclforge::kSamplesPerBlock);
@@ -317,9 +320,11 @@ TEST_CASE("short syncframes hold 1536 samples back, and flush() hands them back 
     // A release delay, not a shift: the stream is its full length and the
     // impulse is where the transform overlap alone puts it.
     REQUIRE(decoded.pcm.size() == 1);
-    REQUIRE(decoded.pcm[0].size() == static_cast<std::size_t>(kSyncframes * iclforge::kSamplesPerBlock));
+    REQUIRE(decoded.pcm[0].size() ==
+            static_cast<std::size_t>(kSyncframes * iclforge::kSamplesPerBlock));
     const auto peak = std::ranges::max_element(decoded.pcm[0], {}, [](float v) { return std::abs(v); });
-    CHECK(std::distance(decoded.pcm[0].begin(), peak) == kImpulseAt + iclforge::kTransformDelaySamples);
+    CHECK(std::distance(decoded.pcm[0].begin(), peak) ==
+          kImpulseAt + iclforge::kTransformDelaySamples);
 }
 
 TEST_CASE("a concealed frame queues behind the frames transient pre-noise processing holds",

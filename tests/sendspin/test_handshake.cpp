@@ -156,7 +156,8 @@ TEST_CASE("handshake: message 1's payload names a PSK and its category",
         CHECK(parsed->psk_id == sentinel_id);
         CHECK(parsed->category == category);
     }
-    CHECK(iclforge::sendspin::handshake::write_message_1_payload(sentinel_id, PskCategory::kSentinel) ==
+    CHECK(iclforge::sendspin::handshake::write_message_1_payload(sentinel_id,
+                                                                 PskCategory::kSentinel) ==
           R"({"psk_id":"GFsV9tLaSQm9HcFWpKsgYQOr7wFTvNUtkmFwuVz3zoo","psk_category":"sn"})");
 
     // aiosendspin 9.1.1 names no category.

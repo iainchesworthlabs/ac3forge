@@ -31,12 +31,12 @@
 // With no directory it decodes and counts.
 //
 // AC-4 (planning/ac4.md, D11): a burst is one AC-4 sync frame (IEC 61937-14 Annex A), zero-padded
-// to a whole 8-byte unit in an HBR16 burst, which iclforge::ac4::Decoder decodes to its own channels; those
-// are rendered by the bed ac4_bed() makes of the decoder's speakers, in blocks of 256 samples, a
-// two-speaker layout included, since the AC-4 decoder has no fold of its own yet. A burst's
-// duration on the log is its frame's at the base sampling frequency, which IEC 61937-14 Tables 5
-// and 6 give as the AC-4 data-burst's repetition period. The decoder on main decodes 48 kHz at
-// frame_rate_index 13 only, and refuses the other rates, which count as undecodable.
+// to a whole 8-byte unit in an HBR16 burst, which iclforge::ac4::Decoder decodes to its own
+// channels; those are rendered by the bed ac4_bed() makes of the decoder's speakers, in blocks of
+// 256 samples, a two-speaker layout included, since the AC-4 decoder has no fold of its own yet. A
+// burst's duration on the log is its frame's at the base sampling frequency, which IEC 61937-14
+// Tables 5 and 6 give as the AC-4 data-burst's repetition period. The decoder on main decodes 48
+// kHz at frame_rate_index 13 only, and refuses the other rates, which count as undecodable.
 //
 // How it decodes, which a local reference decode repeats to compare: DecoderConfig's defaults in
 // line mode, served by render::serve(layout, Lo/Ro, ObjectsPolicy::kAuto) and

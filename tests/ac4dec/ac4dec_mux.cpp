@@ -92,7 +92,8 @@ void write_sized(BitWriter& w, const BitWriter& element, unsigned bits) {
     const std::size_t end = end_of(records);
     BitWriter w;
     copy_bits(w, f.audio, 0, extended);
-    iclforge::ac4::detail::write_extended_metadata(w, f.ch_mode, group.dialogue ? &*group.dialogue : nullptr);
+    iclforge::ac4::detail::write_extended_metadata(w, f.ch_mode,
+                                                   group.dialogue ? &*group.dialogue : nullptr);
     if (group.de) {
         const std::size_t de = offset_of(records, "b_de_data_present");
         const std::size_t emdf = offset_of(records, "b_emdf_payloads_substream");
@@ -289,7 +290,8 @@ private:
         }
         const iclforge::ac4::Toc& toc = parsed->toc;
         const iclforge::ac4::PresentationInfoV1& p = toc.presentations_v1[0];
-        const iclforge::ac4::ChannelSubstreamInfo& chan = *toc.substream_groups[0].substreams[0].chan;
+        const iclforge::ac4::ChannelSubstreamInfo& chan =
+            *toc.substream_groups[0].substreams[0].chan;
         if (!p.presentation_substream_index || !chan.substream_index || !chan.ch_mode) {
             refuse("source " + std::to_string(s) + " has no presentation or audio substream");
         }
@@ -301,7 +303,8 @@ private:
         const int presentation = *p.presentation_substream_index;
         const int audio = *chan.substream_index;
         const iclforge::ac4::Substream& located_presentation = parsed->substreams[static_cast<std::size_t>(presentation)];
-        const iclforge::ac4::Substream& located_audio = parsed->substreams[static_cast<std::size_t>(audio)];
+        const iclforge::ac4::Substream& located_audio =
+            parsed->substreams[static_cast<std::size_t>(audio)];
         frame.presentation = raw.subspan(located_presentation.offset, located_presentation.size);
         frame.audio = raw.subspan(located_audio.offset, located_audio.size);
         frame.presentation_records.clear();
@@ -350,7 +353,8 @@ std::vector<std::vector<std::byte>> multiplex(std::span<const MuxSource> sources
     SourceReader reader(sources);
     // Each group's last parameters, which a hybrid method's frames code
     // against.
-    std::vector<std::optional<iclforge::ac4::detail::DeFrameParameters>> previous(layout.groups.size());
+    std::vector<std::optional<iclforge::ac4::detail::DeFrameParameters>> previous(
+        layout.groups.size());
     std::vector<std::vector<std::byte>> out;
     for (std::size_t f = 0; f < frames; ++f) {
         const std::vector<SourceFrame>& taken = reader.read(f);
@@ -400,7 +404,8 @@ std::vector<std::vector<std::byte>> multiplex(std::span<const MuxSource> sources
             iframe = iframe && from.audio_iframe;
         }
         toc.iframe_global = iframe;
-        std::optional<std::vector<std::byte>> frame = iclforge::ac4::detail::assemble_frame(toc, substreams);
+        std::optional<std::vector<std::byte>> frame =
+            iclforge::ac4::detail::assemble_frame(toc, substreams);
         if (!frame) {
             refuse("the layout's table of contents cannot be written");
         }

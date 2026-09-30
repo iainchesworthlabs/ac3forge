@@ -183,8 +183,8 @@ TEST_CASE("5.1 round trip: every channel keeps its own tone", "[decoder]") {
 
 TEST_CASE("every acmod round-trips at every sample rate", "[decoder]") {
     using iclforge::Acmod;
-    for (const auto sr :
-         {iclforge::SampleRate::k48000, iclforge::SampleRate::k44100, iclforge::SampleRate::k32000}) {
+    for (const auto sr : {iclforge::SampleRate::k48000, iclforge::SampleRate::k44100,
+                          iclforge::SampleRate::k32000}) {
         for (const auto acmod : {Acmod::k1_0, Acmod::k3_0, Acmod::k2_2, Acmod::k3_2}) {
             for (const bool lfe : {false, true}) {
                 CAPTURE(static_cast<int>(sr), static_cast<int>(acmod), lfe);
@@ -459,7 +459,8 @@ TEST_CASE("a corrupted delta-segment offset that would push the band cursor out 
     // (deltoffst, deltlen) pairs and has to reject anything that pushes it outside the 50-band
     // mask[] compute_bit_allocation() indexes into - deltoffst/deltlen are attacker-controlled,
     // and nothing in this suite has ever supplied a deltbaie segment at all.
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192}};  // default acmod k2_0, no LFE, no coupling
+    iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 192}};  // default acmod k2_0, no LFE, no coupling
     const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0f);
     const std::vector<std::span<const float>> views(2, silence);
     auto frame = encoder.encode_frame(views);
@@ -748,7 +749,8 @@ TEST_CASE("decode_frame_by_block hands over the identical samples a block at a t
             ++expected_index;
             delivered.resize(pcm.channels.size());
             for (std::size_t ch = 0; ch < pcm.channels.size(); ++ch) {
-                CHECK(pcm.channels[ch].size() == static_cast<std::size_t>(iclforge::kSamplesPerBlock));
+                CHECK(pcm.channels[ch].size() ==
+                      static_cast<std::size_t>(iclforge::kSamplesPerBlock));
                 delivered[ch].insert(delivered[ch].end(), pcm.channels[ch].begin(),
                                      pcm.channels[ch].end());
             }

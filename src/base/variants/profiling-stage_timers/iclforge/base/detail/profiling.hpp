@@ -57,8 +57,10 @@ class ZoneScope {
 #define AC3_PROFILING_ZONE_NAME_2(prefix, line) prefix##line
 #define AC3_PROFILING_ZONE_NAME(prefix, line) AC3_PROFILING_ZONE_NAME_2(prefix, line)
 
-#define AC3_ZONE_SCOPED() \
-    ::iclforge::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){__func__}
+#define AC3_ZONE_SCOPED()                                                                     \
+    ::iclforge::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__) { \
+        __func__                                                                              \
+    }
 #define AC3_ZONE_SCOPED_N(name) \
     ::iclforge::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){name}
 // The manual pair. `var` is Tracy's context handle and means nothing here:

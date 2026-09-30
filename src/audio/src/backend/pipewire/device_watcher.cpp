@@ -89,7 +89,8 @@ struct DeviceWatcher::Impl {
         }
         const std::string_view kind{type};
         if (kind == PW_TYPE_INTERFACE_Node) {
-            if (!iclforge::pipewire::is_audio_sink(*props) && !iclforge::pipewire::is_audio_source(*props)) {
+            if (!iclforge::pipewire::is_audio_sink(*props) &&
+                !iclforge::pipewire::is_audio_source(*props)) {
                 return;
             }
             std::string device_id = iclforge::pipewire::node_id(*props);

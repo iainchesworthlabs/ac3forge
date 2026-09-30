@@ -462,7 +462,8 @@ TEST_CASE("the two algorithms disagree only about the lone surround of 2/1 and 3
     // channel's weighted contribution.
     const std::array<std::span<const float>, 3> channels = {silence, silence, tone};
 
-    iclforge::meta::LoudnessMeter annex1{iclforge::SampleRate::k48000, iclforge::Acmod::k2_1, false};
+    iclforge::meta::LoudnessMeter annex1{iclforge::SampleRate::k48000, iclforge::Acmod::k2_1,
+                                         false};
     iclforge::meta::LoudnessMeter annex3{iclforge::SampleRate::k48000, layout};
     annex1.push(channels);
     annex3.push(channels);

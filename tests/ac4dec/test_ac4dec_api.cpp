@@ -110,7 +110,8 @@ struct Decoded {
     std::size_t waited = 0;  // frames that came out with nothing
 };
 
-Decoded decode_all(iclforge::ac4::Decoder& decoder, const std::vector<std::vector<std::byte>>& frames) {
+Decoded decode_all(iclforge::ac4::Decoder& decoder,
+                   const std::vector<std::vector<std::byte>>& frames) {
     Decoded out;
     for (const std::vector<std::byte>& frame : frames) {
         const auto decoded = decoder.decode(frame);
@@ -139,7 +140,9 @@ Decoded decode_all(iclforge::ac4::Decoder& decoder, const std::vector<std::vecto
 struct CountingSink {
     int* alive;
     std::vector<iclforge::ac4::SyntaxRecord>* records;
-    CountingSink(int* a, std::vector<iclforge::ac4::SyntaxRecord>* r) : alive(a), records(r) { ++*alive; }
+    CountingSink(int* a, std::vector<iclforge::ac4::SyntaxRecord>* r) : alive(a), records(r) {
+        ++*alive;
+    }
     CountingSink(const CountingSink& other) : alive(other.alive), records(other.records) {
         ++*alive;
     }
@@ -188,7 +191,9 @@ TEST_CASE("a decoder keeps its own copy of the syntax callable it is configured 
     // A lambda written in place, D7's form, now traces.
     std::vector<iclforge::ac4::SyntaxRecord> traced;
     iclforge::ac4::DecoderConfig config;
-    config.syntax = [&traced](const iclforge::ac4::SyntaxRecord& record) { traced.push_back(record); };
+    config.syntax = [&traced](const iclforge::ac4::SyntaxRecord& record) {
+        traced.push_back(record);
+    };
     iclforge::ac4::Decoder in_place(config);
     config = {};
     REQUIRE(in_place.parse(frames.front()).has_value());
@@ -226,7 +231,8 @@ TEST_CASE("set_output changes the output level from the next frame without waiti
     const auto frames = frames_of(baseline("ac4-20-music-192"));
     REQUIRE(frames.size() > 40);
     const iclforge::ac4::OutputConfig before{};
-    const iclforge::ac4::OutputConfig after{.output_level_dbfs = -20.0, .drc = iclforge::ac4::DrcMode::kOff};
+    const iclforge::ac4::OutputConfig after{.output_level_dbfs = -20.0,
+                                            .drc = iclforge::ac4::DrcMode::kOff};
 
     iclforge::ac4::Decoder first(iclforge::ac4::DecoderConfig{.syntax = {}, .output = before});
     iclforge::ac4::Decoder second(iclforge::ac4::DecoderConfig{.syntax = {}, .output = after});
@@ -300,8 +306,8 @@ TEST_CASE("set_presentation switches presentations from the next frame", "[ac4de
     // The presentation decoded afterwards is the one a decoder configured
     // with it from the start decodes, once its substreams' signal has run
     // through the transforms and the QMF banks.
-    iclforge::ac4::Decoder from_start(
-        iclforge::ac4::DecoderConfig{.syntax = {}, .output = {}, .concealment = {}, .presentation = second});
+    iclforge::ac4::Decoder from_start(iclforge::ac4::DecoderConfig{
+        .syntax = {}, .output = {}, .concealment = {}, .presentation = second});
     iclforge::ac4::Decoder switched;
     std::vector<float> a;
     std::vector<float> b;
@@ -393,14 +399,16 @@ TEST_CASE("decode_by_block hands over what it holds before a change of layout", 
     };
     for (std::size_t f = 0; f < 8; ++f) {
         if (f == 4) {
-            decoder.set_output(iclforge::ac4::OutputConfig{.downmix = iclforge::ac4::DownmixTarget::kLoRo});
+            decoder.set_output(
+                iclforge::ac4::OutputConfig{.downmix = iclforge::ac4::DownmixTarget::kLoRo});
         }
         REQUIRE(decoder.decode_by_block(frames[f], sink).has_value());
     }
     // 2 048-sample frames leave nothing held at index 13, so every block is
     // whole: 6 channels, then 2.
     REQUIRE(widths.size() == 64);
-    CHECK(std::ranges::all_of(lengths, [](std::size_t n) { return n == iclforge::ac4::kBlockSamples; }));
+    CHECK(std::ranges::all_of(lengths,
+                              [](std::size_t n) { return n == iclforge::ac4::kBlockSamples; }));
     CHECK(std::count(widths.begin(), widths.end(), 6U) == 32);
     CHECK(std::count(widths.begin(), widths.end(), 2U) == 32);
 
@@ -412,7 +420,8 @@ TEST_CASE("decode_by_block hands over what it holds before a change of layout", 
     lengths.clear();
     for (std::size_t f = 0; f < 6; ++f) {
         if (f == 3) {
-            held.set_output(iclforge::ac4::OutputConfig{.downmix = iclforge::ac4::DownmixTarget::kMono});
+            held.set_output(
+                iclforge::ac4::OutputConfig{.downmix = iclforge::ac4::DownmixTarget::kMono});
         }
         REQUIRE(held.decode_by_block(ims[f], sink).has_value());
     }
@@ -566,7 +575,8 @@ TEST_CASE("describe names every substream role", "[ac4dec][api]") {
     std::set<std::string_view> seen;
     for (const iclforge::ac4::SubstreamRole role :
          {iclforge::ac4::SubstreamRole::kMain, iclforge::ac4::SubstreamRole::kMusicAndEffects,
-          iclforge::ac4::SubstreamRole::kDialogue, iclforge::ac4::SubstreamRole::kDialogueEnhancement,
+          iclforge::ac4::SubstreamRole::kDialogue,
+          iclforge::ac4::SubstreamRole::kDialogueEnhancement,
           iclforge::ac4::SubstreamRole::kAssociated}) {
         const std::string_view text = iclforge::ac4::describe(role);
         CHECK_FALSE(text.empty());
@@ -589,10 +599,11 @@ TEST_CASE("presentations() lists each presentation of the table of contents", "[
         CHECK(p.selectable);
         CHECK_FALSE(p.alternative);
         CHECK(p.name.empty());
-        CHECK(p.speakers == std::vector<iclforge::ac4::Speaker>{iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight,
-                                                      iclforge::ac4::Speaker::kCentre, iclforge::ac4::Speaker::kLfe,
-                                                      iclforge::ac4::Speaker::kLeftSurround,
-                                                      iclforge::ac4::Speaker::kRightSurround});
+        CHECK(p.speakers == std::vector<iclforge::ac4::Speaker>{
+                                iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight,
+                                iclforge::ac4::Speaker::kCentre, iclforge::ac4::Speaker::kLfe,
+                                iclforge::ac4::Speaker::kLeftSurround,
+                                iclforge::ac4::Speaker::kRightSurround});
         REQUIRE(p.members.size() == 1);
         CHECK(p.members.front().role == iclforge::ac4::SubstreamRole::kMain);
         CHECK(p.members.front().speakers == p.speakers);
@@ -621,11 +632,13 @@ TEST_CASE("presentations() lists each presentation of the table of contents", "[
         }
         CHECK(languages.contains("en"));
         CHECK(languages.contains("de"));
-        const bool has_associated = std::ranges::any_of(all, [](const iclforge::ac4::PresentationInfo& p) {
-            return std::ranges::any_of(p.members, [](const iclforge::ac4::PresentationMember& m) {
-                return m.role == iclforge::ac4::SubstreamRole::kAssociated;
+        const bool has_associated =
+            std::ranges::any_of(all, [](const iclforge::ac4::PresentationInfo& p) {
+                return std::ranges::any_of(
+                    p.members, [](const iclforge::ac4::PresentationMember& m) {
+                        return m.role == iclforge::ac4::SubstreamRole::kAssociated;
+                    });
             });
-        });
         CHECK(has_associated);
     }
 }
@@ -728,17 +741,19 @@ namespace {
 class Engine {
    public:
     static constexpr std::array<iclforge::ac4::Speaker, 12> kLayout = {
-        iclforge::ac4::Speaker::kLeft,      iclforge::ac4::Speaker::kRight,        iclforge::ac4::Speaker::kCentre,
-        iclforge::ac4::Speaker::kLfe,       iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround,
-        iclforge::ac4::Speaker::kLeftBack,  iclforge::ac4::Speaker::kRightBack,    iclforge::ac4::Speaker::kLeftWide,
-        iclforge::ac4::Speaker::kRightWide, iclforge::ac4::Speaker::kTopFrontLeft, iclforge::ac4::Speaker::kTopFrontRight,
+        iclforge::ac4::Speaker::kLeft,         iclforge::ac4::Speaker::kRight,
+        iclforge::ac4::Speaker::kCentre,       iclforge::ac4::Speaker::kLfe,
+        iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround,
+        iclforge::ac4::Speaker::kLeftBack,     iclforge::ac4::Speaker::kRightBack,
+        iclforge::ac4::Speaker::kLeftWide,     iclforge::ac4::Speaker::kRightWide,
+        iclforge::ac4::Speaker::kTopFrontLeft, iclforge::ac4::Speaker::kTopFrontRight,
     };
 
     // Decodes the unit: the error, with refusal() saying why, where it does
     // not decode.
     std::optional<iclforge::ac4::DecodeError> decode(std::span<const std::byte> unit) {
-        const auto info =
-            decoder_.decode_by_block(unit, [this](const iclforge::ac4::PcmBlock& block) { place(block); });
+        const auto info = decoder_.decode_by_block(
+            unit, [this](const iclforge::ac4::PcmBlock& block) { place(block); });
         if (!info) {
             refusal_ = std::string{decoder_.refusal_reason()};
             return info.error();
@@ -814,8 +829,9 @@ Played play(const fs::path& path, std::size_t limit = kAllFrames) {
     auto frames = frames_of(path);
     REQUIRE_FALSE(frames.empty());
     frames.resize(std::min(frames.size(), limit));
-    const iclforge::ac4::OutputConfig later{
-        .output_level_dbfs = -24.0, .drc = iclforge::ac4::DrcMode::kDefault, .dialogue_enhancement_db = 6.0};
+    const iclforge::ac4::OutputConfig later{.output_level_dbfs = -24.0,
+                                            .drc = iclforge::ac4::DrcMode::kDefault,
+                                            .dialogue_enhancement_db = 6.0};
     Engine engine;
     iclforge::ac4::Decoder reference;
     std::vector<std::vector<float>> expected(Engine::kLayout.size());

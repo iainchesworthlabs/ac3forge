@@ -121,7 +121,8 @@ std::vector<std::vector<float>> reconstruct_wide_bed(const std::array<PositionTo
                                                      int dmx_config_idx, int channels) {
     const auto container = emdf_container(dmx_config_idx, channels);
 
-    iclforge::eac3::FrameEncoder bed{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder bed{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     // The dependent's own acmod codes exactly channel_count(dependent_chanmap)
     // channels (k71Rear=4, Ls/Rs/Lrs/Rrs; k512Height=2, Vhl/Vhr only) - the
     // chanmap says which locations those coded channels occupy, not how many
@@ -139,7 +140,8 @@ std::vector<std::vector<float>> reconstruct_wide_bed(const std::array<PositionTo
     std::vector<std::byte> stream;
     std::uint64_t n0 = 0;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<std::vector<float>> bed_block(6, std::vector<float>(iclforge::kSamplesPerFrame));
+        std::vector<std::vector<float>> bed_block(6,
+                                                  std::vector<float>(iclforge::kSamplesPerFrame));
         std::vector<std::vector<float>> dep_block(dependent_tones.size(),
                                                    std::vector<float>(iclforge::kSamplesPerFrame));
         for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
@@ -243,9 +245,9 @@ TEST_CASE("JOC reconstructs a kDmxConfig7X (Lb/Rb) downmix from the Annex E depe
                                                            {Location::kRightSurround, 1847.0},
                                                            {Location::kLrs, 463.0},
                                                            {Location::kRrs, 2089.0}}};
-    const auto accumulated =
-        reconstruct_wide_bed(bed_tones, cm::k71Rear, dependent_tones,
-                             iclforge::oba::joc::kDmxConfig7X, iclforge::oba::joc::kNumChannels5X + 2);
+    const auto accumulated = reconstruct_wide_bed(bed_tones, cm::k71Rear, dependent_tones,
+                                                  iclforge::oba::joc::kDmxConfig7X,
+                                                  iclforge::oba::joc::kNumChannels5X + 2);
 
     // JOC channel order (Table 53), not AC-3's coded order: L, R, C, Ls, Rs,
     // Lb(=Lrs), Rb(=Rrs) - position i is object i's own "home" channel, per

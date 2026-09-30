@@ -150,7 +150,8 @@ void register_containers(py::module_& m) {
 
     containers.def(
         "mux_mp4",
-        [frames_to_views](const iclforge::mp4::AudioTrack& track, const std::vector<py::bytes>& frames) {
+        [frames_to_views](const iclforge::mp4::AudioTrack& track,
+                          const std::vector<py::bytes>& frames) {
             std::vector<std::vector<std::byte>> storage;
             const auto views = frames_to_views(frames, storage);
             std::vector<std::byte> file;
@@ -170,14 +171,16 @@ void register_containers(py::module_& m) {
 
     containers.def(
         "mux_mpegts",
-        [frames_to_views](const iclforge::mpegts::AudioTrack& track, const std::vector<py::bytes>& frames,
+        [frames_to_views](const iclforge::mpegts::AudioTrack& track,
+                          const std::vector<py::bytes>& frames,
                           iclforge::mpegts::BroadcastProfile profile) {
             std::vector<std::vector<std::byte>> storage;
             const auto views = frames_to_views(frames, storage);
             std::vector<std::byte> file;
             {
                 py::gil_scoped_release release;
-                auto muxed = iclforge::mpegts::mux(track, views, iclforge::mpegts::MuxOptions{.profile = profile});
+                auto muxed = iclforge::mpegts::mux(
+                    track, views, iclforge::mpegts::MuxOptions{.profile = profile});
                 if (!muxed) {
                     throw py::value_error(std::string{iclforge::mpegts::describe(muxed.error())});
                 }

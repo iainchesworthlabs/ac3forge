@@ -110,7 +110,8 @@ std::vector<float> decode_ac3(std::span<const std::byte> stream, iclforge::Decod
     return out;
 }
 
-std::vector<float> decode_eac3(std::span<const std::byte> stream, iclforge::DecodedAccessUnit& first) {
+std::vector<float> decode_eac3(std::span<const std::byte> stream,
+                               iclforge::DecodedAccessUnit& first) {
     const auto units = iclforge::split_access_units(stream);
     REQUIRE(units.has_value());
     iclforge::Eac3Decoder decoder;

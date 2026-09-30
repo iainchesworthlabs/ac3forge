@@ -45,18 +45,22 @@ static_assert(static_cast<int>(iclforge::Acmod::k3_1) == AC3FORGE_ACMOD_3_1);
 static_assert(static_cast<int>(iclforge::Acmod::k2_2) == AC3FORGE_ACMOD_2_2);
 static_assert(static_cast<int>(iclforge::Acmod::k3_2) == AC3FORGE_ACMOD_3_2);
 
-static_assert(static_cast<int>(iclforge::meta::CentreMixLevel::kMinus3dB) == AC3FORGE_CMIXLEV_MINUS_3DB);
+static_assert(static_cast<int>(iclforge::meta::CentreMixLevel::kMinus3dB) ==
+              AC3FORGE_CMIXLEV_MINUS_3DB);
 static_assert(static_cast<int>(iclforge::meta::CentreMixLevel::kMinus4_5dB) ==
               AC3FORGE_CMIXLEV_MINUS_4_5DB);
-static_assert(static_cast<int>(iclforge::meta::CentreMixLevel::kMinus6dB) == AC3FORGE_CMIXLEV_MINUS_6DB);
+static_assert(static_cast<int>(iclforge::meta::CentreMixLevel::kMinus6dB) ==
+              AC3FORGE_CMIXLEV_MINUS_6DB);
 
 static_assert(static_cast<int>(iclforge::meta::SurroundMixLevel::kMinus3dB) ==
               AC3FORGE_SURMIXLEV_MINUS_3DB);
 static_assert(static_cast<int>(iclforge::meta::SurroundMixLevel::kMinus6dB) ==
               AC3FORGE_SURMIXLEV_MINUS_6DB);
-static_assert(static_cast<int>(iclforge::meta::SurroundMixLevel::kSilent) == AC3FORGE_SURMIXLEV_SILENT);
+static_assert(static_cast<int>(iclforge::meta::SurroundMixLevel::kSilent) ==
+              AC3FORGE_SURMIXLEV_SILENT);
 
-static_assert(static_cast<int>(iclforge::meta::ProfileId::kFilmStandard) == AC3FORGE_DRC_FILM_STANDARD);
+static_assert(static_cast<int>(iclforge::meta::ProfileId::kFilmStandard) ==
+              AC3FORGE_DRC_FILM_STANDARD);
 static_assert(static_cast<int>(iclforge::meta::ProfileId::kFilmLight) == AC3FORGE_DRC_FILM_LIGHT);
 static_assert(static_cast<int>(iclforge::meta::ProfileId::kMusicStandard) ==
               AC3FORGE_DRC_MUSIC_STANDARD);
@@ -68,7 +72,8 @@ static_assert(static_cast<int>(iclforge::eac3::StreamType::kIndependent) ==
 static_assert(static_cast<int>(iclforge::eac3::StreamType::kDependent) == AC3FORGE_STREAM_TYPE_DEPENDENT);
 static_assert(static_cast<int>(iclforge::eac3::StreamType::kConvertible) ==
               AC3FORGE_STREAM_TYPE_CONVERTIBLE);
-static_assert(static_cast<int>(iclforge::eac3::StreamType::kReserved) == AC3FORGE_STREAM_TYPE_RESERVED);
+static_assert(static_cast<int>(iclforge::eac3::StreamType::kReserved) ==
+              AC3FORGE_STREAM_TYPE_RESERVED);
 
 static_assert(AC3FORGE_SAMPLES_PER_FRAME == iclforge::kSamplesPerFrame);
 static_assert(AC3FORGE_BLOCKS_PER_FRAME == iclforge::kBlocksPerFrame);
@@ -79,11 +84,13 @@ static_assert(static_cast<int>(iclforge::io::StreamKind::kEac3) == AC3FORGE_STRE
 static_assert(static_cast<int>(iclforge::io::StreamKind::kAc3CoreEac3Extension) ==
               AC3FORGE_STREAM_KIND_AC3_CORE_EAC3_EXTENSION);
 
-static_assert(static_cast<int>(iclforge::meta::QcLoudnessLimit::kBand) == AC3FORGE_QC_LOUDNESS_BAND);
+static_assert(static_cast<int>(iclforge::meta::QcLoudnessLimit::kBand) ==
+              AC3FORGE_QC_LOUDNESS_BAND);
 static_assert(static_cast<int>(iclforge::meta::QcLoudnessLimit::kCeiling) ==
               AC3FORGE_QC_LOUDNESS_CEILING);
 static_assert(static_cast<int>(iclforge::meta::QcPresetId::kEbuR128S2) == AC3FORGE_QC_PRESET_EBU_R128_S2);
-static_assert(static_cast<int>(iclforge::meta::QcPresetId::kAtscA85) == AC3FORGE_QC_PRESET_ATSC_A85);
+static_assert(static_cast<int>(iclforge::meta::QcPresetId::kAtscA85) ==
+              AC3FORGE_QC_PRESET_ATSC_A85);
 static_assert(static_cast<int>(iclforge::meta::QcPresetId::kAtscA85Streaming) ==
               AC3FORGE_QC_PRESET_ATSC_A85_STREAMING);
 static_assert(static_cast<int>(iclforge::meta::QcPresetId::kNetflix) == AC3FORGE_QC_PRESET_NETFLIX);
@@ -115,7 +122,8 @@ namespace ac3forge_c {
 [[nodiscard]] inline iclforge::meta::SurroundMixLevel to_cpp(ac3forge_surround_mix_level_t level) {
     return static_cast<iclforge::meta::SurroundMixLevel>(level);
 }
-[[nodiscard]] inline ac3forge_surround_mix_level_t from_cpp(iclforge::meta::SurroundMixLevel level) {
+[[nodiscard]] inline ac3forge_surround_mix_level_t from_cpp(
+    iclforge::meta::SurroundMixLevel level) {
     return static_cast<ac3forge_surround_mix_level_t>(level);
 }
 [[nodiscard]] inline iclforge::meta::ProfileId to_cpp(ac3forge_drc_profile_t profile) {
@@ -144,8 +152,10 @@ namespace ac3forge_c {
     switch (error) {
         case iclforge::FrameError::kInvalidBitrate: return AC3FORGE_ERROR_ENCODE_INVALID_BITRATE;
         case iclforge::FrameError::kInvalidDialnorm: return AC3FORGE_ERROR_ENCODE_INVALID_DIALNORM;
-        case iclforge::FrameError::kInvalidSubstream: return AC3FORGE_ERROR_ENCODE_INVALID_SUBSTREAM;
-        case iclforge::FrameError::kInvalidChannelMap: return AC3FORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP;
+        case iclforge::FrameError::kInvalidSubstream:
+            return AC3FORGE_ERROR_ENCODE_INVALID_SUBSTREAM;
+        case iclforge::FrameError::kInvalidChannelMap:
+            return AC3FORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP;
         case iclforge::FrameError::kTooManyChannels: return AC3FORGE_ERROR_ENCODE_TOO_MANY_CHANNELS;
         case iclforge::FrameError::kInvalidMixLevel: return AC3FORGE_ERROR_ENCODE_INVALID_MIX_LEVEL;
         case iclforge::FrameError::kInvalidBsi: return AC3FORGE_ERROR_ENCODE_INVALID_BSI;

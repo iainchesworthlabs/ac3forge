@@ -10,10 +10,10 @@
 
 #include "obu_detail.hpp"
 
-// ISOBMFF-level plumbing for iclforge::iamf::mux(): the generic box/FullBox primitives (ISO/IEC 14496-12
-// §4.2) and builders for every box this writer's file tree needs (IAMF §6's `iamf` ISO-BMFF
-// encapsulation: ftyp / moov / trak / mdia / minf / stbl / the `iamf` IASampleEntry and its
-// `iacb` IAConfigurationBox / mdat). A fresh implementation rather than a reuse of
+// ISOBMFF-level plumbing for iclforge::iamf::mux(): the generic box/FullBox primitives (ISO/IEC
+// 14496-12 §4.2) and builders for every box this writer's file tree needs (IAMF §6's `iamf`
+// ISO-BMFF encapsulation: ftyp / moov / trak / mdia / minf / stbl / the `iamf` IASampleEntry and
+// its `iacb` IAConfigurationBox / mdat). A fresh implementation rather than a reuse of
 // src/mp4/src/isobmff_detail.hpp's own box primitives - that header is explicitly internal to
 // mp4's own translation units (see its own header comment), and mp4/matroska already don't share
 // EBML/ISOBMFF plumbing with each other either, so duplicating the handful of generic

@@ -1,7 +1,7 @@
 // Decode an AC-4 stream the way a player does. The bytes arrive in pieces, as they do from a
-// socket or an HTTP body; the inspector's SyncFrameSplitter (iclforge::ac4) hands over each sync frame
-// once all of it is in, and the decoder (iclforge::ac4dec) turns it into PCM for one presentation,
-// handed over in blocks of 256 samples. A television's settings go in the decoder's
+// socket or an HTTP body; the inspector's SyncFrameSplitter (iclforge::ac4) hands over each sync
+// frame once all of it is in, and the decoder (iclforge::ac4dec) turns it into PCM for one
+// presentation, handed over in blocks of 256 samples. A television's settings go in the decoder's
 // configuration: the output level, the dynamic range control mode it selects, a stereo downmix
 // and dialogue enhancement. Once the stream has played, the decoder says what it found: the
 // presentations and the metadata of the one it decoded.

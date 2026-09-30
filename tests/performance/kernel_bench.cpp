@@ -441,7 +441,8 @@ int main(int argc, char** argv) {
         for (const auto& channel : bed_storage) {
             bed.emplace_back(channel);
         }
-        iclforge::oba::joc::FrameParameters params{.objects = 4, .num_bands_idx = 4, .seq_count = 5};
+        iclforge::oba::joc::FrameParameters params{
+            .objects = 4, .num_bands_idx = 4, .seq_count = 5};
         params.matrix.assign(params.coefficient_count(), 0.0);
         for (int object = 0; object < params.objects; ++object) {
             for (int channel = 0; channel < params.channels; ++channel) {
@@ -493,7 +494,8 @@ int main(int argc, char** argv) {
         // cost that grows super-linearly in object count shows up here and
         // nowhere else in this bench.
         {
-            iclforge::oba::joc::FrameParameters wide{.objects = 12, .num_bands_idx = 4, .seq_count = 5};
+            iclforge::oba::joc::FrameParameters wide{
+                .objects = 12, .num_bands_idx = 4, .seq_count = 5};
             wide.matrix.assign(wide.coefficient_count(), 0.0);
             for (int object = 0; object < wide.objects; ++object) {
                 for (int channel = 0; channel < wide.channels; ++channel) {
@@ -504,9 +506,9 @@ int main(int argc, char** argv) {
             }
             results.push_back(time_kernel("joc_reconstruct_mdct_12obj", [&] {
                 static iclforge::oba::joc::ReconstructionState state;
-                const auto out =
-                    iclforge::oba::joc::reconstruct(bed, wide, state, /*fast_mdct=*/true,
-                                          /*fast_imdct=*/true, iclforge::oba::joc::Domain::kMdctBand);
+                const auto out = iclforge::oba::joc::reconstruct(
+                    bed, wide, state, /*fast_mdct=*/true,
+                    /*fast_imdct=*/true, iclforge::oba::joc::Domain::kMdctBand);
                 g_sink += static_cast<double>(out[0][128]);
             }));
             results.push_back(time_kernel("joc_reconstruct_qmf_12obj", [&] {

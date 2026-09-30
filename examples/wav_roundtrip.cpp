@@ -122,7 +122,8 @@ int main() {
         std::vector<std::span<const float>> views;
         for (const auto& channel : from_wav) {
             views.push_back(std::span<const float>{channel}.subspan(
-                static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame, iclforge::kSamplesPerFrame));
+                static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
+                iclforge::kSamplesPerFrame));
         }
         const auto encoded = encoder->encode_frame(views);
         if (!encoded.has_value()) {

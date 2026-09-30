@@ -403,8 +403,8 @@ void BurstOutput::write_ac4(const sendspin::BurstChunk& chunk, std::int64_t loca
     if (!ac4_decoder_) {
         ac4_decoder_.emplace();
     }
-    const std::expected<std::optional<iclforge::ac4::DecodedFrame>, iclforge::ac4::DecodeError> decoded =
-        ac4_decoder_->decode(payload->raw_ac4_frame);
+    const std::expected<std::optional<iclforge::ac4::DecodedFrame>, iclforge::ac4::DecodeError>
+        decoded = ac4_decoder_->decode(payload->raw_ac4_frame);
     if (!decoded) {
         ++undecodable_;
         reset_decoding();
@@ -446,14 +446,15 @@ void BurstOutput::render_ac4(const iclforge::ac4::DecodedFrame& frame) {
         emit(m);
     }
     if (!decoder_) {
-        decoder_ = ac::DecoderReport{.data_type = ac::DataType::kAc4,
-                                     .acmod = ac4_acmod(frame.speakers),
-                                     .lfe = std::find(frame.speakers.begin(), frame.speakers.end(),
-                                                      iclforge::ac4::Speaker::kLfe) != frame.speakers.end(),
-                                     .substreams = 1,
-                                     .objects = 0,
-                                     .objects_placed = false,
-                                     .dialnorm = 0.0};
+        decoder_ = ac::DecoderReport{
+            .data_type = ac::DataType::kAc4,
+            .acmod = ac4_acmod(frame.speakers),
+            .lfe = std::find(frame.speakers.begin(), frame.speakers.end(),
+                             iclforge::ac4::Speaker::kLfe) != frame.speakers.end(),
+            .substreams = 1,
+            .objects = 0,
+            .objects_placed = false,
+            .dialnorm = 0.0};
     }
 }
 

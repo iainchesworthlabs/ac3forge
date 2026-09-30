@@ -320,5 +320,6 @@ TEST_CASE("noise: the Sentinel PSK and psk_id match connection.md", "[sendspin][
     REQUIRE(id.has_value());
     CHECK(*id == iclforge::sendspin::handshake::sentinel_psk_id());
     CHECK(to_hex(*id) == "185b15f6d2da4909bd1dc156a4ab206103abef0153bcd52d926170b95cf7ce8a");
-    CHECK(iclforge::sendspin::base64url::encode(*id) == "GFsV9tLaSQm9HcFWpKsgYQOr7wFTvNUtkmFwuVz3zoo");
+    CHECK(iclforge::sendspin::base64url::encode(*id) ==
+          "GFsV9tLaSQm9HcFWpKsgYQOr7wFTvNUtkmFwuVz3zoo");
 }

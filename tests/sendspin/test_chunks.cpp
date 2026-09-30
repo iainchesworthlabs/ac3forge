@@ -171,10 +171,12 @@ TEST_CASE("chunks: player@v1 chunk errors", "[sendspin][chunks]") {
     CHECK(iclforge::sendspin::parse_player_chunk(other, Dialect::kAiosendspin911).error() ==
           ChunkError::kWrongId);
     std::array<std::uint8_t, 12> small{};
-    CHECK_FALSE(iclforge::sendspin::write_player_chunk_header(small, 0, 0, Dialect::kSpecification));
+    CHECK_FALSE(
+        iclforge::sendspin::write_player_chunk_header(small, 0, 0, Dialect::kSpecification));
     CHECK(iclforge::sendspin::write_player_chunk_header(small, 0, 0, Dialect::kAiosendspin911));
     std::array<std::uint8_t, 8> smaller{};
-    CHECK_FALSE(iclforge::sendspin::write_player_chunk_header(smaller, 0, 0, Dialect::kAiosendspin911));
+    CHECK_FALSE(
+        iclforge::sendspin::write_player_chunk_header(smaller, 0, 0, Dialect::kAiosendspin911));
 }
 
 TEST_CASE("chunks: send_ahead saturates at both ends", "[sendspin][chunks]") {
@@ -251,7 +253,8 @@ TEST_CASE("chunks: an E-AC-3 burst chunk carries Eac3BurstPacker's six blocks",
     CHECK(pc == 0x15);
     CHECK(pd == payload.size());
 
-    const auto chunk = iclforge::sendspin::parse_burst_chunk(burst_chunk(-32000, 0, pc, pd, payload));
+    const auto chunk =
+        iclforge::sendspin::parse_burst_chunk(burst_chunk(-32000, 0, pc, pd, payload));
     REQUIRE(chunk.has_value());
     CHECK(chunk->chunk.timestamp_us == -32000);
     CHECK(chunk->data_type() == BurstDataType::kEac3);
@@ -361,7 +364,8 @@ TEST_CASE("chunks: burst chunk errors", "[sendspin][chunks]") {
                                               eac3_max))
               .has_value());
     // The largest chunk fits one frame, so a burst is never fragmented.
-    CHECK(iclforge::sendspin::kBurstChunkHeaderBytes + eac3_max <= iclforge::sendspin::kMaxFramePlaintext);
+    CHECK(iclforge::sendspin::kBurstChunkHeaderBytes + eac3_max <=
+          iclforge::sendspin::kMaxFramePlaintext);
 
     std::array<std::uint8_t, 16> small{};
     CHECK_FALSE(iclforge::sendspin::write_burst_chunk_header(small, 0, 0, 1, 0));
@@ -417,7 +421,8 @@ TEST_CASE("chunks: an AC-4 burst chunk carries Ac4BurstPacker's Pc and Pd and it
         REQUIRE(chunk.has_value());
         CHECK(chunk->data_type() == BurstDataType::kAc4);
         CHECK(iclforge::sendspin::is_ac4(chunk->data_type()));
-        CHECK(chunk->pd == iclforge::sendspin::burst_length_code(BurstDataType::kAc4, frame.size()));
+        CHECK(chunk->pd ==
+              iclforge::sendspin::burst_length_code(BurstDataType::kAc4, frame.size()));
         REQUIRE(chunk->chunk.data.size() == frame.size());
         CHECK(chunk->chunk.data.back() == std::to_integer<std::uint8_t>(frame.back()));
     }

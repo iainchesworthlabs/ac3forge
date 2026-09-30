@@ -664,7 +664,8 @@ class LayoutRenderer {
     std::size_t lfe_delay_at_ = 0;
     std::vector<float> lfe_delay_;
     static_assert(iclforge::oba::joc::reconstruction_delay(iclforge::oba::joc::Domain::kQmf) > 0 &&
-                  iclforge::oba::joc::reconstruction_delay(iclforge::oba::joc::Domain::kMdctBand) > 0);
+                  iclforge::oba::joc::reconstruction_delay(iclforge::oba::joc::Domain::kMdctBand) >
+                      0);
 };
 
 }  // namespace iclforge::render

@@ -249,7 +249,8 @@ TEST_CASE("scan refuses what it cannot read", "[elementary]") {
     namespace cm = iclforge::eac3::chanmap;
     const AccessUnitConfig seven_one{
         .independent = {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true},
-        .dependents = {{.bitrate_kbps = 224, .acmod = iclforge::Acmod::k2_2, .chanmap = cm::k71Rear}}};
+        .dependents = {
+            {.bitrate_kbps = 224, .acmod = iclforge::Acmod::k2_2, .chanmap = cm::k71Rear}}};
     const auto unit = iclforge::eac3::build_silent_access_unit(seven_one);
     REQUIRE(unit.has_value());
     REQUIRE(unit->substream_count() == 2);
@@ -300,7 +301,8 @@ TEST_CASE("scan reads the addbsi Dolby Atmos marker", "[elementary]") {
 
 TEST_CASE("access-unit timing is the absolute sample position, not a running sum",
           "[elementary]") {
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     std::vector<std::byte> stream;
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;

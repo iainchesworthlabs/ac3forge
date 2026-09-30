@@ -8,8 +8,8 @@
 
 #include "iclforge/ac4/ac4.hpp"
 
-// iclforge::ac4::scan, iclforge::ac4::SyncFrameSplitter and iclforge::ac4::parse_raw_frame (src/ac4/src/
-// ac4.cpp) - the AC-4 bitstream inspector.
+// iclforge::ac4::scan, iclforge::ac4::SyncFrameSplitter and iclforge::ac4::parse_raw_frame
+// (src/ac4/src/ ac4.cpp) - the AC-4 bitstream inspector.
 //
 // AC-4 reaches this project the same way AC-3 does, as bytes from a file or a
 // stream nobody here produced, and the TOC is the densest untrusted structure
@@ -48,8 +48,8 @@ namespace {
 
 // Splits `bytes` in pieces of `piece` into `capacity` bytes of storage and
 // checks the property against `scanned`.
-void split(std::span<const std::byte> bytes, const iclforge::ac4::ScanResult& scanned, std::size_t piece,
-           std::size_t capacity) {
+void split(std::span<const std::byte> bytes, const iclforge::ac4::ScanResult& scanned,
+           std::size_t piece, std::size_t capacity) {
     std::vector<std::byte> storage(capacity);
     iclforge::ac4::SyncFrameSplitter splitter{storage};
     std::size_t fed = 0;

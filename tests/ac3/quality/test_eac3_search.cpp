@@ -72,8 +72,8 @@ std::vector<std::span<const float>> spans_for(const std::vector<std::vector<floa
     return spans;
 }
 
-iclforge::eac3::FrameConfig config_for(iclforge::quality::Criterion search, iclforge::Acmod acmod, bool lfe,
-                                  std::uint32_t kbps) {
+iclforge::eac3::FrameConfig config_for(iclforge::quality::Criterion search, iclforge::Acmod acmod,
+                                       bool lfe, std::uint32_t kbps) {
     iclforge::eac3::FrameConfig config;
     config.acmod = acmod;
     config.lfe = lfe;
@@ -162,9 +162,11 @@ TEST_CASE("the E-AC-3 search actually changes the emitted parameters",
           "[quality][search][eac3]") {
     const auto material = make_material(2);
     const auto without = encode_all(
-        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192), material);
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192),
+        material);
     const auto with = encode_all(
-        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 192), material);
+        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 192),
+        material);
     bool differs = false;
     for (std::size_t frame = 0; frame < without.size(); ++frame) {
         differs = differs || without[frame] != with[frame];
@@ -227,9 +229,11 @@ TEST_CASE("searching E-AC-3 on distortion lowers the decoded error",
 // above checks for CBR.
 TEST_CASE("the E-AC-3 search stays inert under VBR", "[quality][search][eac3]") {
     const auto material = make_material(2);
-    auto without = config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 448);
+    auto without =
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 448);
     without.vbr = iclforge::eac3::VbrConfig{.quality = 0.6};
-    auto with = config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 448);
+    auto with =
+        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 448);
     with.vbr = iclforge::eac3::VbrConfig{.quality = 0.6};
 
     const auto first = encode_all(without, material);
@@ -304,7 +308,8 @@ TEST_CASE("a pinned E-AC-3 fgaincod round-trips through a real decode",
 TEST_CASE("E-AC-3 fgaincod defaults to writing no fgaincode element at all",
           "[quality][search][eac3]") {
     const auto material = make_material(2);
-    auto defaulted = config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192);
+    auto defaulted =
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192);
     auto pinned_default = defaulted;
     pinned_default.fgaincod = 4;  // the same code, stated rather than implied
     auto pinned_other = defaulted;
@@ -348,7 +353,8 @@ TEST_CASE("the E-AC-3 search never raises fgaincod above the default",
     // the encode must be identical to what the one-axis search produces.
     // Pinning the default reproduces "one axis" exactly - it takes fgaincod
     // out of the candidate set without changing anything else.
-    auto two_axis = config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 96);
+    auto two_axis =
+        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 96);
     auto one_axis = two_axis;
     one_axis.fgaincod = 4;  // the default, stated - no element, no candidate
 

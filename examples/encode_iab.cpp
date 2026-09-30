@@ -4,13 +4,13 @@
 // Roadmap item IM1 phase 3 of 3 (the last piece - phase 1 is iclforge::iab, src/iab; phase 2
 // is iclforge::iab::parse_mxf_iab, src/iab/src/mxf_reader.cpp). This is a minimal, standalone
 // illustration of the same pipeline ac3cli's 'atmos-iab' command drives for real:
-// iclforge::iab::parse_iabitstream() reads the frame sequence, iclforge::admbridge::build_iab() maps it onto
-// iclforge::oba::AtmosEncoder's flat object-list input shape (one bed channel pinned in place, one
-// dynamic object panned by its own authored motion), and a plain per-frame loop calls
-// iclforge::oba::evaluate_placements() plus AtmosEncoder::encode_frame() the same way every other Atmos
-// example in this directory does. The CLI command and this example deliberately share nothing but
-// that library API - see docs/library/adm-bridge.md's own note on why no separate "driving loop"
-// abstraction exists (the same reasoning applies here).
+// iclforge::iab::parse_iabitstream() reads the frame sequence, iclforge::admbridge::build_iab()
+// maps it onto iclforge::oba::AtmosEncoder's flat object-list input shape (one bed channel pinned
+// in place, one dynamic object panned by its own authored motion), and a plain per-frame loop calls
+// iclforge::oba::evaluate_placements() plus AtmosEncoder::encode_frame() the same way every other
+// Atmos example in this directory does. The CLI command and this example deliberately share nothing
+// but that library API - see docs/library/adm-bridge.md's own note on why no separate "driving
+// loop" abstraction exists (the same reasoning applies here).
 //
 // Like examples/read_iab.cpp, this writes its own tiny-but-valid elementary IABitstream fixture to
 // a temp file first, rather than shipping a real Dolby Atmos cinema master this project has no
@@ -334,9 +334,9 @@ int main(int argc, char** argv) {
                     bridged->is_bed[i] ? "bed channel" : "dynamic object");
     }
 
-    // Step 3: drive AtmosEncoder::encode_frame() in a loop - iclforge::oba::evaluate_placements() reads
-    // each channel's iclforge::oba::ObjectPath at the frame's own end time, the same pattern every other
-    // Atmos example in this directory uses.
+    // Step 3: drive AtmosEncoder::encode_frame() in a loop - iclforge::oba::evaluate_placements()
+    // reads each channel's iclforge::oba::ObjectPath at the frame's own end time, the same pattern
+    // every other Atmos example in this directory uses.
     const auto objects = static_cast<int>(bridged->channel_count());
     iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, objects};
 

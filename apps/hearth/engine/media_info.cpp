@@ -717,9 +717,10 @@ MediaInfo describe_media(const std::string& path, const LoadedItem& loaded) {
             }
         }
         if (summary.sync_frames == 0) {
-            info.error = fmt::format(
-                "No AC-4 sync frame could be read: {}.",
-                summary.parse_error ? iclforge::ac4::describe(*summary.parse_error) : "none was found");
+            info.error =
+                fmt::format("No AC-4 sync frame could be read: {}.",
+                            summary.parse_error ? iclforge::ac4::describe(*summary.parse_error)
+                                                : "none was found");
         }
         info.ac4 = std::move(summary);
         return info;

@@ -104,7 +104,8 @@ using S = iclforge::ac4::Speaker;
 
 }  // namespace
 
-Ac4ObjectRenderer::Ac4ObjectRenderer(iclforge::ac4::DownmixTarget target, std::uint32_t sample_rate_hz)
+Ac4ObjectRenderer::Ac4ObjectRenderer(iclforge::ac4::DownmixTarget target,
+                                     std::uint32_t sample_rate_hz)
     : speakers_(speakers_for(target)), renderer_(output_layout(speakers_), sample_rate_hz) {}
 
 std::span<const iclforge::ac4::Speaker> Ac4ObjectRenderer::speakers() const noexcept {
@@ -129,7 +130,8 @@ Ac4ObjectRenderer::Gains Ac4ObjectRenderer::speaker_gains(iclforge::ac4::Speaker
     return out;
 }
 
-std::vector<float> Ac4ObjectRenderer::object_gains(const iclforge::ac4::ObjectProperties& properties) {
+std::vector<float> Ac4ObjectRenderer::object_gains(
+    const iclforge::ac4::ObjectProperties& properties) {
     iclforge::oba::DisplayObject object;
     object.position = {
         .x = properties.position[0], .y = properties.position[1], .z = properties.position[2]};
@@ -143,8 +145,8 @@ std::vector<float> Ac4ObjectRenderer::object_gains(const iclforge::ac4::ObjectPr
     return out;
 }
 
-Ac4ObjectRenderer::Gains Ac4ObjectRenderer::gains_of(const iclforge::ac4::DecodedObject& object,
-                                                     const iclforge::ac4::ObjectProperties& properties) {
+Ac4ObjectRenderer::Gains Ac4ObjectRenderer::gains_of(
+    const iclforge::ac4::DecodedObject& object, const iclforge::ac4::ObjectProperties& properties) {
     Gains out{};
     if (object.speaker && (object.kind == iclforge::ac4::ObjectKind::kBed || object.lfe)) {
         out = speaker_gains(*object.speaker);

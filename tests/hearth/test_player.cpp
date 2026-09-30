@@ -228,7 +228,8 @@ std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset, doubl
 // sample for sample. §7.3.4's dither generator runs on across frames, so a
 // decoder that starts late draws different values for the same bins; the
 // difference is some 95 dB down, but it is not zero.
-std::vector<std::byte> eac3_stream(int frames, iclforge::SampleRate rate = iclforge::SampleRate::k48000,
+std::vector<std::byte> eac3_stream(int frames,
+                                   iclforge::SampleRate rate = iclforge::SampleRate::k48000,
                                    bool dither = true, double level = 0.3, int dialnorm = 31) {
     iclforge::eac3::FrameConfig config;
     config.sample_rate = rate;
@@ -251,7 +252,8 @@ std::vector<std::byte> eac3_stream(int frames, iclforge::SampleRate rate = iclfo
     return out;
 }
 
-std::vector<std::byte> ac3_stream(int frames, iclforge::SampleRate rate = iclforge::SampleRate::k48000) {
+std::vector<std::byte> ac3_stream(int frames,
+                                  iclforge::SampleRate rate = iclforge::SampleRate::k48000) {
     iclforge::EncoderConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
@@ -278,8 +280,9 @@ std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream,
     const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
     iclforge::mp4::AudioTrack track;
-    track.codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::mp4::kCodecAc3
-                                                                            : iclforge::mp4::kCodecEac3};
+    track.codec_id =
+        std::string{scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::mp4::kCodecAc3
+                                                                    : iclforge::mp4::kCodecEac3};
     track.sample_rate = iclforge::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
     track.codec_config = iclforge::io::build_codec_config_box(*scanned);
@@ -295,12 +298,13 @@ std::vector<std::byte> in_mkv(const std::vector<std::byte>& stream) {
     const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
     iclforge::matroska::AudioTrack track;
-    track.codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::matroska::kCodecAc3
-                                                                            : iclforge::matroska::kCodecEac3};
+    track.codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3
+                                     ? iclforge::matroska::kCodecAc3
+                                     : iclforge::matroska::kCodecEac3};
     track.sample_rate = iclforge::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
-    const auto muxed =
-        iclforge::matroska::mux(track, std::span<const std::span<const std::byte>>(scanned->access_units));
+    const auto muxed = iclforge::matroska::mux(
+        track, std::span<const std::span<const std::byte>>(scanned->access_units));
     REQUIRE(muxed.has_value());
     return *muxed;
 }
@@ -382,7 +386,8 @@ std::vector<std::vector<std::byte>> programme_frames(int frames, double hz, int 
     iclforge::eac3::FrameEncoder encoder{config};
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(hz, 48000, static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
+        const auto samples =
+            tone(hz, 48000, static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(2, samples);
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -853,8 +858,8 @@ TEST_CASE("player: an MP4 edit list's priming and padding are decoded but not pl
     const std::uint64_t kept = (12 * 1536) - 256 - 1000;
     Library library;
     library.files["raw.ec3"] = stream;
-    library.files["edited.mp4"] = in_mp4(stream, iclforge::mp4::MuxOptions::Edit{.start_samples = 256,
-                                                                       .duration_samples = kept});
+    library.files["edited.mp4"] = in_mp4(
+        stream, iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = kept});
 
     const Slots whole = played_alone(library, "raw.ec3");
 
@@ -884,9 +889,11 @@ TEST_CASE("player: two edited items join with nothing of either encoder's betwee
     library.files["first.ec3"] = first;
     library.files["second.ac3"] = second;
     library.files["first.mp4"] = in_mp4(
-        first, iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = first_kept});
+        first,
+        iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = first_kept});
     library.files["second.mp4"] = in_mp4(
-        second, iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = second_kept});
+        second,
+        iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = second_kept});
 
     const Slots expected =
         joined(part(played_alone(library, "first.ec3"), 256, first_kept),
@@ -914,8 +921,8 @@ TEST_CASE("player: a seek in an edited item counts from what the item plays", "[
     const std::uint64_t kept = (40 * 1536) - 256 - 512;
     Library library;
     library.files["raw.ec3"] = stream;
-    library.files["edited.mp4"] = in_mp4(stream, iclforge::mp4::MuxOptions::Edit{.start_samples = 256,
-                                                                       .duration_samples = kept});
+    library.files["edited.mp4"] = in_mp4(
+        stream, iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = kept});
     const Slots whole = played_alone(library, "raw.ec3");
 
     auto log = std::make_shared<FakeDevice::Log>();
@@ -1457,7 +1464,8 @@ TEST_CASE("player: a join starts the next item's loudness, and momentary loudnes
     // A tone, then silence, joined.
     Library library;
     library.files["tone.ec3"] = eac3_stream(60);
-    library.files["silence.ec3"] = eac3_stream(60, iclforge::SampleRate::k48000, /*dither=*/false, 0.0);
+    library.files["silence.ec3"] =
+        eac3_stream(60, iclforge::SampleRate::k48000, /*dither=*/false, 0.0);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "2.0");
     player->add(item("tone.ec3"));
@@ -2227,7 +2235,8 @@ TEST_CASE("player: set_trim_db and set_delay_ms refuse an out-of-range slot or v
     CHECK(player->set_trim_db(0, -3.0));
     CHECK(player->set_trim_db(1, 6.0));
     CHECK_FALSE(player->set_trim_db(2, 0.0));                                    // no slot 2 on 2.0
-    CHECK_FALSE(player->set_trim_db(0, iclforge::render::TrimDelay::kMinTrimDb - 1.0));  // too quiet
+    CHECK_FALSE(
+        player->set_trim_db(0, iclforge::render::TrimDelay::kMinTrimDb - 1.0));  // too quiet
     CHECK_FALSE(player->set_trim_db(0, iclforge::render::TrimDelay::kMaxTrimDb + 1.0));  // too loud
     CHECK(player->trim_db(0) == -3.0);  // the refused calls changed nothing
     CHECK(player->trim_db(1) == 6.0);

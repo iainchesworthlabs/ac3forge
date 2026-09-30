@@ -386,9 +386,10 @@ struct BurstPlayer::Impl {
         iclforge::DecoderConfig decoder = config.decoder;
         const ac::DecoderSettings& d = s.decoder;
         if (d.mode) {
-            decoder.output.mode = *d.mode == ac::DecoderMode::kRf     ? iclforge::OperatingMode::kRf
-                                  : *d.mode == ac::DecoderMode::kLine ? iclforge::OperatingMode::kLine
-                                                                       : iclforge::OperatingMode::kCustom;
+            decoder.output.mode = *d.mode == ac::DecoderMode::kRf ? iclforge::OperatingMode::kRf
+                                  : *d.mode == ac::DecoderMode::kLine
+                                      ? iclforge::OperatingMode::kLine
+                                      : iclforge::OperatingMode::kCustom;
         }
         if (d.heavy_compression) {
             decoder.heavy_compression = *d.heavy_compression;
@@ -416,9 +417,10 @@ struct BurstPlayer::Impl {
         }
         iclforge::render::ObjectsPolicy objects = config.objects;
         if (d.objects) {
-            objects = *d.objects == ac::ObjectsPolicy::kAlways  ? iclforge::render::ObjectsPolicy::kAlways
-                      : *d.objects == ac::ObjectsPolicy::kNever ? iclforge::render::ObjectsPolicy::kNever
-                                                                : iclforge::render::ObjectsPolicy::kAuto;
+            objects =
+                *d.objects == ac::ObjectsPolicy::kAlways  ? iclforge::render::ObjectsPolicy::kAlways
+                : *d.objects == ac::ObjectsPolicy::kNever ? iclforge::render::ObjectsPolicy::kNever
+                                                          : iclforge::render::ObjectsPolicy::kAuto;
         }
         std::optional<Routing> new_routing;
         if (s.routing) {

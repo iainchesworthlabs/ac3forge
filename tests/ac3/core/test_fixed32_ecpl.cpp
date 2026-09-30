@@ -146,13 +146,13 @@ TEST_CASE("the tier's ecpl amplitudes and angles are the double ones", "[fixed32
                 iclforge::eac3::EcplNoise noise_fixed;
                 std::vector<double> angle(bins);
                 std::vector<Fixed32> angle_fixed(bins);
-                iclforge::eac3::ecpl_angles(/*channel=*/1, angle_codes, chaos_codes, transient, first,
-                                       begin, end, iclforge::eac3::kDefaultEcplBandStructure, noise,
-                                       angle, interpolate);
-                iclforge::eac3::ecpl_angles_fixed(/*channel=*/1, angle_codes, chaos_codes, transient,
-                                             first, begin, end,
-                                             iclforge::eac3::kDefaultEcplBandStructure, noise_fixed,
-                                             angle_fixed, interpolate);
+                iclforge::eac3::ecpl_angles(
+                    /*channel=*/1, angle_codes, chaos_codes, transient, first, begin, end,
+                    iclforge::eac3::kDefaultEcplBandStructure, noise, angle, interpolate);
+                iclforge::eac3::ecpl_angles_fixed(/*channel=*/1, angle_codes, chaos_codes,
+                                                  transient, first, begin, end,
+                                                  iclforge::eac3::kDefaultEcplBandStructure,
+                                                  noise_fixed, angle_fixed, interpolate);
                 // Through the rotation each names, not the number: a value at
                 // the wrap may land a whole turn apart between the two.
                 double worst = 0.0;

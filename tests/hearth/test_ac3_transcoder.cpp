@@ -84,7 +84,8 @@ void take(Ac3Transcoder& transcoder, const Planar& input, std::size_t record,
 Planar decode(const std::vector<std::vector<std::byte>>& frames) {
     const auto layout = iclforge::render::OutputLayout::named("5.1");
     REQUIRE(layout.has_value());
-    iclforge::hearth::StreamDecoder decoder{*layout, 48000, iclforge::hearth::transcode_settings({})};
+    iclforge::hearth::StreamDecoder decoder{*layout, 48000,
+                                            iclforge::hearth::transcode_settings({})};
     Planar out;
     const auto deliver = [&out](std::span<const std::span<const float>> slots, std::size_t n) {
         REQUIRE(slots.size() == out.size());
@@ -117,7 +118,8 @@ double snr_db(const std::vector<float>& input, const std::vector<float>& decoded
 }
 
 iclforge::hearth::UnitReport report(int dialnorm, std::optional<std::uint8_t> compr,
-                               std::optional<int> bsmod, iclforge::Acmod acmod = iclforge::Acmod::k3_2) {
+                                    std::optional<int> bsmod,
+                                    iclforge::Acmod acmod = iclforge::Acmod::k3_2) {
     iclforge::hearth::UnitReport out;
     out.acmod = acmod;
     out.lfe = true;
@@ -286,8 +288,9 @@ TEST_CASE("transcoder: a frame with no compr word gets one for its own dialnorm"
         CAPTURE(frame);
         std::array<std::span<const float>, Ac3Transcoder::kChannels> views{};
         for (std::size_t slot = 0; slot < views.size(); ++slot) {
-            views[slot] = std::span<const float>(input[slot])
-                              .subspan(frame * iclforge::kSamplesPerFrame, iclforge::kSamplesPerFrame);
+            views[slot] =
+                std::span<const float>(input[slot])
+                    .subspan(frame * iclforge::kSamplesPerFrame, iclforge::kSamplesPerFrame);
         }
         const auto encoded = encoder.encode_frame(views);
         REQUIRE(encoded.has_value());

@@ -76,9 +76,9 @@ class ByteSource {
 };
 
 // Where decoded audio goes. One BLOCK per call: one planar span of float per
-// slot of the configured iclforge::render::OutputLayout, in slot order, each iclforge::kSamplesPerBlock
-// samples long or fewer, nominally in [-1, 1). Called from the decode task
-// only, six times per frame at 48 kHz.
+// slot of the configured iclforge::render::OutputLayout, in slot order, each
+// iclforge::kSamplesPerBlock samples long or fewer, nominally in [-1, 1). Called from the decode
+// task only, six times per frame at 48 kHz.
 //
 // Planar float rather than interleaved integers because the sample format is
 // the sink's business: standard I2S wants two slots of 16 or 32 bits, a TDM bus

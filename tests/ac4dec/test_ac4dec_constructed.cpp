@@ -60,7 +60,9 @@ struct Decoded {
 Decoded decode_checked(const BuiltStream& stream,
                        iclforge::ac4::DecodingMode decoding = iclforge::ac4::DecodingMode::kFull) {
     std::vector<iclforge::ac4::SyntaxRecord> read;
-    const auto keep = [&read](const iclforge::ac4::SyntaxRecord& record) { read.push_back(record); };
+    const auto keep = [&read](const iclforge::ac4::SyntaxRecord& record) {
+        read.push_back(record);
+    };
     iclforge::ac4::DecoderConfig config;
     config.syntax = keep;
     config.decoding = decoding;

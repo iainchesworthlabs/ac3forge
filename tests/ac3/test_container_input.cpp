@@ -24,8 +24,9 @@ namespace {
 using Bytes = std::vector<std::byte>;
 
 // A 48 kHz track as the MP4 reader reports one, with `edits`.
-iclforge::mp4::ReadTrack track_with(std::vector<iclforge::mp4::EditListEntry> edits, std::uint32_t timescale = 48000,
-                          std::uint32_t movie_timescale = 48000) {
+iclforge::mp4::ReadTrack track_with(std::vector<iclforge::mp4::EditListEntry> edits,
+                                    std::uint32_t timescale = 48000,
+                                    std::uint32_t movie_timescale = 48000) {
     iclforge::mp4::ReadTrack track;
     track.sample_rate = 48000;
     track.timescale = timescale;
@@ -126,9 +127,9 @@ TEST_CASE("sniff_container wants the packet grid to start within its first strid
         for (int i = 0; i < kRepeats; ++i) {
             stream[start + (static_cast<std::size_t>(i) * kStride)] = std::byte{0x47};
         }
-        CHECK(iclforge::apps::sniff_container(stream) == (start < kStride
-                                                         ? iclforge::apps::ContainerKind::kMpegTs
-                                                         : iclforge::apps::ContainerKind::kUnknown));
+        CHECK(iclforge::apps::sniff_container(stream) ==
+              (start < kStride ? iclforge::apps::ContainerKind::kMpegTs
+                               : iclforge::apps::ContainerKind::kUnknown));
     }
 }
 
@@ -367,7 +368,8 @@ TEST_CASE("elementary_stream_from_bytes reports an MP4's edit list as a trim",
     const std::span<const std::span<const std::byte>> units(scanned->access_units);
 
     iclforge::mp4::MuxOptions edited;
-    edited.edit = iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = (3 * 1536) - 356};
+    edited.edit =
+        iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = (3 * 1536) - 356};
     const auto with_edit = iclforge::mp4::mux(track, units, edited);
     REQUIRE(with_edit.has_value());
     const auto trimmed = iclforge::apps::elementary_stream_from_bytes(*with_edit);

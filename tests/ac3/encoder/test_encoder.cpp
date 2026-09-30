@@ -752,7 +752,8 @@ TEST_CASE("invalid encoder configs are rejected", "[encoder]") {
     // invalid as Ch1's own would be.
     iclforge::FrameEncoder missing_dialnorm2{
         {.bitrate_kbps = 192, .acmod = iclforge::Acmod::kDualMono}};
-    CHECK(encode_same(missing_dialnorm2, silence).error() == iclforge::FrameError::kInvalidDialnorm);
+    CHECK(encode_same(missing_dialnorm2, silence).error() ==
+          iclforge::FrameError::kInvalidDialnorm);
     iclforge::FrameEncoder bad_dialnorm2{
         {.bitrate_kbps = 192, .dialnorm2 = 0, .acmod = iclforge::Acmod::kDualMono}};
     CHECK(encode_same(bad_dialnorm2, silence).error() == iclforge::FrameError::kInvalidDialnorm);
@@ -770,13 +771,14 @@ TEST_CASE("dual mono codes two independent programmes, never one into the other"
     // heavy2 is set explicitly alongside heavy - compr2e is Ch2's own flag,
     // not inherited from Ch1's, so leaving it unset here would (correctly)
     // silence compr2 and defeat the compr2.has_value() check below.
-    const iclforge::EncoderConfig config{.bitrate_kbps = 192,
-                                    .dialnorm = 27,
-                                    .dialnorm2 = 18,
-                                    .acmod = Acmod::kDualMono,
-                                    .drc = iclforge::meta::profile(iclforge::meta::ProfileId::kFilmStandard),
-                                    .heavy = iclforge::meta::HeavyConfig{},
-                                    .heavy2 = iclforge::meta::HeavyConfig{}};
+    const iclforge::EncoderConfig config{
+        .bitrate_kbps = 192,
+        .dialnorm = 27,
+        .dialnorm2 = 18,
+        .acmod = Acmod::kDualMono,
+        .drc = iclforge::meta::profile(iclforge::meta::ProfileId::kFilmStandard),
+        .heavy = iclforge::meta::HeavyConfig{},
+        .heavy2 = iclforge::meta::HeavyConfig{}};
     iclforge::FrameEncoder encoder{config};
     iclforge::FrameDecoder decoder;
     std::uint64_t n = 0;

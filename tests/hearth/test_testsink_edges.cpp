@@ -176,7 +176,8 @@ class Events final : public iclforge::sendspin::ServerListener {
 };
 
 iclforge::sendspin::noise::KeyPair generated() {
-    std::optional<iclforge::sendspin::noise::KeyPair> pair = iclforge::sendspin::noise::KeyPair::generate();
+    std::optional<iclforge::sendspin::noise::KeyPair> pair =
+        iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(pair.has_value());
     return *pair;
 }
@@ -525,7 +526,8 @@ TEST_CASE("test sink edges: a server that unpairs is forgotten, and the sink say
     options.unpaired_access = false;
     auto sink = testsink::Sink::start(options, log);
     REQUIRE(sink.has_value());
-    const auto token = iclforge::sendspin::pairing::decode_pairing_psk_token((*sink)->pairing_token());
+    const auto token =
+        iclforge::sendspin::pairing::decode_pairing_psk_token((*sink)->pairing_token());
     REQUIRE(token.has_value());
     const auto identity = generated();
     std::optional<Key32> long_term;

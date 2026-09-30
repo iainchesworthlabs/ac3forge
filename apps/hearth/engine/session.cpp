@@ -66,11 +66,13 @@ struct Ac4Reading {
             continue;
         }
         for (const iclforge::ac4::SubstreamReport& substream : report->substreams) {
-            if (substream.refused == iclforge::ac4::DecodeError::kUnsupported && out.refusal.empty()) {
+            if (substream.refused == iclforge::ac4::DecodeError::kUnsupported &&
+                out.refusal.empty()) {
                 out.refusal = std::string{substream.refused_reason};
             }
         }
-        const std::span<const iclforge::ac4::PresentationInfo> presentations = reader.presentations();
+        const std::span<const iclforge::ac4::PresentationInfo> presentations =
+            reader.presentations();
         if (!presentations.empty()) {
             out.presentations.assign(presentations.begin(), presentations.end());
             break;
@@ -102,9 +104,9 @@ struct Ac4Reading {
 
 }  // namespace
 
-std::expected<Session, std::string> Session::open(const std::string& path, const ItemLoader& loader,
-                                                  std::optional<int> programme,
-                                                  const iclforge::ac4::PresentationChoice& presentation) {
+std::expected<Session, std::string> Session::open(
+    const std::string& path, const ItemLoader& loader, std::optional<int> programme,
+    const iclforge::ac4::PresentationChoice& presentation) {
     if (!loader) {
         return std::unexpected(std::string{"Nothing is set up to read items."});
     }
@@ -124,7 +126,8 @@ std::expected<Session, std::string> Session::open(const std::string& path, const
             return std::unexpected(fmt::format("\"{}\" cannot be played: {}", path, units.error()));
         }
         const Ac4Reading reading = read_presentations(*units);
-        if (std::ranges::none_of(reading.presentations, &iclforge::ac4::PresentationInfo::selectable)) {
+        if (std::ranges::none_of(reading.presentations,
+                                 &iclforge::ac4::PresentationInfo::selectable)) {
             return std::unexpected(fmt::format(
                 "\"{}\" has no presentation this build decodes{}.", path,
                 reading.refusal.empty() ? std::string{} : fmt::format(": {}", reading.refusal)));
@@ -353,11 +356,13 @@ std::expected<std::size_t, std::string> Session::render(StreamDecoder& decoder,
     return frames;
 }
 
-std::optional<std::size_t> Session::ac4_presentation(const iclforge::ac4::PresentationChoice& choice) const {
+std::optional<std::size_t> Session::ac4_presentation(
+    const iclforge::ac4::PresentationChoice& choice) const {
     if (!ac4_) {
         return std::nullopt;
     }
-    return iclforge::ac4::select_presentation(ac4_toc_, choice, iclforge::ac4::DecoderConfig{}.level);
+    return iclforge::ac4::select_presentation(ac4_toc_, choice,
+                                              iclforge::ac4::DecoderConfig{}.level);
 }
 
 std::size_t Session::first_decoded(std::size_t unit) const {

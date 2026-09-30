@@ -61,13 +61,12 @@ void warn_if_programmes_dropped(const iclforge::io::ScannedStream& scanned) {
 }
 
 // Every container writer here holds ONE samples_per_frame for the whole
-// track (iclforge::mp4::AudioTrack, iclforge::mpegts::AudioTrack, iclforge::matroska::AudioTrack), so a
-// stream whose access units differ in length cannot be described to any of
-// them. That was invisible while this passed iclforge::kSamplesPerFrame outright:
-// an E-AC-3 stream coding fewer than six blocks per syncframe (numblkscod
-// 0/1/2, §E2.3.1.4 - legal, and nothing this project's own encoders emit)
-// got a track claiming 1536 samples a frame when its units really carry 256,
-// 512 or 768, and every timestamp downstream was wrong by the ratio.
+// track (iclforge::mp4::AudioTrack, iclforge::mpegts::AudioTrack, iclforge::matroska::AudioTrack),
+// so a stream whose access units differ in length cannot be described to any of them. That was
+// invisible while this passed iclforge::kSamplesPerFrame outright: an E-AC-3 stream coding fewer
+// than six blocks per syncframe (numblkscod 0/1/2, §E2.3.1.4 - legal, and nothing this project's
+// own encoders emit) got a track claiming 1536 samples a frame when its units really carry 256, 512
+// or 768, and every timestamp downstream was wrong by the ratio.
 //
 // iclforge::io::uniform_access_unit_samples answers the question these writers
 // can actually act on. Nothing means the units genuinely differ from each
@@ -181,8 +180,11 @@ namespace {
 // not carry: its name and targets (TS 103 190-2 Annex E.12), which its
 // presentation substream sends and iclforge::ac4::Decoder reads, from the frames up to
 // the first that has given every alternative presentation both.
-void describe_alternatives(iclforge::ac4::Toc& toc, std::span<const std::span<const std::byte>> frames) {
-    const auto alternative = [](const iclforge::ac4::PresentationInfoV1& p) { return p.b_alternative; };
+void describe_alternatives(iclforge::ac4::Toc& toc,
+                           std::span<const std::span<const std::byte>> frames) {
+    const auto alternative = [](const iclforge::ac4::PresentationInfoV1& p) {
+        return p.b_alternative;
+    };
     if (std::ranges::none_of(toc.presentations_v1, alternative)) {
         return;
     }
@@ -199,8 +201,8 @@ void describe_alternatives(iclforge::ac4::Toc& toc, std::span<const std::span<co
                 continue;
             }
             if (i < infos.size() && !infos[i].name.empty() && !infos[i].targets.empty()) {
-                p.alternative_info =
-                    iclforge::ac4::AlternativeInfo{.name = infos[i].name, .targets = infos[i].targets};
+                p.alternative_info = iclforge::ac4::AlternativeInfo{.name = infos[i].name,
+                                                                    .targets = infos[i].targets};
             } else {
                 all = false;
             }
@@ -265,7 +267,8 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     }
 
     const iclforge::matroska::AudioTrack track{
-        .codec_id = std::string{eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
+        .codec_id =
+            std::string{eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
         .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
         .samples_per_frame = *samples_per_frame};
@@ -452,10 +455,9 @@ bool write_rendition(const std::filesystem::path& dir, const RenditionFiles& ren
         }
     }
     const iclforge::mp4::HlsOptions options{.channels_attribute = rendition.channels_attribute};
-    return write_text_to_path(
-        dir / "audio.m3u8",
-        iclforge::mp4::build_hls_media_playlist(rendition.track, rendition.fragmented.media_segments,
-                                      options));
+    return write_text_to_path(dir / "audio.m3u8",
+                              iclforge::mp4::build_hls_media_playlist(
+                                  rendition.track, rendition.fragmented.media_segments, options));
 }
 
 // Everything iclforge::mp4::fragment needs about one elementary stream, read off the
@@ -468,11 +470,12 @@ std::optional<RenditionFiles> build_rendition(const iclforge::io::ScannedStream&
     if (!samples_per_frame.has_value()) {
         return std::nullopt;
     }
-    iclforge::mp4::AudioTrack track{.codec_id = std::string{eac3 ? iclforge::mp4::kCodecEac3 : iclforge::mp4::kCodecAc3},
-                          .sample_rate = iclforge::sample_rate_hz(scanned.sample_rate),
-                          .channels = scanned.channels,
-                          .samples_per_frame = *samples_per_frame,
-                          .codec_config = iclforge::io::build_codec_config_box(scanned)};
+    iclforge::mp4::AudioTrack track{
+        .codec_id = std::string{eac3 ? iclforge::mp4::kCodecEac3 : iclforge::mp4::kCodecAc3},
+        .sample_rate = iclforge::sample_rate_hz(scanned.sample_rate),
+        .channels = scanned.channels,
+        .samples_per_frame = *samples_per_frame,
+        .codec_config = iclforge::io::build_codec_config_box(scanned)};
     // ETSI TS 103 420 §E.5's 'ceao' compatibility brand, which DASH-IF IOP
     // Part 8 v5.0.0 §5.3.3 asks for on a backward-compatible object-audio
     // E-AC-3 track: iclforge::mp4:: never reads the object layer itself, so this front
@@ -544,17 +547,20 @@ int fmp4_ac4(Ac4Input& input, std::string_view in_path, std::string_view out_dir
                          in_path, i + 1, iclforge::ac4::describe(frame.error()));
             return kExitInput;
         }
-        if (const std::string_view refusal = iclforge::ac4::cmaf_refusal(frame->toc); !refusal.empty()) {
+        if (const std::string_view refusal = iclforge::ac4::cmaf_refusal(frame->toc);
+            !refusal.empty()) {
             return refuse(refusal, "H.1.2.1");
         }
-        if (std::ranges::any_of(frame->toc.presentations_v1,
-                                [](const iclforge::ac4::PresentationInfoV1& p) { return p.b_multi_pid; })) {
+        if (std::ranges::any_of(
+                frame->toc.presentations_v1,
+                [](const iclforge::ac4::PresentationInfoV1& p) { return p.b_multi_pid; })) {
             return refuse(
                 "a presentation whose substream groups other elementary streams carry "
                 "(b_multi_pid)",
                 "H.1.2.3");
         }
-        if (const std::string_view differs = iclforge::ac4::configuration_difference(input.toc, frame->toc);
+        if (const std::string_view differs =
+                iclforge::ac4::configuration_difference(input.toc, frame->toc);
             !differs.empty()) {
             fmt::println(stderr,
                          "error: {}: frame {} has another {} than the first, and every sample of "
@@ -593,10 +599,11 @@ int fmp4_ac4(Ac4Input& input, std::string_view in_path, std::string_view out_dir
                                 .codec_config = std::move(dac4),
                                 .rfc6381 = iclforge::ac4::rfc6381_codec_string(input.toc),
                                 .timescale = timing->timescale};
-    auto fragmented = iclforge::mp4::fragment(track, input.mp4_samples,
-                                    iclforge::mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment,
-                                                         .sync_samples = input.iframes,
-                                                         .brands = {"ca4m", "ca4s"}});
+    auto fragmented = iclforge::mp4::fragment(
+        track, input.mp4_samples,
+        iclforge::mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment,
+                                       .sync_samples = input.iframes,
+                                       .brands = {"ca4m", "ca4s"}});
     if (!fragmented.has_value()) {
         fmt::println(stderr, "error: {}", iclforge::mp4::describe(fragmented.error()));
         return kExitInput;
@@ -620,23 +627,25 @@ int fmp4_ac4(Ac4Input& input, std::string_view in_path, std::string_view out_dir
                           .name = "Audio",
                           .channels_attribute = rendition.channels_attribute,
                           .is_default = true}};
-    if (!write_text_to_path(dir / "master.m3u8", iclforge::mp4::build_hls_master_playlist(renditions))) {
+    if (!write_text_to_path(dir / "master.m3u8",
+                            iclforge::mp4::build_hls_master_playlist(renditions))) {
         return kExitOutput;
     }
     iclforge::mp4::DashOptions dash;
     if (const auto configuration = iclforge::ac4::dash_channel_configuration(input.toc)) {
-        dash.channel_configuration = iclforge::mp4::Descriptor{.scheme_id_uri = configuration->scheme_id_uri,
-                                                     .value = configuration->value};
+        dash.channel_configuration = iclforge::mp4::Descriptor{
+            .scheme_id_uri = configuration->scheme_id_uri, .value = configuration->value};
     }
-    for (const iclforge::ac4::ManifestDescriptor& property : iclforge::ac4::dash_supplemental_properties(input.toc)) {
-        dash.supplemental_properties.push_back(
-            iclforge::mp4::Descriptor{.scheme_id_uri = property.scheme_id_uri, .value = property.value});
+    for (const iclforge::ac4::ManifestDescriptor& property :
+         iclforge::ac4::dash_supplemental_properties(input.toc)) {
+        dash.supplemental_properties.push_back(iclforge::mp4::Descriptor{
+            .scheme_id_uri = property.scheme_id_uri, .value = property.value});
     }
     const auto adaptation_set =
         iclforge::mp4::build_dash_adaptation_set(track, rendition.fragmented.media_segments, dash);
-    if (!write_text_to_path(
-            dir / "manifest.mpd",
-            iclforge::mp4::build_dash_mpd(track, rendition.fragmented.media_segments, adaptation_set))) {
+    if (!write_text_to_path(dir / "manifest.mpd",
+                            iclforge::mp4::build_dash_mpd(
+                                track, rendition.fragmented.media_segments, adaptation_set))) {
         return kExitOutput;
     }
     if (meta.hls_fallback_51) {
@@ -739,7 +748,8 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         fmt::println("note: fallback-51 ignored - {} carries no object layer to strip", in_path);
     }
 
-    if (!write_text_to_path(dir / "master.m3u8", iclforge::mp4::build_hls_master_playlist(renditions))) {
+    if (!write_text_to_path(dir / "master.m3u8",
+                            iclforge::mp4::build_hls_master_playlist(renditions))) {
         return kExitOutput;
     }
 
@@ -757,8 +767,8 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         .dolby_channel_configuration = iclforge::io::dash_channel_configuration(*scanned)};
     const auto adaptation_set = iclforge::mp4::build_dash_adaptation_set(
         primary->track, primary->fragmented.media_segments, dash_options);
-    const auto mpd =
-        iclforge::mp4::build_dash_mpd(primary->track, primary->fragmented.media_segments, adaptation_set);
+    const auto mpd = iclforge::mp4::build_dash_mpd(
+        primary->track, primary->fragmented.media_segments, adaptation_set);
     if (!write_text_to_path(dir / "manifest.mpd", mpd)) {
         return kExitOutput;
     }
@@ -961,7 +971,8 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
         .channels = scanned->channels,
         .samples_per_frame = *samples_per_frame,
         .service = service_info_from(*scanned, meta)};
-    const auto file = iclforge::mpegts::mux(track, units, iclforge::mpegts::MuxOptions{.profile = profile});
+    const auto file =
+        iclforge::mpegts::mux(track, units, iclforge::mpegts::MuxOptions{.profile = profile});
     if (!file.has_value()) {
         fmt::println(stderr, "error: {}", iclforge::mpegts::describe(file.error()));
         return kExitInput;
@@ -1103,7 +1114,10 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
 
     if (kind == iclforge::apps::ContainerKind::kMatroska) {
         iclforge::matroska::Reader reader{};
-        drive(reader, [](iclforge::matroska::DemuxError e) { return iclforge::matroska::describe(e); }, on_frame);
+        drive(
+            reader,
+            [](iclforge::matroska::DemuxError e) { return iclforge::matroska::describe(e); },
+            on_frame);
         codec_id = std::string{reader.track().codec_id};
         sample_rate = reader.track().sample_rate;
         channels = reader.track().channels;
@@ -1138,13 +1152,17 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
             framed.insert(framed.end(), sample.begin(), sample.end());
             on_frame(framed);
         };
-        drive(reader, [](iclforge::mp4::DemuxError e) { return iclforge::mp4::describe(e); }, on_mp4_sample);
+        drive(
+            reader, [](iclforge::mp4::DemuxError e) { return iclforge::mp4::describe(e); },
+            on_mp4_sample);
         codec_id = reader.track().codec_id;
         sample_rate = reader.track().sample_rate;
         channels = reader.track().channels;
     } else {
         iclforge::mpegts::Reader reader{};
-        drive(reader, [](iclforge::mpegts::DemuxError e) { return iclforge::mpegts::describe(e); }, on_frame);
+        drive(
+            reader, [](iclforge::mpegts::DemuxError e) { return iclforge::mpegts::describe(e); },
+            on_frame);
         // A transport stream's PMT names the codec but carries no sample
         // rate or channel count - those live in the bitstream, which this
         // command deliberately never looks inside. Reported as absent

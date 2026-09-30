@@ -144,7 +144,8 @@ int monitor_ac4(std::span<const std::byte> stream, std::string_view in_path,
             status_println(status_stream(),
                            "  {} channels on a {}-channel output: folding to {} (ETSI TS 103 "
                            "190-1 6.2.17)",
-                           speakers->size(), target.channels, iclforge::ac4::describe(config.output.downmix));
+                           speakers->size(), target.channels,
+                           iclforge::ac4::describe(config.output.downmix));
         }
     }
     iclforge::ac4::Decoder decoder(config);
@@ -279,10 +280,10 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         if (scanned && scanned->channels > static_cast<int>(device_channels)) {
             output.target = device_channels == 1 ? iclforge::DownmixTarget::kMono
                                                  : iclforge::DownmixTarget::kLoRo;
-            status_println(status_stream(),
-                           "  {} channels on a {}-channel output: folding to {} (§7.8)",
-                           scanned->channels, device_channels,
-                           output.target == iclforge::DownmixTarget::kMono ? "mono" : "Lo/Ro stereo");
+            status_println(
+                status_stream(), "  {} channels on a {}-channel output: folding to {} (§7.8)",
+                scanned->channels, device_channels,
+                output.target == iclforge::DownmixTarget::kMono ? "mono" : "Lo/Ro stereo");
         }
     }
 
@@ -616,7 +617,8 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
                           has_lfe ? kSpeakerLowFrequency : 0U,
                           static_cast<std::uint32_t>(out.object_audio.size()));
             if (!started_result.has_value()) {
-                fmt::println(stderr, "error: {}", iclforge::audio::describe(started_result.error()));
+                fmt::println(stderr, "error: {}",
+                             iclforge::audio::describe(started_result.error()));
                 return kExitUnavailable;
             }
             started = true;
@@ -1044,7 +1046,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     const std::size_t bed_channels =
         static_cast<std::size_t>(iclforge::fullbw_channel_count(bed_acmod) + (bed_lfe ? 1 : 0));
 
-    auto resolve_render_device = [&](int index) -> std::optional<iclforge::audio::RenderDeviceInfo> {
+    auto resolve_render_device =
+        [&](int index) -> std::optional<iclforge::audio::RenderDeviceInfo> {
         if (index < 0) {
             return iclforge::audio::RenderDeviceInfo{};  // empty id: default endpoint
         }
@@ -1289,9 +1292,10 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              "error: \"{}\" is bitstreaming {} over IEC 61937, not delivering "
                              "PCM - a live encode of it would be noise",
                              device.name,
-                             *type == iclforge::iec61937::BurstDataType::kEac3  ? "Dolby Digital Plus"
+                             *type == iclforge::iec61937::BurstDataType::kEac3
+                                 ? "Dolby Digital Plus"
                              : *type == iclforge::iec61937::BurstDataType::kAc3 ? "Dolby Digital"
-                                                                           : "AC-4");
+                                                                                : "AC-4");
                 fmt::println(stderr,
                              "  'ac3cli record <out.ec3> <seconds> 0 {}' records the elementary "
                              "stream instead, and 'ac3cli unspdif' recovers one from a capture "
@@ -1478,7 +1482,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             } else {
                 const auto decoded = ac3_monitor_decoder->decode_frame(unit_bytes);
                 if (decoded.has_value()) {
-                    const auto order = iclforge::io::wav_channel_order(decoded->acmod, decoded->lfe);
+                    const auto order =
+                        iclforge::io::wav_channel_order(decoded->acmod, decoded->lfe);
                     to_play = interleave_reordered(decoded->channels, order);
                 }
             }
@@ -1589,8 +1594,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         monitor_sink.stop();
     }
     if (passing_through) {
-        const bool played_out =
-            iclforge::apps::wait_while_running(passthrough_sink, std::chrono::milliseconds(10), [&] {
+        const bool played_out = iclforge::apps::wait_while_running(
+            passthrough_sink, std::chrono::milliseconds(10), [&] {
                 const auto counts = passthrough_sink.stats();
                 return counts.bursts_rendered >= counts.bursts_submitted;
             });

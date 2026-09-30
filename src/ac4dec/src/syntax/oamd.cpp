@@ -88,7 +88,8 @@ constexpr ToolNames kTbNames{"b_top_back_to_front", "b_top_back_to_side", "gain_
 constexpr ToolNames kTfNames{"b_top_front_to_front", "b_top_front_to_side", "gain_t2a_code",
                              "gain_t2b_code", "gain_t2c_code"};
 
-[[nodiscard]] iclforge::ac4::GainTool parse_tool(BitReader& r, const ToolNames& names, bool side_branch) {
+[[nodiscard]] iclforge::ac4::GainTool parse_tool(BitReader& r, const ToolNames& names,
+                                                 bool side_branch) {
     iclforge::ac4::GainTool tool;
     if (r.read_flag(names.to_front)) {
         tool.code_a = read_int(r, 3, names.gain_a);

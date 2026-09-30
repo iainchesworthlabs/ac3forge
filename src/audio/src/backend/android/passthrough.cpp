@@ -724,7 +724,8 @@ Java_com_ac3forge_shield_NativeBridge_registerPassthroughBridge(JNIEnv* env, jcl
     }
     iclforge::audio::g_mid_is_direct_supported =
         env->GetMethodID(local_class, "isDirectPlaybackSupported", "(IZ)Z");
-    iclforge::audio::g_mid_is_pcm_supported = env->GetMethodID(local_class, "isPcmSupported", "(I)Z");
+    iclforge::audio::g_mid_is_pcm_supported =
+        env->GetMethodID(local_class, "isPcmSupported", "(I)Z");
     iclforge::audio::g_mid_open = env->GetMethodID(local_class, "open", "(IZ)Z");
     iclforge::audio::g_mid_submit =
         env->GetMethodID(local_class, "submit", "(Ljava/nio/ByteBuffer;I)I");

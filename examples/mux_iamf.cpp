@@ -51,9 +51,10 @@ std::vector<std::span<const float>> views_of(const std::vector<std::vector<float
     return views;
 }
 
-// The 12 locations a 7.1.4 access unit renders, in the order iclforge::iamf::Frame::channels declares
-// (IAMF §3.6.2 loudspeaker_layout = 7's own "L/C/R/Lss/Rss/Lrs/Rrs/Ltf/Rtf/Ltb/Rtb/LFE"): Vhl/Vhr
-// are Table E2.5's front-height pair (IAMF's Ltf/Rtf) and Lts/Rts its rear-height pair (Ltb/Rtb).
+// The 12 locations a 7.1.4 access unit renders, in the order iclforge::iamf::Frame::channels
+// declares (IAMF §3.6.2 loudspeaker_layout = 7's own "L/C/R/Lss/Rss/Lrs/Rrs/Ltf/Rtf/Ltb/Rtb/LFE"):
+// Vhl/Vhr are Table E2.5's front-height pair (IAMF's Ltf/Rtf) and Lts/Rts its rear-height pair
+// (Ltb/Rtb).
 constexpr std::array<Location, 12> kIamf714Order{
     Location::kLeft,          Location::kCentre,  Location::kRight,
     Location::kLeftSurround,  Location::kRightSurround,
@@ -80,21 +81,25 @@ int main() {
     // extend it to a full 7.1.4 render rather than replacing it outright).
     iclforge::eac3::AccessUnitConfig config;
     config.independent = {.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true};
-    config.dependents.push_back(
-        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_2, .chanmap = iclforge::eac3::chanmap::k71Rear});
-    config.dependents.push_back(
-        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_2, .chanmap = iclforge::eac3::chanmap::kTopQuad});
+    config.dependents.push_back({.bitrate_kbps = 192,
+                                 .acmod = iclforge::Acmod::k2_2,
+                                 .chanmap = iclforge::eac3::chanmap::k71Rear});
+    config.dependents.push_back({.bitrate_kbps = 192,
+                                 .acmod = iclforge::Acmod::k2_2,
+                                 .chanmap = iclforge::eac3::chanmap::kTopQuad});
     iclforge::eac3::AccessUnitEncoder encoder{config};
 
     const auto channel_count = static_cast<std::size_t>(encoder.channel_count());
-    std::vector<std::vector<float>> pcm(channel_count, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> pcm(channel_count,
+                                        std::vector<float>(iclforge::kSamplesPerFrame));
     const auto views = views_of(pcm);
     const std::vector<double> tones{1000.0, 800.0,  1200.0, 600.0,  1400.0, 60.0,
                                     500.0,  1600.0, 400.0,  1800.0, 2000.0, 2400.0,
                                     2800.0, 3200.0};
 
     iclforge::Eac3Decoder decoder;
-    iclforge::iamf::AudioTrack track{.samples_per_frame = static_cast<std::uint32_t>(iclforge::kSamplesPerFrame)};
+    iclforge::iamf::AudioTrack track{.samples_per_frame =
+                                         static_cast<std::uint32_t>(iclforge::kSamplesPerFrame)};
     std::vector<iclforge::iamf::Frame> frames;
 
     constexpr int kFrameCount = 8;  // several frames of real content, not silence - see

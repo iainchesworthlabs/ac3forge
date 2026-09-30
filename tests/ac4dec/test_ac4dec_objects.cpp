@@ -46,7 +46,9 @@ constexpr int kFrames = 8;
 // substream read to its end.
 void parse_checked(const BuiltObjectStream& stream) {
     std::vector<iclforge::ac4::SyntaxRecord> read;
-    const auto keep = [&read](const iclforge::ac4::SyntaxRecord& record) { read.push_back(record); };
+    const auto keep = [&read](const iclforge::ac4::SyntaxRecord& record) {
+        read.push_back(record);
+    };
     iclforge::ac4::DecoderConfig config;
     config.syntax = keep;
     iclforge::ac4::Decoder decoder(config);
@@ -81,7 +83,8 @@ struct Decoded {
     std::vector<std::vector<float>> samples;
     std::vector<std::vector<iclforge::ac4::ObjectUpdate>> updates;
     std::vector<std::vector<std::size_t>> update_at;  // each update's sample in the whole output
-    std::vector<iclforge::ac4::DecodedObject> last;  // the last frame's objects, their samples dropped
+    std::vector<iclforge::ac4::DecodedObject>
+        last;  // the last frame's objects, their samples dropped
 };
 
 Decoded decode_all(const BuiltObjectStream& stream, iclforge::ac4::DecodingMode decoding,
@@ -265,8 +268,10 @@ TEST_CASE("A-JOC objects carry their dry coefficients' share of each downmix sig
         CAPTURE(c.name);
         const BuiltObjectStream stream = ac4dec_test::build_objects(c, 12);
         const std::vector<double> tones = tones_of(stream);
-        check_objects(stream.full, decode_all(stream, iclforge::ac4::DecodingMode::kFull), tones, 0.1);
-        check_objects(stream.core, decode_all(stream, iclforge::ac4::DecodingMode::kCore), tones, 0.1);
+        check_objects(stream.full, decode_all(stream, iclforge::ac4::DecodingMode::kFull), tones,
+                      0.1);
+        check_objects(stream.core, decode_all(stream, iclforge::ac4::DecodingMode::kCore), tones,
+                      0.1);
     }
 }
 
@@ -303,7 +308,8 @@ TEST_CASE("direct-coded objects and a bed carry their own tones", "[ac4dec][obje
         CAPTURE(c.name);
         const BuiltObjectStream stream = ac4dec_test::build_objects(c, 12);
         const std::vector<double> tones = tones_of(stream);
-        for (const iclforge::ac4::DecodingMode mode : {iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DecodingMode::kCore}) {
+        for (const iclforge::ac4::DecodingMode mode :
+             {iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DecodingMode::kCore}) {
             check_objects(stream.full, decode_all(stream, mode), tones, 0.1);
         }
     }
@@ -334,7 +340,8 @@ TEST_CASE("A-JOC dialogue enhancement raises the dialogue object and its share o
         for (auto& tone : full.front().tones) {
             tone[1] *= de_gain;
         }
-        check_objects(full, decode_all(stream, iclforge::ac4::DecodingMode::kFull, asked), tones, 0.1);
+        check_objects(full, decode_all(stream, iclforge::ac4::DecodingMode::kFull, asked), tones,
+                      0.1);
         std::vector<ac4dec_test::ExpectedObject> core(stream.core.size());
         for (int ch = 0; ch < 2; ++ch) {
             for (int in = 0; in < 2; ++in) {
@@ -348,7 +355,8 @@ TEST_CASE("A-JOC dialogue enhancement raises the dialogue object and its share o
                 }
             }
         }
-        check_objects(core, decode_all(stream, iclforge::ac4::DecodingMode::kCore, asked), tones, 0.1);
+        check_objects(core, decode_all(stream, iclforge::ac4::DecodingMode::kCore, asked), tones,
+                      0.1);
     }
 }
 
@@ -376,7 +384,8 @@ TEST_CASE("a direct-coded dialogue substream's objects take dialogue enhancement
                 tone[1] *= std::pow(10.0, applied / 20.0);
             }
         }
-        check_objects(expected, decode_all(stream, iclforge::ac4::DecodingMode::kFull, asked), tones, 0.1);
+        check_objects(expected, decode_all(stream, iclforge::ac4::DecodingMode::kFull, asked),
+                      tones, 0.1);
     }
 }
 
@@ -511,7 +520,8 @@ TEST_CASE("an intermediate spatial format renders to the output layout by Annex 
                                        frame.channels[s].end());
                 }
             }
-            const std::span<const float> matrix = iclforge::ac4::detail::tables::kIsfMatrices[0][t.matrix];
+            const std::span<const float> matrix =
+                iclforge::ac4::detail::tables::kIsfMatrices[0][t.matrix];
             const std::size_t columns = t.target == T::kMono ? 2 : t.speakers.size();
             REQUIRE(matrix.size() == 4 * columns);
             for (std::size_t s = 0; s < channels.size(); ++s) {
@@ -585,7 +595,8 @@ TEST_CASE("Chromium's A-JOC stream decodes in full and core decoding", "[ac4dec]
     const std::vector<std::byte> bytes = read_file(fs::path{path});
     const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(bytes);
     REQUIRE_FALSE(scan.frames.empty());
-    for (const iclforge::ac4::DecodingMode mode : {iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DecodingMode::kCore}) {
+    for (const iclforge::ac4::DecodingMode mode :
+         {iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DecodingMode::kCore}) {
         CAPTURE(iclforge::ac4::describe(mode));
         const bool full = mode == iclforge::ac4::DecodingMode::kFull;
         iclforge::ac4::DecoderConfig config;

@@ -168,7 +168,8 @@ TEST_CASE("accumulate_block bands the same error the decoder reconstructs",
     // this produces (including the zero-bit bins at the top) is the mix the
     // measurement will actually meet.
     std::vector<std::uint8_t> bap(kEnd);
-    iclforge::compute_bit_allocation(exps, iclforge::SampleRate::k48000, iclforge::BitAllocCodes{}, 15, 0, bap);
+    iclforge::compute_bit_allocation(exps, iclforge::SampleRate::k48000, iclforge::BitAllocCodes{},
+                                     15, 0, bap);
 
     for (const int start : {0, 37, 85, 121}) {
         iclforge::quality::BandNoise measured;
@@ -258,9 +259,9 @@ TEST_CASE("measured error stays within half a step inside the quantizer span",
     for (int bap = 1; bap <= 15; ++bap) {
         const bool symmetric = bap <= 5;
         const int levels = iclforge::kSymmetricLevels[static_cast<std::size_t>(std::min(bap, 5))];
-        const double step = symmetric
-                                ? 2.0 / levels
-                                : 1.0 / (1 << (iclforge::kBapBits[static_cast<std::size_t>(bap)] - 1));
+        const double step =
+            symmetric ? 2.0 / levels
+                      : 1.0 / (1 << (iclforge::kBapBits[static_cast<std::size_t>(bap)] - 1));
         const double span = symmetric ? static_cast<double>(levels - 1) / levels : 1.0 - step;
         for (int trial = 0; trial < 3000; ++trial) {
             const double value = dist(rng);

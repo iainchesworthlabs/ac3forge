@@ -308,7 +308,8 @@ TEST_CASE("MP4 muxer rejects what it cannot describe", "[mp4]") {
 
     // Explicit empty span: bare {} became ambiguous when the span-of-views
     // mux overload arrived alongside the owned-list one.
-    CHECK(iclforge::mp4::mux(track, std::span<const Bytes>{}).error() == iclforge::mp4::MuxError::kNoFrames);
+    CHECK(iclforge::mp4::mux(track, std::span<const Bytes>{}).error() ==
+          iclforge::mp4::MuxError::kNoFrames);
 
     auto bad_channels = track;
     bad_channels.channels = 0;
@@ -384,7 +385,8 @@ TEST_CASE("MP4 muxer refuses an edit outside the frames", "[mp4]") {
     const std::vector<Bytes> two(2, frame_of(64, 0));  // 3,072 samples
     const auto with = [&two](std::uint64_t start, std::uint64_t duration) {
         iclforge::mp4::MuxOptions options;
-        options.edit = iclforge::mp4::MuxOptions::Edit{.start_samples = start, .duration_samples = duration};
+        options.edit =
+            iclforge::mp4::MuxOptions::Edit{.start_samples = start, .duration_samples = duration};
         return iclforge::mp4::mux(sample_track(), two, options);
     };
     CHECK(with(0, 3072).has_value());
@@ -440,7 +442,8 @@ TEST_CASE("MP4 muxer names the sync samples, and counts in the track's own times
     REQUIRE(all.has_value());
     CHECK(find(parse(*all), "stss") == nullptr);
     options.sync_samples.assign(5, true);
-    CHECK(iclforge::mp4::mux(track, frames, options).error() == iclforge::mp4::MuxError::kInvalidOptions);
+    CHECK(iclforge::mp4::mux(track, frames, options).error() ==
+          iclforge::mp4::MuxError::kInvalidOptions);
 }
 
 // --- iclforge::io::build_codec_config_box: the dec3/dac3 payload itself ---------
@@ -593,7 +596,8 @@ TEST_CASE("dec3 box's asvc bit follows the karaoke/voice-over acmod split", "[de
 
         const auto scanned = iclforge::io::scan(unit->bytes);
         REQUIRE(scanned.has_value());
-        REQUIRE(scanned->bsmod == static_cast<int>(iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke));
+        REQUIRE(scanned->bsmod ==
+                static_cast<int>(iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke));
         REQUIRE(scanned->acmod == iclforge::Acmod::k3_2);
 
         const auto payload = iclforge::io::build_codec_config_box(*scanned);
@@ -622,7 +626,8 @@ TEST_CASE("dec3 box's asvc bit follows the karaoke/voice-over acmod split", "[de
 
         const auto scanned = iclforge::io::scan(unit->bytes);
         REQUIRE(scanned.has_value());
-        REQUIRE(scanned->bsmod == static_cast<int>(iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke));
+        REQUIRE(scanned->bsmod ==
+                static_cast<int>(iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke));
         REQUIRE(scanned->acmod == iclforge::Acmod::k1_0);
 
         const auto payload = iclforge::io::build_codec_config_box(*scanned);
@@ -636,7 +641,8 @@ TEST_CASE("dec3 box signals Dolby Atmos objects", "[dec3]") {
     constexpr int kObjects = 3;
     iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
 
-    std::vector<std::vector<float>> sources(kObjects, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> sources(kObjects,
+                                            std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (auto& source : sources) {
         views.emplace_back(source);

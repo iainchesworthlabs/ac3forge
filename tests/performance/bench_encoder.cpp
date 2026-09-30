@@ -161,7 +161,8 @@ iclforge::FrameEncoder make_ac3_51(bool fast_mdct) {
 // comment on why neither "all on" nor "all off" is a sensible default), so
 // this is the code path a stream produced by this encoder normally takes -
 // and the one whose cost a rate change silently moves.
-iclforge::eac3::FrameEncoder make_eac3_auto(iclforge::Acmod acmod, bool lfe, std::uint32_t bitrate_kbps) {
+iclforge::eac3::FrameEncoder make_eac3_auto(iclforge::Acmod acmod, bool lfe,
+                                            std::uint32_t bitrate_kbps) {
     return iclforge::eac3::FrameEncoder{
         {.bitrate_kbps = bitrate_kbps, .acmod = acmod, .lfe = lfe, .auto_tools = true}};
 }

@@ -261,7 +261,8 @@ TEST_CASE("playback counter: a passthrough link counts in the content's frames",
 
     // AC-3's link is the content's own rate.
     const auto ac3_link = iclforge::audio::per_content_frame(
-        counter.position(0, 0), iclforge::audio::carrier_ratio(iclforge::audio::BitstreamFormat::kAc3));
+        counter.position(0, 0),
+        iclforge::audio::carrier_ratio(iclforge::audio::BitstreamFormat::kAc3));
     CHECK(ac3_link.frames_played == 6144 + 5);
     // A ratio of zero is taken as one rather than divided by.
     CHECK(iclforge::audio::per_content_frame(counter.position(0, 0), 0).frames_played == 6144 + 5);

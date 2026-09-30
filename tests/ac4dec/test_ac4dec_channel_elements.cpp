@@ -257,7 +257,8 @@ struct ElementWriter {
         w.put(0, 1);    // diff_type: DIFF_FREQ
         put_shortest(w, iclforge::ac4::detail::acpl_codebook(type, quant_mode, AcplHcbType::kF0));
         for (int band = start + 1; band < bands; ++band) {
-            put_shortest(w, iclforge::ac4::detail::acpl_codebook(type, quant_mode, AcplHcbType::kDf));
+            put_shortest(w,
+                         iclforge::ac4::detail::acpl_codebook(type, quant_mode, AcplHcbType::kDf));
         }
     }
     void acpl_1ch(bool partial) {
@@ -288,7 +289,8 @@ ParseResult read_element(const BitWriter& w, const SubstreamContext& ctx, Channe
     const std::vector<std::byte> bytes = w.bytes();
     Recorder local;
     BitReader reader(bytes, 0, rec != nullptr ? *rec : local);
-    const ParseResult result = iclforge::ac4::detail::parse_audio_data_chan(reader, ctx, state, out);
+    const ParseResult result =
+        iclforge::ac4::detail::parse_audio_data_chan(reader, ctx, state, out);
     if (result) {
         CHECK(reader.position() == w.size());
     }
@@ -929,7 +931,8 @@ ParseResult read_aspx_1ch(const BitWriter& w, const SubstreamContext& ctx, const
     const std::vector<std::byte> bytes = w.bytes();
     Recorder rec;
     BitReader reader(bytes, 0, rec);
-    const ParseResult result = iclforge::ac4::detail::parse_aspx_data_1ch(reader, ctx, config, state, out);
+    const ParseResult result =
+        iclforge::ac4::detail::parse_aspx_data_1ch(reader, ctx, config, state, out);
     if (result && exact) {
         CHECK(reader.position() == w.size());
     }
@@ -1344,8 +1347,8 @@ TEST_CASE("acpl_data_1ch reads steep interpolation with two parameter sets", "[a
     CHECK(out.framing.param_timeslot[0] == 3);
     CHECK(out.framing.param_timeslot[1] == 9);
     CHECK(out.beta1.sets[1].diff_type == 1);
-    CHECK(out.beta1.sets[1].huff_index[14] ==
-          shortest_index(iclforge::ac4::detail::acpl_codebook(AcplDataType::kBeta, 1, AcplHcbType::kDt)));
+    CHECK(out.beta1.sets[1].huff_index[14] == shortest_index(iclforge::ac4::detail::acpl_codebook(
+                                                  AcplDataType::kBeta, 1, AcplHcbType::kDt)));
 }
 
 TEST_CASE("A-CPL data refuses a missing configuration and a truncated codeword", "[ac4dec][channel_elements]") {

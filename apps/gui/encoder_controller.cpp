@@ -86,8 +86,8 @@ Ac4Outcome encode_ac4_file(const QString& path, const ac3gui::Ac4EncodeSettings&
                            const std::vector<std::vector<float>>& planes, std::uint32_t sample_rate,
                            int bitrate_kbps, bool mp4) {
     Ac4Outcome out;
-    const auto speakers =
-        iclforge::apps::ac4_input_speakers(planes.size(), iclforge::ac4::AdditionalPair::kNone, false, false);
+    const auto speakers = iclforge::apps::ac4_input_speakers(
+        planes.size(), iclforge::ac4::AdditionalPair::kNone, false, false);
     const auto wav_index = iclforge::apps::ac4_wav_index(speakers);
     iclforge::ac4::EncoderConfig config =
         ac3gui::ac4_encoder_config(settings, static_cast<int>(speakers.size()),
@@ -179,7 +179,8 @@ Ac4Outcome encode_ac4_objects_file(const QString& path, const QString& scene_pat
                                    const std::vector<iclforge::apps::Ac4ObjectSlot>& stream_objects,
                                    const std::vector<std::vector<float>>& flat,
                                    const iclforge::oba::ObjectScene& motion,
-                                   const iclforge::apps::Ac4ObjectsParams& params, bool mp4, bool crc) {
+                                   const iclforge::apps::Ac4ObjectsParams& params, bool mp4,
+                                   bool crc) {
     Ac4Outcome out;
     // The file the echoed command names, first: a stream whose command cannot be run is not
     // what the page shows beside it.
@@ -610,8 +611,8 @@ struct LivePassthroughOpen {
     std::unique_ptr<iclforge::audio::PassthroughSink> sink;
     QString plan_text;
 };
-LivePassthroughOpen open_live_passthrough(const iclforge::audio::RenderDeviceInfo& receiver, bool eac3,
-                                          bool atmos_enabled, bool downmix_leg,
+LivePassthroughOpen open_live_passthrough(const iclforge::audio::RenderDeviceInfo& receiver,
+                                          bool eac3, bool atmos_enabled, bool downmix_leg,
                                           std::uint32_t sample_rate, const QString& shape_name) {
     LivePassthroughOpen result;
     const bool supports =
@@ -1087,9 +1088,11 @@ QString EncoderController::ac4Refusal() const {
                        : channels == 2 ? iclforge::Acmod::k2_0
                                        : iclforge::Acmod::k3_2;
     if (bed_acmod_ != acmod || bed_lfe_ != lfe || extras_mask_ != 0) {
-        return QStringLiteral("AC-4 encodes the source in its own layout; pick the %1 bed, "
-                              "which is the source's.")
-            .arg(to_qstring(iclforge::apps::ac4_layout_name(channels, iclforge::ac4::AdditionalPair::kNone)));
+        return QStringLiteral(
+                   "AC-4 encodes the source in its own layout; pick the %1 bed, "
+                   "which is the source's.")
+            .arg(to_qstring(
+                iclforge::apps::ac4_layout_name(channels, iclforge::ac4::AdditionalPair::kNone)));
     }
     if (const auto refused = ac3gui::ac4_settings_refusal(
             ac4_, channels, static_cast<int>(source_->wav.sample_rate))) {
@@ -1188,7 +1191,8 @@ QString EncoderController::ac4ObjectsRefusal() const {
     if (const auto refused = ac3gui::ac4_object_settings_refusal(ac4_)) {
         return QStringLiteral("ac3cli refuses this: %1.").arg(QString::fromStdString(*refused));
     }
-    const auto stream_objects = iclforge::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
+    const auto stream_objects =
+        iclforge::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
     const auto params = ac3gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
     if (const auto refused = iclforge::apps::ac4_objects_refusal(stream_objects, params)) {
         return QString::fromStdString(*refused) + QLatin1Char('.');
@@ -1204,8 +1208,8 @@ QString EncoderController::ac4ObjectsDeepRefusal(
     for (const iclforge::oba::SceneObject& object : scene.objects()) {
         ++number;
         for (const iclforge::oba::AutomationPoint& point : object.automation) {
-            const auto p =
-                iclforge::apps::ac4_object_properties({.position = point.position, .gain = point.gain});
+            const auto p = iclforge::apps::ac4_object_properties(
+                {.position = point.position, .gain = point.gain});
             const bool gain_ok =
                 std::isinf(p.gain_db) ? p.gain_db < 0.0 : (p.gain_db >= -49.0 && p.gain_db <= 15.0);
             const bool room_ok = point.position.x >= 0.0 && point.position.x <= 1.0 &&
@@ -2037,13 +2041,16 @@ void EncoderController::applyChannelPreset(const QString& name) {
         {"5.1", iclforge::Acmod::k3_2, true, 0},
         {"7.1", iclforge::Acmod::k3_2, true, iclforge::eac3::chanmap::kLrsRrsBit},
         {"5.1.4", iclforge::Acmod::k3_2, true,
-         static_cast<std::uint16_t>(iclforge::eac3::chanmap::kVhlVhrBit | iclforge::eac3::chanmap::kLtsRtsBit)},
+         static_cast<std::uint16_t>(iclforge::eac3::chanmap::kVhlVhrBit |
+                                    iclforge::eac3::chanmap::kLtsRtsBit)},
         {"7.1.4", iclforge::Acmod::k3_2, true,
-         static_cast<std::uint16_t>(iclforge::eac3::chanmap::kLrsRrsBit | iclforge::eac3::chanmap::kVhlVhrBit |
+         static_cast<std::uint16_t>(iclforge::eac3::chanmap::kLrsRrsBit |
+                                    iclforge::eac3::chanmap::kVhlVhrBit |
                                     iclforge::eac3::chanmap::kLtsRtsBit)},
         {"7.2.4", iclforge::Acmod::k3_2, true,
-         static_cast<std::uint16_t>(iclforge::eac3::chanmap::kLrsRrsBit | iclforge::eac3::chanmap::kVhlVhrBit |
-                                    iclforge::eac3::chanmap::kLtsRtsBit | iclforge::eac3::chanmap::kLfe2Bit)},
+         static_cast<std::uint16_t>(
+             iclforge::eac3::chanmap::kLrsRrsBit | iclforge::eac3::chanmap::kVhlVhrBit |
+             iclforge::eac3::chanmap::kLtsRtsBit | iclforge::eac3::chanmap::kLfe2Bit)},
     }};
     for (const auto& preset : kPresets) {
         if (name != QLatin1String(preset.name)) {
@@ -4239,8 +4246,8 @@ void EncoderController::previewPlanMeters() {
         }
         std::vector<iclforge::analysis::ChannelSummary> source_summaries(sources.size());
 
-        std::vector<std::vector<float>> source_block(planes.size(),
-                                                     std::vector<float>(iclforge::kSamplesPerFrame));
+        std::vector<std::vector<float>> source_block(
+            planes.size(), std::vector<float>(iclforge::kSamplesPerFrame));
         std::vector<std::vector<float>> block(coded_count,
                                               std::vector<float>(iclforge::kSamplesPerFrame));
         std::vector<std::span<const float>> in;
@@ -4434,8 +4441,10 @@ void EncoderController::publishLevels(std::span<const iclforge::analysis::Channe
             // every other reading of the same signal.
             {QStringLiteral("peak"),
              iclforge::analysis::meter_fraction(level.peak_db, kMeterFloorDb)},
-            {QStringLiteral("rms"), iclforge::analysis::meter_fraction(level.rms_db, kMeterFloorDb)},
-            {QStringLiteral("hold"), iclforge::analysis::meter_fraction(level.hold_db, kMeterFloorDb)},
+            {QStringLiteral("rms"),
+             iclforge::analysis::meter_fraction(level.rms_db, kMeterFloorDb)},
+            {QStringLiteral("hold"),
+             iclforge::analysis::meter_fraction(level.hold_db, kMeterFloorDb)},
             {QStringLiteral("azimuthDeg"), azimuth.value_or(0.0)},
             {QStringLiteral("directional"), azimuth.has_value()},
             {QStringLiteral("ceiling"), ceiling},
@@ -4443,8 +4452,7 @@ void EncoderController::publishLevels(std::span<const iclforge::analysis::Channe
             // A channel the source cannot fill reads -inf for a reason, and
             // the display should say which reason: silent by routing is not
             // the same as silent because nothing is reaching the meter.
-            {QStringLiteral("fed"),
-             ch >= channel_fed_.size() || channel_fed_[ch]},
+            {QStringLiteral("fed"), ch >= channel_fed_.size() || channel_fed_[ch]},
         });
     }
     channel_levels_ = std::move(entries);
@@ -4516,7 +4524,8 @@ void EncoderController::resetSourceLevels() {
     emit sourceLevelsChanged();
 }
 
-void EncoderController::publishSourceLevels(std::span<const iclforge::analysis::ChannelSummary> levels) {
+void EncoderController::publishSourceLevels(
+    std::span<const iclforge::analysis::ChannelSummary> levels) {
     QVariantList out;
     out.reserve(static_cast<qsizetype>(levels.size()));
     for (const auto& summary : levels) {
@@ -4857,8 +4866,8 @@ std::unique_ptr<EncoderController::LiveOutputWriters> EncoderController::openLiv
     writers->matroska = container_index_ == kContainerMatroska;
     // Two containers are special-cased for a live session, and they are
     // exactly the two with an INCREMENTAL writer behind them:
-    // iclforge::matroska::Writer and iclforge::mp4::FragmentWriter. iclforge::mp4::mux and iclforge::mpegts::mux are
-    // batch APIs - every frame has to be known up front (see
+    // iclforge::matroska::Writer and iclforge::mp4::FragmentWriter. iclforge::mp4::mux and
+    // iclforge::mpegts::mux are batch APIs - every frame has to be known up front (see
     // mp4.hpp/mpegts.hpp's own header comments) - so MP4, S/PDIF and MPEG-TS
     // still fall through to the same plain elementary-stream write, rather
     // than gaining a new failure mode.
@@ -5351,7 +5360,8 @@ void EncoderController::runLiveSession(iclforge::audio::DeviceInfo device,
     if (writers && writers->matroska) {
         const int channels_for_track = renderedChannelCount();
         auto created = iclforge::matroska::Writer::create(
-            {.codec_id = std::string{eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
+            {.codec_id =
+                 std::string{eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
              .sample_rate = device.sample_rate,
              .channels = channels_for_track,
              .samples_per_frame = iclforge::kSamplesPerFrame});
@@ -5406,7 +5416,8 @@ void EncoderController::runLiveSession(iclforge::audio::DeviceInfo device,
         // per audio frame - the make_unique cost is paid once, not in the
         // hot loop below.
         auto ac3_encoder = std::make_unique<iclforge::FrameEncoder>(plan::ac3_config(p));
-        auto eac3_encoder = std::make_unique<iclforge::eac3::AccessUnitEncoder>(plan::eac3_config(p));
+        auto eac3_encoder =
+            std::make_unique<iclforge::eac3::AccessUnitEncoder>(plan::eac3_config(p));
         std::unique_ptr<iclforge::oba::AtmosEncoder> atmos_encoder;
         if (atmos) {
             atmos_encoder = std::make_unique<iclforge::oba::AtmosEncoder>(
@@ -5497,13 +5508,15 @@ void EncoderController::runLiveSession(iclforge::audio::DeviceInfo device,
                 static_cast<double>(sample_rate) / static_cast<double>(sample_rate2);
             slave_resampler.emplace(channels2);
             slave_resampler->reset();
-            slave_drift.emplace(nominal_ratio, static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+            slave_drift.emplace(nominal_ratio,
+                                static_cast<std::size_t>(iclforge::kSamplesPerFrame));
             slave_scratch.assign(
                 8 * static_cast<std::size_t>(iclforge::kSamplesPerFrame) * channels2, 0.0f);
         }
 
         std::vector<std::vector<float>> object_block(
-            std::max<std::size_t>(nobjects, 1), std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
+            std::max<std::size_t>(nobjects, 1),
+            std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
         std::vector<std::span<const float>> object_views(std::max<std::size_t>(nobjects, 1));
         std::vector<iclforge::oba::ObjectPlacement> placement(std::max<std::size_t>(nobjects, 1));
         std::vector<std::span<const float>> bed_views(6);
@@ -5513,8 +5526,8 @@ void EncoderController::runLiveSession(iclforge::audio::DeviceInfo device,
         std::vector<std::vector<float>> chan_source(
             atmos ? 0 : static_cast<std::size_t>(routing->source_channels),
             std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
-        std::vector<std::vector<float>> chan_block(coded_count,
-                                                   std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
+        std::vector<std::vector<float>> chan_block(
+            coded_count, std::vector<float>(iclforge::kSamplesPerFrame, 0.0f));
         std::vector<std::span<const float>> chan_in;
         std::vector<std::span<float>> chan_out;
         std::vector<std::span<const float>> chan_views;
@@ -6309,7 +6322,8 @@ void EncoderController::startRecording(int deviceIndex, const QUrl& url) {
         // past what's comfortable for a worker thread (PREfast's C6262).
         // Constructed once here, at recording start, not per audio frame.
         auto ac3_encoder = std::make_unique<iclforge::FrameEncoder>(plan::ac3_config(p));
-        auto eac3_encoder = std::make_unique<iclforge::eac3::AccessUnitEncoder>(plan::eac3_config(p));
+        auto eac3_encoder =
+            std::make_unique<iclforge::eac3::AccessUnitEncoder>(plan::eac3_config(p));
         iclforge::analysis::LevelMeter meter{cp.bed_acmod, cp.bed_lfe, sample_rate,
                                         static_cast<int>(coded_count)};
 
@@ -7042,7 +7056,8 @@ QString EncoderController::writeOutput(const QString& path,
     if (container_index_ == kContainerMatroska) {
         const bool eac3 = atmos_enabled_ || codec_ == plan::Codec::kEac3;
         const iclforge::matroska::AudioTrack track{
-            .codec_id = std::string{eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
+            .codec_id =
+                std::string{eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
             .sample_rate = sample_rate,
             .channels = channels,
             .samples_per_frame = iclforge::kSamplesPerFrame};
@@ -7090,11 +7105,11 @@ QString EncoderController::writeOutput(const QString& path,
         // is built entirely from track.codec), so no bitstream scan is
         // needed here, matching ac3cli's own run_ts (main.cpp).
         const bool eac3 = atmos_enabled_ || codec_ == plan::Codec::kEac3;
-        const iclforge::mpegts::AudioTrack track{
-            .codec = eac3 ? iclforge::mpegts::AudioCodec::kEac3 : iclforge::mpegts::AudioCodec::kAc3,
-            .sample_rate = sample_rate,
-            .channels = channels,
-            .samples_per_frame = iclforge::kSamplesPerFrame};
+        const iclforge::mpegts::AudioTrack track{.codec = eac3 ? iclforge::mpegts::AudioCodec::kEac3
+                                                               : iclforge::mpegts::AudioCodec::kAc3,
+                                                 .sample_rate = sample_rate,
+                                                 .channels = channels,
+                                                 .samples_per_frame = iclforge::kSamplesPerFrame};
         const auto file = iclforge::mpegts::mux(track, frames);
         if (!file) {
             return to_qstring(iclforge::mpegts::describe(file.error()));
@@ -7141,7 +7156,8 @@ QString EncoderController::writeOutput(const QString& path,
         // same scanned complexity index.
         const auto fragmented = iclforge::mp4::fragment(
             built->track, frames,
-            iclforge::mp4::FragmentOptions{.object_audio_brand = built->oba_complexity_index.has_value()});
+            iclforge::mp4::FragmentOptions{.object_audio_brand =
+                                               built->oba_complexity_index.has_value()});
         if (!fragmented) {
             return to_qstring(iclforge::mp4::describe(fragmented.error()));
         }
@@ -7170,8 +7186,8 @@ QString EncoderController::writeOutput(const QString& path,
             .channels_attribute = built->oba_complexity_index
                                       ? fmt::format("{}/JOC", *built->oba_complexity_index)
                                       : std::string{}};
-        const auto media_playlist =
-            iclforge::mp4::build_hls_media_playlist(built->track, fragmented->media_segments, hls_options);
+        const auto media_playlist = iclforge::mp4::build_hls_media_playlist(
+            built->track, fragmented->media_segments, hls_options);
         const auto master_playlist = iclforge::mp4::build_hls_master_playlist(
             built->track, fragmented->media_segments, "audio.m3u8", hls_options);
         if (!write_text_to_path(dir / "audio.m3u8", media_playlist) ||
@@ -7185,8 +7201,8 @@ QString EncoderController::writeOutput(const QString& path,
         const iclforge::mp4::DashOptions dash_options{
             .joc_complexity_index = built->oba_complexity_index,
             .dolby_channel_configuration = built->dolby_channel_configuration};
-        const auto adaptation_set =
-            iclforge::mp4::build_dash_adaptation_set(built->track, fragmented->media_segments, dash_options);
+        const auto adaptation_set = iclforge::mp4::build_dash_adaptation_set(
+            built->track, fragmented->media_segments, dash_options);
         const auto mpd =
             iclforge::mp4::build_dash_mpd(built->track, fragmented->media_segments, adaptation_set);
         if (!write_text_to_path(dir / "manifest.mpd", mpd)) {
@@ -7479,7 +7495,8 @@ void EncoderController::encodeChannels(const QString& path,
         // past what's comfortable for a worker thread (PREfast's C6262).
         // Constructed once here, at encode start, not per audio frame.
         auto ac3_encoder = std::make_unique<iclforge::FrameEncoder>(plan::ac3_config(p));
-        auto eac3_encoder = std::make_unique<iclforge::eac3::AccessUnitEncoder>(plan::eac3_config(p));
+        auto eac3_encoder =
+            std::make_unique<iclforge::eac3::AccessUnitEncoder>(plan::eac3_config(p));
         iclforge::analysis::LevelMeter meter{cp.bed_acmod, cp.bed_lfe, sample_rate,
                                         static_cast<int>(coded_count)};
         std::vector<iclforge::dsp::LfeLowpass> lfe_filters;
@@ -7649,8 +7666,9 @@ void EncoderController::encodeChannels(const QString& path,
                 // own VBR report uses (main.cpp's run_eac3_encode_multi).
                 if (vbr && count > 0) {
                     const auto kbps = [sample_rate](double frame_bytes) {
-                        return std::lround(frame_bytes * 8.0 * static_cast<double>(sample_rate) /
-                                           (1000.0 * static_cast<double>(iclforge::kSamplesPerFrame)));
+                        return std::lround(
+                            frame_bytes * 8.0 * static_cast<double>(sample_rate) /
+                            (1000.0 * static_cast<double>(iclforge::kSamplesPerFrame)));
                     };
                     const double mean_bytes =
                         static_cast<double>(bytes) / static_cast<double>(count);
@@ -7674,8 +7692,8 @@ void EncoderController::encodeAc4(const QString& path, std::vector<std::vector<f
     const ac3gui::Ac4EncodeSettings settings = ac4_;
     const bool mp4 = container_index_ == kContainerMp4;
     const int kbps = bitrate_kbps_;
-    const QString layout =
-        to_qstring(iclforge::apps::ac4_layout_name(planes.size(), iclforge::ac4::AdditionalPair::kNone));
+    const QString layout = to_qstring(
+        iclforge::apps::ac4_layout_name(planes.size(), iclforge::ac4::AdditionalPair::kNone));
     jobs_.run([this, path, settings, mp4, kbps, sample_rate, layout,
                planes = std::move(planes)] {
         const Ac4Outcome outcome = encode_ac4_file(path, settings, planes, sample_rate, kbps, mp4);
@@ -7699,7 +7717,8 @@ void EncoderController::encodeAc4(const QString& path, std::vector<std::vector<f
 }
 
 void EncoderController::encodeAc4Objects(const QString& path) {
-    const auto stream_objects = iclforge::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
+    const auto stream_objects =
+        iclforge::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
     auto scene = ac4ObjectScene(stream_objects);
     if (!scene.has_value() || !source_) {
         // encodeTo checked both before it opened the run.

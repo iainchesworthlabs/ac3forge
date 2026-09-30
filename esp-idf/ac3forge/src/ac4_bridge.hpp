@@ -85,7 +85,8 @@ namespace ac3forge::ac4bridge {
 // The coded layout a decoded block's channels are in, as the renderer takes it:
 // each channel's location, in the decoder's order. Channels past what a
 // renderer's bed holds are left out.
-[[nodiscard]] inline iclforge::eac3::chanmap::Layout bed(std::span<const iclforge::ac4::Speaker> speakers) {
+[[nodiscard]] inline iclforge::eac3::chanmap::Layout bed(
+    std::span<const iclforge::ac4::Speaker> speakers) {
     iclforge::eac3::chanmap::Layout layout{};
     for (const iclforge::ac4::Speaker speaker : speakers) {
         if (layout.count >= iclforge::eac3::chanmap::kMaxChannels) {
@@ -100,7 +101,8 @@ namespace ac3forge::ac4bridge {
 // The decoder's own fold for the player's serving of a stereo or mono layout
 // (iclforge::render::serve): the decoder folds where the player would fold, and
 // hands the renderer what it hands it for AC-3, two channels or one.
-[[nodiscard]] inline iclforge::ac4::DownmixTarget target(std::optional<iclforge::DownmixTarget> fold) noexcept {
+[[nodiscard]] inline iclforge::ac4::DownmixTarget target(
+    std::optional<iclforge::DownmixTarget> fold) noexcept {
     if (!fold.has_value()) {
         return iclforge::ac4::DownmixTarget::kAsCoded;
     }

@@ -194,8 +194,9 @@ TEST_CASE("the per-block form states D15 where the table would force D45",
     for (int i = 0; i < free_form.count; ++i) {
         const auto ui = static_cast<std::size_t>(i);
         const int span = free_form.starts[ui + 1] - free_form.starts[ui];
-        states_d15_on_a_short_run = states_d15_on_a_short_run ||
-                                    (span < 4 && free_form.strategy[ui] == iclforge::ExpStrategy::kD15);
+        states_d15_on_a_short_run =
+            states_d15_on_a_short_run ||
+            (span < 4 && free_form.strategy[ui] == iclforge::ExpStrategy::kD15);
     }
     CHECK(states_d15_on_a_short_run);
 }
@@ -287,8 +288,8 @@ TEST_CASE("the planner's exponent model is the real encode, exactly",
         shapes.push_back(ragged);
     }
     for (const auto& shape : shapes) {
-        for (const auto strategy :
-             {iclforge::ExpStrategy::kD15, iclforge::ExpStrategy::kD25, iclforge::ExpStrategy::kD45}) {
+        for (const auto strategy : {iclforge::ExpStrategy::kD15, iclforge::ExpStrategy::kD25,
+                                    iclforge::ExpStrategy::kD45}) {
             std::vector<std::uint8_t> modelled(shape.size());
             iclforge::internal::banded_run_exponents(shape, strategy, false, modelled);
             const auto coded = iclforge::encode_exponents(shape, strategy);
@@ -425,7 +426,8 @@ iclforge::internal::ExponentRunPlan reference_plan(const iclforge::internal::Exp
     return plan;
 }
 
-bool same_plan(const iclforge::internal::ExponentRunPlan& a, const iclforge::internal::ExponentRunPlan& b) {
+bool same_plan(const iclforge::internal::ExponentRunPlan& a,
+               const iclforge::internal::ExponentRunPlan& b) {
     if (a.count != b.count || a.score != b.score) {
         return false;
     }

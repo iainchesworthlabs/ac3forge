@@ -37,7 +37,8 @@ ParseResult read_presentation(const BitWriter& w, const PresentationContext& ctx
                               PresentationSubstream& out, Recorder& rec) {
     const std::vector<std::byte> bytes = w.bytes();
     BitReader reader(bytes, 0, rec);
-    const ParseResult result = iclforge::ac4::detail::parse_presentation_substream(reader, ctx, state, out);
+    const ParseResult result =
+        iclforge::ac4::detail::parse_presentation_substream(reader, ctx, state, out);
     if (result) {
         CHECK(reader.position() == w.size());
     }

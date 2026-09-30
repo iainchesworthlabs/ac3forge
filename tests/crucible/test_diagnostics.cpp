@@ -122,7 +122,8 @@ TEST_CASE("the report never carries the key path, the key bytes or the signing s
     facts.signing.source = KeySource::kFile;
     facts.settings.emplace_back("signing/keyPath", "a file is chosen");
 
-    const std::string report = lowercase(iclforge::crucible::render_report(facts, status, log, secrets));
+    const std::string report =
+        lowercase(iclforge::crucible::render_report(facts, status, log, secrets));
     CHECK_FALSE(has(report, "secret/atmos.key"));
     CHECK_FALSE(has(report, "secret\\atmos.key"));
     CHECK_FALSE(has(report, "c2vjcmv0"));
@@ -259,7 +260,8 @@ TEST_CASE("the report renders a busy engine: endpoints, placed and paired applic
          {std::pair{KeySource::kFile, "a file chosen in Settings (path withheld)"},
           std::pair{KeySource::kEnvironmentInline, "AC3FORGE_SIGNING_KEY (value withheld)"}}) {
         facts.signing.source = source;
-        CHECK(has(iclforge::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{}), text));
+        CHECK(has(iclforge::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{}),
+                  text));
     }
 }
 

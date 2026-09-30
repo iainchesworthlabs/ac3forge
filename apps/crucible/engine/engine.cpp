@@ -440,8 +440,9 @@ struct Engine::Impl {
             return custom->second;
         }
         const auto wanted = wanted_positions.find(app);
-        const iclforge::oba::Position centre =
-            wanted == wanted_positions.end() ? iclforge::oba::Position{0.5, 0.5, 0.0} : wanted->second;
+        const iclforge::oba::Position centre = wanted == wanted_positions.end()
+                                                   ? iclforge::oba::Position{0.5, 0.5, 0.0}
+                                                   : wanted->second;
         iclforge::oba::Position left = centre;
         iclforge::oba::Position right = centre;
         left.x = std::clamp(centre.x - config.split_spread, 0.0, 1.0);

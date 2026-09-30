@@ -67,8 +67,9 @@ std::vector<std::byte> encode_atmos_stream(int frames, bool emit_objects) {
     std::vector<std::span<const float>> views(1);
     std::vector<std::byte> stream;
     for (int f = 0; f < frames; ++f) {
-        const auto essence = tone(440.0, static_cast<std::uint64_t>(f) *
-                                             static_cast<std::uint64_t>(iclforge::kSamplesPerFrame));
+        const auto essence =
+            tone(440.0, static_cast<std::uint64_t>(f) *
+                            static_cast<std::uint64_t>(iclforge::kSamplesPerFrame));
         views[0] = essence;
         auto unit = encoder.encode_frame(views, placement);
         REQUIRE(unit.has_value());
@@ -188,8 +189,8 @@ TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
     }
 
     SECTION("a missing path is an error, not an absent key") {
-        const auto key =
-            iclforge::signing::load_signing_key((dir / "definitely_not_here_ac3forge.key").string());
+        const auto key = iclforge::signing::load_signing_key(
+            (dir / "definitely_not_here_ac3forge.key").string());
         REQUIRE_FALSE(key.has_value());
         CHECK(key.error().kind == iclforge::signing::KeyErrorKind::kUnreadable);
     }

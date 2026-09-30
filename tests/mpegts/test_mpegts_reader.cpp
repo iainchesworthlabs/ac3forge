@@ -315,11 +315,12 @@ TEST_CASE("MPEG-TS round-trips an AC-3 track and the Writer's own output", "[mpe
 TEST_CASE("MPEG-TS Reader over arbitrary chunk boundaries matches demux()", "[mpegts][reader]") {
     const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(3, 0x22), frame_of(1500, 0x33),
                                     frame_of(64, 0x44)};
-    const auto file = iclforge::mpegts::mux(iclforge::mpegts::AudioTrack{.codec = iclforge::mpegts::AudioCodec::kEac3,
-                                                     .sample_rate = 48000,
-                                                     .channels = 6,
-                                                     .samples_per_frame = 1536},
-                                  views_of(frames));
+    const auto file = iclforge::mpegts::mux(
+        iclforge::mpegts::AudioTrack{.codec = iclforge::mpegts::AudioCodec::kEac3,
+                                     .sample_rate = 48000,
+                                     .channels = 6,
+                                     .samples_per_frame = 1536},
+        views_of(frames));
     REQUIRE(file.has_value());
 
     for (const std::size_t chunk : {std::size_t{1}, std::size_t{7}, std::size_t{188},
@@ -407,11 +408,12 @@ TEST_CASE("MPEG-TS reads the M2TS and 204-byte grids", "[mpegts][reader]") {
     const std::vector<Bytes> frames{frame_of(500, 0x71), frame_of(500, 0x72),
                                     frame_of(500, 0x73), frame_of(500, 0x74),
                                     frame_of(500, 0x75), frame_of(500, 0x76)};
-    const auto plain = iclforge::mpegts::mux(iclforge::mpegts::AudioTrack{.codec = iclforge::mpegts::AudioCodec::kEac3,
-                                                      .sample_rate = 48000,
-                                                      .channels = 6,
-                                                      .samples_per_frame = 1536},
-                                   views_of(frames));
+    const auto plain = iclforge::mpegts::mux(
+        iclforge::mpegts::AudioTrack{.codec = iclforge::mpegts::AudioCodec::kEac3,
+                                     .sample_rate = 48000,
+                                     .channels = 6,
+                                     .samples_per_frame = 1536},
+        views_of(frames));
     REQUIRE(plain.has_value());
 
     SECTION("M2TS, as a Blu-ray or AVCHD rip arrives") {
@@ -529,7 +531,8 @@ TEST_CASE("MPEG-TS refuses what it cannot read", "[mpegts][reader]") {
             const auto pkt = ts_packet(0x0100, false, es_cc, frame_of(184, 0xCC));
             file.insert(file.end(), pkt.begin(), pkt.end());
         }
-        const auto out = iclforge::mpegts::demux(file, iclforge::mpegts::ReadOptions{.max_pes_bytes = 64 * 1024});
+        const auto out = iclforge::mpegts::demux(
+            file, iclforge::mpegts::ReadOptions{.max_pes_bytes = 64 * 1024});
         REQUIRE_FALSE(out.has_value());
         CHECK(out.error() == iclforge::mpegts::DemuxError::kLimitExceeded);
     }
@@ -537,16 +540,17 @@ TEST_CASE("MPEG-TS refuses what it cannot read", "[mpegts][reader]") {
 
 TEST_CASE("MPEG-TS describe() names every demux error", "[mpegts][reader]") {
     for (const auto error :
-         {iclforge::mpegts::DemuxError::kNotTransportStream, iclforge::mpegts::DemuxError::kNoProgramme,
-          iclforge::mpegts::DemuxError::kNoAudioStream, iclforge::mpegts::DemuxError::kMalformed,
-          iclforge::mpegts::DemuxError::kLimitExceeded}) {
+         {iclforge::mpegts::DemuxError::kNotTransportStream,
+          iclforge::mpegts::DemuxError::kNoProgramme, iclforge::mpegts::DemuxError::kNoAudioStream,
+          iclforge::mpegts::DemuxError::kMalformed, iclforge::mpegts::DemuxError::kLimitExceeded}) {
         CHECK_FALSE(iclforge::mpegts::describe(error).empty());
         CHECK(iclforge::mpegts::describe(error) != "unknown error");
     }
     // DemuxError has an explicit uint8_t underlying type, so a value outside
     // every enumerator is well-defined to construct and switch on - describe()'s
     // fallthrough is reachable this way without invoking any UB to get there.
-    CHECK(iclforge::mpegts::describe(static_cast<iclforge::mpegts::DemuxError>(200)) == "unknown error");
+    CHECK(iclforge::mpegts::describe(static_cast<iclforge::mpegts::DemuxError>(200)) ==
+          "unknown error");
 }
 
 // --- error-path and less-common-shape coverage -----------------------------
@@ -633,7 +637,8 @@ TEST_CASE("MPEG-TS select_from_pmt handles malformed and foreign shapes", "[mpeg
         const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x81, .pid = 0x0100, .descriptors = {}}};
         const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(7, streams));
         file.insert(file.end(), pmt.begin(), pmt.end());
-        const auto out = iclforge::mpegts::demux(file, iclforge::mpegts::ReadOptions{.program_number = 5});
+        const auto out =
+            iclforge::mpegts::demux(file, iclforge::mpegts::ReadOptions{.program_number = 5});
         REQUIRE_FALSE(out.has_value());
         CHECK(out.error() == iclforge::mpegts::DemuxError::kNoAudioStream);
     }
@@ -915,7 +920,8 @@ TEST_CASE("MPEG-TS find_sync locks onto a very short capture", "[mpegts][reader]
 
 TEST_CASE("MPEG-TS gives up on a sync search past its own budget", "[mpegts][reader]") {
     Bytes file(2048, std::byte{0x00});  // no 0x47 anywhere
-    const auto out = iclforge::mpegts::demux(file, iclforge::mpegts::ReadOptions{.max_sync_search_bytes = 512});
+    const auto out =
+        iclforge::mpegts::demux(file, iclforge::mpegts::ReadOptions{.max_sync_search_bytes = 512});
     REQUIRE_FALSE(out.has_value());
     CHECK(out.error() == iclforge::mpegts::DemuxError::kNotTransportStream);
 }
@@ -1222,7 +1228,8 @@ TEST_CASE("MPEG-TS parse_service_descriptor rejects truncated and unknown input"
     constexpr std::uint8_t kAtscEac3 = 0xCC;
 
     SECTION("an unrecognised tag is refused, not guessed at") {
-        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(0x9B, Bytes{std::byte{0x00}}).has_value());
+        CHECK_FALSE(
+            iclforge::mpegts::parse_service_descriptor(0x9B, Bytes{std::byte{0x00}}).has_value());
     }
 
     SECTION("DVB AC-3: an empty body") {

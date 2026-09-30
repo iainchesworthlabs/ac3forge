@@ -41,9 +41,11 @@ constexpr int kVisuallyImpaired = 0b010;
         case DownmixTarget::kMono:
             return iclforge::ac4::DownmixTarget::kMono;
         case DownmixTarget::kLtRt:
-            return preferred ? iclforge::ac4::DownmixTarget::kStereo : iclforge::ac4::DownmixTarget::kLtRt;
+            return preferred ? iclforge::ac4::DownmixTarget::kStereo
+                             : iclforge::ac4::DownmixTarget::kLtRt;
         case DownmixTarget::kLoRo:
-            return preferred ? iclforge::ac4::DownmixTarget::kStereo : iclforge::ac4::DownmixTarget::kLoRo;
+            return preferred ? iclforge::ac4::DownmixTarget::kStereo
+                             : iclforge::ac4::DownmixTarget::kLoRo;
         case DownmixTarget::kAsCoded:
             break;
     }
@@ -81,9 +83,10 @@ constexpr int kVisuallyImpaired = 0b010;
     // layout does not itself ask for a fold does the immersive element's own
     // layout control (I5) have anything to say; unset there keeps today's
     // "as coded" default exactly as before this control existed.
-    config.output.downmix = serving.fold.has_value()
-                                ? ac4_downmix(serving.fold, ac4.preferred_downmix)
-                                : ac4.immersive_layout.value_or(iclforge::ac4::DownmixTarget::kAsCoded);
+    config.output.downmix =
+        serving.fold.has_value()
+            ? ac4_downmix(serving.fold, ac4.preferred_downmix)
+            : ac4.immersive_layout.value_or(iclforge::ac4::DownmixTarget::kAsCoded);
     config.output.mix_lfe = settings.mix_lfe.value_or(true);
     config.output.dialogue_gain_db = ac4.dialogue_db;
     // Below -120 dB the decoder silences it, which is what "not mixed in" is.
@@ -92,7 +95,8 @@ constexpr int kVisuallyImpaired = 0b010;
                                            : -std::numeric_limits<double>::infinity();
     config.concealment = ac4_concealment(settings.concealment);
     config.presentation = presentation_choice(settings);
-    config.decoding = ac4.core_decoding ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull;
+    config.decoding =
+        ac4.core_decoding ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull;
     return config;
 }
 
@@ -131,9 +135,10 @@ constexpr int kVisuallyImpaired = 0b010;
                         : std::string{"no audio description"});
     parts.emplace_back(ac4.preferred_downmix ? "the stream's preferred downmix"
                                              : "the stereo fold's downmix");
-    parts.push_back(ac4.immersive_layout
-                        ? fmt::format("immersive layout {}", iclforge::ac4::describe(*ac4.immersive_layout))
-                        : std::string{"the source's own immersive layout"});
+    parts.push_back(
+        ac4.immersive_layout
+            ? fmt::format("immersive layout {}", iclforge::ac4::describe(*ac4.immersive_layout))
+            : std::string{"the source's own immersive layout"});
     parts.emplace_back(ac4.core_decoding ? "core decoding" : "full decoding");
     return fmt::format("AC-4: {}", joined(parts));
 }

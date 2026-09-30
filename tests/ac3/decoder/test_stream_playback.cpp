@@ -298,7 +298,8 @@ TEST_CASE("held_back_unit is empty when nothing was held back", "[decoder][eac3]
     orphan.channels.assign(4, std::vector<float>(kFrame, 0.25F));
     std::vector<iclforge::DecodedSubstream> flushed;
     flushed.push_back(std::move(orphan));
-    CHECK_FALSE(iclforge::apps::held_back_unit(std::move(flushed), std::nullopt, false).has_value());
+    CHECK_FALSE(
+        iclforge::apps::held_back_unit(std::move(flushed), std::nullopt, false).has_value());
 }
 
 TEST_CASE("a single substream's held-back last unit plays, folded or not",

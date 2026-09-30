@@ -33,7 +33,8 @@ namespace {
 using iclforge::ac4::detail::BitReader;
 using iclforge::ac4::detail::BitWriter;
 
-std::vector<iclforge::ac4::SyntaxRecord> records_of(std::span<const iclforge::ac4::SyntaxRecord> all, int substream) {
+std::vector<iclforge::ac4::SyntaxRecord> records_of(
+    std::span<const iclforge::ac4::SyntaxRecord> all, int substream) {
     std::vector<iclforge::ac4::SyntaxRecord> out;
     for (const iclforge::ac4::SyntaxRecord& r : all) {
         if (r.substream == substream) {
@@ -88,7 +89,8 @@ TEST_CASE("every codeword of every spectral and scale factor codebook reads back
     for (std::size_t cb = 1; cb <= 11; ++cb) {
         check_book(*iclforge::ac4::detail::tables::kAsfSpectrumCodebooks[cb], iclforge::ac4::detail::tables::kAsfSpectrumCodes[cb]);
     }
-    check_book(iclforge::ac4::detail::tables::kAsfHcbScalefac, iclforge::ac4::detail::tables::kAsfHcbScalefacCodes);
+    check_book(iclforge::ac4::detail::tables::kAsfHcbScalefac,
+               iclforge::ac4::detail::tables::kAsfHcbScalefacCodes);
 }
 
 TEST_CASE("a buffered writer's records land where its bits do", "[ac4enc][writer]") {
@@ -138,7 +140,8 @@ TEST_CASE("sync frames carry the raw frame and, with 0xAC41, a CRC the inspector
     }
     // A frame past 0xFFFF bytes takes the 24-bit frame_size.
     const std::vector<std::byte> big(70000, std::byte{0x5A});
-    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(iclforge::ac4::sync_frame(big, true));
+    const iclforge::ac4::ScanResult scan =
+        iclforge::ac4::scan(iclforge::ac4::sync_frame(big, true));
     REQUIRE(scan.frames.size() == 1);
     CHECK(scan.frames[0].raw_ac4_frame.size() == big.size());
     CHECK(scan.frames[0].crc_ok.value_or(false));
@@ -193,7 +196,9 @@ TEST_CASE("a frame of the writer's reads to the end of every substream, with the
             CHECK(chan->ch_mode == (stereo ? 1 : 0));
 
             std::vector<iclforge::ac4::SyntaxRecord> read;
-            const auto reader_sink = [&](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+            const auto reader_sink = [&](const iclforge::ac4::SyntaxRecord& r) {
+                read.push_back(r);
+            };
             iclforge::ac4::DecoderConfig config;
             config.syntax = reader_sink;
             iclforge::ac4::Decoder decoder(config);

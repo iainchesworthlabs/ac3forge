@@ -15,8 +15,9 @@
 
 namespace iclforge::apps {
 
-std::vector<iclforge::ac4::Speaker> ac4_input_speakers(std::size_t count, iclforge::ac4::AdditionalPair pair,
-                                             bool three_zero, bool back_pair) {
+std::vector<iclforge::ac4::Speaker> ac4_input_speakers(std::size_t count,
+                                                       iclforge::ac4::AdditionalPair pair,
+                                                       bool three_zero, bool back_pair) {
     using S = iclforge::ac4::Speaker;
     const bool seven = count == 7 || count == 8;
     if (seven && pair == iclforge::ac4::AdditionalPair::kNone) {
@@ -129,7 +130,8 @@ std::optional<Ac4Measured> measure_ac4_programme(std::span<const std::span<const
     const auto acmod = bed == 1   ? iclforge::Acmod::k1_0
                        : bed == 2 ? iclforge::Acmod::k2_0
                                   : (bed == 3 ? iclforge::Acmod::k3_0 : iclforge::Acmod::k3_2);
-    const auto rate = sample_rate == 48000 ? iclforge::SampleRate::k48000 : iclforge::SampleRate::k44100;
+    const auto rate =
+        sample_rate == 48000 ? iclforge::SampleRate::k48000 : iclforge::SampleRate::k44100;
     iclforge::meta::LoudnessMeter meter{rate, acmod, lfe};
     // The meter takes AC-3's coded order, L C R Ls Rs and the LFE last, and
     // the encoder's order for the bed is a 5.1 WAV file's, whose permutation
@@ -214,8 +216,9 @@ bool ac4_output_names_mp4(std::string_view out_path) {
                                [&](std::string_view candidate) { return ext == candidate; });
 }
 
-std::expected<Ac4Packaged, Ac4PackageError> package_ac4(std::span<const iclforge::ac4::EncodedFrame> frames,
-                                                        const iclforge::ac4::Toc& toc, bool mp4, bool crc) {
+std::expected<Ac4Packaged, Ac4PackageError> package_ac4(
+    std::span<const iclforge::ac4::EncodedFrame> frames, const iclforge::ac4::Toc& toc, bool mp4,
+    bool crc) {
     Ac4Packaged out;
     if (!mp4) {
         out.chunks.reserve(frames.size());
@@ -261,8 +264,8 @@ std::expected<Ac4Packaged, Ac4PackageError> package_ac4(std::span<const iclforge
     out.rfc6381 = track.rfc6381;
     auto muxed = iclforge::mp4::mux(track, samples, options);
     if (!muxed.has_value()) {
-        return std::unexpected(
-            Ac4PackageError{.message = std::string{iclforge::mp4::describe(muxed.error())}, .usage = false});
+        return std::unexpected(Ac4PackageError{
+            .message = std::string{iclforge::mp4::describe(muxed.error())}, .usage = false});
     }
     out.chunks.push_back(std::move(*muxed));
     return out;

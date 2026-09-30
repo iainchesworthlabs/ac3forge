@@ -243,7 +243,8 @@ int run_ac4_encode_objects(std::string_view in_path, std::string_view out_path,
             fmt::println(stderr, "error: cannot open {} for writing", meta.syntax_trace_path);
             return kExitOutput;
         }
-        config.trace = [&trace_file, &trace_frame, &first_substream](const iclforge::ac4::SyntaxRecord& r) {
+        config.trace = [&trace_file, &trace_frame,
+                        &first_substream](const iclforge::ac4::SyntaxRecord& r) {
             if (first_substream < 0) {
                 first_substream = r.substream;
             }

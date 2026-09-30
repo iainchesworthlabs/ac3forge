@@ -32,8 +32,8 @@ namespace iclforge::adm::detail {
 [[nodiscard]] AdmModel build_adm_model(const std::shared_ptr<::adm::Document>& document);
 
 // The write-side inverse: builds a libadm `::adm::Document` from `model`, ready for
-// `::adm::reassignIds()` and `::adm::writeXml()` (both called by adm.cpp's write_bw64, not here - this
-// function only builds the graph). Every audioTrackUID gets bitDepth = `bit_depth`, the width
+// `::adm::reassignIds()` and `::adm::writeXml()` (both called by adm.cpp's write_bw64, not here -
+// this function only builds the graph). Every audioTrackUID gets bitDepth = `bit_depth`, the width
 // write_bw64 stores <data> at, and never the model's own `bit_depth` (see write_bw64's doc comment
 // in ac3adm.hpp for why). `track_uids_by_key` maps each `AdmModel::AudioTrackUid::uid`
 // string to the `::adm::AudioTrackUid` it became, keyed by that SAME correlation string (see

@@ -74,8 +74,8 @@ struct Eac3Stream {
 
 // Phase-continuous tones, one per coded channel, through the C++ E-AC-3
 // encoder - the raw-byte input side of every C-API decode test below.
-Eac3Stream encode_eac3_stream(iclforge::eac3::FrameEncoder& encoder, const std::vector<double>& tones,
-                              int frames) {
+Eac3Stream encode_eac3_stream(iclforge::eac3::FrameEncoder& encoder,
+                              const std::vector<double>& tones, int frames) {
     const auto nchans = static_cast<std::size_t>(encoder.channel_count());
     REQUIRE(tones.size() == nchans);
     Eac3Stream out;
@@ -792,7 +792,8 @@ TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact
     CHECK(ac3forge_decoded_substream_acmod(dependent) == AC3FORGE_ACMOD_2_0);
     CHECK(ac3forge_decoded_substream_has_chanmap(dependent) == 1);
     CHECK(ac3forge_decoded_substream_chanmap(dependent) == iclforge::eac3::chanmap::k512Height);
-    CHECK(ac3forge_decoded_substream_location_map(dependent) == iclforge::eac3::chanmap::k512Height);
+    CHECK(ac3forge_decoded_substream_location_map(dependent) ==
+          iclforge::eac3::chanmap::k512Height);
     CHECK(ac3forge_decoded_substream_last_dependent(dependent) == 1);
     ac3forge_decoded_substream_destroy(dependent);
     ac3forge_eac3_decoder_destroy(frame_decoder);
@@ -2319,7 +2320,8 @@ TEST_CASE(
     CHECK(ac3forge_scanned_stream_channels(scanned) == 8);  // bed + Vhl/Vhr folded in
     CHECK(ac3forge_scanned_stream_substreams_per_unit(scanned) == 2);
     CHECK(ac3forge_scanned_stream_channel_map(scanned) ==
-          (iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true) | iclforge::eac3::chanmap::k512Height));
+          (iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true) |
+           iclforge::eac3::chanmap::k512Height));
 
     REQUIRE(ac3forge_scanned_stream_access_unit_count(scanned) == 2);
     CHECK(ac3forge_scanned_stream_access_unit(scanned, 0).offset == 0);
@@ -2666,7 +2668,8 @@ TEST_CASE("ac3forge_loudness_meter_create/push reject bad arguments", "[capi][lo
     ac3forge_loudness_meter_destroy(meter);
 }
 
-TEST_CASE("ac3forge_dialnorm_from_lkfs mirrors iclforge::meta::dialnorm_from_lkfs", "[capi][loudness]") {
+TEST_CASE("ac3forge_dialnorm_from_lkfs mirrors iclforge::meta::dialnorm_from_lkfs",
+          "[capi][loudness]") {
     CHECK(ac3forge_dialnorm_from_lkfs(-24.0) == 24);
     CHECK(ac3forge_dialnorm_from_lkfs(-1.0) == 1);
     CHECK(ac3forge_dialnorm_from_lkfs(0.0) == 1);     // louder than -1 LKFS clamps
@@ -2804,8 +2807,9 @@ TEST_CASE("ac3forge_qc_preset/name/parse mirror iclforge::meta::qc's table", "[c
     CHECK(ac3forge_parse_qc_preset("netflix", nullptr) == 0);
 }
 
-TEST_CASE("ac3forge_evaluate_qc_gate passes/fails the same way iclforge::meta::evaluate_qc_gate does",
-          "[capi][qc]") {
+TEST_CASE(
+    "ac3forge_evaluate_qc_gate passes/fails the same way iclforge::meta::evaluate_qc_gate does",
+    "[capi][qc]") {
     const auto preset = ac3forge_qc_preset(AC3FORGE_QC_PRESET_NETFLIX);  // -27 +/-2 LU, -2 dBTP ceiling
 
     auto verdict = ac3forge_evaluate_qc_gate(&preset, 1, -27.0, 1, -3.0);
@@ -3197,8 +3201,9 @@ TEST_CASE("AC-4 5.1.4 (channel-based-immersive) encode/decode round-trips", "[ca
     CHECK(result.speakers[9] == AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT);
 }
 
-TEST_CASE("ac3forge_ac4_encoder_create refuses a configuration iclforge::ac4::Encoder::create() refuses",
-          "[capi][ac4]") {
+TEST_CASE(
+    "ac3forge_ac4_encoder_create refuses a configuration iclforge::ac4::Encoder::create() refuses",
+    "[capi][ac4]") {
     ac3forge_ac4_encoder_config_t config;
     ac3forge_ac4_encoder_config_init(&config);
     config.channels = 3;  // not one of EncoderConfig::channels' accepted counts
@@ -3772,13 +3777,15 @@ void check_object_scene(const ObjectScene& scene) {
 }  // namespace
 
 TEST_CASE(
-    "an A-JOC object scene encodes through the C API as iclforge::ac4::Encoder writes it and decodes back",
+    "an A-JOC object scene encodes through the C API as iclforge::ac4::Encoder writes it and "
+    "decodes back",
     "[capi][ac4]") {
     check_object_scene(ajoc_scene());
 }
 
 TEST_CASE(
-    "a direct-coded object scene encodes through the C API as iclforge::ac4::Encoder writes it and decodes "
+    "a direct-coded object scene encodes through the C API as iclforge::ac4::Encoder writes it and "
+    "decodes "
     "back",
     "[capi][ac4]") {
     check_object_scene(direct_scene());
@@ -4225,16 +4232,17 @@ TEST_CASE("the encoder configuration's experimental flags reach the encoder", "[
         const ChannelStream plain = encode_channels_with_c_api(config, input);
         CHECK(plain.frames == encode_channels_with_cpp(reference, input).frames);
 
-        const auto with_option = [&](int ac3forge_ac4_experimental_t::* option,
-                                     bool iclforge::ac4::EncoderConfig::Experimental::* cpp_option) {
-            ac3forge_ac4_encoder_config_t options = config;
-            options.experimental.*option = 1;
-            iclforge::ac4::EncoderConfig cpp = reference;
-            cpp.experimental.*cpp_option = true;
-            const ChannelStream stream = encode_channels_with_c_api(options, input);
-            CHECK(stream.frames == encode_channels_with_cpp(cpp, input).frames);
-            CHECK(stream.frames != plain.frames);
-        };
+        const auto with_option =
+            [&](int ac3forge_ac4_experimental_t::* option,
+                bool iclforge::ac4::EncoderConfig::Experimental::* cpp_option) {
+                ac3forge_ac4_encoder_config_t options = config;
+                options.experimental.*option = 1;
+                iclforge::ac4::EncoderConfig cpp = reference;
+                cpp.experimental.*cpp_option = true;
+                const ChannelStream stream = encode_channels_with_c_api(options, input);
+                CHECK(stream.frames == encode_channels_with_cpp(cpp, input).frames);
+                CHECK(stream.frames != plain.frames);
+            };
         with_option(&ac3forge_ac4_experimental_t::aspx_balance,
                     &iclforge::ac4::EncoderConfig::Experimental::aspx_balance);
         with_option(&ac3forge_ac4_experimental_t::aspx_varvar,

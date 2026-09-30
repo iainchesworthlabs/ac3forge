@@ -43,9 +43,9 @@ std::string_view describe(BridgeError error) {
 namespace {
 
 // A real Dirac/instantaneous jump has no representation in KeyframePath's piecewise-linear model
-// (two keyframes cannot share one time_s - see iclforge::oba::PathError::kDuplicateTimestamp). This is
-// the same resolution tests/ac3/oba/test_atmos_motion.cpp's own make_holds() helper relies on implicitly: every
-// caller in this codebase samples ObjectPath::evaluate() once per encoded frame
+// (two keyframes cannot share one time_s - see iclforge::oba::PathError::kDuplicateTimestamp). This
+// is the same resolution tests/ac3/oba/test_atmos_motion.cpp's own make_holds() helper relies on
+// implicitly: every caller in this codebase samples ObjectPath::evaluate() once per encoded frame
 // (iclforge::kSamplesPerFrame = 1536 samples, 32 ms at 48 kHz - see iclforge::oba::AtmosEncoder::
 // encode_frame's own doc comment, "one placement per frame"), so any transition faster than one
 // frame period is already indistinguishable from instantaneous at the resolution that actually
@@ -81,7 +81,8 @@ std::expected<iclforge::oba::ObjectPath, BridgeError> build_channel_path(
     // [0, 1] extents TS 103 420 §5.6.1.2 codes, on the same three axes, so
     // this is a rename and not a conversion. An LFE bed channel gets none of
     // it: it has no direction, so it has no extent around one either.
-    const auto extent_of = [&](const iclforge::adm::AudioBlockFormat& block) -> iclforge::oba::ObjectSize {
+    const auto extent_of =
+        [&](const iclforge::adm::AudioBlockFormat& block) -> iclforge::oba::ObjectSize {
         if (force_lfe) {
             return {};
         }
@@ -223,8 +224,8 @@ struct ClassifiedObject {
 // classifies it as a bed (every resolved pack is DirectSpeakers) or a dynamic object (every
 // resolved pack is Objects) - see bridge.hpp's own top comment for what happens to every other
 // TypeDefinition and to nested audioPackFormats.
-std::expected<ClassifiedObject, BridgeError> classify_object(const iclforge::adm::AdmModel& model,
-                                                              const iclforge::adm::AudioObject& object) {
+std::expected<ClassifiedObject, BridgeError> classify_object(
+    const iclforge::adm::AdmModel& model, const iclforge::adm::AudioObject& object) {
     ClassifiedObject result;
     std::optional<iclforge::adm::TypeDefinition> agreed_type;
     for (const auto& pack_ref : object.pack_format_refs) {
@@ -419,7 +420,8 @@ std::vector<iclforge::adm::AudioBlockFormat> build_block_formats(std::span<const
     const auto time_of = [sample_rate](std::uint64_t sample) {
         return static_cast<double>(sample) / static_cast<double>(sample_rate);
     };
-    const auto place = [](iclforge::adm::AudioBlockFormat& block, const iclforge::oba::DynamicObject& state) {
+    const auto place = [](iclforge::adm::AudioBlockFormat& block,
+                          const iclforge::oba::DynamicObject& state) {
         block.cartesian = true;
         block.position = room_to_adm_cartesian(state.position);
         block.gain = std::pow(10.0, state.gain_db / 20.0);
@@ -473,8 +475,8 @@ std::expected<iclforge::adm::AdmDocument, BridgeError> write(const WriteInput& i
 
     iclforge::adm::AdmDocument document;
     document.audio.sample_rate = input.sample_rate;
-    // The width iclforge::adm::write_bw64 stores this PCM at, which every audioTrackUID below states as
-    // its bitDepth too - so the document already describes the master it becomes.
+    // The width iclforge::adm::write_bw64 stores this PCM at, which every audioTrackUID below
+    // states as its bitDepth too - so the document already describes the master it becomes.
     document.audio.bits_per_sample = iclforge::adm::kWriteBitDepth;
 
     auto& model = document.model;

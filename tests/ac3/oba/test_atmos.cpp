@@ -646,7 +646,8 @@ TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band
         return total / static_cast<double>(snr.size());
     };
 
-    const auto mdct = measure(iclforge::oba::joc::Domain::kMdctBand, iclforge::oba::joc::Domain::kMdctBand);
+    const auto mdct =
+        measure(iclforge::oba::joc::Domain::kMdctBand, iclforge::oba::joc::Domain::kMdctBand);
     const auto qmf = measure(iclforge::oba::joc::Domain::kQmf, iclforge::oba::joc::Domain::kQmf);
 
     for (std::size_t object = 0; object < mdct.size(); ++object) {
@@ -757,9 +758,9 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
             bed_joc_order[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                 kAc3FromJoc[static_cast<std::size_t>(jc)])];
         }
-        const auto direct_out = iclforge::oba::joc::reconstruct(bed_joc_order, *params, direct_state,
-                                                       /*fast_mdct=*/false, /*fast_imdct=*/true,
-                                                       kDomain);
+        const auto direct_out =
+            iclforge::oba::joc::reconstruct(bed_joc_order, *params, direct_state,
+                                            /*fast_mdct=*/false, /*fast_imdct=*/true, kDomain);
         const auto fast_out = iclforge::oba::joc::reconstruct(bed_joc_order, *params, fast_state,
                                                      /*fast_mdct=*/true, /*fast_imdct=*/true,
                                                      kDomain);
@@ -918,7 +919,8 @@ TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time"
             }
             objects.resize(pcm.objects.size());
             for (std::size_t o = 0; o < pcm.objects.size(); ++o) {
-                CHECK(pcm.objects[o].size() == static_cast<std::size_t>(iclforge::kSamplesPerBlock));
+                CHECK(pcm.objects[o].size() ==
+                      static_cast<std::size_t>(iclforge::kSamplesPerBlock));
                 objects[o].insert(objects[o].end(), pcm.objects[o].begin(), pcm.objects[o].end());
             }
             if (pcm.object_metadata == nullptr || pcm.object_metadata->objects.size() != 3) {
@@ -1085,7 +1087,8 @@ TEST_CASE("short syncframes carry the object layer end to end",
     // the same amount of material at every code.
     constexpr std::size_t kTotalSamples = 36 * 1536;
 
-    const auto domain = GENERATE(iclforge::oba::joc::Domain::kQmf, iclforge::oba::joc::Domain::kMdctBand);
+    const auto domain =
+        GENERATE(iclforge::oba::joc::Domain::kQmf, iclforge::oba::joc::Domain::kMdctBand);
     CAPTURE(domain == iclforge::oba::joc::Domain::kQmf ? "qmf" : "mdct");
 
     // Per-code bit rates, not one rate for all: the OAMD+JOC container

@@ -797,7 +797,8 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
         REQUIRE(frames.has_value());
         for (const auto frame : *frames) {
             const auto at = static_cast<std::size_t>(frame.data() - merged.data());
-            REQUIRE(iclforge::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+            REQUIRE(
+                iclforge::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
         }
         std::ofstream file{out, std::ios::binary};
         file.write(reinterpret_cast<const char*>(merged.data()),
@@ -827,7 +828,8 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
         // stream preferring Lt/Rt has no preference downmix=auto can act on.
         const auto stereo_wav = dir / "auto_stereo_in.wav";
         const auto stereo_channels = make_tone_channels(2, 4800, 48000);
-        REQUIRE(iclforge::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000).has_value());
+        REQUIRE(
+            iclforge::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000).has_value());
         const auto stream = dir / "auto_narrow.ac3";
         fs::remove(stream);
         REQUIRE(run_cli("encode \"" + stereo_wav.string() + "\" \"" + stream.string() +
@@ -1418,8 +1420,8 @@ TEST_CASE("verify-objects checks a decode against the signer's own tag",
 TEST_CASE("keep-partial", "[cli][keep-partial]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "keep_partial_in.wav";
-    const auto channels = make_tone_channels(6, 3 * static_cast<std::size_t>(iclforge::kSamplesPerFrame),
-                                             48000);
+    const auto channels =
+        make_tone_channels(6, 3 * static_cast<std::size_t>(iclforge::kSamplesPerFrame), 48000);
     REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     SECTION("is inert on a run that succeeds - no spurious partial file") {
@@ -1516,8 +1518,8 @@ TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
         const auto channels =
             make_tone_channels(2, 3 * static_cast<std::size_t>(iclforge::kSamplesPerFrame),
                                probe.sample_rate);
-        REQUIRE(
-            iclforge::io::write_wav_f32(wav_path.string(), channels, probe.sample_rate).has_value());
+        REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, probe.sample_rate)
+                    .has_value());
 
         // The highest rate that fits still encodes - so the check above is a
         // ceiling, not a blanket refusal of the half rates.
@@ -3125,10 +3127,10 @@ TEST_CASE("decode plays a legacy core's held-back last unit without swapping the
     // dependent's, per k71Rear's own comment above) land in the WAV: the
     // same ground-truth layout and wav_order permutation open_sink/
     // held_back_unit compute from, not re-derived from the decode under test.
-    const auto layout =
-        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(iclforge::Acmod::k3_2, true) | cm::k71Rear));
-    const auto order =
-        iclforge::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
+    const auto layout = cm::expand(
+        static_cast<std::uint16_t>(cm::acmod_map(iclforge::Acmod::k3_2, true) | cm::k71Rear));
+    const auto order = iclforge::plan::wav_order(
+        std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
     const auto wav_index_of = [&](cm::Location location) {
         const auto slot = layout.index_of(location);
         REQUIRE(slot >= 0);
@@ -4477,8 +4479,9 @@ TEST_CASE("a channel count no standard layout covers is refused, not silently fo
 
     SECTION("eac3-encode, src= combines two files into the same gap") {
         const auto second = dir / "layout_gap_second.wav";
-        REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
-                    .has_value());
+        REQUIRE(
+            iclforge::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
+                .has_value());
         const auto six = dir / "layout_gap_6ch.wav";
         REQUIRE(iclforge::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
                     .has_value());
@@ -4501,8 +4504,9 @@ TEST_CASE("a channel count no standard layout covers is refused, not silently fo
 
     SECTION("encode (AC-3), src= combines two files into the same gap") {
         const auto second = dir / "layout_gap_second_ac3.wav";
-        REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
-                    .has_value());
+        REQUIRE(
+            iclforge::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
+                .has_value());
         const auto six = dir / "layout_gap_6ch_ac3.wav";
         REQUIRE(iclforge::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
                     .has_value());
@@ -4540,11 +4544,11 @@ TEST_CASE("multi-source AC-3 encode infers a layout from the combined channel co
     // same real duration tests/cli/test_cli.cpp's other dialnorm=auto cases
     // use rather than the handful of samples a layout check alone needs.
     constexpr std::size_t kDialnormFrames = 96000;
-    REQUIRE(iclforge::io::write_wav_f32(first.string(), make_tone_channels(4, kDialnormFrames, 48000),
-                                   48000)
+    REQUIRE(iclforge::io::write_wav_f32(first.string(),
+                                        make_tone_channels(4, kDialnormFrames, 48000), 48000)
                 .has_value());
-    REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(2, kDialnormFrames, 48000),
-                                   48000)
+    REQUIRE(iclforge::io::write_wav_f32(second.string(),
+                                        make_tone_channels(2, kDialnormFrames, 48000), 48000)
                 .has_value());
 
     const auto out_path = dir / "multi_dialnorm.ac3";
@@ -4605,8 +4609,9 @@ TEST_CASE("programme2= reports why its own source could not be used", "[cli][enc
         const auto log = dir / "programme2_gap.log";
         fs::remove(out_path);
         const auto second = dir / "programme2_gap_7ch.wav";
-        REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(7, 2000, 48000), 48000)
-                    .has_value());
+        REQUIRE(
+            iclforge::io::write_wav_f32(second.string(), make_tone_channels(7, 2000, 48000), 48000)
+                .has_value());
         const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
                                     out_path.string() + "\" 192 none stereo programme2=\"" +
                                     second.string() + "\"",
@@ -4629,12 +4634,12 @@ TEST_CASE("programmeN= generalizes past two, each with its own metadata",
     const auto p4 = dir / "programmeN_p4.wav";
     REQUIRE(iclforge::io::write_wav_f32(primary.string(), make_tone_channels(6, 4800, 48000), 48000)
                 .has_value());
-    REQUIRE(
-        iclforge::io::write_wav_f32(p2.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
-    REQUIRE(
-        iclforge::io::write_wav_f32(p3.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
-    REQUIRE(
-        iclforge::io::write_wav_f32(p4.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(p2.string(), make_tone_channels(1, 4800, 48000), 48000)
+                .has_value());
+    REQUIRE(iclforge::io::write_wav_f32(p3.string(), make_tone_channels(1, 4800, 48000), 48000)
+                .has_value());
+    REQUIRE(iclforge::io::write_wav_f32(p4.string(), make_tone_channels(1, 4800, 48000), 48000)
+                .has_value());
 
     const auto out_path = dir / "programmeN_4pgm.ec3";
     const auto log = dir / "programmeN_4pgm.log";
@@ -4717,8 +4722,8 @@ TEST_CASE("a later programmeN= without an earlier one is refused, not silently r
     const auto p4 = dir / "programme_gap_p4.wav";
     REQUIRE(iclforge::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
                 .has_value());
-    REQUIRE(
-        iclforge::io::write_wav_f32(p4.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(p4.string(), make_tone_channels(1, 4000, 48000), 48000)
+                .has_value());
 
     const auto out_path = dir / "programme_gap.ec3";
     const auto log = dir / "programme_gap.log";
@@ -4744,8 +4749,8 @@ TEST_CASE("a 1+1-only field on an extra programme is refused, not silently inert
     const auto p2 = dir / "programme_dead_p2.wav";
     REQUIRE(iclforge::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
                 .has_value());
-    REQUIRE(
-        iclforge::io::write_wav_f32(p2.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(p2.string(), make_tone_channels(1, 4000, 48000), 48000)
+                .has_value());
 
     SECTION("a 1+1-only field") {
         const auto out_path = dir / "programme_dead_11.ec3";

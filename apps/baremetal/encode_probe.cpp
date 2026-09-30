@@ -163,9 +163,9 @@ void fill_signal(std::array<std::array<float, iclforge::kSamplesPerFrame>, kChan
             // continuous signal rather than six copies of one - which is what
             // gives block switching and the exponent strategy something to
             // track.
-            const double t =
-                static_cast<double>(static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame + n) /
-                48000.0;
+            const double t = static_cast<double>(
+                                 static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame + n) /
+                             48000.0;
             pcm[ch][n] = static_cast<float>(0.25 * std::sin(2.0 * 3.14159265358979323846 * hz * t));
         }
     }

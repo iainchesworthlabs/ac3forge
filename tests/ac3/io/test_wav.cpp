@@ -647,9 +647,9 @@ TEST_CASE("write_wav_f32 refuses empty channel data and never touches the filesy
 }
 
 TEST_CASE("describe() gives every WavError a distinct, non-empty message", "[wav]") {
-    const std::array errors = {iclforge::io::WavError::kCannotOpen, iclforge::io::WavError::kNotRiffWave,
-                               iclforge::io::WavError::kUnsupportedFormat,
-                               iclforge::io::WavError::kTruncated};
+    const std::array errors = {
+        iclforge::io::WavError::kCannotOpen, iclforge::io::WavError::kNotRiffWave,
+        iclforge::io::WavError::kUnsupportedFormat, iclforge::io::WavError::kTruncated};
     for (const auto e : errors) {
         CAPTURE(static_cast<int>(e));
         CHECK_FALSE(iclforge::io::describe(e).empty());

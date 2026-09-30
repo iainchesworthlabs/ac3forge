@@ -130,7 +130,8 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
 
     if (config.container == Container::kMatroska) {
         auto writer = iclforge::matroska::Writer::create(iclforge::matroska::AudioTrack{
-            .codec_id = std::string{config.eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
+            .codec_id = std::string{config.eac3 ? iclforge::matroska::kCodecEac3
+                                                : iclforge::matroska::kCodecAc3},
             .sample_rate = config.sample_rate,
             .channels = config.channels,
             .samples_per_frame = iclforge::kSamplesPerFrame});

@@ -152,7 +152,8 @@ enum class CodingType : std::uint8_t { kLpcm, kAc3, kEac3, kOther };
     return {line.substr(0, key_end), line.substr(value_start)};
 }
 
-[[nodiscard]] inline std::expected<iclforge::audio::SinkAudioCapabilities, iclforge::audio::EdidError>
+[[nodiscard]] inline std::expected<iclforge::audio::SinkAudioCapabilities,
+                                   iclforge::audio::EdidError>
 parse_eld_proc_text(std::string_view contents) {
     using iclforge::audio::EdidError;
     using iclforge::audio::SinkAudioCapabilities;

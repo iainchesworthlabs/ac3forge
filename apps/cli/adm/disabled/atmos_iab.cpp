@@ -3,10 +3,10 @@
 #include <string>
 #include <string_view>
 
-// Compiled only when AC3FORGE_BUILD_ADM did NOT turn iclforge::iab/iclforge::admbridge's IAB mapping on
-// (see apps/cli/CMakeLists.txt) - see ../atmos_iab.hpp's own top comment for why this file, rather
-// than a preprocessor conditional inside main.cpp, is the mechanism. This translation unit links
-// neither iclforge::admbridge nor its IAB mapping and includes neither of their headers.
+// Compiled only when AC3FORGE_BUILD_ADM did NOT turn iclforge::iab/iclforge::admbridge's IAB
+// mapping on (see apps/cli/CMakeLists.txt) - see ../atmos_iab.hpp's own top comment for why this
+// file, rather than a preprocessor conditional inside main.cpp, is the mechanism. This translation
+// unit links neither iclforge::admbridge nor its IAB mapping and includes neither of their headers.
 
 namespace ac3cli {
 

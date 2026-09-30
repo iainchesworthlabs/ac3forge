@@ -80,7 +80,8 @@ constexpr bool kWide = !kSlotBits16;
 // same reason the real sinks keep theirs there.
 constexpr std::size_t kMaxSlots = 16;
 std::array<std::int32_t, iclforge::kSamplesPerBlock * (kWide ? kMaxSlots : 0)> g_tdm{};
-std::array<std::int16_t, iclforge::kSamplesPerBlock * (kWide ? 0 : (kTdm ? kMaxSlots : 2))> g_narrow{};
+std::array<std::int16_t, iclforge::kSamplesPerBlock*(kWide ? 0 : (kTdm ? kMaxSlots : 2))>
+    g_narrow{};
 
 // Accumulated over the run rather than checked per block: a fault that only
 // appears on one block in six still moves these, and reporting once keeps the

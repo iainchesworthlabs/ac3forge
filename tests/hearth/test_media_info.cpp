@@ -70,7 +70,8 @@ std::vector<std::byte> ac3_stream(int frames, const iclforge::EncoderConfig& con
     return out;
 }
 
-std::vector<std::vector<std::byte>> eac3_frames(int frames, const iclforge::eac3::FrameConfig& config) {
+std::vector<std::vector<std::byte>> eac3_frames(int frames,
+                                                const iclforge::eac3::FrameConfig& config) {
     iclforge::eac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::vector<std::byte>> out;
@@ -357,8 +358,9 @@ TEST_CASE("media info: an E-AC-3 stream in MP4, with its container and edit list
     CHECK(root["bitstream"]["info"].is_null());
     CHECK(root["probe"]["stream"]["codec"].equals("eac3"));
     CHECK(root["probe"]["stream"]["nominal_bitrate_kbps"].is_null());
-    CHECK(root["channel_map"].as_int() ==
-          static_cast<std::int64_t>(iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true)));
+    CHECK(
+        root["channel_map"].as_int() ==
+        static_cast<std::int64_t>(iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true)));
 }
 
 TEST_CASE("media info: Matroska and MPEG-TS name their tracks", "[hearth][media-info]") {
@@ -373,7 +375,8 @@ TEST_CASE("media info: Matroska and MPEG-TS name their tracks", "[hearth][media-
         track.codec_id = std::string{iclforge::matroska::kCodecEac3};
         track.sample_rate = 48000;
         track.channels = 6;
-        const auto file = iclforge::matroska::mux(track, std::span<const std::span<const std::byte>>(views));
+        const auto file =
+            iclforge::matroska::mux(track, std::span<const std::span<const std::byte>>(views));
         REQUIRE(file.has_value());
         const MediaInfo info = describe_media("show.mkv", load(*file));
         CHECK(info.error.empty());
@@ -392,8 +395,8 @@ TEST_CASE("media info: Matroska and MPEG-TS name their tracks", "[hearth][media-
         iclforge::mpegts::MuxOptions options;
         options.program_number = 7;
         options.audio_pid = 0x0123;
-        const auto file =
-            iclforge::mpegts::mux(track, std::span<const std::span<const std::byte>>(views), options);
+        const auto file = iclforge::mpegts::mux(
+            track, std::span<const std::span<const std::byte>>(views), options);
         REQUIRE(file.has_value());
         const MediaInfo info = describe_media("broadcast.ts", load(*file));
         CHECK(info.error.empty());

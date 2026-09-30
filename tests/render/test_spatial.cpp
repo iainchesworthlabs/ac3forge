@@ -256,8 +256,8 @@ TEST_CASE("pan_direction crossfades an elevated source into the height ring", "[
 
     // A source at L's own azimuth (30 degrees) but no elevation lands
     // entirely on the floor speaker.
-    iclforge::spatial::pan_direction({.azimuth_deg = 30.0, .elevation_deg = 0.0}, targets.directions,
-                                gains);
+    iclforge::spatial::pan_direction({.azimuth_deg = 30.0, .elevation_deg = 0.0},
+                                     targets.directions, gains);
     CHECK(gains[static_cast<std::size_t>(floor_ch)] > 0.99);
     CHECK(gains[static_cast<std::size_t>(height_ch)] < 1e-9);
 

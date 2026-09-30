@@ -212,7 +212,8 @@ constexpr int kPollMs = 60;
     if (!objects) {
         return list;
     }
-    const std::vector<iclforge::oba::DisplayObject> described = iclforge::oba::describe_objects(*objects);
+    const std::vector<iclforge::oba::DisplayObject> described =
+        iclforge::oba::describe_objects(*objects);
     list.reserve(static_cast<qsizetype>(described.size()));
     for (const auto& object : described) {
         list.push_back(display_object_to_map(object));
@@ -646,11 +647,13 @@ constexpr int kPollMs = 60;
 }
 
 [[nodiscard]] QString downmix_name(iclforge::DownmixTarget target) {
-    return target == iclforge::DownmixTarget::kLtRt ? QStringLiteral("ltrt") : QStringLiteral("loro");
+    return target == iclforge::DownmixTarget::kLtRt ? QStringLiteral("ltrt")
+                                                    : QStringLiteral("loro");
 }
 
 [[nodiscard]] iclforge::DownmixTarget downmix_from_name(const QString& name) {
-    return name == QLatin1String("ltrt") ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
+    return name == QLatin1String("ltrt") ? iclforge::DownmixTarget::kLtRt
+                                         : iclforge::DownmixTarget::kLoRo;
 }
 
 [[nodiscard]] QString dual_mono_name(iclforge::hearth::DualMonoChoice choice) {
@@ -766,7 +769,8 @@ constexpr int kPollMs = 60;
 // immersive element to otherwise - the same names ac3cli decode's own
 // speakers= takes. The stereo/mono targets DownmixTarget also has are not
 // reachable here: those are DecoderSettings::stereo_fold's own job.
-[[nodiscard]] QString ac4_immersive_layout_name(const std::optional<iclforge::ac4::DownmixTarget>& layout) {
+[[nodiscard]] QString ac4_immersive_layout_name(
+    const std::optional<iclforge::ac4::DownmixTarget>& layout) {
     if (!layout) {
         return QStringLiteral("asCoded");
     }
@@ -811,7 +815,8 @@ constexpr int kPollMs = 60;
     return number >= 0 ? std::optional<int>{number} : std::nullopt;
 }
 
-[[nodiscard]] QVariantMap decoder_settings_to_map(const iclforge::hearth::DecoderSettings& settings) {
+[[nodiscard]] QVariantMap decoder_settings_to_map(
+    const iclforge::hearth::DecoderSettings& settings) {
     QVariantMap map;
     map[QStringLiteral("mode")] = mode_name(settings.mode);
     map[QStringLiteral("rfCeilingDb")] = settings.rf_ceiling_db;
@@ -1179,7 +1184,8 @@ void HearthController::start() {
     // already returns std::nullopt for an empty string, which is what an
     // unset saved.layout reads as, so nothing extra is needed for "nothing
     // saved yet" versus "what was saved is damaged" - both fall back alike.
-    const iclforge::hearth::SavedSpeakerSetup saved_speakers = iclforge::hearth::load_speaker_setup(*store_);
+    const iclforge::hearth::SavedSpeakerSetup saved_speakers =
+        iclforge::hearth::load_speaker_setup(*store_);
     const iclforge::render::OutputLayout layout =
         iclforge::render::OutputLayout::parse(saved_speakers.layout).value_or(*iclforge::render::OutputLayout::parse("2.0"));
     // EngineOutputs, not a bare PcmSink: given every render endpoint
@@ -1198,12 +1204,14 @@ void HearthController::start() {
     // this point, let alone made the group a person later pins
     // (network_output_status.hpp's own header comment).
     iclforge::hearth::EngineOutputs outputs{
-        .pcm = test_outputs_ ? test_outputs_->make_pcm() : iclforge::hearth::make_device_sink(std::string()),
+        .pcm = test_outputs_ ? test_outputs_->make_pcm()
+                             : iclforge::hearth::make_device_sink(std::string()),
         .bitstream = {},
         .group = iclforge::hearth::make_group_sink([](const std::string& group_id) {
             return iclforge::hearth::ui::NetworkOutputStatus::instance().group(group_id);
         }),
-        .endpoints = test_outputs_ ? test_outputs_->endpoints : iclforge::hearth::device_endpoints()};
+        .endpoints =
+            test_outputs_ ? test_outputs_->endpoints : iclforge::hearth::device_endpoints()};
     const iclforge::hearth::EngineSettings loaded = current_settings(*store_);
     // An AC-4 stream's presentation in the listener's own language plays
     // first, where no other has been chosen (DecoderAc4.qml's "01
@@ -1217,10 +1225,10 @@ void HearthController::start() {
     // builds a fresh std::function every call, same as the engine's own
     // above) so the Media page's own pick never blocks on whatever
     // currentMedia is mid-reading, and vice versa (media_inspector.hpp).
-    now_playing_inspector_ =
-        std::make_unique<iclforge::hearth::MediaInspector>(iclforge::hearth::ui::make_file_item_loader());
-    inspected_item_inspector_ =
-        std::make_unique<iclforge::hearth::MediaInspector>(iclforge::hearth::ui::make_file_item_loader());
+    now_playing_inspector_ = std::make_unique<iclforge::hearth::MediaInspector>(
+        iclforge::hearth::ui::make_file_item_loader());
+    inspected_item_inspector_ = std::make_unique<iclforge::hearth::MediaInspector>(
+        iclforge::hearth::ui::make_file_item_loader());
     engine_->set_gapless(loaded.playback.gapless);
     engine_->set_on_failure(loaded.playback.on_failure);
     if (loaded.playback.resume_queue) {
@@ -1243,8 +1251,8 @@ void HearthController::start() {
         engine_->set_delay_ms(slot, saved_speakers.delay_ms[slot]);
     }
     engine_->set_crossover_hz(saved_speakers.crossover_hz);
-    if (const auto routing =
-            iclforge::render::Routing::parse(saved_speakers.routing, saved_speakers.routing_outputs)) {
+    if (const auto routing = iclforge::render::Routing::parse(saved_speakers.routing,
+                                                              saved_speakers.routing_outputs)) {
         engine_->set_routing(*routing);
     }
     poll_timer_.start();
@@ -1351,7 +1359,8 @@ void HearthController::addFolder(const QString& path) {
     if (!engine_ || path.isEmpty()) {
         return;
     }
-    const std::vector<std::string> found = iclforge::hearth::ui::list_folder_items(path.toStdString());
+    const std::vector<std::string> found =
+        iclforge::hearth::ui::list_folder_items(path.toStdString());
     if (found.empty()) {
         return;
     }
@@ -1519,7 +1528,8 @@ void HearthController::poll() {
             inspected_item_inspector_->request(inspected_path_.toStdString());
         }
     }
-    if (const std::optional<iclforge::hearth::MediaInfo> latest = inspected_item_inspector_->latest();
+    if (const std::optional<iclforge::hearth::MediaInfo> latest =
+            inspected_item_inspector_->latest();
         latest && QString::fromStdString(latest->path) == inspected_path_ &&
         inspected_media_.value(QStringLiteral("path")).toString() != inspected_path_) {
         inspected_media_ = media_info_to_map(*latest);
@@ -1831,8 +1841,8 @@ void HearthController::clearRouting() {
     // used to post did nothing at all while a device was open. With nothing
     // open routing_outputs_ is 0, which is that case's width anyway.
     const std::vector<int> unpatched(static_cast<std::size_t>(routing_.size()), iclforge::render::Routing::kUnassigned);
-    const auto patch =
-        iclforge::render::Routing::from_outputs(unpatched, static_cast<std::size_t>(routing_outputs_));
+    const auto patch = iclforge::render::Routing::from_outputs(
+        unpatched, static_cast<std::size_t>(routing_outputs_));
     engine_->set_routing(patch.value_or(iclforge::render::Routing{}));
 }
 
@@ -1840,8 +1850,8 @@ void HearthController::useDeviceOrder() {
     if (!engine_) {
         return;
     }
-    const auto patch = iclforge::render::Routing::identity(static_cast<std::size_t>(routing_.size()),
-                                                       static_cast<std::size_t>(routing_outputs_));
+    const auto patch = iclforge::render::Routing::identity(
+        static_cast<std::size_t>(routing_.size()), static_cast<std::size_t>(routing_outputs_));
     if (patch) {
         engine_->set_routing(*patch);
     }
@@ -2210,7 +2220,8 @@ void HearthController::save_on_quit() {
     const iclforge::hearth::EngineStatus status = engine_->status();
     const iclforge::hearth::EngineSettings settings = current_settings(*store_);
     if (settings.playback.resume_queue) {
-        iclforge::hearth::save_queue(iclforge::hearth::saved_queue(status, engine_->position()), *store_);
+        iclforge::hearth::save_queue(iclforge::hearth::saved_queue(status, engine_->position()),
+                                     *store_);
     }
     // Unconditional, unlike the queue above: there is no setting to gate it
     // on, the same way trim/delay/crossover/routing have never needed one to

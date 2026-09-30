@@ -188,11 +188,13 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     const std::unique_ptr<iclforge::hearth::NetworkGroupSink> sink =
         iclforge::hearth::make_group_sink([&](const std::string&) { return group; });
 
-    const iclforge::render::OutputLayout layout = iclforge::render::OutputLayout::named("2.0").value();
-    const auto opened = sink->open(
-        "Test group",
-        iclforge::hearth::NetworkGroupSink::Format{
-            .sample_rate = 48000, .layout = layout, .stream = iclforge::audio::BitstreamFormat::kAc3});
+    const iclforge::render::OutputLayout layout =
+        iclforge::render::OutputLayout::named("2.0").value();
+    const auto opened =
+        sink->open("Test group", iclforge::hearth::NetworkGroupSink::Format{
+                                     .sample_rate = 48000,
+                                     .layout = layout,
+                                     .stream = iclforge::audio::BitstreamFormat::kAc3});
     REQUIRE(opened.has_value());
     CHECK(opened->mode == iclforge::hearth::OutputMode::kNetworkGroup);
 
@@ -266,7 +268,8 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     }
     CHECK(played_pcm() == kFrames);
     CHECK(played_burst() >= 1);
-    CHECK(burst_sink->totals().burst_frames >= static_cast<std::uint64_t>(iclforge::kSamplesPerFrame));
+    CHECK(burst_sink->totals().burst_frames >=
+          static_cast<std::uint64_t>(iclforge::kSamplesPerFrame));
     // The group's timeline runs through it within its lead (a sink may count
     // a chunk as it arrives, before its time).
     {

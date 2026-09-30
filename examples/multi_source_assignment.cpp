@@ -60,8 +60,8 @@ int main() {
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(
-        iclforge::EncoderConfig{.bitrate_kbps = 384, .acmod = target.bed_acmod, .lfe = target.bed_lfe});
+    auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
+        .bitrate_kbps = 384, .acmod = target.bed_acmod, .lfe = target.bed_lfe});
 
     std::vector<std::vector<float>> source_pcm(kSourceChannels, std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::vector<float>> coded_pcm(static_cast<std::size_t>(routing->coded_channels),

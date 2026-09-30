@@ -705,10 +705,12 @@ TEST_CASE("MP4 reads edit lists this project never writes", "[mp4][reader]") {
     SECTION("an edit list over ReadOptions::max_edits is left out") {
         MoovSpec spec{.sizes = {32}};
         spec.edts = edts_box(0, {HandEdit{}, HandEdit{}, HandEdit{}});
-        const auto out = iclforge::mp4::demux(assemble(spec), iclforge::mp4::ReadOptions{.max_edits = 2});
+        const auto out =
+            iclforge::mp4::demux(assemble(spec), iclforge::mp4::ReadOptions{.max_edits = 2});
         REQUIRE(out.has_value());
         CHECK(out->track.edits.empty());
-        const auto within = iclforge::mp4::demux(assemble(spec), iclforge::mp4::ReadOptions{.max_edits = 3});
+        const auto within =
+            iclforge::mp4::demux(assemble(spec), iclforge::mp4::ReadOptions{.max_edits = 3});
         REQUIRE(within.has_value());
         CHECK(within->track.edits.size() == 3);
     }
@@ -859,13 +861,14 @@ TEST_CASE("MP4 trun without explicit sizes falls back to trex's default_sample_s
 TEST_CASE("MP4 Reader over arbitrary chunk boundaries matches demux()", "[mp4][reader]") {
     const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(3, 0x22), frame_of(1500, 0x33),
                                     frame_of(64, 0x44), frame_of(900, 0x55)};
-    const auto file = iclforge::mp4::mux(iclforge::mp4::AudioTrack{.codec_id = std::string{iclforge::mp4::kCodecEac3},
-                                               .sample_rate = 48000,
-                                               .channels = 6,
-                                               .samples_per_frame = 1536,
-                                               .codec_config = atmos_dec3(),
-                                               .language = "und"},
-                               views_of(frames));
+    const auto file = iclforge::mp4::mux(
+        iclforge::mp4::AudioTrack{.codec_id = std::string{iclforge::mp4::kCodecEac3},
+                                  .sample_rate = 48000,
+                                  .channels = 6,
+                                  .samples_per_frame = 1536,
+                                  .codec_config = atmos_dec3(),
+                                  .language = "und"},
+        views_of(frames));
     REQUIRE(file.has_value());
 
     for (const std::size_t chunk :
@@ -1134,9 +1137,9 @@ TEST_CASE("MP4 rejects sample tables that lie", "[mp4][reader]") {
 
 TEST_CASE("MP4 describe() names every demux error", "[mp4][reader]") {
     for (const auto error :
-         {iclforge::mp4::DemuxError::kNotIsobmff, iclforge::mp4::DemuxError::kTruncated, iclforge::mp4::DemuxError::kMalformed,
-          iclforge::mp4::DemuxError::kNoAudioTrack, iclforge::mp4::DemuxError::kLimitExceeded,
-          iclforge::mp4::DemuxError::kMoovAfterMdat}) {
+         {iclforge::mp4::DemuxError::kNotIsobmff, iclforge::mp4::DemuxError::kTruncated,
+          iclforge::mp4::DemuxError::kMalformed, iclforge::mp4::DemuxError::kNoAudioTrack,
+          iclforge::mp4::DemuxError::kLimitExceeded, iclforge::mp4::DemuxError::kMoovAfterMdat}) {
         CHECK_FALSE(iclforge::mp4::describe(error).empty());
         CHECK(iclforge::mp4::describe(error) != "unknown error");
     }
@@ -1514,7 +1517,8 @@ TEST_CASE("MP4 build_sample_refs handles every sample-table shape", "[mp4][reade
     }
 
     SECTION("sizes and offsets with no stsc at all is malformed") {
-        const auto out = iclforge::mp4::demux(assemble(MoovSpec{.sizes = {16, 16}}, /*omit_stsc=*/true));
+        const auto out =
+            iclforge::mp4::demux(assemble(MoovSpec{.sizes = {16, 16}}, /*omit_stsc=*/true));
         REQUIRE_FALSE(out.has_value());
         CHECK(out.error() == iclforge::mp4::DemuxError::kMalformed);
     }

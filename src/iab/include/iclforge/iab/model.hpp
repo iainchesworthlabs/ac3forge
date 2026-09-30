@@ -16,11 +16,11 @@
 // src/adm/include/iclforge/adm/model.hpp uses for the Audio Definition Model: every type here
 // mirrors one bitstream element or one field group, with prefix/escape codes already resolved
 // into their final linear/physical values (gains, positions, spreads) rather than left as the
-// raw bitstream code - matching how iclforge::adm::AudioBlockFormat::gain is always linear regardless
-// of the source's own gainUnit. Roadmap item IM1 phase 1 (): a standalone
-// `iclforge::iab::` reader in the `iclforge::adm::` mould - it knows nothing about AC-3, E-AC-3 or JOC, and a
-// later phase 3 (mapping onto iclforge::admbridge's ObjectPath layer) is what will finally make this
-// module's output useful to the codec.
+// raw bitstream code - matching how iclforge::adm::AudioBlockFormat::gain is always linear
+// regardless of the source's own gainUnit. Roadmap item IM1 phase 1 (): a standalone
+// `iclforge::iab::` reader in the `iclforge::adm::` mould - it knows nothing about AC-3, E-AC-3 or
+// JOC, and a later phase 3 (mapping onto iclforge::admbridge's ObjectPath layer) is what will
+// finally make this module's output useful to the codec.
 //
 // AudioDataDLC (§9.6/§10.7, Annex B) is the one element this phase reads only the identity of:
 // its lossless entropy-coded residual is left as an opaque byte span (AudioDataDlc::coded)
@@ -220,9 +220,9 @@ struct AudioDataDlc {
 };
 
 // §9.7/§10.8: one frame of one monaural PCM waveform, decoded to normalized [-1, 1) samples -
-// the same convention iclforge::adm::PcmAudio and iclforge::io::WavData use elsewhere in this project.
-// §10.8.1: PCMData is little-endian per sample (16 or 24 bits, per the parent IAFrame's own
-// BitDepth, §10.2.3), each byte transmitted MSB-first - ordinary little-endian PCM, decoded
+// the same convention iclforge::adm::PcmAudio and iclforge::io::WavData use elsewhere in this
+// project. §10.8.1: PCMData is little-endian per sample (16 or 24 bits, per the parent IAFrame's
+// own BitDepth, §10.2.3), each byte transmitted MSB-first - ordinary little-endian PCM, decoded
 // here rather than left as raw bytes since (unlike AudioDataDLC) there is no entropy coding
 // step whose opacity is worth preserving.
 struct AudioDataPcm {

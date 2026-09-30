@@ -133,13 +133,13 @@ TEST_CASE("apply_transient_prenoise reduces energy where a transient's pre-noise
 
     // "Noise" (large alternating values) exactly in the region the
     // straight-overwrite pass will replace.
-    for (int samp = iclforge::kTransientPrenoiseTC1; samp < tot_corr_len - iclforge::kTransientPrenoiseTC2;
-        ++samp) {
+    for (int samp = iclforge::kTransientPrenoiseTC1;
+         samp < tot_corr_len - iclforge::kTransientPrenoiseTC2; ++samp) {
         pcm[static_cast<std::size_t>(start_samp + samp)] = (samp % 2 == 0) ? 1.0f : -1.0f;
     }
     double noisy_energy = 0.0;
-    for (int samp = iclforge::kTransientPrenoiseTC1; samp < tot_corr_len - iclforge::kTransientPrenoiseTC2;
-        ++samp) {
+    for (int samp = iclforge::kTransientPrenoiseTC1;
+         samp < tot_corr_len - iclforge::kTransientPrenoiseTC2; ++samp) {
         const double v = static_cast<double>(pcm[static_cast<std::size_t>(start_samp + samp)]);
         noisy_energy += v * v;
     }
@@ -147,8 +147,8 @@ TEST_CASE("apply_transient_prenoise reduces energy where a transient's pre-noise
     iclforge::apply_transient_prenoise(pcm, transloc, translen);
 
     double corrected_energy = 0.0;
-    for (int samp = iclforge::kTransientPrenoiseTC1; samp < tot_corr_len - iclforge::kTransientPrenoiseTC2;
-        ++samp) {
+    for (int samp = iclforge::kTransientPrenoiseTC1;
+         samp < tot_corr_len - iclforge::kTransientPrenoiseTC2; ++samp) {
         const double v = static_cast<double>(pcm[static_cast<std::size_t>(start_samp + samp)]);
         corrected_energy += v * v;
     }

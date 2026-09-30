@@ -318,9 +318,11 @@ std::size_t refused_prefixes(std::uint32_t id, const std::vector<std::byte>& pay
     REQUIRE(whole.has_value());
     std::size_t refused = 0;
     for (std::size_t size = 0; size < payload.size(); ++size) {
-        const auto parsed = iclforge::iab::parse_iaframe(iaframe({element(id, cut(payload, size))}));
-        if (!parsed.has_value() && (parsed.error() == iclforge::iab::IabError::kTruncated ||
-                                    parsed.error() == iclforge::iab::IabError::kUnterminatedString)) {
+        const auto parsed =
+            iclforge::iab::parse_iaframe(iaframe({element(id, cut(payload, size))}));
+        if (!parsed.has_value() &&
+            (parsed.error() == iclforge::iab::IabError::kTruncated ||
+             parsed.error() == iclforge::iab::IabError::kUnterminatedString)) {
             ++refused;
         }
     }
@@ -421,7 +423,8 @@ TEST_CASE("audio data, authoring and user data elements are refused as truncated
     // whole one, which is kUnterminatedString (ac3iab.hpp), not kTruncated.
     {
         const std::vector<std::byte> uri{std::byte{'x'}, std::byte{'y'}, std::byte{0}};
-        const auto whole = iclforge::iab::parse_iaframe(iaframe({element(kAuthoringToolInfo, uri)}));
+        const auto whole =
+            iclforge::iab::parse_iaframe(iaframe({element(kAuthoringToolInfo, uri)}));
         REQUIRE(whole.has_value());
         REQUIRE(whole->authoring_tool.has_value());
         CHECK(whole->authoring_tool->uri == "xy");
@@ -442,7 +445,8 @@ TEST_CASE("audio data, authoring and user data elements are refused as truncated
             refused += !parsed.has_value() && parsed.error() == iclforge::iab::IabError::kTruncated ? 1U : 0U;
         }
         CHECK(refused == 16);
-        const auto short_data = iclforge::iab::parse_iaframe(iaframe({element(kUserData, cut(user, 16))}));
+        const auto short_data =
+            iclforge::iab::parse_iaframe(iaframe({element(kUserData, cut(user, 16))}));
         REQUIRE(short_data.has_value());
         CHECK(short_data->user_data.at(0).data.empty());
     }

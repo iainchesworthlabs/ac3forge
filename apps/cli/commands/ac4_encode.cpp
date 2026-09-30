@@ -171,7 +171,8 @@ struct Input {
     if (!dialogue.stem.empty()) {
         auto stem = read_wav_arg(dialogue.stem);
         if (!stem.has_value()) {
-            fmt::println(stderr, "error: {}: {}", dialogue.stem, iclforge::io::describe(stem.error()));
+            fmt::println(stderr, "error: {}: {}", dialogue.stem,
+                         iclforge::io::describe(stem.error()));
             return std::nullopt;
         }
         if (stem->channels.size() != wav->channels.size() ||
@@ -199,7 +200,8 @@ struct Input {
     }
     iclforge::ac4::DialogueConfig dialogue;
     dialogue.method = options.method;
-    dialogue.source = stem ? iclforge::ac4::DialogueSource::kStem : iclforge::ac4::DialogueSource::kMarkedChannels;
+    dialogue.source = stem ? iclforge::ac4::DialogueSource::kStem
+                           : iclforge::ac4::DialogueSource::kMarkedChannels;
     dialogue.max_gain_db = options.max_gain_db;
     if (options.channels) {
         dialogue.left = names_channel(*options.channels, "l");
@@ -392,7 +394,8 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     }
     const bool multichannel = speakers.size() >= 5;
     const bool immersive = speakers.size() >= 9;
-    const bool has_lfe = std::ranges::find(speakers, iclforge::ac4::Speaker::kLfe) != speakers.end();
+    const bool has_lfe =
+        std::ranges::find(speakers, iclforge::ac4::Speaker::kLfe) != speakers.end();
     const bool downmix_named = opts.loro_centre_db || opts.loro_surround_db ||
                                opts.ltrt_centre_db || opts.ltrt_surround_db || opts.lfe_db ||
                                opts.preferred_downmix || opts.loro_correction_db ||
@@ -512,8 +515,8 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
                 substream.dialogue = dialogue_config(s.dialogue, inputs[n]->speakers.size());
             }
             if (s.max_dialogue_gain_db || !s.pan_degrees.empty()) {
-                substream.dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = s.max_dialogue_gain_db,
-                                                          .pan_degrees = s.pan_degrees};
+                substream.dialogue_mix = iclforge::ac4::DialogueMix{
+                    .max_gain_db = s.max_dialogue_gain_db, .pan_degrees = s.pan_degrees};
             }
             if (s.enhances) {
                 substream.enhances = *s.enhances - 1;
@@ -597,7 +600,8 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     const bool measure_dialnorm =
         meta.p.measure_dialnorm || (opts.loudness && !meta.dialnorm_given);
     if (measure_dialnorm || opts.loudness) {
-        const auto measured = iclforge::apps::measure_ac4_programme(main_views, main.wav.sample_rate);
+        const auto measured =
+            iclforge::apps::measure_ac4_programme(main_views, main.wav.sample_rate);
         if (!measured) {
             fmt::println(
                 stderr,
@@ -663,7 +667,8 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     frames->insert(frames->end(), rest->begin(), rest->end());
 
     const iclforge::ac4::Toc& toc = encoder->toc();
-    const auto packaged = iclforge::apps::package_ac4(*frames, toc, to_mp4, opts.crc.value_or(true));
+    const auto packaged =
+        iclforge::apps::package_ac4(*frames, toc, to_mp4, opts.crc.value_or(true));
     if (!packaged.has_value()) {
         fmt::println(stderr, "error: {}", packaged.error().message);
         return packaged.error().usage ? kExitUsage : kExitOutput;

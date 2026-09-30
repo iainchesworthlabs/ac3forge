@@ -25,9 +25,10 @@
 // ObjectDefinition values directly (plain aggregates, per ac3iab/model.hpp's own design - no
 // parser needed to build one), the same "construct the model directly, no byte-level round trip"
 // approach test_adm_bridge.cpp already uses for its own non-flagship cases. The one flagship test
-// at the bottom goes through a REAL byte-level IABitstream fixture and iclforge::iab::parse_iabitstream()
-// end to end, then through a real iclforge::oba::AtmosEncoder/iclforge::Eac3Decoder round trip, per this
-// project's own standard for codec-adjacent behaviour.
+// at the bottom goes through a REAL byte-level IABitstream fixture and
+// iclforge::iab::parse_iabitstream() end to end, then through a real
+// iclforge::oba::AtmosEncoder/iclforge::Eac3Decoder round trip, per this project's own standard for
+// codec-adjacent behaviour.
 
 namespace {
 
@@ -49,8 +50,8 @@ iclforge::iab::IABitstreamFrame make_frame(std::vector<iclforge::iab::BedDefinit
     return entry;
 }
 
-iclforge::iab::BedChannel make_bed_channel(std::uint32_t channel_id, std::uint32_t audio_data_id = 0,
-                                    double gain = 1.0) {
+iclforge::iab::BedChannel make_bed_channel(std::uint32_t channel_id,
+                                           std::uint32_t audio_data_id = 0, double gain = 1.0) {
     iclforge::iab::BedChannel channel;
     channel.channel_id = channel_id;
     channel.audio_data_id = audio_data_id;
@@ -58,8 +59,9 @@ iclforge::iab::BedChannel make_bed_channel(std::uint32_t channel_id, std::uint32
     return channel;
 }
 
-iclforge::iab::BedDefinition make_bed(std::uint32_t meta_id, std::vector<iclforge::iab::BedChannel> channels,
-                               bool conditional = false) {
+iclforge::iab::BedDefinition make_bed(std::uint32_t meta_id,
+                                      std::vector<iclforge::iab::BedChannel> channels,
+                                      bool conditional = false) {
     iclforge::iab::BedDefinition bed;
     bed.meta_id = meta_id;
     bed.activation.conditional = conditional;
@@ -86,7 +88,8 @@ iclforge::iab::ObjectDefinition make_object(std::uint32_t meta_id,
     return object;
 }
 
-iclforge::iab::AudioDataPcm make_pcm(std::uint32_t audio_data_id, std::size_t count, float value = 0.0f) {
+iclforge::iab::AudioDataPcm make_pcm(std::uint32_t audio_data_id, std::size_t count,
+                                     float value = 0.0f) {
     iclforge::iab::AudioDataPcm pcm;
     pcm.audio_data_id = audio_data_id;
     pcm.samples.assign(count, value);
@@ -136,14 +139,14 @@ TEST_CASE("build_iab maps supported Table 19 ChannelIDs to the right BedLabel po
         iclforge::oba::BedLabel label;
     };
     // A representative subset, not the full table - see iab_bridge.cpp's own comment for the rest.
-    const auto test_case =
-        GENERATE(Case{0x0, iclforge::oba::BedLabel::kL}, Case{0x2, iclforge::oba::BedLabel::kC},
-                 Case{0x4, iclforge::oba::BedLabel::kR}, Case{0x6, iclforge::oba::BedLabel::kLs},
-                 Case{0xA, iclforge::oba::BedLabel::kRs}, Case{0x7, iclforge::oba::BedLabel::kLb},
-                 Case{0x8, iclforge::oba::BedLabel::kRb}, Case{0x86, iclforge::oba::BedLabel::kLfe},
-                 Case{0x87, iclforge::oba::BedLabel::kLfe2}, Case{0x88, iclforge::oba::BedLabel::kLw},
-                 Case{0x89, iclforge::oba::BedLabel::kRw}, Case{0x80, iclforge::oba::BedLabel::kTfl},
-                 Case{0x84, iclforge::oba::BedLabel::kTsl});
+    const auto test_case = GENERATE(
+        Case{0x0, iclforge::oba::BedLabel::kL}, Case{0x2, iclforge::oba::BedLabel::kC},
+        Case{0x4, iclforge::oba::BedLabel::kR}, Case{0x6, iclforge::oba::BedLabel::kLs},
+        Case{0xA, iclforge::oba::BedLabel::kRs}, Case{0x7, iclforge::oba::BedLabel::kLb},
+        Case{0x8, iclforge::oba::BedLabel::kRb}, Case{0x86, iclforge::oba::BedLabel::kLfe},
+        Case{0x87, iclforge::oba::BedLabel::kLfe2}, Case{0x88, iclforge::oba::BedLabel::kLw},
+        Case{0x89, iclforge::oba::BedLabel::kRw}, Case{0x80, iclforge::oba::BedLabel::kTfl},
+        Case{0x84, iclforge::oba::BedLabel::kTsl});
     CAPTURE(test_case.channel_id);
 
     auto frame = make_frame({make_bed(1, {make_bed_channel(test_case.channel_id)})});

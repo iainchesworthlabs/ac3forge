@@ -90,7 +90,8 @@ struct Encoded {
 
 // Encodes planar input, with the dialogue in it where a substream takes a
 // stem, in pieces of 3000 samples, then flushes.
-Encoded encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input,
+Encoded encode(const iclforge::ac4::EncoderConfig& base,
+               const std::vector<std::vector<float>>& input,
                const std::vector<std::vector<float>>* dialogue = nullptr) {
     Encoded out;
     iclforge::ac4::EncoderConfig config = base;
@@ -264,8 +265,9 @@ struct Stream {
     std::vector<std::vector<float>> dialogue;  // empty without a stem
 };
 
-iclforge::ac4::SubstreamConfig substream(int channels, int kbps, std::optional<ContentClassifier> content,
-                               std::string language = {}) {
+iclforge::ac4::SubstreamConfig substream(int channels, int kbps,
+                                         std::optional<ContentClassifier> content,
+                                         std::string language = {}) {
     iclforge::ac4::SubstreamConfig s;
     s.channels = channels;
     s.bitrate_kbps = kbps;
@@ -274,8 +276,8 @@ iclforge::ac4::SubstreamConfig substream(int channels, int kbps, std::optional<C
     return s;
 }
 
-iclforge::ac4::PresentationConfig presentation(std::optional<int> config, std::vector<int> substreams,
-                                     int id) {
+iclforge::ac4::PresentationConfig presentation(std::optional<int> config,
+                                               std::vector<int> substreams, int id) {
     iclforge::ac4::PresentationConfig p;
     p.config = config;
     p.substreams = std::move(substreams);
@@ -308,8 +310,10 @@ Stream broadcast() {
     english.emdf.front().priority = 5;
     iclforge::ac4::SubstreamConfig german = substream(1, 64, ContentClassifier::kDialogue, "de");
     german.dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = 12, .pan_degrees = {}};
-    iclforge::ac4::SubstreamConfig described = substream(1, 48, ContentClassifier::kVisuallyImpaired, "qad");
-    iclforge::ac4::SubstreamConfig commentary = substream(2, 80, ContentClassifier::kCommentary, "en");
+    iclforge::ac4::SubstreamConfig described =
+        substream(1, 48, ContentClassifier::kVisuallyImpaired, "qad");
+    iclforge::ac4::SubstreamConfig commentary =
+        substream(2, 80, ContentClassifier::kCommentary, "en");
     iclforge::ac4::SubstreamConfig french = substream(2, 80, ContentClassifier::kDialogue, "fr");
     french.dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = 3, .pan_degrees = {0.0, 30.0}};
     c.substreams = {me, english, german, described, commentary, french};
@@ -405,7 +409,8 @@ Stream hybrid() {
     iclforge::ac4::SubstreamConfig waveform20;
     waveform20.enhances = 2;
     waveform20.bitrate_kbps = 48;
-    iclforge::ac4::SubstreamConfig described = substream(1, 48, ContentClassifier::kVisuallyImpaired, "qad");
+    iclforge::ac4::SubstreamConfig described =
+        substream(1, 48, ContentClassifier::kVisuallyImpaired, "qad");
     c.substreams = {main51, waveform51, main20, waveform20, described};
     iclforge::ac4::PresentationConfig p1 = presentation(1, {0, 1}, 1);
     iclforge::ac4::PresentationConfig p2 = presentation(4, {0, 1, 4}, 2);
@@ -540,7 +545,8 @@ std::string json_string(std::string_view text) {
 // What tools/checks/check_ac4_encode_readers.py holds MediaInfo's reading to:
 // each presentation's configuration, id, level, name and dialnorm, and each
 // substream's channels, classifier and language.
-std::string configuration_json(const iclforge::ac4::EncoderConfig& config, const iclforge::ac4::Toc& toc) {
+std::string configuration_json(const iclforge::ac4::EncoderConfig& config,
+                               const iclforge::ac4::Toc& toc) {
     std::ostringstream out;
     out << "{\n  \"substreams\": [\n";
     for (std::size_t i = 0; i < toc.substream_groups.size(); ++i) {
@@ -803,7 +809,8 @@ TEST_CASE("the decoder selects the encoder's presentations as configured",
     const iclforge::ac4::Toc toc = toc_of(encoded_broadcast().frames.front());
     const auto selected_id = [&toc](const iclforge::ac4::PresentationChoice& choice,
                                     int level = 3) -> std::optional<int> {
-        const std::optional<std::size_t> index = iclforge::ac4::select_presentation(toc, choice, level);
+        const std::optional<std::size_t> index =
+            iclforge::ac4::select_presentation(toc, choice, level);
         if (!index) {
             return std::nullopt;
         }

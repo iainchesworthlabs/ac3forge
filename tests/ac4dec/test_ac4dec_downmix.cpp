@@ -62,8 +62,8 @@ detail::StereoDmxCoeff coefficients(int loro_c, int loro_s, int ltrt_c, int ltrt
 
 // The matrix a stage takes after one frame of `values`.
 std::vector<Row> matrix_for(std::span<const S> speakers, bool add_ch_base,
-                            iclforge::ac4::DownmixTarget target, const detail::DownmixValues& values,
-                            bool mix_lfe = true) {
+                            iclforge::ac4::DownmixTarget target,
+                            const detail::DownmixValues& values, bool mix_lfe = true) {
     detail::DownmixStage stage;
     stage.configure(speakers, add_ch_base, target, mix_lfe);
     std::vector<std::vector<QmfValue>> channels(speakers.size(), std::vector<QmfValue>(64));
@@ -182,9 +182,11 @@ TEST_CASE("5.1's downmixes are Table 218's with the stream's gains, LFE and loud
     // Columns L R C LFE Ls Rs.
     const Row lo = scaled({1, 0, db(0), lfe, db(-6), 0}, loro);
     const Row ro = scaled({0, 1, db(0), lfe, 0, db(-6)}, loro);
-    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kLoRo, values), {lo, ro});
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kLoRo, values),
+                 {lo, ro});
     // The stream prefers Lo/Ro, so stereo is Lo/Ro, and mono their sum.
-    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kStereo, values), {lo, ro});
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kStereo, values),
+                 {lo, ro});
     Row sum(6);
     for (std::size_t c = 0; c < 6; ++c) {
         sum[c] = lo[c] + ro[c];
@@ -271,7 +273,8 @@ TEST_CASE("3.0, stereo and mono take Table 217, the sum and the 0.707 upmix", "[
     const std::array<S, 2> stereo = {S::kLeft, S::kRight};
     check_matrix(matrix_for(stereo, false, iclforge::ac4::DownmixTarget::kMono, values), {{1, 1}});
     const std::array<S, 1> mono = {S::kCentre};
-    check_matrix(matrix_for(mono, false, iclforge::ac4::DownmixTarget::kStereo, values), {{0.707}, {0.707}});
+    check_matrix(matrix_for(mono, false, iclforge::ac4::DownmixTarget::kStereo, values),
+                 {{0.707}, {0.707}});
 }
 
 TEST_CASE("the downmix's gains hold from the frame that sends them until another does",

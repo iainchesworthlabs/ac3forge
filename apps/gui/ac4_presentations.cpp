@@ -31,13 +31,15 @@ std::string ac4_presentation_label(const iclforge::ac4::PresentationInfo& info) 
     return label;
 }
 
-std::vector<Ac4PresentationRow> ac4_presentation_rows(std::span<const iclforge::ac4::SyncFrame> frames) {
+std::vector<Ac4PresentationRow> ac4_presentation_rows(
+    std::span<const iclforge::ac4::SyncFrame> frames) {
     iclforge::ac4::Decoder decoder;
     for (const iclforge::ac4::SyncFrame& frame : frames) {
         if (!decoder.parse(frame.raw_ac4_frame).has_value()) {
             continue;
         }
-        const std::span<const iclforge::ac4::PresentationInfo> presentations = decoder.presentations();
+        const std::span<const iclforge::ac4::PresentationInfo> presentations =
+            decoder.presentations();
         if (presentations.empty()) {
             continue;
         }

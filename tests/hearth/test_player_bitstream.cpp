@@ -432,8 +432,9 @@ struct Transcoded {
 Transcoded reference_transcode(const std::vector<ItemPart>& items) {
     const auto layout = iclforge::render::OutputLayout::named("5.1");
     REQUIRE(layout.has_value());
-    iclforge::hearth::StreamDecoder decoder{*layout, 48000, iclforge::hearth::transcode_settings({}),
-                                       iclforge::hearth::Substreams::kIndependent};
+    iclforge::hearth::StreamDecoder decoder{*layout, 48000,
+                                            iclforge::hearth::transcode_settings({}),
+                                            iclforge::hearth::Substreams::kIndependent};
     REQUIRE_FALSE(items.empty());
     iclforge::hearth::Ac3Transcoder transcoder{
         48000, iclforge::hearth::Ac3Transcoder::fold_levels(items.front().units->front())};
@@ -463,7 +464,8 @@ Transcoded reference_transcode(const std::vector<ItemPart>& items) {
                 if (lo >= hi) {
                     return;
                 }
-                std::array<std::span<const float>, iclforge::hearth::Ac3Transcoder::kChannels> cut{};
+                std::array<std::span<const float>, iclforge::hearth::Ac3Transcoder::kChannels>
+                    cut{};
                 for (std::size_t slot = 0; slot < cut.size() && slot < slots.size(); ++slot) {
                     cut[slot] = slots[slot].subspan(static_cast<std::size_t>(lo - begin),
                                                     static_cast<std::size_t>(hi - lo));
@@ -510,7 +512,8 @@ Slots link_audio(const std::vector<Bytes>& bursts) {
     REQUIRE(frames.has_value());
     const auto layout = iclforge::render::OutputLayout::named("5.1");
     REQUIRE(layout.has_value());
-    iclforge::hearth::StreamDecoder decoder{*layout, 48000, iclforge::hearth::transcode_settings({})};
+    iclforge::hearth::StreamDecoder decoder{*layout, 48000,
+                                            iclforge::hearth::transcode_settings({})};
     Slots out;
     const iclforge::hearth::StreamDecoder::BlockFn deliver =
         [&out](std::span<const std::span<const float>> slots, std::size_t n) {
@@ -1419,8 +1422,8 @@ TEST_CASE("transcode: E-AC-3 goes out as AC-3, and items join through one encode
     const Slots heard = link_audio(rig.link->bursts);
     for (const std::size_t slot : {std::size_t{0}, std::size_t{2}}) {
         CAPTURE(slot);
-        CHECK(snr_db(reference.decoded[slot], heard[slot], iclforge::hearth::Ac3Transcoder::kDelay) >
-              25.0);
+        CHECK(snr_db(reference.decoded[slot], heard[slot],
+                     iclforge::hearth::Ac3Transcoder::kDelay) > 25.0);
     }
 
     const std::uint64_t delay = iclforge::hearth::Ac3Transcoder::kDelay;
@@ -1665,7 +1668,8 @@ TEST_CASE("transcode: a 7.1 item is transcoded from its own 5.1",
     const auto coded = static_cast<std::size_t>(encoder.channel_count());
     Units a;
     for (int f = 0; f < 6; ++f) {
-        std::vector<std::vector<float>> channels(coded, std::vector<float>(iclforge::kSamplesPerFrame));
+        std::vector<std::vector<float>> channels(coded,
+                                                 std::vector<float>(iclforge::kSamplesPerFrame));
         for (std::size_t c = 0; c < coded; ++c) {
             for (std::size_t n = 0; n < channels[c].size(); ++n) {
                 channels[c][n] = 0.02F * static_cast<float>(
@@ -1784,7 +1788,8 @@ TEST_CASE("transcode: a concealment chosen mid-item reaches what is sent",
         // link has them.
         const std::uint64_t from =
             (9 * iclforge::kSamplesPerFrame) + iclforge::hearth::Ac3Transcoder::kDelay + iclforge::kSamplesPerBlock;
-        const std::uint64_t to = from + iclforge::kSamplesPerFrame - (2 * iclforge::kSamplesPerBlock);
+        const std::uint64_t to =
+            from + iclforge::kSamplesPerFrame - (2 * iclforge::kSamplesPerBlock);
         REQUIRE(heard[0].size() >= to);
         double energy = 0.0;
         for (std::uint64_t n = from; n < to; ++n) {
@@ -1835,8 +1840,9 @@ TEST_CASE("transcode: an item that folds at other levels reopens, other dialnorm
         return out;
     };
     Library library;
-    library.files["a.ec3"] = {.bytes = joined(units(4, iclforge::meta::MixLevel::kMinus3dB, 31,
-                                                    iclforge::meta::BitstreamMode::kVisuallyImpaired))};
+    library.files["a.ec3"] = {.bytes =
+                                  joined(units(4, iclforge::meta::MixLevel::kMinus3dB, 31,
+                                               iclforge::meta::BitstreamMode::kVisuallyImpaired))};
     library.files["b.ec3"] = {.bytes = joined(units(4, iclforge::meta::MixLevel::kMinus3dB, 24))};
     library.files["c.ec3"] = {.bytes = joined(units(4, iclforge::meta::MixLevel::kMinus6dB, 24))};
     Rig rig{library};

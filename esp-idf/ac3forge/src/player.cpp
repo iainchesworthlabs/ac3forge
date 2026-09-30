@@ -74,7 +74,8 @@ struct BlockView {
     std::span<const iclforge::oba::DisplayObject> places;
 };
 
-bool same_layout(const iclforge::eac3::chanmap::Layout& a, const iclforge::eac3::chanmap::Layout& b) {
+bool same_layout(const iclforge::eac3::chanmap::Layout& a,
+                 const iclforge::eac3::chanmap::Layout& b) {
     if (a.count != b.count) {
         return false;
     }
@@ -432,7 +433,8 @@ struct Player::Impl {
     // signals the block carries, at most kMaxObjects. Only what the renderer
     // reads is kept - the label views the decoder's storage, which is gone
     // once the decode call returns, so it is cleared.
-    static std::size_t gather_places(const iclforge::PcmBlock& pcm, iclforge::oba::DisplayObject* into) {
+    static std::size_t gather_places(const iclforge::PcmBlock& pcm,
+                                     iclforge::oba::DisplayObject* into) {
         if (pcm.object_metadata == nullptr || pcm.objects.empty()) {
             return 0;
         }
@@ -512,12 +514,12 @@ struct Player::Impl {
         }
         const std::size_t count =
             reconstruct && pcm.index == 0 ? gather_places(pcm, places.data()) : 0;
-        output_block(BlockView{.index = pcm.index,
-                               .channels = pcm.channels,
-                               .objects = pcm.objects,
-                               .bed = have_bed ? &bed : nullptr,
-                               .places = std::span<const iclforge::oba::DisplayObject>(places.data(),
-                                                                                  count)});
+        output_block(BlockView{
+            .index = pcm.index,
+            .channels = pcm.channels,
+            .objects = pcm.objects,
+            .bed = have_bed ? &bed : nullptr,
+            .places = std::span<const iclforge::oba::DisplayObject>(places.data(), count)});
     }
 
     // Into the hold, which the play's first block arms with room for blocks
@@ -572,14 +574,14 @@ struct Player::Impl {
         hold.release([&](std::size_t /*position*/, int index,
                          std::span<const std::span<const float>> channels,
                          std::span<const std::span<const float>> objects) {
-            output_block(BlockView{
-                .index = index,
-                .channels = channels,
-                .objects = objects,
-                .bed = held_has_bed ? &held_bed : nullptr,
-                .places = index == 0 ? std::span<const iclforge::oba::DisplayObject>(held_places.data(),
-                                                                                held_place_count)
-                                     : std::span<const iclforge::oba::DisplayObject>{}});
+            output_block(
+                BlockView{.index = index,
+                          .channels = channels,
+                          .objects = objects,
+                          .bed = held_has_bed ? &held_bed : nullptr,
+                          .places = index == 0 ? std::span<const iclforge::oba::DisplayObject>(
+                                                     held_places.data(), held_place_count)
+                                               : std::span<const iclforge::oba::DisplayObject>{}});
         });
         free_hold();
     }
@@ -594,7 +596,8 @@ struct Player::Impl {
     // StreamInfo's account of how the layout is served (see player.hpp), once
     // the first unit has said what the stream is: `silent` is filled in by
     // Player::stream(), since it grows as the play goes on.
-    void describe_stream(const std::optional<iclforge::eac3::chanmap::Layout>& coded, bool dual_mono) {
+    void describe_stream(const std::optional<iclforge::eac3::chanmap::Layout>& coded,
+                         bool dual_mono) {
         const std::string_view text = config.layout.text();
         const std::size_t n = std::min(text.size(), stream.layout.size() - 1);
         std::copy_n(text.data(), n, stream.layout.data());
@@ -727,9 +730,12 @@ struct Player::Impl {
 
     // True when the frame produced audio, false when it gave nothing (a frame
     // that waits for an I-frame the stream has not sent yet).
-    std::expected<bool, iclforge::ac4::DecodeError> decode_ac4_frame(std::span<const std::byte> frame) {
+    std::expected<bool, iclforge::ac4::DecodeError> decode_ac4_frame(
+        std::span<const std::byte> frame) {
         int index = 0;
-        const auto deliver_block = [&](const iclforge::ac4::PcmBlock& block) { ac4_deliver(block, index++); };
+        const auto deliver_block = [&](const iclforge::ac4::PcmBlock& block) {
+            ac4_deliver(block, index++);
+        };
         const auto decoded = ac4_decoder->decode_by_block(frame, deliver_block);
         if (!decoded) {
             return std::unexpected(decoded.error());
@@ -1071,8 +1077,9 @@ bool Player::start() {
         return false;
     }
     for (std::size_t slot = 0; slot < slots; ++slot) {
-        im.block_spans[slot] = std::span<float>(
-            im.block_storage.get() + (slot * iclforge::kSamplesPerBlock), iclforge::kSamplesPerBlock);
+        im.block_spans[slot] =
+            std::span<float>(im.block_storage.get() + (slot * iclforge::kSamplesPerBlock),
+                             iclforge::kSamplesPerBlock);
     }
     im.staging.resize(im.config.fetch_bytes);
     set_volume(im.config.volume);

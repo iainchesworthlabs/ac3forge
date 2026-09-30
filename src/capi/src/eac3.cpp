@@ -501,7 +501,8 @@ ac3forge_status_t split_into_spans(const uint8_t* stream, size_t stream_size,
     }
     return guard([&stream, &stream_size, &out_spans, &access_units]() -> ac3forge_status_t {
         const auto bytes = std::as_bytes(std::span<const uint8_t>(stream, stream_size));
-        auto result = access_units ? iclforge::split_access_units(bytes) : iclforge::split_frames(bytes);
+        auto result =
+            access_units ? iclforge::split_access_units(bytes) : iclforge::split_frames(bytes);
         if (!result.has_value()) {
             return ac3forge_c::from_cpp(result.error());
         }
@@ -534,7 +535,8 @@ ac3forge_status_t ac3forge_stream_bsid(const uint8_t* frame, size_t frame_size, 
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&frame, &frame_size, &out_bsid]() -> ac3forge_status_t {
-        auto result = iclforge::stream_bsid(std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
+        auto result =
+            iclforge::stream_bsid(std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
         if (!result.has_value()) {
             return ac3forge_c::from_cpp(result.error());
         }

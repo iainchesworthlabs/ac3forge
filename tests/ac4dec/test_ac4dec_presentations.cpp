@@ -131,8 +131,9 @@ MuxGroup group(std::size_t from, std::optional<int> classifier, std::string lang
     return g;
 }
 
-MuxPresentation presentation(std::optional<int> config, std::vector<int> groups, int id, int md_compat,
-                             std::size_t from, iclforge::ac4::detail::PresentationMixCodes mix = {}) {
+MuxPresentation presentation(std::optional<int> config, std::vector<int> groups, int id,
+                             int md_compat, std::size_t from,
+                             iclforge::ac4::detail::PresentationMixCodes mix = {}) {
     MuxPresentation p;
     p.presentation_config = config;
     p.groups = std::move(groups);
@@ -306,14 +307,16 @@ BuiltV0 stream_v0() {
     b.sources = {dee("ac4-51-tones-384"), dee("ac4-20-tones-192"), encoded("dialogue-en-mono"), encoded("ad-mono"),
                  encoded("dialogue-fr-stereo")};
     ac4dec_test::MuxSubstreamV0 english = substream_v0(2, kDialnormEn, 0b100, "en");
-    english.dialogue = iclforge::ac4::detail::DialogueMixCodes{1, std::array{kPan330, 0}, 0};  // 6 dB, 330
+    english.dialogue =
+        iclforge::ac4::detail::DialogueMixCodes{1, std::array{kPan330, 0}, 0};  // 6 dB, 330
     ac4dec_test::MuxSubstreamV0 ad = substream_v0(3, kDialnormAd, 0b010, "qad");
     ad.associated = iclforge::ac4::detail::AssociatedMixCodes{.scale_main = 20,         // -6 dB
                                                     .scale_main_centre = 10,  // -3 dB
                                                     .scale_main_front = 5,    // -1.5 dB
                                                     .pan_associated = kPan30};
     ac4dec_test::MuxSubstreamV0 french = substream_v0(4, kDialnormMe, 0b100, "fr");
-    french.dialogue = iclforge::ac4::detail::DialogueMixCodes{0, std::array{kPan0, kPan30}, 0};  // 3 dB
+    french.dialogue =
+        iclforge::ac4::detail::DialogueMixCodes{0, std::array{kPan0, kPan30}, 0};  // 3 dB
     b.layout.substreams = {substream_v0(0, kDialnormMe), english, ad, substream_v0(1, kDialnormStereoMain), french};
     b.layout.presentations = {
         presentation_v0(0, {0, 1}, 1),     // M&E + English
@@ -657,7 +660,8 @@ std::vector<SelectionCase> selection_cases() {
         c.language = tag;
         return c;
     };
-    const auto wants = [](int classifier, iclforge::ac4::AssociatedType type = iclforge::ac4::AssociatedType::kAny) {
+    const auto wants = [](int classifier, iclforge::ac4::AssociatedType type =
+                                              iclforge::ac4::AssociatedType::kAny) {
         iclforge::ac4::PresentationChoice c;
         c.associated = classifier;
         c.associated_type = type;
@@ -1134,7 +1138,8 @@ TEST_CASE("a stream with no presentation the decoder decodes names the substream
     iclforge::ac4::Decoder reader;
     const auto report = reader.parse(frame);
     REQUIRE(report.has_value());
-    const auto audio = std::ranges::find(report->substreams, 0, &iclforge::ac4::SubstreamReport::index);
+    const auto audio =
+        std::ranges::find(report->substreams, 0, &iclforge::ac4::SubstreamReport::index);
     REQUIRE(audio != report->substreams.end());
     REQUIRE(audio->refused == iclforge::ac4::DecodeError::kUnsupported);
     iclforge::ac4::Decoder decoder;

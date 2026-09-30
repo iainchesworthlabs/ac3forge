@@ -512,7 +512,8 @@ void write_ac4_substream_info(JsonSink& json, const iclforge::ac4::ChannelSubstr
     json.end_object();
 }
 
-void write_ac4_object_entries(JsonSink& json, const std::vector<iclforge::ac4::ObjectEntry>& objects) {
+void write_ac4_object_entries(JsonSink& json,
+                              const std::vector<iclforge::ac4::ObjectEntry>& objects) {
     json.begin_array();
     for (const auto& obj : objects) {
         json.begin_object();
@@ -640,7 +641,8 @@ void write_ac4_group_substream(JsonSink& json, const iclforge::ac4::GroupSubstre
 
 // --- What the decoder reports (planning/ac4.md, "Media information") ------
 
-void write_speakers(JsonSink& json, std::string_view name, std::span<const iclforge::ac4::Speaker> speakers) {
+void write_speakers(JsonSink& json, std::string_view name,
+                    std::span<const iclforge::ac4::Speaker> speakers) {
     json.key(name);
     json.begin_array();
     for (const iclforge::ac4::Speaker speaker : speakers) {

@@ -51,12 +51,12 @@ struct AdmMasterInput {
     std::vector<AdmMasterChannel> channels;
 };
 
-// Writes `input` to `path` as a Dolby Atmos Master ADM Profile BW64 file (iclforge::admbridge::write()
-// builds the iclforge::adm::AdmDocument, iclforge::adm::write_bw64() writes it) - or a single diagnostic string
-// already run through both BridgeError's and AdmWriteError's own describe(), the same
-// "main.cpp/decode.cpp never needs either error enum's type" convention
-// load_adm_atmos_source's own doc comment states for the read direction. Caller checks
-// ac3cli::adm_capability() first, same as run_atmos_adm does.
+// Writes `input` to `path` as a Dolby Atmos Master ADM Profile BW64 file
+// (iclforge::admbridge::write() builds the iclforge::adm::AdmDocument, iclforge::adm::write_bw64()
+// writes it) - or a single diagnostic string already run through both BridgeError's and
+// AdmWriteError's own describe(), the same "main.cpp/decode.cpp never needs either error enum's
+// type" convention load_adm_atmos_source's own doc comment states for the read direction. Caller
+// checks ac3cli::adm_capability() first, same as run_atmos_adm does.
 [[nodiscard]] std::expected<void, std::string> write_adm_atmos_master(std::string_view path,
                                                                        const AdmMasterInput& input);
 

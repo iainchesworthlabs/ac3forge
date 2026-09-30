@@ -18,15 +18,16 @@
 #include "iclforge/objects/motion.hpp"
 #include "iclforge/adm/ac3adm.hpp"
 
-// iclforge::admbridge - ADM BWF → JOC bridge, phase 2 ("ADM BWF reader feeding the JOC encoder", see
-// ROADMAP.md). Most cases here construct iclforge::adm::AdmDocument/AdmModel values directly (they are
-// plain aggregates, per ac3adm/model.hpp's own design - no parser needed to build one) rather
-// than a byte-level BW64 file, which keeps the error-path and coordinate/timeline unit tests
+// iclforge::admbridge - ADM BWF → JOC bridge, phase 2 ("ADM BWF reader feeding the JOC encoder",
+// see ROADMAP.md). Most cases here construct iclforge::adm::AdmDocument/AdmModel values directly
+// (they are plain aggregates, per ac3adm/model.hpp's own design - no parser needed to build one)
+// rather than a byte-level BW64 file, which keeps the error-path and coordinate/timeline unit tests
 // focused on this module's own logic. The one flagship test at the bottom goes through a REAL
 // byte-level BW64 fixture and iclforge::adm::parse_bw64() end to end, then through a real
-// iclforge::oba::AtmosEncoder::encode_frame()/Eac3Decoder round trip, per this project's own standard
-// for codec-adjacent behaviour (silence/frame-0 checks give false passes - see
-// tests/ac3/oba/test_atmos_motion.cpp's own flagship test for the established pattern this one follows).
+// iclforge::oba::AtmosEncoder::encode_frame()/Eac3Decoder round trip, per this project's own
+// standard for codec-adjacent behaviour (silence/frame-0 checks give false passes - see
+// tests/ac3/oba/test_atmos_motion.cpp's own flagship test for the established pattern this one
+// follows).
 
 namespace {
 
@@ -36,7 +37,8 @@ constexpr int kFrame = iclforge::kSamplesPerFrame;
 // Coordinate conversion
 // ---------------------------------------------------------------------------
 
-iclforge::adm::PolarPosition polar(double azimuth_deg, double elevation_deg, double distance = 1.0) {
+iclforge::adm::PolarPosition polar(double azimuth_deg, double elevation_deg,
+                                   double distance = 1.0) {
     return {.azimuth_deg = azimuth_deg, .elevation_deg = elevation_deg, .distance = distance};
 }
 
@@ -102,7 +104,8 @@ TEST_CASE("adm_cartesian_to_room maps the unit cube onto iclforge::oba::Position
         CHECK_THAT(up.z, Catch::Matchers::WithinAbs(0.7, 1e-9));
     }
     SECTION("the cube's centre is the room's centre-front-floor (0.5, 0.5, 0)") {
-        const auto centre = iclforge::admbridge::adm_cartesian_to_room({.x = 0.0, .y = 0.0, .z = 0.0});
+        const auto centre =
+            iclforge::admbridge::adm_cartesian_to_room({.x = 0.0, .y = 0.0, .z = 0.0});
         CHECK_THAT(centre.x, Catch::Matchers::WithinAbs(0.5, 1e-9));
         CHECK_THAT(centre.y, Catch::Matchers::WithinAbs(0.5, 1e-9));
         CHECK_THAT(centre.z, Catch::Matchers::WithinAbs(0.0, 1e-9));
@@ -117,18 +120,21 @@ TEST_CASE("polar positions at the 5.1 ring reproduce this project's own known ro
     // azimuths. Converting those same azimuths through this module's own coordinate functions
     // should reproduce those exact, independently-authored constants.
     SECTION("L: +30 degrees azimuth") {
-        const auto p = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
+        const auto p =
+            iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
         CHECK_THAT(p.x, Catch::Matchers::WithinAbs(0.25, 1e-6));
         CHECK_THAT(p.y, Catch::Matchers::WithinAbs(0.066987, 1e-6));
         CHECK_THAT(p.z, Catch::Matchers::WithinAbs(0.0, 1e-9));
     }
     SECTION("R: -30 degrees azimuth") {
-        const auto p = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-30.0, 0.0)});
+        const auto p =
+            iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-30.0, 0.0)});
         CHECK_THAT(p.x, Catch::Matchers::WithinAbs(0.75, 1e-6));
         CHECK_THAT(p.y, Catch::Matchers::WithinAbs(0.066987, 1e-6));
     }
     SECTION("SR: -110 degrees azimuth") {
-        const auto p = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-110.0, 0.0)});
+        const auto p =
+            iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-110.0, 0.0)});
         CHECK_THAT(p.x, Catch::Matchers::WithinAbs(0.969846, 1e-6));
         CHECK_THAT(p.y, Catch::Matchers::WithinAbs(0.671010, 1e-6));
     }
@@ -136,7 +142,8 @@ TEST_CASE("polar positions at the 5.1 ring reproduce this project's own known ro
 
 TEST_CASE("adm_position_to_room dispatches on the Position variant", "[admbridge][coordinates]") {
     SECTION("Cartesian alternative goes straight through adm_cartesian_to_room") {
-        const iclforge::adm::Position position{iclforge::adm::CartesianPosition{.x = 0.4, .y = -0.2, .z = 0.1}};
+        const iclforge::adm::Position position{
+            iclforge::adm::CartesianPosition{.x = 0.4, .y = -0.2, .z = 0.1}};
         const auto expected = iclforge::admbridge::adm_cartesian_to_room(std::get<iclforge::adm::CartesianPosition>(position));
         const auto got = iclforge::admbridge::adm_position_to_room(position);
         CHECK(got.x == expected.x);
@@ -145,8 +152,9 @@ TEST_CASE("adm_position_to_room dispatches on the Position variant", "[admbridge
     }
     SECTION("Polar alternative goes through polar_to_adm_cartesian first") {
         const iclforge::adm::Position position{polar(60.0, 10.0)};
-        const auto expected = iclforge::admbridge::adm_cartesian_to_room(
-            iclforge::admbridge::polar_to_adm_cartesian(std::get<iclforge::adm::PolarPosition>(position)));
+        const auto expected =
+            iclforge::admbridge::adm_cartesian_to_room(iclforge::admbridge::polar_to_adm_cartesian(
+                std::get<iclforge::adm::PolarPosition>(position)));
         const auto got = iclforge::admbridge::adm_position_to_room(position);
         CHECK_THAT(got.x, Catch::Matchers::WithinAbs(expected.x, 1e-12));
         CHECK_THAT(got.y, Catch::Matchers::WithinAbs(expected.y, 1e-12));
@@ -178,7 +186,8 @@ iclforge::adm::AudioBlockFormat block_at(double rtime_s, std::optional<double> d
     return block;
 }
 
-iclforge::adm::AudioChannelFormat channel_with(std::vector<iclforge::adm::AudioBlockFormat> blocks) {
+iclforge::adm::AudioChannelFormat channel_with(
+    std::vector<iclforge::adm::AudioBlockFormat> blocks) {
     iclforge::adm::AudioChannelFormat channel;
     channel.id = "AC_TEST";
     channel.type = iclforge::adm::TypeDefinition::kObjects;
@@ -190,7 +199,8 @@ iclforge::adm::AudioChannelFormat channel_with(std::vector<iclforge::adm::AudioB
 
 TEST_CASE("build_channel_path holds a single static block everywhere", "[admbridge]") {
     const auto channel = channel_with({block_at(0.5, std::nullopt, polar(45.0, 0.0), 0.8)});
-    const auto path = iclforge::admbridge::build_channel_path(channel, /*object_start_s=*/2.0, false);
+    const auto path =
+        iclforge::admbridge::build_channel_path(channel, /*object_start_s=*/2.0, false);
     REQUIRE(path.has_value());
     for (const double t : {-100.0, 0.0, 2.5, 1e6}) {
         const auto placement = path->evaluate(t);
@@ -218,7 +228,8 @@ TEST_CASE("build_channel_path with jumpPosition=0 ramps continuously across the 
     const auto at_mid = path->evaluate(2.0);
     const auto at_end = path->evaluate(3.0);
     const auto want_start = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
-    const auto want_end = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-30.0, 0.0)});
+    const auto want_end =
+        iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-30.0, 0.0)});
 
     CHECK_THAT(at_start.position.x, Catch::Matchers::WithinAbs(want_start.x, 1e-6));
     CHECK_THAT(at_end.position.x, Catch::Matchers::WithinAbs(want_end.x, 1e-6));
@@ -238,8 +249,10 @@ TEST_CASE("build_channel_path with jumpPosition=1 and no interpolationLength "
     const auto path = iclforge::admbridge::build_channel_path(channel, 0.0, false);
     REQUIRE(path.has_value());
 
-    const auto want_old = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
-    const auto want_new = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-30.0, 0.0)});
+    const auto want_old =
+        iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
+    const auto want_new =
+        iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-30.0, 0.0)});
 
     // Right at the boundary, the old value should still be in effect (§10.3's own first-block
     // rule aside, the SECOND block's jump has not yet been reached at its own rtime boundary
@@ -261,8 +274,10 @@ TEST_CASE("build_channel_path with jumpPosition=1 and an interpolationLength "
     const auto path = iclforge::admbridge::build_channel_path(channel, 0.0, false);
     REQUIRE(path.has_value());
 
-    const auto want_old = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
-    const auto want_new = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-30.0, 0.0)});
+    const auto want_old =
+        iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
+    const auto want_new =
+        iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(-30.0, 0.0)});
 
     CHECK_THAT(path->evaluate(1.0).position.x, Catch::Matchers::WithinAbs(want_old.x, 1e-6));
     // Midway through the 0.2s ramp: strictly between the two values, unlike the no-
@@ -660,19 +675,20 @@ TEST_CASE("build() applies absolute time as object.start_s + block.rtime_s", "[a
     // a point well before it to confirm the "holds before the first keyframe too" clamp isn't
     // masking a wrong absolute time (a keyframe placed at the wrong time that still happens to
     // dominate every query would be a false pass here otherwise).
-    const auto want = iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
+    const auto want =
+        iclforge::admbridge::adm_position_to_room(iclforge::adm::Position{polar(30.0, 0.0)});
     CHECK_THAT(result->paths[0].evaluate(5.25).position.x, Catch::Matchers::WithinAbs(want.x, 1e-6));
     CHECK_THAT(result->paths[0].evaluate(0.0).position.x, Catch::Matchers::WithinAbs(want.x, 1e-6));
 }
 
 // ---------------------------------------------------------------------------
-// Flagship: a real BW64/ADM fixture, parsed by the real iclforge::adm::parse_bw64(), bridged, and driven
-// through a real iclforge::oba::AtmosEncoder / iclforge::Eac3Decoder round trip.
+// Flagship: a real BW64/ADM fixture, parsed by the real iclforge::adm::parse_bw64(), bridged, and
+// driven through a real iclforge::oba::AtmosEncoder / iclforge::Eac3Decoder round trip.
 //
 // Byte-fixture helpers are duplicated from tests/adm/test_adm.cpp rather than shared, per this
 // project's own established per-file convention for test helpers (see tests/
-// tests/ac3/oba/test_atmos_motion.cpp's own comment on this - "the same helpers as tests/ac3/oba/test_atmos.cpp, duplicated
-// here").
+// tests/ac3/oba/test_atmos_motion.cpp's own comment on this - "the same helpers as
+// tests/ac3/oba/test_atmos.cpp, duplicated here").
 // ---------------------------------------------------------------------------
 
 namespace {

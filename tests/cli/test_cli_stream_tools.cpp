@@ -694,7 +694,8 @@ TEST_CASE("transcode carries a held-back last unit's samples through, not just t
                          .acmod = iclforge::Acmod::k3_2,
                          .lfe = true,
                          .transient_prenoise = true},
-         .dependents = {{.bitrate_kbps = 320, .acmod = iclforge::Acmod::k2_2, .chanmap = cm::k71Rear}}}};
+         .dependents = {
+             {.bitrate_kbps = 320, .acmod = iclforge::Acmod::k2_2, .chanmap = cm::k71Rear}}}};
     std::vector<std::byte> stream;
     for (int unit = 0; unit < kUnits; ++unit) {
         auto pcm = unit_pcm(kBedTones, unit);
@@ -740,10 +741,10 @@ TEST_CASE("transcode carries a held-back last unit's samples through, not just t
     REQUIRE(decoded->channels.size() == 8);
     CHECK(decoded->frame_count() == static_cast<std::size_t>(kUnits) * kFrame);
 
-    const auto layout =
-        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(iclforge::Acmod::k3_2, true) | cm::k71Rear));
-    const auto order =
-        iclforge::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
+    const auto layout = cm::expand(
+        static_cast<std::uint16_t>(cm::acmod_map(iclforge::Acmod::k3_2, true) | cm::k71Rear));
+    const auto order = iclforge::plan::wav_order(
+        std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
     const auto ls_slot = layout.index_of(cm::Location::kLeftSurround);
     REQUIRE(ls_slot >= 0);
     const auto ls_at = std::find(order.begin(), order.end(), static_cast<std::size_t>(ls_slot));

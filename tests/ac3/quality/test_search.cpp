@@ -74,8 +74,8 @@ std::vector<std::span<const float>> spans_for(const std::vector<std::vector<floa
     return spans;
 }
 
-iclforge::EncoderConfig config_for(iclforge::quality::Criterion search, iclforge::Acmod acmod, bool lfe,
-                              std::uint32_t kbps) {
+iclforge::EncoderConfig config_for(iclforge::quality::Criterion search, iclforge::Acmod acmod,
+                                   bool lfe, std::uint32_t kbps) {
     iclforge::EncoderConfig config;
     config.acmod = acmod;
     config.lfe = lfe;
@@ -146,7 +146,8 @@ TEST_CASE("the encoder's model still matches a real decode with the search on",
 // because the whole pipeline is deterministic.
 TEST_CASE("the search off changes nothing about the encode", "[quality][search]") {
     const auto material = make_material(2);
-    const auto config = config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192);
+    const auto config =
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192);
     const auto first = encode_all(config, material);
     const auto second = encode_all(config, material);
     REQUIRE(first.size() == second.size());
@@ -176,9 +177,11 @@ TEST_CASE("the search is deterministic", "[quality][search]") {
 TEST_CASE("the search actually changes the emitted parameters", "[quality][search]") {
     const auto material = make_material(2);
     const auto without = encode_all(
-        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192), material);
+        config_for(iclforge::quality::Criterion::kNone, iclforge::Acmod::k2_0, false, 192),
+        material);
     const auto with = encode_all(
-        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 192), material);
+        config_for(iclforge::quality::Criterion::kDistortion, iclforge::Acmod::k2_0, false, 192),
+        material);
     bool differs = false;
     for (std::size_t frame = 0; frame < without.size(); ++frame) {
         differs = differs || without[frame] != with[frame];

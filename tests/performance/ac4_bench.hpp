@@ -69,9 +69,8 @@ private:
 
 // The raw_ac4_frame()s `frames` frames of input encode to, flushed so the
 // encoder's delay holds none back. Empty if the encoder refuses.
-inline std::vector<std::vector<std::byte>> encode_frames(FrameSource& source,
-                                                         const ::iclforge::ac4::EncoderConfig& config,
-                                                         int frames) {
+inline std::vector<std::vector<std::byte>> encode_frames(
+    FrameSource& source, const ::iclforge::ac4::EncoderConfig& config, int frames) {
     auto encoder = ::iclforge::ac4::Encoder::create(config);
     if (!encoder) {
         return {};

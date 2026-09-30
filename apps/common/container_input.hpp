@@ -184,6 +184,7 @@ struct ElementaryStreamResult {
 // empty edits; the one edit with media in it, counted in samples at the
 // track's rate, when it plays at normal speed; and whole, with `note` saying
 // why, for any other shape.
-[[nodiscard]] StreamTrim trim_from_edit_list(const iclforge::mp4::ReadTrack& track, std::string& note);
+[[nodiscard]] StreamTrim trim_from_edit_list(const iclforge::mp4::ReadTrack& track,
+                                             std::string& note);
 
 }  // namespace iclforge::apps

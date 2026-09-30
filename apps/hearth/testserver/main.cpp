@@ -791,7 +791,8 @@ int main(int argc, char** argv) {
         std::cerr << "cannot read " << programme.string() << "\n";
         return kExitUsage;
     }
-    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream = iclforge::io::scan(*bytes);
+    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream =
+        iclforge::io::scan(*bytes);
     if (!stream || stream->access_units.empty()) {
         std::cerr << programme.string() << " is not an AC-3 or E-AC-3 stream\n";
         return kExitUsage;

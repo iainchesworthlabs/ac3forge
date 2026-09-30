@@ -663,8 +663,8 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     // 7.1.4 in Table E2.5 order. pan_targets drops the LFE from the panned
     // set; it is carried as the last slot below.
     constexpr auto kTargetMap = static_cast<std::uint16_t>(
-        iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true) | iclforge::eac3::chanmap::k71Rear |
-        iclforge::eac3::chanmap::kTopQuad);
+        iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true) |
+        iclforge::eac3::chanmap::k71Rear | iclforge::eac3::chanmap::kTopQuad);
     constexpr auto kTargetLayout = iclforge::eac3::chanmap::expand(kTargetMap);
     std::array<Location, kRenderSlots> target_locations{};
     std::size_t target_count = 0;

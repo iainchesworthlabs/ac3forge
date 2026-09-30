@@ -63,8 +63,9 @@ std::vector<QmfValue> random_matrix(unsigned seed) {
 
 // 5.1's speakers, in the decoder's order.
 constexpr std::array<iclforge::ac4::Speaker, 6> kFiveOne = {
-    iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight,        iclforge::ac4::Speaker::kCentre,
-    iclforge::ac4::Speaker::kLfe,  iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround};
+    iclforge::ac4::Speaker::kLeft,         iclforge::ac4::Speaker::kRight,
+    iclforge::ac4::Speaker::kCentre,       iclforge::ac4::Speaker::kLfe,
+    iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround};
 
 // A frame of channel-independent parameters: a value per channel and band.
 detail::DeFrameValues channel_independent(std::array<bool, 3> processed, double max_gain) {
@@ -205,7 +206,8 @@ TEST_CASE("at its cap, dialogue enhancement applies the gains its parameters giv
 
 TEST_CASE("with de_ms_proc_flag, dialogue enhancement raises the Mid and leaves the Side",
           "[ac4dec][de]") {
-    const std::array<iclforge::ac4::Speaker, 2> stereo = {iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight};
+    const std::array<iclforge::ac4::Speaker, 2> stereo = {iclforge::ac4::Speaker::kLeft,
+                                                          iclforge::ac4::Speaker::kRight};
     detail::DeStage stage;
     stage.configure(kSlots, stereo);
     detail::DeFrameValues values = channel_independent({true, true, false}, 6.0);
@@ -273,7 +275,8 @@ TEST_CASE("cross-channel dialogue enhancement adds g r p^T m to the processed ch
                 expected += g * static_cast<iclforge::ac4::detail::Real>(values.r[i]) * dialogue;
             }
             CHECK(std::abs(static_cast<double>(abs(channels.data[i][at] - expected))) <
-                  1e4 * static_cast<double>(std::numeric_limits<iclforge::ac4::detail::Real>::epsilon()));
+                  1e4 * static_cast<double>(
+                            std::numeric_limits<iclforge::ac4::detail::Real>::epsilon()));
         }
         // The LFE and the surrounds take no part.
         CHECK(channels.data[3][at] == m[3][at]);

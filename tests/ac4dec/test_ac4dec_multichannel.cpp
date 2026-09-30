@@ -121,7 +121,8 @@ TEST_CASE("Table 178's matrices equal the table's printed entries", "[ac4dec][mu
         const RandomParams p = random_parameters(rng, 2);
         for (int matsel = 0; matsel < 12; ++matsel) {
             CAPTURE(trial, matsel);
-            const auto m = iclforge::ac4::detail::three_channel_matrix(matsel, p.real[0], p.real[1]);
+            const auto m =
+                iclforge::ac4::detail::three_channel_matrix(matsel, p.real[0], p.real[1]);
             REQUIRE(m.has_value());
             check_printed<3>(*m, kTable178[static_cast<std::size_t>(matsel)], p.reference);
         }
@@ -198,7 +199,8 @@ TEST_CASE("three_channel_data() takes its two parameter sets and reads no third"
     }
     const std::vector<std::vector<Real>> tracks_in = lines;
     const std::array<std::vector<Real>*, 3> tracks = {&lines[0], &lines[1], &lines[2]};
-    REQUIRE(static_cast<bool>(iclforge::ac4::detail::apply_channel_data(info, layout, 0, sets, tracks)));
+    REQUIRE(static_cast<bool>(
+        iclforge::ac4::detail::apply_channel_data(info, layout, 0, sets, tracks)));
     // chel_matsel 0 with M/S in both sets: O0 = I0 + I1 + I2, O1 = I0 - I1,
     // O2 = I0 + I1 - I2.
     for (std::size_t k = 0; k < 8; ++k) {
@@ -434,7 +436,8 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
 
         // Core decoding: F and G are the core's Tsl and Tsr, H to K are read
         // and not decoded, and Table 20 is left out.
-        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route, iclforge::ac4::DecodingMode::kCore));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, element, route,
+                                                     iclforge::ac4::DecodingMode::kCore));
         REQUIRE(route.data.size() == 7);
         CHECK(route.data[4].outputs[0] == S::kTopSideLeft);
         CHECK(route.data[4].outputs[1] == S::kTopSideRight);
@@ -511,7 +514,8 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
               std::vector{S::kLeftBack, S::kRightBack, S::kTopBackLeft, S::kTopBackRight});
         // Step 4 in ASPX_ACPL_2 too (ERRATA.md, "ASPX_ACPL_2 and step 4").
         CHECK(route.steps.size() == 2);
-        REQUIRE(iclforge::ac4::detail::route_element(ctx, acpl, route, iclforge::ac4::DecodingMode::kCore));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, acpl, route,
+                                                     iclforge::ac4::DecodingMode::kCore));
         CHECK(route.silent.empty());
 
         ChannelElement ajcc = immersive_element(immersive::kAspxAjcc, 6, 2, true);
@@ -522,7 +526,8 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
                                                  S::kRightSurround, S::kCentre});
         CHECK(route.silent == std::vector{S::kLeftBack, S::kRightBack, S::kTopFrontLeft,
                                           S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight});
-        REQUIRE(iclforge::ac4::detail::route_element(ctx, ajcc, route, iclforge::ac4::DecodingMode::kCore));
+        REQUIRE(iclforge::ac4::detail::route_element(ctx, ajcc, route,
+                                                     iclforge::ac4::DecodingMode::kCore));
         CHECK(route.silent == std::vector{S::kTopSideLeft, S::kTopSideRight});
         CHECK(route.steps.empty());
     }
@@ -542,7 +547,8 @@ TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 an
         element.b_use_sap_add_ch.reset();  // 7CH_STATIC reads b_use_sap_add_ch
         CHECK_FALSE(iclforge::ac4::detail::route_element(ctx, element, route));
         element.b_use_sap_add_ch = false;
-        ctx.ch_mode = iclforge::ac4::detail::ch_mode::k7_0_4;  // an LFE track where the mode has none
+        ctx.ch_mode =
+            iclforge::ac4::detail::ch_mode::k7_0_4;  // an LFE track where the mode has none
         CHECK_FALSE(iclforge::ac4::detail::route_element(ctx, element, route));
     }
 }

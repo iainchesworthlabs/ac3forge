@@ -261,14 +261,13 @@ TEST_CASE("media_bitstream_to_map: Lo/Ro mix levels and the preferred downmix la
 
 TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join the Lo/Ro pair",
           "[hearth][hearth-controller]") {
-    // iclforge::MixLevels carries ltrt_clev/ltrt_slev (src/ac3/include/iclforge/ac3/decoder/output.hpp)
-    // alongside loro_clev/loro_slev; media_bitstream_to_map() reads both pairs
-    // into mixLevels, the Lo/Ro one unlabelled (centreDb/surroundDb, kept as
-    // DecoderEac3.qml's own "This stream" card already reads it) and the
-    // Lt/Rt one under its own ltrtCentreDb/ltrtSurroundDb names (issue #904
-    // point 1, closed). Setting the two pairs to clearly different values
-    // and checking both confirms they are read independently, not one
-    // shadowing the other.
+    // iclforge::MixLevels carries ltrt_clev/ltrt_slev
+    // (src/ac3/include/iclforge/ac3/decoder/output.hpp) alongside loro_clev/loro_slev;
+    // media_bitstream_to_map() reads both pairs into mixLevels, the Lo/Ro one unlabelled
+    // (centreDb/surroundDb, kept as DecoderEac3.qml's own "This stream" card already reads it) and
+    // the Lt/Rt one under its own ltrtCentreDb/ltrtSurroundDb names (issue #904 point 1, closed).
+    // Setting the two pairs to clearly different values and checking both confirms they are read
+    // independently, not one shadowing the other.
     MediaBitstream bits;
     bits.levels.loro_clev = 0.5;
     bits.levels.loro_slev = 1.0;
@@ -541,8 +540,10 @@ TEST_CASE("decoder settings: mode/downmix/dual-mono/objects/joc-domain/concealme
             QVariantMap{{QStringLiteral("mode"), name}}, DecoderSettings{});
         CHECK(back.mode == mode);
     }
-    CHECK(iclforge::hearth::ui::decoder_settings_to_map(DecoderSettings{}).value(QStringLiteral("mode"))
-              .toString().toStdString() == "line");
+    CHECK(iclforge::hearth::ui::decoder_settings_to_map(DecoderSettings{})
+              .value(QStringLiteral("mode"))
+              .toString()
+              .toStdString() == "line");
 }
 
 // --- AC-4's own decoder settings (planning/ac4.md, I2; DecoderAc4.qml) -------
@@ -672,7 +673,8 @@ TEST_CASE("media_ac4_to_map: a DEE stream's frame rate, I-frames, presentation a
     const std::vector<std::byte> bytes =
         read_bytes(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} /
                    "ac4-51-drc-ltrt-192" / "dee.ac4");
-    const iclforge::apps::probe_json::Ac4Summary summary = iclforge::apps::probe_json::summarize_ac4(bytes);
+    const iclforge::apps::probe_json::Ac4Summary summary =
+        iclforge::apps::probe_json::summarize_ac4(bytes);
     const QVariantMap map = iclforge::hearth::ui::media_ac4_to_map(summary);
 
     CHECK(map.value(QStringLiteral("syncFrames")).toLongLong() == 120);

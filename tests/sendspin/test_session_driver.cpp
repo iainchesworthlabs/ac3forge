@@ -182,7 +182,8 @@ Key32 random_key() {
 }
 
 iclforge::sendspin::noise::KeyPair generated() {
-    std::optional<iclforge::sendspin::noise::KeyPair> pair = iclforge::sendspin::noise::KeyPair::generate();
+    std::optional<iclforge::sendspin::noise::KeyPair> pair =
+        iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(pair.has_value());
     return *pair;
 }

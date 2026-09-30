@@ -315,7 +315,8 @@ class RenderQueue {
     [[nodiscard]] bool drain(bool flush, const RenderedFrame& on_frame) {
         while (queue_.available() >= static_cast<std::size_t>(iclforge::kSamplesPerFrame) ||
                (flush && queue_.available() > 0)) {
-            const auto count = std::min<std::size_t>(queue_.available(), iclforge::kSamplesPerFrame);
+            const auto count =
+                std::min<std::size_t>(queue_.available(), iclforge::kSamplesPerFrame);
             queue_.take(count, source_spans_);
             plan::render(routing_, in_, out_, iclforge::kSamplesPerFrame);
             if (!on_frame(views_, count)) {
@@ -625,7 +626,8 @@ iclforge::ac4::DownmixConfig ac4_downmix_of(const iclforge::io::FrameMetadata& s
         out.preferred = iclforge::ac4::PreferredDownmix::kLoRo;
     }
     if (mix.lfemixlevcod.has_value()) {
-        out.lfe_db = std::clamp(iclforge::meta::lfe_mix_level_db(*mix.lfemixlevcod) - 0.5, -25.5, 5.5);
+        out.lfe_db =
+            std::clamp(iclforge::meta::lfe_mix_level_db(*mix.lfemixlevcod) - 0.5, -25.5, 5.5);
     }
     return out;
 }
@@ -645,10 +647,10 @@ std::string_view preferred_text(iclforge::ac4::PreferredDownmix preferred) {
 }
 
 std::string downmix_text(const iclforge::ac4::DownmixConfig& d) {
-    std::string text =
-        fmt::format("{}{}; Lo/Ro centre {}, surround {}", preferred_text(d.preferred),
-                    d.preferred == iclforge::ac4::PreferredDownmix::kNotIndicated ? "" : " preferred",
-                    db_text(d.loro_centre_db), db_text(d.loro_surround_db));
+    std::string text = fmt::format(
+        "{}{}; Lo/Ro centre {}, surround {}", preferred_text(d.preferred),
+        d.preferred == iclforge::ac4::PreferredDownmix::kNotIndicated ? "" : " preferred",
+        db_text(d.loro_centre_db), db_text(d.loro_surround_db));
     if (d.ltrt_centre_db.has_value() || d.ltrt_surround_db.has_value()) {
         text += fmt::format("; Lt/Rt centre {}, surround {}",
                             db_text(d.ltrt_centre_db.value_or(d.loro_centre_db)),
@@ -737,9 +739,10 @@ void carry_ac4_metadata(const iclforge::ac4::PresentationMetadata& source, plan:
     p.ltrtsurmixlev = mix_level_of(d.ltrt_surround_db, true);
     // A/52 has no code for Pro Logic II's Lt/Rt (Table D2.2 reserves '11'),
     // so it goes as Lt/Rt, the downmix it decodes.
-    p.dmixmod = ltrt ? iclforge::meta::DownmixMode::kLtRt
-                     : (d.preferred == Preferred::kLoRo ? iclforge::meta::DownmixMode::kLoRo
-                                                        : iclforge::meta::DownmixMode::kNotIndicated);
+    p.dmixmod =
+        ltrt ? iclforge::meta::DownmixMode::kLtRt
+             : (d.preferred == Preferred::kLoRo ? iclforge::meta::DownmixMode::kLoRo
+                                                : iclforge::meta::DownmixMode::kNotIndicated);
     p.lfemix = d.lfe_db.has_value()
                    ? std::optional<int>{std::clamp(
                          static_cast<int>(std::lround(10.0 - (*d.lfe_db + 0.5))), 0, 31)}
@@ -806,7 +809,8 @@ std::optional<Ac4Source> first_decoded_ac4(std::span<const iclforge::ac4::SyncFr
 
 // Whether a presentation's channels go beyond 5.1: a 7.X element's last pair.
 bool beyond_51(std::span<const iclforge::ac4::Speaker> speakers) {
-    return std::ranges::any_of(speakers, [](iclforge::ac4::Speaker s) { return ac4_meter_rank(s) >= 99; });
+    return std::ranges::any_of(speakers,
+                               [](iclforge::ac4::Speaker s) { return ac4_meter_rank(s) >= 99; });
 }
 
 // 7.X 3/4/0 with its LFE, which a routing takes as an eight-channel WAV file's
@@ -904,8 +908,8 @@ int transcode_from_ac4(std::string_view in_path, std::string_view out_path, std:
     std::string names;
     for (const iclforge::ac4::Speaker speaker : source->speakers) {
         locations.push_back(ac4_location(speaker));
-        names +=
-            (names.empty() ? "" : ",") + std::string{iclforge::eac3::chanmap::name(locations.back())};
+        names += (names.empty() ? "" : ",") +
+                 std::string{iclforge::eac3::chanmap::name(locations.back())};
     }
     const std::vector<std::size_t> wav = plan::wav_order(locations);
     const std::size_t source_channels = locations.size();

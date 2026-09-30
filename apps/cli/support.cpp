@@ -1270,15 +1270,16 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
     }
     if (key == "loudness") {
         // Part 1 Table 156's practices.
-        constexpr std::array<std::pair<std::string_view, iclforge::ac4::LoudnessPractice>, 7> kPractices{{
-            {"not-indicated", iclforge::ac4::LoudnessPractice::kNotIndicated},
-            {"atsc-a85", iclforge::ac4::LoudnessPractice::kAtscA85},
-            {"ebu-r128", iclforge::ac4::LoudnessPractice::kEbuR128},
-            {"arib-tr-b32", iclforge::ac4::LoudnessPractice::kAribTrB32},
-            {"freetv-op59", iclforge::ac4::LoudnessPractice::kFreeTvOp59},
-            {"manual", iclforge::ac4::LoudnessPractice::kManual},
-            {"consumer-leveller", iclforge::ac4::LoudnessPractice::kConsumerLeveller},
-        }};
+        constexpr std::array<std::pair<std::string_view, iclforge::ac4::LoudnessPractice>, 7>
+            kPractices{{
+                {"not-indicated", iclforge::ac4::LoudnessPractice::kNotIndicated},
+                {"atsc-a85", iclforge::ac4::LoudnessPractice::kAtscA85},
+                {"ebu-r128", iclforge::ac4::LoudnessPractice::kEbuR128},
+                {"arib-tr-b32", iclforge::ac4::LoudnessPractice::kAribTrB32},
+                {"freetv-op59", iclforge::ac4::LoudnessPractice::kFreeTvOp59},
+                {"manual", iclforge::ac4::LoudnessPractice::kManual},
+                {"consumer-leveller", iclforge::ac4::LoudnessPractice::kConsumerLeveller},
+            }};
         for (const auto& [name, practice] : kPractices) {
             if (name == value) {
                 out.loudness = practice;
@@ -2134,9 +2135,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             constexpr std::array<Service, 7> kServices = {{
                 {"visually-impaired", 0b010, iclforge::ac4::AssociatedType::kAny},
                 {"audio-description", 0b010, iclforge::ac4::AssociatedType::kAudioDescription},
-                {"audio-description-subtitles", 0b010, iclforge::ac4::AssociatedType::kAudioDescriptionSubtitles},
+                {"audio-description-subtitles", 0b010,
+                 iclforge::ac4::AssociatedType::kAudioDescriptionSubtitles},
                 {"spoken-subtitles", 0b111, iclforge::ac4::AssociatedType::kSpokenSubtitles},
-                {"emergency-information", 0b010, iclforge::ac4::AssociatedType::kEmergencyInformation},
+                {"emergency-information", 0b010,
+                 iclforge::ac4::AssociatedType::kEmergencyInformation},
                 {"hearing-impaired", 0b011, iclforge::ac4::AssociatedType::kAny},
                 {"commentary", 0b101, iclforge::ac4::AssociatedType::kAny},
             }};
@@ -3147,9 +3150,9 @@ std::optional<int> measured_dialnorm(const iclforge::io::WavData& wav, iclforge:
     return finish_measurement(meter, {}, "dialnorm", out);
 }
 
-std::optional<int> measured_dialnorm_channel(std::span<const float> channel, iclforge::SampleRate rate,
-                                             std::string_view programme, std::string_view field,
-                                             FILE* out) {
+std::optional<int> measured_dialnorm_channel(std::span<const float> channel,
+                                             iclforge::SampleRate rate, std::string_view programme,
+                                             std::string_view field, FILE* out) {
     iclforge::meta::LoudnessMeter meter{rate, iclforge::Acmod::k1_0, false};
     const std::array<std::span<const float>, 1> views{channel};
     meter.push(views);
@@ -3298,12 +3301,12 @@ iclforge::OutputConfig resolve_output(const Options& meta, std::span<const std::
     output.target = preferred.has_value()
                         ? iclforge::automatic_stereo_target(preferred->acmod, preferred->dmixmod)
                         : iclforge::DownmixTarget::kLoRo;
-    status_println(status, "  downmix=auto: dmixmod {} -> {} (§D3.1.1)",
-                   preferred.has_value()
-                       ? fmt::format("{} ({})", static_cast<int>(preferred->dmixmod),
-                                     iclforge::meta::describe(preferred->dmixmod))
-                       : std::string{"absent"},
-                   output.target == iclforge::DownmixTarget::kLtRt ? "Lt/Rt stereo" : "Lo/Ro stereo");
+    status_println(
+        status, "  downmix=auto: dmixmod {} -> {} (§D3.1.1)",
+        preferred.has_value() ? fmt::format("{} ({})", static_cast<int>(preferred->dmixmod),
+                                            iclforge::meta::describe(preferred->dmixmod))
+                              : std::string{"absent"},
+        output.target == iclforge::DownmixTarget::kLtRt ? "Lt/Rt stereo" : "Lo/Ro stereo");
     return output;
 }
 
@@ -3781,7 +3784,8 @@ bool PlanarWavSink::drain() {
 
 std::string meter_bar(double db, int width) {
     std::string bar(static_cast<std::size_t>(width), '-');
-    const auto filled = static_cast<int>(std::lround(iclforge::analysis::meter_fraction(db) * width));
+    const auto filled =
+        static_cast<int>(std::lround(iclforge::analysis::meter_fraction(db) * width));
     for (int i = 0; i < filled; ++i) {
         bar[static_cast<std::size_t>(i)] = '#';
     }
@@ -3846,15 +3850,16 @@ void print_live_meter(const iclforge::analysis::LevelMeter& meter, double second
     (void)std::fflush(stdout);  // best-effort: a live meter with nothing left to do on failure
 }
 
-bool resolve_layout(std::string_view name, iclforge::plan::Codec codec, iclforge::plan::Plan& plan_out,
-                    std::string& label) {
+bool resolve_layout(std::string_view name, iclforge::plan::Codec codec,
+                    iclforge::plan::Plan& plan_out, std::string& label) {
     if (const auto id = iclforge::plan::parse_layout(name)) {
         if (!iclforge::plan::carries(codec, *id)) {
-            fmt::println(stderr, "error: {} cannot carry {} - {}", iclforge::plan::codec_label(codec),
-                         iclforge::plan::layout(*id).label,
-                         iclforge::plan::describe(codec == iclforge::plan::Codec::kAc4
-                                                 ? iclforge::plan::PlanError::kLayoutNotInAc4
-                                                 : iclforge::plan::PlanError::kLayoutNeedsEac3));
+            fmt::println(
+                stderr, "error: {} cannot carry {} - {}", iclforge::plan::codec_label(codec),
+                iclforge::plan::layout(*id).label,
+                iclforge::plan::describe(codec == iclforge::plan::Codec::kAc4
+                                             ? iclforge::plan::PlanError::kLayoutNotInAc4
+                                             : iclforge::plan::PlanError::kLayoutNeedsEac3));
             return false;
         }
         plan_out.layout = *id;
@@ -4009,9 +4014,10 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
         ac4.fmp4.dash.channel_configuration = iclforge::mp4::Descriptor{
             .scheme_id_uri = configuration->scheme_id_uri, .value = configuration->value};
     }
-    for (const iclforge::ac4::ManifestDescriptor& property : iclforge::ac4::dash_supplemental_properties(*toc)) {
-        ac4.fmp4.dash.supplemental_properties.push_back(
-            iclforge::mp4::Descriptor{.scheme_id_uri = property.scheme_id_uri, .value = property.value});
+    for (const iclforge::ac4::ManifestDescriptor& property :
+         iclforge::ac4::dash_supplemental_properties(*toc)) {
+        ac4.fmp4.dash.supplemental_properties.push_back(iclforge::mp4::Descriptor{
+            .scheme_id_uri = property.scheme_id_uri, .value = property.value});
     }
     config.channels = 2;
     config.ac4 = std::move(ac4);
@@ -4019,9 +4025,10 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
 }
 
 std::optional<iclforge::meta::ProfileId> profile_id_of(const iclforge::meta::Profile& p) {
-    for (const auto id : {iclforge::meta::ProfileId::kFilmStandard, iclforge::meta::ProfileId::kFilmLight,
-                          iclforge::meta::ProfileId::kMusicStandard, iclforge::meta::ProfileId::kMusicLight,
-                          iclforge::meta::ProfileId::kSpeech}) {
+    for (const auto id :
+         {iclforge::meta::ProfileId::kFilmStandard, iclforge::meta::ProfileId::kFilmLight,
+          iclforge::meta::ProfileId::kMusicStandard, iclforge::meta::ProfileId::kMusicLight,
+          iclforge::meta::ProfileId::kSpeech}) {
         const iclforge::meta::Profile q = iclforge::meta::profile(id);
         if (p.null_low_db == q.null_low_db && p.null_high_db == q.null_high_db &&
             p.boost_ratio == q.boost_ratio && p.max_boost_db == q.max_boost_db &&
@@ -4097,7 +4104,8 @@ int ac4_input_rank(iclforge::eac3::chanmap::Location location) {
 
 }  // namespace
 
-std::string TakeEncoder::open(const plan::Plan& p, std::optional<iclforge::ac4::EncoderConfig> ac4) {
+std::string TakeEncoder::open(const plan::Plan& p,
+                              std::optional<iclforge::ac4::EncoderConfig> ac4) {
     ac3_.reset();
     eac3_.reset();
     ac4_.reset();
@@ -4166,8 +4174,8 @@ std::vector<TakeEncoder::Unit> TakeEncoder::ac4_units(
     std::vector<Unit> out;
     out.reserve(frames.size());
     for (const iclforge::ac4::EncodedFrame& frame : frames) {
-        out.push_back(
-            Unit{.bytes = iclforge::ac4::sync_frame(frame.raw_ac4_frame, true), .sync = frame.iframe});
+        out.push_back(Unit{.bytes = iclforge::ac4::sync_frame(frame.raw_ac4_frame, true),
+                           .sync = frame.iframe});
     }
     return out;
 }
@@ -4213,7 +4221,8 @@ std::expected<std::vector<TakeEncoder::Unit>, std::string> TakeEncoder::flush() 
     }
     auto frames = ac4_->flush();
     if (!frames.has_value()) {
-        return std::unexpected(fmt::format("the AC-4 encoder: {}", iclforge::ac4::describe(frames.error())));
+        return std::unexpected(
+            fmt::format("the AC-4 encoder: {}", iclforge::ac4::describe(frames.error())));
     }
     return ac4_units(*frames);
 }
@@ -4238,7 +4247,8 @@ std::optional<iclforge::SampleRate> wav_sample_rate(std::uint32_t hz, std::strin
     return std::nullopt;
 }
 
-std::optional<iclforge::plan::Routing> routing_or_error(const iclforge::plan::Plan& p, std::size_t channels) {
+std::optional<iclforge::plan::Routing> routing_or_error(const iclforge::plan::Plan& p,
+                                                        std::size_t channels) {
     auto routing = plan::route(plan::resolve(p), channels, p.meta.cmixlev, p.meta.surmixlev);
     if (!routing.has_value()) {
         fmt::println(stderr, "error: {} channels - {}", channels,
@@ -4311,7 +4321,8 @@ iclforge::ac4::DownmixTarget ac4_downmix(const Options& meta) {
         case iclforge::DownmixTarget::kAsCoded:
             return ac4_layout(meta.ac4_speakers);
         case iclforge::DownmixTarget::kLoRo:
-            return meta.downmix_named ? iclforge::ac4::DownmixTarget::kLoRo : iclforge::ac4::DownmixTarget::kStereo;
+            return meta.downmix_named ? iclforge::ac4::DownmixTarget::kLoRo
+                                      : iclforge::ac4::DownmixTarget::kStereo;
         case iclforge::DownmixTarget::kLtRt:
             return iclforge::ac4::DownmixTarget::kLtRt;
         case iclforge::DownmixTarget::kMono:
@@ -4343,7 +4354,8 @@ iclforge::ac4::DecoderConfig ac4_decoder_config(const Options& meta) {
     config.output.downmix = ac4_downmix(meta);
     config.output.mix_lfe = meta.ac4_mix_lfe;
     config.output.headphones = meta.ac4_headphones;
-    config.decoding = meta.ac4_core_decoding ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull;
+    config.decoding = meta.ac4_core_decoding ? iclforge::ac4::DecodingMode::kCore
+                                             : iclforge::ac4::DecodingMode::kFull;
     return config;
 }
 
@@ -4359,7 +4371,8 @@ std::optional<std::vector<iclforge::ac4::Speaker>> ac4_presentation_speakers(
             continue;
         }
         const std::optional<std::size_t> selected = decoder.metadata().presentation;
-        const std::span<const iclforge::ac4::PresentationInfo> presentations = decoder.presentations();
+        const std::span<const iclforge::ac4::PresentationInfo> presentations =
+            decoder.presentations();
         if (!selected.has_value() || *selected >= presentations.size()) {
             continue;
         }
@@ -4394,7 +4407,8 @@ std::string ac4_processing(const iclforge::ac4::OutputConfig& output) {
         case iclforge::ac4::DownmixTarget::k5X4:
         case iclforge::ac4::DownmixTarget::k5X2:
             // Only the immersive element takes these; the rest come out as coded.
-            add(fmt::format("an immersive element rendered to {}", iclforge::ac4::describe(output.downmix)));
+            add(fmt::format("an immersive element rendered to {}",
+                            iclforge::ac4::describe(output.downmix)));
             break;
         case iclforge::ac4::DownmixTarget::k5X:
         case iclforge::ac4::DownmixTarget::kStereo:
@@ -4464,7 +4478,8 @@ std::optional<iclforge::signing::VerifySummary> apply_object_verification(
     return summary;
 }
 
-void print_object_summary(FILE* status, const std::optional<iclforge::oba::DecodedProgram>& metadata,
+void print_object_summary(FILE* status,
+                          const std::optional<iclforge::oba::DecodedProgram>& metadata,
                           std::string_view joc_note) {
     if (!metadata.has_value()) {
         return;

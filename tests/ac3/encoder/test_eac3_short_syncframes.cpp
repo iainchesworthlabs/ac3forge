@@ -172,9 +172,9 @@ ShortRoundTrip round_trip(const iclforge::eac3::AccessUnitConfig& config, int fr
 // The tone rt.rendered[ch] should carry: whichever coded channel shares
 // rt.layout[ch]'s location - the last one transmitted, since §E3.8.2's
 // overwrite is what a real decoder applies too.
-const std::vector<float>& expected_for(const ShortRoundTrip& rt,
-                                       const std::vector<iclforge::eac3::chanmap::Location>& locations,
-                                       int rendered_index) {
+const std::vector<float>& expected_for(
+    const ShortRoundTrip& rt, const std::vector<iclforge::eac3::chanmap::Location>& locations,
+    int rendered_index) {
     const auto location = rt.layout[rendered_index];
     int last = -1;
     for (std::size_t ch = 0; ch < locations.size(); ++ch) {

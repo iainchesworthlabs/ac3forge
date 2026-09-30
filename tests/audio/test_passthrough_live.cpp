@@ -87,7 +87,8 @@ TEST_CASE("passthrough live: the position follows the receiver's link, and pause
     iclforge::audio::PassthroughSink sink;
     const auto started = sink.start(id, kRate, iclforge::audio::BitstreamFormat::kAc3);
     if (!started) {
-        WARN("the passthrough output would not open: " << iclforge::audio::describe(started.error()));
+        WARN("the passthrough output would not open: "
+             << iclforge::audio::describe(started.error()));
         return;
     }
     REQUIRE(sink.running());
@@ -178,7 +179,8 @@ TEST_CASE("passthrough live: a receiver that goes away stops the sink, which can
     iclforge::audio::PassthroughSink sink;
     const auto started = sink.start(id, kRate, iclforge::audio::BitstreamFormat::kAc3);
     if (!started) {
-        WARN("the passthrough output would not open: " << iclforge::audio::describe(started.error()));
+        WARN("the passthrough output would not open: "
+             << iclforge::audio::describe(started.error()));
         return;
     }
     const auto burst = silent_burst();

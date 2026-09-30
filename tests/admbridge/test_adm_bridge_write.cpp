@@ -25,8 +25,8 @@
 // byte-level ADM fixture and ends at a decoded bitstream, this one starts from a decoded
 // bitstream (exactly what apps/cli/commands/decode.cpp's own accumulate_adm lambda consumes)
 // and ends at a real file on disk, read back through the identical iclforge::adm::parse_bw64 ->
-// iclforge::admbridge::build -> AtmosEncoder/Eac3Decoder chain that file's own flagship test already
-// proves correct - so if THIS test's second half passes, the whole write -> read round trip
+// iclforge::admbridge::build -> AtmosEncoder/Eac3Decoder chain that file's own flagship test
+// already proves correct - so if THIS test's second half passes, the whole write -> read round trip
 // really works, not just "write_bw64 didn't throw".
 
 namespace fs = std::filesystem;

@@ -202,18 +202,29 @@ int main(int argc, char** argv) {
     rule("device watcher");
     iclforge::audio::DeviceWatcher watcher;
     int events = 0;
-    const auto watch_started = watcher.start([&events](const iclforge::audio::DeviceChangeEvent& event) {
-        const char* kind = "?";
-        switch (event.change) {
-            case iclforge::audio::DeviceChange::kAdded: kind = "added"; break;
-            case iclforge::audio::DeviceChange::kRemoved: kind = "removed"; break;
-            case iclforge::audio::DeviceChange::kDefaultRenderChanged: kind = "default-render"; break;
-            case iclforge::audio::DeviceChange::kDefaultCaptureChanged: kind = "default-capture"; break;
-            case iclforge::audio::DeviceChange::kStateChanged: kind = "state"; break;
-        }
-        std::printf("  %-16s %s\n", kind, event.device_id.c_str());
-        ++events;
-    });
+    const auto watch_started =
+        watcher.start([&events](const iclforge::audio::DeviceChangeEvent& event) {
+            const char* kind = "?";
+            switch (event.change) {
+                case iclforge::audio::DeviceChange::kAdded:
+                    kind = "added";
+                    break;
+                case iclforge::audio::DeviceChange::kRemoved:
+                    kind = "removed";
+                    break;
+                case iclforge::audio::DeviceChange::kDefaultRenderChanged:
+                    kind = "default-render";
+                    break;
+                case iclforge::audio::DeviceChange::kDefaultCaptureChanged:
+                    kind = "default-capture";
+                    break;
+                case iclforge::audio::DeviceChange::kStateChanged:
+                    kind = "state";
+                    break;
+            }
+            std::printf("  %-16s %s\n", kind, event.device_id.c_str());
+            ++events;
+        });
     if (!watch_started) {
         std::printf("  start REFUSED: %s\n",
                     std::string(iclforge::audio::describe(watch_started.error())).c_str());

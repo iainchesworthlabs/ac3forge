@@ -51,7 +51,8 @@ constexpr double kCommentaryTone = 300.0;
 constexpr double kLfeTone = 60.0;
 
 iclforge::eac3::FrameConfig bed(std::uint32_t kbps, int dialnorm) {
-    return {.bitrate_kbps = kbps, .acmod = iclforge::Acmod::k3_2, .lfe = true, .dialnorm = dialnorm};
+    return {
+        .bitrate_kbps = kbps, .acmod = iclforge::Acmod::k3_2, .lfe = true, .dialnorm = dialnorm};
 }
 
 // I0 5.1 at dialnorm 27, I1 mono at dialnorm 20 - two different levels,

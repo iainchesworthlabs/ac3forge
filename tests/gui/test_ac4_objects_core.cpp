@@ -112,8 +112,8 @@ TEST_CASE("AC-4 flat planes offset each source and pad every channel to the long
           "[gui][ac4]") {
     const std::vector<std::vector<float>> first{{1.0F, 2.0F, 3.0F}, {4.0F, 5.0F, 6.0F}};
     const std::vector<std::vector<float>> second{{7.0F, 8.0F}};
-    const std::vector<iclforge::apps::Ac4SourceView> sources{{.channels = first, .offset_samples = 0},
-                                                        {.channels = second, .offset_samples = 3}};
+    const std::vector<iclforge::apps::Ac4SourceView> sources{
+        {.channels = first, .offset_samples = 0}, {.channels = second, .offset_samples = 3}};
     const auto planes = iclforge::apps::ac4_flat_planes(sources);
     REQUIRE(planes.size() == 3);
     // The second source ends at 3 + 2, past the first's three samples: zeros, not a held value.

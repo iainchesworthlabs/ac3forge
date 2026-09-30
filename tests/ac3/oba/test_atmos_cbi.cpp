@@ -72,15 +72,16 @@ constexpr std::array<BedChannel, 10> kInput = {{
     {"Rs", 660.0}, {"Tfl", 740.0}, {"Tfr", 831.6}, {"Tbl", 880.0}, {"Tbr", 1108.8},
 }};
 
-constexpr std::uint16_t kBed514 = iclforge::oba::bed::kLR | iclforge::oba::bed::kC | iclforge::oba::bed::kLfe |
-                                  iclforge::oba::bed::kLsRs | iclforge::oba::bed::kTflTfr |
-                                  iclforge::oba::bed::kTblTbr;
+constexpr std::uint16_t kBed514 = iclforge::oba::bed::kLR | iclforge::oba::bed::kC |
+                                  iclforge::oba::bed::kLfe | iclforge::oba::bed::kLsRs |
+                                  iclforge::oba::bed::kTflTfr | iclforge::oba::bed::kTblTbr;
 
 }  // namespace
 
 TEST_CASE("AtmosEncoder's BedProgram constructor writes a real bed programme, not objects",
           "[atmos][cbi]") {
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, iclforge::oba::BedProgram{.bed = kBed514}};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+                                        iclforge::oba::BedProgram{.bed = kBed514}};
     CHECK_FALSE(encoder.program().dynamic_only);
     CHECK(encoder.program().bed == kBed514);
     CHECK(encoder.program().dynamic_objects == 0);
@@ -91,7 +92,8 @@ TEST_CASE("AtmosEncoder's BedProgram constructor writes a real bed programme, no
 
 TEST_CASE("Eac3Decoder recovers program.bed != 0 with 0 dynamic objects from a CBI encode",
           "[atmos][cbi][decoder]") {
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, iclforge::oba::BedProgram{.bed = kBed514}};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+                                        iclforge::oba::BedProgram{.bed = kBed514}};
 
     iclforge::eac3::AccessUnit unit;
     std::vector<std::vector<float>> essences;
@@ -143,7 +145,8 @@ TEST_CASE("Eac3Decoder recovers program.bed != 0 with 0 dynamic objects from a C
 
 TEST_CASE("every JOC object a CBI encode reconstructs carries its own bed channel's tone",
           "[atmos][cbi][decoder][joc]") {
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, iclforge::oba::BedProgram{.bed = kBed514}};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+                                        iclforge::oba::BedProgram{.bed = kBed514}};
 
     iclforge::Eac3Decoder decoder;
     std::vector<std::vector<float>> accumulated;
@@ -212,12 +215,13 @@ TEST_CASE("a CBI encode with a 9.1.6 layout writes the wider bed and no dynamic 
     // docs/concepts/atmos-joc.md for which layouts are checked against a real
     // DEE stream and which are extended from Table 12's own channel order.
     constexpr std::uint16_t kBed916 =
-        iclforge::oba::bed::kLR | iclforge::oba::bed::kC | iclforge::oba::bed::kLfe | iclforge::oba::bed::kLsRs |
-        iclforge::oba::bed::kLbRb | iclforge::oba::bed::kLwRw | iclforge::oba::bed::kTflTfr |
-        iclforge::oba::bed::kTslTsr | iclforge::oba::bed::kTblTbr;
+        iclforge::oba::bed::kLR | iclforge::oba::bed::kC | iclforge::oba::bed::kLfe |
+        iclforge::oba::bed::kLsRs | iclforge::oba::bed::kLbRb | iclforge::oba::bed::kLwRw |
+        iclforge::oba::bed::kTflTfr | iclforge::oba::bed::kTslTsr | iclforge::oba::bed::kTblTbr;
     REQUIRE(iclforge::oba::bed::channel_count(kBed916) == 16);
 
-    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 768}, iclforge::oba::BedProgram{.bed = kBed916}};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 768},
+                                        iclforge::oba::BedProgram{.bed = kBed916}};
     CHECK(iclforge::oba::object_count(encoder.program()) == 16);
     CHECK(iclforge::oba::joc_object_count(encoder.program()) == 15);
 

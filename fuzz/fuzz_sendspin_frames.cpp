@@ -102,7 +102,8 @@ void inspect(std::span<const std::uint8_t> message) {
     if (const auto burst = iclforge::sendspin::parse_burst_chunk(message)) {
         const auto payload = burst->chunk.data;
         if (payload.size() > iclforge::sendspin::max_burst_payload(burst->data_type()) ||
-            burst->pd != iclforge::sendspin::burst_length_code(burst->data_type(), payload.size())) {
+            burst->pd !=
+                iclforge::sendspin::burst_length_code(burst->data_type(), payload.size())) {
             std::abort();
         }
     }

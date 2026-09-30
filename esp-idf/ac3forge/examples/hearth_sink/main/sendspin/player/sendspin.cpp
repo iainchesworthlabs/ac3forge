@@ -169,7 +169,8 @@ bool g_board_changed = false;
     }
     s.layout_grammar = 1;
     s.management.routing = true;
-    s.management.trim_db = {iclforge::render::TrimDelay::kMinTrimDb, iclforge::render::TrimDelay::kMaxTrimDb};
+    s.management.trim_db = {iclforge::render::TrimDelay::kMinTrimDb,
+                            iclforge::render::TrimDelay::kMaxTrimDb};
     s.management.max_delay_ms = static_cast<double>(kMaxDelayMs);
     s.management.crossover_hz = {iclforge::render::LayoutRenderer::kMinCrossoverHz,
                                  iclforge::render::LayoutRenderer::kMaxCrossoverHz};

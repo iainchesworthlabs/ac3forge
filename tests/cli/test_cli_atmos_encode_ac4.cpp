@@ -222,7 +222,8 @@ TEST_CASE("atmos-encode codec=ac4 writes a raw stream of the shared steps' bytes
 
         const auto want = shared_bytes(
             {&wav}, {0}, every_channel_an_object(3), scene, 256,
-            direct ? iclforge::ac4::ObjectCoding::kDirect : iclforge::ac4::ObjectCoding::kAjoc, false, true);
+            direct ? iclforge::ac4::ObjectCoding::kDirect : iclforge::ac4::ObjectCoding::kAjoc,
+            false, true);
         const auto got = file_bytes(out);
         REQUIRE_FALSE(got.empty());
         CHECK(got == want);

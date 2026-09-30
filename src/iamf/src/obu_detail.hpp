@@ -12,9 +12,9 @@
 
 #include "iclforge/iamf/iamf.hpp"
 
-// OBU-level plumbing for iclforge::iamf::mux(): leb128, the generic OBU header, and byte builders for the
-// four Descriptor OBUs (IA Sequence Header, Codec Config, Audio Element, Mix Presentation) this
-// writer emits, plus the Audio Frame OBU that carries each frame's PCM. Every syntax element
+// OBU-level plumbing for iclforge::iamf::mux(): leb128, the generic OBU header, and byte builders
+// for the four Descriptor OBUs (IA Sequence Header, Codec Config, Audio Element, Mix Presentation)
+// this writer emits, plus the Audio Frame OBU that carries each frame's PCM. Every syntax element
 // below is transcribed directly from the published IAMF v1.1.0 specification
 // (https://aomediacodec.github.io/iamf/v1.1.0.html, final), section/table cited at each builder,
 // per CONTRIBUTING.md's clean-room rule - see iamf/iamf.hpp's own header comment for the
@@ -271,8 +271,8 @@ inline void put_loudspeakers_layout(Bytes& out, std::uint8_t sound_system) {
 
 // Appends one little-endian signed PCM sample at `bit_depth` bits (16/24/32), scaled from a
 // [-1, 1] float the same way every other PCM path in this codebase rounds and clips (see
-// iclforge::audio's own conversion helpers) - IAMF §3.11.4 defines ipcm's sample values by reference
-// to [MP4-PCM], ordinary signed integer LPCM.
+// iclforge::audio's own conversion helpers) - IAMF §3.11.4 defines ipcm's sample values by
+// reference to [MP4-PCM], ordinary signed integer LPCM.
 inline void put_pcm_sample(Bytes& out, float sample, int bit_depth) {
     const auto full_scale = static_cast<double>((std::uint32_t{1} << (bit_depth - 1)) - 1);
     const double scaled = std::round(static_cast<double>(sample) * full_scale);

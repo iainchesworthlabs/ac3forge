@@ -241,8 +241,8 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
     REQUIRE(peak(object_pcm) > 0.05F);
     REQUIRE(peak(lfe_pcm) > 0.05F);
 
-    const int lag =
-        best_lag(lfe_pcm, object_pcm, -2 * iclforge::kSamplesPerFrame, 2 * iclforge::kSamplesPerFrame);
+    const int lag = best_lag(lfe_pcm, object_pcm, -2 * iclforge::kSamplesPerFrame,
+                             2 * iclforge::kSamplesPerFrame);
     CAPTURE(lag);
     // Before this fix: the LFE channel was written straight from the decoded bed, undelayed, while
     // the object channel is JOC-reconstructed and so already reconstruction_delay(kQmf) samples (576)

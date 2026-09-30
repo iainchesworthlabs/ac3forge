@@ -7,7 +7,8 @@
 TEST_CASE("frame geometry constants", "[tables]") {
     STATIC_CHECK(iclforge::kSyncWord == 0x0B77);
     STATIC_CHECK(iclforge::kSamplesPerFrame == 1536);
-    STATIC_CHECK(iclforge::kBlocksPerFrame * iclforge::kSamplesPerBlock == iclforge::kSamplesPerFrame);
+    STATIC_CHECK(iclforge::kBlocksPerFrame * iclforge::kSamplesPerBlock ==
+                 iclforge::kSamplesPerFrame);
 }
 
 TEST_CASE("the 19 legal bit rates, ascending", "[tables]") {

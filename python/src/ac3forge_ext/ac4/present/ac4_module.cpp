@@ -136,14 +136,16 @@ struct EncodeFailure : std::runtime_error {
 // EncoderConfig.objects is a Python-level view of the one substream iclforge::ac4::
 // EncoderConfig::substreams holds when a stream has objects: no other
 // substream configuration is bound, so `substreams` is either empty or that one.
-[[nodiscard]] std::optional<iclforge::ac4::ObjectsConfig> objects_of(const iclforge::ac4::EncoderConfig& config) {
+[[nodiscard]] std::optional<iclforge::ac4::ObjectsConfig> objects_of(
+    const iclforge::ac4::EncoderConfig& config) {
     if (config.substreams.size() == 1) {
         return config.substreams.front().objects;
     }
     return std::nullopt;
 }
 
-void set_objects(iclforge::ac4::EncoderConfig& config, std::optional<iclforge::ac4::ObjectsConfig> objects) {
+void set_objects(iclforge::ac4::EncoderConfig& config,
+                 std::optional<iclforge::ac4::ObjectsConfig> objects) {
     config.substreams.clear();
     if (objects) {
         iclforge::ac4::SubstreamConfig substream;
@@ -249,8 +251,10 @@ void register_ac4(py::module_& m) {
 
     auto ac4_module = m.def_submodule(
         "ac4",
-        "AC-4 decode/encode (ETSI TS 103 190-1 V1.4.1, TS 103 190-2 V1.3.1) - iclforge::ac4::Decoder/"
-        "iclforge::ac4::Encoder bound directly. See src/ac4dec/include/iclforge/ac4dec/decoder.hpp and "
+        "AC-4 decode/encode (ETSI TS 103 190-1 V1.4.1, TS 103 190-2 V1.3.1) - "
+        "iclforge::ac4::Decoder/"
+        "iclforge::ac4::Encoder bound directly. See src/ac4dec/include/iclforge/ac4dec/decoder.hpp "
+        "and "
         "src/ac4enc/include/iclforge/ac4enc/encoder.hpp for the full scope statement and what each "
         "refuses; this binding covers a subset of both - see this file's own header comment.");
 
@@ -259,24 +263,28 @@ void register_ac4(py::module_& m) {
     // this extension does (ac3.Acmod.kDualMono, not ac3.Acmod.DualMono) - no
     // .export_values(), matching that same convention.
 
-    py::enum_<iclforge::ac4::Speaker>(ac4_module, "Speaker",
-                            "Where a decoded channel is meant to be heard (Part 1 clause D.1, "
-                            "Part 2 clause A.3).")
+    py::enum_<iclforge::ac4::Speaker>(
+        ac4_module, "Speaker",
+        "Where a decoded channel is meant to be heard (Part 1 clause D.1, "
+        "Part 2 clause A.3).")
         .value("kLeft", iclforge::ac4::Speaker::kLeft)
         .value("kRight", iclforge::ac4::Speaker::kRight)
         .value("kCentre", iclforge::ac4::Speaker::kCentre)
         .value("kLfe", iclforge::ac4::Speaker::kLfe)
-        .value("kLeftSurround", iclforge::ac4::Speaker::kLeftSurround, "Ls: a side speaker in the 7.X modes")
+        .value("kLeftSurround", iclforge::ac4::Speaker::kLeftSurround,
+               "Ls: a side speaker in the 7.X modes")
         .value("kRightSurround", iclforge::ac4::Speaker::kRightSurround)
         .value("kLeftBack", iclforge::ac4::Speaker::kLeftBack, "Lb, in 7.X 3/4/0 and 7.X.4")
         .value("kRightBack", iclforge::ac4::Speaker::kRightBack)
         .value("kLeftWide", iclforge::ac4::Speaker::kLeftWide, "Lw, in 7.X 5/2/0")
         .value("kRightWide", iclforge::ac4::Speaker::kRightWide)
-        .value("kTopFrontLeft", iclforge::ac4::Speaker::kTopFrontLeft, "Tfl, in 7.X 3/2/2 and the X.4 layouts")
+        .value("kTopFrontLeft", iclforge::ac4::Speaker::kTopFrontLeft,
+               "Tfl, in 7.X 3/2/2 and the X.4 layouts")
         .value("kTopFrontRight", iclforge::ac4::Speaker::kTopFrontRight)
         .value("kTopBackLeft", iclforge::ac4::Speaker::kTopBackLeft, "Tbl, in the X.4 layouts")
         .value("kTopBackRight", iclforge::ac4::Speaker::kTopBackRight)
-        .value("kTopSideLeft", iclforge::ac4::Speaker::kTopSideLeft, "Tsl, the top pair of the X.2 layouts")
+        .value("kTopSideLeft", iclforge::ac4::Speaker::kTopSideLeft,
+               "Tsl, the top pair of the X.2 layouts")
         .value("kTopSideRight", iclforge::ac4::Speaker::kTopSideRight)
         .value("kLfe2", iclforge::ac4::Speaker::kLfe2, "the second LFE a bed can assign");
 
@@ -291,20 +299,25 @@ void register_ac4(py::module_& m) {
         "The layout Decoder.decode() renders decoded channels to (Part 1 clause 6.2.17; "
         "Part 2 clause 5.10.2 for the immersive element).")
         .value("kAsCoded", iclforge::ac4::DownmixTarget::kAsCoded, "the channels as coded")
-        .value("k5X", iclforge::ac4::DownmixTarget::k5X, "a 7.X element's channels folded to 5.X (Table 219)")
-        .value("kStereo", iclforge::ac4::DownmixTarget::kStereo, "Lo/Ro or Lt/Rt per the stream's preference")
+        .value("k5X", iclforge::ac4::DownmixTarget::k5X,
+               "a 7.X element's channels folded to 5.X (Table 219)")
+        .value("kStereo", iclforge::ac4::DownmixTarget::kStereo,
+               "Lo/Ro or Lt/Rt per the stream's preference")
         .value("kLoRo", iclforge::ac4::DownmixTarget::kLoRo)
         .value("kLtRt", iclforge::ac4::DownmixTarget::kLtRt)
         .value("kMono", iclforge::ac4::DownmixTarget::kMono, "L + R of the stereo downmix")
-        .value("k7X4", iclforge::ac4::DownmixTarget::k7X4, "the immersive element's other layouts (Part 2 Tables 38-42)")
+        .value("k7X4", iclforge::ac4::DownmixTarget::k7X4,
+               "the immersive element's other layouts (Part 2 Tables 38-42)")
         .value("k7X2", iclforge::ac4::DownmixTarget::k7X2)
         .value("k7X0", iclforge::ac4::DownmixTarget::k7X0)
         .value("k5X4", iclforge::ac4::DownmixTarget::k5X4)
         .value("k5X2", iclforge::ac4::DownmixTarget::k5X2);
 
-    py::enum_<iclforge::ac4::DrcMode>(ac4_module, "DrcMode", "Part 1 Table 161's DRC decoder modes.")
+    py::enum_<iclforge::ac4::DrcMode>(ac4_module, "DrcMode",
+                                      "Part 1 Table 161's DRC decoder modes.")
         .value("kOff", iclforge::ac4::DrcMode::kOff, "no compression: the output level gain alone")
-        .value("kDefault", iclforge::ac4::DrcMode::kDefault, "the mode clause 5.7.9.2 selects for the output level")
+        .value("kDefault", iclforge::ac4::DrcMode::kDefault,
+               "the mode clause 5.7.9.2 selects for the output level")
         .value("kHomeTheatre", iclforge::ac4::DrcMode::kHomeTheatre)
         .value("kFlatPanelTv", iclforge::ac4::DrcMode::kFlatPanelTv)
         .value("kPortableSpeakers", iclforge::ac4::DrcMode::kPortableSpeakers)
@@ -315,7 +328,8 @@ void register_ac4(py::module_& m) {
         "Part 1 Table 92's refinements of associated audio (PresentationChoice.associated_type).")
         .value("kAny", iclforge::ac4::AssociatedType::kAny, "whatever content_classifier says")
         .value("kAudioDescription", iclforge::ac4::AssociatedType::kAudioDescription)
-        .value("kAudioDescriptionSubtitles", iclforge::ac4::AssociatedType::kAudioDescriptionSubtitles)
+        .value("kAudioDescriptionSubtitles",
+               iclforge::ac4::AssociatedType::kAudioDescriptionSubtitles)
         .value("kSpokenSubtitles", iclforge::ac4::AssociatedType::kSpokenSubtitles)
         .value("kEmergencyInformation", iclforge::ac4::AssociatedType::kEmergencyInformation);
 
@@ -364,10 +378,14 @@ void register_ac4(py::module_& m) {
         .value("kAspxScpl", iclforge::ac4::CodecMode::kAspxScpl)
         .value("kAspxAjcc", iclforge::ac4::CodecMode::kAspxAjcc, "experimental.ajcc only");
 
-    py::enum_<iclforge::ac4::RateMode>(ac4_module, "RateMode", "How frames share the rate (Part 1 Table 81's wait_frames).")
-        .value("kConstant", iclforge::ac4::RateMode::kConstant, "every frame's exact share, to the byte")
-        .value("kAverage", iclforge::ac4::RateMode::kAverage, "frames lend each other bytes within the decoder's buffer")
-        .value("kVariable", iclforge::ac4::RateMode::kVariable, "as kAverage without the buffer limit");
+    py::enum_<iclforge::ac4::RateMode>(ac4_module, "RateMode",
+                                       "How frames share the rate (Part 1 Table 81's wait_frames).")
+        .value("kConstant", iclforge::ac4::RateMode::kConstant,
+               "every frame's exact share, to the byte")
+        .value("kAverage", iclforge::ac4::RateMode::kAverage,
+               "frames lend each other bytes within the decoder's buffer")
+        .value("kVariable", iclforge::ac4::RateMode::kVariable,
+               "as kAverage without the buffer limit");
 
     py::enum_<iclforge::ac4::EncodeError>(
         ac4_module, "EncodeError",
@@ -432,7 +450,8 @@ void register_ac4(py::module_& m) {
                 .field("output_level_dbfs", &iclforge::ac4::OutputConfig::output_level_dbfs)
                 .field("drc", &iclforge::ac4::OutputConfig::drc)
                 .field("headphones", &iclforge::ac4::OutputConfig::headphones)
-                .field("dialogue_enhancement_db", &iclforge::ac4::OutputConfig::dialogue_enhancement_db)
+                .field("dialogue_enhancement_db",
+                       &iclforge::ac4::OutputConfig::dialogue_enhancement_db)
                 .field("downmix", &iclforge::ac4::OutputConfig::downmix)
                 .field("mix_lfe", &iclforge::ac4::OutputConfig::mix_lfe)
                 .field("dialogue_gain_db", &iclforge::ac4::OutputConfig::dialogue_gain_db)
@@ -442,7 +461,8 @@ void register_ac4(py::module_& m) {
         .def_readwrite("output_level_dbfs", &iclforge::ac4::OutputConfig::output_level_dbfs)
         .def_readwrite("drc", &iclforge::ac4::OutputConfig::drc)
         .def_readwrite("headphones", &iclforge::ac4::OutputConfig::headphones)
-        .def_readwrite("dialogue_enhancement_db", &iclforge::ac4::OutputConfig::dialogue_enhancement_db)
+        .def_readwrite("dialogue_enhancement_db",
+                       &iclforge::ac4::OutputConfig::dialogue_enhancement_db)
         .def_readwrite("downmix", &iclforge::ac4::OutputConfig::downmix)
         .def_readwrite("mix_lfe", &iclforge::ac4::OutputConfig::mix_lfe)
         .def_readwrite("dialogue_gain_db", &iclforge::ac4::OutputConfig::dialogue_gain_db)
@@ -500,8 +520,8 @@ void register_ac4(py::module_& m) {
 
     // The Decoder reports one and the Encoder takes it: an object's metadata is the same
     // structure both ways (ac4/ac4.hpp), so its fields are settable, and the constructor
-    // starts from iclforge::ac4::ObjectProperties{}'s defaults (priority 1, depth exponent 1, the room's
-    // centre) rather than zeroes.
+    // starts from iclforge::ac4::ObjectProperties{}'s defaults (priority 1, depth exponent 1, the
+    // room's centre) rather than zeroes.
     py::class_<iclforge::ac4::ObjectProperties>(
         ac4_module, "ObjectProperties",
         "One block update of an object's metadata (Part 2 Annex F.2-F.10), as the Decoder "
@@ -542,8 +562,10 @@ void register_ac4(py::module_& m) {
         .def_readwrite("distance", &iclforge::ac4::ObjectProperties::distance)
         .def_readwrite("divergence", &iclforge::ac4::ObjectProperties::divergence)
         .def_readwrite("trim_disabled", &iclforge::ac4::ObjectProperties::trim_disabled)
-        .def_readwrite("headphone_render_mode", &iclforge::ac4::ObjectProperties::headphone_render_mode)
-        .def_readwrite("head_track_disabled", &iclforge::ac4::ObjectProperties::head_track_disabled);
+        .def_readwrite("headphone_render_mode",
+                       &iclforge::ac4::ObjectProperties::headphone_render_mode)
+        .def_readwrite("head_track_disabled",
+                       &iclforge::ac4::ObjectProperties::head_track_disabled);
 
     py::class_<iclforge::ac4::ObjectUpdate>(
         ac4_module, "ObjectUpdate",
@@ -567,11 +589,11 @@ void register_ac4(py::module_& m) {
         .def_readonly("kind", &iclforge::ac4::DecodedObject::kind)
         .def_readonly("lfe", &iclforge::ac4::DecodedObject::lfe)
         .def_readonly("speaker", &iclforge::ac4::DecodedObject::speaker)
-        .def_property_readonly("samples",
-                               [](py::object self) {
-                                   return float_view(self.cast<const iclforge::ac4::DecodedObject&>().samples,
-                                                     self);
-                               })
+        .def_property_readonly(
+            "samples",
+            [](py::object self) {
+                return float_view(self.cast<const iclforge::ac4::DecodedObject&>().samples, self);
+            })
         .def_readonly("properties", &iclforge::ac4::DecodedObject::properties)
         .def_readonly("updates", &iclforge::ac4::DecodedObject::updates);
 
@@ -661,7 +683,8 @@ void register_ac4(py::module_& m) {
             },
             "The presentations of the last frame read, table-of-contents order; empty before one.")
         .def_property_readonly(
-            "metadata_loudness", [](const iclforge::ac4::Decoder& self) { return self.metadata().loudness; },
+            "metadata_loudness",
+            [](const iclforge::ac4::Decoder& self) { return self.metadata().loudness; },
             "The loudness metadata of the presentation the last frame selected.")
         .def_property_readonly(
             "refusal_reason",
@@ -709,7 +732,8 @@ void register_ac4(py::module_& m) {
                 .field("decorrelation", &iclforge::ac4::ObjectsConfig::decorrelation)
                 .field("parameter_bands", &iclforge::ac4::ObjectsConfig::parameter_bands)
                 .field("coarse", &iclforge::ac4::ObjectsConfig::coarse)
-                .field("screen_size_ratio_code", &iclforge::ac4::ObjectsConfig::screen_size_ratio_code)
+                .field("screen_size_ratio_code",
+                       &iclforge::ac4::ObjectsConfig::screen_size_ratio_code)
                 .field("bed_object_chan_distribute",
                        &iclforge::ac4::ObjectsConfig::bed_object_chan_distribute)
                 .finish();
@@ -724,7 +748,8 @@ void register_ac4(py::module_& m) {
         .def_readwrite("parameter_bands", &iclforge::ac4::ObjectsConfig::parameter_bands,
                        "A-JOC's parameter bands (Table 78); None takes 23, 15 or 12 by the rate")
         .def_readwrite("coarse", &iclforge::ac4::ObjectsConfig::coarse)
-        .def_readwrite("screen_size_ratio_code", &iclforge::ac4::ObjectsConfig::screen_size_ratio_code,
+        .def_readwrite("screen_size_ratio_code",
+                       &iclforge::ac4::ObjectsConfig::screen_size_ratio_code,
                        "oamd_common_data()'s master_screen_size_ratio_code, 0 to 31; None sends "
                        "b_default_screen_size_ratio")
         .def_readwrite("bed_object_chan_distribute",
@@ -802,19 +827,20 @@ void register_ac4(py::module_& m) {
                 objects = kwargs["objects"].cast<std::optional<iclforge::ac4::ObjectsConfig>>();
                 PyDict_DelItemString(kwargs.ptr(), "objects");
             }
-            auto config = KwargBinder<iclforge::ac4::EncoderConfig>(std::move(kwargs))
-                              .field("channels", &iclforge::ac4::EncoderConfig::channels)
-                              .field("sample_rate_hz", &iclforge::ac4::EncoderConfig::sample_rate_hz)
-                              .field("frame_rate_index", &iclforge::ac4::EncoderConfig::frame_rate_index)
-                              .field("bitrate_kbps", &iclforge::ac4::EncoderConfig::bitrate_kbps)
-                              .field("rate_mode", &iclforge::ac4::EncoderConfig::rate_mode)
-                              .field("codec_mode", &iclforge::ac4::EncoderConfig::codec_mode)
-                              .field("iframe_interval", &iclforge::ac4::EncoderConfig::iframe_interval)
-                              .field("dialnorm_db", &iclforge::ac4::EncoderConfig::dialnorm_db)
-                              .field("iframes", &iclforge::ac4::EncoderConfig::iframes)
-                              .field("fragment_starts", &iclforge::ac4::EncoderConfig::fragment_starts)
-                              .field("experimental", &iclforge::ac4::EncoderConfig::experimental)
-                              .finish();
+            auto config =
+                KwargBinder<iclforge::ac4::EncoderConfig>(std::move(kwargs))
+                    .field("channels", &iclforge::ac4::EncoderConfig::channels)
+                    .field("sample_rate_hz", &iclforge::ac4::EncoderConfig::sample_rate_hz)
+                    .field("frame_rate_index", &iclforge::ac4::EncoderConfig::frame_rate_index)
+                    .field("bitrate_kbps", &iclforge::ac4::EncoderConfig::bitrate_kbps)
+                    .field("rate_mode", &iclforge::ac4::EncoderConfig::rate_mode)
+                    .field("codec_mode", &iclforge::ac4::EncoderConfig::codec_mode)
+                    .field("iframe_interval", &iclforge::ac4::EncoderConfig::iframe_interval)
+                    .field("dialnorm_db", &iclforge::ac4::EncoderConfig::dialnorm_db)
+                    .field("iframes", &iclforge::ac4::EncoderConfig::iframes)
+                    .field("fragment_starts", &iclforge::ac4::EncoderConfig::fragment_starts)
+                    .field("experimental", &iclforge::ac4::EncoderConfig::experimental)
+                    .finish();
             set_objects(config, std::move(objects));
             return config;
         }))
@@ -831,7 +857,8 @@ void register_ac4(py::module_& m) {
         .def_readwrite("experimental", &iclforge::ac4::EncoderConfig::experimental)
         .def_property(
             "objects", [](const iclforge::ac4::EncoderConfig& self) { return objects_of(self); },
-            [](iclforge::ac4::EncoderConfig& self, std::optional<iclforge::ac4::ObjectsConfig> objects) {
+            [](iclforge::ac4::EncoderConfig& self,
+               std::optional<iclforge::ac4::ObjectsConfig> objects) {
                 set_objects(self, std::move(objects));
             },
             "the stream's one object substream, or None for channels");
@@ -852,7 +879,8 @@ void register_ac4(py::module_& m) {
     py::class_<iclforge::ac4::Toc>(
         ac4_module, "Toc",
         "A minimal wrapper over the table of contents every frame carries (Encoder.toc), for "
-        "what a container muxer needs - the rest of iclforge::ac4::Toc (presentations, substream groups) "
+        "what a container muxer needs - the rest of iclforge::ac4::Toc (presentations, substream "
+        "groups) "
         "is not bound here.")
         .def(
             "build_dac4",
@@ -863,12 +891,16 @@ void register_ac4(py::module_& m) {
             "The 'dac4' box payload (ac4_dsi_v1, Annex E.6), box header excluded. Empty when "
             "dac4_refusal() is not empty.")
         .def(
-            "dac4_refusal", [](const iclforge::ac4::Toc& self) { return std::string(iclforge::ac4::dac4_refusal(self)); },
+            "dac4_refusal",
+            [](const iclforge::ac4::Toc& self) {
+                return std::string(iclforge::ac4::dac4_refusal(self));
+            },
             "Why build_dac4() wrote nothing for this Toc; empty where it described every "
             "presentation whole.")
         .def(
             "media_timing",
-            [](const iclforge::ac4::Toc& self) -> std::optional<std::pair<std::uint32_t, std::uint32_t>> {
+            [](const iclforge::ac4::Toc& self)
+                -> std::optional<std::pair<std::uint32_t, std::uint32_t>> {
                 const auto timing = iclforge::ac4::media_timing(self);
                 if (!timing) {
                     return std::nullopt;
@@ -879,7 +911,9 @@ void register_ac4(py::module_& m) {
             "frame rate Table 83/84 does not define.")
         .def(
             "samples_per_frame",
-            [](const iclforge::ac4::Toc& self) -> std::optional<std::uint32_t> { return iclforge::ac4::samples_per_frame(self); },
+            [](const iclforge::ac4::Toc& self) -> std::optional<std::uint32_t> {
+                return iclforge::ac4::samples_per_frame(self);
+            },
             "Samples per AC-4 frame at the stream's own sample rate; unset at the 1000/1001 frame "
             "rates, whose frame length alternates between two values (see media_timing()).");
 
@@ -931,7 +965,8 @@ void register_ac4(py::module_& m) {
                 }
                 return frames;
             },
-            py::arg("channels"), py::arg("updates") = std::vector<iclforge::ac4::ObjectMetadataUpdate>{},
+            py::arg("channels"),
+            py::arg("updates") = std::vector<iclforge::ac4::ObjectMetadataUpdate>{},
             "Planar float32 samples at full scale 1.0, one channel per EncoderConfig.channels (or "
             "one per object of EncoderConfig.objects), any equal length - a 2-D array or a "
             "sequence of 1-D arrays (zero-copy when already contiguous float32; don't mutate "
@@ -959,7 +994,8 @@ void register_ac4(py::module_& m) {
             "Pads the input with silence to the end of its last frame and returns the frames the "
             "delay still held. Takes no input after this.")
         .def_property_readonly(
-            "toc", [](const iclforge::ac4::Encoder& self) -> iclforge::ac4::Toc { return self.toc(); },
+            "toc",
+            [](const iclforge::ac4::Encoder& self) -> iclforge::ac4::Toc { return self.toc(); },
             "A snapshot of the table of contents every frame carries.")
         .def_property_readonly("codec_mode", &iclforge::ac4::Encoder::codec_mode,
                                "What kAuto chose from the rate; never kAuto.")

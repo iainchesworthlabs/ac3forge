@@ -200,7 +200,8 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
                                 .dialnorm = sub.dialnorm2.value_or(31),
                                 .compr = sub.compr2});
             } else {
-                result.layout_label = to_qstring(iclforge::analysis::layout_name(sub.acmod, sub.lfe));
+                result.layout_label =
+                    to_qstring(iclforge::analysis::layout_name(sub.acmod, sub.lfe));
                 meter.emplace(sub.sample_rate, sub.acmod, sub.lfe);
                 result.programmes.push_back(
                     RawProgramme{.dialnorm = sub.dialnorm, .compr = sub.compr});
@@ -317,15 +318,17 @@ std::optional<RawResult> measure_ac4(std::span<const std::byte> stream,
             layout = pcm.speakers;
             result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
             result.presentation = pcm.presentation;
-            order = iclforge::apps::ac4_order(std::span{pcm.speakers}, iclforge::apps::ac4_meter_rank);
+            order =
+                iclforge::apps::ac4_order(std::span{pcm.speakers}, iclforge::apps::ac4_meter_rank);
             std::erase_if(order, [&](std::size_t c) {
                 return iclforge::apps::ac4_meter_rank(pcm.speakers[c]) >= 99;
             });
             const bool lfe =
                 std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
             const iclforge::Acmod acmod = iclforge::apps::ac4_bed_acmod(pcm.speakers);
-            const iclforge::SampleRate rate = pcm.sample_rate_hz == 44100 ? iclforge::SampleRate::k44100
-                                                                     : iclforge::SampleRate::k48000;
+            const iclforge::SampleRate rate = pcm.sample_rate_hz == 44100
+                                                  ? iclforge::SampleRate::k44100
+                                                  : iclforge::SampleRate::k48000;
             meter.emplace(rate, acmod, lfe);
             result.layout_label = to_qstring(iclforge::analysis::layout_name(acmod, lfe));
         } else if (pcm.speakers != layout ||

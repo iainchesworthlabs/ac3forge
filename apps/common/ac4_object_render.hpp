@@ -37,7 +37,8 @@ class Ac4ObjectRenderer {
     // Renders to the layout `target` names, the LFE with the fullband
     // speakers: 7.1.4 as coded, 7.1.2, 7.1, 5.1.4, 5.1.2 and 5.1 by name, two
     // channels for the stereo targets and one for mono.
-    explicit Ac4ObjectRenderer(iclforge::ac4::DownmixTarget target, std::uint32_t sample_rate_hz = 48000);
+    explicit Ac4ObjectRenderer(iclforge::ac4::DownmixTarget target,
+                               std::uint32_t sample_rate_hz = 48000);
 
     // The output's speakers, in the order render() puts them out.
     [[nodiscard]] std::span<const iclforge::ac4::Speaker> speakers() const noexcept;
@@ -51,7 +52,8 @@ class Ac4ObjectRenderer {
     // The gain at each speaker, in speakers() order, of a dynamic object with
     // `properties`: its position panned by the layout renderer, times its
     // gain.
-    [[nodiscard]] std::vector<float> object_gains(const iclforge::ac4::ObjectProperties& properties);
+    [[nodiscard]] std::vector<float> object_gains(
+        const iclforge::ac4::ObjectProperties& properties);
 
     // Forgets the objects' gains, for a stream started afresh.
     void reset();

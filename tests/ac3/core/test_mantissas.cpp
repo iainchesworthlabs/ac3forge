@@ -18,9 +18,9 @@ TEST_CASE("quantize/dequantize round-trip error is within half a step", "[mantis
     std::mt19937 rng(0x073A);
     std::uniform_real_distribution<double> dist(-0.999, 0.999);
     for (int bap = 1; bap <= 15; ++bap) {
-        const double step = bap <= 5
-                                ? 2.0 / iclforge::kSymmetricLevels[static_cast<std::size_t>(bap)]
-                                : 1.0 / (1 << (iclforge::kBapBits[static_cast<std::size_t>(bap)] - 1));
+        const double step =
+            bap <= 5 ? 2.0 / iclforge::kSymmetricLevels[static_cast<std::size_t>(bap)]
+                     : 1.0 / (1 << (iclforge::kBapBits[static_cast<std::size_t>(bap)] - 1));
         // Asymmetric two's complement tops out at 1 - step (A/52 7.3.2:
         // the mantissa word spans (1.0 - 2^-(qntztab-1)) to -1.0); values
         // beyond that clamp by design and carry a larger error.

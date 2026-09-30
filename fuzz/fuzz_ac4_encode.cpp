@@ -104,7 +104,8 @@ Run encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::vect
         }
         auto frames = dialogue != nullptr ? encoder->encode(views, stem) : encoder->encode(views);
         if (!frames.has_value()) {
-            if (frames.error() != iclforge::ac4::EncodeError::kInvalidInput || !expect_invalid_input) {
+            if (frames.error() != iclforge::ac4::EncodeError::kInvalidInput ||
+                !expect_invalid_input) {
                 violated();
             }
             run.refused = true;
@@ -185,8 +186,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     constexpr std::array<iclforge::ac4::CodecMode, 3> kImmersiveModes = {iclforge::ac4::CodecMode::kAuto, iclforge::ac4::CodecMode::kScpl,
                                                                iclforge::ac4::CodecMode::kAspxScpl};
     constexpr std::array<iclforge::ac4::CodecMode, 4> kImmersiveParametric = {
-        iclforge::ac4::CodecMode::kAspxAcpl1, iclforge::ac4::CodecMode::kAspxAcpl2, iclforge::ac4::CodecMode::kAspxAcpl3,
-        iclforge::ac4::CodecMode::kAspxAjcc};
+        iclforge::ac4::CodecMode::kAspxAcpl1, iclforge::ac4::CodecMode::kAspxAcpl2,
+        iclforge::ac4::CodecMode::kAspxAcpl3, iclforge::ac4::CodecMode::kAspxAjcc};
     const bool immersive = config.channels > 8;
     const auto mode = static_cast<std::size_t>((interval >> 5) & 3);
     const auto parametric = static_cast<std::size_t>((rate >> 1) & 3);
@@ -287,14 +288,18 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     if ((metadata & 32) != 0) {
         constexpr std::array<iclforge::ac4::DialogueMethod, 4> kMethods = {
             iclforge::ac4::DialogueMethod::kChannelIndependent, iclforge::ac4::DialogueMethod::kMid,
-            iclforge::ac4::DialogueMethod::kCrossChannel, iclforge::ac4::DialogueMethod::kChannelIndependent};
+            iclforge::ac4::DialogueMethod::kCrossChannel,
+            iclforge::ac4::DialogueMethod::kChannelIndependent};
         iclforge::ac4::DialogueConfig dialogue;
         dialogue.method = kMethods[static_cast<std::size_t>((metadata >> 6) & 3)];
-        stem = dialogue.method == iclforge::ac4::DialogueMethod::kCrossChannel || (values & 0x80) != 0;
-        dialogue.source = stem ? iclforge::ac4::DialogueSource::kStem : iclforge::ac4::DialogueSource::kMarkedChannels;
+        stem =
+            dialogue.method == iclforge::ac4::DialogueMethod::kCrossChannel || (values & 0x80) != 0;
+        dialogue.source = stem ? iclforge::ac4::DialogueSource::kStem
+                               : iclforge::ac4::DialogueSource::kMarkedChannels;
         dialogue.left = config.channels > 1;
         dialogue.right = config.channels > 1;
-        dialogue.centre = config.channels != 2 && dialogue.method != iclforge::ac4::DialogueMethod::kMid;
+        dialogue.centre =
+            config.channels != 2 && dialogue.method != iclforge::ac4::DialogueMethod::kMid;
         dialogue.max_gain_db = 3 * (1 + (values & 3));
         config.dialogue = dialogue;
     }
@@ -467,9 +472,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             emdf.emdf.push_back(payload(1 + detail % 63));
             presentations.push_back(emdf);
         }
-        selectable = std::ranges::any_of(presentations, [](const iclforge::ac4::PresentationConfig& p) {
-            return p.config != 6 && p.enabled.value_or(true);
-        });
+        selectable =
+            std::ranges::any_of(presentations, [](const iclforge::ac4::PresentationConfig& p) {
+                return p.config != 6 && p.enabled.value_or(true);
+            });
         presentation_count = presentations.size();
         config.substreams = std::move(subs);
         config.presentations = std::move(presentations);
@@ -541,7 +547,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         }
         const auto decoded = decoder.decode(frame);
         if (!selectable) {
-            if (decoded.has_value() || decoded.error() != iclforge::ac4::DecodeError::kUnsupported) {
+            if (decoded.has_value() ||
+                decoded.error() != iclforge::ac4::DecodeError::kUnsupported) {
                 violated();
             }
             continue;

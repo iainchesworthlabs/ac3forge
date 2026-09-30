@@ -99,7 +99,8 @@ void write_oamd_stream(const fs::path& path, const iclforge::oba::Program& progr
         {.id = iclforge::emdf::kPayloadIdOamd, .bytes = payload}};
     const auto container = iclforge::emdf::build_container(payloads);
 
-    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     const std::vector<float> silence(static_cast<std::size_t>(encoder.samples_per_frame()), 0.0F);
     const std::vector<std::span<const float>> channels(
         static_cast<std::size_t>(encoder.channel_count()), silence);
@@ -138,10 +139,12 @@ void write_legacy_core_oamd_stream(const fs::path& path, const iclforge::oba::Pr
                                        .chanmap = iclforge::eac3::chanmap::k71Rear,
                                        .last_dependent = true}};
 
-    const std::vector<float> core_silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0F);
+    const std::vector<float> core_silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame),
+                                          0.0F);
     const std::vector<std::span<const float>> core_channels(
         static_cast<std::size_t>(core.channel_count()), core_silence);
-    const std::vector<float> dep_silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0F);
+    const std::vector<float> dep_silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame),
+                                         0.0F);
     const std::vector<std::span<const float>> dep_channels(
         static_cast<std::size_t>(dependent.channel_count()), dep_silence);
 
@@ -206,7 +209,8 @@ void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
         target = set != 0 ? (target | std::byte{mask}) : (target & static_cast<std::byte>(~mask));
     }
     const auto bytes = frame.size();
-    const std::uint16_t crc2 = iclforge::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
+    const std::uint16_t crc2 =
+        iclforge::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
     frame[bytes - 2] = static_cast<std::byte>(crc2 >> 8);
     frame[bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
 }

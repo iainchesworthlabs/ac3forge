@@ -194,9 +194,9 @@ int run_man();
 int run_completions(std::string_view shell);
 
 // 44 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
-// linked iclforge::adm/iclforge::admbridge into this particular build (see Needs::kAdm/unmet() above
-// and run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating
-// it, never sized out of the table entirely - the identical "listed, not hidden" treatment
+// linked iclforge::adm/iclforge::admbridge into this particular build (see Needs::kAdm/unmet()
+// above and run_atmos_adm's own comment): a command this build cannot run is listed with Needs
+// gating it, never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
 constexpr std::array<Command, 44> kCommands{{

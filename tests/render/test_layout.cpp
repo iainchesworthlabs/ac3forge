@@ -46,7 +46,9 @@ std::vector<Location> locations_of(const OutputLayout& layout) {
     return out;
 }
 
-iclforge::eac3::chanmap::Layout coded(std::uint16_t map) { return iclforge::eac3::chanmap::expand(map); }
+iclforge::eac3::chanmap::Layout coded(std::uint16_t map) {
+    return iclforge::eac3::chanmap::expand(map);
+}
 
 constexpr std::uint16_t k51 = iclforge::eac3::chanmap::acmod_map(iclforge::Acmod::k3_2, true);
 constexpr std::uint16_t k71 = k51 | iclforge::eac3::chanmap::k71Rear;
@@ -134,7 +136,8 @@ TEST_CASE("a named layout comes out ring, heights, LFE, in Table E2.5 order", "[
 
     // With rears present the surrounds sit at the sides, as BS.2051 has 7.1.
     REQUIRE(layout->slot(3).direction.azimuth_deg == Approx(90.0));
-    REQUIRE(layout->slot(7).direction.elevation_deg == Approx(iclforge::spatial::kHeightElevationDeg));
+    REQUIRE(layout->slot(7).direction.elevation_deg ==
+            Approx(iclforge::spatial::kHeightElevationDeg));
     const auto five_one = OutputLayout::parse("5.1");
     REQUIRE(five_one.has_value());
     REQUIRE(five_one->slot(3).direction.azimuth_deg == Approx(110.0));
@@ -582,8 +585,10 @@ TEST_CASE("a height slot's realization: wall-mounted, in-ceiling or up-firing", 
     REQUIRE(height.has_value());
     REQUIRE(height->slot(0).realization == Speaker::Realization::kHeight);
     REQUIRE(height->slot(1).realization == Speaker::Realization::kUpFiring);
-    REQUIRE(height->slot(0).direction.elevation_deg == Approx(iclforge::spatial::kHeightElevationDeg));
-    REQUIRE(height->slot(1).direction.elevation_deg == Approx(iclforge::spatial::kHeightElevationDeg));
+    REQUIRE(height->slot(0).direction.elevation_deg ==
+            Approx(iclforge::spatial::kHeightElevationDeg));
+    REQUIRE(height->slot(1).direction.elevation_deg ==
+            Approx(iclforge::spatial::kHeightElevationDeg));
 
     // Only the five Dolby height locations can be re-tiered.
     REQUIRE_FALSE(OutputLayout::parse("L:top,R,C,LFE,Ls,Rs").has_value());

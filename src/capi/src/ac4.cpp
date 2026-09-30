@@ -296,7 +296,8 @@ void ac3forge_ac4_object_properties_init(ac3forge_ac4_object_properties_t* prope
 ac3forge_ac4_object_properties_t ac3forge_ac4_decoded_frame_object_properties(
     const ac3forge_ac4_decoded_frame_t* frame, size_t object_index) {
     const auto* object = find_object(frame, object_index);
-    return ac3forge_c::from_cpp(object == nullptr ? iclforge::ac4::ObjectProperties{} : object->properties);
+    return ac3forge_c::from_cpp(object == nullptr ? iclforge::ac4::ObjectProperties{}
+                                                  : object->properties);
 }
 
 size_t ac3forge_ac4_decoded_frame_object_update_count(const ac3forge_ac4_decoded_frame_t* frame,

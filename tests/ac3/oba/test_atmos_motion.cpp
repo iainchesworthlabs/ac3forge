@@ -49,8 +49,8 @@ int band_of(double hz, int num_bands_idx) {
     return iclforge::oba::joc::kSubbandToBand[static_cast<std::size_t>(num_bands_idx)][subband];
 }
 
-std::complex<double> reconstruct_at(const iclforge::oba::AtmosEncoder& encoder, int object, double hz,
-                                    int num_bands_idx) {
+std::complex<double> reconstruct_at(const iclforge::oba::AtmosEncoder& encoder, int object,
+                                    double hz, int num_bands_idx) {
     constexpr std::array<int, 5> kAc3FromJoc = {0, 2, 1, 3, 4};
     const int band = band_of(hz, num_bands_idx);
     std::complex<double> sum{};
@@ -73,7 +73,8 @@ double error_db(std::complex<double> got, std::complex<double> want) {
 // end (0-indexed) lands exactly on an authored keyframe for every frame,
 // never mid-interpolation, which is what makes the LAST frame of each hold a
 // clean, fully settled check point (see the flagship test below).
-iclforge::oba::KeyframePath make_holds(std::span<const iclforge::oba::Position> waypoints, int hold_frames) {
+iclforge::oba::KeyframePath make_holds(std::span<const iclforge::oba::Position> waypoints,
+                                       int hold_frames) {
     std::vector<iclforge::oba::Keyframe> keyframes;
     int frame_index = 1;
     for (const auto& p : waypoints) {

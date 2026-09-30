@@ -328,7 +328,8 @@ std::shared_ptr<FakeRoom> make_room(std::vector<FakeEndpoint> endpoints) {
     return std::make_shared<FakeRoom>(std::move(endpoints));
 }
 
-std::shared_ptr<iclforge::hearth::ui::TestOutputs> outputs_for(const std::shared_ptr<FakeRoom>& room) {
+std::shared_ptr<iclforge::hearth::ui::TestOutputs> outputs_for(
+    const std::shared_ptr<FakeRoom>& room) {
     auto outputs = std::make_shared<iclforge::hearth::ui::TestOutputs>();
     outputs->make_pcm = [room] { return std::make_unique<RoomSink>(room); };
     outputs->endpoints = [room](std::uint32_t /*sample_rate*/) {
@@ -464,7 +465,8 @@ bool write_ac4_stream(const std::string& path, const std::string& kind, std::str
     }
     const auto write = [&out](const std::vector<iclforge::ac4::EncodedFrame>& frames) {
         for (const iclforge::ac4::EncodedFrame& frame : frames) {
-            const std::vector<std::byte> wrapped = iclforge::ac4::sync_frame(frame.raw_ac4_frame, false);
+            const std::vector<std::byte> wrapped =
+                iclforge::ac4::sync_frame(frame.raw_ac4_frame, false);
             out.write(reinterpret_cast<const char*>(wrapped.data()),
                       static_cast<std::streamsize>(wrapped.size()));
         }

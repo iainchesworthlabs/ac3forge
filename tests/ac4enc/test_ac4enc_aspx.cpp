@@ -132,7 +132,9 @@ AspxChannelFields channel(Lcg& rng, const AspxConfigFields& config, const AspxCo
                 high = 0;
                 break;
             case 2:
-                high = iclforge::ac4::detail::envelope_high_res(borders, env, c.framing.tsg_ptr) ? 1 : 0;
+                high = iclforge::ac4::detail::envelope_high_res(borders, env, c.framing.tsg_ptr)
+                           ? 1
+                           : 0;
                 break;
             default:
                 high = 1;
@@ -405,7 +407,8 @@ TEST_CASE("the A-SPX data a frame falls back to cost more where its interval sta
     // an I-frame sends the border too. create() sizes the frame that holds
     // nothing more with both: at the lowest rates the second costs 2 bits a
     // channel more, and in stereo at 8 kbps that is past its 42-byte frame.
-    const std::optional<iclforge::ac4::detail::AspxSetup> setup = iclforge::ac4::detail::aspx_setup_for(8.0, 48000);
+    const std::optional<iclforge::ac4::detail::AspxSetup> setup =
+        iclforge::ac4::detail::aspx_setup_for(8.0, 48000);
     REQUIRE(setup.has_value());
     const iclforge::ac4::detail::AspxChannelEncoder encoder(*setup);
     const AspxChannelFields fixed = encoder.fallback(true, true);
@@ -418,8 +421,8 @@ TEST_CASE("the A-SPX data a frame falls back to cost more where its interval sta
         if (channels == 1) {
             iclforge::ac4::detail::write_aspx_data_1ch(w, true, 0, setup->config, setup->counts, f);
         } else {
-            iclforge::ac4::detail::write_aspx_data_2ch(w, true, 0, setup->config, setup->counts, false,
-                                             {f, f});
+            iclforge::ac4::detail::write_aspx_data_2ch(w, true, 0, setup->config, setup->counts,
+                                                       false, {f, f});
         }
         return w.bit_position();
     };
@@ -427,7 +430,8 @@ TEST_CASE("the A-SPX data a frame falls back to cost more where its interval sta
     CHECK(bits(varied, 2) > bits(fixed, 2));
 }
 TEST_CASE("companding_control() in its three forms reads back through the channel element", "[ac4enc][aspx]") {
-    const std::optional<iclforge::ac4::detail::AspxSetup> setup = iclforge::ac4::detail::aspx_setup_for(32.0, 48000);
+    const std::optional<iclforge::ac4::detail::AspxSetup> setup =
+        iclforge::ac4::detail::aspx_setup_for(32.0, 48000);
     REQUIRE(setup.has_value());
     Lcg rng;
     for (const int channels : {1, 2}) {
@@ -474,7 +478,8 @@ TEST_CASE("companding_control() in its three forms reads back through the channe
                     ctx.ch_mode = channels == 2 ? iclforge::ac4::detail::ch_mode::kStereo : iclforge::ac4::detail::ch_mode::kMono;
                     iclforge::ac4::detail::ChannelElementState state;
                     iclforge::ac4::detail::ChannelElement parsed;
-                    const auto ok = iclforge::ac4::detail::parse_audio_data_chan(r, ctx, state, parsed);
+                    const auto ok =
+                        iclforge::ac4::detail::parse_audio_data_chan(r, ctx, state, parsed);
                     INFO((ok ? std::string_view{} : ok.error().reason));
                     REQUIRE(ok);
                     REQUIRE(parsed.companding.has_value());
@@ -547,7 +552,8 @@ TEST_CASE("the QMF front end's compressed low band is the signal again after the
     std::array<double, 64> chunk{};
     for (std::size_t g = 0; g < slots; ++g) {
         for (std::size_t i = 0; i < 64; ++i) {
-            const long long s = static_cast<long long>(64 * g + i) - iclforge::ac4::detail::kAnalysisLead;
+            const long long s =
+                static_cast<long long>(64 * g + i) - iclforge::ac4::detail::kAnalysisLead;
             chunk[i] = s >= 0 && static_cast<std::size_t>(s) < signal.size() ? signal[static_cast<std::size_t>(s)] : 0.0;
         }
         channel.push_slot(chunk);

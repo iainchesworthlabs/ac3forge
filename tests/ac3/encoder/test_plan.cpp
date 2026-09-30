@@ -52,8 +52,8 @@ void fill_tone(std::vector<float>& out, double hz, double amplitude, std::uint64
 
 // Energy a source channel puts into just the independent substream's channels,
 // which is the group that has to be a self-sufficient rendering on its own.
-[[nodiscard]] double bed_energy_from(iclforge::plan::LayoutId id, const iclforge::plan::Routing& routing,
-                                     int source) {
+[[nodiscard]] double bed_energy_from(iclforge::plan::LayoutId id,
+                                     const iclforge::plan::Routing& routing, int source) {
     const auto coded = iclforge::plan::coded_channels(id);
     double sum = 0.0;
     for (std::size_t c = 0; c < coded.size(); ++c) {
@@ -253,11 +253,14 @@ TEST_CASE("an AC-4 plan takes mono stereo 5.0 and 5.1 at 48 or 44.1 kHz", "[ac4]
         INFO("locations " << iclforge::plan::format_channels(bits));
         CHECK(iclforge::plan::validate(plan) == PlanError::kLayoutNotInAc4);
     }
-    const iclforge::plan::Plan at_44{.codec = Codec::kAc4, .sample_rate = iclforge::SampleRate::k44100};
+    const iclforge::plan::Plan at_44{.codec = Codec::kAc4,
+                                     .sample_rate = iclforge::SampleRate::k44100};
     CHECK_FALSE(iclforge::plan::validate(at_44).has_value());
-    const iclforge::plan::Plan at_32{.codec = Codec::kAc4, .sample_rate = iclforge::SampleRate::k32000};
+    const iclforge::plan::Plan at_32{.codec = Codec::kAc4,
+                                     .sample_rate = iclforge::SampleRate::k32000};
     CHECK(iclforge::plan::validate(at_32) == PlanError::kSampleRateNotInAc4);
-    const iclforge::plan::Plan vbr{.codec = Codec::kAc4, .vbr = iclforge::eac3::VbrConfig{.quality = 0.5}};
+    const iclforge::plan::Plan vbr{.codec = Codec::kAc4,
+                                   .vbr = iclforge::eac3::VbrConfig{.quality = 0.5}};
     CHECK(iclforge::plan::validate(vbr) == PlanError::kVbrNeedsEac3);
     for (const PlanError error : {PlanError::kLayoutNotInAc4, PlanError::kSampleRateNotInAc4}) {
         CHECK_FALSE(iclforge::plan::describe(error).empty());
@@ -390,7 +393,8 @@ TEST_CASE("an immersive layout is refused to AC-3 rather than silently narrowed"
     const auto error = iclforge::plan::validate(plan);
     REQUIRE(error.has_value());
     CHECK(*error == iclforge::plan::PlanError::kLayoutNeedsEac3);
-    CHECK_FALSE(iclforge::plan::carries(iclforge::plan::Codec::kAc3, iclforge::plan::LayoutId::k714));
+    CHECK_FALSE(
+        iclforge::plan::carries(iclforge::plan::Codec::kAc3, iclforge::plan::LayoutId::k714));
     CHECK(iclforge::plan::carries(iclforge::plan::Codec::kEac3, iclforge::plan::LayoutId::k714));
 }
 
@@ -522,7 +526,8 @@ TEST_CASE("classic AC-3 encoders refuse a reduced sample rate directly, not just
     // Plan::validate() is the friendly front door, but FrameEncoder/
     // build_silent_stereo_frame must refuse it too - a caller can construct
     // an EncoderConfig/SilentFrameConfig without ever going through a Plan.
-    iclforge::FrameEncoder encoder{{.sample_rate = iclforge::SampleRate::k24000, .bitrate_kbps = 192}};
+    iclforge::FrameEncoder encoder{
+        {.sample_rate = iclforge::SampleRate::k24000, .bitrate_kbps = 192}};
     const std::vector<float> silence(static_cast<std::size_t>(iclforge::kSamplesPerFrame), 0.0f);
     const std::vector<std::span<const float>> views{silence, silence};
     const auto frame = encoder.encode_frame(views);
@@ -579,8 +584,9 @@ TEST_CASE("validate refuses a custom channel selection Annex E cannot express") 
             cm::kRightSurroundBit | cm::kLfeBit | cm::kLcRcBit | cm::kLrsRrsBit | cm::kLsdRsdBit |
             cm::kLwRwBit | cm::kVhlVhrBit | cm::kVhcBit);
         REQUIRE(cm::channel_count(locations) == 17);
-        const iclforge::plan::Plan plan{
-            .codec = iclforge::plan::Codec::kEac3, .custom_locations = locations, .bitrate_kbps = 448};
+        const iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
+                                        .custom_locations = locations,
+                                        .bitrate_kbps = 448};
         const auto error = iclforge::plan::validate(plan);
         REQUIRE(error.has_value());
         CHECK(*error == iclforge::plan::PlanError::kInvalidChannels);
@@ -603,7 +609,8 @@ TEST_CASE("validate refuses a custom channel selection that needs a dependent on
 }
 
 TEST_CASE("coupling is dropped where there is nothing to couple") {
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kAc3, .layout = iclforge::plan::LayoutId::kMono};
+    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kAc3,
+                              .layout = iclforge::plan::LayoutId::kMono};
     plan.tools.coupling = true;
     CHECK_FALSE(iclforge::plan::ac3_config(plan).coupling);
     plan.layout = iclforge::plan::LayoutId::kStereo;
@@ -756,7 +763,8 @@ TEST_CASE("a plan with no VBR config leaves every substream's vbr unset") {
 }
 
 TEST_CASE("the mixmdate group is written only when it is asked for") {
-    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3, .layout = iclforge::plan::LayoutId::k51};
+    iclforge::plan::Plan plan{.codec = iclforge::plan::Codec::kEac3,
+                              .layout = iclforge::plan::LayoutId::k51};
     CHECK_FALSE(iclforge::plan::eac3_config(plan).independent.mixing.has_value());
     plan.meta.mixmeta = true;
     plan.meta.cmixlev = iclforge::meta::CentreMixLevel::kMinus3dB;
@@ -909,8 +917,9 @@ TEST_CASE("the bed stays a self-sufficient rendering of the whole programme") {
     // does NOT reach the bed, which the ceiling test above covers.
     for (const auto id : {iclforge::plan::LayoutId::k71, iclforge::plan::LayoutId::k512,
                           iclforge::plan::LayoutId::k514, iclforge::plan::LayoutId::k714}) {
-        const auto routing = iclforge::plan::route(id, 6, iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                                              iclforge::meta::SurroundMixLevel::kMinus6dB);
+        const auto routing =
+            iclforge::plan::route(id, 6, iclforge::meta::CentreMixLevel::kMinus4_5dB,
+                                  iclforge::meta::SurroundMixLevel::kMinus6dB);
         REQUIRE(routing.has_value());
         INFO("layout " << iclforge::plan::layout(id).name);
         for (int s = 0; s < routing->source_channels; ++s) {

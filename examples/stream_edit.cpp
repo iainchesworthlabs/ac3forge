@@ -68,8 +68,8 @@ int main() {
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<iclforge::FrameEncoder>(
-        iclforge::EncoderConfig{.bitrate_kbps = 192, .dialnorm = 31, .acmod = iclforge::Acmod::k2_0});
+    auto encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
+        .bitrate_kbps = 192, .dialnorm = 31, .acmod = iclforge::Acmod::k2_0});
     std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kFrames; ++frame) {
@@ -124,7 +124,8 @@ int main() {
     }
 
     auto rewritten = stream;
-    const auto summary = iclforge::io::edit_stream_metadata(rewritten, {.dialnorm = 24, .bsmod = 2});
+    const auto summary =
+        iclforge::io::edit_stream_metadata(rewritten, {.dialnorm = 24, .bsmod = 2});
     if (!summary.has_value()) {
         std::printf("rewrite failed: %.*s\n",
                     static_cast<int>(iclforge::io::describe(summary.error()).size()),

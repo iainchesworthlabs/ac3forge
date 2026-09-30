@@ -10,8 +10,8 @@
 // another one (planning/ac4.md, D14a4).
 //
 // At Real = double they are libm's own calls, exactly as the tools made them (`std::pow`, and
-// `iclforge::internal::scalar_exp2`, which is `std::exp2` there), so the double build's output is the
-// bytes it was. At Real = float they are the project's own functions (src/arithmetic's
+// `iclforge::internal::scalar_exp2`, which is `std::exp2` there), so the double build's output is
+// the bytes it was. At Real = float they are the project's own functions (src/arithmetic's
 // `scalar_exp2` and `scalar_log2`): plain float multiplies and adds, the same float on the x86-64
 // host, the Cortex-M3 leg and the ESP32s, where the C libraries' `powf` and `exp2f` differ in the
 // last bit on some inputs. They live in this target, and not in the decoder's, because src/ac4dec
@@ -33,7 +33,8 @@ template <typename Real>
     if constexpr (std::is_same_v<Real, double>) {
         return std::pow(x, e);
     } else {
-        return x > Real{} ? iclforge::internal::scalar_exp2(e * iclforge::internal::scalar_log2(x)) : Real{};
+        return x > Real{} ? iclforge::internal::scalar_exp2(e * iclforge::internal::scalar_log2(x))
+                          : Real{};
     }
 }
 

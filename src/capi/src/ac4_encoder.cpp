@@ -1,6 +1,6 @@
 // ac3forge_ac4_encoder_* and the table-of-contents/sync-frame helpers - see
-// ac3forge.h's AC-4 section, iclforge::ac4::Encoder (src/ac4enc/include/iclforge/ac4enc/encoder.hpp)
-// and ac4/ac4.hpp's carriage section.
+// ac3forge.h's AC-4 section, iclforge::ac4::Encoder
+// (src/ac4enc/include/iclforge/ac4enc/encoder.hpp) and ac4/ac4.hpp's carriage section.
 
 #include <algorithm>
 #include <cstdint>
@@ -190,8 +190,9 @@ void ac3forge_ac4_objects_config_init(ac3forge_ac4_objects_config_t* config) {
     *config = ac3forge_ac4_objects_config_t{
         .objects = nullptr,
         .object_count = 0,
-        .coding = defaults.coding == iclforge::ac4::ObjectCoding::kAjoc ? AC3FORGE_AC4_OBJECT_CODING_AJOC
-                                                              : AC3FORGE_AC4_OBJECT_CODING_DIRECT,
+        .coding = defaults.coding == iclforge::ac4::ObjectCoding::kAjoc
+                      ? AC3FORGE_AC4_OBJECT_CODING_AJOC
+                      : AC3FORGE_AC4_OBJECT_CODING_DIRECT,
         .downmix = static_cast<ac3forge_ac4_ajoc_downmix_t>(defaults.downmix),
         .has_downmix_signals = defaults.downmix_signals.has_value() ? 1 : 0,
         .downmix_signals = defaults.downmix_signals.value_or(0),

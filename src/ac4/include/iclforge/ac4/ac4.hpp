@@ -24,8 +24,8 @@
 // This is a bitstream INSPECTOR, not a decoder: audio_data and metadata()
 // payloads are reported as byte ranges (Substream::audio_size, Substream
 // itself), never decoded. It is deliberately codec-blind in the same sense
-// iclforge::mpegts::/iclforge::mp4::/iclforge::matroska:: are - it depends on nothing under iclforge::ac3,
-// and knows nothing about AC-3, E-AC-3 or Atmos.
+// iclforge::mpegts::/iclforge::mp4::/iclforge::matroska:: are - it depends on nothing under
+// iclforge::ac3, and knows nothing about AC-3, E-AC-3 or Atmos.
 //
 // Scope covers both channel-coded and object/A-JOC-coded substream groups
 // (b_channel_coded 1 or 0): TOC/presentation/substream-group/substream-info

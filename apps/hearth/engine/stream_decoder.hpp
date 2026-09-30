@@ -273,7 +273,8 @@ private:
     // What decode_by_block() would still hold back - always nothing now that decode_ac4() reads
     // whole frames through decode() instead, kept so finish()'s call site needs no special case.
     void flush_ac4(const BlockFn& deliver);
-    void report_ac4(const iclforge::ac4::DecodedFrame& pcm, std::size_t unit_bytes, const UnitFn& reported);
+    void report_ac4(const iclforge::ac4::DecodedFrame& pcm, std::size_t unit_bytes,
+                    const UnitFn& reported);
     // The two fields report_frame()/report_unit() cannot fill in themselves:
     // `out.blocks` must already be set (both of those, or render_flushed()'s
     // own manual block, do this first). `unit_bytes` is the raw bytes this

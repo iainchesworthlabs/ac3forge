@@ -59,8 +59,9 @@ int main() {
     }
 
     const iclforge::mpegts::AudioTrack track{
-        .codec = scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::mpegts::AudioCodec::kAc3
-                                                             : iclforge::mpegts::AudioCodec::kEac3,
+        .codec = scanned->kind == iclforge::io::StreamKind::kAc3
+                     ? iclforge::mpegts::AudioCodec::kAc3
+                     : iclforge::mpegts::AudioCodec::kEac3,
         .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
         .samples_per_frame = iclforge::kSamplesPerFrame,
@@ -68,7 +69,8 @@ int main() {
 
     const auto file = iclforge::mpegts::mux(track, frames);
     if (!file) {
-        fmt::printf("mux failed: %.*s\n", static_cast<int>(iclforge::mpegts::describe(file.error()).size()),
+        fmt::printf("mux failed: %.*s\n",
+                    static_cast<int>(iclforge::mpegts::describe(file.error()).size()),
                     iclforge::mpegts::describe(file.error()).data());
         return 1;
     }

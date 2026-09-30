@@ -198,7 +198,8 @@ struct PlayerEvents final : PlayerListener {
                            .data = {message.data.begin(), message.data.end()}});
     }
     void on_artwork_stream_end() override { ++artwork_ends; }
-    void on_visualizer_stream_start(const iclforge::sendspin::visualizer::StreamStart& start) override {
+    void on_visualizer_stream_start(
+        const iclforge::sendspin::visualizer::StreamStart& start) override {
         visualizer_starts.push_back(start);
     }
     void on_visualizer_frame(const iclforge::sendspin::visualizer::Frame& frame, std::int64_t local_time) override {
@@ -241,7 +242,8 @@ struct ServerEvents final : ServerListener {
     std::vector<std::pair<std::int64_t, std::vector<std::uint8_t>>> source_audio;
     int source_ends = 0;
 
-    void on_controller_command(const iclforge::sendspin::controller::CommandMessage& command) override {
+    void on_controller_command(
+        const iclforge::sendspin::controller::CommandMessage& command) override {
         controller_commands.push_back(command);
     }
     void on_source_stream_start(const m::ClientStreamStart& start) override { source_starts.push_back(start); }
@@ -252,7 +254,8 @@ struct ServerEvents final : ServerListener {
 };
 
 iclforge::sendspin::noise::KeyPair generated() {
-    std::optional<iclforge::sendspin::noise::KeyPair> pair = iclforge::sendspin::noise::KeyPair::generate();
+    std::optional<iclforge::sendspin::noise::KeyPair> pair =
+        iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(pair.has_value());
     return *pair;
 }
@@ -1313,8 +1316,9 @@ struct LegacyServer {
         iclforge::sendspin::noise::Handshake noise(init->suite, iclforge::sendspin::noise::Role::kInitiator, identity,
                                               init->client_key, prologue);
         // aiosendspin 9.1.1's noise/driver.py names the PSK and no category.
-        const std::string named =
-            R"({"psk_id":")" + iclforge::sendspin::base64url::encode(hs::sentinel_psk_id()) + R"("})";
+        const std::string named = R"({"psk_id":")" +
+                                  iclforge::sendspin::base64url::encode(hs::sentinel_psk_id()) +
+                                  R"("})";
         std::vector<std::uint8_t> message_1;
         REQUIRE(noise.write_message_1(std::vector<std::uint8_t>(named.begin(), named.end()), message_1));
         CHECK(player.receive(text_frame(server_init)).frames.empty());

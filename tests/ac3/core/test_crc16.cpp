@@ -60,6 +60,7 @@ TEST_CASE("incremental computation matches one-shot", "[crc16]") {
     const auto msg = to_bytes("ac3forge incremental crc check");
     const std::span<const std::byte> all{msg};
     const auto split = msg.size() / 2;
-    const std::uint16_t incremental = iclforge::crc16(all.subspan(split), iclforge::crc16(all.first(split)));
+    const std::uint16_t incremental =
+        iclforge::crc16(all.subspan(split), iclforge::crc16(all.first(split)));
     CHECK(incremental == iclforge::crc16(all));
 }

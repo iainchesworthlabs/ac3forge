@@ -60,16 +60,17 @@ int main() {
     }
 
     const iclforge::mp4::AudioTrack track{
-        .codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::mp4::kCodecAc3
-                                                                           : iclforge::mp4::kCodecEac3},
+        .codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3
+                                    ? iclforge::mp4::kCodecAc3
+                                    : iclforge::mp4::kCodecEac3},
         .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
         .channels = scanned->channels,
         .samples_per_frame = iclforge::kSamplesPerFrame,
         .codec_config = iclforge::io::build_codec_config_box(*scanned),
     };
 
-    const auto fragmented =
-        iclforge::mp4::fragment(track, frames, iclforge::mp4::FragmentOptions{.frames_per_fragment = 8});
+    const auto fragmented = iclforge::mp4::fragment(
+        track, frames, iclforge::mp4::FragmentOptions{.frames_per_fragment = 8});
     if (!fragmented) {
         fmt::printf("fragment failed: %.*s\n",
                     static_cast<int>(iclforge::mp4::describe(fragmented.error()).size()),
@@ -81,11 +82,12 @@ int main() {
     // "<N>/JOC" here instead (see mp4/hls.hpp's own citations) - plain AC-3
     // has no such extension, so the default (just the channel count) is
     // correct as-is.
-    const auto media_playlist =
-        iclforge::mp4::build_hls_media_playlist(track, fragmented->media_segments, iclforge::mp4::HlsOptions{});
-    const auto master_playlist = iclforge::mp4::build_hls_master_playlist(track, fragmented->media_segments,
-                                                                "audio.m3u8", iclforge::mp4::HlsOptions{});
-    const auto dash_snippet = iclforge::mp4::build_dash_adaptation_set(track, fragmented->media_segments);
+    const auto media_playlist = iclforge::mp4::build_hls_media_playlist(
+        track, fragmented->media_segments, iclforge::mp4::HlsOptions{});
+    const auto master_playlist = iclforge::mp4::build_hls_master_playlist(
+        track, fragmented->media_segments, "audio.m3u8", iclforge::mp4::HlsOptions{});
+    const auto dash_snippet =
+        iclforge::mp4::build_dash_adaptation_set(track, fragmented->media_segments);
 
     fmt::printf("%zu bytes init segment, %zu media segment(s) from %zu frames\n",
                 fragmented->init_segment.size(), fragmented->media_segments.size(), frames.size());

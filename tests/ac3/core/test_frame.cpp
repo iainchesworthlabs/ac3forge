@@ -51,7 +51,8 @@ TEST_CASE("silent frame has the exact Table 5.18 size", "[frame]") {
     for (const std::uint32_t kbps : {96u, 192u, 448u, 640u}) {
         const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = kbps});
         REQUIRE(frame.has_value());
-        CHECK(frame->size() == iclforge::frame_size_bytes(iclforge::SampleRate::k48000, kbps).value());
+        CHECK(frame->size() ==
+              iclforge::frame_size_bytes(iclforge::SampleRate::k48000, kbps).value());
     }
 }
 
@@ -112,7 +113,8 @@ TEST_CASE("size, CRCs, and 5.5 constraints across the full config matrix", "[fra
                 // A/52 5.5 bullet 1: syncinfo + bsi + blocks 0-1 must fit in
                 // the first 5/8 (skip fill is rear-loaded, so blocks 0-1 only
                 // carry skip data in the very largest frames).
-                std::uint32_t head_bits = iclforge::detail::kSyncinfoBsiBits + iclforge::detail::kBlock0Bits +
+                std::uint32_t head_bits = iclforge::detail::kSyncinfoBsiBits +
+                                          iclforge::detail::kBlock0Bits +
                                           iclforge::detail::kReuseBlockBits;
                 for (int block = 0; block < 2; ++block) {
                     if (const auto skip = plan.skip_bytes[static_cast<std::size_t>(block)]) {

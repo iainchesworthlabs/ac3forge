@@ -232,7 +232,8 @@ std::string_view describe(CaptureError error) {
 std::expected<std::vector<DeviceInfo>, CaptureError> enumerate_devices() {
     std::vector<DeviceInfo> devices;
 
-    iclforge::pipewire::for_each_audio_node([&devices](std::uint32_t /*id*/, const spa_dict& props) {
+    iclforge::pipewire::for_each_audio_node([&devices](std::uint32_t /*id*/,
+                                                       const spa_dict& props) {
         const bool is_source = iclforge::pipewire::is_audio_source(props);
         const bool is_sink = iclforge::pipewire::is_audio_sink(props);
         if (!is_source && !is_sink) {

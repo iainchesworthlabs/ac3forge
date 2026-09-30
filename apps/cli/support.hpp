@@ -152,8 +152,8 @@ struct Options {
     bool ac4_experimental_objects = false;
     std::string ac4_objects_path;
     // 'atmos-adm'/'atmos-iab' with codec=ac4 only: coding=, "ajoc" (default) or "direct"
-    // (iclforge::ac4::ObjectCoding) - the same choice 'ac4-encode objects=<scene>' makes with the scene
-    // file's own "coding" directive.
+    // (iclforge::ac4::ObjectCoding) - the same choice 'ac4-encode objects=<scene>' makes with the
+    // scene file's own "coding" directive.
     std::optional<iclforge::ac4::ObjectCoding> ac4_atmos_coding;
     // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
     // dialnorm is taken to (iclforge::ac4::OutputConfig::output_level_dbfs), unset to
@@ -253,7 +253,8 @@ struct Options {
         struct Dialogue {
             std::optional<std::string> channels{};
             std::string stem{};
-            iclforge::ac4::DialogueMethod method = iclforge::ac4::DialogueMethod::kChannelIndependent;
+            iclforge::ac4::DialogueMethod method =
+                iclforge::ac4::DialogueMethod::kChannelIndependent;
             int max_gain_db = 9;
             std::optional<double> hybrid_share{};
         };
@@ -708,9 +709,9 @@ std::optional<int> measured_dialnorm(const iclforge::io::WavData& wav, iclforge:
 // part of a soundfield. `programme`/`field` are finish_measurement's own
 // labels above - "Ch1"/"dialnorm" or "Ch2"/"dialnorm2", the two programmes
 // sharing this one function since the measurement itself does not differ.
-std::optional<int> measured_dialnorm_channel(std::span<const float> channel, iclforge::SampleRate rate,
-                                             std::string_view programme, std::string_view field,
-                                             FILE* out = stdout);
+std::optional<int> measured_dialnorm_channel(std::span<const float> channel,
+                                             iclforge::SampleRate rate, std::string_view programme,
+                                             std::string_view field, FILE* out = stdout);
 
 // Dual mono's Ch1/Ch2 arrive as either one two-channel file or two mono ones;
 // this settles which shape `wav` is in and merges a second file's channel in
@@ -1132,7 +1133,8 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
 
 // Which of Table 162's profiles a drc= curve is: plan::Metadata keeps the
 // curve (meta::profile()), where AC-4 names the profile (drc_eac3_profile).
-[[nodiscard]] std::optional<iclforge::meta::ProfileId> profile_id_of(const iclforge::meta::Profile& profile);
+[[nodiscard]] std::optional<iclforge::meta::ProfileId> profile_id_of(
+    const iclforge::meta::Profile& profile);
 [[nodiscard]] iclforge::ac4::DrcProfile ac4_profile_of(iclforge::meta::ProfileId id);
 
 // The AC-4 encoder configuration a plan asks for: its coded channels, rate
@@ -1189,7 +1191,8 @@ class TakeEncoder {
     [[nodiscard]] std::size_t ac4_max_frame_bytes() const { return ac4_max_frame_bytes_; }
 
    private:
-    [[nodiscard]] std::vector<Unit> ac4_units(const std::vector<iclforge::ac4::EncodedFrame>& frames) const;
+    [[nodiscard]] std::vector<Unit> ac4_units(
+        const std::vector<iclforge::ac4::EncodedFrame>& frames) const;
 
     std::unique_ptr<iclforge::FrameEncoder> ac3_;
     std::unique_ptr<iclforge::eac3::AccessUnitEncoder> eac3_;
@@ -1220,10 +1223,12 @@ std::string_view container_note(RecordingSink::Container container);
 // because every encode path asks the same question. Classic AC-3 has only
 // A/52 Table 5.6's three rates; E-AC-3 additionally accepts the three Annex E
 // fscod2 half rates (24/22.05/16 kHz), which have no AC-3 counterpart at all.
-std::optional<iclforge::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec, bool eac3);
+std::optional<iclforge::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,
+                                                    bool eac3);
 
 // A source's channels routed onto a plan's coded channels, or a diagnosis.
-std::optional<iclforge::plan::Routing> routing_or_error(const iclforge::plan::Plan& p, std::size_t channels);
+std::optional<iclforge::plan::Routing> routing_or_error(const iclforge::plan::Plan& p,
+                                                        std::size_t channels);
 
 // --- AC-4 ----------------------------------------------------------------------
 
@@ -1284,7 +1289,8 @@ std::optional<iclforge::signing::VerifySummary> apply_object_verification(
 // ended by `joc_note`, the caller's word on what became of the JOC audio. A
 // trim element, skipped elements and more than one update block per frame
 // each add a line. Every line goes to `status` (see status_stream above).
-void print_object_summary(FILE* status, const std::optional<iclforge::oba::DecodedProgram>& metadata,
+void print_object_summary(FILE* status,
+                          const std::optional<iclforge::oba::DecodedProgram>& metadata,
                           std::string_view joc_note);
 
 }  // namespace ac3cli

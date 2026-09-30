@@ -39,7 +39,9 @@ public:
     [[nodiscard]] Source source_kind() const { return kind_; }
     // Why the last load failed, when it did; nullopt after a success or a
     // clear.
-    [[nodiscard]] std::optional<iclforge::signing::KeyErrorKind> failure() const { return failure_; }
+    [[nodiscard]] std::optional<iclforge::signing::KeyErrorKind> failure() const {
+        return failure_;
+    }
 
     // Signs one access unit in place. False when no key is loaded or the
     // unit carried no container (a bed-only frame), which is not an error.

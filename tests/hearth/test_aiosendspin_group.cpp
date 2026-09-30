@@ -62,10 +62,10 @@
 // the way test_group.cpp's own decode_and_render() already proves, in play_joc_programme() against
 // a real sink's own recorded WAV, reproduces a real member's audio sample for sample - carried
 // through the same two steps NetworkGroupSink::submit_pcm() (network_group_sink.cpp) and
-// iclforge::sendspin::Group take before a PCM member's encoder ever sees a sample: the group only ever
-// pushes its own full 32-bit scale, and Group rescales each member down to whatever bit depth it
-// negotiated (server_host.cpp's rescaled(), an exact bit shift, never lossy rounding). Applying that
-// same float-to-int32-to-16-bit chain to the local decode's own float PCM, before it goes to
+// iclforge::sendspin::Group take before a PCM member's encoder ever sees a sample: the group only
+// ever pushes its own full 32-bit scale, and Group rescales each member down to whatever bit depth
+// it negotiated (server_host.cpp's rescaled(), an exact bit shift, never lossy rounding). Applying
+// that same float-to-int32-to-16-bit chain to the local decode's own float PCM, before it goes to
 // programme.wav, gives a reference in the same shape as test_aiosendspin.cpp's own programme.wav -
 // so aiosendspin_group_exit.py's check() can byte-compare the player's own decoded.wav against it,
 // the same rigour aiosendspin_exit.py's own check() already applies to A4's PCM and FLAC. What real
@@ -210,8 +210,8 @@ std::vector<std::byte> eac3_stream(int frames) {
 template <class Consume>
 void decode_and_render(const iclforge::io::ScannedStream& stream, int passes, const iclforge::render::OutputLayout& layout,
                        Consume&& consume) {
-    const iclforge::render::Serving serving =
-        iclforge::render::serve(layout, iclforge::DownmixTarget::kLoRo, iclforge::render::ObjectsPolicy::kAuto);
+    const iclforge::render::Serving serving = iclforge::render::serve(
+        layout, iclforge::DownmixTarget::kLoRo, iclforge::render::ObjectsPolicy::kAuto);
     iclforge::DecoderConfig config;
     config.output.mode = iclforge::OperatingMode::kLine;
     iclforge::render::configure_decoder(serving, config);

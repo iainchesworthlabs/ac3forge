@@ -404,7 +404,8 @@ iclforge::oba::Position trajectory_position(int scene, int obj, double time_s) {
 // The position an object is at, accounting for a scene change still in
 // progress. `from` is the scene being left; once the blend is complete the
 // caller stops passing one.
-iclforge::oba::Position blended_position(int scene, int from, double blend, int obj, double time_s) {
+iclforge::oba::Position blended_position(int scene, int from, double blend, int obj,
+                                         double time_s) {
     const auto to_pos = trajectory_position(scene, obj, time_s);
     if (blend >= 1.0 || scene == from) {
         return to_pos;
@@ -978,8 +979,10 @@ void run_loop() {
     {
         // Asked once, here: both figures are a property of the configuration
         // this encoder was just built with, not of any frame.
-        const auto object_ms = iclforge::latency_ms(encoder.latency(), iclforge::SampleRate::k48000);
-        const auto bed_ms = iclforge::latency_ms(encoder.bed_latency(), iclforge::SampleRate::k48000);
+        const auto object_ms =
+            iclforge::latency_ms(encoder.latency(), iclforge::SampleRate::k48000);
+        const auto bed_ms =
+            iclforge::latency_ms(encoder.bed_latency(), iclforge::SampleRate::k48000);
         stream_stats().object_latency_ms.store(static_cast<float>(object_ms),
                                                std::memory_order_relaxed);
         stream_stats().bed_latency_ms.store(static_cast<float>(bed_ms), std::memory_order_relaxed);
@@ -1012,8 +1015,9 @@ void run_loop() {
                                           });
     // BS.1770 over the same bed. Measured for display only - see where it is
     // published below.
-    iclforge::meta::LoudnessMeter loudness_meter(iclforge::SampleRate::k48000, iclforge::Acmod::k3_2,
-                                            /*lfe=*/true);
+    iclforge::meta::LoudnessMeter loudness_meter(iclforge::SampleRate::k48000,
+                                                 iclforge::Acmod::k3_2,
+                                                 /*lfe=*/true);
     // Reused every frame for both meters rather than rebuilt: bed() hands back
     // a span of vectors, and both meters want a span of spans.
     std::vector<std::span<const float>> bed_views;

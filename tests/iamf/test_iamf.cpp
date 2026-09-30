@@ -11,11 +11,12 @@
 
 #include "iclforge/iamf/iamf.hpp"
 
-// These tests read iclforge::iamf::mux()'s output back with an independent OBU/ISOBMFF walker rather than
-// comparing against bytes this same code produced - the same reasoning as test_mp4.cpp's own
-// header comment: a muxer checked only against itself proves nothing about whether a real IAMF
-// parser can open the file. The walker below re-derives field offsets straight from the IAMF
-// v1.1.0 specification, independently of src/iamf/src/obu_detail.hpp and isobmff_detail.hpp.
+// These tests read iclforge::iamf::mux()'s output back with an independent OBU/ISOBMFF walker
+// rather than comparing against bytes this same code produced - the same reasoning as
+// test_mp4.cpp's own header comment: a muxer checked only against itself proves nothing about
+// whether a real IAMF parser can open the file. The walker below re-derives field offsets straight
+// from the IAMF v1.1.0 specification, independently of src/iamf/src/obu_detail.hpp and
+// isobmff_detail.hpp.
 
 namespace {
 
@@ -280,7 +281,8 @@ TEST_CASE("IA Sequence Header OBU declares the iamf code and Simple Profile", "[
 }
 
 TEST_CASE("Codec Config OBU declares ipcm at the track's own sample rate and bit depth", "[iamf]") {
-    const iclforge::iamf::AudioTrack track{.sample_rate = 96000, .bit_depth = 32, .samples_per_frame = 480};
+    const iclforge::iamf::AudioTrack track{
+        .sample_rate = 96000, .bit_depth = 32, .samples_per_frame = 480};
     const std::vector<iclforge::iamf::Frame> frames{make_frame(480, 0.0F)};
     const auto file = iclforge::iamf::mux(track, frames);
     REQUIRE(file.has_value());
@@ -434,12 +436,13 @@ TEST_CASE("Mix Presentation OBU carries the mandatory Stereo layout plus the 7.1
 
 TEST_CASE("Audio Frame OBUs carry byte-exact PCM in the spec's substream order", "[iamf]") {
     // A distinct value per channel (§3.6.2's L,C,R,Lss,Rss,Lrs,Rrs,Ltf,Rtf,Ltb,Rtb,LFE order,
-    // matching iclforge::iamf::Frame::channels) - if the substream/channel-pairing table in obu_detail.hpp
-    // ever swapped two entries (e.g. Lss/Rss with Lrs/Rrs), the quantized bytes checked below
-    // would land in the wrong substream and this test would fail.
+    // matching iclforge::iamf::Frame::channels) - if the substream/channel-pairing table in
+    // obu_detail.hpp ever swapped two entries (e.g. Lss/Rss with Lrs/Rrs), the quantized bytes
+    // checked below would land in the wrong substream and this test would fail.
     constexpr int kBitDepth = 16;
     constexpr std::uint32_t kSamplesPerFrame = 4;
-    const iclforge::iamf::AudioTrack track{.bit_depth = kBitDepth, .samples_per_frame = kSamplesPerFrame};
+    const iclforge::iamf::AudioTrack track{.bit_depth = kBitDepth,
+                                           .samples_per_frame = kSamplesPerFrame};
 
     iclforge::iamf::Frame frame;
     for (std::size_t ch = 0; ch < frame.channels.size(); ++ch) {

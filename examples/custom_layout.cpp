@@ -34,7 +34,8 @@ int main() {
         .bitrate_kbps = 640,
     };
     if (const auto error = iclforge::plan::validate(plan)) {
-        fmt::printf("invalid plan: %.*s\n", static_cast<int>(iclforge::plan::describe(*error).size()),
+        fmt::printf("invalid plan: %.*s\n",
+                    static_cast<int>(iclforge::plan::describe(*error).size()),
                     iclforge::plan::describe(*error).data());
         return 1;
     }
@@ -52,7 +53,8 @@ int main() {
     iclforge::eac3::AccessUnitEncoder encoder{config};
 
     const auto channel_count = static_cast<std::size_t>(encoder.channel_count());
-    std::vector<std::vector<float>> pcm(channel_count, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> pcm(channel_count,
+                                        std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     views.reserve(channel_count);
     for (auto& channel : pcm) {

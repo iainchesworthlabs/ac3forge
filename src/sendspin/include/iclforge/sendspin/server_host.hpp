@@ -278,8 +278,8 @@ class Group {
     [[nodiscard]] std::size_t push(std::span<const std::int32_t> interleaved);
 
     struct Burst {
-        // The burst's Pc and Pd as iclforge::iec61937 writes them, and the elementary-stream bytes they
-        // describe.
+        // The burst's Pc and Pd as iclforge::iec61937 writes them, and the elementary-stream bytes
+        // they describe.
         std::uint16_t pc = 0;
         std::uint16_t pd = 0;
         std::span<const std::uint8_t> payload;

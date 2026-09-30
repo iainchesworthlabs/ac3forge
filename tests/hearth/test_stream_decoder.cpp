@@ -93,8 +93,9 @@ std::vector<std::vector<std::byte>> ac3_frames(iclforge::Acmod acmod, bool lfe, 
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < count; ++f) {
-        const std::vector<float> samples = tone(
-            440.0, 0.3, iclforge::kSamplesPerFrame, static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
+        const std::vector<float> samples =
+            tone(440.0, 0.3, iclforge::kSamplesPerFrame,
+                 static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(channels, samples);
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -189,7 +190,8 @@ TEST_CASE("stream decoder: a stereo layout folds a 5.1 stream and loses no sampl
 
     // And the AC-3 path under the same fold.
     StreamDecoder ac3_decoder{*layout, 48000};
-    const Played ac3_played = play(ac3_decoder, ac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 10));
+    const Played ac3_played =
+        play(ac3_decoder, ac3_frames(iclforge::Acmod::k3_2, /*lfe=*/true, 10));
     CHECK(ac3_played.frames == 10 * iclforge::kSamplesPerFrame);
     CHECK(ac3_played.slots == 2);
 }
@@ -202,7 +204,8 @@ TEST_CASE("stream decoder: a frame still held back at the end of the stream is n
 
     // Stereo with transient pre-noise processing, a transient in the
     // second-to-last frame: from there on the decoder runs a frame behind.
-    const auto units = eac3_frames(iclforge::Acmod::k2_0, /*lfe=*/false, 8, /*transient_at_end=*/true);
+    const auto units =
+        eac3_frames(iclforge::Acmod::k2_0, /*lfe=*/false, 8, /*transient_at_end=*/true);
     const Played played = play(decoder, units);
 
     // Everything still arrives - the last frame through finish().

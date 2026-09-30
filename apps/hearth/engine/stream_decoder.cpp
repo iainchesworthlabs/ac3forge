@@ -449,12 +449,12 @@ std::expected<std::size_t, std::string> StreamDecoder::decode_ac4(std::span<cons
 }
 
 void StreamDecoder::flush_ac4(const BlockFn& /*deliver*/) {
-    // decode_ac4() now reads whole frames through iclforge::ac4::Decoder::decode() and place_ac4_frame()
-    // delivers every one of a frame's samples before returning, so there is never anything left
-    // for iclforge::ac4::Decoder::decode_by_block()'s own internal buffering to hold - that mechanism is
-    // simply not exercised any more. Kept as a named no-op rather than removed so decode_ac4()'s
-    // and finish()'s call sites, and their comments on what "everything before this frame" means,
-    // do not have to special-case AC-4 for a distinction that no longer exists.
+    // decode_ac4() now reads whole frames through iclforge::ac4::Decoder::decode() and
+    // place_ac4_frame() delivers every one of a frame's samples before returning, so there is never
+    // anything left for iclforge::ac4::Decoder::decode_by_block()'s own internal buffering to hold
+    // - that mechanism is simply not exercised any more. Kept as a named no-op rather than removed
+    // so decode_ac4()'s and finish()'s call sites, and their comments on what "everything before
+    // this frame" means, do not have to special-case AC-4 for a distinction that no longer exists.
 }
 
 void StreamDecoder::deliver_silence(std::size_t frames, const BlockFn& deliver) {
@@ -471,7 +471,8 @@ void StreamDecoder::deliver_silence(std::size_t frames, const BlockFn& deliver) 
     }
 }
 
-void StreamDecoder::place_ac4_frame(const iclforge::ac4::DecodedFrame& pcm, const BlockFn& deliver) {
+void StreamDecoder::place_ac4_frame(const iclforge::ac4::DecodedFrame& pcm,
+                                    const BlockFn& deliver) {
     // A presentation with objects renders both its objects and any channels beside them together,
     // through the same layout renderer ac3cli's own 'decode' plays AC-4 objects with
     // (apps/common/ac4_object_render.hpp); one without takes the decoder's own channels as before
@@ -549,7 +550,8 @@ void StreamDecoder::report_ac4(const iclforge::ac4::DecodedFrame& info, std::siz
     UnitReport& out = report_;
     out.acmod = ac4_acmod(info.speakers);
     out.lfe = std::ranges::find(info.speakers, iclforge::ac4::Speaker::kLfe) != info.speakers.end();
-    const std::span<const iclforge::ac4::PresentationInfo> presentations = ac4_decoder_->presentations();
+    const std::span<const iclforge::ac4::PresentationInfo> presentations =
+        ac4_decoder_->presentations();
     out.substreams = info.presentation < presentations.size()
                          ? static_cast<int>(std::max<std::size_t>(
                                presentations[info.presentation].members.size(), 1))

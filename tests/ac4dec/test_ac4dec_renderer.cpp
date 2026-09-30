@@ -369,7 +369,8 @@ TEST_CASE("the renderer's full decoding matrices are Tables 38 to 43 as printed"
                             const double expected = in < 0 ? 0.0
                                                            : table[static_cast<std::size_t>(out)]
                                                                   [static_cast<std::size_t>(in)];
-                            CAPTURE(iclforge::ac4::describe(plan.speakers[o]), iclforge::ac4::describe(decoded[d]));
+                            CAPTURE(iclforge::ac4::describe(plan.speakers[o]),
+                                    iclforge::ac4::describe(decoded[d]));
                             CHECK(std::abs(m[o][d] - expected) < 1e-12);
                         }
                     }
@@ -400,12 +401,14 @@ TEST_CASE("the renderer's core decoding matrices are Tables 45 and 46 as printed
         for (const int tops : {0, 1, 2, 3}) {
             for (const bool five_x_two : {true, false}) {
                 CAPTURE(backs, tops, five_x_two);
-                const detail::ImmersiveLayout layout{.backs = backs,
-                                                     .tops = tops,
-                                                     .lfe = true,
-                                                     .decoding = iclforge::ac4::DecodingMode::kCore};
-                const detail::RenderPlan plan = detail::render_plan(
-                    layout, five_x_two ? iclforge::ac4::DownmixTarget::k5X2 : iclforge::ac4::DownmixTarget::k5X);
+                const detail::ImmersiveLayout layout{
+                    .backs = backs,
+                    .tops = tops,
+                    .lfe = true,
+                    .decoding = iclforge::ac4::DecodingMode::kCore};
+                const detail::RenderPlan plan =
+                    detail::render_plan(layout, five_x_two ? iclforge::ac4::DownmixTarget::k5X2
+                                                           : iclforge::ac4::DownmixTarget::k5X);
                 // Table 44: 5.X.2 and 5.X.0, as asked, whatever the source.
                 std::vector<S> expected_speakers = {S::kLeft, S::kRight,        S::kCentre,
                                                     S::kLfe,  S::kLeftSurround, S::kRightSurround};
@@ -434,7 +437,8 @@ TEST_CASE("the renderer's core decoding matrices are Tables 45 and 46 as printed
                 }
                 for (std::size_t o = 0; o < plan.speakers.size(); ++o) {
                     for (std::size_t d = 0; d < decoded.size(); ++d) {
-                        CAPTURE(iclforge::ac4::describe(plan.speakers[o]), iclforge::ac4::describe(decoded[d]));
+                        CAPTURE(iclforge::ac4::describe(plan.speakers[o]),
+                                iclforge::ac4::describe(decoded[d]));
                         const double expected =
                             table[static_cast<std::size_t>(index_of(plan.speakers[o]))]
                                  [static_cast<std::size_t>(index_of(decoded[d]))];
@@ -682,11 +686,11 @@ TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X
     }
     for (const bool core : {false, true}) {
         CAPTURE(core);
-        const detail::ImmersiveLayout layout{
-            .backs = true,
-            .tops = 3,
-            .lfe = true,
-            .decoding = core ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull};
+        const detail::ImmersiveLayout layout{.backs = true,
+                                             .tops = 3,
+                                             .lfe = true,
+                                             .decoding = core ? iclforge::ac4::DecodingMode::kCore
+                                                              : iclforge::ac4::DecodingMode::kFull};
         const std::vector<S> channels =
             core ? std::vector<S>{S::kLeft,        S::kRight,        S::kCentre,
                                   S::kLfe,         S::kLeftSurround, S::kRightSurround,
@@ -694,7 +698,8 @@ TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X
                  : decoded;
         const std::vector<double> x(in.begin(),
                                     in.begin() + static_cast<std::ptrdiff_t>(channels.size()));
-        const detail::RenderPlan plan = detail::render_plan(layout, iclforge::ac4::DownmixTarget::k5X);
+        const detail::RenderPlan plan =
+            detail::render_plan(layout, iclforge::ac4::DownmixTarget::k5X);
         const auto rows = apply_rows(
             detail::render_matrix(layout, channels, plan, detail::render_gains(nullptr, 0)), x);
         // L R C LFE Ls Rs of the 5.X.0 render.

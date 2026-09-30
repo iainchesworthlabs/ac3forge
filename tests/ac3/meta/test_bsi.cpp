@@ -302,7 +302,8 @@ TEST_CASE("AC-3: Annex D's reserved dmixmod is kept as sent and named reserved",
 
     // And nothing else moved: the audio is the '01' frame's, bit for bit.
     iclforge::FrameDecoder reference_decoder;
-    const auto reference = reference_decoder.decode_frame(encode(iclforge::meta::DownmixMode::kLtRt));
+    const auto reference =
+        reference_decoder.decode_frame(encode(iclforge::meta::DownmixMode::kLtRt));
     REQUIRE(reference.has_value());
     const bool same_audio = decoded->channels == reference->channels;
     CHECK(same_audio);
@@ -340,7 +341,8 @@ TEST_CASE("AC-3: bsi values wider than their field are refused, not truncated", 
     SECTION("a reserved surround level would not be the level applied") {
         iclforge::EncoderConfig config;
         iclforge::meta::AlternateBsi alternate;
-        alternate.mix = iclforge::meta::MixMetadata{.ltrtsurmixlev = iclforge::meta::MixLevel::kUnity};
+        alternate.mix =
+            iclforge::meta::MixMetadata{.ltrtsurmixlev = iclforge::meta::MixLevel::kUnity};
         config.alternate_bsi = alternate;
         iclforge::FrameEncoder encoder{config};
         const auto frame = encoder.encode_frame(spans);
@@ -350,7 +352,8 @@ TEST_CASE("AC-3: bsi values wider than their field are refused, not truncated", 
     SECTION("a reserved dmixmod would state no preference a receiver can act on") {
         iclforge::EncoderConfig config;
         iclforge::meta::AlternateBsi alternate;
-        alternate.mix = iclforge::meta::MixMetadata{.dmixmod = iclforge::meta::DownmixMode::kReserved};
+        alternate.mix =
+            iclforge::meta::MixMetadata{.dmixmod = iclforge::meta::DownmixMode::kReserved};
         config.alternate_bsi = alternate;
         iclforge::FrameEncoder encoder{config};
         const auto frame = encoder.encode_frame(spans);
@@ -402,7 +405,8 @@ TEST_CASE("AC-3: a decoded Annex D frame resolves to its own xbsi1 levels", "[bs
     };
     config.alternate_bsi = alternate;
     const auto resolve = [](const iclforge::DecodedFrame& frame) {
-        return iclforge::mix_levels(frame.acmod, frame.cmixlev, frame.surmixlev, frame.alternate_bsi);
+        return iclforge::mix_levels(frame.acmod, frame.cmixlev, frame.surmixlev,
+                                    frame.alternate_bsi);
     };
 
     const auto levels = resolve(round_trip_ac3(config));
@@ -1011,7 +1015,8 @@ TEST_CASE("E-AC-3: mixmdate's reserved dmixmod is kept as sent and never written
     SECTION("the encoder refuses to write it") {
         iclforge::eac3::FrameConfig config;
         config.acmod = iclforge::Acmod::k3_2;
-        config.mixing = iclforge::meta::MixMetadata{.dmixmod = iclforge::meta::DownmixMode::kReserved};
+        config.mixing =
+            iclforge::meta::MixMetadata{.dmixmod = iclforge::meta::DownmixMode::kReserved};
         iclforge::eac3::FrameEncoder encoder{config};
         const auto pcm = tone(5);
         const auto frame = encoder.encode_frame(views(pcm));
@@ -1052,15 +1057,18 @@ TEST_CASE("plan: mix_metadata takes explicit levels over the widened ones", "[bs
     options.surmixlev = iclforge::meta::SurroundMixLevel::kMinus3dB;
     // Unset, so the derivation stands.
     CHECK(iclforge::plan::mix_metadata(options).lorocmixlev == iclforge::meta::MixLevel::kMinus6dB);
-    CHECK(iclforge::plan::mix_metadata(options).lorosurmixlev == iclforge::meta::MixLevel::kMinus3dB);
+    CHECK(iclforge::plan::mix_metadata(options).lorosurmixlev ==
+          iclforge::meta::MixLevel::kMinus3dB);
     CHECK(iclforge::plan::mix_metadata(options).ltrtcmixlev == iclforge::meta::MixLevel::kMinus3dB);
 
     options.lorocmixlev = iclforge::meta::MixLevel::kPlus1_5dB;
     options.ltrtcmixlev = iclforge::meta::MixLevel::kUnity;
-    CHECK(iclforge::plan::mix_metadata(options).lorocmixlev == iclforge::meta::MixLevel::kPlus1_5dB);
+    CHECK(iclforge::plan::mix_metadata(options).lorocmixlev ==
+          iclforge::meta::MixLevel::kPlus1_5dB);
     CHECK(iclforge::plan::mix_metadata(options).ltrtcmixlev == iclforge::meta::MixLevel::kUnity);
     // The widened surround level is untouched by the centre override.
-    CHECK(iclforge::plan::mix_metadata(options).lorosurmixlev == iclforge::meta::MixLevel::kMinus3dB);
+    CHECK(iclforge::plan::mix_metadata(options).lorosurmixlev ==
+          iclforge::meta::MixLevel::kMinus3dB);
 }
 
 TEST_CASE("plan: alternate_bsi reuses the derived levels and the xbsi2 group", "[bsi]") {
@@ -1095,10 +1103,10 @@ TEST_CASE("meta: the bsi token vocabularies parse and describe", "[bsi]") {
     CHECK(!iclforge::meta::parse_bsmod("karaoke", bsmod));
 
     // Code 7 means two different services and acmod is what tells them apart.
-    CHECK(iclforge::meta::describe(iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke, iclforge::Acmod::k1_0) ==
-          "associated service: voice over (VO)");
-    CHECK(iclforge::meta::describe(iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke, iclforge::Acmod::k3_2) ==
-          "main audio service: karaoke");
+    CHECK(iclforge::meta::describe(iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke,
+                                   iclforge::Acmod::k1_0) == "associated service: voice over (VO)");
+    CHECK(iclforge::meta::describe(iclforge::meta::BitstreamMode::kVoiceOverOrKaraoke,
+                                   iclforge::Acmod::k3_2) == "main audio service: karaoke");
 
     iclforge::meta::SurroundExMode surround_ex{};
     CHECK(iclforge::meta::parse_surround_ex_mode("pliiz", surround_ex));

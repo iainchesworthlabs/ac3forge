@@ -49,7 +49,8 @@ void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
 }
 
 std::vector<std::byte> ac3_stream(int frames) {
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {
@@ -91,7 +92,8 @@ std::vector<std::byte> eac3_stream(int frames) {
 // different from every other stream in this file.
 std::vector<std::byte> multi_substream_stream(int frames) {
     namespace cm = iclforge::eac3::chanmap;
-    iclforge::eac3::FrameEncoder bed{{.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder bed{
+        {.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 192,
                                   .acmod = iclforge::Acmod::k2_2,
                                   .strmtyp = iclforge::eac3::StreamType::kDependent,

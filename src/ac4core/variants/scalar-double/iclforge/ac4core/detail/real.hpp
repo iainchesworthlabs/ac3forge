@@ -17,8 +17,8 @@
 // still instantiate them at iclforge::internal::Fixed32 too. `Real` here is the
 // unqualified name every explicit-instantiation line outside those templates
 // resolves through ordinary enclosing-namespace lookup: iclforge::ac4::detail::dsp,
-// iclforge::ac4::detail::aspx, iclforge::ac4::detail::acpl, iclforge::ac4::detail::ajcc and iclforge::ac4::detail::ajoc
-// all nest inside iclforge::ac4::detail, where this alias lives.
+// iclforge::ac4::detail::aspx, iclforge::ac4::detail::acpl, iclforge::ac4::detail::ajcc and
+// iclforge::ac4::detail::ajoc all nest inside iclforge::ac4::detail, where this alias lives.
 //
 // double: every build outside the ESP32 boards, and the reference every
 // other tier is measured against (planning/arithmetic-tiers.md).

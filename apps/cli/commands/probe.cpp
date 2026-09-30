@@ -204,11 +204,11 @@ void print_table(std::string_view path, const io::ProbeReport& report,
     fmt::println("{:<16}{} of {} syncframe(s) valid", "CRC",
                  report.syncframes - report.crc_failures, report.syncframes);
     if (report.parse_failures > 0) {
-        fmt::println("{:<16}{} syncframe(s) refused by the parser{}", "parse errors",
-                     report.parse_failures,
-                     report.first_parse_error
-                         ? fmt::format(" (first: {})", iclforge::describe(*report.first_parse_error))
-                         : std::string{});
+        fmt::println(
+            "{:<16}{} syncframe(s) refused by the parser{}", "parse errors", report.parse_failures,
+            report.first_parse_error
+                ? fmt::format(" (first: {})", iclforge::describe(*report.first_parse_error))
+                : std::string{});
     }
 
     const auto& tools = report.tools;
@@ -301,7 +301,8 @@ void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
             }
             if (block.coupling) {
                 strategies += fmt::format(
-                    " cpl:{}", exp_strategy_token(block.exp_strategy[iclforge::kCouplingSyntaxStream]));
+                    " cpl:{}",
+                    exp_strategy_token(block.exp_strategy[iclforge::kCouplingSyntaxStream]));
             }
             fmt::println("    blk {}: {:<28} exp [{}]", index,
                          tools.empty() ? "-" : tools, strategies);
@@ -668,7 +669,8 @@ int run_probe(std::string_view in_path, const Options& meta) {
         const auto got = static_cast<std::size_t>(file.gcount());
         file.clear();
         file.seekg(0, std::ios::beg);
-        const auto kind = iclforge::apps::sniff_container(std::as_bytes(std::span{head}).first(got));
+        const auto kind =
+            iclforge::apps::sniff_container(std::as_bytes(std::span{head}).first(got));
         if (kind != iclforge::apps::ContainerKind::kUnknown) {
             const auto bytes = read_all(in_path);
             auto result = iclforge::apps::elementary_stream_from_bytes(bytes);

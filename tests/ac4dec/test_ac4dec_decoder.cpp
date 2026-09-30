@@ -345,7 +345,8 @@ struct Decoded {
     std::size_t nothing = 0;  // frames that returned no output
 };
 
-Decoded decode_frames(iclforge::ac4::Decoder& decoder, std::span<const std::vector<std::byte>> frames) {
+Decoded decode_frames(iclforge::ac4::Decoder& decoder,
+                      std::span<const std::vector<std::byte>> frames) {
     Decoded out;
     for (const std::vector<std::byte>& frame : frames) {
         const auto decoded = decoder.decode(frame);
@@ -425,7 +426,8 @@ constexpr std::size_t kQmfSpread = 640;
 
 }  // namespace
 
-TEST_CASE("iclforge::ac4::Decoder fails a frame whose table of contents does not parse", "[ac4dec]") {
+TEST_CASE("iclforge::ac4::Decoder fails a frame whose table of contents does not parse",
+          "[ac4dec]") {
     iclforge::ac4::Decoder decoder;
     const std::vector<std::byte> nothing;
     const auto empty = decoder.parse(nothing);
@@ -474,7 +476,8 @@ TEST_CASE("iclforge::ac4::Decoder carries I-frame configuration while sequence_c
     }
 }
 
-TEST_CASE("iclforge::ac4::Decoder forgets I-frame configuration at a change of source", "[ac4dec]") {
+TEST_CASE("iclforge::ac4::Decoder forgets I-frame configuration at a change of source",
+          "[ac4dec]") {
     const auto frames = raw_frames(read_stream("ac4-20-speech-128"));
     REQUIRE(frames.size() > 2);
     REQUIRE(is_iframe(frames[0]));
@@ -505,8 +508,9 @@ TEST_CASE("a substream that is both a channel and its own HSF extension resolves
     iclforge::ac4::Decoder decoder;
     const auto report = decoder.parse(self_referencing_hsf_ext_frame());
     REQUIRE(report.has_value());
-    const auto it = std::find_if(report->substreams.begin(), report->substreams.end(),
-                                  [](const iclforge::ac4::SubstreamReport& s) { return s.index == 0; });
+    const auto it =
+        std::find_if(report->substreams.begin(), report->substreams.end(),
+                     [](const iclforge::ac4::SubstreamReport& s) { return s.index == 0; });
     REQUIRE(it != report->substreams.end());
     CHECK(it->kind == iclforge::ac4::SubstreamReport::Kind::kAudio);
 }
@@ -523,8 +527,9 @@ TEST_CASE("iclforge::ac4::Decoder reads a channel's HSF extension substream alon
     const auto report = decoder.parse(hsf_ext_two_substream_frame(ext_index_lower));
     REQUIRE(report.has_value());
     const auto find = [&](int index) {
-        return std::find_if(report->substreams.begin(), report->substreams.end(),
-                            [index](const iclforge::ac4::SubstreamReport& s) { return s.index == index; });
+        return std::find_if(
+            report->substreams.begin(), report->substreams.end(),
+            [index](const iclforge::ac4::SubstreamReport& s) { return s.index == index; });
     };
     const auto owner = find(owner_index);
     REQUIRE(owner != report->substreams.end());
@@ -815,7 +820,8 @@ TEST_CASE("a concealment policy puts a frame in place of each one that does not 
         policy = iclforge::ac4::ConcealmentPolicy::kRepeatFade;
         action = iclforge::ac4::ConcealmentAction::kRepeatFade;
     }
-    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{.syntax = {}, .output = {}, .concealment = policy});
+    iclforge::ac4::Decoder decoder(
+        iclforge::ac4::DecoderConfig{.syntax = {}, .output = {}, .concealment = policy});
     std::vector<std::vector<float>> out(2);
     for (std::size_t k = 0; k < damaged.size(); ++k) {
         CAPTURE(k);
@@ -832,7 +838,8 @@ TEST_CASE("a concealment policy puts a frame in place of each one that does not 
         }
         CHECK(pcm.sequence_counter == clean.counters[k]);
         CHECK(pcm.sample_rate_hz == 48000);
-        CHECK(pcm.speakers == std::vector<iclforge::ac4::Speaker>{iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight});
+        CHECK(pcm.speakers == std::vector<iclforge::ac4::Speaker>{iclforge::ac4::Speaker::kLeft,
+                                                                  iclforge::ac4::Speaker::kRight});
         REQUIRE(pcm.channels.size() == 2);
         for (std::size_t c = 0; c < 2; ++c) {
             REQUIRE(pcm.channels[c].size() == kFrame);

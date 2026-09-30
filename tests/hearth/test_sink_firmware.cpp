@@ -27,13 +27,15 @@ using sink_firmware_test::make_image;
 namespace {
 
 FirmwareFile file_of(const ImageSpec& spec) {
-    iclforge::hearth::ReadFirmwareFile read = iclforge::hearth::read_firmware_file(make_image(spec));
+    iclforge::hearth::ReadFirmwareFile read =
+        iclforge::hearth::read_firmware_file(make_image(spec));
     REQUIRE(read.file.has_value());
     return std::move(*read.file);
 }
 
 std::string why_not(std::vector<std::uint8_t> bytes) {
-    const iclforge::hearth::ReadFirmwareFile read = iclforge::hearth::read_firmware_file(std::move(bytes));
+    const iclforge::hearth::ReadFirmwareFile read =
+        iclforge::hearth::read_firmware_file(std::move(bytes));
     CHECK_FALSE(read.file.has_value());
     return read.why;
 }
@@ -169,7 +171,8 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
     }
     SECTION("anything else is not one") {
         CHECK_FALSE(iclforge::hearth::parse_firmware_status("").has_value());
-        CHECK_FALSE(iclforge::hearth::parse_firmware_status("this image takes no updates").has_value());
+        CHECK_FALSE(
+            iclforge::hearth::parse_firmware_status("this image takes no updates").has_value());
         CHECK_FALSE(iclforge::hearth::parse_firmware_status("[1,2]").has_value());
         CHECK_FALSE(iclforge::hearth::parse_firmware_status(R"({"running":null})").has_value());
     }
@@ -337,7 +340,8 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
     after.running = slot("ota_1", "trial", "v0.11.0", update_spec);
 
     SECTION("no answer: restarting") {
-        const iclforge::hearth::WaitVerdict verdict = iclforge::hearth::judge_wait(nullptr, update, context);
+        const iclforge::hearth::WaitVerdict verdict =
+            iclforge::hearth::judge_wait(nullptr, update, context);
         CHECK(verdict.outcome == UpdateOutcome::kNone);
         CHECK(verdict.text == "no answer yet: restarting");
     }
@@ -345,7 +349,8 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
         ac3forge::FirmwareStatus flash = s3_firmware(running);
         flash.mode = "flash";
         flash.upload = ac3forge::FirmwareUpload{.received = 1, .total = 1, .stage = "restarting"};
-        CHECK(iclforge::hearth::judge_wait(&flash, update, context).outcome == UpdateOutcome::kNone);
+        CHECK(iclforge::hearth::judge_wait(&flash, update, context).outcome ==
+              UpdateOutcome::kNone);
         SECTION("with the upload's answer lost and no upload running, it refused the image") {
             flash.upload.reset();
             flash.last_update = ac3forge::FirmwareLastUpdate{
@@ -359,7 +364,8 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
     SECTION("the new image on trial") {
         after.trial = ac3forge::FirmwareTrial{
             .healthy_for_ms = 11'000, .hold_ms = 30'000, .remaining_ms = 286'000, .waiting_for = {}};
-        const iclforge::hearth::WaitVerdict verdict = iclforge::hearth::judge_wait(&after, update, context);
+        const iclforge::hearth::WaitVerdict verdict =
+            iclforge::hearth::judge_wait(&after, update, context);
         CHECK(verdict.outcome == UpdateOutcome::kNone);
         CHECK(verdict.text == "on trial: healthy for 11s of 30s (286s left)");
     }
@@ -367,7 +373,8 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
         after.running->state = "valid";
         after.running->intact = true;
         after.running->image_sha256 = update.image_sha256;
-        const iclforge::hearth::WaitVerdict verdict = iclforge::hearth::judge_wait(&after, update, context);
+        const iclforge::hearth::WaitVerdict verdict =
+            iclforge::hearth::judge_wait(&after, update, context);
         CHECK(verdict.outcome == UpdateOutcome::kUpdated);
         CHECK(verdict.text ==
               "updated: runs v0.11.0 from ota_1, accepted; the image's SHA-256 on the board matches the file's");
@@ -379,11 +386,13 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
     }
     SECTION("accepted before the board has checked the slot: a little longer, then updated anyway") {
         after.running->state = "valid";
-        const iclforge::hearth::WaitVerdict waiting = iclforge::hearth::judge_wait(&after, update, context);
+        const iclforge::hearth::WaitVerdict waiting =
+            iclforge::hearth::judge_wait(&after, update, context);
         CHECK(waiting.outcome == UpdateOutcome::kNone);
         CHECK(waiting.accepted);
         context.sha_wait_over = true;
-        const iclforge::hearth::WaitVerdict verdict = iclforge::hearth::judge_wait(&after, update, context);
+        const iclforge::hearth::WaitVerdict verdict =
+            iclforge::hearth::judge_wait(&after, update, context);
         CHECK(verdict.outcome == UpdateOutcome::kUpdated);
         CHECK(verdict.text.ends_with("; the board has not reported the image's SHA-256 yet"));
     }
@@ -391,7 +400,8 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
         ac3forge::FirmwareStatus back = s3_firmware(running);
         back.last_update =
             ac3forge::FirmwareLastUpdate{.version = "v0.11.0", .result = "rolled back", .reason = "it panicked"};
-        const iclforge::hearth::WaitVerdict verdict = iclforge::hearth::judge_wait(&back, update, context);
+        const iclforge::hearth::WaitVerdict verdict =
+            iclforge::hearth::judge_wait(&back, update, context);
         CHECK(verdict.outcome == UpdateOutcome::kRolledBack);
         CHECK(verdict.text ==
               "rolled back: v0.11.0 did not last, and the board runs v0.10.0 from ota_0 again. The board says: "
@@ -401,7 +411,8 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
         ac3forge::FirmwareStatus same = s3_firmware(running);
         context.reply_lost = true;
         context.last_before = same.last_update;
-        const iclforge::hearth::WaitVerdict verdict = iclforge::hearth::judge_wait(&same, update, context);
+        const iclforge::hearth::WaitVerdict verdict =
+            iclforge::hearth::judge_wait(&same, update, context);
         CHECK(verdict.outcome == UpdateOutcome::kFailed);
         CHECK(verdict.text.starts_with("failed: the board runs the image it ran before"));
     }
@@ -580,7 +591,8 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
         snapshot.firmware->running->state = "trial";
         snapshot.firmware->trial = ac3forge::FirmwareTrial{
             .healthy_for_ms = 3000, .hold_ms = 30'000, .remaining_ms = 290'000, .waiting_for = {"a network address"}};
-        const iclforge::hearth::FirmwarePanel panel = iclforge::hearth::to_firmware_panel(snapshot, "");
+        const iclforge::hearth::FirmwarePanel panel =
+            iclforge::hearth::to_firmware_panel(snapshot, "");
         CHECK(panel.trial_text == "Healthy for 3s of 30s, waiting for a network address (290s left)");
         CHECK(panel.build_text.empty());
         CHECK_FALSE(panel.can_update);
@@ -590,7 +602,8 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
     SECTION("another client's upload, and flash mode") {
         snapshot.firmware->mode = "flash";
         snapshot.firmware->upload = ac3forge::FirmwareUpload{.received = 4096, .total = 1'480'768, .stage = "writing"};
-        const iclforge::hearth::FirmwarePanel panel = iclforge::hearth::to_firmware_panel(snapshot, "");
+        const iclforge::hearth::FirmwarePanel panel =
+            iclforge::hearth::to_firmware_panel(snapshot, "");
         CHECK(panel.mode_text == "Flash mode: nothing plays until the board restarts.");
         CHECK(panel.upload_text == "Another update is under way: writing, 4,096 of 1,480,768 bytes");
         CHECK_FALSE(panel.can_update);
@@ -639,7 +652,8 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
     SECTION("a board that stopped answering keeps what it said last") {
         snapshot.answering = false;
         snapshot.error = "no answer: Connection";
-        const iclforge::hearth::FirmwarePanel panel = iclforge::hearth::to_firmware_panel(snapshot, "");
+        const iclforge::hearth::FirmwarePanel panel =
+            iclforge::hearth::to_firmware_panel(snapshot, "");
         CHECK(panel.status_text == "Not answering at http://192.168.1.117/: no answer: Connection");
         CHECK(panel.reported);
         CHECK(panel.running_text == "v0.10.0 · ota_0 · accepted · checked intact");
@@ -653,7 +667,8 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
     }
     SECTION("an empty other slot has no version to name") {
         snapshot.firmware->other->state = "empty";
-        const iclforge::hearth::FirmwarePanel panel = iclforge::hearth::to_firmware_panel(snapshot, "");
+        const iclforge::hearth::FirmwarePanel panel =
+            iclforge::hearth::to_firmware_panel(snapshot, "");
         CHECK(panel.other_text == "ota_1 · empty");
         CHECK(panel.other_version.empty());
         CHECK_FALSE(panel.can_rollback);

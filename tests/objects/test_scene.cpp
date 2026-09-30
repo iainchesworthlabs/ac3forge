@@ -45,7 +45,8 @@ std::vector<double> sample_times() {
     return times;
 }
 
-bool exactly_equal(const iclforge::oba::ObjectPlacement& a, const iclforge::oba::ObjectPlacement& b) {
+bool exactly_equal(const iclforge::oba::ObjectPlacement& a,
+                   const iclforge::oba::ObjectPlacement& b) {
     return a.position.x == b.position.x && a.position.y == b.position.y &&
            a.position.z == b.position.z && a.gain == b.gain && a.lfe_send == b.lfe_send;
 }
@@ -168,7 +169,8 @@ TEST_CASE("a scene drives an encode to byte-identical output", "[oba][scene]") {
         return stream;
     };
 
-    const auto before = encode([&](double t) { return iclforge::oba::evaluate_placements(paths, t); });
+    const auto before =
+        encode([&](double t) { return iclforge::oba::evaluate_placements(paths, t); });
     const auto after = encode([&](double t) { return direct.evaluate(t); });
     const auto after_json = encode([&](double t) { return reloaded->evaluate(t); });
 
@@ -269,7 +271,8 @@ TEST_CASE("scene_from_text sniffs the two forms apart", "[oba][scene]") {
     CHECK(json->object_count() == 3);
 
     // Leading whitespace before the brace still reads as JSON.
-    const auto padded = iclforge::oba::scene_from_text("\n\n  " + iclforge::oba::to_json(*keyframes));
+    const auto padded =
+        iclforge::oba::scene_from_text("\n\n  " + iclforge::oba::to_json(*keyframes));
     REQUIRE(padded.has_value());
 }
 
@@ -413,21 +416,24 @@ TEST_CASE("orientation turns the scene without rendering it", "[oba][scene]") {
     }
 
     SECTION("a quarter turn sends the front wall to the right wall") {
-        const auto turned = iclforge::oba::rotate(front, iclforge::oba::orientation_from_degrees(90, 0, 0));
+        const auto turned =
+            iclforge::oba::rotate(front, iclforge::oba::orientation_from_degrees(90, 0, 0));
         CHECK_THAT(turned.x, WithinAbs(1.0, 1e-12));
         CHECK_THAT(turned.y, WithinAbs(0.5, 1e-12));
         CHECK_THAT(turned.z, WithinAbs(0.0, 1e-12));
     }
 
     SECTION("a half turn sends the front wall to the back") {
-        const auto turned = iclforge::oba::rotate(front, iclforge::oba::orientation_from_degrees(180, 0, 0));
+        const auto turned =
+            iclforge::oba::rotate(front, iclforge::oba::orientation_from_degrees(180, 0, 0));
         CHECK_THAT(turned.x, WithinAbs(0.5, 1e-12));
         CHECK_THAT(turned.y, WithinAbs(1.0, 1e-12));
     }
 
     SECTION("a full turn comes back to where it started") {
         const iclforge::oba::Position p{.x = 0.2, .y = 0.9, .z = 0.4};
-        const auto turned = iclforge::oba::rotate(p, iclforge::oba::orientation_from_degrees(360, 0, 0));
+        const auto turned =
+            iclforge::oba::rotate(p, iclforge::oba::orientation_from_degrees(360, 0, 0));
         CHECK_THAT(turned.x, WithinAbs(p.x, 1e-12));
         CHECK_THAT(turned.y, WithinAbs(p.y, 1e-12));
         CHECK_THAT(turned.z, WithinAbs(p.z, 1e-12));
@@ -435,7 +441,8 @@ TEST_CASE("orientation turns the scene without rendering it", "[oba][scene]") {
 
     SECTION("yaw leaves height alone") {
         const iclforge::oba::Position high{.x = 0.5, .y = 0.0, .z = 0.8};
-        CHECK(iclforge::oba::rotate(high, iclforge::oba::orientation_from_degrees(37, 0, 0)).z == 0.8);
+        CHECK(iclforge::oba::rotate(high, iclforge::oba::orientation_from_degrees(37, 0, 0)).z ==
+              0.8);
     }
 
     SECTION("pitch raises the front, roll raises the right") {
@@ -445,7 +452,8 @@ TEST_CASE("orientation turns the scene without rendering it", "[oba][scene]") {
         CHECK_THAT(pitched.y, WithinAbs(0.5, 1e-12));
 
         const iclforge::oba::Position right{.x = 1.0, .y = 0.5, .z = 0.0};
-        const auto rolled = iclforge::oba::rotate(right, iclforge::oba::orientation_from_degrees(0, 0, 90));
+        const auto rolled =
+            iclforge::oba::rotate(right, iclforge::oba::orientation_from_degrees(0, 0, 90));
         CHECK_THAT(rolled.z, WithinAbs(1.0, 1e-12));
         CHECK_THAT(rolled.x, WithinAbs(0.5, 1e-12));
     }

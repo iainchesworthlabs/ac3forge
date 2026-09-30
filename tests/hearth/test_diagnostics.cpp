@@ -237,10 +237,18 @@ TEST_CASE("diagnostics: the file says what played and what could not, and never 
                                                   .mode = iclforge::hearth::OutputMode::kLocalPcm};
     status.output_opens = 2;
     status.history = {
-        PlayedItem{.queue_index = 0, .title = "One", .first_frame = 0, .frames = 9216,
-                   .expected_frames = 9216, .output_opens = 1},
-        PlayedItem{.queue_index = iclforge::hearth::Queue::kNone, .title = "Gone", .first_frame = 9216,
-                   .frames = 1536, .expected_frames = 4608, .output_opens = 1},
+        PlayedItem{.queue_index = 0,
+                   .title = "One",
+                   .first_frame = 0,
+                   .frames = 9216,
+                   .expected_frames = 9216,
+                   .output_opens = 1},
+        PlayedItem{.queue_index = iclforge::hearth::Queue::kNone,
+                   .title = "Gone",
+                   .first_frame = 9216,
+                   .frames = 1536,
+                   .expected_frames = 4608,
+                   .output_opens = 1},
     };
     // Free text the report must not read: it names an item that has left
     // the queue.

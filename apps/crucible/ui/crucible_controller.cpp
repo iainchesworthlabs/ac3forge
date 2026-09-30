@@ -194,11 +194,12 @@ iclforge::crucible::EngineConfig CrucibleController::engine_config() const {
     return config;
 }
 
-void CrucibleController::set_test_services(std::shared_ptr<iclforge::crucible::SessionMonitor> sessions,
-                                           std::shared_ptr<iclforge::crucible::AudioDevices> devices,
-                                           std::shared_ptr<iclforge::crucible::Foreground> foreground,
-                                           std::shared_ptr<iclforge::crucible::DefaultDevice> default_device,
-                                           std::shared_ptr<iclforge::crucible::VirtualDevice> virtual_device) {
+void CrucibleController::set_test_services(
+    std::shared_ptr<iclforge::crucible::SessionMonitor> sessions,
+    std::shared_ptr<iclforge::crucible::AudioDevices> devices,
+    std::shared_ptr<iclforge::crucible::Foreground> foreground,
+    std::shared_ptr<iclforge::crucible::DefaultDevice> default_device,
+    std::shared_ptr<iclforge::crucible::VirtualDevice> virtual_device) {
     // The engine is built from these at start(), so an engine built over the
     // machine has to go before the machine is swapped out from under it.
     stop();
@@ -1145,7 +1146,8 @@ iclforge::crucible::ReportFacts CrucibleController::build_report_facts() const {
     platform_row("render loop", qEnvironmentVariable("QSG_RENDER_LOOP"));
     platform_row("3d room", has3D() ? QStringLiteral("built") : QStringLiteral("not built"));
     const auto& backend = iclforge::audio::audio_backend();
-    auto capability_row = [&facts](const char* name, const iclforge::audio::Capability& capability) {
+    auto capability_row = [&facts](const char* name,
+                                   const iclforge::audio::Capability& capability) {
         facts.platform.emplace_back(name, capability.available ? std::string("yes")
                                                                : "no: " + std::string(capability.reason));
     };

@@ -80,7 +80,8 @@ TEST_CASE("crypto: HMAC against RFC 4231", "[sendspin][crypto]") {
         const std::string_view head = c.data.substr(0, 3);
         const std::string_view tail = c.data.substr(3);
         Digest32 split{};
-        REQUIRE(iclforge::sendspin::crypto::hmac_sha256(c.key, {bytes_of(head), bytes_of(tail)}, split));
+        REQUIRE(iclforge::sendspin::crypto::hmac_sha256(c.key, {bytes_of(head), bytes_of(tail)},
+                                                        split));
         CHECK(split == d256);
     }
 }
@@ -88,9 +89,11 @@ TEST_CASE("crypto: HMAC against RFC 4231", "[sendspin][crypto]") {
 TEST_CASE("crypto: HMAC refuses more parts than it holds", "[sendspin][crypto]") {
     const std::array<Bytes, iclforge::sendspin::crypto::kMaxHmacParts + 1> parts{};
     Digest32 out{};
-    CHECK_FALSE(iclforge::sendspin::crypto::hmac_sha256(Bytes{}, std::span<const Bytes>(parts), out));
+    CHECK_FALSE(
+        iclforge::sendspin::crypto::hmac_sha256(Bytes{}, std::span<const Bytes>(parts), out));
     CHECK(iclforge::sendspin::crypto::hmac_sha256(
-        Bytes{}, std::span<const Bytes>(parts).first(iclforge::sendspin::crypto::kMaxHmacParts), out));
+        Bytes{}, std::span<const Bytes>(parts).first(iclforge::sendspin::crypto::kMaxHmacParts),
+        out));
 }
 
 TEST_CASE("crypto: X25519 against RFC 7748", "[sendspin][crypto]") {
@@ -152,7 +155,8 @@ TEST_CASE("crypto: both AEADs round-trip, and refuse tampering", "[sendspin][cry
         const std::array<std::uint8_t, 12> nonce{0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8};
         const std::vector<std::uint8_t> ad = from_hex("feedface");
         const std::span<const std::uint8_t> plaintext = bytes_of("stream/start, then bursts");
-        std::vector<std::uint8_t> sealed(plaintext.size() + iclforge::sendspin::crypto::kAeadTagBytes);
+        std::vector<std::uint8_t> sealed(plaintext.size() +
+                                         iclforge::sendspin::crypto::kAeadTagBytes);
         REQUIRE(handle->encrypt(nonce, ad, plaintext, sealed));
         CHECK_FALSE(std::equal(plaintext.begin(), plaintext.end(), sealed.begin()));
 

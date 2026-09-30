@@ -369,8 +369,8 @@ TEST_CASE("measured noise against the model tracks the allocation's generosity",
                     iclforge::exponent_from_fixed(fixed[static_cast<std::size_t>(bin)]));
             }
             std::vector<std::uint8_t> bap(kEnd);
-            iclforge::compute_bit_allocation(exps, iclforge::SampleRate::k48000, iclforge::BitAllocCodes{},
-                                        csnroffst, 0, bap);
+            iclforge::compute_bit_allocation(exps, iclforge::SampleRate::k48000,
+                                             iclforge::BitAllocCodes{}, csnroffst, 0, bap);
             iclforge::quality::accumulate_block(fixed, exps, bap, 0, kEnd, measured);
         }
         return iclforge::quality::noise_to_mask(measured, threshold);

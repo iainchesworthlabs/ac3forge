@@ -2097,7 +2097,8 @@ TEST_CASE("build_dac4 carries a presentation's identity, filter, EMDF, content t
     iclforge::ac4::SubstreamGroupInfo& group = toc.substream_groups[0];
     group.b_substreams_present = true;
     const std::vector<std::byte> english = {std::byte{'e'}, std::byte{'n'}, std::byte{'g'}};
-    group.content_type = iclforge::ac4::ContentType{.content_classifier = 2, .language_tag = english};
+    group.content_type =
+        iclforge::ac4::ContentType{.content_classifier = 2, .language_tag = english};
     group.b_hsf_ext = true;
     group.substreams[0].hsf_ext_substream_index = 3;
     group.substreams[0].chan->sf_multiplier = 1;
@@ -2121,7 +2122,8 @@ TEST_CASE("build_dac4 carries a presentation's identity, filter, EMDF, content t
 
     // A content type with no language, an enabled filter, and an id past
     // presentation_id's five bits, which the extended id carries whole.
-    group.content_type = iclforge::ac4::ContentType{.content_classifier = 7, .language_tag = std::nullopt};
+    group.content_type =
+        iclforge::ac4::ContentType{.content_classifier = 7, .language_tag = std::nullopt};
     pres.enable_presentation = true;
     pres.presentation_id = 300;
     p = presentation_of(toc);
@@ -2224,8 +2226,8 @@ iclforge::ac4::SubstreamGroupInfo chan_group(int ch_mode, std::optional<int> cla
     return group;
 }
 
-iclforge::ac4::PresentationInfoV1 presentation_v1(std::optional<int> config, std::vector<int> groups,
-                                        int id) {
+iclforge::ac4::PresentationInfoV1 presentation_v1(std::optional<int> config,
+                                                  std::vector<int> groups, int id) {
     iclforge::ac4::PresentationInfoV1 p;
     p.presentation_version = 1;
     p.presentation_config = config;
@@ -2436,7 +2438,8 @@ TEST_CASE(
     // The name is in the presentation substream, which the table of contents
     // does not describe: refused without it.
     CHECK(iclforge::ac4::build_dac4(toc).empty());
-    CHECK(iclforge::ac4::dac4_refusal(toc).find("alternative presentation") != std::string_view::npos);
+    CHECK(iclforge::ac4::dac4_refusal(toc).find("alternative presentation") !=
+          std::string_view::npos);
     toc.presentations_v1[0].alternative_info =
         iclforge::ac4::AlternativeInfo{.name = "Deutsch",
                              .targets = {{.md_compat = 1, .device_category = 0b1111},
@@ -2478,7 +2481,8 @@ TEST_CASE("build_dac4 writes the dac4 DEE's muxer writes for an A-JOC stream", "
     group.b_channel_coded = false;
     group.substreams.push_back(substream);
     toc.substream_groups.push_back(group);
-    CHECK(hex_of(iclforge::ac4::build_dac4(toc)) == "20a601600000001fffffffe0010afb000001004528200040");
+    CHECK(hex_of(iclforge::ac4::build_dac4(toc)) ==
+          "20a601600000001fffffffe0010afb000001004528200040");
 
     // Objects are no channel mode, and an adaptive downmix no core: neither
     // is sent, where Table E.11's text would set b_presentation_core_differs
@@ -2502,8 +2506,10 @@ TEST_CASE("build_dac4 writes the dac4 DEE's muxer writes for an A-JOC stream", "
     // leaves signals unlisted.
     toc.substream_groups[0].substreams[0].ajoc->b_static_dmx = true;
     toc.substream_groups[0].substreams[0].ajoc->b_lfe = true;
-    toc.substream_groups[0].substreams[0].ajoc->upmix_objects = std::vector<iclforge::ac4::ObjectEntry>(
-        17, iclforge::ac4::ObjectEntry{.kind = iclforge::ac4::ObjectKind::kBed, .lfe = false, .ajoc_coded = true});
+    toc.substream_groups[0].substreams[0].ajoc->upmix_objects =
+        std::vector<iclforge::ac4::ObjectEntry>(
+            17, iclforge::ac4::ObjectEntry{
+                    .kind = iclforge::ac4::ObjectKind::kBed, .lfe = false, .ajoc_coded = true});
     p = presentation_of(toc);
     CHECK(p.core == 1U);
     const SubstreamDsi& bed = p.group_dsis[0].substreams.at(0);
@@ -2597,8 +2603,8 @@ TEST_CASE("build_dac4 writes nothing for what it cannot describe whole and dac4_
         {"an alternative with no name",
          [](iclforge::ac4::Toc& t) { t.presentations_v1[0].b_alternative = true; },
          "alternative presentation"},
-        {"a group the TOC lacks", [](iclforge::ac4::Toc& t) { t.presentations_v1[0].group_refs = {5}; },
-         "b_multi_pid"},
+        {"a group the TOC lacks",
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].group_refs = {5}; }, "b_multi_pid"},
         {"a reserved channel mode",
          [](iclforge::ac4::Toc& t) { t.substream_groups[0].substreams[0].chan->ch_mode.reset(); },
          "reserves"},
@@ -2612,9 +2618,10 @@ TEST_CASE("build_dac4 writes nothing for what it cannot describe whole and dac4_
          },
          "not a channel-coded one"},
         {"an EMDF version past 5 bits",
-         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].emdf.emdf_version = 32; }, "EMDF version"},
-        {"a key_id past 10 bits", [](iclforge::ac4::Toc& t) { t.presentations_v1[0].emdf.key_id = 1024; },
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].emdf.emdf_version = 32; },
          "EMDF version"},
+        {"a key_id past 10 bits",
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].emdf.key_id = 1024; }, "EMDF version"},
         {"an id past 5 bits with no indicators",
          [](iclforge::ac4::Toc& t) { t.presentations_v1[0].presentation_id = 40; }, "above 31"},
         {"an id past 9 bits",
@@ -2626,7 +2633,8 @@ TEST_CASE("build_dac4 writes nothing for what it cannot describe whole and dac4_
         {"a reserved configuration",
          [](iclforge::ac4::Toc& t) { t.presentations_v1[0].presentation_config = 7; }, "reserves"},
         {"a configuration short of its groups",
-         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].presentation_config = 0; }, "did not all read"},
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].presentation_config = 0; },
+         "did not all read"},
         {"ten groups in configuration 5",
          [](iclforge::ac4::Toc& t) {
              t.presentations_v1[0].presentation_config = 5;
@@ -2635,9 +2643,10 @@ TEST_CASE("build_dac4 writes nothing for what it cannot describe whole and dac4_
          "three bits"},
         {"a language in chunks",
          [](iclforge::ac4::Toc& t) {
-             t.substream_groups[0].content_type = iclforge::ac4::ContentType{.content_classifier = 0,
-                                                                   .language_tag = std::nullopt,
-                                                                   .serialized_language_tag = true};
+             t.substream_groups[0].content_type =
+                 iclforge::ac4::ContentType{.content_classifier = 0,
+                                            .language_tag = std::nullopt,
+                                            .serialized_language_tag = true};
          },
          "chunk"},
         {"65 upmix objects",
@@ -2673,7 +2682,8 @@ TEST_CASE("build_dac4 writes nothing for what it cannot describe whole and dac4_
     legacy.n_presentations = 1;
     legacy.presentations_v0.push_back(iclforge::ac4::PresentationInfoV0{});
     CHECK(iclforge::ac4::build_dac4(legacy).empty());
-    CHECK(iclforge::ac4::dac4_refusal(legacy).find("bitstream_version 0 or 1") != std::string_view::npos);
+    CHECK(iclforge::ac4::dac4_refusal(legacy).find("bitstream_version 0 or 1") !=
+          std::string_view::npos);
 }
 
 TEST_CASE("cmaf_refusal names the rule of Part 2 Annex H.1.2.1 a stream breaks",
@@ -2731,7 +2741,8 @@ TEST_CASE("cmaf_refusal names the rule of Part 2 Annex H.1.2.1 a stream breaks",
     const auto frame = iclforge::ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
     REQUIRE(frame.has_value());
     CHECK(iclforge::ac4::dac4_refusal(frame->toc).empty());
-    CHECK(iclforge::ac4::cmaf_refusal(frame->toc).find("configuration 6") != std::string_view::npos);
+    CHECK(iclforge::ac4::cmaf_refusal(frame->toc).find("configuration 6") !=
+          std::string_view::npos);
 }
 
 TEST_CASE("signalled_presentation takes Annex G.2.3's widest compatibility", "[ac4][carriage]") {
@@ -2884,16 +2895,18 @@ TEST_CASE("configuration_difference names the parameter of Annex H.1.2.4 that di
          },
          "n_presentations"},
         {"a presentation_config",
-         [](iclforge::ac4::Toc& t) { t.presentations_v1[1].presentation_config = 5; }, "presentation_config"},
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[1].presentation_config = 5; },
+         "presentation_config"},
         {"a single substream group",
          [](iclforge::ac4::Toc& t) { t.presentations_v1[1].presentation_config.reset(); },
          "b_single_substream_group"},
         {"a content_classifier",
          [](iclforge::ac4::Toc& t) { t.substream_groups[1].content_type->content_classifier = 5; },
          "content_classifier"},
-        {"a language", [](iclforge::ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4, "fr"); },
+        {"a language",
+         [](iclforge::ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4, "fr"); }, "language"},
+        {"no language", [](iclforge::ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4); },
          "language"},
-        {"no language", [](iclforge::ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4); }, "language"},
         {"a channel_mode",
          [](iclforge::ac4::Toc& t) { t.substream_groups[3].substreams[0].chan->channel_mode = 4; },
          "channel_mode"},
@@ -2907,7 +2920,8 @@ TEST_CASE("configuration_difference names the parameter of Annex H.1.2.4 that di
         CAPTURE(c.name);
         iclforge::ac4::Toc toc = base;
         c.change(toc);
-        CHECK(iclforge::ac4::configuration_difference(base, toc).find(c.says) != std::string_view::npos);
+        CHECK(iclforge::ac4::configuration_difference(base, toc).find(c.says) !=
+              std::string_view::npos);
     }
 }
 

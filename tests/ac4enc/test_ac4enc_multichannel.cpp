@@ -140,7 +140,8 @@ void check_printed(std::string_view printed, std::span<const StereoChoice> sets,
 }
 
 const std::array<iclforge::ac4::detail::FrameLayout, 2> kLayouts = {
-    iclforge::ac4::detail::long_layout(2048), iclforge::ac4::detail::split_layout(2048, {0, 3}, {2, -1})};
+    iclforge::ac4::detail::long_layout(2048),
+    iclforge::ac4::detail::split_layout(2048, {0, 3}, {2, -1})};
 
 std::array<int, 2> max_sfb_of(const iclforge::ac4::detail::FrameLayout& layout) {
     return layout.long_frame ? std::array<int, 2>{40, 40} : std::array<int, 2>{12, 30};
@@ -163,8 +164,8 @@ TEST_CASE("every chel_matsel's cascade undone comes back through Table 178 as pr
                 if (!chosen) {
                     forced = {random_choice(rng, outputs[0]), random_choice(rng, outputs[0])};
                 }
-                const iclforge::ac4::detail::UnitChoice choice =
-                    iclforge::ac4::detail::undo_three(matsel, {&unit[0], &unit[1], &unit[2]}, forced);
+                const iclforge::ac4::detail::UnitChoice choice = iclforge::ac4::detail::undo_three(
+                    matsel, {&unit[0], &unit[1], &unit[2]}, forced);
                 REQUIRE(choice.sets.size() == 2);
                 CHECK(choice.chel_matsel == matsel);
                 CHECK(std::isfinite(choice.bits));
@@ -192,8 +193,8 @@ TEST_CASE("four_channel_data()'s steps undone come back through clause 5.3.3.4's
                         forced.push_back(random_choice(rng, outputs[0]));
                     }
                 }
-                const iclforge::ac4::detail::UnitChoice choice =
-                    iclforge::ac4::detail::undo_four({&unit[0], &unit[1], &unit[2], &unit[3]}, forced);
+                const iclforge::ac4::detail::UnitChoice choice = iclforge::ac4::detail::undo_four(
+                    {&unit[0], &unit[1], &unit[2], &unit[3]}, forced);
                 REQUIRE(choice.sets.size() == 4);
                 check_printed(ac4dec_test::kFourChannel, choice.sets, outputs, {&unit[0], &unit[1], &unit[2], &unit[3]});
             }
@@ -278,7 +279,8 @@ TEST_CASE("perceptual entropy prefers the matrix that takes out what the channel
     double best = apart;
     for (int matsel = 0; matsel < 12; ++matsel) {
         unit = outputs;
-        best = std::min(best, iclforge::ac4::detail::undo_three(matsel, {&unit[0], &unit[1], &unit[2]}).bits);
+        best = std::min(
+            best, iclforge::ac4::detail::undo_three(matsel, {&unit[0], &unit[1], &unit[2]}).bits);
     }
     CHECK(best < 0.6 * apart);
 }

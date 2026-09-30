@@ -45,7 +45,8 @@ TEST_CASE("pairing: pairing.md's token vectors", "[sendspin][pairing]") {
     const Key32 pairing_psk = counting(0xE0);
     payload0.insert(payload0.end(), client_key.begin(), client_key.end());
     payload0.insert(payload0.end(), pairing_psk.begin(), pairing_psk.end());
-    CHECK(iclforge::sendspin::pairing::encode_token(TokenVersion::kPairingPsk, payload0) == kToken0);
+    CHECK(iclforge::sendspin::pairing::encode_token(TokenVersion::kPairingPsk, payload0) ==
+          kToken0);
 
     const std::optional<iclforge::sendspin::pairing::PairingPskToken> decoded =
         iclforge::sendspin::pairing::decode_pairing_psk_token(kToken0);
@@ -57,7 +58,8 @@ TEST_CASE("pairing: pairing.md's token vectors", "[sendspin][pairing]") {
     for (std::size_t i = 0; i < payload1.size(); ++i) {
         payload1[i] = static_cast<std::uint8_t>(0xE0 + i);
     }
-    CHECK(iclforge::sendspin::pairing::encode_token(TokenVersion::kDynamicCode, payload1) == kToken1);
+    CHECK(iclforge::sendspin::pairing::encode_token(TokenVersion::kDynamicCode, payload1) ==
+          kToken1);
     const auto token1 = iclforge::sendspin::pairing::decode_token(kToken1);
     REQUIRE(token1.has_value());
     CHECK(token1->version == TokenVersion::kDynamicCode);

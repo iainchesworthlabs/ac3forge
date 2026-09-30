@@ -117,7 +117,8 @@ struct Encoded {
     int decoder_delay = 0;
 };
 
-Encoded encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input,
+Encoded encode(const iclforge::ac4::EncoderConfig& base,
+               const std::vector<std::vector<float>>& input,
                std::span<const iclforge::ac4::ObjectMetadataUpdate> updates = {}) {
     Encoded out;
     iclforge::ac4::EncoderConfig config = base;
@@ -438,7 +439,8 @@ TEST_CASE("core decoding of an A-JOC substream gives its downmix with its metada
 
 TEST_CASE("an object's metadata updates come out where their input samples do",
           "[ac4enc][objects]") {
-    for (const iclforge::ac4::ObjectCoding coding : {iclforge::ac4::ObjectCoding::kAjoc, iclforge::ac4::ObjectCoding::kDirect}) {
+    for (const iclforge::ac4::ObjectCoding coding :
+         {iclforge::ac4::ObjectCoding::kAjoc, iclforge::ac4::ObjectCoding::kDirect}) {
         CAPTURE(coding == iclforge::ac4::ObjectCoding::kAjoc);
         Case c{.name = "moving", .objects = {}, .kbps = 128};
         c.objects.objects = {dynamic_at(0.0)};
@@ -531,8 +533,9 @@ TEST_CASE("the encoder refuses the object configurations it does not write", "[a
           }) == "an object substream beside other substreams: it is the stream's one");
     CHECK(reason([](iclforge::ac4::EncoderConfig& c) { c.frame_rate_index = 2; }) ==
           "objects at a frame_rate_index other than 13");
-    CHECK(reason([](iclforge::ac4::EncoderConfig& c) { c.substreams[0].objects->objects.clear(); }) ==
-          "an object substream without objects");
+    CHECK(reason([](iclforge::ac4::EncoderConfig& c) {
+              c.substreams[0].objects->objects.clear();
+          }) == "an object substream without objects");
     CHECK(reason([](iclforge::ac4::EncoderConfig& c) {
               c.substreams[0].objects->objects[0].properties.position[0] = 1.5;
           }) == "an object's properties off the ranges ObjectProperties gives them");
@@ -540,26 +543,33 @@ TEST_CASE("the encoder refuses the object configurations it does not write", "[a
               c.substreams[0].objects->objects[0].lfe = true;
               c.substreams[0].objects->objects[1].lfe = true;
           }) == "more than one LFE object");
-    CHECK(reason([](iclforge::ac4::EncoderConfig& c) { c.substreams[0].objects->downmix_signals = 9; }) ==
+    CHECK(reason([](iclforge::ac4::EncoderConfig& c) {
+              c.substreams[0].objects->downmix_signals = 9;
+          }) ==
           "a computed downmix of no signal, of more than 11 or of more than its full-band objects");
     CHECK(reason([](iclforge::ac4::EncoderConfig& c) { c.substreams[0].objects->downmix = iclforge::ac4::AjocDownmix::kStatic51; }) ==
           "a static 5.1 downmix without an LFE object");
-    CHECK(reason([](iclforge::ac4::EncoderConfig& c) { c.substreams[0].objects->parameter_bands = 10; }) ==
-          "A-JOC parameter bands other than Table 78's 23, 15, 12, 9, 7, 5, 3 or 1");
+    CHECK(reason([](iclforge::ac4::EncoderConfig& c) {
+              c.substreams[0].objects->parameter_bands = 10;
+          }) == "A-JOC parameter bands other than Table 78's 23, 15, 12, 9, 7, 5, 3 or 1");
     CHECK(reason([](iclforge::ac4::EncoderConfig& c) {
               c.substreams[0].objects->coding = iclforge::ac4::ObjectCoding::kDirect;
               c.substreams[0].objects->objects[0].bed = iclforge::ac4::BedChannel::kLeft;
           }) == "bed objects in direct-coded object substreams");
     CHECK(reason([](iclforge::ac4::EncoderConfig& c) { c.substreams[0].codec_mode = iclforge::ac4::CodecMode::kAspxAcpl2; }) ==
           "an object substream's codec mode other than kAuto, kSimple or kAspx");
-    CHECK(reason([](iclforge::ac4::EncoderConfig& c) { c.substreams[0].dialogue = iclforge::ac4::DialogueConfig{}; }) ==
+    CHECK(reason([](iclforge::ac4::EncoderConfig& c) {
+              c.substreams[0].dialogue = iclforge::ac4::DialogueConfig{};
+          }) ==
           "dialogue enhancement, dialogue mixing values or a dialogue enhancement waveform in an "
           "object substream");
     CHECK(reason([](iclforge::ac4::EncoderConfig& c) {
-              c.presentations = {iclforge::ac4::PresentationConfig{.config = 1, .substreams = {0, 0}}};
+              c.presentations = {
+                  iclforge::ac4::PresentationConfig{.config = 1, .substreams = {0, 0}}};
           }) != "");
     CHECK(reason([](iclforge::ac4::EncoderConfig& c) {
-              c.presentations = {iclforge::ac4::PresentationConfig{.substreams = {0}, .md_compat = 2}};
+              c.presentations = {
+                  iclforge::ac4::PresentationConfig{.substreams = {0}, .md_compat = 2}};
           }) == "an md_compat below the least its tracks need, or in 4 to 6 (Part 2 Table 55)");
 
     // An update for an object the substream lacks, or off its ranges.
@@ -665,8 +675,9 @@ TEST_CASE("the object streams for listening are written where AC4ENC_WRITE_LISTE
     const std::array<std::array<double, 2>, 5> speakers = {
         {{0.0, 0.0}, {1.0, 0.0}, {0.5, 0.0}, {0.0, 1.0}, {1.0, 1.0}}};
     const std::array<iclforge::ac4::BedChannel, 5> channels = {
-        iclforge::ac4::BedChannel::kLeft, iclforge::ac4::BedChannel::kRight, iclforge::ac4::BedChannel::kCentre,
-        iclforge::ac4::BedChannel::kLeftSurround, iclforge::ac4::BedChannel::kRightSurround};
+        iclforge::ac4::BedChannel::kLeft, iclforge::ac4::BedChannel::kRight,
+        iclforge::ac4::BedChannel::kCentre, iclforge::ac4::BedChannel::kLeftSurround,
+        iclforge::ac4::BedChannel::kRightSurround};
     for (const std::string_view name : {"listen-e9-ajoc-computed", "listen-e9-ajoc-static-5_1", "listen-e9-direct"}) {
         const bool is_direct = name == "listen-e9-direct";
         Case c{.name = std::string{name}, .objects = {}, .kbps = 384};

@@ -147,8 +147,8 @@ TEST_CASE("int32 arguments widen losslessly wherever float is accepted", "[oba][
 }
 
 TEST_CASE("out-of-range but finite values clamp rather than drop", "[oba][scene][osc]") {
-    const auto updates =
-        iclforge::oba::parse_osc_packet(osc_message_f("/object/0/xyz", ",fff", {5.0F, -5.0F, 9.0F}));
+    const auto updates = iclforge::oba::parse_osc_packet(
+        osc_message_f("/object/0/xyz", ",fff", {5.0F, -5.0F, 9.0F}));
     REQUIRE(updates.size() == 1);
     REQUIRE(updates[0].position.has_value());
     CHECK(updates[0].position->x == 1.0);  // x clamps to [0,1]
@@ -171,8 +171,8 @@ TEST_CASE("malformed or unrecognised messages are dropped and counted, not fatal
         CHECK(stats.messages_dropped == 1);
     }
     SECTION("wrong argument count for the address") {
-        const auto updates =
-            iclforge::oba::parse_osc_packet(osc_message_f("/object/0/xyz", ",ff", {0.1F, 0.2F}), &stats);
+        const auto updates = iclforge::oba::parse_osc_packet(
+            osc_message_f("/object/0/xyz", ",ff", {0.1F, 0.2F}), &stats);
         CHECK(updates.empty());
         CHECK(stats.messages_dropped == 1);
     }
@@ -544,7 +544,8 @@ TEST_CASE("apply through a live cursor rotates the wire position exactly once",
     const auto sampled = cursor.sample(0.0)[0];
 
     // The correct answer: the wire position rotated exactly once.
-    const auto expected = iclforge::oba::rotate(wire, iclforge::oba::orientation_from_degrees(90, 0, 0));
+    const auto expected =
+        iclforge::oba::rotate(wire, iclforge::oba::orientation_from_degrees(90, 0, 0));
     CHECK_THAT(sampled.position.x, WithinAbs(expected.x, 1e-12));
     CHECK_THAT(sampled.position.y, WithinAbs(expected.y, 1e-12));
     // Gain rode through from base, unrelated to rotation.

@@ -116,8 +116,8 @@ std::optional<iclforge::oba::SceneContents> read_scene_file(std::string_view pat
 // is asked for an index because atmos-encode's default placement differs per
 // object where atmos-path's does not.
 std::optional<iclforge::oba::ObjectScene> scene_of(std::string_view path,
-                                              iclforge::oba::SceneContents contents, std::size_t count,
-                                              const auto& fallback) {
+                                                   iclforge::oba::SceneContents contents,
+                                                   std::size_t count, const auto& fallback) {
     contents.objects.resize(count);
     for (std::size_t i = 0; i < count; ++i) {
         if (contents.objects[i].automation.empty()) {
@@ -128,7 +128,8 @@ std::optional<iclforge::oba::ObjectScene> scene_of(std::string_view path,
                                                       .lfe_send = rest.lfe_send});
         }
     }
-    auto scene = iclforge::oba::ObjectScene::create(std::move(contents.objects), contents.orientation);
+    auto scene =
+        iclforge::oba::ObjectScene::create(std::move(contents.objects), contents.orientation);
     if (!scene.has_value()) {
         fmt::println(stderr, "error: {}: {}", path, scene.error().message);
         return std::nullopt;
@@ -153,13 +154,15 @@ struct CbiLayout {
 
 constexpr std::array<CbiLayout, 3> kCbiLayouts{{
     {"5.1.4", iclforge::oba::bed::kLR | iclforge::oba::bed::kC | iclforge::oba::bed::kLfe |
-                  iclforge::oba::bed::kLsRs | iclforge::oba::bed::kTflTfr | iclforge::oba::bed::kTblTbr},
-    {"7.1.4", iclforge::oba::bed::kLR | iclforge::oba::bed::kC | iclforge::oba::bed::kLfe |
-                  iclforge::oba::bed::kLsRs | iclforge::oba::bed::kLbRb | iclforge::oba::bed::kTflTfr |
+                  iclforge::oba::bed::kLsRs | iclforge::oba::bed::kTflTfr |
                   iclforge::oba::bed::kTblTbr},
+    {"7.1.4", iclforge::oba::bed::kLR | iclforge::oba::bed::kC | iclforge::oba::bed::kLfe |
+                  iclforge::oba::bed::kLsRs | iclforge::oba::bed::kLbRb |
+                  iclforge::oba::bed::kTflTfr | iclforge::oba::bed::kTblTbr},
     {"9.1.6", iclforge::oba::bed::kLR | iclforge::oba::bed::kC | iclforge::oba::bed::kLfe |
-                  iclforge::oba::bed::kLsRs | iclforge::oba::bed::kLbRb | iclforge::oba::bed::kLwRw |
-                  iclforge::oba::bed::kTflTfr | iclforge::oba::bed::kTslTsr | iclforge::oba::bed::kTblTbr},
+                  iclforge::oba::bed::kLsRs | iclforge::oba::bed::kLbRb |
+                  iclforge::oba::bed::kLwRw | iclforge::oba::bed::kTflTfr |
+                  iclforge::oba::bed::kTslTsr | iclforge::oba::bed::kTblTbr},
 }};
 
 [[nodiscard]] std::optional<std::uint16_t> resolve_cbi_layout(std::string_view name) {
@@ -183,18 +186,18 @@ constexpr std::array<CbiLayout, 3> kCbiLayouts{{
 }
 
 // atmos-adm/atmos-iab with codec=ac4 (planning/ac4.md, I5): iclforge::oba::ObjectPlacement (this
-// project's E-AC-3/Atmos object model) and iclforge::ac4::ObjectProperties (TS 103 190-2 Annex F) share one
-// room coordinate system - X 0 (left wall) to 1 (right), Y 0 (front) to 1 (back), Z -1 (floor) to 1
-// (ceiling), confirmed against apps/common/ac4_object_render.hpp's own header comment - so position
-// carries over unconverted; gain does not, since oba's is linear and AC-4's is dB (Table
-// 108-adjacent range +15 to -49, or -infinity for silence). iclforge::apps::ac4_object_properties does
-// both.
+// project's E-AC-3/Atmos object model) and iclforge::ac4::ObjectProperties (TS 103 190-2 Annex F)
+// share one room coordinate system - X 0 (left wall) to 1 (right), Y 0 (front) to 1 (back), Z -1
+// (floor) to 1 (ceiling), confirmed against apps/common/ac4_object_render.hpp's own header comment
+// - so position carries over unconverted; gain does not, since oba's is linear and AC-4's is dB
+// (Table 108-adjacent range +15 to -49, or -infinity for silence).
+// iclforge::apps::ac4_object_properties does both.
 //
 // The AC-4 branch of run_atmos_adm/run_atmos_iab (codec=ac4): every bed/object channel the source
 // names becomes a dynamic AC-4 object driven by its own ObjectPath, the same treatment the E-AC-3
 // branches beside this function give a bed channel (panned by position, no speaker-anchored
-// iclforge::ac4::BedChannel assigned) - is_bed is reported in the summary line and nothing else, exactly as
-// it already is for E-AC-3 above. AC-4's object substream is frame_rate_index 13 only
+// iclforge::ac4::BedChannel assigned) - is_bed is reported in the summary line and nothing else,
+// exactly as it already is for E-AC-3 above. AC-4's object substream is frame_rate_index 13 only
 // (ac4enc/encoder.hpp, SubstreamConfig::objects), so metadata updates land on that fixed
 // 2048-sample grid: one update per object per frame, ramped over the whole frame from the previous
 // one, evaluated at the frame's END time - the convention every Atmos-encode command in this file
@@ -779,9 +782,9 @@ namespace {
 // coded by default or, with coding=direct, direct-coded, written as a raw stream or, for an
 // .mp4/.m4a/.mov name, an MP4 file. Which channels are objects follows src=/map= as it does for
 // E-AC-3 (object_slots_from_assignment, with a channel mapped to a speaker a dynamic object held
-// there and one mapped to an LFE the LFE object - iclforge::apps::ac4_object_slots), and an authored
-// scene file moves the dynamic objects, in that order; without one each keeps atmos-encode's
-// default placement. The steps from there are apps/common/ac4_objects_core.cpp's and
+// there and one mapped to an LFE the LFE object - iclforge::apps::ac4_object_slots), and an
+// authored scene file moves the dynamic objects, in that order; without one each keeps
+// atmos-encode's default placement. The steps from there are apps/common/ac4_objects_core.cpp's and
 // ac4_encode_core.cpp's, which ac3gui's AC-4 objects take too, so the line the GUI echoes writes
 // the bytes the GUI does.
 int run_atmos_encode_ac4(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
@@ -1038,7 +1041,8 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     // cannot pull apart again, so the source's channels are spread across the
     // room rather than stacked at one point. A channel that already has a
     // direction keeps it; the rest fan out evenly.
-    const std::vector<iclforge::oba::ObjectPlacement> placement = layout_placements(src_channels, count);
+    const std::vector<iclforge::oba::ObjectPlacement> placement =
+        layout_placements(src_channels, count);
 
     // An authored scene file (same format/addressing as atmos-path, object
     // index == this WAV channel index) drives motion instead of the static
@@ -1174,8 +1178,8 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
 int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   const Options& meta, std::string_view programme_id) {
     // No fixed source layout to measure a pre-encode loudness figure against the way
-    // atmos-encode's WAV input has (iclforge::io::ac3_layout_for) - an ADM document's channels are an
-    // arbitrary mix of bed speaker feeds and dynamic objects, not one of the handful of layouts
+    // atmos-encode's WAV input has (iclforge::io::ac3_layout_for) - an ADM document's channels are
+    // an arbitrary mix of bed speaker feeds and dynamic objects, not one of the handful of layouts
     // that function maps. Refusing clearly beats silently keeping the fixed default dialnorm:
     // "a silently ignored metadata flag looks exactly like metadata that did not work" (see
     // parse_options's own comment above).
@@ -1305,8 +1309,8 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   const Options& meta) {
     // Same refusal, same reason as run_atmos_adm's own: an IAB file's Bed/Object channels are an
-    // arbitrary mix, not one of iclforge::io::ac3_layout_for's fixed layouts - see that function's own
-    // comment above.
+    // arbitrary mix, not one of iclforge::io::ac3_layout_for's fixed layouts - see that function's
+    // own comment above.
     if (meta.p.measure_dialnorm) {
         fmt::println(stderr,
                      "error: dialnorm=auto is not supported by atmos-iab - an IAB file's Bed/"
@@ -1471,7 +1475,8 @@ int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint
                          layout_arg);
             return kExitUsage;
         }
-        const auto expected = static_cast<std::size_t>(iclforge::oba::bed::channel_count(*bed_flags));
+        const auto expected =
+            static_cast<std::size_t>(iclforge::oba::bed::channel_count(*bed_flags));
         if (expected != src_channels) {
             fmt::println(stderr, "error: {} is a {}-channel bed, but {} has {} channel(s)",
                          layout_arg, expected, in_path, src_channels);
@@ -1528,8 +1533,9 @@ int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint
             }
             const auto got = stream_in.read_planar(stream_dst, valid);
             if (!got || *got != valid) {
-                fmt::println(stderr, "error: {}: {}", in_path,
-                             iclforge::io::describe(got ? iclforge::io::WavError::kTruncated : got.error()));
+                fmt::println(
+                    stderr, "error: {}: {}", in_path,
+                    iclforge::io::describe(got ? iclforge::io::WavError::kTruncated : got.error()));
                 out_sink.abort();
                 return kExitInput;
             }

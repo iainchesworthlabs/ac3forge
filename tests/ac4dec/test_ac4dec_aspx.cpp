@@ -121,8 +121,10 @@ struct Channel {
 
 // NoiseTable's entry at `index` (Part 1 Table D.2).
 QmfValue noise_entry(int index) {
-    const auto& entry = iclforge::ac4::detail::tables::kAspxNoise[static_cast<std::size_t>(index % 512)];
-    return {static_cast<iclforge::ac4::detail::Real>(entry[0]), static_cast<iclforge::ac4::detail::Real>(entry[1])};
+    const auto& entry =
+        iclforge::ac4::detail::tables::kAspxNoise[static_cast<std::size_t>(index % 512)];
+    return {static_cast<iclforge::ac4::detail::Real>(entry[0]),
+            static_cast<iclforge::ac4::detail::Real>(entry[1])};
 }
 
 void decode_one(const AspxFrame& frame, const AspxChannel& data, Channel& channel) {
@@ -297,8 +299,9 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
     iclforge::ac4::detail::CompandingControl control;
     control.num_chan = 1;
     control.b_compand_on[0] = true;
-    const std::array<iclforge::ac4::detail::CompandingChannel, 1> channels{iclforge::ac4::detail::CompandingChannel{
-        .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
+    const std::array<iclforge::ac4::detail::CompandingChannel, 1> channels{
+        iclforge::ac4::detail::CompandingChannel{
+            .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
     iclforge::ac4::detail::apply_companding(control, 0, kFullScale, channels);
     const double big_g = std::exp2(1.0 / 0.65);
     for (int ts = 0; ts < kSlots + 6; ++ts) {
@@ -351,8 +354,9 @@ TEST_CASE("companding's gains are libm's at double and the project's own functio
     iclforge::ac4::detail::CompandingControl control;
     control.num_chan = 1;
     control.b_compand_on[0] = true;
-    const std::array<iclforge::ac4::detail::CompandingChannel, 1> channels{iclforge::ac4::detail::CompandingChannel{
-        .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
+    const std::array<iclforge::ac4::detail::CompandingChannel, 1> channels{
+        iclforge::ac4::detail::CompandingChannel{
+            .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
     iclforge::ac4::detail::apply_companding(control, 0, kFullScaleReal, channels);
 
     constexpr Real kAlpha = Real(0.65);
@@ -366,7 +370,8 @@ TEST_CASE("companding's gains are libm's at double and the project's own functio
             gain = std::pow(level, kExponent);
             big_g = std::exp2(Real{1} / kAlpha);
         } else {
-            gain = iclforge::internal::scalar_exp2(kExponent * iclforge::internal::scalar_log2(level));
+            gain =
+                iclforge::internal::scalar_exp2(kExponent * iclforge::internal::scalar_log2(level));
             big_g = iclforge::internal::scalar_exp2(Real{1} / kAlpha);
         }
         return sample * (gain * big_g);

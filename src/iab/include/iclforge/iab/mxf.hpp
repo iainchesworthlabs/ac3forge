@@ -30,9 +30,9 @@
 // graph (locating essence is a KLV-Key matter, not an object-graph one) - it only has to walk
 // top-level KLV triplets from the start of the file, skip everything whose Key does not match ST
 // 2067-201 Table 4.2's registered IAB Essence Element Key, and hand the one KLV that does match
-// straight to iclforge::iab::parse_iabitstream(std::istream&) unmodified (see that function's own updated
-// doc comment in ac3iab.hpp) - zero duplication of the Preamble/IAFrame framing logic phase 1
-// already implements.
+// straight to iclforge::iab::parse_iabitstream(std::istream&) unmodified (see that function's own
+// updated doc comment in ac3iab.hpp) - zero duplication of the Preamble/IAFrame framing logic phase
+// 1 already implements.
 //
 // Deliberately out of scope, since ST 2067-201 §5.3-5.5 already constrains a compliant IAB Track
 // File to exactly one Essence Track and one Sound Element, closing off most of what ST 377-1

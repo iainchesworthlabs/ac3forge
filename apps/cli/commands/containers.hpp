@@ -18,9 +18,10 @@ namespace ac3cli::commands {
 
 int run_mkv(std::string_view in_path, std::string_view out_path);
 
-// Same shape as run_mkv, wrapping iclforge::mp4::mux() instead: iclforge::io::scan() still supplies everything
-// the container needs to declare, and additionally - via iclforge::io::build_codec_config_box() - the
-// exact dac3/dec3 sample-entry payload straight off the bitstream.
+// Same shape as run_mkv, wrapping iclforge::mp4::mux() instead: iclforge::io::scan() still supplies
+// everything the container needs to declare, and additionally - via
+// iclforge::io::build_codec_config_box() - the exact dac3/dec3 sample-entry payload straight off
+// the bitstream.
 int run_mp4(std::string_view in_path, std::string_view out_path);
 
 // fMP4/CMAF segmenting plus HLS/DASH signaling (fMP4/CMAF segmenting) - writes a DIRECTORY of files

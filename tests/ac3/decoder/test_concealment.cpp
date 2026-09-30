@@ -43,7 +43,8 @@ std::vector<std::vector<float>> tones(std::span<const double> hz, std::uint64_t 
 // Several frames of real coded audio - more than three, so the MDCT overlap
 // is genuine by the time anything is damaged (CONTRIBUTING.md's validation
 // discipline: silence and frame 0 give false passes).
-std::vector<std::vector<std::byte>> encode_ac3(int frames, iclforge::Acmod acmod = iclforge::Acmod::k2_0) {
+std::vector<std::vector<std::byte>> encode_ac3(int frames,
+                                               iclforge::Acmod acmod = iclforge::Acmod::k2_0) {
     iclforge::EncoderConfig config;
     config.acmod = acmod;
     config.bitrate_kbps = 192;

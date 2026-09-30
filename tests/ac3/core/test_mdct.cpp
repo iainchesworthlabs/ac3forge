@@ -75,10 +75,10 @@ TEST_CASE("forward MDCT matches numpy goldens", "[mdct]") {
                        iclforge::golden::kGoldenImpulse0Coeffs) < 1e-10);
     CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenImpulse100Input),
                        iclforge::golden::kGoldenImpulse100Coeffs) < 1e-10);
-    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenDcInput), iclforge::golden::kGoldenDcCoeffs) <
-          1e-10);
-    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenSineInput), iclforge::golden::kGoldenSineCoeffs) <
-          1e-10);
+    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenDcInput),
+                       iclforge::golden::kGoldenDcCoeffs) < 1e-10);
+    CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenSineInput),
+                       iclforge::golden::kGoldenSineCoeffs) < 1e-10);
     CHECK(max_abs_diff(forward_of(iclforge::golden::kGoldenRandomInput),
                        iclforge::golden::kGoldenRandomCoeffs) < 1e-10);
 }

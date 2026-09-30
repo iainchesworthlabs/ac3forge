@@ -87,7 +87,8 @@ struct Encoded {
     iclforge::ac4::CodecMode mode = iclforge::ac4::CodecMode::kAuto;
 };
 
-Encoded encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input) {
+Encoded encode(const iclforge::ac4::EncoderConfig& base,
+               const std::vector<std::vector<float>>& input) {
     Encoded out;
     iclforge::ac4::EncoderConfig config = base;
     const auto sink = [&out](const iclforge::ac4::SyntaxRecord& r) { out.trace.push_back(r); };
@@ -114,7 +115,8 @@ struct Decoded {
     std::vector<std::vector<float>> channels;
 };
 
-Decoded decode(const std::vector<iclforge::ac4::EncodedFrame>& frames, iclforge::ac4::DecodingMode mode,
+Decoded decode(const std::vector<iclforge::ac4::EncodedFrame>& frames,
+               iclforge::ac4::DecodingMode mode,
                iclforge::ac4::DownmixTarget target = iclforge::ac4::DownmixTarget::kAsCoded) {
     iclforge::ac4::DecoderConfig config;
     config.decoding = mode;
@@ -273,9 +275,9 @@ TEST_CASE(
         iclforge::ac4::CodecMode mode;
         std::uint64_t code;
     };
-    for (const Case c :
-         {Case{768, iclforge::ac4::CodecMode::kScpl, 0}, Case{512, iclforge::ac4::CodecMode::kAspxScpl, 1},
-          Case{256, iclforge::ac4::CodecMode::kAspxAcpl2, 3}}) {
+    for (const Case c : {Case{768, iclforge::ac4::CodecMode::kScpl, 0},
+                         Case{512, iclforge::ac4::CodecMode::kAspxScpl, 1},
+                         Case{256, iclforge::ac4::CodecMode::kAspxAcpl2, 3}}) {
         CAPTURE(c.kbps);
         std::vector<Channel> channels = layout(true, false);
         if (c.mode == iclforge::ac4::CodecMode::kAspxAcpl2) {
@@ -520,7 +522,8 @@ TEST_CASE("the height downmix sends DEE's custom downmix data, which the rendere
     input[8] = tone(kTbl, kSamples);
     for (const Case c :
          {Case{iclforge::ac4::HeightDownmix::kFront, -6.0, Speaker::kLeft, Speaker::kLeft},
-          Case{iclforge::ac4::HeightDownmix::kSurround, -4.5, Speaker::kLeftSurround, Speaker::kLeftSurround},
+          Case{iclforge::ac4::HeightDownmix::kSurround, -4.5, Speaker::kLeftSurround,
+               Speaker::kLeftSurround},
           Case{iclforge::ac4::HeightDownmix::kFrontAndSurround, -9.0, Speaker::kLeft,
                Speaker::kLeftSurround}}) {
         // Under the sanitizers, front-and-surround alone: it sends the top
@@ -529,12 +532,12 @@ TEST_CASE("the height downmix sends DEE's custom downmix data, which the rendere
             continue;
         }
         CAPTURE(static_cast<int>(c.mode), c.gain_db);
-        const Encoded encoded =
-            encode({.channels = 10,
-                    .bitrate_kbps = 256,
-                    .iframe_interval = 6,
-                    .downmix = iclforge::ac4::DownmixConfig{.height = c.mode, .height_db = c.gain_db}},
-                   input);
+        const Encoded encoded = encode(
+            {.channels = 10,
+             .bitrate_kbps = 256,
+             .iframe_interval = 6,
+             .downmix = iclforge::ac4::DownmixConfig{.height = c.mode, .height_db = c.gain_db}},
+            input);
         // In I-frames alone, as DEE sends it: one configuration, 5.X.0.
         const std::size_t iframes = static_cast<std::size_t>(std::ranges::count_if(
             encoded.frames, [](const iclforge::ac4::EncodedFrame& f) { return f.iframe; }));
@@ -542,8 +545,8 @@ TEST_CASE("the height downmix sends DEE's custom downmix data, which the rendere
         CHECK(count_records(encoded, "b_cdmx_data_present", 0) == encoded.frames.size() - iframes);
         CHECK(count_records(encoded, "out_ch_config", 0) == iframes);
         check_frames_read_back(encoded);
-        const Decoded five =
-            decode(encoded.frames, iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DownmixTarget::k5X);
+        const Decoded five = decode(encoded.frames, iclforge::ac4::DecodingMode::kFull,
+                                    iclforge::ac4::DownmixTarget::k5X);
         CHECK(std::abs(db(level(five.channels[index_of(five, c.front_to)], kTfl)) - c.gain_db) <
               0.3);
         CHECK(std::abs(db(level(five.channels[index_of(five, c.back_to)], kTbl)) - c.gain_db) <
@@ -588,7 +591,8 @@ TEST_CASE("the encoder refuses the immersive configurations it does not write",
         {"a height gain off Table 129",
          {.channels = 10,
           .bitrate_kbps = 512,
-          .downmix = iclforge::ac4::DownmixConfig{.height = iclforge::ac4::HeightDownmix::kFront, .height_db = -2.0}},
+          .downmix = iclforge::ac4::DownmixConfig{.height = iclforge::ac4::HeightDownmix::kFront,
+                                                  .height_db = -2.0}},
          "height downmix"},
         {"the coding configurations for 5.1.4",
          {.channels = 10, .bitrate_kbps = 512, .experimental = {.coding_configs = true}},

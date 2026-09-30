@@ -568,7 +568,8 @@ TEST_CASE("network sinks: a client going away keeps its row, and it is dialled a
     sinks.tick(NetworkSinks::Clock::now() + std::chrono::seconds(5));
     const auto link = sinks.status().sinks.front().link;
     // Dialled: connecting, or already failed again against the refused port.
-    CHECK((link == iclforge::hearth::SinkLink::kConnecting || link == iclforge::hearth::SinkLink::kRetrying));
+    CHECK((link == iclforge::hearth::SinkLink::kConnecting ||
+           link == iclforge::hearth::SinkLink::kRetrying));
 }
 
 TEST_CASE("network sinks: a sink kept through a firmware update keeps its row until it is let go",
@@ -662,7 +663,8 @@ TEST_CASE("network sinks: a kept sink that mDNS finds again is an ordinary row o
     // back-off, and hello connects it.
     sinks.on_found(service);
     const auto link = sinks.status().sinks.front().link;
-    CHECK((link == iclforge::hearth::SinkLink::kConnecting || link == iclforge::hearth::SinkLink::kRetrying));
+    CHECK((link == iclforge::hearth::SinkLink::kConnecting ||
+           link == iclforge::hearth::SinkLink::kRetrying));
     sinks.on_client(client);
     CHECK(sinks.status().sinks.front().link == iclforge::hearth::SinkLink::kConnected);
 

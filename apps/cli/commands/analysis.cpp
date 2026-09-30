@@ -324,7 +324,8 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
                 result.programmes.push_back(QcProgrammeResult{
                     .label = "Ch2", .dialnorm = sub.dialnorm2.value_or(31), .compr = sub.compr2});
             } else {
-                result.layout_label = std::string{iclforge::analysis::layout_name(sub.acmod, sub.lfe)};
+                result.layout_label =
+                    std::string{iclforge::analysis::layout_name(sub.acmod, sub.lfe)};
                 meter.emplace(sub.sample_rate, sub.acmod, sub.lfe);
                 result.programmes.push_back(
                     QcProgrammeResult{.dialnorm = sub.dialnorm, .compr = sub.compr});
@@ -435,7 +436,8 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
     }
     // Heap-allocated for the same PREfast C6262 reason measure_qc_eac3_bed
     // gives above.
-    auto decoder = std::make_unique<iclforge::Eac3Decoder>(iclforge::DecoderConfig{.programme = programme});
+    auto decoder =
+        std::make_unique<iclforge::Eac3Decoder>(iclforge::DecoderConfig{.programme = programme});
     QcResult result;
     result.codec_label = "E-AC-3";
     result.unit_label = "access unit(s)";
@@ -608,8 +610,8 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
     // bed LFE buffer beside them by reconstruction_delay(joc_domain) samples
     // (LfeDelayLine's own comment, apps/cli/support.hpp) - held back to match
     // before either reaches the meter.
-    LfeDelayLine lfe_delay{
-        static_cast<std::size_t>(iclforge::oba::joc::reconstruction_delay(decoder_config.joc_domain))};
+    LfeDelayLine lfe_delay{static_cast<std::size_t>(
+        iclforge::oba::joc::reconstruction_delay(decoder_config.joc_domain))};
 
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
@@ -728,7 +730,8 @@ std::optional<std::size_t> decode_ac4_as_coded(
     if (scan.stopped_at.has_value()) {
         fmt::println(
             stderr, "warning: {}: the sync frames stop at byte {} ({}); measuring the {} before it",
-            in_path, scan.stopped_at_offset, iclforge::ac4::describe(*scan.stopped_at), scan.frames.size());
+            in_path, scan.stopped_at_offset, iclforge::ac4::describe(*scan.stopped_at),
+            scan.frames.size());
     }
     std::size_t decoded_frames = 0;
     std::vector<iclforge::ac4::Speaker> layout;
@@ -782,8 +785,8 @@ Ac4Meter ac4_loudness_meter(const iclforge::ac4::DecodedFrame& pcm, bool rendere
         pcm.sample_rate_hz == 44100 ? iclforge::SampleRate::k44100 : iclforge::SampleRate::k48000;
     const std::span<const iclforge::ac4::Speaker> speakers{pcm.speakers};
     if (rendered) {
-        std::vector<std::size_t> order =
-            ac4_order(speakers, [](iclforge::ac4::Speaker s) { return static_cast<int>(ac4_location(s)); });
+        std::vector<std::size_t> order = ac4_order(
+            speakers, [](iclforge::ac4::Speaker s) { return static_cast<int>(ac4_location(s)); });
         iclforge::eac3::chanmap::Layout layout{};
         for (const std::size_t c : order) {
             layout.items[static_cast<std::size_t>(layout.count++)] = ac4_location(speakers[c]);
@@ -1347,12 +1350,13 @@ int run_levels(std::string_view in_path, const Options& meta) {
         std::size_t presentation = 0;
         std::uint64_t samples = 0;
         int rate = 0;
-        const auto frames =
-            decode_ac4_as_coded(bytes, in_path, decoder, [&](const iclforge::ac4::DecodedFrame& pcm) {
+        const auto frames = decode_ac4_as_coded(
+            bytes, in_path, decoder, [&](const iclforge::ac4::DecodedFrame& pcm) {
                 if (!meter.has_value()) {
                     order = ac4_order(pcm.speakers, ac4_meter_rank);
                     const bool lfe =
-                        std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
+                        std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) !=
+                        pcm.speakers.end();
                     meter.emplace(ac4_bed_acmod(pcm.speakers), lfe,
                                   static_cast<std::uint32_t>(pcm.sample_rate_hz),
                                   static_cast<int>(pcm.channels.size()));
@@ -1475,8 +1479,8 @@ int run_loudness(std::string_view in_path, const Options& meta) {
         std::vector<std::span<const float>> views;
         std::size_t presentation = 0;
         int rate = 0;
-        const auto frames =
-            decode_ac4_as_coded(bytes, in_path, decoder, [&](const iclforge::ac4::DecodedFrame& pcm) {
+        const auto frames = decode_ac4_as_coded(
+            bytes, in_path, decoder, [&](const iclforge::ac4::DecodedFrame& pcm) {
                 if (!meter.has_value()) {
                     meter.emplace(ac4_loudness_meter(pcm, false));
                     presentation = pcm.presentation;
@@ -1596,8 +1600,8 @@ int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
     }
     const auto type =
         iclforge::iec61937::ac4_burst_type_for(largest, head->fs_index, head->frame_rate_index);
-    const auto timing = type.has_value() ? iclforge::iec61937::ac4_burst_timing(*type, head->fs_index,
-                                                                           head->frame_rate_index)
+    const auto timing = type.has_value() ? iclforge::iec61937::ac4_burst_timing(
+                                               *type, head->fs_index, head->frame_rate_index)
                                          : std::nullopt;
     if (!type.has_value() || !timing.has_value()) {
         fmt::println(stderr,

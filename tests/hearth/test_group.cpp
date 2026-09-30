@@ -131,8 +131,9 @@ class HostEvents final : public iclforge::sendspin::ServerHostEvents {
         std::string client_id;
         iclforge::sendspin::controller::CommandMessage command;
     };
-    void on_controller_command(const std::string& group_id, const std::string& client_id,
-                               const iclforge::sendspin::controller::CommandMessage& command) override {
+    void on_controller_command(
+        const std::string& group_id, const std::string& client_id,
+        const iclforge::sendspin::controller::CommandMessage& command) override {
         const std::lock_guard lock(mutex_);
         commands_.push_back({.group_id = group_id, .client_id = client_id, .command = command});
     }
@@ -150,7 +151,8 @@ class HostEvents final : public iclforge::sendspin::ServerHostEvents {
     }
 
     // client/goodbye's own reason, once on_client_goodbye() has heard one for this client_id.
-    std::optional<iclforge::sendspin::messages::GoodbyeReason> goodbye(const std::string& client_id) {
+    std::optional<iclforge::sendspin::messages::GoodbyeReason> goodbye(
+        const std::string& client_id) {
         const std::lock_guard lock(mutex_);
         const auto found = goodbyes_.find(client_id);
         return found == goodbyes_.end() ? std::nullopt : std::optional(found->second);
@@ -288,8 +290,8 @@ std::vector<PackedBurst> pack_bursts(const iclforge::io::ScannedStream& stream, 
 template <class Consume>
 void decode_and_render(const iclforge::io::ScannedStream& stream, int passes, const iclforge::render::OutputLayout& layout,
                        Consume&& consume) {
-    const iclforge::render::Serving serving =
-        iclforge::render::serve(layout, iclforge::DownmixTarget::kLoRo, iclforge::render::ObjectsPolicy::kAuto);
+    const iclforge::render::Serving serving = iclforge::render::serve(
+        layout, iclforge::DownmixTarget::kLoRo, iclforge::render::ObjectsPolicy::kAuto);
     REQUIRE_FALSE(serving.fold.has_value());
     iclforge::DecoderConfig config;
     config.output.mode = iclforge::OperatingMode::kLine;
@@ -335,7 +337,8 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
     const std::optional<iclforge::render::OutputLayout> layout = iclforge::render::OutputLayout::parse(layout_text);
     REQUIRE(layout.has_value());
     const std::vector<std::byte> fixture = read_bytes(AC3FORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
-    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream = iclforge::io::scan(fixture);
+    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream =
+        iclforge::io::scan(fixture);
     REQUIRE(stream.has_value());
     const std::vector<PackedBurst> bursts = pack_bursts(*stream, passes);
     REQUIRE(bursts.size() == stream->access_units.size() * static_cast<std::size_t>(passes));
@@ -375,9 +378,12 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
     // Paired, both play the extension role once their clocks converge.
     REQUIRE(events.wait(
         [](const auto& clients) {
-            return clients.size() == 2 && std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
-                       return entry.second.playing && entry.second.bursts && entry.second.available &&
-                              entry.second.psk == iclforge::sendspin::handshake::PskCategory::kLongTerm;
+            return clients.size() == 2 &&
+                   std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
+                       return entry.second.playing && entry.second.bursts &&
+                              entry.second.available &&
+                              entry.second.psk ==
+                                  iclforge::sendspin::handshake::PskCategory::kLongTerm;
                    });
         },
         30s));
@@ -619,7 +625,8 @@ TEST_CASE("group: a host pairs one test sink by its token and another by a dynam
 
     // The second waits unpaired until the operator pairs it by the code it shows.
     REQUIRE(events.wait([&](const auto& clients) { return clients.contains(by_code->client_id()); }, 15s));
-    const std::optional<iclforge::sendspin::ClientView> waiting = (*host)->client(by_code->client_id());
+    const std::optional<iclforge::sendspin::ClientView> waiting =
+        (*host)->client(by_code->client_id());
     REQUIRE(waiting.has_value());
     CHECK_FALSE(waiting->playing);
     REQUIRE((*host)->pair(by_code->client_id(), m::PairMethod::kDynamicCode, m::CodeFormat::kDigits));
@@ -1007,7 +1014,8 @@ TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at 
     // The burst feed: a real E-AC-3 stream, packed exactly as the JOC test's
     // own helper does.
     const std::vector<std::byte> fixture = read_bytes(AC3FORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
-    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream = iclforge::io::scan(fixture);
+    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream =
+        iclforge::io::scan(fixture);
     REQUIRE(stream.has_value());
     const std::vector<PackedBurst> bursts = pack_bursts(*stream, 1);
     REQUIRE_FALSE(bursts.empty());
@@ -1097,11 +1105,11 @@ TEST_CASE("group: ten minutes of E-AC-3 JOC in step on two test sinks", "[.][hea
 
 // D11 (planning/ac4.md): the Dolby Encoding Engine's 2.0 AC-4 stream at 48 kHz and frame_rate_index
 // 13, the rate the decoder on main decodes, sent to a paired test sink over _ac3forge_player@v1:
-// each frame in its own AC-4 data-burst, with the Pc and Pd iclforge::iec61937::Ac4BurstPacker writes
-// and the frame's 2 048 samples on the group's timeline. The sink's WAV must be the local decode of
-// the same frames rendered to its layout as its BurstOutput renders them, sample for sample; what
-// its decoder found must reach the host; and every burst's logged play time must put the first
-// frame at the same local time, within 1 ms.
+// each frame in its own AC-4 data-burst, with the Pc and Pd iclforge::iec61937::Ac4BurstPacker
+// writes and the frame's 2 048 samples on the group's timeline. The sink's WAV must be the local
+// decode of the same frames rendered to its layout as its BurstOutput renders them, sample for
+// sample; what its decoder found must reach the host; and every burst's logged play time must put
+// the first frame at the same local time, within 1 ms.
 TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
           "[hearth][group][websocket][ac3forge][ac4]") {
     const fs::path scratch =
@@ -1178,7 +1186,8 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
                    std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
                        return entry.second.playing && entry.second.bursts &&
                               entry.second.available &&
-                              entry.second.psk == iclforge::sendspin::handshake::PskCategory::kLongTerm;
+                              entry.second.psk ==
+                                  iclforge::sendspin::handshake::PskCategory::kLongTerm;
                    });
         },
         30s));
@@ -1272,7 +1281,8 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
             }
             const iclforge::PcmBlock block{
                 .index = static_cast<int>(at / iclforge::kSamplesPerBlock),
-                .blocks = static_cast<int>((n + iclforge::kSamplesPerBlock - 1) / iclforge::kSamplesPerBlock),
+                .blocks = static_cast<int>((n + iclforge::kSamplesPerBlock - 1) /
+                                           iclforge::kSamplesPerBlock),
                 .channels = block_channels,
                 .objects = {},
                 .object_indices = {},

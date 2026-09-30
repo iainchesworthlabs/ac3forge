@@ -271,7 +271,9 @@ public:
     // NetworkSinks::on_found() is public for exactly this use (its own
     // comment) - rather than depend on mDNS multicast, which a CI container
     // does not carry. Not Q_INVOKABLE: nothing in QML can reach it.
-    [[nodiscard]] iclforge::hearth::NetworkSinks* sinks_for_test() const { return sinks_engine_.get(); }
+    [[nodiscard]] iclforge::hearth::NetworkSinks* sinks_for_test() const {
+        return sinks_engine_.get();
+    }
 
 signals:
     void sinksChanged();

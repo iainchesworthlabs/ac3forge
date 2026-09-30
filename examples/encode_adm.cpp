@@ -1,22 +1,23 @@
 // A real ADM BWF master, all the way to a Dolby Atmos E-AC-3 (DD+ JOC) elementary stream.
 //
 // Roadmap item B1 phase 3 of 3 (the last piece - phase 1 is iclforge::adm, src/adm; phase 2 is
-// iclforge::admbridge, src/admbridge). This is a minimal, standalone illustration of the same pipeline
-// ac3cli's 'atmos-adm' command drives for real: iclforge::adm::parse_bw64() reads the container + ADM XML
-// graph, iclforge::admbridge::build() maps it onto iclforge::oba::AtmosEncoder's flat object-list input
-// shape (one bed speaker feed pinned in place, one dynamic object panned by its own authored
-// motion), and a plain per-frame loop calls iclforge::oba::evaluate_placements() plus
-// AtmosEncoder::encode_frame() the same way every other Atmos example in this directory does. The
-// CLI command and this example deliberately share nothing but that library API - see
-// docs/library/adm-bridge.md's own note on why no separate "driving loop" abstraction exists.
+// iclforge::admbridge, src/admbridge). This is a minimal, standalone illustration of the same
+// pipeline ac3cli's 'atmos-adm' command drives for real: iclforge::adm::parse_bw64() reads the
+// container + ADM XML graph, iclforge::admbridge::build() maps it onto
+// iclforge::oba::AtmosEncoder's flat object-list input shape (one bed speaker feed pinned in place,
+// one dynamic object panned by its own authored motion), and a plain per-frame loop calls
+// iclforge::oba::evaluate_placements() plus AtmosEncoder::encode_frame() the same way every other
+// Atmos example in this directory does. The CLI command and this example deliberately share nothing
+// but that library API - see docs/library/adm-bridge.md's own note on why no separate "driving
+// loop" abstraction exists.
 //
 // Like examples/read_adm.cpp, this writes its own tiny-but-valid BW64/ADM fixture to a temp file
 // first, rather than shipping a real production master this project has no license to embed: one
 // DirectSpeakers bed channel pinned at the front-centre speaker, and one Objects channel that
 // holds hard right (azimuth -90 - BS.2076-2 Clause 8: positive azimuth is left, so negative is
 // right) for half the clip and then jumps hard left (azimuth +90) for the rest (§10.3's
-// jumpPosition=1 state machine - see iclforge::admbridge::build_channel_path's own comment for the full
-// walkthrough), so the encoded stream's own channel balance visibly tracks the authored ADM
+// jumpPosition=1 state machine - see iclforge::admbridge::build_channel_path's own comment for the
+// full walkthrough), so the encoded stream's own channel balance visibly tracks the authored ADM
 // automation rather than staying static throughout.
 //
 // Run with `--write-fixture <path>` to just write that same fixture to a real file and exit,
@@ -300,9 +301,9 @@ int main(int argc, char** argv) {
     }
 
     // Step 3: drive AtmosEncoder::encode_frame() in a loop - iclforge::oba::evaluate_placements()
-    // reads each channel's iclforge::oba::ObjectPath at the frame's own end time, exactly the pattern
-    // ac3cli's own atmos-path/atmos-encode/atmos-adm commands and every other Atmos example in
-    // this directory use.
+    // reads each channel's iclforge::oba::ObjectPath at the frame's own end time, exactly the
+    // pattern ac3cli's own atmos-path/atmos-encode/atmos-adm commands and every other Atmos example
+    // in this directory use.
     const auto objects = static_cast<int>(bridged->channel_count());
     iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, objects};
 

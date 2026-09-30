@@ -207,8 +207,8 @@ class PushDecoder {
             entry.set("ok", true);
             entry.set("holdBack", false);
             entry.set("sampleRate", static_cast<int>(iclforge::sample_rate_hz(sub.sample_rate)));
-            entry.set("frameSamples",
-                      iclforge::eac3::blocks_per_syncframe(sub.numblkscod) * iclforge::kSamplesPerBlock);
+            entry.set("frameSamples", iclforge::eac3::blocks_per_syncframe(sub.numblkscod) *
+                                          iclforge::kSamplesPerBlock);
             entry.set("dialnorm", sub.dialnorm);
             entry.set("channelCount", static_cast<int>(labels.size()));
             entry.set("channelLabels", make_string_array(labels));

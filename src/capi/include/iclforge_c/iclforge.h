@@ -1433,12 +1433,12 @@ AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
  * struct as its type allows.
  * ac3forge_c/version.h's AC3FORGE_HAS_AC4 (a plain #define, #cmakedefine'd
  * from that option) still tells a caller which behaviour to expect. Mirrors
- * iclforge::ac4::Decoder (src/ac4dec/include/iclforge/ac4dec/decoder.hpp) and iclforge::ac4::Encoder
- * (src/ac4enc/include/iclforge/ac4enc/encoder.hpp), plus the table-of-contents helpers
- * of src/ac4/include/iclforge/ac4/ac4.hpp a container muxer needs beside the encoder.
- * AC-4's frame length varies by frame rate (Part 1 Tables 83/84), so unlike
- * the AC-3/E-AC-3 sections above there is no AC3FORGE_SAMPLES_PER_FRAME
- * equivalent - every accessor that needs a length reports it.
+ * iclforge::ac4::Decoder (src/ac4dec/include/iclforge/ac4dec/decoder.hpp) and
+ * iclforge::ac4::Encoder (src/ac4enc/include/iclforge/ac4enc/encoder.hpp), plus the
+ * table-of-contents helpers of src/ac4/include/iclforge/ac4/ac4.hpp a container muxer needs beside
+ * the encoder. AC-4's frame length varies by frame rate (Part 1 Tables 83/84), so unlike the
+ * AC-3/E-AC-3 sections above there is no AC3FORGE_SAMPLES_PER_FRAME equivalent - every accessor
+ * that needs a length reports it.
  *
  * The encoder writes channel-based and channel-based-immersive content
  * (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4) and, given an objects configuration

@@ -868,7 +868,8 @@ SinkFirmware::Worker::Answer SinkFirmware::Worker::put_image(const FirmwareFile&
     httplib::Client http = client(timing_.upload_answer);
     const httplib::Headers headers{
         {"Host", host_header(host_, port_)},
-        {"Content-Digest", "sha-256=:" + iclforge::sendspin::base64::encode(file.file_sha256) + ":"},
+        {"Content-Digest",
+         "sha-256=:" + iclforge::sendspin::base64::encode(file.file_sha256) + ":"},
     };
     sent = 0;
     const auto progress = [&](std::size_t current, std::size_t total) {

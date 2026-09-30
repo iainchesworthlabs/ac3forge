@@ -59,7 +59,8 @@ int main() {
 
     iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
 
-    std::vector<std::vector<float>> sources(kObjects, std::vector<float>(iclforge::kSamplesPerFrame));
+    std::vector<std::vector<float>> sources(kObjects,
+                                            std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::span<const float>> views;
     for (const auto& source : sources) {
         views.emplace_back(source);

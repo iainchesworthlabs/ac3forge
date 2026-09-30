@@ -193,7 +193,8 @@ void check_ac4_decode(const std::string& what, const iclforge::ac4::EncoderConfi
 
 TEST_CASE("the plain 5.1 encoder stays faster than real time") {
     perf::FrameSource source{fixture(), perf::kFiveOneChannels};
-    iclforge::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
 
     const auto start = std::chrono::steady_clock::now();
     for (int frame = 0; frame < kFrames; ++frame) {

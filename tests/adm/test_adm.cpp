@@ -414,11 +414,11 @@ std::vector<std::string_view> track_uid_start_tags(std::string_view xml) {
 // own track, with that entry as its AudioTrackUid's bit depth (nullopt: has_bit_depth false). Each
 // object's audioPackFormat and audioChannelFormat are `type` - kObjects, or kDirectSpeakers, the
 // writer's other supported typeDefinition - and each channel carries one cartesian block. Built
-// with the full audioStreamFormat -> audioTrackFormat chain iclforge::admbridge::write() uses rather
-// than BS.2076-2's plain-PCM shortcut: libadm's reassignIds() gives any audioChannelFormat no
-// audioStreamFormat references the id zero (bridge.cpp's own comment on it), and several channels
-// collapsed onto one id read back as a duplicate-ID failure, not as anything a test using this
-// means to check.
+// with the full audioStreamFormat -> audioTrackFormat chain iclforge::admbridge::write() uses
+// rather than BS.2076-2's plain-PCM shortcut: libadm's reassignIds() gives any audioChannelFormat
+// no audioStreamFormat references the id zero (bridge.cpp's own comment on it), and several
+// channels collapsed onto one id read back as a duplicate-ID failure, not as anything a test using
+// this means to check.
 iclforge::adm::AdmDocument objects_document(
     const std::vector<std::optional<std::uint32_t>>& declared_bit_depths,
     iclforge::adm::TypeDefinition type = iclforge::adm::TypeDefinition::kObjects) {
@@ -1096,7 +1096,8 @@ TEST_CASE("parses a DirectSpeakers channel's speakerLabel and polar position", "
     REQUIRE(block.speaker_labels.size() == 1);
     CHECK(block.speaker_labels[0] == "M+030");
     REQUIRE(std::holds_alternative<iclforge::adm::PolarPosition>(block.position));
-    CHECK(std::get<iclforge::adm::PolarPosition>(block.position).azimuth_deg == Catch::Approx(30.0));
+    CHECK(std::get<iclforge::adm::PolarPosition>(block.position).azimuth_deg ==
+          Catch::Approx(30.0));
 }
 
 TEST_CASE("parses HOA order/degree/normalization", "[adm][model]") {
@@ -1227,8 +1228,8 @@ TEST_CASE("write_bw64 gives every audioTrackUID the bit depth of the fmt chunk",
 // second block and that is the one changed, so a check of each channel's first block alone would
 // not pass.
 TEST_CASE("write_bw64 reports a polar block as kInvalidDocument without throwing", "[adm][write]") {
-    const auto type =
-        GENERATE(iclforge::adm::TypeDefinition::kObjects, iclforge::adm::TypeDefinition::kDirectSpeakers);
+    const auto type = GENERATE(iclforge::adm::TypeDefinition::kObjects,
+                               iclforge::adm::TypeDefinition::kDirectSpeakers);
     INFO("typeDefinition " << (type == iclforge::adm::TypeDefinition::kObjects ? "Objects"
                                                                         : "DirectSpeakers"));
     const auto dir = write_scratch_dir("adm_write_polar");
@@ -1244,8 +1245,8 @@ TEST_CASE("write_bw64 reports a polar block as kInvalidDocument without throwing
     auto& block = blocks.back();
     SECTION("a polar position") {
         block.cartesian = false;
-        block.position =
-            iclforge::adm::PolarPosition{.azimuth_deg = 30.0, .elevation_deg = 0.0, .distance = 1.0};
+        block.position = iclforge::adm::PolarPosition{
+            .azimuth_deg = 30.0, .elevation_deg = 0.0, .distance = 1.0};
     }
     SECTION("a default-constructed block") {
         block = iclforge::adm::AudioBlockFormat{};

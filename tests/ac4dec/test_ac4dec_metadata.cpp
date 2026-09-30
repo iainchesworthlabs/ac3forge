@@ -143,7 +143,8 @@ TEST_CASE("metadata reads a sus_ver 0 5.1 substream's dialnorm, loudness and ste
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::k5_1, 0, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::k5_1, 0, true), state,
+                                                     out);
     });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
@@ -222,7 +223,8 @@ TEST_CASE("metadata reads a sus_ver 1 stereo substream's loudness and previous d
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state,
+                                                     out);
     });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
@@ -408,7 +410,8 @@ TEST_CASE("metadata fails when tools_metadata_size disagrees with the tools read
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state,
+                                                     out);
     });
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().error == DecodeError::kInvalidStream);
@@ -437,7 +440,8 @@ TEST_CASE("metadata reads an inline emdf_payloads_substream()", "[ac4dec][metada
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state,
+                                                     out);
     });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
@@ -457,7 +461,8 @@ TEST_CASE("metadata stops with kTruncated when the substream ends inside it", "[
     Metadata out;
     // Two bits of data in one byte: the loudness bits run past the byte.
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 1, true), state,
+                                                     out);
     });
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().error == DecodeError::kTruncated);
@@ -976,7 +981,8 @@ TEST_CASE("a sus_ver 0 substream's metadata carries a long drc_frame behind esca
     MetadataState state;
     Metadata out;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 0, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kStereo, 0, true), state,
+                                                     out);
     });
     REQUIRE(result.has_value());
     CHECK(end == w.size());
@@ -1303,7 +1309,8 @@ TEST_CASE("dialog_enhancement fails on a codeword cut short by the end of the su
     Recorder rec;
     std::size_t end = 0;
     const auto result = read_with(w, rec, end, [&](BitReader& r) {
-        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kMono, 1, true), state, out);
+        return iclforge::ac4::detail::parse_metadata(r, context(ch_mode::kMono, 1, true), state,
+                                                     out);
     });
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().error == DecodeError::kTruncated);

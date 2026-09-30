@@ -75,10 +75,22 @@ TEST_CASE(
     // data take much of a low rate: mono at 32 kbps, 33 bytes a frame there,
     // leaves the tone 9 dB down, and at 48 kbps 0.5 dB.
     const std::vector<Leg> legs = {
-        {.channels = 2, .kbps = 192, .expected = iclforge::ac4::CodecMode::kSimple, .tolerance_db = 0.1},
-        {.channels = 1, .kbps = 56, .expected = iclforge::ac4::CodecMode::kAspx, .tolerance_db = 0.5},
-        {.channels = 2, .kbps = 128, .expected = iclforge::ac4::CodecMode::kAspx, .tolerance_db = 0.3},
-        {.channels = 6, .kbps = 128, .expected = iclforge::ac4::CodecMode::kAspxAcpl2, .tolerance_db = 1.0},
+        {.channels = 2,
+         .kbps = 192,
+         .expected = iclforge::ac4::CodecMode::kSimple,
+         .tolerance_db = 0.1},
+        {.channels = 1,
+         .kbps = 56,
+         .expected = iclforge::ac4::CodecMode::kAspx,
+         .tolerance_db = 0.5},
+        {.channels = 2,
+         .kbps = 128,
+         .expected = iclforge::ac4::CodecMode::kAspx,
+         .tolerance_db = 0.3},
+        {.channels = 6,
+         .kbps = 128,
+         .expected = iclforge::ac4::CodecMode::kAspxAcpl2,
+         .tolerance_db = 1.0},
     };
     // A second, or under the sanitizers three quarters of one: each level is
     // measured from 12 000 samples in to 12 000 from the end.
@@ -133,7 +145,9 @@ TEST_CASE(
             // The decoder reads what was written, record for record, and
             // gives each frame the samples the encoder counted for it.
             std::vector<iclforge::ac4::SyntaxRecord> read;
-            const auto read_sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+            const auto read_sink = [&read](const iclforge::ac4::SyntaxRecord& r) {
+                read.push_back(r);
+            };
             iclforge::ac4::Decoder decoder(
                 iclforge::ac4::DecoderConfig{.syntax = read_sink, .output = {}, .concealment = {}});
             std::vector<std::vector<float>> decoded(static_cast<std::size_t>(leg.channels));
@@ -245,7 +259,9 @@ TEST_CASE("every frame rate frames attacks within its block and A-SPX limits",
             frames->insert(frames->end(), rest->begin(), rest->end());
 
             std::vector<iclforge::ac4::SyntaxRecord> read;
-            const auto read_sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+            const auto read_sink = [&read](const iclforge::ac4::SyntaxRecord& r) {
+                read.push_back(r);
+            };
             iclforge::ac4::Decoder decoder(
                 iclforge::ac4::DecoderConfig{.syntax = read_sink, .output = {}, .concealment = {}});
             std::size_t total = 0;
@@ -270,10 +286,11 @@ TEST_CASE("every frame rate frames attacks within its block and A-SPX limits",
             }
             CHECK(differing == 0);
             // The bursts split some frames' transforms.
-            const auto split = std::ranges::count_if(written, [](const iclforge::ac4::SyntaxRecord& r) {
-                return (r.name == "b_long_frame" && r.value == 0) ||
-                       (r.name == "transf_length" && r.value == 0);
-            });
+            const auto split =
+                std::ranges::count_if(written, [](const iclforge::ac4::SyntaxRecord& r) {
+                    return (r.name == "b_long_frame" && r.value == 0) ||
+                           (r.name == "transf_length" && r.value == 0);
+                });
             CHECK(split > 0);
         }
     }

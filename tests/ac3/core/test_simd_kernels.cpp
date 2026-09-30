@@ -702,8 +702,8 @@ TEST_CASE("AVX2 imdct256_post_twiddle agrees with the scalar form bit-for-bit", 
 
     std::vector<double> avx2_y1_re(kEighth), avx2_y1_im(kEighth);
     std::vector<double> avx2_y2_re(kEighth), avx2_y2_im(kEighth);
-    iclforge::internal::avx2::imdct256_post_twiddle(cos2, sin2, t1_re, t1_im, t2_re, t2_im, avx2_y1_re,
-                                               avx2_y1_im, avx2_y2_re, avx2_y2_im);
+    iclforge::internal::avx2::imdct256_post_twiddle(cos2, sin2, t1_re, t1_im, t2_re, t2_im,
+                                                    avx2_y1_re, avx2_y1_im, avx2_y2_re, avx2_y2_im);
 
     CHECK(all_bits_equal(avx2_y1_re, scalar_y1_re));
     CHECK(all_bits_equal(avx2_y1_im, scalar_y1_im));

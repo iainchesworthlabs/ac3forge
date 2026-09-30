@@ -103,7 +103,8 @@ public:
 
     std::string device_name() const override { return "Desktop Atmos"; }
     std::string how_to_get_one() const override { return "this application creates it"; }
-    iclforge::crucible::SilentDeviceState state(const iclforge::crucible::SilentDeviceQuery& query) override {
+    iclforge::crucible::SilentDeviceState state(
+        const iclforge::crucible::SilentDeviceQuery& query) override {
         return {.needed = true,
                 .present = query.endpoint_present,
                 .in_use = query.endpoint_is_default,
@@ -293,7 +294,8 @@ private:
         return listed;
     }
 
-    bool script(const QVariantList& apps, const std::vector<iclforge::crucible::DeviceFacts>& endpoints,
+    bool script(const QVariantList& apps,
+                const std::vector<iclforge::crucible::DeviceFacts>& endpoints,
                 bool makes_its_own = false) {
         auto* controller = find_controller();
         if (controller == nullptr) {
@@ -384,7 +386,8 @@ public slots:
         // The same appicon image provider ui/main.cpp registers, so an
         // AppIcon under test reaches the platform's provider (tst_icons.qml)
         // rather than Image.Error for every id. The engine owns it.
-        engine->addImageProvider(QStringLiteral("appicon"), new iclforge::crucible::ui::AppIconProvider);
+        engine->addImageProvider(QStringLiteral("appicon"),
+                                 new iclforge::crucible::ui::AppIconProvider);
         // The scripted machine, under its own URI so nothing the window
         // itself imports can reach it.
         test_services_.emplace(*engine);

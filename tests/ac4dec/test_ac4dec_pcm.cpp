@@ -75,7 +75,8 @@ struct Decoded {
 };
 
 // The leg's first `frames` frames decoded, or all of them.
-Decoded decode_all(const std::string& leg, iclforge::ac4::DecodingMode decoding = iclforge::ac4::DecodingMode::kFull,
+Decoded decode_all(const std::string& leg,
+                   iclforge::ac4::DecodingMode decoding = iclforge::ac4::DecodingMode::kFull,
                    iclforge::ac4::DownmixTarget target = iclforge::ac4::DownmixTarget::kAsCoded,
                    std::size_t frames = kAllFrames) {
     const std::vector<std::byte> stream = read_stream(leg);
@@ -158,7 +159,8 @@ TEST_CASE("Pseudocode 24's reset lands where stepping Pseudocode 57's increments
             iclforge::ac4::detail::advance(stepped);
             ++steps;
         }
-        const iclforge::ac4::detail::RandGenState reset = iclforge::ac4::detail::reset_rand_gen_state_snf(counter);
+        const iclforge::ac4::detail::RandGenState reset =
+            iclforge::ac4::detail::reset_rand_gen_state_snf(counter);
         CHECK(reset.offset_a == stepped.offset_a);
         CHECK(reset.offset_b == stepped.offset_b);
         CHECK(reset.state_idx == stepped.state_idx);
@@ -174,13 +176,15 @@ TEST_CASE("GetRandomNoiseValue adds two table entries and then steps", "[ac4dec]
     iclforge::ac4::detail::RandGenState state = iclforge::ac4::detail::reset_rand_gen_state_snf(0);
     // Pseudocode 55's state: current 0, state 1.
     CHECK(iclforge::ac4::detail::get_random_noise_value(state) ==
-          iclforge::ac4::detail::tables::kRandomNoiseTable[0] + iclforge::ac4::detail::tables::kRandomNoiseTable[1]);
+          iclforge::ac4::detail::tables::kRandomNoiseTable[0] +
+              iclforge::ac4::detail::tables::kRandomNoiseTable[1]);
     // After one step: offset_a 1, state_idx 1 + 1 + 0 + 1 = 3, current_idx 1.
     CHECK(state.offset_a == 1);
     CHECK(state.state_idx == 3);
     CHECK(state.current_idx == 1);
     CHECK(iclforge::ac4::detail::get_random_noise_value(state) ==
-          iclforge::ac4::detail::tables::kRandomNoiseTable[1] + iclforge::ac4::detail::tables::kRandomNoiseTable[3]);
+          iclforge::ac4::detail::tables::kRandomNoiseTable[1] +
+              iclforge::ac4::detail::tables::kRandomNoiseTable[3]);
 }
 
 TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo processing",
@@ -197,7 +201,8 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
     psy.num_window_groups = 2;
     psy.window_to_group = {0, 1};
     psy.num_win_in_group = {1, 1};
-    const std::span<const std::uint16_t> offsets = iclforge::ac4::detail::tables::sfb_offsets_48(1024);
+    const std::span<const std::uint16_t> offsets =
+        iclforge::ac4::detail::tables::sfb_offsets_48(1024);
     REQUIRE(offsets.size() > 11);
     iclforge::ac4::detail::SfData first;
     iclforge::ac4::detail::SfData second;
@@ -209,8 +214,8 @@ TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo process
             for (int sfb = 0; sfb < data.max_sfb[static_cast<std::size_t>(g)]; ++sfb) {
                 const auto si = static_cast<std::size_t>(sfb);
                 for (int k = offsets[si]; k < offsets[si + 1]; ++k) {
-                    lines.push_back(static_cast<iclforge::ac4::detail::Real>(1000.0 * track + 100.0 * g +
-                                                                   (k - offsets[si]) + 0.01 * sfb));
+                    lines.push_back(static_cast<iclforge::ac4::detail::Real>(
+                        1000.0 * track + 100.0 * g + (k - offsets[si]) + 0.01 * sfb));
                 }
             }
         }
@@ -366,15 +371,17 @@ namespace {
 constexpr std::array<double, 10> kTones514 = {331.0, 457.0,  613.0,  47.0,   787.0,
                                               953.0, 1117.0, 1289.0, 1453.0, 1621.0};
 constexpr std::array<iclforge::ac4::Speaker, 10> kTone514Speakers = {
-    iclforge::ac4::Speaker::kLeft,         iclforge::ac4::Speaker::kRight,         iclforge::ac4::Speaker::kCentre,
-    iclforge::ac4::Speaker::kLfe,          iclforge::ac4::Speaker::kLeftSurround,  iclforge::ac4::Speaker::kRightSurround,
-    iclforge::ac4::Speaker::kTopFrontLeft, iclforge::ac4::Speaker::kTopFrontRight, iclforge::ac4::Speaker::kTopBackLeft,
-    iclforge::ac4::Speaker::kTopBackRight};
-const std::vector<iclforge::ac4::Speaker> k514 = {iclforge::ac4::Speaker::kLeft,         iclforge::ac4::Speaker::kRight,
-                                        iclforge::ac4::Speaker::kCentre,       iclforge::ac4::Speaker::kLfe,
-                                        iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround,
-                                        iclforge::ac4::Speaker::kTopFrontLeft, iclforge::ac4::Speaker::kTopFrontRight,
-                                        iclforge::ac4::Speaker::kTopBackLeft,  iclforge::ac4::Speaker::kTopBackRight};
+    iclforge::ac4::Speaker::kLeft,         iclforge::ac4::Speaker::kRight,
+    iclforge::ac4::Speaker::kCentre,       iclforge::ac4::Speaker::kLfe,
+    iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround,
+    iclforge::ac4::Speaker::kTopFrontLeft, iclforge::ac4::Speaker::kTopFrontRight,
+    iclforge::ac4::Speaker::kTopBackLeft,  iclforge::ac4::Speaker::kTopBackRight};
+const std::vector<iclforge::ac4::Speaker> k514 = {
+    iclforge::ac4::Speaker::kLeft,         iclforge::ac4::Speaker::kRight,
+    iclforge::ac4::Speaker::kCentre,       iclforge::ac4::Speaker::kLfe,
+    iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround,
+    iclforge::ac4::Speaker::kTopFrontLeft, iclforge::ac4::Speaker::kTopFrontRight,
+    iclforge::ac4::Speaker::kTopBackLeft,  iclforge::ac4::Speaker::kTopBackRight};
 
 // Each tone's level in each channel, in dB relative to -20 dBFS, past the
 // first and last half second: [channel][tone].
@@ -406,8 +413,8 @@ TEST_CASE("the immersive element's SCPL and ASPX_SCPL streams decode each tone t
     using S = iclforge::ac4::Speaker;
     for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512"}) {
         CAPTURE(leg);
-        const Decoded decoded =
-            decode_all(leg, iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
+        const Decoded decoded = decode_all(leg, iclforge::ac4::DecodingMode::kFull,
+                                           iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
         REQUIRE(decoded.speakers == k514);
         const auto levels = tone_levels(decoded);
         for (std::size_t t = 0; t < kTones514.size(); ++t) {
@@ -428,8 +435,8 @@ TEST_CASE("the immersive element's SCPL and ASPX_SCPL streams decode each tone t
         if (kSanitized && std::string_view{leg} != "ac4-514-tones-768") {
             continue;
         }
-        const Decoded wide =
-            decode_all(leg, iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DownmixTarget::k7X4, kLegFrames);
+        const Decoded wide = decode_all(leg, iclforge::ac4::DecodingMode::kFull,
+                                        iclforge::ac4::DownmixTarget::k7X4, kLegFrames);
         REQUIRE(wide.speakers.size() == 12);
         for (const S back : {S::kLeftBack, S::kRightBack}) {
             for (const float x : wide.channels[channel_of(wide, back)]) {
@@ -491,8 +498,8 @@ TEST_CASE("core decoding gives the immersive element's 5.X.2 core at the core ga
     const double down = 20.0 * std::log10(std::numbers::sqrt2 / 2.0);
     for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512", "ac4-514-tones-256"}) {
         CAPTURE(leg);
-        const Decoded decoded =
-            decode_all(leg, iclforge::ac4::DecodingMode::kCore, iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
+        const Decoded decoded = decode_all(leg, iclforge::ac4::DecodingMode::kCore,
+                                           iclforge::ac4::DownmixTarget::kAsCoded, kLegFrames);
         REQUIRE(decoded.speakers == std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe,
                                                    S::kLeftSurround, S::kRightSurround,
                                                    S::kTopSideLeft, S::kTopSideRight});
@@ -596,7 +603,8 @@ TEST_CASE(
                 continue;
             }
             CAPTURE(leg, core);
-            const Decoded coded = decode_all(leg, decoding, iclforge::ac4::DownmixTarget::kAsCoded, frames);
+            const Decoded coded =
+                decode_all(leg, decoding, iclforge::ac4::DownmixTarget::kAsCoded, frames);
             const auto in = tone_phasors(coded);
             const Mixes five = {
                 {S::kLeft, {{S::kLeft, 1.0}}},
@@ -627,8 +635,9 @@ TEST_CASE(
             };
             const Mixes two = {{S::kLeft, lo_ro(S::kLeft, S::kLeftSurround)},
                                {S::kRight, lo_ro(S::kRight, S::kRightSurround)}};
-            for (const auto& [target, mixes] : {std::pair{iclforge::ac4::DownmixTarget::k5X, five},
-                                                std::pair{iclforge::ac4::DownmixTarget::kLoRo, two}}) {
+            for (const auto& [target, mixes] :
+                 {std::pair{iclforge::ac4::DownmixTarget::k5X, five},
+                  std::pair{iclforge::ac4::DownmixTarget::kLoRo, two}}) {
                 CAPTURE(iclforge::ac4::describe(target));
                 const Decoded rendered = decode_all(leg, decoding, target, frames);
                 REQUIRE(rendered.speakers.size() == mixes.size());

@@ -453,8 +453,8 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
          .dependents = {{.bitrate_kbps = 192,
                          .acmod = iclforge::Acmod::k2_0,
                          .chanmap = cm::k512Height,
-                         .mixing = iclforge::meta::MixMetadata{.ltrtsurmixlev =
-                                                              iclforge::meta::MixLevel::kMinus3dB}}}});
+                         .mixing = iclforge::meta::MixMetadata{
+                             .ltrtsurmixlev = iclforge::meta::MixLevel::kMinus3dB}}}});
     REQUIRE(unit.has_value());
     REQUIRE(unit->substream_count() == 2);
     const auto dependent = iclforge::emdf::walk_frame(unit->substream(1));

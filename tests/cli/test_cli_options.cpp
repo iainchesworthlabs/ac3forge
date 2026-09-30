@@ -791,10 +791,11 @@ TEST_CASE("AC-3 centre and surround downmix levels reach the bsi a decoder reads
         iclforge::meta::CentreMixLevel cmixlev;
         iclforge::meta::SurroundMixLevel surmixlev;
     };
-    for (const auto& c : {Case{"cmixlev=-4.5 surmixlev=-6", iclforge::meta::CentreMixLevel::kMinus4_5dB,
-                               iclforge::meta::SurroundMixLevel::kMinus6dB},
-                          Case{"cmixlev=-6 surmixlev=off", iclforge::meta::CentreMixLevel::kMinus6dB,
-                               iclforge::meta::SurroundMixLevel::kSilent}}) {
+    for (const auto& c :
+         {Case{"cmixlev=-4.5 surmixlev=-6", iclforge::meta::CentreMixLevel::kMinus4_5dB,
+               iclforge::meta::SurroundMixLevel::kMinus6dB},
+          Case{"cmixlev=-6 surmixlev=off", iclforge::meta::CentreMixLevel::kMinus6dB,
+               iclforge::meta::SurroundMixLevel::kSilent}}) {
         CAPTURE(c.tokens);
         fs::remove(out_path);
         const auto rc = run_cli("encode \"" + wav.string() + "\" \"" + out_path.string() +

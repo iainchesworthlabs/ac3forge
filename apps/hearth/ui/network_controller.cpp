@@ -119,7 +119,8 @@ bool g_network_discovery = true;
 }
 [[nodiscard]] iclforge::render::Speaker::Realization realization_from_name(const QString& name) {
     if (name == QStringLiteral("ceiling")) return iclforge::render::Speaker::Realization::kTop;
-    if (name == QStringLiteral("upfiring")) return iclforge::render::Speaker::Realization::kUpFiring;
+    if (name == QStringLiteral("upfiring"))
+        return iclforge::render::Speaker::Realization::kUpFiring;
     return iclforge::render::Speaker::Realization::kHeight;
 }
 
@@ -278,7 +279,8 @@ struct LayoutFields {
     QVariantList routing;
     routing.reserve(static_cast<qsizetype>(fields.labels.size()));
     const std::optional<iclforge::render::Routing> parsed_routing =
-        settings.routing ? iclforge::render::Routing::parse(*settings.routing, outputs) : std::nullopt;
+        settings.routing ? iclforge::render::Routing::parse(*settings.routing, outputs)
+                         : std::nullopt;
     for (std::size_t slot = 0; slot < static_cast<std::size_t>(fields.labels.size()); ++slot) {
         routing.push_back(parsed_routing ? parsed_routing->output_of(slot) : iclforge::render::Routing::kUnassigned);
     }
@@ -326,7 +328,8 @@ struct LayoutFields {
 // `refused` is set when the last push this window made to this sink was
 // not sent (NetworkController::note_push()): that, not "Nothing sent yet.",
 // is what the report has to say then.
-[[nodiscard]] QVariantMap sink_report_to_map(const iclforge::hearth::SinkFacts& facts, bool refused) {
+[[nodiscard]] QVariantMap sink_report_to_map(const iclforge::hearth::SinkFacts& facts,
+                                             bool refused) {
     QVariantMap map;
     if (!facts.ac3forge_support) {
         return map;
@@ -430,7 +433,8 @@ struct LayoutFields {
 // way the settings pages' own fields do (this file's header comment on A6's
 // second slice). poll() computes it once, from status.groups, and passes it
 // in here - the same boundary, drawn for the same reason.
-[[nodiscard]] QVariantMap detail_to_variant(const iclforge::hearth::SinkDetail& detail, bool in_group) {
+[[nodiscard]] QVariantMap detail_to_variant(const iclforge::hearth::SinkDetail& detail,
+                                            bool in_group) {
     QVariantMap map;
     map[QStringLiteral("id")] = QString::fromStdString(detail.id);
     map[QStringLiteral("name")] = QString::fromStdString(detail.name);
@@ -588,8 +592,8 @@ void NetworkController::start() {
     }
     // The Settings page's own name for this computer (network/name), or
     // "Hearth on <host>" until the person gives one.
-    const iclforge::hearth::EngineSettings settings =
-        iclforge::hearth::load_settings(*settings_store_, QSysInfo::machineHostName().toStdString());
+    const iclforge::hearth::EngineSettings settings = iclforge::hearth::load_settings(
+        *settings_store_, QSysInfo::machineHostName().toStdString());
     const iclforge::hearth::NetworkSinksOptions options{.browse = g_network_discovery};
     sinks_engine_ = std::make_unique<iclforge::hearth::NetworkSinks>(*identity, settings.network.name, *pairing_store_,
                                                                 options);
@@ -896,8 +900,8 @@ void NetworkController::chooseSinkFirmwareFile(const QUrl& file) {
     } else {
         const QByteArray bytes = image.readAll();
         const auto* first = reinterpret_cast<const std::uint8_t*>(bytes.constData());
-        iclforge::hearth::ReadFirmwareFile read =
-            iclforge::hearth::read_firmware_file(std::vector<std::uint8_t>(first, first + bytes.size()));
+        iclforge::hearth::ReadFirmwareFile read = iclforge::hearth::read_firmware_file(
+            std::vector<std::uint8_t>(first, first + bytes.size()));
         if (!read.file) {
             candidate[QStringLiteral("refusal")] = QString::fromStdString(read.why);
         } else {
@@ -908,7 +912,8 @@ void NetworkController::chooseSinkFirmwareFile(const QUrl& file) {
             candidate[QStringLiteral("text")] = QString::fromStdString(checked.text);
             candidate[QStringLiteral("refusal")] = QString::fromStdString(checked.refusal);
             if (checked.refusal.empty()) {
-                firmware_file_ = std::make_unique<iclforge::hearth::FirmwareFile>(std::move(*read.file));
+                firmware_file_ =
+                    std::make_unique<iclforge::hearth::FirmwareFile>(std::move(*read.file));
                 firmware_file_sink_id_ = firmware_sink_id_;
             }
         }

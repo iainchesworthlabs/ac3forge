@@ -150,9 +150,10 @@ Rendered encode_decode_render(std::span<const float> in, Domain domain, bool obj
         .position = {.x = 0.5, .y = 0.0, .z = 0.0}, .gain = 1.0, .lfe_send = 1.0};
 
     const OutputLayout layout = *OutputLayout::named("5.1");
-    const iclforge::render::Serving serving = iclforge::render::serve(
-        layout, iclforge::DownmixTarget::kLoRo,
-        objects ? iclforge::render::ObjectsPolicy::kAlways : iclforge::render::ObjectsPolicy::kNever);
+    const iclforge::render::Serving serving =
+        iclforge::render::serve(layout, iclforge::DownmixTarget::kLoRo,
+                                objects ? iclforge::render::ObjectsPolicy::kAlways
+                                        : iclforge::render::ObjectsPolicy::kNever);
     REQUIRE_FALSE(serving.fold.has_value());
     REQUIRE(serving.reconstruct == objects);
     iclforge::DecoderConfig config;
@@ -317,8 +318,10 @@ TEST_CASE("the bed's LFE and its other channels arrive together", "[render][late
 
     CHECK(best_lag(in, bed.speakers, 0, 2 * iclforge::kSamplesPerFrame) ==
           iclforge::kTransformDelaySamples);
-    CHECK(best_lag(in, bed.lfe, 0, 2 * iclforge::kSamplesPerFrame) == iclforge::kTransformDelaySamples);
-    CHECK(best_lag(bed.lfe, bed.speakers, -iclforge::kSamplesPerFrame, iclforge::kSamplesPerFrame) == 0);
+    CHECK(best_lag(in, bed.lfe, 0, 2 * iclforge::kSamplesPerFrame) ==
+          iclforge::kTransformDelaySamples);
+    CHECK(best_lag(bed.lfe, bed.speakers, -iclforge::kSamplesPerFrame,
+                   iclforge::kSamplesPerFrame) == 0);
 }
 
 TEST_CASE("the objects' LFE arrives with the objects", "[render][latency]") {
@@ -335,8 +338,8 @@ TEST_CASE("the objects' LFE arrives with the objects", "[render][latency]") {
 
     const int to_speakers = best_lag(in, placed.speakers, 0, 2 * iclforge::kSamplesPerFrame);
     const int to_lfe = best_lag(in, placed.lfe, 0, 2 * iclforge::kSamplesPerFrame);
-    const int lfe_to_speakers =
-        best_lag(placed.lfe, placed.speakers, -iclforge::kSamplesPerFrame, iclforge::kSamplesPerFrame);
+    const int lfe_to_speakers = best_lag(placed.lfe, placed.speakers, -iclforge::kSamplesPerFrame,
+                                         iclforge::kSamplesPerFrame);
     CAPTURE(to_speakers, to_lfe, lfe_to_speakers);
     // The objects are where test_latency.cpp says a reconstructed object is.
     CHECK(to_speakers == object_lag);
@@ -347,8 +350,9 @@ TEST_CASE("the objects' LFE arrives with the objects", "[render][latency]") {
 
 TEST_CASE("the renderer's lag is the one the decoder's default domain has", "[render]") {
     const LayoutRenderer renderer{*OutputLayout::named("5.1")};
-    CHECK(renderer.object_lag() == static_cast<std::size_t>(iclforge::oba::joc::reconstruction_delay(
-                                       iclforge::DecoderConfig{}.joc_domain)));
+    CHECK(renderer.object_lag() ==
+          static_cast<std::size_t>(
+              iclforge::oba::joc::reconstruction_delay(iclforge::DecoderConfig{}.joc_domain)));
 }
 
 TEST_CASE("render holds the bed's LFE back by the objects' lag, whatever the block length",

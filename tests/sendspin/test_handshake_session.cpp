@@ -303,7 +303,8 @@ TEST_CASE("handshake session: aiosendspin 9.1.1's message 1 names no category",
                                            server_identity, init->client_key, prologue);
     const std::optional<Digest32> id = hs::psk_id(psk);
     REQUIRE(id.has_value());
-    const std::string payload = R"({"psk_id":")" + iclforge::sendspin::base64url::encode(*id) + R"("})";
+    const std::string payload =
+        R"({"psk_id":")" + iclforge::sendspin::base64url::encode(*id) + R"("})";
     std::vector<std::uint8_t> message_1;
     REQUIRE(server.write_message_1(bytes_of(payload), message_1));
 

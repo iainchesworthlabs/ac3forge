@@ -1,9 +1,9 @@
 // The AC-4 C entry points' argument and error arms, and the accessors the round trips in
-// test_capi.cpp do not reach: what a NULL argument, an index past the end, an enumerator outside its
-// enumeration, a stream that does not decode, a decoder setting, or a change of one while a stream
-// plays leaves the call to answer. Each answer is held against the C++ API the entry point wraps:
-// the same bytes go to iclforge::ac4::Decoder, the same configuration to iclforge::ac4::Encoder, and the two must
-// agree. The cases carry test_capi.cpp's [capi][ac4] tags.
+// test_capi.cpp do not reach: what a NULL argument, an index past the end, an enumerator outside
+// its enumeration, a stream that does not decode, a decoder setting, or a change of one while a
+// stream plays leaves the call to answer. Each answer is held against the C++ API the entry point
+// wraps: the same bytes go to iclforge::ac4::Decoder, the same configuration to
+// iclforge::ac4::Encoder, and the two must agree. The cases carry test_capi.cpp's [capi][ac4] tags.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -151,16 +151,19 @@ ac3forge_status_t status_of(iclforge::ac4::DecodeError error) {
     switch (error) {
         case iclforge::ac4::DecodeError::kTruncated: return AC3FORGE_ERROR_AC4_DECODE_TRUNCATED;
         case iclforge::ac4::DecodeError::kInvalidToc: return AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC;
-        case iclforge::ac4::DecodeError::kInvalidStream: return AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM;
+        case iclforge::ac4::DecodeError::kInvalidStream:
+            return AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM;
         case iclforge::ac4::DecodeError::kUnsupported: return AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED;
-        case iclforge::ac4::DecodeError::kMissingIFrame: return AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME;
+        case iclforge::ac4::DecodeError::kMissingIFrame:
+            return AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME;
     }
     return AC3FORGE_ERROR_INTERNAL;
 }
 
 // Every accessor of a decoded frame against the C++ frame it wraps, and each one past the last
 // channel, object and update.
-void check_frame(const ac3forge_ac4_decoded_frame_t* frame, const iclforge::ac4::DecodedFrame& want) {
+void check_frame(const ac3forge_ac4_decoded_frame_t* frame,
+                 const iclforge::ac4::DecodedFrame& want) {
     CHECK(ac3forge_ac4_decoded_frame_sample_rate_hz(frame) == want.sample_rate_hz);
     CHECK(ac3forge_ac4_decoded_frame_sequence_counter(frame) == want.sequence_counter);
     CHECK(ac3forge_ac4_decoded_frame_presentation_index(frame) == want.presentation);
@@ -282,7 +285,8 @@ Outcome decode_both(ac3forge_ac4_decoder_t* decoder, iclforge::ac4::Decoder& ref
 }
 
 // The decoder's presentations, one past the last included, against the C++ decoder's.
-void check_presentations(const ac3forge_ac4_decoder_t* decoder, const iclforge::ac4::Decoder& reference) {
+void check_presentations(const ac3forge_ac4_decoder_t* decoder,
+                         const iclforge::ac4::Decoder& reference) {
     const std::span<const iclforge::ac4::PresentationInfo> want = reference.presentations();
     REQUIRE(ac3forge_ac4_decoder_presentation_count(decoder) == want.size());
     for (std::size_t p = 0; p < want.size(); ++p) {
@@ -333,7 +337,8 @@ void check_presentations(const ac3forge_ac4_decoder_t* decoder, const iclforge::
 }
 
 // The loudness metadata the last frames sent, against the C++ decoder's.
-void check_loudness(const ac3forge_ac4_decoder_t* decoder, const iclforge::ac4::Decoder& reference) {
+void check_loudness(const ac3forge_ac4_decoder_t* decoder,
+                    const iclforge::ac4::Decoder& reference) {
     const ac3forge_ac4_loudness_info_t got = ac3forge_ac4_decoder_metadata_loudness(decoder);
     const iclforge::ac4::LoudnessInfo& want = reference.metadata().loudness;
     CHECK((got.has_dialnorm_dbfs != 0) == want.dialnorm_dbfs.has_value());
@@ -348,8 +353,9 @@ void check_loudness(const ac3forge_ac4_decoder_t* decoder, const iclforge::ac4::
 
 }  // namespace
 
-TEST_CASE("AC-4 decoded frame and presentation accessors report what iclforge::ac4::Decoder decodes",
-          "[capi][ac4]") {
+TEST_CASE(
+    "AC-4 decoded frame and presentation accessors report what iclforge::ac4::Decoder decodes",
+    "[capi][ac4]") {
     const Stream stream = stereo_stream();
     const CDecoder c(default_decoder_config());
     iclforge::ac4::Decoder reference;
@@ -462,8 +468,9 @@ iclforge::ac4::PresentationChoice settled_choice_cpp() {
 
 TEST_CASE("the AC-4 decoder's configuration and live settings reach the decoder", "[capi][ac4]") {
     const Stream stream = stereo_stream();
-    const auto decode_all = [&stream](ac3forge_ac4_decoder_t* decoder, iclforge::ac4::Decoder& reference,
-                                      std::size_t from, std::size_t to) {
+    const auto decode_all = [&stream](ac3forge_ac4_decoder_t* decoder,
+                                      iclforge::ac4::Decoder& reference, std::size_t from,
+                                      std::size_t to) {
         std::vector<std::vector<float>> last;
         for (std::size_t k = from; k < to; ++k) {
             Outcome outcome = decode_both(decoder, reference, stream.frames[k]);
@@ -568,8 +575,9 @@ std::vector<std::vector<std::uint8_t>> damaged(const std::vector<std::uint8_t>& 
 
 }  // namespace
 
-TEST_CASE("AC-4 decode refuses NULL arguments and answers a damaged frame as iclforge::ac4::Decoder does",
-          "[capi][ac4]") {
+TEST_CASE(
+    "AC-4 decode refuses NULL arguments and answers a damaged frame as iclforge::ac4::Decoder does",
+    "[capi][ac4]") {
     const Stream stream = stereo_stream();
     const ac3forge_ac4_decoder_config_t config = default_decoder_config();
 

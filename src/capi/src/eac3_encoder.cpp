@@ -145,7 +145,8 @@ ac3forge_status_t ac3forge_eac3_encoder_encode_frame(
             }
             spans.emplace_back(channels[i], samples_per_channel);
         }
-        const iclforge::eac3::AuxPayload aux_payload(reinterpret_cast<const std::byte*>(aux), aux_size);
+        const iclforge::eac3::AuxPayload aux_payload(reinterpret_cast<const std::byte*>(aux),
+                                                     aux_size);
         auto result = metadata != nullptr
                            ? encoder->impl.encode_frame(spans, eac3_frame_metadata_to_cpp(*metadata),
                                                          aux_payload)
@@ -235,7 +236,8 @@ ac3forge_status_t ac3forge_eac3_access_unit_encoder_encode(
             }
             spans.emplace_back(channels[i], samples_per_channel);
         }
-        const iclforge::eac3::AuxPayload aux_payload(reinterpret_cast<const std::byte*>(aux), aux_size);
+        const iclforge::eac3::AuxPayload aux_payload(reinterpret_cast<const std::byte*>(aux),
+                                                     aux_size);
         auto result = encoder->impl.encode_access_unit(spans, aux_payload);
         if (!result) {
             return ac3forge_c::from_cpp(result.error());

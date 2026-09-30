@@ -113,7 +113,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const auto render = static_cast<unsigned>(data[size - 3]);
         processing.decoding = (render & 1U) != 0 ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull;
         if ((render & 2U) != 0) {
-            processing.output.downmix = static_cast<iclforge::ac4::DownmixTarget>((render >> 2U) % 11U);
+            processing.output.downmix =
+                static_cast<iclforge::ac4::DownmixTarget>((render >> 2U) % 11U);
         }
     }
     iclforge::ac4::Decoder decoding(processing);
@@ -123,7 +124,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     later.output_level_dbfs = later.output_level_dbfs ? std::nullopt : std::optional<double>{-20.0};
     later.dialogue_enhancement_db = 6.0;
     std::uint64_t samples = 0;
-    const auto sink = [&samples](const iclforge::ac4::PcmBlock& block) { samples += block.samples; };
+    const auto sink = [&samples](const iclforge::ac4::PcmBlock& block) {
+        samples += block.samples;
+    };
     const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(bytes);
     for (std::size_t f = 0; f < scan.frames.size(); ++f) {
         const std::span<const std::byte> frame = scan.frames[f].raw_ac4_frame;

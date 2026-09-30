@@ -98,7 +98,8 @@ std::vector<float> delay_pcm(std::span<const float> pcm, std::size_t delay_sampl
 // folded (OutputStage refuses it - 1+1 is two programmes, not a soundfield),
 // so it keeps the coded path whatever the target says.
 bool folding(const ac3cli::Options& meta, iclforge::Acmod acmod) {
-    return meta.output.target != iclforge::DownmixTarget::kAsCoded && acmod != iclforge::Acmod::kDualMono;
+    return meta.output.target != iclforge::DownmixTarget::kAsCoded &&
+           acmod != iclforge::Acmod::kDualMono;
 }
 
 // The one-line name for whatever the fold produced, for the status report.
@@ -172,7 +173,8 @@ void print_concealment_summary(FILE* status, std::size_t concealed, std::size_t 
 // container. The object WAVs themselves are streamed out by per-object sinks
 // as the decode runs (run_decode_eac3's append_objects) - by the time this
 // prints, the files are already closed; this only says what happened.
-int report_decoded_objects(FILE* status, const std::optional<iclforge::oba::DecodedProgram>& metadata,
+int report_decoded_objects(FILE* status,
+                           const std::optional<iclforge::oba::DecodedProgram>& metadata,
                            bool have_object_audio, std::size_t objects_written,
                            std::string_view objects_dir) {
     print_object_summary(status, metadata,
@@ -238,10 +240,11 @@ void print_bsi_summary(FILE* status, const iclforge::meta::BsiInfo& info, iclfor
     // printing it would suggest a bit that was never read.
     const auto production = [&](std::string_view prefix,
                                 const iclforge::meta::AudioProduction& value) {
-        status_println(status, "  {}mixed at {} dB SPL, {}{}", prefix,
-                       iclforge::meta::mix_level_db_spl(value.mixlevel),
-                       iclforge::meta::describe(value.roomtyp),
-                       value.adconvtyp == iclforge::meta::AdConverterType::kHdcd ? ", A/D HDCD" : "");
+        status_println(
+            status, "  {}mixed at {} dB SPL, {}{}", prefix,
+            iclforge::meta::mix_level_db_spl(value.mixlevel),
+            iclforge::meta::describe(value.roomtyp),
+            value.adconvtyp == iclforge::meta::AdConverterType::kHdcd ? ", A/D HDCD" : "");
     };
     if (info.audprod.has_value()) {
         production("", *info.audprod);
@@ -389,10 +392,10 @@ std::string ac4_decoding(iclforge::ac4::DecodingMode decoding) {
 }
 
 // AC-4 objects into an ADM BWF master (planning/ac4.md, I5), reusing decode_adm.hpp's writer
-// (ac3cli::write_adm_atmos_master) rather than a second one: iclforge::ac4::Speaker and iclforge::oba::BedLabel
-// name the same seventeen loudspeaker positions in the same order (both TS 103 190-2 Annex F.3 and
-// this project's own bed labels descend from the same room layout), so a bed object's speaker
-// carries over by position.
+// (ac3cli::write_adm_atmos_master) rather than a second one: iclforge::ac4::Speaker and
+// iclforge::oba::BedLabel name the same seventeen loudspeaker positions in the same order (both TS
+// 103 190-2 Annex F.3 and this project's own bed labels descend from the same room layout), so a
+// bed object's speaker carries over by position.
 iclforge::oba::BedLabel to_oba_bed_label(iclforge::ac4::Speaker speaker) {
     switch (speaker) {
         case iclforge::ac4::Speaker::kLeft: return iclforge::oba::BedLabel::kL;
@@ -416,19 +419,19 @@ iclforge::oba::BedLabel to_oba_bed_label(iclforge::ac4::Speaker speaker) {
     return iclforge::oba::BedLabel::kLfe;
 }
 
-// iclforge::ac4::ObjectProperties (TS 103 190-2 Annex F) into iclforge::oba::DynamicObject (this project's own
-// ADM-facing object model, TS 103 420 §5.6.1): position and gain carry over as
+// iclforge::ac4::ObjectProperties (TS 103 190-2 Annex F) into iclforge::oba::DynamicObject (this
+// project's own ADM-facing object model, TS 103 420 §5.6.1): position and gain carry over as
 // run_atmos_objects_to_ac4 (atmos.cpp) documents for the encode direction, and every other Annex F
 // field this decoder reports has a same-shaped §5.6.1 counterpart (size, priority, snap,
 // elevation-enable, screen reference/factor, depth factor, distance, divergence, active) except
 // zone_mask, trim_disabled, headphone_render_mode and head_track_disabled, which have no ADM
 // representation and are dropped here (they reach neither ADM's schema nor this decode's other
 // outputs, objects_dir and the rendered WAV, so nothing this decode already promised is lost).
-// zone_mask (Annex F.8, Table 104) and iclforge::oba::ZoneConstraint (TS 103 420 Table 20) number the
-// same six room-zone constraints alike, 0 to 5. Table 104 goes on to 6, "Only proscenium zone
-// enabled", which TS 103 420 has no counterpart for (its 6 and 7 are reserved), and reserves 7: both
-// fall back to kNone rather than carry a code the E-AC-3 side cannot hold into the ADM file. Checked
-// against both tables' text, 2026-09-29.
+// zone_mask (Annex F.8, Table 104) and iclforge::oba::ZoneConstraint (TS 103 420 Table 20) number
+// the same six room-zone constraints alike, 0 to 5. Table 104 goes on to 6, "Only proscenium zone
+// enabled", which TS 103 420 has no counterpart for (its 6 and 7 are reserved), and reserves 7:
+// both fall back to kNone rather than carry a code the E-AC-3 side cannot hold into the ADM file.
+// Checked against both tables' text, 2026-09-29.
 iclforge::oba::DynamicObject to_oba_dynamic_object(const iclforge::ac4::ObjectProperties& p) {
     iclforge::oba::DynamicObject out;
     out.position = {.x = p.position[0], .y = p.position[1], .z = p.position[2]};
@@ -664,7 +667,8 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
                 return kExitOutput;
             }
             meter_order = ac4_order(speakers, ac4_meter_rank);
-            const bool lfe = std::ranges::find(speakers, iclforge::ac4::Speaker::kLfe) != speakers.end();
+            const bool lfe =
+                std::ranges::find(speakers, iclforge::ac4::Speaker::kLfe) != speakers.end();
             meter.emplace(ac4_bed_acmod(speakers), lfe,
                           static_cast<std::uint32_t>(pcm.sample_rate_hz),
                           static_cast<int>(speakers.size()));
@@ -766,9 +770,10 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
                        waiting_frames);
     }
     if (concealed_frames > 0) {
-        status_println(
-            status, "          {} of them concealed ({})", concealed_frames,
-            config.concealment == iclforge::ac4::ConcealmentPolicy::kMute ? "muted" : "repeated and faded");
+        status_println(status, "          {} of them concealed ({})", concealed_frames,
+                       config.concealment == iclforge::ac4::ConcealmentPolicy::kMute
+                           ? "muted"
+                           : "repeated and faded");
     }
     status_println(status, "          {}", ac4_processing(config.output));
     // Emplaced with the first decoded frame, and decoded_frames > 0 here.
@@ -920,20 +925,23 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // duration from it - see bridge.cpp's own build_block_formats).
     //
     // The LFE channel this lambda appends below is NOT yet delayed to match the objects beside
-    // it - decode_access_unit hands the two to it already iclforge::oba::joc::reconstruction_delay()
-    // samples apart (docs/library/decoding.md, "Atmos objects lag the bed"), and appending both
-    // verbatim, unit by unit, carries that same gap straight into adm_input.channels. delay_pcm()
-    // fixes it in one pass, once, on the finished LFE channel below rather than here per unit -
-    // this lambda has no reason to know the decoder's own joc_domain.
+    // it - decode_access_unit hands the two to it already
+    // iclforge::oba::joc::reconstruction_delay() samples apart (docs/library/decoding.md, "Atmos
+    // objects lag the bed"), and appending both verbatim, unit by unit, carries that same gap
+    // straight into adm_input.channels. delay_pcm() fixes it in one pass, once, on the finished LFE
+    // channel below rather than here per unit - this lambda has no reason to know the decoder's own
+    // joc_domain.
     const bool have_adm_output = !adm_out.empty();
     ac3cli::AdmMasterInput adm_input;
     bool adm_input_ready = false;
     bool adm_bed_warned = false;
     std::uint64_t adm_samples_emitted = 0;
     const auto accumulate_adm = [&](const std::vector<std::vector<float>>& object_audio,
-                                    const std::optional<iclforge::oba::DecodedProgram>& object_metadata,
+                                    const std::optional<iclforge::oba::DecodedProgram>&
+                                        object_metadata,
                                     std::span<const std::vector<float>> channels,
-                                    iclforge::eac3::chanmap::Layout layout, std::uint32_t sample_rate) {
+                                    iclforge::eac3::chanmap::Layout layout,
+                                    std::uint32_t sample_rate) {
         if (!have_adm_output || object_audio.empty() || !object_metadata) {
             return;
         }
@@ -1021,23 +1029,24 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // and the rest of the fixed-size array is never written (DecodedSubstream::
     // dynrng's own comment) - folding those unwritten, always-unity entries in
     // here would understate the true range for any such stream.
-    const auto track_metadata = [&](const std::array<std::uint8_t, iclforge::kBlocksPerFrame>& dynrng,
-                                    int numblkscod, std::optional<std::uint8_t> compr) {
-        const auto nblks =
-            static_cast<std::size_t>(iclforge::eac3::blocks_per_syncframe(numblkscod));
-        for (std::size_t i = 0; i < nblks; ++i) {
-            const double db = iclforge::meta::to_db(iclforge::meta::dynrng_gain(dynrng[i]));
-            dynrng_min_db = dynrng_words == 0 ? db : std::min(dynrng_min_db, db);
-            dynrng_max_db = dynrng_words == 0 ? db : std::max(dynrng_max_db, db);
-            ++dynrng_words;
-        }
-        if (compr.has_value()) {
-            const double db = iclforge::meta::to_db(iclforge::meta::compr_gain(*compr));
-            compr_min_db = compr_frames == 0 ? db : std::min(compr_min_db, db);
-            compr_max_db = compr_frames == 0 ? db : std::max(compr_max_db, db);
-            ++compr_frames;
-        }
-    };
+    const auto track_metadata =
+        [&](const std::array<std::uint8_t, iclforge::kBlocksPerFrame>& dynrng, int numblkscod,
+            std::optional<std::uint8_t> compr) {
+            const auto nblks =
+                static_cast<std::size_t>(iclforge::eac3::blocks_per_syncframe(numblkscod));
+            for (std::size_t i = 0; i < nblks; ++i) {
+                const double db = iclforge::meta::to_db(iclforge::meta::dynrng_gain(dynrng[i]));
+                dynrng_min_db = dynrng_words == 0 ? db : std::min(dynrng_min_db, db);
+                dynrng_max_db = dynrng_words == 0 ? db : std::max(dynrng_max_db, db);
+                ++dynrng_words;
+            }
+            if (compr.has_value()) {
+                const double db = iclforge::meta::to_db(iclforge::meta::compr_gain(*compr));
+                compr_min_db = compr_frames == 0 ? db : std::min(compr_min_db, db);
+                compr_max_db = compr_frames == 0 ? db : std::max(compr_max_db, db);
+                ++compr_frames;
+            }
+        };
     Progress progress;
     progress.start("decoding", units->size());
     std::uint64_t units_done = 0;
@@ -1169,8 +1178,9 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             // there is no need to have tracked which index it landed at above.
             if (!adm_input.channels.empty() && adm_input.channels.back().bed_label.has_value()) {
                 auto& lfe = adm_input.channels.back().pcm;
-                lfe = delay_pcm(lfe, static_cast<std::size_t>(iclforge::oba::joc::reconstruction_delay(
-                                         meta.joc_domain)));
+                lfe =
+                    delay_pcm(lfe, static_cast<std::size_t>(
+                                       iclforge::oba::joc::reconstruction_delay(meta.joc_domain)));
             }
             const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
             if (!written_adm.has_value()) {
@@ -1369,10 +1379,10 @@ int run_decode(std::string_view in_path, std::string_view out_path,
             // L then R, or the one mono channel - so it takes the identity
             // permutation rather than the coded layout's.
             const bool folded = folding(meta, decoded->acmod);
-            if (!sink.open(out_path, sample_rate_hz(decoded->sample_rate),
-                           decoded->channels.size(),
-                           folded ? std::vector<std::size_t>{}
-                                  : iclforge::io::wav_channel_order(decoded->acmod, decoded->lfe))) {
+            if (!sink.open(out_path, sample_rate_hz(decoded->sample_rate), decoded->channels.size(),
+                           folded
+                               ? std::vector<std::size_t>{}
+                               : iclforge::io::wav_channel_order(decoded->acmod, decoded->lfe))) {
                 fmt::println(stderr, "error: cannot open {} for writing", out_path);
                 return kExitOutput;
             }
@@ -1458,7 +1468,8 @@ int run_decode(std::string_view in_path, std::string_view out_path,
                            iclforge::meta::describe(extended.dheadphonmod));
         }
         if (extended.adconvtyp != iclforge::meta::AdConverterType::kStandard) {
-            status_println(status, "  A/D converter: {}", iclforge::meta::describe(extended.adconvtyp));
+            status_println(status, "  A/D converter: {}",
+                           iclforge::meta::describe(extended.adconvtyp));
         }
     }
     if (first.alternate_bsi.has_value() && first.alternate_bsi->mix.has_value()) {

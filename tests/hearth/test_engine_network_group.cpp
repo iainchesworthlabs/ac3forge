@@ -457,7 +457,8 @@ TEST_CASE(
         renderer.set_bed(testsink::ac4_bed(pcm.speakers));
         std::vector<std::span<const float>> channels(pcm.channels.size());
         for (std::size_t at = 0; at < pcm.samples; at += iclforge::kSamplesPerBlock) {
-            const std::size_t m = std::min<std::size_t>(iclforge::kSamplesPerBlock, pcm.samples - at);
+            const std::size_t m =
+                std::min<std::size_t>(iclforge::kSamplesPerBlock, pcm.samples - at);
             for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
                 channels[c] = std::span<const float>(pcm.channels[c]).subspan(at, m);
             }

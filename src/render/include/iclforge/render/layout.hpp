@@ -693,8 +693,8 @@ class OutputLayout {
         for (std::size_t i = 0; i < count_; ++i) {
             Speaker& speaker = speakers_[i];
             if (speaker.location.has_value() && speaker.kind == Speaker::Kind::kSpeaker) {
-                speaker.direction =
-                    iclforge::spatial::direction_of(*speaker.location, has_rears, has_side_discrete);
+                speaker.direction = iclforge::spatial::direction_of(*speaker.location, has_rears,
+                                                                    has_side_discrete);
                 if (speaker.realization == Speaker::Realization::kTop) {
                     speaker.direction.elevation_deg = 90.0;
                 }

@@ -49,7 +49,8 @@ TEST_CASE("cpace: prepend_len and lv_cat vectors", "[sendspin][cpace]") {
         range[i] = static_cast<std::uint8_t>(i);
     }
     out.clear();
-    iclforge::sendspin::cpace::append_prepend_len(out, std::span<const std::uint8_t>(range).first(127));
+    iclforge::sendspin::cpace::append_prepend_len(out,
+                                                  std::span<const std::uint8_t>(range).first(127));
     CHECK(out.size() == 128);
     CHECK(out[0] == 0x7F);
     out.clear();

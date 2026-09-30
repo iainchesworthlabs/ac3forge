@@ -31,28 +31,40 @@ static_assert(static_cast<int>(iclforge::ac4::Speaker::kLeft) == AC3FORGE_AC4_SP
 static_assert(static_cast<int>(iclforge::ac4::Speaker::kRight) == AC3FORGE_AC4_SPEAKER_RIGHT);
 static_assert(static_cast<int>(iclforge::ac4::Speaker::kCentre) == AC3FORGE_AC4_SPEAKER_CENTRE);
 static_assert(static_cast<int>(iclforge::ac4::Speaker::kLfe) == AC3FORGE_AC4_SPEAKER_LFE);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kLeftSurround) == AC3FORGE_AC4_SPEAKER_LEFT_SURROUND);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kLeftSurround) ==
+              AC3FORGE_AC4_SPEAKER_LEFT_SURROUND);
 static_assert(static_cast<int>(iclforge::ac4::Speaker::kRightSurround) == AC3FORGE_AC4_SPEAKER_RIGHT_SURROUND);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kLeftBack) == AC3FORGE_AC4_SPEAKER_LEFT_BACK);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kRightBack) == AC3FORGE_AC4_SPEAKER_RIGHT_BACK);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kLeftWide) == AC3FORGE_AC4_SPEAKER_LEFT_WIDE);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kRightWide) == AC3FORGE_AC4_SPEAKER_RIGHT_WIDE);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopFrontLeft) == AC3FORGE_AC4_SPEAKER_TOP_FRONT_LEFT);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kLeftBack) ==
+              AC3FORGE_AC4_SPEAKER_LEFT_BACK);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kRightBack) ==
+              AC3FORGE_AC4_SPEAKER_RIGHT_BACK);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kLeftWide) ==
+              AC3FORGE_AC4_SPEAKER_LEFT_WIDE);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kRightWide) ==
+              AC3FORGE_AC4_SPEAKER_RIGHT_WIDE);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopFrontLeft) ==
+              AC3FORGE_AC4_SPEAKER_TOP_FRONT_LEFT);
 static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopFrontRight) ==
               AC3FORGE_AC4_SPEAKER_TOP_FRONT_RIGHT);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopBackLeft) == AC3FORGE_AC4_SPEAKER_TOP_BACK_LEFT);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopBackRight) == AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopSideLeft) == AC3FORGE_AC4_SPEAKER_TOP_SIDE_LEFT);
-static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopSideRight) == AC3FORGE_AC4_SPEAKER_TOP_SIDE_RIGHT);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopBackLeft) ==
+              AC3FORGE_AC4_SPEAKER_TOP_BACK_LEFT);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopBackRight) ==
+              AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopSideLeft) ==
+              AC3FORGE_AC4_SPEAKER_TOP_SIDE_LEFT);
+static_assert(static_cast<int>(iclforge::ac4::Speaker::kTopSideRight) ==
+              AC3FORGE_AC4_SPEAKER_TOP_SIDE_RIGHT);
 static_assert(static_cast<int>(iclforge::ac4::Speaker::kLfe2) == AC3FORGE_AC4_SPEAKER_LFE2);
 
 static_assert(static_cast<int>(iclforge::ac4::ObjectKind::kBed) == AC3FORGE_AC4_OBJECT_BED);
 static_assert(static_cast<int>(iclforge::ac4::ObjectKind::kDyn) == AC3FORGE_AC4_OBJECT_DYN);
 static_assert(static_cast<int>(iclforge::ac4::ObjectKind::kIsf) == AC3FORGE_AC4_OBJECT_ISF);
 
-static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::kAsCoded) == AC3FORGE_AC4_DOWNMIX_AS_CODED);
+static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::kAsCoded) ==
+              AC3FORGE_AC4_DOWNMIX_AS_CODED);
 static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::k5X) == AC3FORGE_AC4_DOWNMIX_5X);
-static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::kStereo) == AC3FORGE_AC4_DOWNMIX_STEREO);
+static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::kStereo) ==
+              AC3FORGE_AC4_DOWNMIX_STEREO);
 static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::kLoRo) == AC3FORGE_AC4_DOWNMIX_LORO);
 static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::kLtRt) == AC3FORGE_AC4_DOWNMIX_LTRT);
 static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::kMono) == AC3FORGE_AC4_DOWNMIX_MONO);
@@ -64,8 +76,10 @@ static_assert(static_cast<int>(iclforge::ac4::DownmixTarget::k5X2) == AC3FORGE_A
 
 static_assert(static_cast<int>(iclforge::ac4::DrcMode::kOff) == AC3FORGE_AC4_DRC_OFF);
 static_assert(static_cast<int>(iclforge::ac4::DrcMode::kDefault) == AC3FORGE_AC4_DRC_DEFAULT);
-static_assert(static_cast<int>(iclforge::ac4::DrcMode::kHomeTheatre) == AC3FORGE_AC4_DRC_HOME_THEATRE);
-static_assert(static_cast<int>(iclforge::ac4::DrcMode::kFlatPanelTv) == AC3FORGE_AC4_DRC_FLAT_PANEL_TV);
+static_assert(static_cast<int>(iclforge::ac4::DrcMode::kHomeTheatre) ==
+              AC3FORGE_AC4_DRC_HOME_THEATRE);
+static_assert(static_cast<int>(iclforge::ac4::DrcMode::kFlatPanelTv) ==
+              AC3FORGE_AC4_DRC_FLAT_PANEL_TV);
 static_assert(static_cast<int>(iclforge::ac4::DrcMode::kPortableSpeakers) ==
               AC3FORGE_AC4_DRC_PORTABLE_SPEAKERS);
 static_assert(static_cast<int>(iclforge::ac4::DrcMode::kPortableHeadphones) ==
@@ -74,10 +88,12 @@ static_assert(static_cast<int>(iclforge::ac4::DrcMode::kPortableHeadphones) ==
 static_assert(static_cast<int>(iclforge::ac4::DecodingMode::kFull) == AC3FORGE_AC4_DECODING_FULL);
 static_assert(static_cast<int>(iclforge::ac4::DecodingMode::kCore) == AC3FORGE_AC4_DECODING_CORE);
 
-static_assert(static_cast<int>(iclforge::ac4::ConcealmentPolicy::kNone) == AC3FORGE_AC4_CONCEALMENT_NONE);
+static_assert(static_cast<int>(iclforge::ac4::ConcealmentPolicy::kNone) ==
+              AC3FORGE_AC4_CONCEALMENT_NONE);
 static_assert(static_cast<int>(iclforge::ac4::ConcealmentPolicy::kRepeatFade) ==
               AC3FORGE_AC4_CONCEALMENT_REPEAT_FADE);
-static_assert(static_cast<int>(iclforge::ac4::ConcealmentPolicy::kMute) == AC3FORGE_AC4_CONCEALMENT_MUTE);
+static_assert(static_cast<int>(iclforge::ac4::ConcealmentPolicy::kMute) ==
+              AC3FORGE_AC4_CONCEALMENT_MUTE);
 
 static_assert(static_cast<int>(iclforge::ac4::ConcealmentAction::kRepeatFade) ==
               AC3FORGE_AC4_CONCEALMENT_ACTION_REPEAT_FADE);
@@ -97,12 +113,17 @@ static_assert(static_cast<int>(iclforge::ac4::AssociatedType::kEmergencyInformat
 static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAuto) == AC3FORGE_AC4_CODEC_AUTO);
 static_assert(static_cast<int>(iclforge::ac4::CodecMode::kSimple) == AC3FORGE_AC4_CODEC_SIMPLE);
 static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspx) == AC3FORGE_AC4_CODEC_ASPX);
-static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxAcpl1) == AC3FORGE_AC4_CODEC_ASPX_ACPL1);
-static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxAcpl2) == AC3FORGE_AC4_CODEC_ASPX_ACPL2);
-static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxAcpl3) == AC3FORGE_AC4_CODEC_ASPX_ACPL3);
+static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxAcpl1) ==
+              AC3FORGE_AC4_CODEC_ASPX_ACPL1);
+static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxAcpl2) ==
+              AC3FORGE_AC4_CODEC_ASPX_ACPL2);
+static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxAcpl3) ==
+              AC3FORGE_AC4_CODEC_ASPX_ACPL3);
 static_assert(static_cast<int>(iclforge::ac4::CodecMode::kScpl) == AC3FORGE_AC4_CODEC_SCPL);
-static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxScpl) == AC3FORGE_AC4_CODEC_ASPX_SCPL);
-static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxAjcc) == AC3FORGE_AC4_CODEC_ASPX_AJCC);
+static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxScpl) ==
+              AC3FORGE_AC4_CODEC_ASPX_SCPL);
+static_assert(static_cast<int>(iclforge::ac4::CodecMode::kAspxAjcc) ==
+              AC3FORGE_AC4_CODEC_ASPX_AJCC);
 
 static_assert(static_cast<int>(iclforge::ac4::RateMode::kConstant) == AC3FORGE_AC4_RATE_CONSTANT);
 static_assert(static_cast<int>(iclforge::ac4::RateMode::kAverage) == AC3FORGE_AC4_RATE_AVERAGE);
@@ -111,31 +132,46 @@ static_assert(static_cast<int>(iclforge::ac4::RateMode::kVariable) == AC3FORGE_A
 static_assert(static_cast<int>(iclforge::ac4::BedChannel::kLeft) == AC3FORGE_AC4_BED_LEFT);
 static_assert(static_cast<int>(iclforge::ac4::BedChannel::kRight) == AC3FORGE_AC4_BED_RIGHT);
 static_assert(static_cast<int>(iclforge::ac4::BedChannel::kCentre) == AC3FORGE_AC4_BED_CENTRE);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kLeftSurround) == AC3FORGE_AC4_BED_LEFT_SURROUND);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kRightSurround) == AC3FORGE_AC4_BED_RIGHT_SURROUND);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kLeftSurround) ==
+              AC3FORGE_AC4_BED_LEFT_SURROUND);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kRightSurround) ==
+              AC3FORGE_AC4_BED_RIGHT_SURROUND);
 static_assert(static_cast<int>(iclforge::ac4::BedChannel::kLeftBack) == AC3FORGE_AC4_BED_LEFT_BACK);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kRightBack) == AC3FORGE_AC4_BED_RIGHT_BACK);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopFrontLeft) == AC3FORGE_AC4_BED_TOP_FRONT_LEFT);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kRightBack) ==
+              AC3FORGE_AC4_BED_RIGHT_BACK);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopFrontLeft) ==
+              AC3FORGE_AC4_BED_TOP_FRONT_LEFT);
 static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopFrontRight) ==
               AC3FORGE_AC4_BED_TOP_FRONT_RIGHT);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopSideLeft) == AC3FORGE_AC4_BED_TOP_SIDE_LEFT);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopSideRight) == AC3FORGE_AC4_BED_TOP_SIDE_RIGHT);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopBackLeft) == AC3FORGE_AC4_BED_TOP_BACK_LEFT);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopBackRight) == AC3FORGE_AC4_BED_TOP_BACK_RIGHT);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopSideLeft) ==
+              AC3FORGE_AC4_BED_TOP_SIDE_LEFT);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopSideRight) ==
+              AC3FORGE_AC4_BED_TOP_SIDE_RIGHT);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopBackLeft) ==
+              AC3FORGE_AC4_BED_TOP_BACK_LEFT);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kTopBackRight) ==
+              AC3FORGE_AC4_BED_TOP_BACK_RIGHT);
 static_assert(static_cast<int>(iclforge::ac4::BedChannel::kLeftWide) == AC3FORGE_AC4_BED_LEFT_WIDE);
-static_assert(static_cast<int>(iclforge::ac4::BedChannel::kRightWide) == AC3FORGE_AC4_BED_RIGHT_WIDE);
+static_assert(static_cast<int>(iclforge::ac4::BedChannel::kRightWide) ==
+              AC3FORGE_AC4_BED_RIGHT_WIDE);
 
-static_assert(static_cast<int>(iclforge::ac4::ObjectCoding::kAjoc) == AC3FORGE_AC4_OBJECT_CODING_AJOC);
-static_assert(static_cast<int>(iclforge::ac4::ObjectCoding::kDirect) == AC3FORGE_AC4_OBJECT_CODING_DIRECT);
+static_assert(static_cast<int>(iclforge::ac4::ObjectCoding::kAjoc) ==
+              AC3FORGE_AC4_OBJECT_CODING_AJOC);
+static_assert(static_cast<int>(iclforge::ac4::ObjectCoding::kDirect) ==
+              AC3FORGE_AC4_OBJECT_CODING_DIRECT);
 
-static_assert(static_cast<int>(iclforge::ac4::AjocDownmix::kComputed) == AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED);
-static_assert(static_cast<int>(iclforge::ac4::AjocDownmix::kStatic50) == AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_50);
-static_assert(static_cast<int>(iclforge::ac4::AjocDownmix::kStatic51) == AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51);
+static_assert(static_cast<int>(iclforge::ac4::AjocDownmix::kComputed) ==
+              AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED);
+static_assert(static_cast<int>(iclforge::ac4::AjocDownmix::kStatic50) ==
+              AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_50);
+static_assert(static_cast<int>(iclforge::ac4::AjocDownmix::kStatic51) ==
+              AC3FORGE_AC4_AJOC_DOWNMIX_STATIC_51);
 
 static_assert(static_cast<int>(iclforge::ac4::AdditionalPair::kNone) == AC3FORGE_AC4_PAIR_NONE);
 static_assert(static_cast<int>(iclforge::ac4::AdditionalPair::kBack) == AC3FORGE_AC4_PAIR_BACK);
 static_assert(static_cast<int>(iclforge::ac4::AdditionalPair::kWide) == AC3FORGE_AC4_PAIR_WIDE);
-static_assert(static_cast<int>(iclforge::ac4::AdditionalPair::kTopFront) == AC3FORGE_AC4_PAIR_TOP_FRONT);
+static_assert(static_cast<int>(iclforge::ac4::AdditionalPair::kTopFront) ==
+              AC3FORGE_AC4_PAIR_TOP_FRONT);
 
 // --- opaque handle definitions (global scope, matching internal.hpp's own
 // non-AC-4 ones - ac3forge_ac4_decoder_t and its neighbours are forward-
@@ -193,13 +229,16 @@ namespace ac3forge_c {
 [[nodiscard]] inline iclforge::ac4::DecodingMode to_cpp(ac3forge_ac4_decoding_mode_t mode) {
     return static_cast<iclforge::ac4::DecodingMode>(mode);
 }
-[[nodiscard]] inline iclforge::ac4::ConcealmentPolicy to_cpp(ac3forge_ac4_concealment_policy_t policy) {
+[[nodiscard]] inline iclforge::ac4::ConcealmentPolicy to_cpp(
+    ac3forge_ac4_concealment_policy_t policy) {
     return static_cast<iclforge::ac4::ConcealmentPolicy>(policy);
 }
-[[nodiscard]] inline ac3forge_ac4_concealment_policy_t from_cpp(iclforge::ac4::ConcealmentPolicy policy) {
+[[nodiscard]] inline ac3forge_ac4_concealment_policy_t from_cpp(
+    iclforge::ac4::ConcealmentPolicy policy) {
     return static_cast<ac3forge_ac4_concealment_policy_t>(policy);
 }
-[[nodiscard]] inline ac3forge_ac4_concealment_action_t from_cpp(iclforge::ac4::ConcealmentAction action) {
+[[nodiscard]] inline ac3forge_ac4_concealment_action_t from_cpp(
+    iclforge::ac4::ConcealmentAction action) {
     return static_cast<ac3forge_ac4_concealment_action_t>(action);
 }
 [[nodiscard]] inline iclforge::ac4::AssociatedType to_cpp(ac3forge_ac4_associated_type_t type) {
@@ -273,7 +312,8 @@ template <typename E>
 
 // iclforge::ac4::ObjectProperties and its C mirror, both ways: the decoder's accessors
 // report them and the encoder's configuration and updates take them.
-[[nodiscard]] inline ac3forge_ac4_object_properties_t from_cpp(const iclforge::ac4::ObjectProperties& p) {
+[[nodiscard]] inline ac3forge_ac4_object_properties_t from_cpp(
+    const iclforge::ac4::ObjectProperties& p) {
     ac3forge_ac4_object_properties_t out{};
     out.active = p.active ? 1 : 0;
     out.gain_db = p.gain_db;
@@ -299,7 +339,8 @@ template <typename E>
     return out;
 }
 
-[[nodiscard]] inline iclforge::ac4::ObjectProperties to_cpp(const ac3forge_ac4_object_properties_t& p) {
+[[nodiscard]] inline iclforge::ac4::ObjectProperties to_cpp(
+    const ac3forge_ac4_object_properties_t& p) {
     iclforge::ac4::ObjectProperties out;
     out.active = p.active != 0;
     out.gain_db = p.gain_db;
@@ -325,17 +366,21 @@ template <typename E>
     switch (error) {
         case iclforge::ac4::DecodeError::kTruncated: return AC3FORGE_ERROR_AC4_DECODE_TRUNCATED;
         case iclforge::ac4::DecodeError::kInvalidToc: return AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC;
-        case iclforge::ac4::DecodeError::kInvalidStream: return AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM;
+        case iclforge::ac4::DecodeError::kInvalidStream:
+            return AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM;
         case iclforge::ac4::DecodeError::kUnsupported: return AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED;
-        case iclforge::ac4::DecodeError::kMissingIFrame: return AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME;
+        case iclforge::ac4::DecodeError::kMissingIFrame:
+            return AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME;
     }
     return AC3FORGE_ERROR_INTERNAL;
 }
 
 [[nodiscard]] inline ac3forge_status_t from_cpp(iclforge::ac4::EncodeError error) {
     switch (error) {
-        case iclforge::ac4::EncodeError::kInvalidConfig: return AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG;
-        case iclforge::ac4::EncodeError::kInvalidInput: return AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT;
+        case iclforge::ac4::EncodeError::kInvalidConfig:
+            return AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG;
+        case iclforge::ac4::EncodeError::kInvalidInput:
+            return AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT;
     }
     return AC3FORGE_ERROR_INTERNAL;
 }

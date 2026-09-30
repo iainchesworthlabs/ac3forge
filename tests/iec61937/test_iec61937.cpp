@@ -156,8 +156,8 @@ TEST_CASE("wrap_frame: round-trips through split_frames", "[iec61937][ac3]") {
 }
 
 TEST_CASE("wrap_frame: rejects non-AC-3 input and oversized frames", "[iec61937][ac3]") {
-    CHECK(iclforge::iec61937::wrap_frame(std::vector<std::byte>{std::byte{0}, std::byte{0}}).error() ==
-          iclforge::iec61937::WrapError::kNotAFrame);
+    CHECK(iclforge::iec61937::wrap_frame(std::vector<std::byte>{std::byte{0}, std::byte{0}})
+              .error() == iclforge::iec61937::WrapError::kNotAFrame);
 
     // A frame that carries a legal sync word but is too big for one burst.
     std::vector<std::byte> oversized(iclforge::iec61937::kBurstBytes, std::byte{0});

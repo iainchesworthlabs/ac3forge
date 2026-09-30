@@ -112,7 +112,8 @@ public:
         if (!room_) {
             return {};
         }
-        const iclforge::hearth::uitest::RoomReading reading = iclforge::hearth::uitest::read(*room_);
+        const iclforge::hearth::uitest::RoomReading reading =
+            iclforge::hearth::uitest::read(*room_);
         return {{QStringLiteral("open"), reading.open},
                 {QStringLiteral("paused"), reading.paused},
                 {QStringLiteral("endpoint"), QString::fromStdString(reading.endpoint)},

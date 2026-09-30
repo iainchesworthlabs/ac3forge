@@ -199,8 +199,10 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     switch (signalling) {
         case iclforge::mpegts::CodecSignalling::kAtscStreamType: return "atsc_stream_type";
         case iclforge::mpegts::CodecSignalling::kDvbDescriptor: return "dvb_descriptor";
-        case iclforge::mpegts::CodecSignalling::kRegistrationDescriptor: return "registration_descriptor";
-        case iclforge::mpegts::CodecSignalling::kDvbExtensionDescriptor: return "dvb_extension_descriptor";
+        case iclforge::mpegts::CodecSignalling::kRegistrationDescriptor:
+            return "registration_descriptor";
+        case iclforge::mpegts::CodecSignalling::kDvbExtensionDescriptor:
+            return "dvb_extension_descriptor";
     }
     return "";
 }

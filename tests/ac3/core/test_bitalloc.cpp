@@ -287,15 +287,16 @@ TEST_CASE("the split allocation reproduces compute_bit_allocation bap for bap", 
                     static_cast<std::uint8_t>(rng() % 8);
             }
         }
-        const auto curve = iclforge::compute_masking_curve(exps, iclforge::SampleRate::k48000, codes, region);
+        const auto curve =
+            iclforge::compute_masking_curve(exps, iclforge::SampleRate::k48000, codes, region);
         REQUIRE(curve.valid);
         for (int probe = 0; probe < 6; ++probe) {
             const int composite = probe == 0 ? 0 : composite_dist(rng);
             region.snr_all_zero = composite == 0;
             std::vector<std::uint8_t> whole(static_cast<std::size_t>(end));
             std::vector<std::uint8_t> split(static_cast<std::size_t>(end));
-            iclforge::compute_bit_allocation(exps, iclforge::SampleRate::k48000, codes, composite >> 4,
-                                        composite & 15, whole, region);
+            iclforge::compute_bit_allocation(exps, iclforge::SampleRate::k48000, codes,
+                                             composite >> 4, composite & 15, whole, region);
             iclforge::allocate_from_curve(exps, curve, codes, composite >> 4, composite & 15, split,
                                      region);
             CHECK(whole == split);

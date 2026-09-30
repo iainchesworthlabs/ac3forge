@@ -43,8 +43,8 @@ std::vector<std::vector<float>> stepped_tone(int frames, int channels, double lo
         const bool is_loud = (f / frames_per_step) % 2 == 0;
         const double amplitude = is_loud ? loud : quiet;
         for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
-            const auto index =
-                static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame + static_cast<std::size_t>(n);
+            const auto index = static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame +
+                               static_cast<std::size_t>(n);
             const double value =
                 amplitude * std::sin(2.0 * std::numbers::pi * 440.0 *
                                      static_cast<double>(index) / 48000.0);
@@ -60,8 +60,9 @@ std::vector<std::span<const float>> frame_views(
     const std::vector<std::vector<float>>& audio, int frame) {
     std::vector<std::span<const float>> views;
     for (const auto& channel : audio) {
-        views.emplace_back(std::span{channel}.subspan(
-            static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame, iclforge::kSamplesPerFrame));
+        views.emplace_back(
+            std::span{channel}.subspan(static_cast<std::size_t>(frame) * iclforge::kSamplesPerFrame,
+                                       iclforge::kSamplesPerFrame));
     }
     return views;
 }
@@ -245,7 +246,8 @@ TEST_CASE("the range controller tracks the curve and respects dialnorm", "[drc]"
     // is - so the encoder must treat the audio as 7 dB quieter and boost it.
     // Getting this shift backwards is invisible on a single dialnorm.
     CHECK(settle(-29.0, 24) > 2.0);
-    CHECK(settle(-29.0, 24) == Catch::Approx(iclforge::meta::static_gain_db(p, -36.0)).margin(0.01));
+    CHECK(settle(-29.0, 24) ==
+          Catch::Approx(iclforge::meta::static_gain_db(p, -36.0)).margin(0.01));
     // Loud in, cut out.
     CHECK(settle(-6.0, 31) == Catch::Approx(iclforge::meta::static_gain_db(p, -6.0)).margin(0.01));
 
@@ -275,8 +277,8 @@ TEST_CASE("the heavy compressor keeps its ceiling", "[drc]") {
                                               -0.5,  -20.0, -10.0, -0.05, -45.0};
     // The ceiling is a promise about an RF-mode decode, which normalises
     // dialnorm 24 by -7 dB and adds RF mode's 11 dB before the word.
-    const double rf_decode =
-        static_cast<double>(24 - iclforge::meta::kReferenceDialnorm) + iclforge::meta::kRfModeGainDb;
+    const double rf_decode = static_cast<double>(24 - iclforge::meta::kReferenceDialnorm) +
+                             iclforge::meta::kRfModeGainDb;
     for (const double peak : peaks) {
         const auto word = compressor.next(peak, 24);
         const double applied = iclforge::meta::to_db(compr_gain(word));
@@ -315,7 +317,8 @@ TEST_CASE("heavy compression writes its words for an RF-mode decode", "[drc][rf]
 
     // A dialogue target above RF mode's own -20 dBFS is make-up the word does
     // carry - rounded down, so it arrives a fraction of a step short.
-    iclforge::meta::HeavyCompressor louder{{.dialogue_target_dbfs = -14.0}, iclforge::SampleRate::k48000};
+    iclforge::meta::HeavyCompressor louder{{.dialogue_target_dbfs = -14.0},
+                                           iclforge::SampleRate::k48000};
     const double makeup = iclforge::meta::to_db(compr_gain(louder.next(-60.0, 24)));
     CHECK(makeup <= 6.0);
     CHECK(makeup > 6.0 - 0.3);
@@ -361,7 +364,8 @@ TEST_CASE("the loudness meter weights the surrounds and drops the LFE",
             0.1 * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(n) / 48000.0));
     }
     const auto measure = [&](std::span<const std::span<const float>> channels) {
-        iclforge::meta::LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k3_2, true};
+        iclforge::meta::LoudnessMeter meter{iclforge::SampleRate::k48000, iclforge::Acmod::k3_2,
+                                            true};
         meter.push(channels);
         return meter.integrated_lkfs();
     };
@@ -484,7 +488,8 @@ TEST_CASE("downmix coefficients are normalised and route correctly", "[mixing]")
     // Silencing the surrounds removes them from the fold-down entirely, and
     // renormalisation gives their share back to the remaining channels.
     const auto dropped = iclforge::meta::stereo_downmix(
-        iclforge::Acmod::k3_2, clev, iclforge::meta::coefficient(iclforge::meta::SurroundMixLevel::kSilent));
+        iclforge::Acmod::k3_2, clev,
+        iclforge::meta::coefficient(iclforge::meta::SurroundMixLevel::kSilent));
     CHECK(dropped.left[3] == 0.0);
     CHECK(dropped.left[0] > full.left[0]);
 }
@@ -1106,7 +1111,8 @@ TEST_CASE("E-AC-3 rejects metadata that cannot legally be carried",
     // receiving one substitutes 0.841, so writing it means the level applied is
     // not the level asked for.
     auto reserved = base;
-    reserved.mixing = iclforge::meta::MixMetadata{.lorosurmixlev = iclforge::meta::MixLevel::kUnity};
+    reserved.mixing =
+        iclforge::meta::MixMetadata{.lorosurmixlev = iclforge::meta::MixLevel::kUnity};
     auto frame = iclforge::eac3::build_silent_frame(reserved);
     REQUIRE_FALSE(frame.has_value());
     CHECK(frame.error() == iclforge::FrameError::kInvalidMixLevel);
@@ -1517,7 +1523,8 @@ TEST_CASE("RF mode applies 11 dB with every compr word it applies, and nowhere e
     SECTION("a word that cuts: the 11 dB and the word's own gain add") {
         auto cut = heavy;
         for (auto& frame : cut) {
-            REQUIRE(iclforge::io::edit_frame_metadata(frame, {.compr = std::uint8_t{0xF0}}).has_value());
+            REQUIRE(iclforge::io::edit_frame_metadata(frame, {.compr = std::uint8_t{0xF0}})
+                        .has_value());
         }
         const double expected = 11.0 + iclforge::meta::to_db(compr_gain(0xF0));  // 11 - 6.02
         CHECK(fit(cut, kLineMode, kRfMode, 1, 7) == Catch::Approx(expected).margin(1e-6));
@@ -1539,7 +1546,8 @@ TEST_CASE("RF mode applies 11 dB with every compr word it applies, and nowhere e
     }
 
     SECTION("kCustom's heavy_compression is the word alone") {
-        CHECK(fit(heavy, iclforge::DecoderConfig{}, iclforge::DecoderConfig{.heavy_compression = true}, 1,
+        CHECK(fit(heavy, iclforge::DecoderConfig{},
+                  iclforge::DecoderConfig{.heavy_compression = true}, 1,
                   7) == Catch::Approx(0.0).margin(1e-6));
     }
 }
