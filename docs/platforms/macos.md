@@ -2,26 +2,28 @@
 
 !!! note "Verified in CI only — no Mac host is available to this project"
     There is no macOS host available to this project locally; everything on this page has been
-    exercised exclusively by two required CI legs: `macos-llvm`, on GitHub's `macos-latest` (Apple
+    exercised exclusively by two CI legs: `macos-llvm`, on GitHub's `macos-latest` (Apple
     Silicon) runners, configuring the `config-macos-llvm` / `config-macos-llvm-debug` preset pair,
     and `macos-llvm-x64`, on GitHub's `macos-15-intel` runners (real native Intel hardware, not
     Rosetta emulation — confirmed against
     [docs.github.com's hosted-runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)),
-    configuring `config-macos-llvm-x64` / `config-macos-llvm-x64-debug`. Neither is experimental any
-    more. `macos-llvm`'s first-ever run surfaced one fully-understood issue (Homebrew's
-    unpinned `llvm` formula flagging Catch2's `__COUNTER__` usage under `-Wc2y-extensions` — see
-    `cmake/CompilerWarnings.cmake`), fixed in one commit, followed by two consecutive clean runs.
-    `macos-llvm-x64` (DR8's new leg, on a brand-new `macos-15-intel` runner label never exercised
-    before this project used it) went three consecutive clean runs — two `release.yml` dry runs and
-    this feature branch's own required PR CI — at real gold-reference SNR numbers
-    (67.80/67.82/67.76 dB, matching the x86 baseline every other non-arm64 leg reports) before its
-    own `continue-on-error` escape hatch came off the same way
-    (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)),
-    so a failure on either leg blocks like every other required leg now.
+    configuring `config-macos-llvm-x64` / `config-macos-llvm-x64-debug`. The Apple Silicon leg
+    runs in the run after a merge to main and the Intel leg in the nightly run; a release builds
+    both. Neither is experimental any more. `macos-llvm`'s first-ever run surfaced one
+    fully-understood issue (Homebrew's unpinned `llvm` formula flagging Catch2's `__COUNTER__`
+    usage under `-Wc2y-extensions` — see `cmake/CompilerWarnings.cmake`), fixed in one commit,
+    followed by two consecutive clean runs. `macos-llvm-x64` (the Intel leg that the universal package needs, on a
+    `macos-15-intel` runner label this project had not used before) went three
+    consecutive clean runs — two `release.yml` dry runs and a feature branch's own PR CI — with
+    gold-reference SNR numbers (67.80/67.82/67.76 dB, matching the x86 baseline every other
+    non-arm64 leg reports) before its own `continue-on-error` escape hatch came off the same way
+    (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)).
+    A red leg now opens the `main-red` or `main-red-nightly` issue, as any other
+    non-experimental leg does ([CI for many agents](../ci-agentic.md#after-the-merge)).
 
     **One section of this page rests on less than that.**
     [Per-application capture](#per-application-capture-the-core-audio-process-tap) describes code
-    added on this branch. Both legs compile it; a tap has been created exactly once, on a runner,
+    that both legs compile and no Mac has run: a tap has been created exactly once, on a runner,
     where the call after it never returned. That section says what each part rests on and what
     that one run settled.
 
@@ -29,12 +31,14 @@
 
 | | |
 |---|---|
-| What runs here | The library, `ac3cli` and `ac3gui`. Crucible's macOS half compiles and its suites run |
-| Build | Two required CI legs, Apple Silicon and native Intel; neither is experimental |
-| Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project, and no hosted runner has an audio device, a desktop session, or a way to grant a consent prompt |
+| What runs here | The library, `ac3cli` and `ac3gui`. Hearth's window builds, and Crucible's macOS half compiles and its suites run |
+| Build | Two CI legs, Apple Silicon after each merge and native Intel nightly; neither is experimental |
+| Minimum OS | macOS 13.3 (Ventura): the deployment target `cmake/toolchains/macos.llvm.toolchain.cmake` sets for C++23 libc++ features, which the Homebrew cask also requires. The Core Audio process tap needs 14.2 |
+| Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project. A hosted runner has a virtual output device (`Apple Virtual Sound Device`) and a window session, but no audio hardware and no way to grant a consent prompt |
 | Core Audio process tap | Written, compiled, **never created at runtime** |
 | Crucible | Compiles and is exercised by the CI suites; the application has never been launched on a Mac |
-| Packaging | A `.dmg` for the CLI and a cask for the GUI; the cask has not been installed end to end on a Mac |
+| AC-4 | Decoded and encoded by `ac3cli` and `ac3gui` in the same code the other platforms run. Core Audio defines no AC-4 format, so AC-4 can reach an output only as decoded PCM, and nothing on macOS has played a sound. v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
+| Packaging | A universal `.dmg` carrying `ac3cli` and `ac3gui`, a Homebrew cask for the GUI and a source formula for the CLI; the cask has not been installed end to end on a Mac. Hearth and Crucible are in no macOS release package |
 
 The two build variants feed one universal end-user package. Entries marked **Source** or
 **In development** remain unconfirmed for sound hardware.
@@ -52,7 +56,7 @@ version: Homebrew's core `llvm` formula has no versioned sibling to pin against 
 `apt.llvm.org` or the official Windows installer do, so CI installs and reports whatever Homebrew
 currently ships rather than asserting a specific one.
 
-## Universal binaries (DR8)
+## Universal binaries
 
 A release's macOS package is a single **universal (arm64 + x86_64) `.dmg`**, not two per-arch
 ones. `macos-llvm` and `macos-llvm-x64` each build and `cmake --install` their own single-arch
@@ -70,10 +74,12 @@ turned out to already exist, be free for public repos, and be real native hardwa
 Rosetta, which removed the actual blocker (needing to cross-compile x86_64 from Apple Silicon, or
 pay for a self-hosted Intel Mac) entirely.
 
-Each leg's own single-arch `.dmg` still exists as a fast per-push packaging smoke test
-(`packageable: true` never went away), it just isn't what a release publishes any more — see
-[Packaging](#packaging) below and
-[docs/releasing.md](../releasing.md#what-gets-published).
+Each leg's own single-arch `.dmg` still exists as a packaging smoke test (`packageable: true`
+never went away; the nightly run does it, since the run after a merge leaves that pass out), it
+just isn't what a release publishes any more — see [Packaging](#packaging) below and
+[docs/releasing.md](../releasing.md#what-gets-published). The two install trees the universal
+job merges are the `runtime` component only, `ac3cli` and `ac3gui`, so the release `.dmg` carries
+neither Hearth nor Crucible. v0.10.0-beta.1 (2026-09-01) is the first release built by that job.
 
 ## Audio backend: CoreAudio
 
@@ -110,23 +116,23 @@ disk. That part is platform-independent and shares the verification the framing 
 
 The backend is CI-verified only: the parts that need no live device — enumeration on a machine
 with none, format matching, sample conversion — run under `ac3tests` on the hosted runner, same
-as everywhere else without real hardware, but no real Mac has ever run this code against an
-actual digital output, and no receiver has been asked to lock onto its output.
+as everywhere else without hardware, but no Mac has ever run this code against a digital
+output, and no receiver has been asked to lock onto its output.
 
 **No EDID/ELD backend here either.** `ac3cli play` asks a chosen sink what it
 actually accepts before committing to a format (see
 [CLI → Following the sink](../forge/cli/commands.md#following-the-sink)), and that read
-(`ac3::audio::sink_capabilities`) is real today only on ALSA (see
+(`ac3::audio::sink_capabilities`) exists today for ALSA and for PipeWire (see
 [Linux](linux.md#reading-a-sinks-own-edideld)). CoreAudio's device properties and
-IOKit's `IODisplayEDID` are both real APIs, but neither is documented to expose the CEA-861
+IOKit's `IODisplayEDID` exist here, but neither is documented to expose the CEA-861
 Short Audio Descriptor block for an HDMI *audio* endpoint specifically, and a pure optical
 output has no display EDID to read in the first place. `play` falls back to the live
 `enumerate_render_devices()` probe here, the same as before.
 
 ## Per-application capture: the Core Audio process tap
 
-`ac3cli devices` never lists a loopback entry here, and `ac3cli record`/`live --loopback` refuse
-outright rather than silently opening a microphone instead — unlike
+`ac3cli devices` never lists a loopback entry here, and the capture class refuses
+`DeviceKind::kLoopback` outright rather than silently opening a microphone instead — unlike
 [Windows](windows.md) (any render endpoint reopened via WASAPI loopback) or
 [Linux/PipeWire](linux.md#audio-backend-alsa-or-pipewire) (a sink's monitor), the Audio HAL this
 backend otherwise uses has no "capture what a render device is playing" concept at all.
@@ -245,8 +251,8 @@ an `install(TARGETS ac3crucible)` rule that named no `BUNDLE DESTINATION` for a 
 `ac3audio`. Their `ctest` runs cover the version gate
 (`tests/backend/macos/test_macos_support.cpp`, the one place the `__builtin_available` lowering
 is executed rather than merely compiled), the agreement between the capability report and
-`process_loopback_available()` and their shared refusal sentence, and — since the eleven Crucible
-Qt Quick suites run there — the engine driving the real seams and being told no by the tap.
+`process_loopback_available()` and their shared refusal sentence, and — since the Crucible Qt
+Quick suites run there — the engine driving the platform seams and being told no by the tap.
 
 ## Device notifications
 
@@ -292,8 +298,9 @@ ctest --preset test-macos-llvm-debug
 Swap `macos-llvm` for `macos-llvm-x64` throughout on Intel; drop `-debug` from all three preset
 names for a Release build either way. The `ci-macos-llvm`/`ci-macos-llvm-x64` workflow presets
 each chain the same three steps in one command. Homebrew's `llvm` formula must be installed (CI
-runs `brew install llvm`), and `VCPKG_ROOT` must point at a vcpkg checkout — it supplies Catch2,
-plus Boost and Tracy only if you opt into the `adm`/`profiling` features (see
+runs `brew install llvm`), and `VCPKG_ROOT` must point at a vcpkg checkout — it supplies Catch2
+and {fmt}, mbedTLS, cpp-httplib, libFLAC, Opus and mdns through the `hearth` feature the desktop
+presets select, and Boost and Tracy only if you opt into the `adm`/`profiling` features (see
 [building.md](../building.md)). `AC3FORGE_BUILD_GUI` defaults **OFF** on both presets, as on Linux
 — see [GUI on macOS](#gui-on-macos) below to opt in.
 
@@ -338,59 +345,73 @@ cpack --preset pack-macos-llvm       # or pack-macos-llvm-x64 on Intel
 
 Produces a DragNDrop image on top of a plain ZIP when the packaging tool is found, the same way
 NSIS is on Windows and DEB/RPM are on Linux — each leg's own single-arch `.dmg`/`.zip`, useful as
-a fast per-push packaging smoke test of that architecture alone. Neither `macos-llvm` nor
+a nightly packaging smoke test of that architecture alone. Neither `macos-llvm` nor
 `macos-llvm-x64` carries `release_package` any more, though: a real tagged release
 (`release.yml`, `do_package: true`) instead runs a separate `package-macos-universal` job that
 `lipo`-merges both legs' install trees into one universal `.dmg` and ships that as the canonical
-macOS package — see [Universal binaries (DR8)](#universal-binaries-dr8) above and
+macOS package — see [Universal binaries](#universal-binaries) above and
 [docs/releasing.md](../releasing.md#what-gets-published). That path has been exercised for real on
 the arm64 half: nine beta releases, v0.2.0-beta.1 through v0.9.0-beta.1, shipped a macOS package
-through the tag-triggered workflow before the universal merge existed. `cmake/Packaging.cmake`
-needed no change for `ac3gui` to join either leg's own `.dmg`: which targets end up in a package
-is decided entirely by which `install()` rules ran, and `ac3gui`'s already runs whenever
-`AC3FORGE_BUILD_GUI` is `ON` — the DragNDrop generator itself is unconditional on `APPLE`, GUI or
-not. No stable (non-beta) release has been tagged yet. See [Packaging](../building.md#packaging).
+through the tag-triggered workflow before the universal merge existed, and v0.10.0-beta.1 shipped
+the first universal `.dmg`. `cmake/Packaging.cmake` needed no change for `ac3gui` to join either
+leg's own `.dmg`: which targets end up in a package is decided entirely by which `install()`
+rules ran, and `ac3gui`'s already runs whenever `AC3FORGE_BUILD_GUI` is `ON` — the DragNDrop
+generator itself is unconditional on `APPLE`, GUI or not. No stable (non-beta) release has been
+tagged yet. See [Packaging](../building.md#packaging).
 
-The `.app` bundle also declares `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for `.ac3`
-and `.ec3` — a custom `Info.plist.in` rather than CMake's default template, since neither
-extension is a system-known UTI and each needs its own `UTTypeConformsTo: public.audio`
-declaration tying it to `audio/ac3`/`audio/eac3`. Configure/build-verified only, like the rest of
-this file's GUI coverage below — nobody has opened a real `.ac3` file from Finder on real hardware
-yet.
+Through Homebrew, the personal tap `iainchesworthlabs/ac3forge` (the `homebrew-ac3forge`
+repository, [staged here](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/homebrew))
+carries the source formula `ac3forge` for the CLI and the cask `ac3gui` for the GUI:
+`brew tap iainchesworthlabs/ac3forge`, then `brew install ac3forge` or `brew install --cask
+ac3gui`. The app is neither code-signed nor notarized, so Gatekeeper refuses it on first launch
+until it is opened from Finder's context menu or `xattr -dr com.apple.quarantine` is run on it.
+Neither route has been run end to end on a Mac.
+
+`ac3hearth.app` declares `CFBundleDocumentTypes`/`UTExportedTypeDeclarations` for `.ac3` and
+`.ec3` — a custom `Info.plist.in` (`apps/hearth/ui/`) rather than CMake's default template, since
+neither extension is a system-known UTI and each needs its own `UTTypeConformsTo: public.audio`
+declaration tying it to `audio/ac3`/`audio/eac3` — and claims them with `LSHandlerRank Owner`.
+`apps/gui/Info.plist.in` no longer does either, because a UTI with two owners leaves Launch
+Services to pick one. The release `.dmg` carries `ac3gui.app` and not Hearth, so it registers no
+`.ac3` or `.ec3` handler today, and nothing on macOS declares `.ac4`. Configure/build-verified
+only, like the rest of this file's GUI coverage below — nobody has opened an `.ac3` file from
+Finder on a Mac yet.
 
 ## CI: what has and has not been verified
 
 Build, `ctest` (see [Verified configuration](../building.md#verified-configuration) for how the
 suite's composition differs from Windows/Linux) and the [gold-reference correctness
-gate](../building.md#gold-reference-correctness-gate) all pass on real GitHub Actions runners —
-not a simulation or a local guess, on `macos-llvm`. `ac3gui_qmltests` registers and passes there
-too: 582 ctest entries total, 100% passing, that one entry in 39.74s of a 56.81s total run - the
-leg's first-ever GUI run, confirmed clean on a second push after two real fixes
-(`QSG_RENDER_LOOP=basic` for a Qt Quick render-loop deadlock, and forcing the `Fusion` style in
-the test binary for a native-`ComboBox`-under-offscreen hang - see [GUI on macOS](#gui-on-macos)
-above and `apps/gui/tests/CMakeLists.txt`/`qml_test_main.cpp` for the full detail). Real SNR
-numbers from the CI run that first proved the gate on macOS: 61.81/61.82 dB, against 67.84/67.82
-dB on Linux and Windows for the same material, comfortably clear of the gate's 30 dB floor. That
-gap is **not** a Homebrew-LLVM-libm-vs-glibc/MSVC difference, despite what this page and
-`ci.yml` used to say (see `docs/building.md`'s "Floating-point contraction"
-section) traced it to every real arm64/aarch64 CI leg, `macos-llvm` included, landing on the
-same ~6.0 dB offset from every x86 leg regardless of OS or C library, which rules out a
-macOS-specific explanation; the gap tracks CPU architecture, and the actual mechanism is still
-open pending real hardware access neither this project nor `qemu-user` emulation can substitute
-for. `macos-llvm-x64` turned out to be new, confirmed data for exactly this question: same OS,
-same toolchain stack as `macos-llvm`, x86_64 instead of arm64, and its real gold-reference
-numbers land with the other x86 legs — 67.80/67.82/67.76 dB across three separate real runs — not
-with the ~61.8 dB every arm64/aarch64 leg (`macos-llvm` included) reports. That is further
-evidence the offset is architecture-bound rather than OS-bound: two macOS legs on the same
-toolchain now sit on opposite sides of the split, purely by CPU architecture. See `ci.yml`'s VX11
-comment for the fuller record.
+gate](../building.md#gold-reference-correctness-gate) all pass on GitHub-hosted runners, on
+`macos-llvm`. `ac3gui_qmltests` registers and passes there too. In the leg's first GUI run,
+confirmed clean on a second push after two fixes, 582 ctest entries all passed, and that one entry
+took 39.74 s of a 56.81 s total run. The fixes were `QSG_RENDER_LOOP=basic` for a Qt Quick
+render-loop deadlock, and forcing the `Fusion` style in the test binary for a
+native-`ComboBox`-under-offscreen hang (see [GUI on macOS](#gui-on-macos) above and
+`apps/gui/tests/CMakeLists.txt` and `qml_test_main.cpp` for the detail).
+
+The SNR numbers from the run that first proved the gold-reference gate on macOS were 61.81 and
+61.82 dB, against 67.84 and 67.82 dB on Linux and Windows for the same material. This page and
+`ci.yml` used to attribute the gap to Homebrew LLVM's libm against glibc and MSVC. It follows CPU
+architecture instead: every arm64 and aarch64 CI leg, `macos-llvm` included, sits about 6.0 dB
+below every x86 leg, whatever the OS or C library. `macos-llvm-x64` is the direct comparison, with
+the same OS and toolchain stack on x86_64. Its numbers, 67.80, 67.82 and 67.76 dB across three
+runs, land with the other x86 legs and not with the ~61.8 dB of the arm64 legs, so two macOS legs
+on the same toolchain sit on opposite sides of the split by CPU architecture alone. The difference
+is one bit of rounding in the decode path, since the encoder's output is byte-identical on both
+architectures. Why arm64 is the lower side is still unanswered, and needs arm64 hardware to
+answer, because no emulated run has reproduced it ([Why arm64 and x86-64
+disagree](../verification.md#why-arm64-and-x86-64-disagree)). The gate's floors are set per
+channel from the lowest value any leg has produced, which on the channels that split is the arm64
+value ([One floor per
+channel](../verification.md#one-floor-per-channel-not-one-per-file)).
 
 **Crucible on macOS, as of 2026-09-06.** Both legs build it — every `.mm`, every file under
 `apps/crucible/engine/platform/macos/`, and `bin/ac3crucible.app/Contents/MacOS/ac3crucible` —
-and both run all eleven of its Qt Quick suites. Eight of those drive the **real** macOS platform
-seams rather than fakes: `Main.qml` starts the engine whenever the window is built, so the
-session monitor, the foreground, the default device, the virtual device and the output stage
-all execute on the runner.
+and both run its Qt Quick suites: eleven on that date, and sixteen `tst_*.qml` files are in the
+tree on 2026-09-30. Of the eleven, eight drive the macOS platform seams themselves rather than
+fakes: `Main.qml` starts the engine whenever the window is built, so the session monitor, the
+foreground, the default device, the virtual device and the output stage all execute on the
+runner.
 
 That is how the one hang this platform half has produced was found. The Apple Silicon leg
 (`macos-latest`, macOS 26.6.2) timed out at 300 s on `ac3crucible_qml_tests_firstrun`, `_room`
@@ -409,9 +430,10 @@ which is why `apps/gui/tests/CMakeLists.txt` sets `QSG_RENDER_LOOP=basic` on `AP
 amount of render-loop configuration would have moved it.
 
 The application itself has never been launched on either leg.
+
 ---
 
-If you get a Mac, that's still useful information for this project — running these instructions
-on real local hardware, or actually launching `ac3gui.app` and using it (CI's `--smoke` run
-proves it starts, loads its QML and drives a real encode headlessly, not that the interactive
-experience is right), would be new information. Consider filing an issue with what you found.
+If you have a Mac, running these instructions on local hardware, or launching `ac3gui.app` and
+using it, would be new information for this project. CI's `--smoke` run shows that the app starts,
+loads its QML and drives an encode headlessly, and does not show that the interactive experience
+is right. Consider filing an issue with what you found.

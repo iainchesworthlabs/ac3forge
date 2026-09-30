@@ -231,8 +231,14 @@
 /* Stat tiles: same semantic ok/watch colors as performance-quality.md's own
    .pq-badge, so "ok"/"watch" mean the same thing and look the same on both
    pages - not reinvented here. */
-.ac3f-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-top: 1rem; }
-@media (max-width: 52rem) { .ac3f-stat-grid { grid-template-columns: repeat(2, 1fr); } }
+.ac3f-stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.75rem; margin-top: 1rem; }
+/* Five tiles: three across, then two that share the second row. */
+.ac3f-stat-grid > .ac3f-stat-card { grid-column: span 2; }
+.ac3f-stat-grid > .ac3f-stat-card:nth-child(n+4) { grid-column: span 3; }
+@media (max-width: 52rem) {
+  .ac3f-stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .ac3f-stat-grid > .ac3f-stat-card, .ac3f-stat-grid > .ac3f-stat-card:nth-child(n+4) { grid-column: auto; }
+}
 @media (max-width: 30rem) { .ac3f-stat-grid { grid-template-columns: 1fr; } }
 .ac3f-stat-status { grid-column: 1 / -1; font-size: 0.8rem; color: var(--md-default-fg-color--light); margin: 0; }
 .ac3f-stat-card {
@@ -243,9 +249,18 @@
   font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
   color: var(--md-default-fg-color--light); margin-bottom: 0.2rem;
 }
-.ac3f-stat-value { font-family: "Big Shoulders Display", "IBM Plex Sans", sans-serif; font-size: 1.7rem; font-weight: 700; line-height: 1.1; color: var(--md-default-fg-color); }
 .ac3f-stat-unit { font-family: "IBM Plex Sans", sans-serif; font-size: 0.85rem; font-weight: 500; color: var(--md-default-fg-color--light); }
 .ac3f-stat-note { font-size: 0.72rem; color: var(--md-default-fg-color--light); margin-top: 0.25rem; }
+/* One line per codec: its name, its figure, and the workload the figure comes from. */
+.ac3f-stat-sub { font-size: 0.72rem; color: var(--md-default-fg-color--light); margin: 0 0 0.35rem; }
+.ac3f-stat-line {
+  display: grid; grid-template-columns: 3.6rem 1fr; column-gap: 0.5rem; align-items: baseline;
+  padding: 0.3rem 0; border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+.ac3f-stat-codec { grid-column: 1; grid-row: 1; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.66rem; font-weight: 600; color: var(--md-default-fg-color--light); }
+.ac3f-stat-figure { grid-column: 2; grid-row: 1; font-family: "Big Shoulders Display", "IBM Plex Sans", sans-serif; font-size: 1.3rem; font-weight: 700; line-height: 1.15; color: var(--md-default-fg-color); }
+.ac3f-stat-what { grid-column: 2; grid-row: 2; font-size: 0.7rem; color: var(--md-default-fg-color--light); }
+.ac3f-stat-figure-watch { color: #ef6c00; }
 .ac3f-stat-badge {
   display: inline-block; font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.62rem; font-weight: 700; padding: 0.05rem 0.4rem; border-radius: 3px;
@@ -255,4 +270,4 @@
 .ac3f-stat-watch { background: rgba(251, 140, 0, 0.18); color: #ef6c00; }
 .ac3f-stat-unknown { background: var(--md-default-fg-color--lightest); color: var(--md-default-fg-color--light); }
 [data-md-color-scheme="slate"] .ac3f-stat-ok { color: #81c784; }
-[data-md-color-scheme="slate"] .ac3f-stat-watch { color: #ffb74d; }
+[data-md-color-scheme="slate"] .ac3f-stat-watch, [data-md-color-scheme="slate"] .ac3f-stat-figure-watch { color: #ffb74d; }

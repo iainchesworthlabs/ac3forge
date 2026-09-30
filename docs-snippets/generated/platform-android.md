@@ -10,5 +10,6 @@
 | Crucible | **Unavailable** |
 | Hearth | **Unavailable** |
 | Atmos encode and HDMI output | **Source**<br>confirmed on hardware<br>confirmed through an AV receiver |
-| AC-4 IEC 61937 output | **Source**<br>build only<br>ENCODING_IEC61937; no receiver accepts AC-4 |
+| AC-4 decode and encode | **Source**<br>build only<br>the NDK build compiles the AC-4 libraries; the Shield demo links none of them |
+| AC-4 IEC 61937 output | **Source**<br>build only<br>ENCODING_IEC61937; the demo never sends AC-4; no receiver accepts AC-4 |
 | Audio capture | **Unavailable**<br>playback-only demo |

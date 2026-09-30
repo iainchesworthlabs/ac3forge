@@ -3091,8 +3091,9 @@ struct ObjectLayout {
     }
     for (std::size_t o = 0; o < oc.objects.size(); ++o) {
         const ObjectConfig& object = oc.objects[o];
-        if (!detail::properties_valid(object.properties)) {
-            return std::unexpected("an object's properties off the ranges ObjectProperties gives them");
+        if (const std::string_view why = detail::properties_refusal(object.properties);
+            !why.empty()) {
+            return std::unexpected(why);
         }
         const int index = static_cast<int>(o);
         if (object.lfe) {
