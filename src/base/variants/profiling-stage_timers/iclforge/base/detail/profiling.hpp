@@ -61,8 +61,10 @@ class ZoneScope {
     ::iclforge::internal::profiling::ZoneScope ICLFORGE_PROFILING_ZONE_NAME(ac3_zone_, __LINE__) { \
         __func__                                                                              \
     }
-#define ICLFORGE_ZONE_SCOPED_N(name) \
-    ::iclforge::internal::profiling::ZoneScope ICLFORGE_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){name}
+#define ICLFORGE_ZONE_SCOPED_N(name)                                                               \
+    ::iclforge::internal::profiling::ZoneScope ICLFORGE_PROFILING_ZONE_NAME(ac3_zone_, __LINE__) { \
+        name                                                                                       \
+    }
 // The manual pair. `var` is Tracy's context handle and means nothing here:
 // the stack in the application pairs each leave with the innermost open
 // zone, which is what a correctly nested begin/end pair is.

@@ -140,7 +140,7 @@ inline constexpr std::uint16_t kWriteBitDepth = 24;
 // ADM Profile expects the two to agree - Dolby Encoding Engine refuses a master whose
 // audioTrackUIDs leave bitDepth out ("Mismatched track bit depth between ADM and WAV"). sampleRate
 // is still written from the model, and only where `has_sample_rate` is set.
-[[nodiscard]] ICLFORGE_ADM_EXPORT std::expected<void, AdmWriteError> write_bw64(const std::string& path,
-                                                                          const AdmDocument& document);
+[[nodiscard]] ICLFORGE_ADM_EXPORT std::expected<void, AdmWriteError> write_bw64(
+    const std::string& path, const AdmDocument& document);
 
 }  // namespace iclforge::adm

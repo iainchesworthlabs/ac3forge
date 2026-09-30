@@ -1208,9 +1208,8 @@ struct Decoder::Impl {
 
     // The objects of one object audio member of the presentation, decoded,
     // their metadata applied, into `frame`.
-    [[nodiscard]] ICLFORGE_AC4DEC_NO_EXPORT detail::ParseResult decode_objects(const CapturedAudio& member,
-                                                     const detail::FrameInputs& base,
-                                                     DecodedFrame& frame);
+    [[nodiscard]] ICLFORGE_AC4DEC_NO_EXPORT detail::ParseResult decode_objects(
+        const CapturedAudio& member, const detail::FrameInputs& base, DecodedFrame& frame);
 
     // A change of source (Part 1 clause 4.3.3.2.2): what was read from the
     // stream goes, the mixing values and what metadata() holds with it, and
@@ -1264,8 +1263,8 @@ struct Decoder::Impl {
     // A frame of concealed output in `frame` in place of the frame that failed
     // with `error`, at the sequence_counter and phase decode() took it to
     // have; the error where there is no concealment source.
-    [[nodiscard]] ICLFORGE_AC4DEC_NO_EXPORT std::expected<bool, DecodeError> conceal_or(DecodeError error,
-                                                                               DecodedFrame& frame);
+    [[nodiscard]] ICLFORGE_AC4DEC_NO_EXPORT std::expected<bool, DecodeError> conceal_or(
+        DecodeError error, DecodedFrame& frame);
 
     // Reads every substream of the frame, keeping the content of the
     // presentation decode() selects in frame_capture, and updates what

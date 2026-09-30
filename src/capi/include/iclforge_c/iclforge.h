@@ -406,7 +406,8 @@ ICLFORGE_C_EXPORT uint8_t iclforge_decoded_frame_compr2(const iclforge_decoded_f
 ICLFORGE_C_EXPORT uint8_t iclforge_decoded_frame_dynrng2(const iclforge_decoded_frame_t* frame,
                                                       int block_index);
 
-ICLFORGE_C_EXPORT size_t iclforge_decoded_frame_channel_count(const iclforge_decoded_frame_t* frame);
+ICLFORGE_C_EXPORT size_t
+iclforge_decoded_frame_channel_count(const iclforge_decoded_frame_t* frame);
 /* Always ICLFORGE_SAMPLES_PER_FRAME; exposed for a caller that would rather
  * not depend on the macro. */
 ICLFORGE_C_EXPORT size_t iclforge_decoded_frame_samples_per_channel(
@@ -529,7 +530,8 @@ ICLFORGE_C_EXPORT void iclforge_eac3_encoder_destroy(iclforge_eac3_encoder_t* en
 
 /* Full-bandwidth channels (per config.acmod) plus, when config.lfe is set,
  * the LFE channel last - the same count encode_frame() below expects. */
-ICLFORGE_C_EXPORT size_t iclforge_eac3_encoder_channel_count(const iclforge_eac3_encoder_t* encoder);
+ICLFORGE_C_EXPORT size_t
+iclforge_eac3_encoder_channel_count(const iclforge_eac3_encoder_t* encoder);
 /* Always ICLFORGE_SAMPLES_PER_FRAME (numblkscod is not exposed above,
  * so every substream this API builds carries six blocks); exposed as its own
  * accessor rather than assumed so a caller never has to special-case this
@@ -1005,7 +1007,8 @@ ICLFORGE_C_EXPORT int iclforge_scanned_stream_bsmod(const iclforge_scanned_strea
 /* AC-3 only (a kAc3CoreEac3Extension stream's core included): Table 5.18's
  * index into kBitratesKbps. Meaningless for plain E-AC-3, which has no
  * equivalent fixed-table field. */
-ICLFORGE_C_EXPORT int iclforge_scanned_stream_bit_rate_code(const iclforge_scanned_stream_t* stream);
+ICLFORGE_C_EXPORT int iclforge_scanned_stream_bit_rate_code(
+    const iclforge_scanned_stream_t* stream);
 /* TS 103 420 §8.3.2.2's complexity_index_type_a - the Atmos/JOC marker
  * readable without decoding the EMDF container itself. */
 ICLFORGE_C_EXPORT int iclforge_scanned_stream_has_oba_complexity_index(
@@ -1014,7 +1017,8 @@ ICLFORGE_C_EXPORT int iclforge_scanned_stream_oba_complexity_index(
     const iclforge_scanned_stream_t* stream);
 /* Whether bsmod was actually transmitted - always true for AC-3, only when
  * infomdate was set for E-AC-3. */
-ICLFORGE_C_EXPORT int iclforge_scanned_stream_bsmod_present(const iclforge_scanned_stream_t* stream);
+ICLFORGE_C_EXPORT int iclforge_scanned_stream_bsmod_present(
+    const iclforge_scanned_stream_t* stream);
 /* §5.4.2.8/§E2.3.2.3 dsurmod: 0 = not indicated, 1 = NOT Dolby Surround
  * encoded, 2 = Dolby Surround encoded. Only transmitted when acmod is 2/0. */
 ICLFORGE_C_EXPORT int iclforge_scanned_stream_dsurmod(const iclforge_scanned_stream_t* stream);
@@ -1067,8 +1071,8 @@ ICLFORGE_C_EXPORT int iclforge_scanned_stream_programme_lfe(const iclforge_scann
 /* Channels this PROGRAMME renders, folding in every dependent's chanmap. */
 ICLFORGE_C_EXPORT int iclforge_scanned_stream_programme_channels(
     const iclforge_scanned_stream_t* stream, size_t programme_index);
-ICLFORGE_C_EXPORT int iclforge_scanned_stream_programme_bsid(const iclforge_scanned_stream_t* stream,
-                                                          size_t programme_index);
+ICLFORGE_C_EXPORT int iclforge_scanned_stream_programme_bsid(
+    const iclforge_scanned_stream_t* stream, size_t programme_index);
 /* §5.4.2.2's service type - what tells a receiver this programme is a
  * complete main service (0-1) rather than one to be mixed against another
  * (2-7). */
@@ -1792,8 +1796,8 @@ ICLFORGE_C_EXPORT size_t iclforge_ac4_decoder_presentation_count(
     const iclforge_ac4_decoder_t* decoder);
 ICLFORGE_C_EXPORT size_t iclforge_ac4_decoder_presentation_toc_index(
     const iclforge_ac4_decoder_t* decoder, size_t presentation_index);
-ICLFORGE_C_EXPORT int iclforge_ac4_decoder_presentation_has_id(const iclforge_ac4_decoder_t* decoder,
-                                                             size_t presentation_index);
+ICLFORGE_C_EXPORT int iclforge_ac4_decoder_presentation_has_id(
+    const iclforge_ac4_decoder_t* decoder, size_t presentation_index);
 ICLFORGE_C_EXPORT int iclforge_ac4_decoder_presentation_id(const iclforge_ac4_decoder_t* decoder,
                                                           size_t presentation_index);
 ICLFORGE_C_EXPORT int iclforge_ac4_decoder_presentation_has_md_compat(

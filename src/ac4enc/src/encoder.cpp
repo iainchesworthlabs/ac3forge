@@ -3184,8 +3184,8 @@ struct ObjectLayout {
 struct Encoder::Impl {
     // The stream `config` asks for, or why it is not one the encoder writes,
     // or its rate cannot hold its least frame.
-    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT static std::expected<std::unique_ptr<Impl>, Refusal> make(
-        const EncoderConfig& config);
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT static std::expected<std::unique_ptr<Impl>, Refusal>
+    make(const EncoderConfig& config);
 
     // The object substream `s`'s coders in place of the one substream the
     // stream has so far: an A-JOC substream, or direct-coded substreams and
@@ -3477,17 +3477,18 @@ struct Encoder::Impl {
 
     // Takes the input, with a stem the dialogue in it and with objects the
     // changes to their metadata, and returns the frames it completes.
-    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT std::expected<std::vector<EncodedFrame>, EncodeError> push(
-        std::span<const std::span<const float>> channels,
-        std::span<const std::span<const float>> dialogue,
-        std::span<const ObjectMetadataUpdate> updates);
+    [[nodiscard]] ICLFORGE_AC4ENC_NO_EXPORT std::expected<std::vector<EncodedFrame>, EncodeError>
+    push(std::span<const std::span<const float>> channels,
+         std::span<const std::span<const float>> dialogue,
+         std::span<const ObjectMetadataUpdate> updates);
 
     // Appends one piece of input at the internal rate to every substream:
     // each its own channels (and their dialogue), and each dialogue
     // enhancement substream the waveform it derives from the substream it
     // enhances.
-    ICLFORGE_AC4ENC_NO_EXPORT void take(std::span<const std::vector<std::vector<double>>> programmes,
-                               std::span<const std::vector<std::vector<double>>> stems);
+    ICLFORGE_AC4ENC_NO_EXPORT void take(
+        std::span<const std::vector<std::vector<double>>> programmes,
+        std::span<const std::vector<std::vector<double>>> stems);
 
     // The dialogue enhancement substream's waveform (DialogueConfig::hybrid)
     // from what arrived for the substream it enhances.

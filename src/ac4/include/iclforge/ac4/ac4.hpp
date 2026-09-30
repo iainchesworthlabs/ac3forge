@@ -754,6 +754,7 @@ struct ManifestDescriptor {
 // content_classifier, b_language_indicator and the language tag's primary
 // subtag, and each of its substreams' channel_mode and sf_multiplier. Empty
 // where they are, else a string literal naming the first that differs.
-[[nodiscard]] ICLFORGE_AC4_EXPORT std::string_view configuration_difference(const Toc& a, const Toc& b);
+[[nodiscard]] ICLFORGE_AC4_EXPORT std::string_view configuration_difference(const Toc& a,
+                                                                            const Toc& b);
 
 }  // namespace iclforge::ac4

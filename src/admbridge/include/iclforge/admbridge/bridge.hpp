@@ -267,7 +267,7 @@ struct ICLFORGE_ADMBRIDGE_EXPORT WriteInput {
 // copied into the returned document's own `audio.channels[i]` (unlike build()'s own
 // BridgeResult::pcm, which borrows - there is no caller-owned buffer here for the result to borrow
 // from once this function returns, since the document is the thing about to be written to disk).
-[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT std::expected<iclforge::adm::AdmDocument, BridgeError> write(
-    const WriteInput& input);
+[[nodiscard]] ICLFORGE_ADMBRIDGE_EXPORT std::expected<iclforge::adm::AdmDocument, BridgeError>
+write(const WriteInput& input);
 
 }  // namespace iclforge::admbridge

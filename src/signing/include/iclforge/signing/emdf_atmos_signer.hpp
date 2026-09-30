@@ -96,15 +96,15 @@ struct VerifySummary {
 // E-AC-3 frame is an ordinary input here, answered with kNoContainer, not a
 // caller error - see sign_atmos_stream's own comment above for where that
 // tolerance actually lives.
-[[nodiscard]] ICLFORGE_SIGNING_EXPORT VerifySummary verify_atmos_stream(std::span<const std::byte> stream,
-                                                                   const SigningKey& key);
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT VerifySummary
+verify_atmos_stream(std::span<const std::byte> stream, const SigningKey& key);
 
 // One syncframe. Mirrors sign_atmos_frame's exact construction (excise the
 // framing/metadata/skip/CRC holes into message A, zero the tag bits in the
 // container to build message B, HMAC(key, A||B) truncated to the primary
 // protection field's width) but reads the existing protection_bits_primary
 // bits instead of writing computed ones, and compares.
-[[nodiscard]] ICLFORGE_SIGNING_EXPORT VerifyResult verify_atmos_frame(std::span<const std::byte> frame,
-                                                                 const SigningKey& key);
+[[nodiscard]] ICLFORGE_SIGNING_EXPORT VerifyResult
+verify_atmos_frame(std::span<const std::byte> frame, const SigningKey& key);
 
 }  // namespace iclforge::signing
