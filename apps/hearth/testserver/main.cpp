@@ -50,7 +50,7 @@ namespace {
 namespace fs = std::filesystem;
 namespace ss = iclforge::sendspin;
 namespace m = ss::messages;
-namespace ac = ss::ac3forge;
+namespace ac = ss::player;
 namespace json = ss::json;
 namespace testsink = iclforge::hearth::testsink;
 using namespace std::chrono_literals;

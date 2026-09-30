@@ -29,7 +29,7 @@ namespace iclforge::hearth::testsink {
 
 namespace {
 
-namespace ac = sendspin::ac3forge;
+namespace ac = sendspin::player;
 
 // Samples in every burst (planning/hearth-sendspin-extension.md, Burst chunks).
 constexpr std::uint64_t kSamplesPerBurst = 1536;

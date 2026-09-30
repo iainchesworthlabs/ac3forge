@@ -44,7 +44,7 @@ namespace iclforge::hearth::ui {
 
 namespace {
 
-namespace forge = iclforge::sendspin::ac3forge;
+namespace forge = iclforge::sendspin::player;
 
 constexpr int kPollMs = 60;
 

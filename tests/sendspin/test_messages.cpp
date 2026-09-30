@@ -508,7 +508,7 @@ TEST_CASE("messages: stream/start, stream/clear and stream/end", "[sendspin][mes
 }
 
 TEST_CASE("messages: the extension role's objects in the messages that carry them", "[sendspin][messages][ac3forge]") {
-    namespace ac = iclforge::sendspin::ac3forge;
+    namespace ac = iclforge::sendspin::player;
 
     // client/hello carries the support object in both dialects; one the reader refuses leaves the
     // hello standing without it.

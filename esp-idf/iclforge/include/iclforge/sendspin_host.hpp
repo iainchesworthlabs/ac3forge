@@ -65,14 +65,14 @@ class SendspinEvents {
     virtual void on_player_command(const iclforge::sendspin::messages::PlayerCommandMessage& command) = 0;
 
     // _ac3forge_player@v1, the same way.
-    virtual void on_burst_stream_start(const iclforge::sendspin::ac3forge::StreamStart& stream) = 0;
+    virtual void on_burst_stream_start(const iclforge::sendspin::player::StreamStart& stream) = 0;
     virtual void on_burst_stream_clear() = 0;
     virtual void on_burst_stream_end() = 0;
     virtual void on_burst(const iclforge::sendspin::BurstChunk& chunk, std::int64_t local_time) = 0;
     virtual void on_invalid_burst() = 0;
     virtual void on_ac3forge_command(
-        const iclforge::sendspin::ac3forge::CommandMessage& command) = 0;
-    virtual void on_settings_refused(const iclforge::sendspin::ac3forge::SettingsError& error) = 0;
+        const iclforge::sendspin::player::CommandMessage& command) = 0;
+    virtual void on_settings_refused(const iclforge::sendspin::player::SettingsError& error) = 0;
 
     // A pairing attempt showed a dynamic code (digits), was held back for the
     // operator, or ended ("paired", or why not). For the console and the page;
@@ -203,7 +203,7 @@ class SendspinHost final {
     // The player's own state, or the role's: volume, mute, delay, and for the
     // role its levels, counters and decoder report.
     void set_player_state(const iclforge::sendspin::messages::PlayerState& state);
-    void set_ac3forge_state(const iclforge::sendspin::ac3forge::State& state);
+    void set_ac3forge_state(const iclforge::sendspin::player::State& state);
     // Something outside Sendspin has the output (a play from the control
     // surface), or has given it back.
     void set_external_source(bool external);

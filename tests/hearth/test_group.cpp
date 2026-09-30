@@ -393,7 +393,7 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
         group->add(client.client_id);
     }
     REQUIRE(group->start({.pcm = std::nullopt,
-                          .bursts = iclforge::sendspin::ac3forge::StreamStart{.data_type = iclforge::sendspin::ac3forge::DataType::kEac3,
+                          .bursts = iclforge::sendspin::player::StreamStart{.data_type = iclforge::sendspin::player::DataType::kEac3,
                                                                          .sample_rate = 48000},
                           .buffered = true}));
 
@@ -415,14 +415,14 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
     const bool reported = events.wait(
         [](const auto& clients) {
             return clients.size() == 2 && std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
-                       const std::optional<iclforge::sendspin::ac3forge::State>& state = entry.second.ac3forge_state;
+                       const std::optional<iclforge::sendspin::player::State>& state = entry.second.ac3forge_state;
                        return state && state->decoder && state->decoder->objects > 0 && state->decoder->objects_placed;
                    });
         },
         10s);
     if (!reported) {
         for (const iclforge::sendspin::ClientView& client : (*host)->clients()) {
-            const std::optional<iclforge::sendspin::ac3forge::State>& state = client.ac3forge_state;
+            const std::optional<iclforge::sendspin::player::State>& state = client.ac3forge_state;
             UNSCOPED_INFO(client.name << ": decoder reported " << (state && state->decoder) << ", objects "
                                       << (state && state->decoder ? state->decoder->objects : -1));
         }
@@ -1036,7 +1036,7 @@ TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at 
     group->add(lounge->client_id());
     const m::AudioFormat pcm_format{.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 48000, .bit_depth = 16};
     REQUIRE(group->start({.pcm = pcm_format,
-                          .bursts = ss::ac3forge::StreamStart{.data_type = ss::ac3forge::DataType::kEac3, .sample_rate = 48000},
+                          .bursts = ss::player::StreamStart{.data_type = ss::player::DataType::kEac3, .sample_rate = 48000},
                           .buffered = true}));
 
     std::size_t next_burst = 0;
@@ -1197,8 +1197,8 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
     REQUIRE(group->start(
         {.pcm = std::nullopt,
          .bursts =
-             iclforge::sendspin::ac3forge::StreamStart{
-                 .data_type = iclforge::sendspin::ac3forge::DataType::kAc4, .sample_rate = 48000},
+             iclforge::sendspin::player::StreamStart{
+                 .data_type = iclforge::sendspin::player::DataType::kAc4, .sample_rate = 48000},
          .buffered = true}));
     std::size_t next = 0;
     const auto deadline =
@@ -1222,11 +1222,11 @@ TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
         [](const auto& clients) {
             return clients.size() == 1 &&
                    std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
-                       const std::optional<iclforge::sendspin::ac3forge::State>& state =
+                       const std::optional<iclforge::sendspin::player::State>& state =
                            entry.second.ac3forge_state;
                        return state && state->decoder &&
                               state->decoder->data_type ==
-                                  iclforge::sendspin::ac3forge::DataType::kAc4 &&
+                                  iclforge::sendspin::player::DataType::kAc4 &&
                               state->decoder->acmod == 2 && !state->decoder->lfe;
                    });
         },

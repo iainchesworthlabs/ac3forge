@@ -100,10 +100,10 @@ class NetworkController : public QObject {
     // the keys the extension's DecoderSettings actually carries (no
     // rfCeilingDb/ltrtPhaseShift/dualMono/jocDomain/fastInverseTransform -
     // the sink has no such settings). acceptedKeys: which of those this
-    // sink's own support object lists (ac3forge::kDecoderSettingNames) -
+    // sink's own support object lists (player::kDecoderSettingNames) -
     // what gates each control, since a sink can support a subset.
     Q_PROPERTY(QVariantMap sinkDecoderSettings READ sinkDecoderSettings NOTIFY sinksChanged)
-    // What the sink itself has reported (ac3forge::State, "WHAT THE SINK
+    // What the sink itself has reported (player::State, "WHAT THE SINK
     // REPORTS" in the decoder mockup): settingsRevision, settingsAppliedText,
     // settingsErrorText, streamText, objectsText, dialogueText, playedText,
     // problemsText - each already the display string the page shows, the

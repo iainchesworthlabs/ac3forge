@@ -155,7 +155,7 @@ class ServerSession {
     [[nodiscard]] std::expected<SessionOutput, Refusal> command(const messages::PlayerCommandMessage& command);
 
     // _ac3forge_player@v1's stream, as player@v1's: a data type and sample rate the client listed.
-    [[nodiscard]] std::expected<SessionOutput, Refusal> start_burst_stream(const ac3forge::StreamStart& stream);
+    [[nodiscard]] std::expected<SessionOutput, Refusal> start_burst_stream(const player::StreamStart& stream);
     // One burst of the running stream, to be played from `timestamp_us` on the server clock: its
     // Pc and Pd as iclforge::iec61937 writes them, and the payload they describe. send_ahead is
     // taken just before the chunk is sealed.
@@ -165,8 +165,8 @@ class ServerSession {
     [[nodiscard]] std::expected<SessionOutput, Refusal> clear_burst_stream();
     [[nodiscard]] std::expected<SessionOutput, Refusal> end_burst_stream();
     // A command the role's state lists; settings also checked against the support object
-    // (ac3forge::check_settings).
-    [[nodiscard]] std::expected<SessionOutput, Refusal> ac3forge_command(const ac3forge::CommandMessage& command);
+    // (player::check_settings).
+    [[nodiscard]] std::expected<SessionOutput, Refusal> ac3forge_command(const player::CommandMessage& command);
 
     // metadata@v1, controller@v1 and color@v1: each object present only for an active role. The
     // first state of a role since its activation must not be scheduled in the future (messaging.md,
@@ -299,7 +299,7 @@ class ServerSession {
     std::vector<messages::Activity> activities_;
     std::vector<std::string> active_roles_;
     std::optional<messages::PlayerStream> stream_;
-    std::optional<ac3forge::StreamStart> burst_stream_;
+    std::optional<player::StreamStart> burst_stream_;
 
     // The state roles: whether a state has gone out since each was activated, and the controller
     // state last sent, whose commands and seek range a client's command is checked against.

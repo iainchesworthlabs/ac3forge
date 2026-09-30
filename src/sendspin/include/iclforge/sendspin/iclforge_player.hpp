@@ -24,7 +24,7 @@
 // Nothing here depends on the codec library: the enumerations name what the page's text names, and
 // a sink maps them onto iclforge::ac3 and iclforge::render.
 
-namespace iclforge::sendspin::ac3forge {
+namespace iclforge::sendspin::player {
 
 inline constexpr std::string_view kRole = "_ac3forge_player@v1";
 inline constexpr std::string_view kSupportKey = "_ac3forge_player@v1_support";
@@ -246,4 +246,4 @@ struct CommandFailure {
 [[nodiscard]] std::optional<std::string> check_settings(const Settings& settings,
                                                         const Support& support);
 
-}  // namespace iclforge::sendspin::ac3forge
+}  // namespace iclforge::sendspin::player

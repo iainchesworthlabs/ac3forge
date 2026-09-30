@@ -42,7 +42,7 @@ namespace {
 namespace fs = std::filesystem;
 namespace m = iclforge::sendspin::messages;
 namespace hs = iclforge::sendspin::handshake;
-namespace ac = iclforge::sendspin::ac3forge;
+namespace ac = iclforge::sendspin::player;
 namespace testsink = iclforge::hearth::testsink;
 namespace websocket = iclforge::sendspin::transport::websocket;
 using iclforge::sendspin::crypto::Key32;

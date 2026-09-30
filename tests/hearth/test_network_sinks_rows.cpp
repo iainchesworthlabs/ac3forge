@@ -100,11 +100,11 @@ TEST_CASE("network sinks rows: a Hearth sink's own lead time wins over its playe
     rig.sinks->on_found(service);
     auto client = connected(service, "client-bench");
     client.name = "Hearth TestSink bench";
-    ss::ac3forge::Support support;
-    support.data_types = {ss::ac3forge::DataType::kEac3};
+    ss::player::Support support;
+    support.data_types = {ss::player::DataType::kEac3};
     support.outputs = {.count = 12, .bit_depth = 24, .bit_depths = {24}};
     client.ac3forge_support = support;
-    ss::ac3forge::State ac3forge_state;
+    ss::player::State ac3forge_state;
     ac3forge_state.required_lead_time_ms = 300;
     client.ac3forge_state = ac3forge_state;
     ss::messages::PlayerState player_state;
@@ -316,15 +316,15 @@ TEST_CASE("network sinks rows: settings and identify for a Hearth sink with no l
     const auto service = service_named("cinema");
     rig.sinks->on_found(service);
     auto client = connected(service, "client-cinema");
-    client.ac3forge_support = ss::ac3forge::Support{};
+    client.ac3forge_support = ss::player::Support{};
     rig.sinks->on_client(client);
 
-    ss::ac3forge::Settings settings;
+    ss::player::Settings settings;
     settings.layout = "5.1";
     // The host has no connection by that id, so neither command is sent, and the row keeps no
     // optimistic record of either.
     CHECK_FALSE(rig.sinks->push_sink_settings("cinema", settings));
-    CHECK_FALSE(rig.sinks->push_sink_identify("cinema", ss::ac3forge::Identify{.output = 2}));
+    CHECK_FALSE(rig.sinks->push_sink_identify("cinema", ss::player::Identify{.output = 2}));
     CHECK_FALSE(rig.sinks->push_sink_identify("cinema", std::nullopt));
     const auto row = rig.sinks->status().sinks.front();
     CHECK_FALSE(row.intended_settings.has_value());

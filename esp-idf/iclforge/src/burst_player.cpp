@@ -42,7 +42,7 @@ namespace ac3forge {
 namespace {
 
 namespace ss = iclforge::sendspin;
-namespace ac = ss::ac3forge;
+namespace ac = ss::player;
 namespace m = ss::messages;
 using iclforge::render::IdentifyTone;
 using iclforge::render::LayoutRenderer;

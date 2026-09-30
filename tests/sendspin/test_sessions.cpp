@@ -45,7 +45,7 @@
 
 namespace {
 
-namespace ac = iclforge::sendspin::ac3forge;
+namespace ac = iclforge::sendspin::player;
 namespace m = iclforge::sendspin::messages;
 namespace hs = iclforge::sendspin::handshake;
 namespace flow = iclforge::sendspin::pairing_flow;

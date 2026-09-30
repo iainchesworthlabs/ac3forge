@@ -98,8 +98,8 @@ struct ClientView {
     bool available = false;
     std::optional<messages::PlayerState> player_state;
     std::optional<messages::PlayerSupport> player_support;
-    std::optional<ac3forge::State> ac3forge_state;
-    std::optional<ac3forge::Support> ac3forge_support;
+    std::optional<player::State> ac3forge_state;
+    std::optional<player::Support> ac3forge_support;
     // The roles the client lists and the roles active on its connection, with the other roles'
     // support and client/state objects.
     std::vector<std::string> supported_roles;
@@ -198,7 +198,7 @@ class ServerHost {
     // Sends a client playing _ac3forge_player@v1 a command its state lists, settings checked
     // against its support object first (ServerSession::ac3forge_command). False when the client is
     // not connected or the session refuses it.
-    bool ac3forge_command(const std::string& client_id, const ac3forge::CommandMessage& command);
+    bool ac3forge_command(const std::string& client_id, const player::CommandMessage& command);
     // Approves a client for unpaired access, or withdraws the approval.
     bool approve(const std::string& client_id, bool approved);
     bool unpair(const std::string& client_id);
@@ -265,7 +265,7 @@ class Group {
         // 32 bits. Nothing for a programme only members playing _ac3forge_player@v1 can play.
         std::optional<messages::AudioFormat> pcm;
         // The coded stream push_burst() takes, for members playing _ac3forge_player@v1.
-        std::optional<ac3forge::StreamStart> bursts;
+        std::optional<player::StreamStart> bursts;
         // A source that can be read ahead, which may start with more lead.
         bool buffered = false;
     };

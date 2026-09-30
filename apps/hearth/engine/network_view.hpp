@@ -153,17 +153,17 @@ struct SinkFacts {
     // (trim/delay/crossover, whether it takes routing or identify) and which
     // of the 11 decoder keys it accepts - what the settings pages gate their
     // controls on.
-    std::optional<sendspin::ac3forge::Support> ac3forge_support{};
+    std::optional<sendspin::player::Support> ac3forge_support{};
     // The sink's own most recently reported client/state object: settings_
     // revision/settings_error (whether intended_settings below has actually
     // reached it), its decoder report, levels and counters - the "what the
     // sink reports" panel. Absent before the sink has sent one.
-    std::optional<sendspin::ac3forge::State> ac3forge_state{};
+    std::optional<sendspin::player::State> ac3forge_state{};
     // This app's own record of the last settings command it successfully
     // sent this sink - NOT a read-back (ac3forge_player.hpp's own comment:
     // the command is set-only). The settings pages show this, not
     // ac3forge_state, as each control's "current" value.
-    std::optional<sendspin::ac3forge::Settings> intended_settings{};
+    std::optional<sendspin::player::Settings> intended_settings{};
     // The output slot this app last told the sink to sound the identify tone
     // on, or nothing - this app's own intent again, for the same reason as
     // intended_settings: there is no "identify state" on the wire to read

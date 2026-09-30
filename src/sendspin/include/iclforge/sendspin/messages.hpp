@@ -144,9 +144,9 @@ struct ClientHello {
     DeviceInfo device_info;
     std::vector<std::string> supported_roles;
     std::optional<PlayerSupport> player_support;
-    // Read as nothing when the object is absent or one ac3forge::read_support refuses: the
+    // Read as nothing when the object is absent or one player::read_support refuses: the
     // message stands, and a server does not activate the role.
-    std::optional<ac3forge::Support> ac3forge_support;
+    std::optional<player::Support> ac3forge_support;
     std::vector<PairMethodDescriptor> pair_methods;
     bool unpaired_access = false;
     // aiosendspin 9.1.1's `trust_level`: "user" on a long-term PSK connection, "none"
@@ -251,7 +251,7 @@ struct PlayerState {
 struct ClientState {
     bool available = false;
     std::optional<PlayerState> player;
-    std::optional<ac3forge::State> ac3forge;
+    std::optional<player::State> ac3forge;
     std::optional<source::State> source = std::nullopt;
     std::optional<artwork::Channels> artwork = std::nullopt;
     std::optional<visualizer::State> visualizer = std::nullopt;
@@ -276,16 +276,16 @@ struct PlayerCommandMessage {
 
 struct ServerCommand {
     std::optional<PlayerCommandMessage> player;
-    std::optional<ac3forge::CommandMessage> ac3forge;
-    // Read only: a settings command ac3forge::read_command refused, with the revision it named,
+    std::optional<player::CommandMessage> ac3forge;
+    // Read only: a settings command player::read_command refused, with the revision it named,
     // for the sink's settings_error. The message is not malformed.
-    std::optional<ac3forge::SettingsError> ac3forge_refused;
+    std::optional<player::SettingsError> ac3forge_refused;
     std::optional<source::Command> source = std::nullopt;
 };
 
 [[nodiscard]] std::string write_server_command(const ServerCommand& command, Dialect dialect);
 // A player command whose value is missing, or out of its range, is malformed, and so is an
-// `_ac3forge_player` command ac3forge::read_command finds malformed.
+// `_ac3forge_player` command player::read_command finds malformed.
 [[nodiscard]] std::expected<ServerCommand, MessageError> read_server_command(json::Value payload,
                                                                             Dialect dialect);
 
@@ -325,7 +325,7 @@ struct PlayerStream {
 struct StreamStart {
     std::int64_t server_transmitted = 0;
     std::optional<PlayerStream> player;
-    std::optional<ac3forge::StreamStart> ac3forge;
+    std::optional<player::StreamStart> ac3forge;
     std::optional<artwork::Channels> artwork = std::nullopt;
     std::optional<visualizer::StreamStart> visualizer = std::nullopt;
 };

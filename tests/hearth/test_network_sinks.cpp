@@ -101,8 +101,8 @@ TEST_CASE("network sinks: hello fills in a Hearth sink's capabilities", "[hearth
     client.psk = ss::handshake::PskCategory::kSentinel;
     client.hello = true;
     client.supported_roles = {"_ac3forge_player@v1", "player@v1"};
-    ss::ac3forge::Support support;
-    support.data_types = {ss::ac3forge::DataType::kAc3, ss::ac3forge::DataType::kEac3};
+    ss::player::Support support;
+    support.data_types = {ss::player::DataType::kAc3, ss::player::DataType::kEac3};
     support.outputs = {.count = 8, .bit_depth = 32, .bit_depths = {16, 32}};
     client.ac3forge_support = support;
     sinks.on_client(client);
@@ -224,10 +224,10 @@ TEST_CASE("network sinks: push_sink_settings refuses a sink with no _ac3forge_pl
     // there is no settings command for it to take at all.
     sinks.on_client(client);
 
-    ss::ac3forge::Settings out;
+    ss::player::Settings out;
     out.layout = "2.0";
     CHECK_FALSE(sinks.push_sink_settings("kitchen-speaker", out));
-    CHECK_FALSE(sinks.push_sink_identify("kitchen-speaker", ss::ac3forge::Identify{.output = 0}));
+    CHECK_FALSE(sinks.push_sink_identify("kitchen-speaker", ss::player::Identify{.output = 0}));
     CHECK_FALSE(sinks.status().sinks.front().intended_settings.has_value());
     CHECK_FALSE(sinks.status().sinks.front().identify_slot.has_value());
 }
@@ -293,8 +293,8 @@ TEST_CASE("network sinks: only a connected sink can be added to a group", "[hear
     client.url = *service.url();
     client.hello = true;
     client.supported_roles = {"_ac3forge_player@v1"};
-    ss::ac3forge::Support support;
-    support.data_types = {ss::ac3forge::DataType::kEac3};
+    ss::player::Support support;
+    support.data_types = {ss::player::DataType::kEac3};
     client.ac3forge_support = support;
     sinks.on_client(client);
 
@@ -418,13 +418,13 @@ TEST_CASE("network sinks: push_sink_settings reaches ac3forge_command for a sink
     client.client_id = "client-mno";
     client.url = *service.url();
     client.hello = true;
-    ss::ac3forge::Support support;
-    support.data_types = {ss::ac3forge::DataType::kEac3};
+    ss::player::Support support;
+    support.data_types = {ss::player::DataType::kEac3};
     support.outputs = {.count = 2, .bit_depth = 24, .bit_depths = {24}};
     client.ac3forge_support = support;
     sinks.on_client(client);
 
-    ss::ac3forge::Settings out;
+    ss::player::Settings out;
     out.layout = "2.0";
     out.trim_db = {0.0, 0.0};
     out.delay_ms = {0.0, 0.0};
@@ -440,7 +440,7 @@ TEST_CASE("network sinks: push_sink_settings reaches ac3forge_command for a sink
     CHECK_FALSE(sinks.push_sink_settings("hearth-s3-kitchen", out));
     CHECK_FALSE(sinks.status().sinks.front().intended_settings.has_value());
 
-    CHECK_FALSE(sinks.push_sink_identify("hearth-s3-kitchen", ss::ac3forge::Identify{.output = 0}));
+    CHECK_FALSE(sinks.push_sink_identify("hearth-s3-kitchen", ss::player::Identify{.output = 0}));
     CHECK_FALSE(sinks.status().sinks.front().identify_slot.has_value());
 }
 
@@ -453,7 +453,7 @@ TEST_CASE("network sinks: push_sink_settings and push_sink_identify on an id not
     REQUIRE(identity.has_value());
     NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
-    CHECK_FALSE(sinks.push_sink_settings("no-such-sink", ss::ac3forge::Settings{}));
+    CHECK_FALSE(sinks.push_sink_settings("no-such-sink", ss::player::Settings{}));
     CHECK_FALSE(sinks.push_sink_identify("no-such-sink", std::nullopt));
     CHECK(sinks.status().sinks.empty());
 }
@@ -540,8 +540,8 @@ TEST_CASE("network sinks: a client going away keeps its row, and it is dialled a
     client.url = *service.url();
     client.hello = true;
     client.name = "Lounge";
-    ss::ac3forge::Support support;
-    support.data_types = {ss::ac3forge::DataType::kEac3};
+    ss::player::Support support;
+    support.data_types = {ss::player::DataType::kEac3};
     support.outputs = {.count = 6, .bit_depth = 32, .bit_depths = {32}};
     client.ac3forge_support = support;
     sinks.on_client(client);
@@ -588,8 +588,8 @@ TEST_CASE("network sinks: a sink kept through a firmware update keeps its row un
     client.hello = true;
     client.name = "Den";
     client.psk = ss::handshake::PskCategory::kLongTerm;
-    ss::ac3forge::Support support;
-    support.data_types = {ss::ac3forge::DataType::kEac3};
+    ss::player::Support support;
+    support.data_types = {ss::player::DataType::kEac3};
     support.outputs = {.count = 2, .bit_depth = 32, .bit_depths = {32}};
     client.ac3forge_support = support;
     sinks.on_client(client);

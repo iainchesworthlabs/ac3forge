@@ -44,7 +44,7 @@ namespace iclforge::hearth::testsink {
 
 namespace {
 
-namespace ac = sendspin::ac3forge;
+namespace ac = sendspin::player;
 namespace m = sendspin::messages;
 namespace flow = sendspin::pairing_flow;
 namespace pm = sendspin::pairing_messages;

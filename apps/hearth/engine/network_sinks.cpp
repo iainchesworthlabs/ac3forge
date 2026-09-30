@@ -391,7 +391,7 @@ void NetworkSinks::keep_sink(const std::string& id, bool keep) {
     publish_locked();
 }
 
-bool NetworkSinks::push_sink_settings(const std::string& id, ss::ac3forge::Settings settings) {
+bool NetworkSinks::push_sink_settings(const std::string& id, ss::player::Settings settings) {
     std::string client_id;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -410,8 +410,8 @@ bool NetworkSinks::push_sink_settings(const std::string& id, ss::ac3forge::Setti
     if (client_id.empty() || !host_) {
         return false;
     }
-    ss::ac3forge::CommandMessage message;
-    message.command = ss::ac3forge::Command::kSettings;
+    ss::player::CommandMessage message;
+    message.command = ss::player::Command::kSettings;
     message.settings = settings;
     const bool sent = host_->ac3forge_command(client_id, message);
     if (sent) {
@@ -425,7 +425,7 @@ bool NetworkSinks::push_sink_settings(const std::string& id, ss::ac3forge::Setti
     return sent;
 }
 
-bool NetworkSinks::push_sink_identify(const std::string& id, std::optional<ss::ac3forge::Identify> identify) {
+bool NetworkSinks::push_sink_identify(const std::string& id, std::optional<ss::player::Identify> identify) {
     std::string client_id;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -439,8 +439,8 @@ bool NetworkSinks::push_sink_identify(const std::string& id, std::optional<ss::a
     if (client_id.empty() || !host_) {
         return false;
     }
-    ss::ac3forge::CommandMessage message;
-    message.command = ss::ac3forge::Command::kIdentify;
+    ss::player::CommandMessage message;
+    message.command = ss::player::Command::kIdentify;
     message.identify = identify;
     const bool sent = host_->ac3forge_command(client_id, message);
     if (sent) {
@@ -674,8 +674,8 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
 
         if (client.ac3forge_support.has_value()) {
             facts.kind = SinkKind::kHearthSink;
-            for (const ss::ac3forge::DataType type : client.ac3forge_support->data_types) {
-                facts.data_types.emplace_back(ss::ac3forge::data_type_name(type));
+            for (const ss::player::DataType type : client.ac3forge_support->data_types) {
+                facts.data_types.emplace_back(ss::player::data_type_name(type));
             }
             facts.output_slots = static_cast<std::uint32_t>(client.ac3forge_support->outputs.count);
             facts.output_bit_depth = static_cast<std::uint32_t>(client.ac3forge_support->outputs.bit_depth);

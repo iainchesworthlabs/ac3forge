@@ -19,7 +19,7 @@
 
 namespace {
 
-namespace ac = iclforge::sendspin::ac3forge;
+namespace ac = iclforge::sendspin::player;
 namespace json = iclforge::sendspin::json;
 
 // A parsed object whose values stay valid while the Parsed lives.

@@ -48,7 +48,7 @@ namespace {
 
 namespace ss = iclforge::sendspin;
 namespace m = ss::messages;
-namespace ac = ss::ac3forge;
+namespace ac = ss::player;
 namespace pm = ss::pairing_messages;
 using ss::Arbiter;
 

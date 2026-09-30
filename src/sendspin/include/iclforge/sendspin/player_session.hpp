@@ -69,7 +69,7 @@ struct PlayerConfig {
     // _ac3forge_player@v1 first when `ac3forge_support` is set.
     std::vector<std::string> supported_roles{"player@v1"};
     messages::PlayerSupport player_support;
-    std::optional<ac3forge::Support> ac3forge_support;
+    std::optional<player::Support> ac3forge_support;
     // The pairing methods offered: pairing_psk, and at most one code method.
     std::vector<messages::PairMethodDescriptor> pair_methods;
     // The static pairing code, eight ASCII digits, when pair_methods offers static_code.
@@ -79,7 +79,7 @@ struct PlayerConfig {
     // and commands.
     messages::PlayerState player_state;
     // _ac3forge_player@v1's, likewise.
-    ac3forge::State ac3forge_state;
+    player::State ac3forge_state;
     // Bounds one reassembled message, ID included.
     std::size_t max_message_bytes = 4 * 1024 * 1024;
     // The other roles' support objects, offered with the roles listed, and their states reported
@@ -145,7 +145,7 @@ class PlayerListener {
     // _ac3forge_player@v1, which a player that does not list the role never hears from.
     //
     // The role's stream began, or changed in place: a data type and sample rate the player listed.
-    virtual void on_burst_stream_start(const ac3forge::StreamStart& /*stream*/) {}
+    virtual void on_burst_stream_start(const player::StreamStart& /*stream*/) {}
     // Drop every buffered chunk and any decoded audio not yet played, reset the decoder, and carry
     // on with chunks received after this.
     virtual void on_burst_stream_clear() {}
@@ -158,9 +158,9 @@ class PlayerListener {
     virtual void on_invalid_burst() {}
     // A command the role's state listed. The listener applies it and reports the new state through
     // PlayerSession::set_ac3forge_state(); a settings command at the next burst boundary.
-    virtual void on_ac3forge_command(const ac3forge::CommandMessage& /*command*/) {}
+    virtual void on_ac3forge_command(const player::CommandMessage& /*command*/) {}
     // A settings command the reader refused, with the revision it named: report settings_error.
-    virtual void on_settings_refused(const ac3forge::SettingsError& /*error*/) {}
+    virtual void on_settings_refused(const player::SettingsError& /*error*/) {}
 
     // The other roles, for a client that lists them.
     //
@@ -208,7 +208,7 @@ class PlayerSession {
     // The player's own state changed, or a command was applied: report it.
     [[nodiscard]] SessionOutput set_state(const messages::PlayerState& state);
     // The same for _ac3forge_player@v1. A sink sends fresh levels at most ten times a second.
-    [[nodiscard]] SessionOutput set_ac3forge_state(const ac3forge::State& state);
+    [[nodiscard]] SessionOutput set_ac3forge_state(const player::State& state);
     // The other roles' states, reported at once while the role is active.
     [[nodiscard]] SessionOutput set_artwork_state(const artwork::Channels& channels);
     [[nodiscard]] SessionOutput set_visualizer_state(const visualizer::State& state);
@@ -304,7 +304,7 @@ class PlayerSession {
     [[nodiscard]] bool ac3forge_active() const;
     [[nodiscard]] bool role_active(std::string_view role) const;
     // Whether the player listed `stream`'s data type and sample rate.
-    [[nodiscard]] bool lists(const ac3forge::StreamStart& stream) const;
+    [[nodiscard]] bool lists(const player::StreamStart& stream) const;
     // An artwork message received: false for one the role says closes the connection.
     [[nodiscard]] bool on_artwork(std::span<const std::uint8_t> message);
     void seal_binary(std::span<const std::uint8_t> message, SessionOutput& out);
@@ -350,8 +350,8 @@ class PlayerSession {
     std::vector<std::pair<std::int64_t, std::vector<std::uint8_t>>> held_audio_;
     std::uint64_t held_audio_bytes_ = 0;
     std::optional<std::int64_t> last_audio_timestamp_;
-    ac3forge::State ac3forge_state_;
-    std::optional<ac3forge::StreamStart> burst_stream_;
+    player::State ac3forge_state_;
+    std::optional<player::StreamStart> burst_stream_;
 
     source::State source_state_;
     artwork::Channels artwork_state_;

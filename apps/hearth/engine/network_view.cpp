@@ -25,7 +25,7 @@ namespace controller = iclforge::sendspin::controller;
 }
 
 // "AC-3", "E-AC-3" or "AC-3 and E-AC-3" - the extension spec's own data type
-// names, in the order the sink listed them (iclforge::sendspin::ac3forge::DataType
+// names, in the order the sink listed them (iclforge::sendspin::player::DataType
 // has only two values, so "X, Y and Z" never arises here).
 [[nodiscard]] std::string data_types_text(const std::vector<std::string>& data_types) {
     std::vector<std::string> named;

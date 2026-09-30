@@ -129,7 +129,7 @@ struct BurstPlayerStatus {
     const char* stream = "idle";
     // What the decoder found in the current stream, once a unit has decoded.
     bool have_decoder = false;
-    iclforge::sendspin::ac3forge::DecoderReport decoder;
+    iclforge::sendspin::player::DecoderReport decoder;
 
     // Per output: the last 100 ms, in dB of full scale (kSilenceDb for
     // silence), and the whole stream's RMS scaled by a million, as the
@@ -142,7 +142,7 @@ struct BurstPlayerStatus {
     bool have_levels = false;
     std::uint32_t levels_serial = 0;
 
-    iclforge::sendspin::ac3forge::Counters counters;
+    iclforge::sendspin::player::Counters counters;
     Playout::Stats playout;
 
     // The newest stream frame with a known play time: its position from the
@@ -181,7 +181,7 @@ class BurstPlayer {
 
     // From the Sendspin session's task. Each goes into the ring in order;
     // chunks that do not fit are dropped and counted.
-    void start_bursts(const iclforge::sendspin::ac3forge::StreamStart& stream);
+    void start_bursts(const iclforge::sendspin::player::StreamStart& stream);
     void start_pcm(const iclforge::sendspin::messages::AudioFormat& format);
     void clear();
     void end();
@@ -191,14 +191,14 @@ class BurstPlayer {
 
     // The role's settings: checked against `support` now, and applied at the
     // next burst boundary. The reason they are refused, or nothing.
-    [[nodiscard]] std::optional<std::string> settings(const iclforge::sendspin::ac3forge::Settings& settings,
-                                                      const iclforge::sendspin::ac3forge::Support& support);
+    [[nodiscard]] std::optional<std::string> settings(const iclforge::sendspin::player::Settings& settings,
+                                                      const iclforge::sendspin::player::Support& support);
     // The layout a board's own page sets, for streams with no server settings:
     // applied at the next burst boundary, and replaced by the next settings a
     // server sends. False for a layout the sink cannot carry.
     [[nodiscard]] bool set_layout(const iclforge::render::OutputLayout& layout);
     // The identify tone on one output at `level_db`, or none.
-    void identify(std::optional<iclforge::sendspin::ac3forge::Identify> tone);
+    void identify(std::optional<iclforge::sendspin::player::Identify> tone);
     // The player's volume, 0 to 100, and mute: (volume / 100)^1.5, ramped over
     // a block.
     void set_volume(int volume, bool muted);

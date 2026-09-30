@@ -233,7 +233,7 @@ SessionOutput PlayerSession::on_message(std::span<const std::uint8_t> message, s
             return {};
         }
         const auto chunk = parse_burst_chunk(message);
-        if (!chunk || !ac3forge::carries(burst_stream_->data_type, chunk->data_type())) {
+        if (!chunk || !player::carries(burst_stream_->data_type, chunk->data_type())) {
             listener_->on_invalid_burst();
             return {};
         }
@@ -429,7 +429,7 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             restart_audio();
             listener_->on_stream_clear();
         }
-        if (clear && burst_stream_ && names(clear->roles, ac3forge::kObjectKey)) {
+        if (clear && burst_stream_ && names(clear->roles, player::kObjectKey)) {
             listener_->on_burst_stream_clear();
         }
         if (clear && visualizer_stream_ && names(clear->roles, "visualizer")) {
@@ -444,7 +444,7 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             end_audio();
             listener_->on_stream_end();
         }
-        if (end && burst_stream_ && names(end->roles, ac3forge::kObjectKey)) {
+        if (end && burst_stream_ && names(end->roles, player::kObjectKey)) {
             burst_stream_.reset();
             listener_->on_burst_stream_end();
         }
@@ -503,14 +503,14 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
         }
         if (ac3forge_active()) {
             // As player@v1: a command the role's latest state does not list is ignored.
-            const std::vector<ac3forge::Command>& listed = ac3forge_state_.supported_commands;
-            const auto lists_command = [&](ac3forge::Command which) {
+            const std::vector<player::Command>& listed = ac3forge_state_.supported_commands;
+            const auto lists_command = [&](player::Command which) {
                 return std::find(listed.begin(), listed.end(), which) != listed.end();
             };
             if (command->ac3forge && lists_command(command->ac3forge->command)) {
                 listener_->on_ac3forge_command(*command->ac3forge);
             }
-            if (command->ac3forge_refused && lists_command(ac3forge::Command::kSettings)) {
+            if (command->ac3forge_refused && lists_command(player::Command::kSettings)) {
                 listener_->on_settings_refused(*command->ac3forge_refused);
             }
         }
@@ -775,18 +775,18 @@ bool PlayerSession::player_active() const {
 
 bool PlayerSession::ac3forge_active() const {
     return phase_ == Phase::kActive && config_.ac3forge_support &&
-           std::find(active_roles_.begin(), active_roles_.end(), ac3forge::kRole) != active_roles_.end();
+           std::find(active_roles_.begin(), active_roles_.end(), player::kRole) != active_roles_.end();
 }
 
 bool PlayerSession::role_active(std::string_view role) const {
     return phase_ == Phase::kActive && std::find(active_roles_.begin(), active_roles_.end(), role) != active_roles_.end();
 }
 
-bool PlayerSession::lists(const ac3forge::StreamStart& stream) const {
+bool PlayerSession::lists(const player::StreamStart& stream) const {
     if (!config_.ac3forge_support) {
         return false;
     }
-    const ac3forge::Support& support = *config_.ac3forge_support;
+    const player::Support& support = *config_.ac3forge_support;
     return std::find(support.data_types.begin(), support.data_types.end(), stream.data_type) !=
                support.data_types.end() &&
            std::find(support.sample_rates.begin(), support.sample_rates.end(), stream.sample_rate) !=
@@ -939,7 +939,7 @@ SessionOutput PlayerSession::set_state(const m::PlayerState& state) {
     return out;
 }
 
-SessionOutput PlayerSession::set_ac3forge_state(const ac3forge::State& state) {
+SessionOutput PlayerSession::set_ac3forge_state(const player::State& state) {
     ac3forge_state_ = state;
     SessionOutput out;
     if (ac3forge_active() && sent_state_) {

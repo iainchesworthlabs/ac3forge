@@ -208,7 +208,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
                     view.pair_methods.push_back(method.method);
                 }
                 view.player_support = session.hello()->player_support;
-                if (contains(session.hello()->supported_roles, ac3forge::kRole)) {
+                if (contains(session.hello()->supported_roles, player::kRole)) {
                     view.ac3forge_support = session.hello()->ac3forge_support;
                 }
                 view.supported_roles = session.hello()->supported_roles;
@@ -219,7 +219,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
             view.pairing_attempt = session.pairing_attempt_running();
             view.wants_code = session.pairing_wants_code();
             view.code_requests = code_requests_;
-            view.bursts = contains(session.active_roles(), ac3forge::kRole);
+            view.bursts = contains(session.active_roles(), player::kRole);
             view.playing = view.bursts || contains(session.active_roles(), kPlayerRole);
             view.active_roles = session.active_roles();
             if (session.state()) {
@@ -314,7 +314,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
             // The extension role only on a long-term PSK connection, and never beside player@v1
             // (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1).
             if (client.psk == hs::PskCategory::kLongTerm && client.ac3forge_support) {
-                roles.emplace_back(ac3forge::kRole);
+                roles.emplace_back(player::kRole);
             } else if (client.player_support && contains(client.supported_roles, kPlayerRole)) {
                 roles.emplace_back(kPlayerRole);
             }
@@ -850,7 +850,7 @@ bool ServerHost::cancel_pairing(const std::string& client_id) {
     return true;
 }
 
-bool ServerHost::ac3forge_command(const std::string& client_id, const ac3forge::CommandMessage& command) {
+bool ServerHost::ac3forge_command(const std::string& client_id, const player::CommandMessage& command) {
     const std::shared_ptr<HostConnection> connection = state_->find(client_id);
     return connection &&
            connection->driver().call([&] { return connection->session().ac3forge_command(command); }).has_value();
@@ -933,7 +933,7 @@ struct Group::State {
 
     mutable std::mutex mutex;
     std::optional<m::AudioFormat> pcm;
-    std::optional<ac3forge::StreamStart> bursts;
+    std::optional<player::StreamStart> bursts;
     std::int64_t sample_rate = 0;
     bool buffered = false;
     std::optional<std::int64_t> start_time;
@@ -988,15 +988,15 @@ struct Group::State {
     // A member's player as the group volume sees it, from whichever playback role is active.
     [[nodiscard]] static std::optional<controller::Player> player_of(const ClientView& client) {
         if (client.bursts && client.ac3forge_state) {
-            const ac3forge::State& state = *client.ac3forge_state;
-            const auto lists = [&](ac3forge::Command command) {
+            const player::State& state = *client.ac3forge_state;
+            const auto lists = [&](player::Command command) {
                 return std::find(state.supported_commands.begin(), state.supported_commands.end(), command) !=
                        state.supported_commands.end();
             };
             return controller::Player{.volume = state.volume.value_or(100),
                                       .muted = state.muted.value_or(false),
-                                      .volume_supported = lists(ac3forge::Command::kVolume),
-                                      .mute_supported = lists(ac3forge::Command::kMute)};
+                                      .volume_supported = lists(player::Command::kVolume),
+                                      .mute_supported = lists(player::Command::kMute)};
         }
         if (client.playing && client.player_state) {
             const m::PlayerState& state = *client.player_state;
@@ -1081,8 +1081,8 @@ struct Group::State {
             }
             HostConnection& connection = *connections[i];
             if (extension[i]) {
-                ac3forge::CommandMessage message;
-                message.command = volume ? ac3forge::Command::kVolume : ac3forge::Command::kMute;
+                player::CommandMessage message;
+                message.command = volume ? player::Command::kVolume : player::Command::kMute;
                 message.volume = volume ? volumes[i] : 0;
                 message.mute = command.mute;
                 (void)connection.driver().call([&] { return connection.session().ac3forge_command(message); });
@@ -1119,8 +1119,8 @@ struct Group::State {
             return;
         }
         if (client.bursts) {
-            ac3forge::CommandMessage message;
-            message.command = command == controller::Command::kVolume ? ac3forge::Command::kVolume : ac3forge::Command::kMute;
+            player::CommandMessage message;
+            message.command = command == controller::Command::kVolume ? player::Command::kVolume : player::Command::kMute;
             message.volume = volume;
             message.mute = mute;
             (void)connection->driver().call([&] { return connection->session().ac3forge_command(message); });
@@ -1314,7 +1314,7 @@ struct Group::State {
                      .has_value()) {
                 return;
             }
-            const ac3forge::State& state = *client.ac3forge_state;
+            const player::State& state = *client.ac3forge_state;
             member.lead = lead_for(state.output_delay_ms, state.min_buffer_ms, state.required_lead_time_ms);
             member.capacity = client.ac3forge_support->buffer_capacity;
         } else {
@@ -1639,7 +1639,7 @@ void Group::remove(const std::string& client_id) {
 
 bool Group::start(const Programme& programme) {
     const std::optional<m::AudioFormat>& pcm = programme.pcm;
-    const std::optional<ac3forge::StreamStart>& bursts = programme.bursts;
+    const std::optional<player::StreamStart>& bursts = programme.bursts;
     if ((!pcm && !bursts) ||
         (pcm && (pcm->codec != m::Codec::kPcm || pcm->channels < 1 || pcm->sample_rate < 1 ||
                  (pcm->bit_depth != 16 && pcm->bit_depth != 24 && pcm->bit_depth != 32))) ||

@@ -39,18 +39,18 @@ constexpr std::int32_t kBitDepth = 32;
 
 // The role's data type for a stream's bursts: every AC-4 link is one AC-4
 // stream to the role, which drops the link along with the sync words.
-[[nodiscard]] sendspin::ac3forge::DataType data_type_of(audio::BitstreamFormat format) {
+[[nodiscard]] sendspin::player::DataType data_type_of(audio::BitstreamFormat format) {
     switch (format) {
         case audio::BitstreamFormat::kAc3:
-            return sendspin::ac3forge::DataType::kAc3;
+            return sendspin::player::DataType::kAc3;
         case audio::BitstreamFormat::kEac3:
-            return sendspin::ac3forge::DataType::kEac3;
+            return sendspin::player::DataType::kEac3;
         case audio::BitstreamFormat::kAc4:
         case audio::BitstreamFormat::kAc4Hbr4:
         case audio::BitstreamFormat::kAc4Hbr16:
             break;
     }
-    return sendspin::ac3forge::DataType::kAc4;
+    return sendspin::player::DataType::kAc4;
 }
 
 class GroupSink final : public NetworkGroupSink {
@@ -74,9 +74,9 @@ public:
                                  .channels = channels,
                                  .sample_rate = static_cast<std::int32_t>(format.sample_rate),
                                  .bit_depth = kBitDepth};
-        std::optional<sendspin::ac3forge::StreamStart> bursts;
+        std::optional<sendspin::player::StreamStart> bursts;
         if (format.stream) {
-            bursts = sendspin::ac3forge::StreamStart{
+            bursts = sendspin::player::StreamStart{
                 .data_type = data_type_of(*format.stream),
                 .sample_rate = static_cast<std::int32_t>(format.sample_rate)};
         }
