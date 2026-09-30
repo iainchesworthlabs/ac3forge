@@ -224,6 +224,10 @@ targets (`ac3::warnings` becomes `iclforge::warnings`), the profiling macros (`A
   string of the family reaches a signature, an HMAC, a key derivation, a magic number or a tag: the strings were
   searched in `src/signing`, `src/objects`, `src/ac3` (OAMD, JOC, EMDF), `src/sendspin`, the OTA image checks and
   `apps/hearth`.
+- **The old name written on purpose**: what the hand-written commit says about the past (the PyPI description
+  "formerly ac3forge", the winget identity of the released manifests, the old names the tap maps) and the two files
+  that are about it (`.git-blame-ignore-revs`, `tap_migrations.json`). They are named in `FORMER_NAME_LINES`, so a
+  run on the tree after the hand-written commit changes nothing either, and does not undo it.
 
 Pages (`.md`), the history (`CHANGELOG.md`, `planning/`, the scripts of this migration) and the byte-exact trees
 (`tests/golden`, the released winget manifests) are not read. The winget package identity a later release is written

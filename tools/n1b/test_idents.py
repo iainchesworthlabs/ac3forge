@@ -284,6 +284,33 @@ class Kept(Case):
             "PackageIdentifier: iainchesworthlabs.iclforge\nMoniker: iclforge\n",
         )
 
+    def test_the_old_name_the_hand_written_commit_says_on_purpose_is_kept(self) -> None:
+        self.kept("python/pyproject.toml", 'description = "A codec (formerly ac3forge)"\n')
+        self.kept(
+            ".github/workflows/manifest-bump.yml",
+            "          # what maps the old names (ac3forge, ac3gui) to the new ones\n",
+        )
+        self.kept(
+            "tools/checks/check_packaging_versions.sh",
+            "for winget_package in ac3forge iclforge; do\n",
+        )
+        self.kept(
+            "tools/release/bump_manifests.py",
+            "    # iainchesworthlabs.ac3forge stay in the ac3forge directory as they were made.\n",
+        )
+
+    def test_the_same_word_on_another_line_of_those_files_is_renamed(self) -> None:
+        self.renamed("python/pyproject.toml", 'name = "ac3forge"\n', 'name = "iclforge"\n')
+        self.renamed(
+            "tools/checks/check_packaging_versions.sh",
+            'installer="$dir/iainchesworthlabs.ac3forge.installer.yaml"\n',
+            'installer="$dir/iainchesworthlabs.iclforge.installer.yaml"\n',
+        )
+
+    def test_a_file_about_the_old_names_is_not_read(self) -> None:
+        self.assertFalse(I.in_scope(".git-blame-ignore-revs"))
+        self.assertFalse(I.in_scope("packaging/homebrew/tap_migrations.json"))
+
     def test_an_asset_of_a_release_that_exists(self) -> None:
         text = "url: https://github.com/iainchesworthlabs/ac3forge/releases/download/v0.10.0-beta.1/ac3forge-0.10.0-win64.zip\n"
         self.kept("packaging/homebrew/Casks/iclforge.rb", text)

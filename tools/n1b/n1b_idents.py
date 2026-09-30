@@ -16,7 +16,7 @@ iclforge_add_library() makes), the CMake helper targets (`ac3::warnings` becomes
 the AC-3 library's files as comments still name them (`libac3forge.so` becomes
 `libiclforge_ac3.so`).
 
-What it does not rename, and says so in its report (`--report`), is in three groups.
+What it does not rename, and says so in its report (`--report`), is in four groups.
 
   External identities: the repository slug and the Pages address, the SonarCloud project, the tap
   repository, and the paths a runner derives from the repository's name. They change with the
@@ -31,10 +31,16 @@ What it does not rename, and says so in its report (`--report`), is in three gro
   in QML, HTML and the Qt catalogues, the bare word `ac3forge` is the program's; the identifiers
   and the strings both ends of the wire read are still renamed there.
   What reaches a signature: the example key of examples/object_signing.cpp is a key's own bytes.
+  The old name written on purpose: what the stage's hand-written commit says about the past (the
+  PyPI description "formerly ac3forge", the winget identity of the released manifests, the old
+  names the Homebrew tap maps, the subjects of the commits `.git-blame-ignore-revs` lists). They
+  are a few lines named in FORMER_NAME_LINES, and two files that are read nowhere, so that a run
+  after the hand-written commit does not undo it.
 
 Pages (`.md`), the history (CHANGELOG, planning, the scripts of this migration) and the byte-exact
 trees (tests/golden) are not read. Every decision has a name, listed in RULES with its reason;
-`--report` lists the occurrences that were kept. A second run finds nothing to rename.
+`--report` lists the occurrences that were kept. A second run finds nothing to rename, on the
+commit it made and on the tree after the hand-written one.
 """
 
 from __future__ import annotations
@@ -68,8 +74,29 @@ SKIP_PREFIXES = (
     "CONTRIBUTING.md",
     "SECURITY.md",
     "mkdocs.yml",
+    # the old names are what these two files are about: the subjects of the commits that were
+    # rewritten, and the keys of the tap's migration map
+    ".git-blame-ignore-revs",
+    "packaging/homebrew/tap_migrations.json",
 )
 SKIP_SUFFIXES = (".md",)
+
+# The old name written on purpose by the stage's hand-written commit, line by line: a fragment of
+# the line, in the file that has it. A fragment is what is said about the past, never a name the
+# tree still uses, so none of them is in the tree the pass runs on first.
+FORMER_NAME_LINES: dict[str, tuple[str, ...]] = {
+    "python/pyproject.toml": ("(formerly ac3forge)",),
+    ".github/workflows/manifest-bump.yml": ("old names (ac3forge, ac3gui)",),
+    "tools/checks/check_packaging_versions.sh": (
+        "identity iainchesworthlabs.ac3forge and stay as they were made",
+        "for winget_package in ac3forge iclforge; do",
+        "{ac3forge,iclforge}",
+    ),
+    "tools/release/bump_manifests.py": (
+        "iainchesworthlabs.ac3forge stay in the ac3forge directory",
+    ),
+}
+
 # The committed fallbacks of the docs site's WASM demos are copies of apps/wasm and js/ (docs.yml
 # checks the page files byte for byte, and replaces the rest with a fresh build at every deploy).
 READ_ANYWAY_PREFIXES = ("docs/assets/wasm-decode-demo/", "docs/assets/wasm-encode-demo/")
@@ -151,6 +178,13 @@ RULES: dict[str, Rule] = {
         ),
         # what reaches a signature
         Rule("signature-key", KEEP, "signature", "the bytes of an example signing key"),
+        # the past, written on purpose
+        Rule(
+            "former-name",
+            KEEP,
+            "former",
+            "the old name in a line that says what it was (FORMER_NAME_LINES)",
+        ),
         # the brand
         Rule("wire", RENAME, "brand", "a name both ends of a wire or a file format read"),
         Rule(
@@ -215,6 +249,8 @@ def decide(path: str, line: str, start: int, end: int) -> str:
     program = is_program_file(path) or is_qt_catalogue(path)
 
     # what is not ours to change
+    if any(fragment in line for fragment in FORMER_NAME_LINES.get(path, ())):
+        return "former-name"
     if _EXTERNAL_LEFT.search(left):
         return "slug"
     if _SONAR_LINE.match(line):
