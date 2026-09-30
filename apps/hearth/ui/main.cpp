@@ -51,6 +51,7 @@
 #include "iclforge/sendspin/firewall.hpp"
 #include "language_manager.hpp"
 #include "native_log_sink.hpp"
+#include "settings_migration.hpp"
 
 namespace {
 
@@ -157,6 +158,12 @@ int main(int argc, char** argv) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, shot_settings_scratch->path());
     }
+
+    // The paired sinks, the pairing keys and the server identity, the playback and network
+    // settings: what a person saved under the old names (organisation ac3forge, application
+    // Hearth) is copied to the store Hearth has now, once, before anything reads it. A capture
+    // has just pointed the store at an empty scratch directory, so it finds nothing to copy.
+    iclforge::settings_migration::migrate_program(iclforge::settings_migration::Program::kHearth);
 
     QQmlApplicationEngine engine;
     // The family's own language manager, pointed at this app's catalogues:

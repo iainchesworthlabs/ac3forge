@@ -2,9 +2,10 @@
 
 planning/hearth-reference-player.md, A4's exit, with the stand-in for Sendspin's reference player
 that planning/hearth-sendspin-extension.md's Decisions chose. For each codec this starts the
-scripted player in aiosendspin_player.py on a loopback port, runs iclforge-tests' hidden [aiosendspin]
-case (tests/hearth/test_aiosendspin.cpp) with the player's URL, token and a directory, and checks
-what the player took against the programme and start time the case wrote there:
+scripted player in aiosendspin_player.py on a loopback port, runs iclforge-tests' hidden
+[aiosendspin] case (tests/hearth/test_aiosendspin.cpp) with the player's URL, token and a
+directory, and checks what the player took against the programme and start time the case wrote
+there:
 
 - one stream, in the codec the player offered, that ended;
 - every chunk's timestamp puts its first frame where the programme's timeline has it, from the
@@ -170,7 +171,9 @@ async def run(iclforge_tests: Path, codecs: list[str], out: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--iclforge-tests", required=True, type=Path, help="the iclforge-tests binary")
+    parser.add_argument(
+        "--iclforge-tests", required=True, type=Path, help="the iclforge-tests binary"
+    )
     parser.add_argument("--codecs", default="pcm,flac,opus")
     parser.add_argument(
         "--out", type=Path, help="where each codec's files go; a temporary directory otherwise"

@@ -20,9 +20,10 @@ A stage that changes names and paths must change nothing else. Four things stand
   symbols  the names each shared library exports, undecorated (MSVC: dumpbin /exports and undname),
            so that the union of the libraries a library was split into can be compared with what
            it exported (export_diff.py).
-  cli      the bytes ac3cli writes over a fixed corpus of commands (cli_bytes.py): exit code,
-           SHA-256 of every output file and of stdout. Recorded per compiler, since the float code
-           of the AC-4 codec is only bit-exact within one.
+  cli      the bytes the CLI writes (`forge`; `ac3cli` in a tree built before N1A) over a fixed
+           corpus of commands (cli_bytes.py): exit code, SHA-256 of every output file and of
+           stdout. Recorded per compiler, since the float code of the AC-4 codec is only bit-exact
+           within one.
 
 `record` measures a built tree and writes one JSON file per kind, `<kind>-<label>.json` (headers
 carry no label). The record names the commit it was measured at, which `compare` and `verify`
@@ -88,11 +89,20 @@ def source_root(build: Path) -> Path:
     return Path(cache_value(build, "CMAKE_HOME_DIRECTORY"))
 
 
-def executable(build: Path, name: str) -> Path:
-    for candidate in (build / "bin" / f"{name}.exe", build / "bin" / name):
-        if candidate.is_file():
-            return candidate
-    raise SystemExit(f"baseline: no {name} under {build / 'bin'}; build the tree first")
+def executable(build: Path, *names: str) -> Path:
+    """The first of `names` built under bin/ (with .exe on Windows)."""
+    for name in names:
+        for candidate in (build / "bin" / f"{name}.exe", build / "bin" / name):
+            if candidate.is_file():
+                return candidate
+    raise SystemExit(
+        f"baseline: no {' or '.join(names)} under {build / 'bin'}; build the tree first"
+    )
+
+
+# The command-line program is `forge` since stage N1A; a tree built before it (the record a stage
+# starts from is often one) has `ac3cli`. The corpus is the same either way.
+CLI_NAMES = ("forge", "ac3cli")
 
 
 # --- headers --------------------------------------------------------------------------------------
@@ -284,11 +294,11 @@ def record(
         if kind == "headers":
             body = record_headers(root)
         elif kind == "hashes":
-            body = record_hashes(root, executable(build, "ac3cli"), work)
+            body = record_hashes(root, executable(build, *CLI_NAMES), work)
         elif kind == "symbols":
             body = record_symbols(build)
         elif kind == "cli":
-            body = record_cli(root, executable(build, "ac3cli"), work)
+            body = record_cli(root, executable(build, *CLI_NAMES), work)
         else:
             raise SystemExit(f"baseline: unknown kind {kind!r}")
         made[kind] = {

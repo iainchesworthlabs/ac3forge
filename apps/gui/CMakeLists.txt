@@ -54,7 +54,9 @@ qt_add_executable(forge-gui
     system_theme.cpp
     system_theme.hpp
     language_manager.cpp
-    language_manager.hpp)
+    language_manager.hpp
+    settings_migration.cpp
+    settings_migration.hpp)
 
 # RecordingSink and its Fmp4FolderWriter moved to apps/common when
 # `forge record`/`live` started writing their takes through the same classes

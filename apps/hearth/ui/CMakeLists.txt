@@ -86,6 +86,10 @@ else()
         # repository reuses it.
         "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.cpp"
         "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.hpp"
+        # What a person saved under the program's old names, copied once at start-up;
+        # shared by the three programs the same way.
+        "${PROJECT_SOURCE_DIR}/apps/gui/settings_migration.cpp"
+        "${PROJECT_SOURCE_DIR}/apps/gui/settings_migration.hpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
     target_include_directories(hearth PRIVATE

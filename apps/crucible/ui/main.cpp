@@ -41,45 +41,9 @@
 #include <QUrl>
 
 #include "language_manager.hpp"
+#include "settings_migration.hpp"
 
 namespace {
-
-// The demo stored its settings under iclforge/DesktopAtmos; the product
-// stores them under iclforge/Crucible (Crucible cross-platform promotion, Phase 1). Copy the old
-// tree across the first time the new one is empty, so a machine that ran the
-// demo keeps its signing-key path, endpoint choice and appearance. The old
-// tree is left where it is rather than deleted: nothing here is large enough
-// to be worth removing, and a person who goes back to the demo build should
-// still find their settings.
-//
-// Both use the four-argument constructor for the reason CrucibleController
-// does: the two-argument one always takes the native store whatever
-// QSettings::setDefaultFormat says, which would make this read and write the
-// developer's real registry from a test process. With the format honoured,
-// the QML tests' INI-in-a-temporary-directory isolation holds and this is a
-// no-op there. Runs before anything constructs a controller.
-void migrate_demo_settings() {
-    QSettings current(QSettings::defaultFormat(), QSettings::UserScope,
-                      QStringLiteral("iclforge"), QStringLiteral("Crucible"));
-    if (!current.allKeys().isEmpty()) {
-        return;
-    }
-    QSettings previous(QSettings::defaultFormat(), QSettings::UserScope,
-                       QStringLiteral("iclforge"), QStringLiteral("DesktopAtmos"));
-    const auto keys = previous.allKeys();
-    if (keys.isEmpty()) {
-        return;
-    }
-    for (const auto& key : keys) {
-        current.setValue(key, previous.value(key));
-    }
-    // A marker that the copy happened, for the first-run dialog's one
-    // sentence that says so. The dialog's own acknowledgement cannot have
-    // been copied: the demo never wrote one, so a migrated machine sees the
-    // explanation once too.
-    current.setValue(QStringLiteral("migration/fromDesktopAtmos"), true);
-    current.sync();
-}
 
 // Qt's own messages - this file's --shot and --place lines, a QML warning,
 // a font that failed to register - into the diagnostics ring
@@ -144,7 +108,12 @@ int main(int argc, char** argv) {
     g_previous_handler = qInstallMessageHandler(forward_to_diagnostics);
     QGuiApplication::setApplicationName(QStringLiteral("Crucible"));
     QGuiApplication::setOrganizationName(QStringLiteral("iclforge"));
-    migrate_demo_settings();
+    // What a person saved under the old names (organisation ac3forge, application Crucible, and
+    // the desktop demo's DesktopAtmos before it) is copied to the store Crucible has now, once,
+    // before anything constructs a controller (settings_migration.hpp has the rules). The four-
+    // argument QSettings constructor it uses honours QSettings::setDefaultFormat(), which keeps
+    // the QML tests' INI-in-a-temporary-directory isolation.
+    iclforge::settings_migration::migrate_program(iclforge::settings_migration::Program::kCrucible);
     // The window and taskbar icon; the .exe's own icon comes from the
     // resource script CMake generates.
     QIcon app_icon;

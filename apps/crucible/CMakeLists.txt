@@ -380,6 +380,8 @@ else()
         ../gui/system_theme.hpp
         ../gui/language_manager.cpp
         ../gui/language_manager.hpp
+        ../gui/settings_migration.cpp
+        ../gui/settings_migration.hpp
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_icon_provider.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/tray_support.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_entry.hpp"

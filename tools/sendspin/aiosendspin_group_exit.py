@@ -127,7 +127,9 @@ async def run(iclforge_tests: Path, out: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--iclforge-tests", required=True, type=Path, help="the iclforge-tests binary")
+    parser.add_argument(
+        "--iclforge-tests", required=True, type=Path, help="the iclforge-tests binary"
+    )
     parser.add_argument(
         "--out", type=Path, help="where the run's files go; a temporary directory otherwise"
     )

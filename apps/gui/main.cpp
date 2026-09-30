@@ -23,6 +23,7 @@
 #include "iclforge/ac3/version.hpp"
 #include "encoder_controller.hpp"
 #include "language_manager.hpp"
+#include "settings_migration.hpp"
 
 // Headless self-checks, the reason the offscreen platform plugin is deployed
 // beside the executable. They drive the real controller and the real QML and
@@ -551,6 +552,11 @@ int main(int argc, char* argv[]) {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope,
                            smoke_settings_scratch->path());
     }
+
+    // What a person saved under the program's old names (organisation ac3forge, application
+    // ac3forge) is copied to the store it has now, once, before anything reads a setting; a smoke
+    // run has just pointed the store at an empty scratch directory, so it finds nothing to copy.
+    iclforge::settings_migration::migrate_program(iclforge::settings_migration::Program::kForgeGui);
 
     // The handoff's typeface ("Archivo throughout; headings weight 800,
     // body 400/500/600"), bundled as resources so the design renders as

@@ -8142,8 +8142,8 @@ forge_gui::ReportFacts EncoderController::buildReportFacts() const {
 
     // A fixed list, read from the same store Main.qml's Settings element
     // writes to. A default-constructed QSettings reads whatever organisation
-    // and application names the process set: main.cpp sets "iclforge" for
-    // both, so an interactive run lands in the person's own store, and
+    // and application names the process set: main.cpp sets "iclforge" and
+    // "forge-gui", so an interactive run lands in the person's own store, and
     // apps/gui/tests/qml_test_main.cpp sets "iclforge-tests"/"forge_gui_qmltests"
     // with QSettings::setPath pointed at a QTemporaryDir, so the Qt Quick
     // suite reads a store on disk that evaporates with the process - which is
