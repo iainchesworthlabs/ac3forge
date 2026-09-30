@@ -25,7 +25,7 @@
 # of ac3::fmt.
 # ---------------------------------------------------------------------------
 
-# Matches packaging/vcpkg-port/ac3forge/vcpkg.json's own fmt dependency and
+# Matches packaging/vcpkg-port/iclforge/vcpkg.json's own fmt dependency and
 # packaging/conan/conanfile.py's pinned requirement, so all three routes
 # build against the same code. fmt's own git tags carry no "v" prefix
 # (unlike Catch2's), hence GIT_TAG "${AC3FORGE_FMT_VERSION}" below, not

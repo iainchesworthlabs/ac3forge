@@ -324,8 +324,8 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 # floating-point unit. A host has one, so the float directory; the tests name
 # both conversions explicitly wherever the choice matters.
 target_include_directories(ac3tests PRIVATE
-    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include"
-    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/conversion/float")
+    "${CMAKE_SOURCE_DIR}/esp-idf/iclforge/include"
+    "${CMAKE_SOURCE_DIR}/esp-idf/iclforge/conversion/float")
 
 # test_simd_kernels.cpp's CPU-feature-detection cases (the runtime AVX2
 # dispatch) need cpu_features.cpp compiled a SECOND time,

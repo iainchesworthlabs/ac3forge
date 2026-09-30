@@ -183,7 +183,7 @@ trap 'rm -f "$OUTPUT"' EXIT
 
 # fullclean between directions, not for tidiness: AC3FORGE_ESP_PROFILE reaches
 # the library as CMake cache variables (AC3FORGE_MINIMAL_DECODER /
-# AC3FORGE_MINIMAL_ENCODER, FORCEd by esp-idf/ac3forge/CMakeLists.txt), and a
+# AC3FORGE_MINIMAL_ENCODER, FORCEd by esp-idf/iclforge/CMakeLists.txt), and a
 # warm build directory has already resolved them. Reconfiguring over the top
 # silently keeps the previous direction's archive - which links, runs, and
 # reports the wrong profile's numbers under this one's ceilings.

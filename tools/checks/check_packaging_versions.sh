@@ -186,7 +186,7 @@ if [[ -f "$vcpkg_json" ]] && [[ -f "$conanfile" ]] && [[ -f "$formula" ]] && [[ 
 
     if [[ -n "$vcpkg_license" ]]; then
         [[ "$conan_license" = "$vcpkg_license" ]] || note "licence drift: packaging/conan/conanfile.py says '$conan_license', vcpkg.json says '$vcpkg_license'"
-        [[ "$formula_license" = "$vcpkg_license" ]] || note "licence drift: packaging/homebrew/Formula/ac3forge.rb says '$formula_license', vcpkg.json says '$vcpkg_license'"
+        [[ "$formula_license" = "$vcpkg_license" ]] || note "licence drift: packaging/homebrew/Formula/iclforge.rb says '$formula_license', vcpkg.json says '$vcpkg_license'"
         [[ "$pyproject_license" = "$vcpkg_license" ]] || note "licence drift: python/pyproject.toml says '$pyproject_license', vcpkg.json says '$vcpkg_license'"
     else
         note "licence check: could not extract vcpkg.json's \"license\" field"
@@ -315,16 +315,16 @@ if [[ -n "$latest_tag" ]]; then
     if [[ -f "$vcpkg_json" ]]; then
         v="$(grep -m1 '"version-semver"' "$vcpkg_json" | sed -E 's/.*"version-semver":[[:space:]]*"([^"]+)".*/\1/')"
         [[ "$v" = "$latest_version" ]] ||
-            advise "vcpkg port is at $v, latest release is $latest_version - packaging/vcpkg-port/ac3forge/ needs a bump (docs/releasing.md#vcpkg-port)"
+            advise "vcpkg port is at $v, latest release is $latest_version - packaging/vcpkg-port/iclforge/ needs a bump (docs/releasing.md#vcpkg-port)"
     fi
 
     if [[ -f "$formula" ]]; then
         [[ "$formula_version" = "$latest_version" ]] ||
-            advise "Homebrew formula is at $formula_version, latest release is $latest_version - packaging/homebrew/Formula/ac3forge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
+            advise "Homebrew formula is at $formula_version, latest release is $latest_version - packaging/homebrew/Formula/iclforge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
     fi
     if [[ -f "$cask" ]]; then
         [[ "$cask_version" = "$latest_version" ]] ||
-            advise "Homebrew cask is at $cask_version, latest release is $latest_version - packaging/homebrew/Casks/ac3gui.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
+            advise "Homebrew cask is at $cask_version, latest release is $latest_version - packaging/homebrew/Casks/iclforge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
     fi
 
     if [[ -f "$conandata" ]] && ! grep -q "\"$latest_version\":" "$conandata"; then

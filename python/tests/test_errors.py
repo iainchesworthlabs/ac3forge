@@ -1,5 +1,5 @@
 """std::expected's error branch, translated at the binding boundary into Python exceptions - see
-python/src/ac3forge_ext/bindings.cpp's own header comment on why exceptions rather than a
+python/src/iclforge_ext/bindings.cpp's own header comment on why exceptions rather than a
 Result-like return. Every case here checks both the exception TYPE and its `.error` enum value,
 not just that *something* was raised.
 """

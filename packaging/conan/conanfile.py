@@ -2,7 +2,7 @@
 # iclforge::matroska/iclforge::mp4/iclforge::mpegts behind their own default-on options, and
 # iclforge::c, the AC-4 libraries, iclforge::iab and iclforge::iamf behind default-off "capi",
 # "ac4", "iab" and "iamf" options), never the CLI, GUI, Hearth, tests, examples or fuzz
-# harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/ac3forge/) - one Conan option
+# harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/iclforge/) - one Conan option
 # <-> one AC3FORGE_BUILD_<NAME> CMake option, same pattern that port's vcpkg_check_features()
 # call already establishes, and tools/checks/check_packaging_versions.sh holds the two recipes to
 # the same components and options. iclforge::adm/iclforge::admbridge (the ADM/BW64

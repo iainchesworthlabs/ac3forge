@@ -48,7 +48,7 @@ See [`main/byte_source.hpp`](main/byte_source.hpp) and
 [`main/audio_sink.hpp`](main/audio_sink.hpp).
 
 **Two tasks and a ring, which are the component's.** Since 2026-09-10 the loop
-lives in `esp-idf/ac3forge` as `ac3forge::Player`
+lives in `esp-idf/iclforge` as `ac3forge::Player`
 ([`include/ac3forge/player.hpp`](../../include/ac3forge/player.hpp)): a fetch
 task on core 0, beside WiFi and TCP/IP, reads the source into a ring buffer; a
 decode task on core 1 drains the ring through the accumulator, decodes, and

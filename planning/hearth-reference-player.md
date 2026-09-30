@@ -253,13 +253,13 @@ design mockups. `docs/hearth/` holds the overview, the sink guides and a design 
 
 | Layer | Path | Target | Qt | Used by |
 |---|---|---|---|---|
-| Renderer and speaker management | `src/render/include/iclforge/render/` (moved from `esp-idf/ac3forge/include/ac3forge/{layout,render}.hpp`) | part of `ac3::forge` | no | engine, test sink, `hearth_sink` |
+| Renderer and speaker management | `src/render/include/iclforge/render/` (moved from `esp-idf/iclforge/include/iclforge/{layout,render}.hpp`) | part of `ac3::forge` | no | engine, test sink, `hearth_sink` |
 | Sendspin | `src/sendspin/` | a static library beside `mp4` and `mpegts` | no | engine (server half), test sink and `hearth_sink` (player half) |
 | Output devices | `src/audio/` | `ac3::audio` | no | engine, test sink |
 | Engine | `apps/hearth/engine/` | `ac3hearth_engine` | no | app, test sink |
 | Application | `apps/hearth/ui/` | `ac3hearth` | yes | |
 | Test sink | `apps/hearth/testsink/` | `ac3hearth-testsink` | no | CI, contributors |
-| Firmware | `esp-idf/ac3forge/examples/hearth_sink/` | ESP-IDF project | no | S3, C6 |
+| Firmware | `esp-idf/iclforge/examples/hearth_sink/` | ESP-IDF project | no | S3, C6 |
 
 *Every path in the table exists as written. The firmware directory builds the S3, C6 and P4
 images, and the engine's platform seams are under `apps/hearth/engine/platform`.*
@@ -402,7 +402,7 @@ phase D11 of the AC-4 plan, `"ac4"`.*
 - Slot width is a setting. At 16 bits: 16 channels on the S3 (two lines of eight), 8 on the C6
   (one line). At 32 bits: 8 on the S3, 4 on the C6. The sink advertises the count for its current
   setting. On 2026-09-15 a 16-bit slot width was standard I2S only, because TDM at 16 bits needs
-  an interleave that was not written (`esp-idf/ac3forge/include/ac3forge/sink_plan.hpp:17-26`), so
+  an interleave that was not written (`esp-idf/iclforge/include/iclforge/sink_plan.hpp:17-26`), so
   a board output at most eight channels and only the capture sink reached twelve. *As built, the
   interleave exists (`interleave_16in16` in `interleave.hpp`), the slot width is a setting on the
   S3, and a 16-bit line carries eight channels, sixteen with a second line
@@ -430,7 +430,7 @@ phase D11 of the AC-4 plan, `"ac4"`.*
   network leaves: 23 and 139 bytes at the least on two boards over ten minutes, with nothing
   failing. The decode task used about 18.9 KB of its 32 KB stack, the WebSocket server's task
   5.2 KB of 8 KB, and starting the player 7.3 KB of the 16 KB it is given
-  ([the sink's README](../esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards)).
+  ([the sink's README](../esp-idf/iclforge/examples/hearth_sink/README.md#on-two-boards)).
 - **ESP32-C6**: no PSRAM (ESP-IDF has no external-RAM support for the part), 512 KB of SRAM shared
   with WiFi, and one 160 MHz core with no FPU, so the fixed-point tier. On the C3 the tier's
   largest fixture that fit peaked at 225,038 bytes and the 7.1.4 fixtures did not fit
@@ -510,7 +510,7 @@ At most two review rounds with the user, each round's feedback and changes recor
 patch, per-output trim and delay, the identify tone and the serving policy, in namespace
 `ac3::render`; the ESP-IDF component includes them from there.
 
-`layout.hpp` and `render.hpp` move from `esp-idf/ac3forge/include/ac3forge/` into the library
+`layout.hpp` and `render.hpp` move from `esp-idf/iclforge/include/iclforge/` into the library
 (proposed `src/render/include/iclforge/render/`, namespace `ac3::render`), and the ESP-IDF component
 includes them from there. Added beside them: a routing patch from rendered channel to output
 index with unassigned outputs allowed, per-output trim and delay, an identify-tone generator, and

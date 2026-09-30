@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 
-const UI = path.resolve(__dirname, '../../../../../esp-idf/ac3forge/ui');
+const UI = path.resolve(__dirname, '../../../../../esp-idf/iclforge/ui');
 // The boot play's stream again, under a location of its own, so that its end
 // cannot be mistaken for the boot play's: the static server ignores the query.
 const REPLAY = `${process.env.AC3FORGE_STREAM_URL || 'http://10.0.2.2:8000/demo.ec3'}?from=the-page`;

@@ -232,8 +232,8 @@ jobs:
               if [ "$HAVE_TAP_TOKEN" != "true" ]; then
                 echo
                 echo "HOMEBREW_TAP_TOKEN is not set, so the live iainchesworthlabs/homebrew-ac3forge"
-                echo "tap was NOT pushed - copy packaging/homebrew/Formula/ac3forge.rb and"
-                echo "packaging/homebrew/Casks/ac3gui.rb into it by hand (see"
+                echo "tap was NOT pushed - copy packaging/homebrew/Formula/iclforge.rb and"
+                echo "packaging/homebrew/Casks/iclforge.rb into it by hand (see"
                 echo "docs/releasing.md#homebrew-formula-and-cask)."
               fi
             } > pr-body.md
@@ -280,9 +280,9 @@ jobs:
             "https://x-access-token:${TAP_TOKEN}@github.com/${tap}.git" \
             "$tapdir"
 
-          cp packaging/homebrew/Formula/ac3forge.rb "$tapdir/Formula/ac3forge.rb"
+          cp packaging/homebrew/Formula/iclforge.rb "$tapdir/Formula/ac3forge.rb"
           if [ -n "${DMG_SHA256:-}" ]; then
-            cp packaging/homebrew/Casks/ac3gui.rb "$tapdir/Casks/ac3gui.rb"
+            cp packaging/homebrew/Casks/iclforge.rb "$tapdir/Casks/ac3gui.rb"
           fi
 
           cd "$tapdir"

@@ -2,7 +2,7 @@
 """Stage and pack ac3forge as a self-contained ESP-IDF component archive.
 
 WHY THIS EXISTS. `compote component pack` roots its archive at the component
-directory and cannot reach above it. ac3forge's component at esp-idf/ac3forge/
+directory and cannot reach above it. ac3forge's component at esp-idf/iclforge/
 is a thin wrapper that add_subdirectory()s the repo root, so packing it directly
 produces an archive of three files - CMakeLists.txt, idf_component.yml and the
 directory entry - which installs happily and then fails to configure, because
@@ -303,7 +303,7 @@ def target_has_fpu(target: str) -> bool:
 
 
 def manifest_targets() -> list[str]:
-    """The `targets:` list from esp-idf/ac3forge/idf_component.yml.
+    """The `targets:` list from esp-idf/iclforge/idf_component.yml.
 
     Read rather than restated, and parsed by hand rather than with PyYAML: this
     script has no third-party dependency and the block it needs is a flat list
@@ -325,7 +325,7 @@ def manifest_targets() -> list[str]:
             elif stripped and not stripped.startswith("#"):
                 break
     if not targets:
-        raise SystemExit("no targets: block in esp-idf/ac3forge/idf_component.yml")
+        raise SystemExit("no targets: block in esp-idf/iclforge/idf_component.yml")
     return targets
 
 

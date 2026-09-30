@@ -1,10 +1,10 @@
 'use strict';
 
-// A stand-in for ac3forge::Control (esp-idf/ac3forge/src/control.cpp), for the
+// A stand-in for ac3forge::Control (esp-idf/iclforge/src/control.cpp), for the
 // web page's tests - planning/esp32-device-ui.md. It serves the page's two
 // files with the headers the firmware sends and answers the REST routes with
 // the firmware's status codes and reply texts, over a model of the streaming
-// example's player (esp-idf/ac3forge/examples/hearth_sink/main/
+// example's player (esp-idf/iclforge/examples/hearth_sink/main/
 // hearth_sink.cpp): POST /play hands a location to the http source, which
 // takes it only if it starts with http://; a play clears the last one's
 // figures, runs for a few /status polls and finishes; a location that does not
@@ -14,7 +14,7 @@
 // One per test, in the test's own process, on a port of its own: tests reach
 // into it directly to script a reply, hold one back, or read what was sent.
 //
-// The firmware routes are ac3forge::Firmware's (esp-idf/ac3forge/src/
+// The firmware routes are ac3forge::Firmware's (esp-idf/iclforge/src/
 // firmware.cpp), modelled as far as the page uses them: an upload whose head
 // is an application image is written, and the board restarts into it on
 // trial; a restart, and a rollback. A restart is the next request dropped,
@@ -25,7 +25,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const UI_DIR = path.resolve(__dirname, '../../../../esp-idf/ac3forge/ui');
+const UI_DIR = path.resolve(__dirname, '../../../../esp-idf/iclforge/ui');
 
 const POLICY =
     "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; frame-ancestors 'none'";
@@ -156,7 +156,7 @@ const ROUTES = [
 // The streams the model plays, with the channels each codes. The E-AC-3 one is
 // the WASM page's demo, as CI's HTTP step plays it; the AC-3 one is the
 // example's own sample; the 7.1.4 one is the stream set's walk
-// (esp-idf/ac3forge/examples/hearth_sink/www/).
+// (esp-idf/iclforge/examples/hearth_sink/www/).
 const STREAMS = {
     eac3: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: true, coded: 'L,C,R,Ls,Rs,LFE' },
     ac3: { codec: 'AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: false, coded: 'L,C,R,Ls,Rs,LFE' },
@@ -241,7 +241,7 @@ function idleStats() {
 }
 
 // The Sendspin player's part of /status with no server connected, as
-// append_sendspin writes it (esp-idf/ac3forge/src/control.cpp).
+// append_sendspin writes it (esp-idf/iclforge/src/control.cpp).
 function idleSendspin() {
     return {
         server: '',
@@ -345,20 +345,20 @@ function playingSendspin() {
 }
 
 // The board on a WiFi network, as the example's network_link() and
-// network_address() report it (esp-idf/ac3forge/examples/hearth_sink/main/
+// network_address() report it (esp-idf/iclforge/examples/hearth_sink/main/
 // network.hpp).
 function wifiNetwork() {
     return { kind: 'wifi', ssid: 'kitchen', rssi_dbm: -58, address: '192.168.1.23' };
 }
 
 // One of GET /pairing's servers, as on_pairing_get writes it
-// (esp-idf/ac3forge/src/control.cpp): the same keys in the same order.
+// (esp-idf/iclforge/src/control.cpp): the same keys in the same order.
 function pairedServer(fields) {
     return { server_id: '', name: '', connected: false, last_playback: false, seen: true, ...fields };
 }
 
 // One of GET /firmware's slots, as append_slot writes it
-// (esp-idf/ac3forge/include/ac3forge/firmware_status.hpp).
+// (esp-idf/iclforge/include/iclforge/firmware_status.hpp).
 function firmwareSlot(fields) {
     return {
         label: 'ota_0',

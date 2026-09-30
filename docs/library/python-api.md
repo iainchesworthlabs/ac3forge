@@ -1,6 +1,6 @@
 # Python bindings
 
-A pybind11 module (`python/src/ac3forge_ext/bindings.cpp`) bound straight onto
+A pybind11 module (`python/src/iclforge_ext/bindings.cpp`) bound straight onto
 `ac3::FrameEncoder`, `ac3::FrameDecoder`, `ac3::Eac3Decoder`, `ac3::eac3::FrameEncoder`,
 `ac3::eac3::AccessUnitEncoder` and `ac3::oba::AtmosEncoder`, and, in the `ac3forge.ac4` submodule,
 `ac4::Decoder` and `ac4::Encoder` — pybind11-direct, not layered on a separate C API. Install from

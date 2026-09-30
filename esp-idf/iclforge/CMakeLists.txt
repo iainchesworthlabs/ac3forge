@@ -141,7 +141,7 @@ endif()
 # Where the library's own CMake lives, which depends on how this component was
 # obtained.
 #
-#   IN THE REPO, at esp-idf/ac3forge/, the root is two up: ac3forge -> esp-idf
+#   IN THE REPO, at esp-idf/iclforge/, the root is two up: ac3forge -> esp-idf
 #   -> root. This is the case the probe app and both examples build.
 #
 #   PACKED, as an archive from the component registry, the library sits in lib/
@@ -164,7 +164,7 @@ endif()
 if(NOT EXISTS "${AC3FORGE_ROOT}/src/ac3/CMakeLists.txt")
     message(FATAL_ERROR
         "ac3forge: no library sources at '${AC3FORGE_ROOT}'. In a checkout this component "
-        "lives at esp-idf/ac3forge/; packed, it carries its own lib/ - see "
+        "lives at esp-idf/iclforge/; packed, it carries its own lib/ - see "
         "tools/packaging/pack_esp_component.py.")
 endif()
 

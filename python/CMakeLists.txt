@@ -62,7 +62,7 @@ endif()
 
 # scikit-build-core's wheel.install-dir (see python/pyproject.toml) is the
 # package root, so a relative DESTINATION here lands the compiled extension
-# next to python/src/ac3forge/__init__.py inside the wheel.
+# next to python/src/iclforge/__init__.py inside the wheel.
 #
 # COMPONENT python, paired with pyproject.toml's install.components = ["python"]: the root
 # CMakeLists.txt's include(InstallLibrary) always installs the full iclforge::ac3 SDK (headers,

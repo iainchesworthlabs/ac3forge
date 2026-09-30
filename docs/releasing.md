@@ -267,7 +267,7 @@ Most of what used to be a manual post-release checklist here is now automated:
 ## vcpkg port
 
 A vcpkg port for `ac3forge` is staged in-tree at
-[`packaging/vcpkg-port/ac3forge/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/vcpkg-port/ac3forge)
+[`packaging/vcpkg-port/iclforge/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/vcpkg-port/iclforge)
 (`vcpkg.json`,
 `portfile.cmake`, `usage`). It is not in the curated `microsoft/vcpkg` registry: it was submitted
 as pull request #53470, which is a draft with changes requested (last updated 2026-08-19) - see
@@ -320,7 +320,7 @@ Any future optional library component follows the same three-step recipe this re
 `ac3forge_install_pkgconfig()` call there - see the "pkg-config" section of
 [docs/library/index.md](library/index.md), a consumer expects one alongside every installed
 component's CMake export), then add a same-named
-feature to `packaging/vcpkg-port/ac3forge/vcpkg.json` and one line to `portfile.cmake`'s
+feature to `packaging/vcpkg-port/iclforge/vcpkg.json` and one line to `portfile.cmake`'s
 `vcpkg_check_features()` call, and the same-named option, off by default, to
 `packaging/conan/conanfile.py` with its `tc.variables` line (the parity check above fails the
 recipes until both have it), and the component to `tools/checks/check_install_consumer.sh`'s
@@ -336,7 +336,7 @@ follow-up PR to `microsoft/vcpkg` - the curated registry has no mechanism to tra
 by [`manifest-bump.yml`'s PR](#post-release) rather than by hand; steps 2-3 still
 are, since they write to a repository this project does not own:
 
-1. Bump `packaging/vcpkg-port/ac3forge/vcpkg.json`'s `version-semver` to the new tag, and
+1. Bump `packaging/vcpkg-port/iclforge/vcpkg.json`'s `version-semver` to the new tag, and
    `portfile.cmake`'s `vcpkg_from_github()` `REF`/`SHA512` to match (`sha512sum` the tag's
    release tarball, or let a first `vcpkg install` attempt report the correct hash).
 2. Validate locally first (see below) before touching the upstream fork - a portfile change
@@ -348,7 +348,7 @@ are, since they write to a repository this project does not own:
    `versions/baseline.json`/`versions/a-/ac3forge.json` (don't hand-edit these), and open the
    version-bump PR.
 
-**Validating the port locally**, any time `packaging/vcpkg-port/ac3forge/` or the CMake options
+**Validating the port locally**, any time `packaging/vcpkg-port/iclforge/` or the CMake options
 it drives change (whether or not a release is involved):
 
 ```bash
@@ -470,7 +470,7 @@ trusted-published package. Until step 5, a tag push builds and tests `js/` and s
 ## Homebrew formula and cask
 
 A Homebrew formula for `ac3cli` is staged in-tree at
-[`packaging/homebrew/Formula/ac3forge.rb`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/Formula/ac3forge.rb)
+[`packaging/homebrew/Formula/iclforge.rb`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/Formula/iclforge.rb)
 and published to the live personal tap
 [`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge) - see
 [`packaging/homebrew/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/README.md)
@@ -479,7 +479,7 @@ packages the CLI (`ac3cli`), not the library: `AC3FORGE_BUILD_CLI=ON` with GUI/t
 fuzzers off, built from the release source tarball.
 
 The GUI (`ac3gui`) is a separate Homebrew Cask,
-[`packaging/homebrew/Casks/ac3gui.rb`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/Casks/ac3gui.rb)
+[`packaging/homebrew/Casks/iclforge.rb`](https://github.com/iainchesworthlabs/ac3forge/blob/main/packaging/homebrew/Casks/iclforge.rb)
 - a Cask, not a Formula, is the right shape for a bundled, prebuilt `.app` the way `ac3gui.app`
 already ships in every platform's release archive (`cmake/Packaging.cmake`'s DragNDrop `.dmg` on
 macOS). It's staged the same way the formula is, and pinned to `v0.10.0-beta.1` today (its `version` and
@@ -493,7 +493,7 @@ Steps 1 and 3 are now done by [`manifest-bump.yml`'s PR and tap pull request](#p
 rather than by hand - step 2, local `brew` validation, still is, since no job runs `brew` on
 the formula or the cask:
 
-1. Bump `packaging/homebrew/Formula/ac3forge.rb`'s `url` to the new tag and `sha256` to match
+1. Bump `packaging/homebrew/Formula/iclforge.rb`'s `url` to the new tag and `sha256` to match
    (`sha256sum` the tag's release tarball - the same tarball the vcpkg port's `SHA512` already
    points at, just a different digest algorithm).
 2. Validate locally first (see below) before touching a tap - a formula change that fails
@@ -504,7 +504,7 @@ the formula or the cask:
 The same three steps apply to the cask now that it tracks a real release too: bump `version` to
 the new tag and `sha256` to the release's `ac3forge-*-Darwin.dmg` (`sha256sum` it, or trust
 CPack's own published `.dmg.sha512` after converting digest algorithms), validate locally, then
-put `packaging/homebrew/Casks/ac3gui.rb` into the same tap pull request as `Casks/ac3gui.rb` -
+put `packaging/homebrew/Casks/iclforge.rb` into the same tap pull request as `Casks/ac3gui.rb` -
 both files ship from the same tap.
 
 **Validating the formula locally**, from a macOS machine with Homebrew installed:

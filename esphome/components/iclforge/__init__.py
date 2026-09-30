@@ -52,7 +52,7 @@ Ac3ForgeComponent = ac3forge_ns.class_("Ac3ForgeComponent", cg.Component)
 # inside it. Both are here rather than in the schema because a user overriding
 # them is forking, not configuring - and a fork edits this file.
 REPO = "https://github.com/iainchesworthlabs/ac3forge"
-COMPONENT_PATH = "esp-idf/ac3forge"
+COMPONENT_PATH = "esp-idf/iclforge"
 
 # Bounds rather than a free integer. The floor is one syncframe plus the header
 # of the next, which is what deciding where an access unit ends requires; below

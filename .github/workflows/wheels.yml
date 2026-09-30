@@ -173,9 +173,9 @@ jobs:
   # ubuntu wheel, installed and measured once, is the whole signal.
   #
   # What this does and does not measure, stated plainly because the number
-  # looks better than it is. python/src/ac3forge/__init__.py is a re-export
+  # looks better than it is. python/src/iclforge/__init__.py is a re-export
   # shim: an import block, a version lookup, and __all__. Nearly all of the
-  # binding surface is C++ (python/src/ac3forge_ext/bindings.cpp), which
+  # binding surface is C++ (python/src/iclforge_ext/bindings.cpp), which
   # coverage.py cannot see at all - so a high percentage here means "the
   # package imports and its Python-level surface executes", not "the bindings
   # are tested". That is still worth gating: a name dropped from the import

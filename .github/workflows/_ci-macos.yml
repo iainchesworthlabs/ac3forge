@@ -455,7 +455,7 @@ jobs:
       # sets CMAKE_SYSTEM_NAME unconditionally, and every Linux/macOS preset
       # chainloads one). Both .tar.gz, both .deb, both .rpm and the universal
       # .dmg shipped none of the five files, and no gate noticed: the only
-      # test asserting they exist is packaging/homebrew/Formula/ac3forge.rb's
+      # test asserting they exist is packaging/homebrew/Formula/iclforge.rb's
       # `test do` block, and a Homebrew build passes no toolchain file, so it
       # went on passing throughout.
       #

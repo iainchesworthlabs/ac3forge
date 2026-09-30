@@ -4,7 +4,7 @@
 planning/hearth-reference-player.md, B4. A board playing a stream over
 _ac3forge_player@v1 prints, when the stream ends, a line of counters and one
 line per output with that output's RMS over the whole stream, scaled by a
-million (esp-idf/ac3forge/src/burst_player.cpp):
+million (esp-idf/iclforge/src/burst_player.cpp):
 
   sendspin.stream=bursts bursts=378 late=0 dropped=0 invalid=0 underruns=0 ... heap_free=30120
   sendspin.rms[0]=107370

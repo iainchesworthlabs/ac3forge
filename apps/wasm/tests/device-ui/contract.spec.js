@@ -24,7 +24,7 @@ const {
     firmwareTrial,
 } = require('./stub');
 
-const COMPONENT = path.resolve(__dirname, '../../../../esp-idf/ac3forge');
+const COMPONENT = path.resolve(__dirname, '../../../../esp-idf/iclforge');
 const CONTROL = fs.readFileSync(path.join(COMPONENT, 'src/control.cpp'), 'utf8');
 // ac3forge::Firmware answers the firmware routes that Control carries, and
 // firmware_image.hpp words a refused image; firmware_status.hpp writes

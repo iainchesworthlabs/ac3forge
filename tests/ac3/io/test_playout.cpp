@@ -1,6 +1,6 @@
 // The Sendspin player's playout on the host: the DMA ring's clock, the DAC
 // that is not there, and the scheduler that places decoded frames in time
-// (esp-idf/ac3forge/include/ac3forge/playout.hpp).
+// (esp-idf/iclforge/include/iclforge/playout.hpp).
 //
 // The header includes nothing from ESP-IDF, the arrangement
 // test_dac_queue_model.cpp has. The I2S channel below is ESP-IDF v6.1's as

@@ -772,7 +772,7 @@ class meta:
     ) -> meta.QcVerdict: ...
 
 # AC-4 decode/encode (plan phase I4) - ac4::Decoder/ac4::Encoder. Same submodule-as-class
-# convention. A subset of both C++ headers - see python/src/ac3forge_ext/ac4/present/
+# convention. A subset of both C++ headers - see python/src/iclforge_ext/ac4/present/
 # ac4_module.cpp's own header comment for what is left out.
 class ac4:
     class Speaker(Enum):

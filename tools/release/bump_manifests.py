@@ -94,8 +94,8 @@ def _unified_diff_lines(before: str, after: str, path: Path) -> list[str]:
 
 
 def bump_vcpkg(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
-    vcpkg_json = root / "packaging/vcpkg-port/ac3forge/vcpkg.json"
-    portfile = root / "packaging/vcpkg-port/ac3forge/portfile.cmake"
+    vcpkg_json = root / "packaging/vcpkg-port/iclforge/vcpkg.json"
+    portfile = root / "packaging/vcpkg-port/iclforge/portfile.cmake"
 
     def edit_json(text: str) -> str:
         return _substitute_once(
@@ -118,7 +118,7 @@ def bump_vcpkg(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
 
 
 def bump_homebrew_formula(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
-    formula = root / "packaging/homebrew/Formula/ac3forge.rb"
+    formula = root / "packaging/homebrew/Formula/iclforge.rb"
 
     def edit(text: str) -> str:
         text = _substitute_once(
@@ -141,14 +141,14 @@ def bump_homebrew_cask(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
     if plan.dmg_sha256 is None:
         plan.results.append(
             EditResult(
-                root / "packaging/homebrew/Casks/ac3gui.rb",
+                root / "packaging/homebrew/Casks/iclforge.rb",
                 "skipped",
                 "no ac3forge-*-Darwin.dmg release asset - macOS leg did not package this release",
             )
         )
         return
 
-    cask = root / "packaging/homebrew/Casks/ac3gui.rb"
+    cask = root / "packaging/homebrew/Casks/iclforge.rb"
 
     def edit(text: str) -> str:
         # No `^`/MULTILINE anchor needed: this is the file's first `version "..."`

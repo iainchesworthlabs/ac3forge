@@ -10,7 +10,7 @@ fn main() {
     let repo_root = manifest_dir
         .parent()
         .and_then(Path::parent)
-        .expect("rust/ac3forge-sys must live two directories below the repo root")
+        .expect("rust/iclforge-sys must live two directories below the repo root")
         .to_path_buf();
 
     for rel in [

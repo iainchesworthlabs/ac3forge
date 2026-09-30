@@ -2,7 +2,7 @@
 #
 #   idf.py -DIDF_TARGET=esp32c6 "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.c6" build
 #
-# Nothing here chooses the fixed-point tier: esp-idf/ac3forge/CMakeLists.txt sets
+# Nothing here chooses the fixed-point tier: esp-idf/iclforge/CMakeLists.txt sets
 # AC3FORGE_DECODE_SCALAR from the target's CONFIG_SOC_CPU_HAS_FPU when a project has not, and
 # this part has none. `idf.py -DAC3FORGE_DECODE_SCALAR=float build` measures the float tier on
 # the same part instead - a part with no FPU decodes two to three times slower in it. See

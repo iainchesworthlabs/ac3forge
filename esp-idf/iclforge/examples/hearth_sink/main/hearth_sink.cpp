@@ -13,7 +13,7 @@
 // configured layout and writes it to the sink.
 //
 // Both tasks, the ring and the decoders are the component's
-// (esp-idf/ac3forge/include/ac3forge/player.hpp), and so is the control surface
+// (esp-idf/iclforge/include/iclforge/player.hpp), and so is the control surface
 // (control.hpp) that lets something on the network say what to play and onto
 // what; the layout and the renderer are the library's
 // (src/render/include/iclforge/render/layout.hpp, render.hpp). What is left here is

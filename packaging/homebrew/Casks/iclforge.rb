@@ -10,7 +10,7 @@
 # Homebrew's own Formula-vs-Cask split (build-from-source end-user tool vs.
 # bundled .app), not a replacement for the Formula.
 #
-# Staged here (packaging/homebrew/Casks/ac3gui.rb), the same way the Formula
+# Staged here (packaging/homebrew/Casks/iclforge.rb), the same way the Formula
 # was, for validation against a real release, and copied into the live
 # personal tap (iainchesworthlabs/homebrew-ac3forge) as Casks/ac3gui.rb after
 # each bump - see packaging/homebrew/README.md.

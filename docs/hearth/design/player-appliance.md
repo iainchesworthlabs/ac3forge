@@ -59,7 +59,7 @@ Detail: [Hearth overview](../index.md).
 - **`src/sendspin`.** Shared by the desktop tools and the board.
 - **ESP32-C6.** Decode probe timed on a board. `hearth_sink`'s Sendspin player runs on this board,
   stereo only: a ten-minute group run with an ESP32-S3 had no underruns on either board. Setup:
-  [README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6).
+  [README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/iclforge/examples/hearth_sink/README.md#on-the-esp32-c6).
   CI builds the Sendspin player for this part, for the 4 MB and the 16 MB flash layouts, and does
   not run it: ESP-IDF's RISC-V QEMU emulates the ESP32-C3 and no other part.
 

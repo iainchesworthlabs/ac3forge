@@ -158,7 +158,7 @@ All of these are run from the repo root.
 | `gen_ac4_qmf_twiddles.py` | `src/ac4core/include/iclforge/ac4core/tables/qmf_twiddles.hpp`, the cosines the AC-4 QMF banks' twiddle factors are built from | stdlib only; `--check` compares the committed header |
 | `gen_baremetal_fixture.py` | `apps/baremetal/fixture.hpp`, the AC-3 and E-AC-3 streams the minimum-footprint probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`); `atmos_height_scene.txt`, beside it, is the object placement it gives `atmos-encode` for the render row |
 | `gen_baremetal_ac4_fixture.py` | `apps/baremetal/ac4_fixture.hpp`, the committed AC-4 streams the bare-metal AC-4 probe decodes and their per-channel levels | needs a built `ac3cli` (`--ac3cli`) |
-| `gen_device_streams.py` | `esp-idf/ac3forge/examples/hearth_sink/www/`: the ESP32 player's stream set and its `streams.json` | needs a built `ac3cli` (`--ac3cli`) and numpy; `tools/checks/check_stream_set.py` checks the committed set |
+| `gen_device_streams.py` | `esp-idf/iclforge/examples/hearth_sink/www/`: the ESP32 player's stream set and its `streams.json` | needs a built `ac3cli` (`--ac3cli`) and numpy; `tools/checks/check_stream_set.py` checks the committed set |
 | `gen_conformance_vectors.py` | the conformance vector bundle under `--out`, and with `--archive` its `.tar.gz` | needs a built `ac3cli` (`--cli`); the one script CI runs, see above |
 | `gen_pseudo_locale.py` | `apps/gui/translations/ac3gui_xx.ts`, the GUI's pseudo-locale, made from `ac3gui_fr.ts` | stdlib only |
 

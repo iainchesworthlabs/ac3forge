@@ -232,7 +232,7 @@ endif()
 # own rather than a use of AC3FORGE_BUILD_AC4, which the guard below refuses in
 # the profile because it also builds src/ac4enc, the applications and the
 # tests. Off by default, and when off the profile builds exactly what it did
-# before: esp-idf/ac3forge/CMakeLists.txt sets it from CONFIG_AC3FORGE_AC4.
+# before: esp-idf/iclforge/CMakeLists.txt sets it from CONFIG_AC3FORGE_AC4.
 option(AC3FORGE_MINIMAL_AC4
     "Minimum-footprint decoder profile only: also build the AC-4 inspector, core and decoder (no encoder)"
     OFF)
@@ -292,7 +292,7 @@ if(NOT AC3FORGE_BUILD_AC4 AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI OR AC3FO
         "unconditionally.")
 endif()
 # Hearth's applications, which a board's build leaves out: a board takes src/sendspin's player
-# half alone (AC3FORGE_SENDSPIN_PLAYER_ONLY, set by esp-idf/ac3forge/CMakeLists.txt, with the
+# half alone (AC3FORGE_SENDSPIN_PLAYER_ONLY, set by esp-idf/iclforge/CMakeLists.txt, with the
 # minimum-footprint profile and no AC-4), and the two guards below are about the applications.
 if(AC3FORGE_BUILD_HEARTH AND NOT AC3FORGE_SENDSPIN_PLAYER_ONLY)
     set(_ac3_hearth_apps ON)
@@ -626,7 +626,7 @@ endif()
 
 # Hearth's applications, the test sink so far (planning/hearth-reference-player.md). Not in a
 # board's build, which takes src/sendspin's player half alone (AC3FORGE_SENDSPIN_PLAYER_ONLY,
-# set by esp-idf/ac3forge/CMakeLists.txt) and has no iclforge::ac3 for the applications to link.
+# set by esp-idf/iclforge/CMakeLists.txt) and has no iclforge::ac3 for the applications to link.
 if(AC3FORGE_BUILD_HEARTH AND NOT AC3FORGE_SENDSPIN_PLAYER_ONLY)
     add_subdirectory(apps/hearth)
 endif()

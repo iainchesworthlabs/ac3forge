@@ -3,7 +3,7 @@
 #
 # An ESP-IDF project, driven by idf.py rather than by this repo's presets, for
 # the same reason apps/android is a Gradle project: the SDK owns the top-level
-# build. IDF is reached from the other direction - esp-idf/ac3forge/
+# build. IDF is reached from the other direction - esp-idf/iclforge/
 # add_subdirectory()s the repo root - so there is no ac3forge preset for this
 # target and no entry in cmake/toolchains/.
 #
@@ -77,7 +77,7 @@ set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
 
 # No AC3FORGE_DECODE_SCALAR override here, deliberately - unlike the C3 and C6
 # projects beside this one. The component
-# (esp-idf/ac3forge/CMakeLists.txt) picks float where
+# (esp-idf/iclforge/CMakeLists.txt) picks float where
 # ESP-IDF's SOC_CPU_HAS_FPU capability says the part has a floating-point
 # unit, which this one does, the same reasoning the S3 project leaves
 # unstated too - see docs/platforms/bare-metal/esp32-s3.md, "Building -> The

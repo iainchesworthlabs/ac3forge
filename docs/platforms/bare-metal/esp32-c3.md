@@ -5,7 +5,7 @@ unit at all**. `ac3::forge_minimal` decodes here the same way it does on
 [the Cortex-M3 leg](cortex-m3.md)'s fixed-point build — `-DAC3FORGE_DECODE_SCALAR=fixed`, Q7.24
 integers under a per-block exponent — because that is what a part with no FPU wants
 ([the plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
-It shares the same `esp-idf/ac3forge/` component and manifest as [ESP32-S3](esp32-s3.md); only the
+It shares the same `esp-idf/iclforge/` component and manifest as [ESP32-S3](esp32-s3.md); only the
 target and the arithmetic tier differ.
 
 ## Status
@@ -75,7 +75,7 @@ worth reading before flashing one.
 
 ## Building
 
-Uses the same `esp-idf/ac3forge/` component and `EXTRA_COMPONENT_DIRS` setup as
+Uses the same `esp-idf/iclforge/` component and `EXTRA_COMPONENT_DIRS` setup as
 [ESP32-S3 → The ESP-IDF component](esp32-s3.md#the-esp-idf-component). `apps/baremetal/platform/esp32c3/`
 is the probe target:
 

@@ -23,7 +23,7 @@
 // the board, and the Network page has to go on following it through that.
 //
 // GET /firmware's answer is read into ac3forge::FirmwareStatus, the struct the
-// board renders it from (esp-idf/ac3forge/include/ac3forge/
+// board renders it from (esp-idf/iclforge/include/iclforge/
 // firmware_status.hpp), and an image is held to the board's own rules
 // (firmware_image.hpp) before a byte of it is sent. The rest is ota.py's push
 // in C++: the checks it makes before an upload, the upload with its

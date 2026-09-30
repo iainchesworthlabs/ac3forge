@@ -1719,7 +1719,7 @@ jobs:
           CI: "1"
         run: npm test
 
-  # The ESP32 player's web page (esp-idf/ac3forge/ui/, planning/esp32-device-ui.md)
+  # The ESP32 player's web page (esp-idf/iclforge/ui/, planning/esp32-device-ui.md)
   # in Chromium, against a stand-in for the firmware's REST routes that each test
   # starts for itself: every action and its error paths, the polling, the status
   # payloads recorded from the emulated board, accessibility and the flash
@@ -1779,7 +1779,7 @@ jobs:
   # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
   # of the desktop workflows' steps apply (no ctest suite, no cpack package, no gold-reference
-  # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
+  # gate) - rust/iclforge-sys/build.rs drives its own trimmed CMake configure of just
   # iclforge::c_shared rather than reusing a desktop preset.
   #
   # All three desktop OSes, one job each (Rust bindings's completeness pass): the
@@ -2076,7 +2076,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/i2s_player
+          cd esp-idf/iclforge/examples/i2s_player
           idf.py set-target esp32s3
           idf.py build
           idf.py size | tee "$GITHUB_STEP_SUMMARY"
@@ -2102,7 +2102,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           idf.py set-target esp32s3
           idf.py build
           idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
@@ -2218,7 +2218,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2301,7 +2301,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2371,7 +2371,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2451,7 +2451,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2545,7 +2545,7 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2661,7 +2661,7 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           if [ ! -f build/qemu_flash.bin ] || [ ! -f build/qemu_efuse.bin ]; then
             echo "::error title=ESP32-S3 web page::the HTTP step's QEMU images are not in build/" >&2
             exit 1
@@ -2728,7 +2728,7 @@ jobs:
           python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt
           kill "$qemu" 2>/dev/null || true
 
-      # The stream set (esp-idf/ac3forge/examples/hearth_sink/www/,
+      # The stream set (esp-idf/iclforge/examples/hearth_sink/www/,
       # planning/esp32-stream-set.md) over the HTTP source, rendered onto
       # 7.1.4: sdkconfig.ci-http714 is the HTTP shape with the capture sink's
       # twelve-slot TDM conversion, levels as coded and objects as their bed,
@@ -2749,7 +2749,7 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory "$www" >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2858,7 +2858,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           for combo in \
             "i2s:CONFIG_AC3FORGE_EXAMPLE_SINK_I2S=y" \
             "sd:CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD=y" \
@@ -2900,7 +2900,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth-sink-esp32s3"
           version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32s3 \
@@ -2930,7 +2930,7 @@ jobs:
           . "$IDF_PATH/export.sh"
           image="$GITHUB_WORKSPACE/sendspin-qemu-image"
           mkdir -p "$image"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2951,7 +2951,7 @@ jobs:
           . "$IDF_PATH/export.sh"
           image="$GITHUB_WORKSPACE/sendspin-qemu-image/wifi"
           mkdir -p "$image"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2977,7 +2977,7 @@ jobs:
           . "$IDF_PATH/export.sh"
           images="$GITHUB_WORKSPACE/ota-qemu-images"
           mkdir -p "$images"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           # name:PROJECT_VER:AC3FORGE_FIRMWARE_TEST
@@ -3271,7 +3271,7 @@ jobs:
 
       # hearth_sink's actual Sendspin player, not the baremetal probe above - built and not
       # run, same reason: no qemu-riscv32 machine for esp32c6. The config combination is the
-      # one esp-idf/ac3forge/examples/hearth_sink/sdkconfig.c6 and sdkconfig.sendspin-c6 each
+      # one esp-idf/iclforge/examples/hearth_sink/sdkconfig.c6 and sdkconfig.sendspin-c6 each
       # name in their own header comments, and the one docs/hearth/index.md's "Where it runs"
       # table has flagged as "no C6 Sendspin CI job" - a board has built, run and measured
       # this combination (the README's "On the ESP32-C6" section, including a ten-minute
@@ -3288,7 +3288,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-c6-sendspin"
           version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
@@ -3309,7 +3309,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-c6-16mb-sendspin"
           version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
@@ -3335,7 +3335,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-p4-sendspin"
           version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 \
@@ -3356,7 +3356,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/hearth_sink
+          cd esp-idf/iclforge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-p4-ac4"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin;sdkconfig.ac4" \

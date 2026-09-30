@@ -109,7 +109,7 @@ constexpr ac3forge::SinkFrame kFrame = CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME !
 // a requested layout against before any of this runs. Eight at 32 bits with a
 // second line wired, sixteen at 16 - I2S_LL_SLOT_FRAME_BIT_MAX (128 on this
 // part) passed explicitly, since sink_plan.hpp no longer assumes any one
-// target's frame width; see esp-idf/ac3forge/include/ac3forge/sink_plan.hpp.
+// target's frame width; see esp-idf/iclforge/include/iclforge/sink_plan.hpp.
 [[nodiscard]] std::size_t ceiling() {
     return ac3forge::sink_ceiling(g_slot_bits, second_line_wired(), I2S_LL_SLOT_FRAME_BIT_MAX);
 }

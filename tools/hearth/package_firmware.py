@@ -5,7 +5,7 @@
         --name hearth-sink-esp32s3 --out DIR
     python tools/hearth/package_firmware.py manifest --out DIR
 
-`package` reads one ESP-IDF build directory of esp-idf/ac3forge/examples/hearth_sink
+`package` reads one ESP-IDF build directory of esp-idf/iclforge/examples/hearth_sink
 (its project_description.json, flash_args, sdkconfig and the files flash_args
 names) and writes into DIR:
 

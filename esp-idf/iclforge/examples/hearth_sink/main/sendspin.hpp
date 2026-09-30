@@ -11,7 +11,7 @@
 // a seam CMake resolves, like the source and the sink:
 //
 //   sendspin/player/  the component's Sendspin player
-//                     (esp-idf/ac3forge/include/ac3forge/sendspin_host.hpp and
+//                     (esp-idf/iclforge/include/iclforge/sendspin_host.hpp and
 //                     burst_player.hpp), for a build with a network and
 //                     CONFIG_AC3FORGE_SENDSPIN;
 //   sendspin/none/    everything else, where each of these does nothing.

@@ -133,7 +133,7 @@ set(AC3FORGE_ESP_PROFILE "decoder")   # or "encoder"
 Both must appear **before** `include($ENV{IDF_PATH}/tools/cmake/project.cmake)`,
 because the component is read during IDF's component scan, which `project()`
 performs. `EXTRA_COMPONENT_DIRS` wants the directory that *contains* components
-— `esp-idf`, not `esp-idf/ac3forge`.
+— `esp-idf`, not `esp-idf/iclforge`.
 
 The two profiles are mutually exclusive: no two of decode, AC-3 encode and
 E-AC-3 encode fit in this part's internal SRAM at once. Switching between them

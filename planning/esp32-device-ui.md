@@ -105,7 +105,7 @@ adds no state of its own to the firmware.
 
 | Part | What it is |
 |---|---|
-| [`ac3forge::Control`](../esp-idf/ac3forge/include/ac3forge/control.hpp) (`esp-idf/ac3forge/src/control.cpp`) | A REST surface on `esp_http_server`: `GET /` (a text list of the routes, before this work), `GET /status` (JSON), `POST /play` (a URL or a path as the body; `202 Accepted`), `POST /stop`, `POST /volume` (0.0 to 1.0), `GET` and `PUT /layout` (a name such as `7.1.4` or a speaker list such as `L,R,C,LFE,Ls,Rs`). JSON written by hand: IDF v6.1's core has no cJSON. |
+| [`ac3forge::Control`](../esp-idf/iclforge/include/iclforge/control.hpp) (`esp-idf/iclforge/src/control.cpp`) | A REST surface on `esp_http_server`: `GET /` (a text list of the routes, before this work), `GET /status` (JSON), `POST /play` (a URL or a path as the body; `202 Accepted`), `POST /stop`, `POST /volume` (0.0 to 1.0), `GET` and `PUT /layout` (a name such as `7.1.4` or a speaker list such as `L,R,C,LFE,Ls,Rs`). JSON written by hand: IDF v6.1's core has no cJSON. |
 | Its server | `max_uri_handlers` 7, exactly the routes; `max_open_sockets` 3, with the least recently used closed when a fourth arrives. Everything else is IDF's default: one task, a 4,096-byte stack from internal RAM, priority 5, either core. Every handler runs on that one task, one request at a time. |
 | The owner's side | Control never touches a player. `POST` routes put a command on a queue that `app_main` empties every 100 ms (`examples/hearth_sink/main/hearth_sink.cpp`, four commands deep); `GET /status` reads a snapshot under a mutex. |
 | `GET /status` | `state`, `location`, `source`, `sink`, `layout`, `volume`, `stream{codec, acmod, channels, substreams, dialnorm, objects, objects_rendered, slots}`, `frames`, `held`, `us_per_frame`, `worst_frame_us`, `render_us_per_frame`, `sink_us_per_frame`, `realtime_permille`, `resync_bytes`, `fetched_bytes`, `ring_low`, `passes`, `layout_mismatches`, `finished`, `failed`, `why`, `error`. A handler the owner leaves empty drops its field (`control.hpp`); `stream` is `null` before the first access unit and `ring_low` is `null` until measured. |
@@ -122,7 +122,7 @@ fields the sections below add. The rest of this section is what the design start
 shape (`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram` plus an http overlay): with WiFi up and a
 stream playing, 14 to 16 KB of internal heap stays free. One boot that started the HTTP server
 after the decoder found the largest free block at 3,328 bytes and came up with no server
-([On the board](../esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-board)). Anything this
+([On the board](../esp-idf/iclforge/examples/hearth_sink/README.md#on-the-board)). Anything this
 page adds to the firmware is weighed against those figures.
 
 ## What the comparable does
@@ -243,7 +243,7 @@ device's answers rather than work out the player's rules in the script.
 
 ### What a layout does
 
-From the code - `esp-idf/ac3forge/src/player.cpp`, `src/render/include/iclforge/render/render.hpp` and the
+From the code - `esp-idf/iclforge/src/player.cpp`, `src/render/include/iclforge/render/render.hpp` and the
 decoder's output stage, `src/ac3/src/decoder/output.cpp` - and checked under QEMU with the
 [stream set](esp32-stream-set.md):
 
@@ -638,8 +638,8 @@ what `curl http://<board>/` was ([decision 4](#decisions)).
 ## Where the files live
 
 In the component, beside Control, because Control is what serves them and any firmware that
-mounts it gets the page: [`esp-idf/ac3forge/ui/ac3forge_ui.html`](../esp-idf/ac3forge/ui/ac3forge_ui.html)
-and [`ac3forge_ui.js`](../esp-idf/ac3forge/ui/ac3forge_ui.js), listed as `EMBED_FILES` in the
+mounts it gets the page: [`esp-idf/iclforge/ui/iclforge_ui.html`](../esp-idf/iclforge/ui/iclforge_ui.html)
+and [`ac3forge_ui.js`](../esp-idf/iclforge/ui/iclforge_ui.js), listed as `EMBED_FILES` in the
 component's `idf_component_register`. ESP-IDF places embedded files in `.rodata.embedded`, which
 is flash, and names their symbols after the file's base name (`_binary_ac3forge_ui_html_start`);
 the prefix is there because a firmware that embeds its own `index.html` would otherwise fail to
@@ -653,7 +653,7 @@ either file is copied to the heap by this code.
 The embedded data sits in the component's archive and is linked only into a firmware that
 references it, which is one that uses Control. The packing script copies the component
 directory whole, so `ui/` goes into the registry archive with it. A `.gitattributes` line pins
-`esp-idf/ac3forge/ui/**` to LF, so the bytes in flash, the size budget and the coverage offsets
+`esp-idf/iclforge/ui/**` to LF, so the bytes in flash, the size budget and the coverage offsets
 are the same on every checkout, Windows included.
 
 Plain HTML, CSS and JavaScript with no build step: the files in the tree are the files the board

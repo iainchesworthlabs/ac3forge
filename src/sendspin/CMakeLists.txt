@@ -17,7 +17,7 @@
 # runs (planning/hearth-reference-player.md, B3): the Noise responder, pairing, the clock and
 # the player session, with the crypto seam over whichever mbedTLS the board's SDK provides,
 # named by AC3FORGE_SENDSPIN_MBEDTLS_TARGET. The ESP-IDF component sets both
-# (esp-idf/ac3forge/CMakeLists.txt) and brings its own WebSocket and mDNS. No vcpkg.
+# (esp-idf/iclforge/CMakeLists.txt) and brings its own WebSocket and mDNS. No vcpkg.
 #
 # Written for the player half's hardest host, an ESP32 inside an HTTP server task:
 # no thread_local, no recursion over input, no large stack frames, and allocations

@@ -16,7 +16,7 @@
 # CMakeLists.txt) - each its own AC3FORGE_BUILD_<NAME> option, its own guarded
 # add_subdirectory(), and its own guarded block below, as are iclforge::c, the AC-4 libraries,
 # iclforge::iab and iclforge::iamf. Each maps 1:1 onto its own vcpkg feature
-# (packaging/vcpkg-port/ac3forge/vcpkg.json's "matroska"/"mp4"/"mpegts"/"capi"/"ac4"/"iab"/
+# (packaging/vcpkg-port/iclforge/vcpkg.json's "matroska"/"mp4"/"mpegts"/"capi"/"ac4"/"iab"/
 # "iamf", wired through portfile.cmake's vcpkg_check_features()) and its own Conan option
 # (packaging/conan/conanfile.py), so a vcpkg or Conan install only gets the ones its feature
 # selection actually asked for.
@@ -276,7 +276,7 @@ endif()
 # target list - its targets, headers and export set only exist to install when the component
 # was actually built. ac3forgeConfig.cmake.in's include() of mp4Targets.cmake is itself
 # conditional (if(EXISTS)) to match. Maps onto its own "mp4" vcpkg feature the same way
-# matroska does (packaging/vcpkg-port/ac3forge/vcpkg.json).
+# matroska does (packaging/vcpkg-port/iclforge/vcpkg.json).
 if(AC3FORGE_BUILD_MP4)
     install(TARGETS ${_ac3forge_mp4_install_targets}
         EXPORT mp4Targets
@@ -302,7 +302,7 @@ endif()
 
 # iclforge::mpegts is an optional component (AC3FORGE_BUILD_MPEGTS, see the root
 # CMakeLists.txt) - same shape as iclforge::matroska immediately above, including its own
-# "mpegts" vcpkg feature (packaging/vcpkg-port/ac3forge/vcpkg.json).
+# "mpegts" vcpkg feature (packaging/vcpkg-port/iclforge/vcpkg.json).
 if(AC3FORGE_BUILD_MPEGTS)
     install(TARGETS ${_ac3forge_mpegts_install_targets}
         EXPORT mpegtsTargets
@@ -596,7 +596,7 @@ endif()
 # every installed archive whole, so a symbol that neither the package nor the
 # C/C++ runtime supplies fails there.
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ac3forgeConfig.cmake.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/iclforgeConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/ac3forgeConfig.cmake"
     INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge")
 

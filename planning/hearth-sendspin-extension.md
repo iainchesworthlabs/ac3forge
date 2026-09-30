@@ -7,7 +7,7 @@
     definition of the application-specific role that carries AC-3, E-AC-3 and AC-4 to Hearth
     sinks. It was written as a draft on 2026-09-15 and is normative for `src/sendspin`, the test
     sink and `hearth_sink`, which were built to it. The role's objects are in
-    `src/sendspin/include/iclforge/sendspin/ac3forge_player.hpp` and its burst chunk, ID 192, is in
+    `src/sendspin/include/iclforge/sendspin/iclforge_player.hpp` and its burst chunk, ID 192, is in
     `chunks.hpp`; both halves and `ac3hearth`'s server use them. The scripts in `tools/sendspin`
     run aiosendspin 9.1.1's client and server against Hearth in CI (`hearth-validate`), and stand
     in for Music Assistant: no run has been made against Music Assistant itself. The

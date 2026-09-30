@@ -174,7 +174,7 @@ choice AC3FORGE_EXAMPLE_SINK
         bits (ESP32-S3, ESP32-C6). I2S DAC, wide TDM is the same arithmetic
         for a part whose one controller reaches the product's full channel
         target alone at a wider frame (512 bits on the ESP32-P4) - never a
-        second line, see esp-idf/ac3forge/examples/hearth_sink/main/sink/i2s_wide/audio_sink.cpp.
+        second line, see esp-idf/iclforge/examples/hearth_sink/main/sink/i2s_wide/audio_sink.cpp.
         The capture sink is what CI runs: qemu-system-xtensa has no I2S
         peripheral, so a real write blocks on a DMA that never drains. It
         converts with the same code (ac3forge/interleave.hpp) and checks the
@@ -465,7 +465,7 @@ config AC3FORGE_EXAMPLE_AC4_PCM_HASH
         which is what says whether the float output equals the host's. The
         time it takes is measured and taken back out of the decoder's.
 
-# THE PLAYER'S TWO TASKS - see esp-idf/ac3forge/include/ac3forge/player.hpp. The
+# THE PLAYER'S TWO TASKS - see esp-idf/iclforge/include/iclforge/player.hpp. The
 # fetch task reads the source into a ring; the decode task drains the ring,
 # decodes and writes to the sink. WiFi and TCP/IP run on core 0, so the fetch
 # task goes beside them and the decode task has core 1 to itself. -1 lets the
@@ -522,7 +522,7 @@ config AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT
         a copy of the unit while it is held: 1 KB a channel for each of its six
         blocks, in PSRAM when the part has it.
 
-# THE CONTROL SURFACE - ac3forge::Control, esp-idf/ac3forge/include/ac3forge/
+# THE CONTROL SURFACE - ac3forge::Control, esp-idf/iclforge/include/iclforge/
 # control.hpp: GET /status, POST /play with a location, POST /stop, POST /volume.
 # Only worth having where there is a network, so 0 (off) by default; the HTTP
 # source's configurations turn it on.

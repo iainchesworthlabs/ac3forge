@@ -1,7 +1,7 @@
 """A hearth_sink build directory made from nothing, for the tests of
 package_firmware.py and tools/ci/check_firmware_package.py.
 
-It holds what an ESP-IDF v6.1 build of esp-idf/ac3forge/examples/hearth_sink
+It holds what an ESP-IDF v6.1 build of esp-idf/iclforge/examples/hearth_sink
 leaves that packaging reads: project_description.json, flash_args, the
 sdkconfig, the bootloader, the partition table, the empty otadata, the app
 image and its ELF, the FAT image, and the audio partition's source outside
@@ -23,7 +23,7 @@ from pathlib import Path
 CHIP_IDS = {"esp32s3": 0x0009, "esp32c6": 0x000D, "esp32p4": 0x0012}
 FLASH_CODES = {"4MB": 2, "16MB": 4}
 
-# The tables O1 gave the boards, as esp-idf/ac3forge/examples/hearth_sink's
+# The tables O1 gave the boards, as esp-idf/iclforge/examples/hearth_sink's
 # partitions.csv (16 MB) and partitions_c6.csv (4 MB) have them: label, type,
 # subtype, offset, size.
 TABLE_16MB = [

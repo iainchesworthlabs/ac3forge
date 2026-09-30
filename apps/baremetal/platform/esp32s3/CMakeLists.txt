@@ -3,7 +3,7 @@
 #
 # An ESP-IDF project, driven by idf.py rather than by this repo's presets, for
 # the same reason apps/android is a Gradle project: the SDK owns the top-level
-# build. IDF is reached from the other direction - esp-idf/ac3forge/
+# build. IDF is reached from the other direction - esp-idf/iclforge/
 # add_subdirectory()s the repo root - so there is no ac3forge preset for this
 # target and no entry in cmake/toolchains/.
 #

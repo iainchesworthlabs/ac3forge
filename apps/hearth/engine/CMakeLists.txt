@@ -53,11 +53,11 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
                                             network_group_sink.cpp)
     # A Hearth sink's firmware (planning/esp32-ota.md, O5): the board's own HTTP routes over
     # cpp-httplib, configured as src/sendspin configures it, and the board's own headers for what
-    # GET /firmware says and what an image must be (esp-idf/ac3forge/include, free of ESP-IDF,
+    # GET /firmware says and what an image must be (esp-idf/iclforge/include, free of ESP-IDF,
     # as ac3tests already reads them), so that this app holds an image to the rules the board
     # holds it to.
     target_sources(ac3hearth_engine PRIVATE sink_firmware.cpp sink_firmware_view.cpp)
-    target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/esp-idf/ac3forge/include")
+    target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/esp-idf/iclforge/include")
     # The opt-in loopback diagnostics endpoint (diagnostics_server.hpp): the
     # same httplib already linked in for sink_firmware.cpp above, so it adds
     # nothing new to a core-only build to leave out.

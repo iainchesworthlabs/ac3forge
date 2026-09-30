@@ -15,7 +15,7 @@
 # downstream (CLI, GUI, examples) consumes it yet - IAB reader's phase 3
 # (`atmos-iab`, mapping onto iclforge::admbridge) is what will eventually give it
 # a consumer. Following iclforge::c's own precedent (see
-# packaging/vcpkg-port/ac3forge/portfile.cmake's header comment), it is left
+# packaging/vcpkg-port/iclforge/portfile.cmake's header comment), it is left
 # out of the vcpkg port until it has one.
 #
 # Built and installed as both a static and a shared library - see

@@ -2,7 +2,7 @@
 #
 # Builds the CLI only (AC3FORGE_BUILD_CLI=ON, everything else the library
 # doesn't need for that off) - same reasoning as the vcpkg port
-# (packaging/vcpkg-port/ac3forge/) staying library-only, just the other way
+# (packaging/vcpkg-port/iclforge/) staying library-only, just the other way
 # round: Homebrew formulae are for end-user tools, so this ships the tool
 # vcpkg deliberately does not, and skips find_package(ac3forge) dev files
 # vcpkg already covers. The Qt6 GUI (ac3gui) is not packaged here - a Homebrew
@@ -10,7 +10,7 @@
 # (../Casks/ac3gui.rb) installs the prebuilt ac3gui.app from each release's
 # .dmg.
 #
-# Staged here (packaging/homebrew/Formula/ac3forge.rb) for local
+# Staged here (packaging/homebrew/Formula/iclforge.rb) for local
 # `brew install --build-from-source` validation against this repo, and
 # copied into the live personal tap (iainchesworthlabs/homebrew-ac3forge) as
 # Formula/ac3forge.rb after each bump - see docs/releasing.md.
@@ -34,7 +34,7 @@ class Ac3forge < Formula
     # tarball (no .git directory) and silently falls back to "0.0.0-dev".
     # `version` here is Homebrew's own parse of the url= tag, so re-adding
     # the "v" prefix recovers the real tag - same technique
-    # packaging/vcpkg-port/ac3forge/portfile.cmake uses for the same reason.
+    # packaging/vcpkg-port/iclforge/portfile.cmake uses for the same reason.
     system "cmake", "-S", ".", "-B", "build",
                      "-DAC3FORGE_BUILD_CLI=ON",
                      "-DAC3FORGE_BUILD_GUI=OFF",

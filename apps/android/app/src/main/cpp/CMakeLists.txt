@@ -44,7 +44,7 @@ set(AC3FORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
 # Defaults ON (root CMakeLists.txt) and add_subdirectory()s src/sendspin, which hard-requires
 # MbedTLS/httplib/FLAC/Opus/mdns via find_package(... REQUIRED) - packages that exist nowhere
 # in an NDK cross-compile (no vcpkg toolchain here, see setup-vcpkg's own desktop-only scope).
-# Same gap python/pyproject.toml and rust/ac3forge-sys/build.rs had for the same reason.
+# Same gap python/pyproject.toml and rust/iclforge-sys/build.rs had for the same reason.
 set(AC3FORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
 
 # ac3forge_jni's own target_link_libraries below is iclforge::ac3/iclforge::audio/iclforge::signing only
@@ -56,7 +56,7 @@ set(AC3FORGE_BUILD_CAPI OFF CACHE BOOL "" FORCE)
 
 # The AC-4 libraries (src/ac4, src/ac4core, src/ac4dec, src/ac4enc) build at the root
 # CMakeLists.txt's own default (ON, plan phase I4): unlike Hearth above, they depend on
-# nothing outside this tree (packaging/vcpkg-port/ac3forge/vcpkg.json's "ac4" feature says
+# nothing outside this tree (packaging/vcpkg-port/iclforge/vcpkg.json's "ac4" feature says
 # the same - "depends on nothing in iclforge::ac3"), so they cross-compile under the NDK with no
 # extra package friction. Nothing in this app's own target_link_libraries links them yet - a
 # later phase's application work (planning/ac4.md), not this one, which only has to keep the

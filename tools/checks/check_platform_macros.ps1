@@ -25,7 +25,7 @@
 # assertions. Each is now the same directory-selected shape the rest of the
 # tree uses -- tests/platform/<os>/, tests/ac3/core/avx2/{present,absent}/,
 # tests/render/abi/{msvc,unknown}/ -- and python/ likewise
-# (python/src/ac3forge_ext/{signing,containers}/{present,absent}/), so every
+# (python/src/iclforge_ext/{signing,containers}/{present,absent}/), so every
 # tree here starts at zero rather than being grandfathered in with a waiver list.
 #
 # NOT scanned, deliberately: esp-idf/. That tree is an ESP-IDF component built
@@ -33,7 +33,7 @@
 # Kconfig symbols -- the documented IDF idiom, and in the CONFIG_SPIRAM case
 # load-bearing in a way a directory split would not reproduce: on a target with
 # no PSRAM bus, esp_psram_get_size() is never exposed to the linker at all
-# (see esp-idf/ac3forge/src/control.cpp's own comment). Holding this rule over
+# (see esp-idf/iclforge/src/control.cpp's own comment). Holding this rule over
 # somebody else's build system, with no toolchain here to verify against, would
 # be a change made blind.
 #

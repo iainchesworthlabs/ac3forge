@@ -38,7 +38,7 @@
 # the failure would have surfaced as an undefined-symbol error a long way from
 # its cause.
 #
-# The esp32s3 value is set by esp-idf/ac3forge/CMakeLists.txt before it
+# The esp32s3 value is set by esp-idf/iclforge/CMakeLists.txt before it
 # add_subdirectory()s the root, so it is already in the cache when this runs.
 if(NOT DEFINED AC3FORGE_BAREMETAL_PLATFORM)
     if(CMAKE_SYSTEM_NAME STREQUAL "Generic")

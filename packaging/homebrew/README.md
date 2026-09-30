@@ -33,7 +33,7 @@ and when it happens, is a separate decision from staging the formula here.
 ## What gets packaged
 
 **The formula:** just `ac3cli` — `AC3FORGE_BUILD_CLI=ON`, GUI/tests/examples/fuzzers off, same
-reasoning as the vcpkg port ([`packaging/vcpkg-port/ac3forge/`](../vcpkg-port/ac3forge/))
+reasoning as the vcpkg port ([`packaging/vcpkg-port/iclforge/`](../vcpkg-port/ac3forge/))
 staying library-only but pointed the other way: Homebrew formulae are for end-user tools, not
 `find_package()`-consumed libraries, so this ships the thing vcpkg deliberately does not.
 

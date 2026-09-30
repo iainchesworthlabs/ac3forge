@@ -24,7 +24,7 @@ import subprocess
 import sys
 from typing import Any
 
-# The example is esp-idf/ac3forge/examples/hearth_sink, four levels below the
+# The example is esp-idf/iclforge/examples/hearth_sink, four levels below the
 # repository root.
 OTA_PY = os.path.join("..", "..", "..", "..", "tools", "hearth", "ota.py")
 
