@@ -78,7 +78,7 @@
 // signals in QinAJOC's order (a static downmix's L, R, C, Ls and Rs), or the
 // element's channels L, R, C, Ls and Rs as it has them.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // What decode() takes besides the substream: the frame's place in the stream,
 // the output processing the system asks for, and what the frame's metadata
@@ -385,4 +385,4 @@ class SubstreamPcm {
     std::vector<std::vector<QmfValue>*> matrices_;  // per channel, its `out`, for A-CPL
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

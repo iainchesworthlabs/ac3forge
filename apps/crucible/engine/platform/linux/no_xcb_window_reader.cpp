@@ -10,7 +10,7 @@
 // something says so through its own support(), so the X11 Foreground above
 // this never tests for a null reader, and the UI prints what is missing.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -29,4 +29,4 @@ std::unique_ptr<X11WindowReader> make_x11_window_reader() {
     return std::make_unique<NoXcbWindowReader>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

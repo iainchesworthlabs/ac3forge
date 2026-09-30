@@ -29,7 +29,7 @@
 // Subbands above Table 173's last band, 40, have no parameters and pass
 // unchanged (ERRATA, "The subbands above dialogue enhancement's bands").
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 inline constexpr int kDeFront = 3;  // L, R and C, the order clause 5.7.8.6 gives the 3x6 matrix
 
@@ -101,4 +101,4 @@ class DeStage {
     bool previous_identity_ = true;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

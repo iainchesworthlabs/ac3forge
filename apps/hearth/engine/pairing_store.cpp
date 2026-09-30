@@ -16,7 +16,7 @@
 
 // See pairing_store.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -235,4 +235,4 @@ std::vector<PairingRecordView> PairingStore::records() const {
     return out;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

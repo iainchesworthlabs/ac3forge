@@ -19,12 +19,12 @@
 // asks NSWorkspace for the frontmost application. **Wayland cannot answer at
 // all**: a client is given no way to ask about another client's windows, by
 // design, and no portal exposes it. So `support()` exists beside the query,
-// the way ac3::audio::Capability does, and an implementation that cannot
+// the way iclforge::audio::Capability does, and an implementation that cannot
 // answer says so in one line the UI can show - rather than silently
 // reporting "nothing is full-screen", which is a different claim and a wrong
 // one.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct ForegroundSupport {
     bool available = false;
@@ -48,4 +48,4 @@ public:
     [[nodiscard]] virtual ForegroundSupport support() const = 0;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

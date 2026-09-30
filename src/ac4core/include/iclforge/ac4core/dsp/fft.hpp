@@ -24,12 +24,12 @@
 // Written against a scalar type (planning/ac4.md, "Arithmetic"); only double
 // is instantiated until the float and fixed-point tiers arrive.
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 
 template <typename Real>
 class Fft {
    public:
-    using Complex = ac4::detail::dsp::Complex<Real>;
+    using Complex = iclforge::ac4::detail::dsp::Complex<Real>;
 
     // A length with a prime factor above 5, or 0, gives a plan that is not
     // valid() and transforms nothing.
@@ -76,4 +76,4 @@ class Fft {
 
 extern template class Fft<Real>;
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

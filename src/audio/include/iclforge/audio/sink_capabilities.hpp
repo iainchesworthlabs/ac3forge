@@ -24,7 +24,7 @@
 // should fall back to enumerate_render_devices() rather than treat kNoBackend
 // as a hard failure - see 'ac3cli play' (play/monitor follow mode) for that fallback.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 enum class EdidError : std::uint8_t {
     kNoBackend,    // this platform/backend has no EDID/ELD read path at all
@@ -61,4 +61,4 @@ struct SinkAudioCapabilities {
 [[nodiscard]] std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(
     const std::string& device_id);
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

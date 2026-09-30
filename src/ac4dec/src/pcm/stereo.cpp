@@ -7,7 +7,7 @@
 
 #include "iclforge/ac4core/tables/sfb_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr std::array<Real, 4> kIdentity = {1, 0, 0, 1};
@@ -148,4 +148,4 @@ void align_tracks(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfDa
     track1 = std::move(out1);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

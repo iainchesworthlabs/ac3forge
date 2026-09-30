@@ -41,18 +41,18 @@
 namespace ac3forge {
 namespace {
 
-namespace ss = ac3::sendspin;
+namespace ss = iclforge::sendspin;
 namespace ac = ss::ac3forge;
 namespace m = ss::messages;
-using ac3::render::IdentifyTone;
-using ac3::render::LayoutRenderer;
-using ac3::render::OutputLayout;
-using ac3::render::Routing;
-using ac3::render::TrimDelay;
-using Location = ac3::eac3::chanmap::Location;
+using iclforge::render::IdentifyTone;
+using iclforge::render::LayoutRenderer;
+using iclforge::render::OutputLayout;
+using iclforge::render::Routing;
+using iclforge::render::TrimDelay;
+using Location = iclforge::eac3::chanmap::Location;
 
 constexpr std::size_t kBlock = Playout::kBlockFrames;
-static_assert(kBlock == ac3::kSamplesPerBlock, "the player writes the decoder's block");
+static_assert(kBlock == iclforge::kSamplesPerBlock, "the player writes the decoder's block");
 constexpr std::size_t kMaxSlots = OutputLayout::kMaxSlots;
 // A burst is always 1,536 samples (planning/hearth-sendspin-extension.md).
 constexpr std::uint64_t kBurstFrames = 1536;
@@ -102,7 +102,7 @@ static_assert(std::is_trivially_copyable_v<Header>);
 
 enum class Stream : std::uint8_t { kIdle, kBursts, kPcm };
 
-[[nodiscard]] bool same_layout(const ac3::eac3::chanmap::Layout& a, const ac3::eac3::chanmap::Layout& b) {
+[[nodiscard]] bool same_layout(const iclforge::eac3::chanmap::Layout& a, const iclforge::eac3::chanmap::Layout& b) {
     if (a.count != b.count) {
         return false;
     }
@@ -190,17 +190,17 @@ struct BurstPlayer::Impl {
     Stream stream = Stream::kIdle;
     ac::DataType data_type = ac::DataType::kEac3;
     m::AudioFormat pcm_format;
-    std::optional<ac3::FrameDecoder> ac3_decoder;
-    std::optional<ac3::Eac3Decoder> eac3_decoder;
+    std::optional<iclforge::FrameDecoder> ac3_decoder;
+    std::optional<iclforge::Eac3Decoder> eac3_decoder;
     std::optional<int> programme;
-    std::array<ac3::eac3::chanmap::Layout, kMaxPendingBeds> beds{};
+    std::array<iclforge::eac3::chanmap::Layout, kMaxPendingBeds> beds{};
     std::size_t bed_head = 0;
     std::size_t bed_count = 0;
-    std::optional<ac3::eac3::chanmap::Layout> renderer_bed;
+    std::optional<iclforge::eac3::chanmap::Layout> renderer_bed;
 
     OutputLayout layout;
-    ac3::render::Serving serving;
-    ac3::DecoderConfig decoder_config;
+    iclforge::render::Serving serving;
+    iclforge::DecoderConfig decoder_config;
     LayoutRenderer renderer;
     Routing routing;
     TrimDelay trim_delay;
@@ -320,13 +320,13 @@ struct BurstPlayer::Impl {
     }
 
     // Everything that follows from the layout and the decoder's settings.
-    void configure(const OutputLayout& new_layout, const ac3::DecoderConfig& decoder, ac3::DownmixTarget fold,
-                   ac3::render::ObjectsPolicy objects, double crossover_hz, const std::optional<Routing>& new_routing,
+    void configure(const OutputLayout& new_layout, const iclforge::DecoderConfig& decoder, iclforge::DownmixTarget fold,
+                   iclforge::render::ObjectsPolicy objects, double crossover_hz, const std::optional<Routing>& new_routing,
                    std::span<const double> trims, std::span<const double> delays) {
         layout = new_layout;
-        serving = ac3::render::serve(layout, fold, objects);
+        serving = iclforge::render::serve(layout, fold, objects);
         decoder_config = decoder;
-        ac3::render::configure_decoder(serving, decoder_config);
+        iclforge::render::configure_decoder(serving, decoder_config);
         renderer = LayoutRenderer{layout, config.sample_rate, crossover_hz};
         renderer_bed.reset();
         if (new_routing) {
@@ -383,12 +383,12 @@ struct BurstPlayer::Impl {
                 new_layout = *parsed;
             }
         }
-        ac3::DecoderConfig decoder = config.decoder;
+        iclforge::DecoderConfig decoder = config.decoder;
         const ac::DecoderSettings& d = s.decoder;
         if (d.mode) {
-            decoder.output.mode = *d.mode == ac::DecoderMode::kRf     ? ac3::OperatingMode::kRf
-                                  : *d.mode == ac::DecoderMode::kLine ? ac3::OperatingMode::kLine
-                                                                       : ac3::OperatingMode::kCustom;
+            decoder.output.mode = *d.mode == ac::DecoderMode::kRf     ? iclforge::OperatingMode::kRf
+                                  : *d.mode == ac::DecoderMode::kLine ? iclforge::OperatingMode::kLine
+                                                                       : iclforge::OperatingMode::kCustom;
         }
         if (d.heavy_compression) {
             decoder.heavy_compression = *d.heavy_compression;
@@ -406,19 +406,19 @@ struct BurstPlayer::Impl {
             decoder.programme = d.programme;
         }
         if (d.concealment) {
-            decoder.concealment = *d.concealment == ac::Concealment::kRepeatFade ? ac3::ConcealmentPolicy::kRepeatFade
-                                  : *d.concealment == ac::Concealment::kMute     ? ac3::ConcealmentPolicy::kMute
-                                                                                  : ac3::ConcealmentPolicy::kNone;
+            decoder.concealment = *d.concealment == ac::Concealment::kRepeatFade ? iclforge::ConcealmentPolicy::kRepeatFade
+                                  : *d.concealment == ac::Concealment::kMute     ? iclforge::ConcealmentPolicy::kMute
+                                                                                  : iclforge::ConcealmentPolicy::kNone;
         }
-        ac3::DownmixTarget fold = config.stereo_fold;
+        iclforge::DownmixTarget fold = config.stereo_fold;
         if (d.downmix) {
-            fold = *d.downmix == ac::Downmix::kLtRt ? ac3::DownmixTarget::kLtRt : ac3::DownmixTarget::kLoRo;
+            fold = *d.downmix == ac::Downmix::kLtRt ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
         }
-        ac3::render::ObjectsPolicy objects = config.objects;
+        iclforge::render::ObjectsPolicy objects = config.objects;
         if (d.objects) {
-            objects = *d.objects == ac::ObjectsPolicy::kAlways  ? ac3::render::ObjectsPolicy::kAlways
-                      : *d.objects == ac::ObjectsPolicy::kNever ? ac3::render::ObjectsPolicy::kNever
-                                                                : ac3::render::ObjectsPolicy::kAuto;
+            objects = *d.objects == ac::ObjectsPolicy::kAlways  ? iclforge::render::ObjectsPolicy::kAlways
+                      : *d.objects == ac::ObjectsPolicy::kNever ? iclforge::render::ObjectsPolicy::kNever
+                                                                : iclforge::render::ObjectsPolicy::kAuto;
         }
         std::optional<Routing> new_routing;
         if (s.routing) {
@@ -613,7 +613,7 @@ struct BurstPlayer::Impl {
         return best->local_us + static_cast<std::int64_t>(((since * 1'000'000) + (config.sample_rate / 2)) / config.sample_rate);
     }
 
-    void push_bed(const ac3::eac3::chanmap::Layout& bed) {
+    void push_bed(const iclforge::eac3::chanmap::Layout& bed) {
         if (bed_count == kMaxPendingBeds) {
             bed_head = (bed_head + 1) % kMaxPendingBeds;
             --bed_count;
@@ -624,7 +624,7 @@ struct BurstPlayer::Impl {
 
     // One decoded block: placed, routed, trimmed, delayed, metered and
     // scheduled.
-    void deliver(const ac3::PcmBlock& block) {
+    void deliver(const iclforge::PcmBlock& block) {
         std::size_t n = block.channels.empty() ? 0 : block.channels.front().size();
         if (n == 0 && !block.objects.empty()) {
             n = block.objects.front().size();
@@ -636,7 +636,7 @@ struct BurstPlayer::Impl {
         const std::size_t slots = layout.slots();
         const std::span<const std::span<float>> out(rendered.data(), slots);
         if (block.index == 0 && bed_count > 0) {
-            const ac3::eac3::chanmap::Layout bed = beds[bed_head];
+            const iclforge::eac3::chanmap::Layout bed = beds[bed_head];
             bed_head = (bed_head + 1) % kMaxPendingBeds;
             --bed_count;
             if (!serving.fold && (!renderer_bed || !same_layout(*renderer_bed, bed))) {
@@ -698,7 +698,7 @@ struct BurstPlayer::Impl {
         if (channel == Routing::kUnassigned || static_cast<std::size_t>(channel) >= layout.slots()) {
             return false;
         }
-        return layout.slot(static_cast<std::size_t>(channel)).kind == ac3::render::Speaker::Kind::kLfe;
+        return layout.slot(static_cast<std::size_t>(channel)).kind == iclforge::render::Speaker::Kind::kLfe;
     }
 
     void apply_gain(std::span<const std::span<float>> out, std::size_t n) {
@@ -769,7 +769,7 @@ struct BurstPlayer::Impl {
     }
 
     void decode_unit(std::span<const std::byte> unit) {
-        const auto header = ac3::io::read_frame_header(unit);
+        const auto header = iclforge::io::read_frame_header(unit);
         if (!header) {
             restart_after_error();
             return;
@@ -785,7 +785,7 @@ struct BurstPlayer::Impl {
             restart_after_error();
             return;
         }
-        if (header->kind == ac3::io::StreamKind::kEac3) {
+        if (header->kind == iclforge::io::StreamKind::kEac3) {
             if (!programme) {
                 programme = header->substreamid;
             } else if (header->substreamid != *programme) {
@@ -793,15 +793,15 @@ struct BurstPlayer::Impl {
             }
         }
         if (!serving.fold) {
-            const std::optional<ac3::eac3::chanmap::Layout> bed = peek_unit_layout(unit);
+            const std::optional<iclforge::eac3::chanmap::Layout> bed = peek_unit_layout(unit);
             if (!bed) {
                 restart_after_error();
                 return;
             }
             push_bed(*bed);
         }
-        const auto deliver_block = [this](const ac3::PcmBlock& block) { deliver(block); };
-        if (header->kind == ac3::io::StreamKind::kAc3 && header->bytes == unit.size()) {
+        const auto deliver_block = [this](const iclforge::PcmBlock& block) { deliver(block); };
+        if (header->kind == iclforge::io::StreamKind::kAc3 && header->bytes == unit.size()) {
             if (!ac3_decoder) {
                 ac3_decoder.emplace(decoder_config);
             }
@@ -836,9 +836,9 @@ struct BurstPlayer::Impl {
         if (!*decoded || (have_decoder_report && (decoder_report.objects > 0 || !(*decoded)->object_metadata))) {
             return;
         }
-        const ac3::DecodedAccessUnit& au = **decoded;
+        const iclforge::DecodedAccessUnit& au = **decoded;
         const std::int32_t objects =
-            au.object_metadata ? static_cast<std::int32_t>(ac3::oba::describe_objects(*au.object_metadata).size()) : 0;
+            au.object_metadata ? static_cast<std::int32_t>(iclforge::oba::describe_objects(*au.object_metadata).size()) : 0;
         have_decoder_report = true;
         decoder_report = ac::DecoderReport{.data_type = data_type,
                                            .acmod = static_cast<std::int32_t>(au.acmod),
@@ -948,8 +948,8 @@ struct BurstPlayer::Impl {
         decoded_frame = first;
         ++bursts_played;
         const std::size_t frames = payload.size() / frame_bytes;
-        const ac3::eac3::chanmap::Layout bed =
-            ac3::eac3::chanmap::expand(ac3::eac3::chanmap::acmod_map(channels == 1 ? ac3::Acmod::k1_0 : ac3::Acmod::k2_0, false));
+        const iclforge::eac3::chanmap::Layout bed =
+            iclforge::eac3::chanmap::expand(iclforge::eac3::chanmap::acmod_map(channels == 1 ? iclforge::Acmod::k1_0 : iclforge::Acmod::k2_0, false));
         if (!serving.fold && (!renderer_bed || !same_layout(*renderer_bed, bed))) {
             renderer.set_bed(bed);
             renderer_bed = bed;
@@ -991,7 +991,7 @@ struct BurstPlayer::Impl {
             for (std::size_t c = 0; c < used; ++c) {
                 pcm_views[c] = std::span<const float>(pcm_channels[c].data(), n);
             }
-            const ac3::PcmBlock block{.index = 0,
+            const iclforge::PcmBlock block{.index = 0,
                                       .blocks = 1,
                                       .channels = std::span<const std::span<const float>>(pcm_views.data(), used),
                                       .objects = {},

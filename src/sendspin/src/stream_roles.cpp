@@ -14,7 +14,7 @@
 #include "iclforge/sendspin/frames.hpp"
 #include "iclforge/sendspin/json.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace {
 
@@ -585,4 +585,4 @@ std::vector<std::uint8_t> write_chunk(std::int64_t timestamp, std::span<const st
 
 }  // namespace source
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

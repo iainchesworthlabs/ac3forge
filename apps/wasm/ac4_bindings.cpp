@@ -1,17 +1,17 @@
-// Embind wrapper around ac3::forge's AC-4 decode and encode paths (src/ac4,
+// Embind wrapper around iclforge::ac3's AC-4 decode and encode paths (src/ac4,
 // src/ac4dec, src/ac4enc), for the roadmap plan phase I4 bindings sweep. One
 // combined module, unlike the AC-3 side's separate decode_bindings.cpp/
 // encoder_bindings.cpp executables (apps/wasm/CMakeLists.txt's own comment on
 // why AC-3 split them): the task this file was written for calls for "an
 // AC-4 embind module beside the decode and encode modules", singular, and
 // AC-4's decoder and encoder share one table-of-contents/framing library
-// (ac4::ac4) regardless, so there is less to gain from a second executable
+// (iclforge::ac4) regardless, so there is less to gain from a second executable
 // here than there was splitting AC-3's decode-only and encode-only builds.
 //
 // Three JS-visible things:
-//   - Ac4Decoder: wraps ac4::Decoder (src/ac4dec/include/iclforge/ac4dec/decoder.hpp).
-//   - Ac4Encoder: wraps ac4::Encoder (src/ac4enc/include/iclforge/ac4enc/encoder.hpp).
-//   - syncFrame: wraps ac4::sync_frame() (src/ac4enc, declared beside Encoder).
+//   - Ac4Decoder: wraps iclforge::ac4::Decoder (src/ac4dec/include/iclforge/ac4dec/decoder.hpp).
+//   - Ac4Encoder: wraps iclforge::ac4::Encoder (src/ac4enc/include/iclforge/ac4enc/encoder.hpp).
+//   - syncFrame: wraps iclforge::ac4::sync_frame() (src/ac4enc, declared beside Encoder).
 //
 // Scope cut (the same "reasonable cost" cut used for every other binding in
 // this task): what is left out is the deep, rarely-touched-from-a-UI
@@ -96,21 +96,21 @@ emscripten::val make_number_array(const std::array<double, 3>& values) {
     return arr;
 }
 
-std::string_view object_kind_name(ac4::ObjectKind kind) {
+std::string_view object_kind_name(iclforge::ac4::ObjectKind kind) {
     // ac4/ac4.hpp declares ObjectKind with no describe() of its own (unlike
     // DecodeError/DownmixTarget/DrcMode/DecodingMode/Speaker/SubstreamRole,
     // which ac4dec/decoder.hpp all give one) - a small local mapping, the
     // same "the library gives no describe() for this one" situation encoder_
     // bindings.cpp's own WasmLayout/acmod_for_layout helpers are already in.
     switch (kind) {
-        case ac4::ObjectKind::kBed: return "bed";
-        case ac4::ObjectKind::kDyn: return "dyn";
-        case ac4::ObjectKind::kIsf: return "isf";
+        case iclforge::ac4::ObjectKind::kBed: return "bed";
+        case iclforge::ac4::ObjectKind::kDyn: return "dyn";
+        case iclforge::ac4::ObjectKind::kIsf: return "isf";
     }
     return "dyn";
 }
 
-// --- ac4::ObjectProperties, both ways ---------------------------------------
+// --- iclforge::ac4::ObjectProperties, both ways ---------------------------------------
 //
 // The decoder returns every field of an object's metadata (Part 2 Annex F.2 to
 // F.10) and the encoder takes the same fields, under the same names: gainDb
@@ -119,7 +119,7 @@ std::string_view object_kind_name(ac4::ObjectKind kind) {
 // distance (a number or null; Infinity for an object at infinity),
 // divergence, trimDisabled, headphoneRenderMode (a number or null) and
 // headTrackDisabled, with active.
-emscripten::val describe_properties(const ac4::ObjectProperties& p) {
+emscripten::val describe_properties(const iclforge::ac4::ObjectProperties& p) {
     auto properties = emscripten::val::object();
     properties.set("active", p.active);
     properties.set("gainDb", p.gain_db);
@@ -141,7 +141,7 @@ emscripten::val describe_properties(const ac4::ObjectProperties& p) {
     return properties;
 }
 
-// --- ac4::EncoderConfig and the object metadata updates from JS objects -------
+// --- iclforge::ac4::EncoderConfig and the object metadata updates from JS objects -------
 //
 // A field the JS object lacks, or holds undefined or null, keeps the C++
 // struct's default; a value that is not one the C++ header defines is an
@@ -211,8 +211,8 @@ std::vector<std::int64_t> read_int64s(const emscripten::val& object, const char*
     return out;
 }
 
-ac4::ObjectProperties properties_from_js(const emscripten::val& js) {
-    ac4::ObjectProperties p;
+iclforge::ac4::ObjectProperties properties_from_js(const emscripten::val& js) {
+    iclforge::ac4::ObjectProperties p;
     if (js.isUndefined() || js.isNull()) {
         return p;
     }
@@ -239,8 +239,8 @@ bool valid_bed_channel(int code) {
     return code >= 0 && code <= 15 && code != 3;
 }
 
-ac4::ObjectsConfig objects_config_from_js(const emscripten::val& js) {
-    ac4::ObjectsConfig out;
+iclforge::ac4::ObjectsConfig objects_config_from_js(const emscripten::val& js) {
+    iclforge::ac4::ObjectsConfig out;
     if (has(js, "objects")) {
         const emscripten::val list = js["objects"];
         // Only as many as the encoder accepts, and one more, which it refuses by
@@ -248,13 +248,13 @@ ac4::ObjectsConfig objects_config_from_js(const emscripten::val& js) {
         const int count = std::min(list["length"].as<int>(), 65);
         for (int i = 0; i < count; ++i) {
             const emscripten::val entry = list[i];
-            ac4::ObjectConfig object;
+            iclforge::ac4::ObjectConfig object;
             if (has(entry, "bed")) {
                 const int code = entry["bed"].as<int>();
                 if (!valid_bed_channel(code)) {
                     throw OptionError("a bed channel Part 2 Table 66 has no code for");
                 }
-                object.bed = static_cast<ac4::BedChannel>(code);
+                object.bed = static_cast<iclforge::ac4::BedChannel>(code);
             }
             read(entry, "lfe", object.lfe);
             if (has(entry, "properties")) {
@@ -274,8 +274,8 @@ ac4::ObjectsConfig objects_config_from_js(const emscripten::val& js) {
     return out;
 }
 
-ac4::EncoderConfig encoder_config_from_js(const emscripten::val& js) {
-    ac4::EncoderConfig config;
+iclforge::ac4::EncoderConfig encoder_config_from_js(const emscripten::val& js) {
+    iclforge::ac4::EncoderConfig config;
     read(js, "channels", config.channels);
     read(js, "sampleRateHz", config.sample_rate_hz);
     read(js, "frameRateIndex", config.frame_rate_index);
@@ -288,7 +288,7 @@ ac4::EncoderConfig encoder_config_from_js(const emscripten::val& js) {
     config.fragment_starts = read_int64s(js, "fragmentStarts");
     if (has(js, "experimental")) {
         const emscripten::val experimental = js["experimental"];
-        ac4::EncoderConfig::Experimental& flags = config.experimental;
+        iclforge::ac4::EncoderConfig::Experimental& flags = config.experimental;
         read(experimental, "aspxBalance", flags.aspx_balance);
         read(experimental, "aspxVarvar", flags.aspx_varvar);
         read(experimental, "aspxInterleave", flags.aspx_interleave);
@@ -302,10 +302,10 @@ ac4::EncoderConfig encoder_config_from_js(const emscripten::val& js) {
     if (has(js, "objects")) {
         // With substreams set, the substreams' own codec_mode is the one in
         // force: the mode given is the object substream's, and the stream's own
-        // stays kAuto (ac4::EncoderConfig::substreams; the C API does the same).
-        ac4::SubstreamConfig substream;
+        // stays kAuto (iclforge::ac4::EncoderConfig::substreams; the C API does the same).
+        iclforge::ac4::SubstreamConfig substream;
         substream.codec_mode = config.codec_mode;
-        config.codec_mode = ac4::CodecMode::kAuto;
+        config.codec_mode = iclforge::ac4::CodecMode::kAuto;
         substream.objects = objects_config_from_js(js["objects"]);
         config.substreams.push_back(std::move(substream));
     }
@@ -313,15 +313,15 @@ ac4::EncoderConfig encoder_config_from_js(const emscripten::val& js) {
 }
 
 // One update per entry: {object, sample, rampSamples, properties}.
-std::vector<ac4::ObjectMetadataUpdate> updates_from_js(const emscripten::val& js) {
-    std::vector<ac4::ObjectMetadataUpdate> out;
+std::vector<iclforge::ac4::ObjectMetadataUpdate> updates_from_js(const emscripten::val& js) {
+    std::vector<iclforge::ac4::ObjectMetadataUpdate> out;
     if (js.isUndefined() || js.isNull()) {
         return out;
     }
     const int count = js["length"].as<int>();
     for (int i = 0; i < count; ++i) {
         const emscripten::val entry = js[i];
-        ac4::ObjectMetadataUpdate update;
+        iclforge::ac4::ObjectMetadataUpdate update;
         read(entry, "object", update.object);
         if (has(entry, "sample")) {
             update.sample = static_cast<std::int64_t>(entry["sample"].as<double>());
@@ -335,28 +335,28 @@ std::vector<ac4::ObjectMetadataUpdate> updates_from_js(const emscripten::val& js
     return out;
 }
 
-// --- ac4::Decoder configuration from primitive embind arguments -------------
+// --- iclforge::ac4::Decoder configuration from primitive embind arguments -------------
 
-ac4::OutputConfig make_output_config(double output_level_dbfs, int drc, bool headphones,
+iclforge::ac4::OutputConfig make_output_config(double output_level_dbfs, int drc, bool headphones,
                                       double dialogue_enhancement_db, int downmix, bool mix_lfe,
                                       double dialogue_gain_db, double associated_gain_db) {
-    ac4::OutputConfig config;
+    iclforge::ac4::OutputConfig config;
     if (!std::isnan(output_level_dbfs)) {
         config.output_level_dbfs = output_level_dbfs;
     }
-    config.drc = static_cast<ac4::DrcMode>(drc);
+    config.drc = static_cast<iclforge::ac4::DrcMode>(drc);
     config.headphones = headphones;
     config.dialogue_enhancement_db = dialogue_enhancement_db;
-    config.downmix = static_cast<ac4::DownmixTarget>(downmix);
+    config.downmix = static_cast<iclforge::ac4::DownmixTarget>(downmix);
     config.mix_lfe = mix_lfe;
     config.dialogue_gain_db = dialogue_gain_db;
     config.associated_gain_db = associated_gain_db;
     return config;
 }
 
-ac4::PresentationChoice make_presentation_choice(int presentation_id, int presentation_index,
+iclforge::ac4::PresentationChoice make_presentation_choice(int presentation_id, int presentation_index,
                                                   const std::string& language) {
-    ac4::PresentationChoice choice;
+    iclforge::ac4::PresentationChoice choice;
     if (presentation_id >= 0) {
         choice.presentation_id = presentation_id;
     }
@@ -367,10 +367,10 @@ ac4::PresentationChoice make_presentation_choice(int presentation_id, int presen
     return choice;
 }
 
-ac4::DecoderConfig make_decoder_config(double output_level_dbfs, int drc, int downmix, int decoding_mode,
+iclforge::ac4::DecoderConfig make_decoder_config(double output_level_dbfs, int drc, int downmix, int decoding_mode,
                                         int concealment, int presentation_id, int presentation_index,
                                         const std::string& language, int level) {
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     // The constructor only takes the two OutputConfig fields the task this
     // was written for names explicitly (output level, DRC mode) plus
     // downmix target; the rest of OutputConfig - headphones, dialogue
@@ -381,10 +381,10 @@ ac4::DecoderConfig make_decoder_config(double output_level_dbfs, int drc, int do
     config.output = make_output_config(output_level_dbfs, drc, /*headphones=*/false,
                                         /*dialogue_enhancement_db=*/0.0, downmix, /*mix_lfe=*/true,
                                         /*dialogue_gain_db=*/0.0, /*associated_gain_db=*/0.0);
-    config.concealment = static_cast<ac4::ConcealmentPolicy>(concealment);
+    config.concealment = static_cast<iclforge::ac4::ConcealmentPolicy>(concealment);
     config.presentation = make_presentation_choice(presentation_id, presentation_index, language);
     config.level = level;
-    config.decoding = static_cast<ac4::DecodingMode>(decoding_mode);
+    config.decoding = static_cast<iclforge::ac4::DecodingMode>(decoding_mode);
     return config;
 }
 
@@ -397,9 +397,9 @@ class Ac4Decoder {
         : decoder_(make_decoder_config(output_level_dbfs, drc, downmix, decoding_mode, concealment,
                                         presentation_id, presentation_index, language, level)) {}
 
-    // Decodes one raw_ac4_frame (an ac4::SyncFrame's raw_ac4_frame, or an MP4
+    // Decodes one raw_ac4_frame (an iclforge::ac4::SyncFrame's raw_ac4_frame, or an MP4
     // sample - the caller has already stripped any container/sync-frame
-    // wrapper, the same input shape ac4::Decoder::decode() itself takes).
+    // wrapper, the same input shape iclforge::ac4::Decoder::decode() itself takes).
     // Null for a frame with no output (decoder.hpp's own decode(): waiting
     // for configuration no I-frame has sent yet) and for a decode error with
     // no concealment configured; refusalReason() says why in either case,
@@ -463,7 +463,7 @@ class Ac4Decoder {
             entry.set("selectable", info.selectable);
             auto speakers = emscripten::val::array();
             for (std::size_t s = 0; s < info.speakers.size(); ++s) {
-                speakers.set(static_cast<unsigned>(s), std::string(ac4::describe(info.speakers[s])));
+                speakers.set(static_cast<unsigned>(s), std::string(iclforge::ac4::describe(info.speakers[s])));
             }
             entry.set("speakers", speakers);
             out.set(static_cast<unsigned>(i), entry);
@@ -472,12 +472,12 @@ class Ac4Decoder {
     }
 
    private:
-    static emscripten::val describe_object(const ac4::DecodedObject& object) {
+    static emscripten::val describe_object(const iclforge::ac4::DecodedObject& object) {
         auto result = emscripten::val::object();
         result.set("kind", std::string(object_kind_name(object.kind)));
         result.set("lfe", object.lfe);
         result.set("speaker",
-                   object.speaker ? emscripten::val(std::string(ac4::describe(*object.speaker))) : emscripten::val::null());
+                   object.speaker ? emscripten::val(std::string(iclforge::ac4::describe(*object.speaker))) : emscripten::val::null());
         result.set("samples", emscripten::val(emscripten::typed_memory_view(object.samples.size(), object.samples.data())));
 
         // Annex F.2-F.10's properties in force at the frame's first sample, and
@@ -499,7 +499,7 @@ class Ac4Decoder {
         return result;
     }
 
-    static emscripten::val describe_frame(const ac4::DecodedFrame& frame) {
+    static emscripten::val describe_frame(const iclforge::ac4::DecodedFrame& frame) {
         auto result = emscripten::val::object();
         result.set("sampleRate", frame.sample_rate_hz);
         result.set("sequenceCounter", frame.sequence_counter);
@@ -520,14 +520,14 @@ class Ac4Decoder {
         // channelLabels, rather than a numeric enum.
         auto speakers = emscripten::val::array();
         for (std::size_t i = 0; i < frame.speakers.size(); ++i) {
-            speakers.set(static_cast<unsigned>(i), std::string(ac4::describe(frame.speakers[i])));
+            speakers.set(static_cast<unsigned>(i), std::string(iclforge::ac4::describe(frame.speakers[i])));
         }
         result.set("speakers", speakers);
 
         if (frame.concealed) {
             auto concealed = emscripten::val::object();
-            concealed.set("error", std::string(ac4::describe(frame.concealed->error)));
-            concealed.set("action", std::string(frame.concealed->action == ac4::ConcealmentAction::kRepeatFade
+            concealed.set("error", std::string(iclforge::ac4::describe(frame.concealed->error)));
+            concealed.set("action", std::string(frame.concealed->action == iclforge::ac4::ConcealmentAction::kRepeatFade
                                                      ? "repeatFade"
                                                      : "mute"));
             result.set("concealed", concealed);
@@ -544,11 +544,11 @@ class Ac4Decoder {
         return result;
     }
 
-    ac4::Decoder decoder_;
+    iclforge::ac4::Decoder decoder_;
     // Kept alive so decodeFrame()'s returned Float32Array views (into
     // last_frame_.channels/.objects[].samples) stay valid until the next
     // decodeFrame()/reset() call, per this file's header comment.
-    std::optional<ac4::DecodedFrame> last_frame_;
+    std::optional<iclforge::ac4::DecodedFrame> last_frame_;
 };
 
 class Ac4Encoder {
@@ -567,21 +567,21 @@ class Ac4Encoder {
     // configuration the encoder refuses leaves no encoder, and
     // constructionError() says why.
     explicit Ac4Encoder(emscripten::val options) {
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         try {
             config = encoder_config_from_js(options);
         } catch (const OptionError& e) {
             ctor_error_ = e.what();
             return;
         }
-        auto result = ac4::Encoder::create(config);
+        auto result = iclforge::ac4::Encoder::create(config);
         if (!result) {
             // refusal_reason() "does create()'s work to find out" (encoder.hpp)
             // and names the specific rule broken; describe() is only a
             // fallback for the case it somehow comes back empty.
-            ctor_error_ = std::string(ac4::Encoder::refusal_reason(config));
+            ctor_error_ = std::string(iclforge::ac4::Encoder::refusal_reason(config));
             if (ctor_error_.empty()) {
-                ctor_error_ = std::string(ac4::describe(result.error()));
+                ctor_error_ = std::string(iclforge::ac4::describe(result.error()));
             }
             return;
         }
@@ -607,7 +607,7 @@ class Ac4Encoder {
         }
         const auto storage = copy_channels(channels_js);
         const auto spans = spans_of(storage);
-        std::vector<ac4::ObjectMetadataUpdate> updates;
+        std::vector<iclforge::ac4::ObjectMetadataUpdate> updates;
         try {
             updates = updates_from_js(updates_js);
         } catch (const OptionError& e) {
@@ -617,7 +617,7 @@ class Ac4Encoder {
         try {
             auto result = encoder_->encode(spans, updates);
             if (!result) {
-                error_ = std::string(ac4::describe(result.error()));
+                error_ = std::string(iclforge::ac4::describe(result.error()));
                 return emscripten::val::array();
             }
             return describe_frames(*result);
@@ -636,7 +636,7 @@ class Ac4Encoder {
         try {
             auto result = encoder_->flush();
             if (!result) {
-                error_ = std::string(ac4::describe(result.error()));
+                error_ = std::string(iclforge::ac4::describe(result.error()));
                 return emscripten::val::array();
             }
             return describe_frames(*result);
@@ -656,7 +656,7 @@ class Ac4Encoder {
     [[nodiscard]] std::string error() const { return error_; }
 
     // Why the constructor made no encoder - the first rule the configuration
-    // breaks (ac4::Encoder::refusal_reason()), or the option it could not read;
+    // breaks (iclforge::ac4::Encoder::refusal_reason()), or the option it could not read;
     // empty once construction succeeded.
     [[nodiscard]] std::string constructionError() const { return ctor_error_; }
 
@@ -666,17 +666,17 @@ class Ac4Encoder {
     [[nodiscard]] int delaySamples() const { return encoder_ ? encoder_->delay_samples() : 0; }
     [[nodiscard]] int decoderDelaySamples() const { return encoder_ ? encoder_->decoder_delay_samples() : 0; }
 
-    // The 'dac4' box for the stream as encoded so far (ac4::build_dac4());
+    // The 'dac4' box for the stream as encoded so far (iclforge::ac4::build_dac4());
     // empty where there is nothing to describe (construction failed, or
     // build_dac4() itself refuses - dac4Refusal() says which).
     [[nodiscard]] emscripten::val buildDac4() const {
         if (!encoder_) return make_uint8_array({});
-        return make_uint8_array(ac4::build_dac4(encoder_->toc()));
+        return make_uint8_array(iclforge::ac4::build_dac4(encoder_->toc()));
     }
 
     [[nodiscard]] std::string dac4Refusal() const {
         if (!encoder_) return ctor_error_;
-        return std::string(ac4::dac4_refusal(encoder_->toc()));
+        return std::string(iclforge::ac4::dac4_refusal(encoder_->toc()));
     }
 
    private:
@@ -698,7 +698,7 @@ class Ac4Encoder {
         return spans;
     }
 
-    static emscripten::val describe_frames(const std::vector<ac4::EncodedFrame>& frames) {
+    static emscripten::val describe_frames(const std::vector<iclforge::ac4::EncodedFrame>& frames) {
         auto out = emscripten::val::array();
         for (std::size_t i = 0; i < frames.size(); ++i) {
             auto entry = emscripten::val::object();
@@ -713,18 +713,18 @@ class Ac4Encoder {
         return out;
     }
 
-    std::optional<ac4::Encoder> encoder_;
+    std::optional<iclforge::ac4::Encoder> encoder_;
     std::string ctor_error_;
     std::string error_;
 };
 
-// ac4::sync_frame(): the sync word, optional CRC, frame_size and the raw
+// iclforge::ac4::sync_frame(): the sync word, optional CRC, frame_size and the raw
 // frame - for a raw .ac4 file or MPEG-2 TS, wrapping one of Ac4Encoder's
 // `data` frames (or any other raw_ac4_frame the caller already has).
 emscripten::val syncFrame(const emscripten::val& js_bytes, bool crc) {
     const std::vector<std::uint8_t> raw = emscripten::vecFromJSArray<std::uint8_t>(js_bytes);
     const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(raw.data()), raw.size());
-    return make_uint8_array(ac4::sync_frame(bytes, crc));
+    return make_uint8_array(iclforge::ac4::sync_frame(bytes, crc));
 }
 
 EMSCRIPTEN_BINDINGS(ac3forge_wasm_ac4) {

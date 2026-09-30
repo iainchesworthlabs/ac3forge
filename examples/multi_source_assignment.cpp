@@ -25,24 +25,24 @@
 #include "iclforge/ac3/encoder/plan.hpp"
 
 int main() {
-    const std::array<ac3::plan::SourceShape, 2> sources{{
+    const std::array<iclforge::plan::SourceShape, 2> sources{{
         {.channels = 2, .label = "music.wav"},
         {.channels = 1, .label = "voiceover.wav"},
     }};
 
-    using ac3::eac3::chanmap::Location;
-    ac3::plan::Assignment assignment;
-    assignment.set(0, 0, {.kind = ac3::plan::DestinationKind::kLocation, .location = Location::kLeft});
-    assignment.set(0, 1, {.kind = ac3::plan::DestinationKind::kLocation, .location = Location::kRight});
+    using iclforge::eac3::chanmap::Location;
+    iclforge::plan::Assignment assignment;
+    assignment.set(0, 0, {.kind = iclforge::plan::DestinationKind::kLocation, .location = Location::kLeft});
+    assignment.set(0, 1, {.kind = iclforge::plan::DestinationKind::kLocation, .location = Location::kRight});
     // -6 dB under the music, so the voiceover reads without burying it.
-    assignment.set(1, 0, {.kind = ac3::plan::DestinationKind::kLocation,
+    assignment.set(1, 0, {.kind = iclforge::plan::DestinationKind::kLocation,
                           .location = Location::kCentre,
                           .trim_db = -6.0});
 
-    fmt::printf("assignment: %s\n", ac3::plan::format_assignment(sources, assignment).c_str());
+    fmt::printf("assignment: %s\n", iclforge::plan::format_assignment(sources, assignment).c_str());
 
-    const auto target = ac3::plan::channel_plan_for(ac3::plan::LayoutId::k51);
-    const auto routing = ac3::plan::route(target, sources, assignment);
+    const auto target = iclforge::plan::channel_plan_for(iclforge::plan::LayoutId::k51);
+    const auto routing = iclforge::plan::route(target, sources, assignment);
     if (!routing) {
         fmt::printf("route failed - two rows named the same location, or the target can't "
                     "express one\n");
@@ -60,18 +60,18 @@ int main() {
 
     // Heap-allocated: FrameEncoder carries several KB of MDCT scratch/history
     // state (PREfast's C6262).
-    auto encoder = std::make_unique<ac3::FrameEncoder>(
-        ac3::EncoderConfig{.bitrate_kbps = 384, .acmod = target.bed_acmod, .lfe = target.bed_lfe});
+    auto encoder = std::make_unique<iclforge::FrameEncoder>(
+        iclforge::EncoderConfig{.bitrate_kbps = 384, .acmod = target.bed_acmod, .lfe = target.bed_lfe});
 
-    std::vector<std::vector<float>> source_pcm(kSourceChannels, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> source_pcm(kSourceChannels, std::vector<float>(iclforge::kSamplesPerFrame));
     std::vector<std::vector<float>> coded_pcm(static_cast<std::size_t>(routing->coded_channels),
-                                              std::vector<float>(ac3::kSamplesPerFrame));
+                                              std::vector<float>(iclforge::kSamplesPerFrame));
 
     std::vector<std::byte> stream;
     for (int frame = 0; frame < kFrames; ++frame) {
         for (std::size_t ch = 0; ch < source_pcm.size(); ++ch) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
-                const double t = (frame * ac3::kSamplesPerFrame + n) / 48000.0;
+            for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
+                const double t = (frame * iclforge::kSamplesPerFrame + n) / 48000.0;
                 source_pcm[ch][static_cast<std::size_t>(n)] =
                     static_cast<float>(0.4 * std::sin(2.0 * std::numbers::pi * kTones[ch] * t));
             }
@@ -85,7 +85,7 @@ int main() {
         for (auto& channel : coded_pcm) {
             coded_views.emplace_back(channel);
         }
-        ac3::plan::render(*routing, source_views, coded_views, ac3::kSamplesPerFrame);
+        iclforge::plan::render(*routing, source_views, coded_views, iclforge::kSamplesPerFrame);
 
         std::vector<std::span<const float>> encode_views;
         for (const auto& channel : coded_pcm) {

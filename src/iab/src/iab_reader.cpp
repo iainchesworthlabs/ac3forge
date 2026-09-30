@@ -19,7 +19,7 @@
 // transcribes. See bitreader.hpp's own header comment for why every element's payload can be
 // parsed from bit position 0 of its own freshly-scoped BitReader.
 
-namespace ac3iab {
+namespace iclforge::iab {
 
 namespace {
 
@@ -911,4 +911,4 @@ std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payloa
     return frame;
 }
 
-}  // namespace ac3iab
+}  // namespace iclforge::iab

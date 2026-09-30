@@ -20,7 +20,7 @@
 // frames of the other channel modes of Part 1 Table 88 and of Part 2's 7.X.4
 // modes.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // --- Audio substreams ----------------------------------------------------------
 
@@ -222,4 +222,4 @@ std::optional<FrameFit> fit_frame(const TocLayout& layout, std::span<const std::
     return std::nullopt;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

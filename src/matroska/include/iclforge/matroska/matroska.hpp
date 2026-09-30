@@ -14,7 +14,7 @@
 //
 // This is a container writer and nothing more: it knows how to nest EBML
 // elements and lay out clusters, and it takes each frame as opaque bytes. It
-// has NO dependency on ac3::forge and no knowledge of AC-3 - which is the
+// has NO dependency on iclforge::ac3 and no knowledge of AC-3 - which is the
 // point of keeping it a separate library. A caller muxing E-AC-3 hands over
 // whole access units; a caller muxing something else hands over whatever its
 // own frames are.
@@ -27,7 +27,7 @@
 // No SeekHead, no Cues, no chapters, no tags. Those matter for seeking in
 // large files, not for playing back what this project produces.
 
-namespace matroska {
+namespace iclforge::matroska {
 
 // Matroska CodecID strings (the Matroska codec mappings registry).
 inline constexpr std::string_view kCodecEac3 = "A_EAC3";
@@ -137,4 +137,4 @@ private:
     bool cluster_open_ = false;
 };
 
-}  // namespace matroska
+}  // namespace iclforge::matroska

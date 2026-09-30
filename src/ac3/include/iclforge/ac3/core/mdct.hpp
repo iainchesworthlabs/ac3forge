@@ -42,7 +42,7 @@
 // oracle the fast path's tests validate against. DecoderConfig::fast_imdct
 // is what a decoder actually reads to decide.
 
-namespace ac3 {
+namespace iclforge {
 
 // Multiply a raw 512-sample block by the analysis window (§8.2.3.1).
 ICLFORGE_AC3_EXPORT void apply_analysis_window(std::span<const double, 512> x,
@@ -90,7 +90,7 @@ ICLFORGE_AC3_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
 // own per-transform 2/4-lane seam cannot reach (there is no clean
 // within-one-transform grouping in the FFT core; see fft_kernel.hpp). Safe
 // to call unconditionally, the same as every other transform in this file:
-// internally checks ac3::internal::cpu::has_avx2() and, when it is false,
+// internally checks iclforge::internal::cpu::has_avx2() and, when it is false,
 // falls back to four ordinary imdct512_windowed(coeffsN, xN,
 // /*fast=*/true) calls - so a caller (joc.cpp's object loop) only ever
 // needs to decide "are four objects ready to batch", never "is AVX2
@@ -113,7 +113,7 @@ ICLFORGE_AC3_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> c
 // the same signal - the encoders batch four BLOCKS of one channel, the
 // JOC bed loop four CHANNELS of one block; the transform neither knows
 // nor cares. Same contract throughout: safe to call unconditionally
-// (internally checks ac3::internal::cpu::has_avx2() and falls back to
+// (internally checks iclforge::internal::cpu::has_avx2() and falls back to
 // four ordinary fast calls), always the fast fold, bit-identical to four
 // separate `mdct512_forward(wN, cN, /*fast=*/true)` calls with the same
 // inputs (tests/ac3/core/test_simd_kernels.cpp's `[avx2]` case checks that
@@ -185,4 +185,4 @@ ICLFORGE_AC3_EXPORT void imdct256_pair_windowed(std::span<const double, 256> coe
 ICLFORGE_AC3_EXPORT void imdct256_pair_windowed(std::span<const float, 256> coeffs,
                                             std::span<float, 512> x);
 
-}  // namespace ac3
+}  // namespace iclforge

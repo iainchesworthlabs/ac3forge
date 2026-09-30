@@ -19,7 +19,7 @@
 // sinks the stage creates and can look inside after the fact. Thread-safe
 // where the engine's frame thread and the test thread both touch it.
 
-namespace ac3::crucible::testing {
+namespace iclforge::crucible::testing {
 
 struct SinkRecord {
     std::mutex mutex;
@@ -158,8 +158,8 @@ public:
         record_->running = true;
         return {};
     }
-    bool submit(std::span<const ac3::audio::DynamicObjectUpdate> dynamic,
-                std::span<const ac3::audio::StaticObjectUpdate> static_objects) override {
+    bool submit(std::span<const iclforge::audio::DynamicObjectUpdate> dynamic,
+                std::span<const iclforge::audio::StaticObjectUpdate> static_objects) override {
         const std::lock_guard lock(record_->mutex);
         if (record_->refuse_submits > 0) {
             --record_->refuse_submits;
@@ -398,4 +398,4 @@ inline DeviceFacts headphones_spatial(const std::string& id = "hp") {
     return {.id = id, .name = "Headphones (USB)", .is_default = false, .shared_channels = 2, .spatial = true, .spatial_max_objects = 17};
 }
 
-}  // namespace ac3::crucible::testing
+}  // namespace iclforge::crucible::testing

@@ -7,7 +7,7 @@
 #include <span>
 #include <string_view>
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace {
 
@@ -200,4 +200,4 @@ Reassembler::Result Reassembler::push(std::span<const std::uint8_t> frame) {
     return {.error = FrameError::kNone, .message = frame};
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

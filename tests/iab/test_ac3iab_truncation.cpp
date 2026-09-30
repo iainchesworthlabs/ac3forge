@@ -313,14 +313,14 @@ std::vector<std::byte> cut(const std::vector<std::byte>& bytes, std::size_t size
 // inside a NUL-terminated string (AudioDescriptionText) is refused as kUnterminatedString
 // instead - the element ended before the string did - and counts the same.
 std::size_t refused_prefixes(std::uint32_t id, const std::vector<std::byte>& payload) {
-    const auto whole = ac3iab::parse_iaframe(iaframe({element(id, payload)}));
+    const auto whole = iclforge::iab::parse_iaframe(iaframe({element(id, payload)}));
     INFO("element " << id << ", " << payload.size() << " bytes");
     REQUIRE(whole.has_value());
     std::size_t refused = 0;
     for (std::size_t size = 0; size < payload.size(); ++size) {
-        const auto parsed = ac3iab::parse_iaframe(iaframe({element(id, cut(payload, size))}));
-        if (!parsed.has_value() && (parsed.error() == ac3iab::IabError::kTruncated ||
-                                    parsed.error() == ac3iab::IabError::kUnterminatedString)) {
+        const auto parsed = iclforge::iab::parse_iaframe(iaframe({element(id, cut(payload, size))}));
+        if (!parsed.has_value() && (parsed.error() == iclforge::iab::IabError::kTruncated ||
+                                    parsed.error() == iclforge::iab::IabError::kUnterminatedString)) {
             ++refused;
         }
     }
@@ -366,7 +366,7 @@ TEST_CASE("randomly built ObjectDefinitions parse whole and are refused as trunc
 TEST_CASE("a randomly built BedDefinition keeps what it was given", "[ac3iab]") {
     Generator gen(7);
     for (int round = 0; round < 20; ++round) {
-        const auto frame = ac3iab::parse_iaframe(
+        const auto frame = iclforge::iab::parse_iaframe(
             iaframe({element(kBedDefinition, gen.bed()), element(kObjectDefinition, gen.object())}));
         REQUIRE(frame.has_value());
         REQUIRE(frame->beds.size() == 1);
@@ -397,11 +397,11 @@ TEST_CASE("audio data, authoring and user data elements are refused as truncated
         }
         const auto pcm = w.take();
         for (const std::size_t size : {std::size_t{0}, std::size_t{1}, std::size_t{2}, std::size_t{3}, pcm.size() - 1}) {
-            const auto parsed = ac3iab::parse_iaframe(iaframe({element(kAudioDataPcm, cut(pcm, size))}));
+            const auto parsed = iclforge::iab::parse_iaframe(iaframe({element(kAudioDataPcm, cut(pcm, size))}));
             REQUIRE_FALSE(parsed.has_value());
-            CHECK(parsed.error() == ac3iab::IabError::kTruncated);
+            CHECK(parsed.error() == iclforge::iab::IabError::kTruncated);
         }
-        const auto whole = ac3iab::parse_iaframe(iaframe({element(kAudioDataPcm, pcm)}));
+        const auto whole = iclforge::iab::parse_iaframe(iaframe({element(kAudioDataPcm, pcm)}));
         REQUIRE(whole.has_value());
         CHECK(whole->audio_pcm.at(0).audio_data_id == 300);
     }
@@ -421,15 +421,15 @@ TEST_CASE("audio data, authoring and user data elements are refused as truncated
     // whole one, which is kUnterminatedString (ac3iab.hpp), not kTruncated.
     {
         const std::vector<std::byte> uri{std::byte{'x'}, std::byte{'y'}, std::byte{0}};
-        const auto whole = ac3iab::parse_iaframe(iaframe({element(kAuthoringToolInfo, uri)}));
+        const auto whole = iclforge::iab::parse_iaframe(iaframe({element(kAuthoringToolInfo, uri)}));
         REQUIRE(whole.has_value());
         REQUIRE(whole->authoring_tool.has_value());
         CHECK(whole->authoring_tool->uri == "xy");
         for (std::size_t size = 0; size < uri.size(); ++size) {
-            const auto parsed = ac3iab::parse_iaframe(iaframe({element(kAuthoringToolInfo, cut(uri, size))}));
+            const auto parsed = iclforge::iab::parse_iaframe(iaframe({element(kAuthoringToolInfo, cut(uri, size))}));
             INFO("size " << size);
             REQUIRE_FALSE(parsed.has_value());
-            CHECK(parsed.error() == ac3iab::IabError::kUnterminatedString);
+            CHECK(parsed.error() == iclforge::iab::IabError::kUnterminatedString);
         }
     }
     // UserData: the 16-byte id is required, the data after it is whatever remains.
@@ -438,11 +438,11 @@ TEST_CASE("audio data, authoring and user data elements are refused as truncated
         user.push_back(std::byte{0x01});
         std::size_t refused = 0;
         for (std::size_t size = 0; size < 16; ++size) {
-            const auto parsed = ac3iab::parse_iaframe(iaframe({element(kUserData, cut(user, size))}));
-            refused += !parsed.has_value() && parsed.error() == ac3iab::IabError::kTruncated ? 1U : 0U;
+            const auto parsed = iclforge::iab::parse_iaframe(iaframe({element(kUserData, cut(user, size))}));
+            refused += !parsed.has_value() && parsed.error() == iclforge::iab::IabError::kTruncated ? 1U : 0U;
         }
         CHECK(refused == 16);
-        const auto short_data = ac3iab::parse_iaframe(iaframe({element(kUserData, cut(user, 16))}));
+        const auto short_data = iclforge::iab::parse_iaframe(iaframe({element(kUserData, cut(user, 16))}));
         REQUIRE(short_data.has_value());
         CHECK(short_data->user_data.at(0).data.empty());
     }
@@ -451,10 +451,10 @@ TEST_CASE("audio data, authoring and user data elements are refused as truncated
 TEST_CASE("an IAFrame header and its element headers are refused as truncated when cut short", "[ac3iab]") {
     const auto payload = iaframe({element(kUserData, std::vector<std::byte>(16, std::byte{1}))});
     for (std::size_t size = 0; size < payload.size(); ++size) {
-        const auto parsed = ac3iab::parse_iaframe(cut(payload, size));
+        const auto parsed = iclforge::iab::parse_iaframe(cut(payload, size));
         INFO("size " << size);
         REQUIRE_FALSE(parsed.has_value());
-        CHECK(parsed.error() == ac3iab::IabError::kTruncated);
+        CHECK(parsed.error() == iclforge::iab::IabError::kTruncated);
     }
 }
 
@@ -464,16 +464,16 @@ TEST_CASE("an IA bitstream cut short anywhere is refused as truncated, and a wro
     const auto whole = segment(iaframe({}), preamble);
     {
         std::istringstream in(text_of(whole));
-        const auto parsed = ac3iab::parse_iabitstream(in);
+        const auto parsed = iclforge::iab::parse_iabitstream(in);
         REQUIRE(parsed.has_value());
         CHECK(parsed->at(0).preamble == preamble);
     }
     for (std::size_t size = 1; size < whole.size(); ++size) {
         std::istringstream in(text_of(cut(whole, size)));
-        const auto parsed = ac3iab::parse_iabitstream(in);
+        const auto parsed = iclforge::iab::parse_iabitstream(in);
         INFO("size " << size);
         REQUIRE_FALSE(parsed.has_value());
-        CHECK(parsed.error() == ac3iab::IabError::kTruncated);
+        CHECK(parsed.error() == iclforge::iab::IabError::kTruncated);
     }
 
     // The IAFrame segment wraps some element other than IA_FRAME.
@@ -485,9 +485,9 @@ TEST_CASE("an IA bitstream cut short anywhere is refused as truncated, and a wro
     w.bits(wrapped.size(), 32);
     w.append(wrapped);
     std::istringstream in(text_of(w.take()));
-    const auto parsed = ac3iab::parse_iabitstream(in);
+    const auto parsed = iclforge::iab::parse_iabitstream(in);
     REQUIRE_FALSE(parsed.has_value());
-    CHECK(parsed.error() == ac3iab::IabError::kBadFrameTag);
+    CHECK(parsed.error() == iclforge::iab::IabError::kBadFrameTag);
 
     // An IAFrame segment whose inner element declares more than the segment holds.
     BitWriter lying;
@@ -498,35 +498,35 @@ TEST_CASE("an IA bitstream cut short anywhere is refused as truncated, and a wro
     lying.plex(0x08, 8);
     lying.plex(40, 8);
     std::istringstream lying_in(text_of(lying.take()));
-    const auto lied = ac3iab::parse_iabitstream(lying_in);
+    const auto lied = iclforge::iab::parse_iabitstream(lying_in);
     REQUIRE_FALSE(lied.has_value());
-    CHECK(lied.error() == ac3iab::IabError::kTruncated);
+    CHECK(lied.error() == iclforge::iab::IabError::kTruncated);
 }
 
 TEST_CASE("an unreadable input is refused as cannot-open", "[ac3iab]") {
-    const auto missing = ac3iab::parse_iabitstream(std::string(AC3FORGE_TEST_SCRATCH_DIR) + "/no-such-dir/none.iab");
+    const auto missing = iclforge::iab::parse_iabitstream(std::string(AC3FORGE_TEST_SCRATCH_DIR) + "/no-such-dir/none.iab");
     REQUIRE_FALSE(missing.has_value());
-    CHECK(missing.error() == ac3iab::IabError::kCannotOpen);
+    CHECK(missing.error() == iclforge::iab::IabError::kCannotOpen);
 
     std::istringstream broken("");
     broken.setstate(std::ios::badbit);
-    const auto bad = ac3iab::parse_iabitstream(broken);
+    const auto bad = iclforge::iab::parse_iabitstream(broken);
     REQUIRE_FALSE(bad.has_value());
-    CHECK(bad.error() == ac3iab::IabError::kCannotOpen);
+    CHECK(bad.error() == iclforge::iab::IabError::kCannotOpen);
 }
 
 TEST_CASE("describe names every IAB error", "[ac3iab]") {
-    using ac3iab::IabError;
+    using iclforge::iab::IabError;
     for (const IabError error :
          {IabError::kCannotOpen, IabError::kTruncated, IabError::kBadEscape, IabError::kBadPreambleTag,
           IabError::kBadFrameTag, IabError::kReservedVersion, IabError::kReservedSampleRate,
           IabError::kReservedBitDepth, IabError::kReservedFrameRate, IabError::kUnterminatedString,
           IabError::kMxfBadKlv, IabError::kMxfNoIabEssence}) {
-        const std::string_view text = ac3iab::describe(error);
+        const std::string_view text = iclforge::iab::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown ac3iab error");
     }
-    CHECK(ac3iab::describe(static_cast<IabError>(200)) == "unknown ac3iab error");
+    CHECK(iclforge::iab::describe(static_cast<IabError>(200)) == "unknown ac3iab error");
 }
 
 TEST_CASE("an IAFrame header at 96 kHz and 16 bits reads its rates, and its PCM at that rate",
@@ -546,7 +546,7 @@ TEST_CASE("an IAFrame header at 96 kHz and 16 bits reads its rates, and its PCM 
         pcm.bits(n == 0 ? 0x80U : 0x7FU, 8);
     }
     w.append(element(kAudioDataPcm, pcm.take()));
-    const auto frame = ac3iab::parse_iaframe(w.take());
+    const auto frame = iclforge::iab::parse_iaframe(w.take());
     REQUIRE(frame.has_value());
     CHECK(frame->sample_rate == 96000);
     CHECK(frame->bit_depth == 16);
@@ -585,26 +585,26 @@ TEST_CASE("an MXF file cut inside a KLV Length is refused as truncated", "[ac3ia
     const auto file = mxf_with(segment(iaframe({})));
     for (const std::size_t size : {std::size_t{16}, std::size_t{17}, std::size_t{19}}) {
         std::istringstream in(text_of(cut(file, size)));
-        const auto parsed = ac3iab::parse_mxf_iab(in);
+        const auto parsed = iclforge::iab::parse_mxf_iab(in);
         INFO("size " << size);
         REQUIRE_FALSE(parsed.has_value());
-        CHECK(parsed.error() == ac3iab::IabError::kTruncated);
+        CHECK(parsed.error() == iclforge::iab::IabError::kTruncated);
     }
     // A long form with more than eight length bytes is not a KLV Length.
     auto too_long = mxf_key(false);
     too_long.push_back(std::byte{0x89});
     std::istringstream in(text_of(too_long));
-    const auto parsed = ac3iab::parse_mxf_iab(in);
+    const auto parsed = iclforge::iab::parse_mxf_iab(in);
     REQUIRE_FALSE(parsed.has_value());
-    CHECK(parsed.error() == ac3iab::IabError::kMxfBadKlv);
+    CHECK(parsed.error() == iclforge::iab::IabError::kMxfBadKlv);
 }
 
 TEST_CASE("an MXF file's essence that is not a valid IA bitstream is refused with the bitstream's own error",
           "[ac3iab][mxf]") {
     std::istringstream in(text_of(mxf_with({std::byte{0x07}, std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0}})));
-    const auto parsed = ac3iab::parse_mxf_iab(in);
+    const auto parsed = iclforge::iab::parse_mxf_iab(in);
     REQUIRE_FALSE(parsed.has_value());
-    CHECK(parsed.error() == ac3iab::IabError::kBadPreambleTag);
+    CHECK(parsed.error() == iclforge::iab::IabError::kBadPreambleTag);
 }
 
 TEST_CASE("an MXF file is read from a path, and a missing path or a broken stream cannot be opened",
@@ -617,18 +617,18 @@ TEST_CASE("an MXF file is read from a path, and a missing path or a broken strea
         std::ofstream out(path, std::ios::binary);
         out.write(reinterpret_cast<const char*>(file.data()), static_cast<std::streamsize>(file.size()));
     }
-    const auto read = ac3iab::parse_mxf_iab(path.string());
+    const auto read = iclforge::iab::parse_mxf_iab(path.string());
     REQUIRE(read.has_value());
     CHECK(read->size() == 1);
     std::filesystem::remove(path);
 
-    const auto missing = ac3iab::parse_mxf_iab((dir / "none.mxf").string());
+    const auto missing = iclforge::iab::parse_mxf_iab((dir / "none.mxf").string());
     REQUIRE_FALSE(missing.has_value());
-    CHECK(missing.error() == ac3iab::IabError::kCannotOpen);
+    CHECK(missing.error() == iclforge::iab::IabError::kCannotOpen);
 
     std::istringstream broken("");
     broken.setstate(std::ios::badbit);
-    const auto bad = ac3iab::parse_mxf_iab(broken);
+    const auto bad = iclforge::iab::parse_mxf_iab(broken);
     REQUIRE_FALSE(bad.has_value());
-    CHECK(bad.error() == ac3iab::IabError::kCannotOpen);
+    CHECK(bad.error() == iclforge::iab::IabError::kCannotOpen);
 }

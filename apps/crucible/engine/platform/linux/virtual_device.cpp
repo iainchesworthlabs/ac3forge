@@ -43,7 +43,7 @@
 // prompt to wait for. `action_status()` therefore never reports anything as
 // running.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -95,9 +95,9 @@ public:
         if (loaded_) {
             return {};
         }
-        ac3::pipewire::ensure_initialized();
+        iclforge::pipewire::ensure_initialized();
 
-        loop_ = ac3::pipewire::ThreadLoop{pw_thread_loop_new("ac3crucible-sink", nullptr)};
+        loop_ = iclforge::pipewire::ThreadLoop{pw_thread_loop_new("ac3crucible-sink", nullptr)};
         if (!loop_) {
             return fail("could not create a PipeWire loop for the silent device");
         }
@@ -107,14 +107,14 @@ public:
         }
 
         pw_thread_loop_lock(loop_.get());
-        context_ = ac3::pipewire::Context{
+        context_ = iclforge::pipewire::Context{
             pw_context_new(pw_thread_loop_get_loop(loop_.get()), nullptr, 0)};
         if (!context_) {
             pw_thread_loop_unlock(loop_.get());
             teardown_locked();
             return fail("could not create a PipeWire context for the silent device");
         }
-        core_ = ac3::pipewire::Core{pw_context_connect(context_.get(), nullptr, 0)};
+        core_ = iclforge::pipewire::Core{pw_context_connect(context_.get(), nullptr, 0)};
         if (!core_) {
             pw_thread_loop_unlock(loop_.get());
             teardown_locked();
@@ -167,7 +167,7 @@ private:
     // Whether the graph actually holds our node, asked of the daemon.
     [[nodiscard]] static bool node_in_graph() {
         bool found = false;
-        ac3::pipewire::for_each_audio_node([&found](std::uint32_t, const spa_dict& props) {
+        iclforge::pipewire::for_each_audio_node([&found](std::uint32_t, const spa_dict& props) {
             if (found) {
                 return;
             }
@@ -201,9 +201,9 @@ private:
     }
 
     std::mutex mutex_;
-    ac3::pipewire::ThreadLoop loop_;
-    ac3::pipewire::Context context_;
-    ac3::pipewire::Core core_;
+    iclforge::pipewire::ThreadLoop loop_;
+    iclforge::pipewire::Context context_;
+    iclforge::pipewire::Core core_;
     pw_proxy* node_ = nullptr;
     bool loaded_ = false;
     std::string last_error_;
@@ -215,4 +215,4 @@ std::shared_ptr<VirtualDevice> platform_virtual_device() {
     return std::make_shared<LinuxVirtualDevice>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

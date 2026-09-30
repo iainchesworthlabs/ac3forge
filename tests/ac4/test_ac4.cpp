@@ -42,7 +42,7 @@ std::filesystem::path fixture_path() {
 
 TEST_CASE("scan walks every sync frame of a real DEE AC-4 stream with CRCs intact", "[ac4]") {
     const auto data = read_file(fixture_path());
-    const auto result = ac4::scan(data);
+    const auto result = iclforge::ac4::scan(data);
 
     CHECK_FALSE(result.stopped_at.has_value());
     REQUIRE(result.frames.size() == 73);
@@ -65,13 +65,13 @@ TEST_CASE("scan walks every sync frame of a real DEE AC-4 stream with CRCs intac
 
 TEST_CASE("parse_raw_frame reads a real stereo DEE frame's TOC and presentation", "[ac4]") {
     const auto data = read_file(fixture_path());
-    const auto scanned = ac4::scan(data);
+    const auto scanned = iclforge::ac4::scan(data);
     REQUIRE(scanned.frames.size() == 73);
 
     // Frame 0. Every field below is cross-checked against MediaInfo's own
     // (dlb_ac4lib-based) reading of this exact fixture - see
     // docs/verification.md.
-    const auto result = ac4::parse_raw_frame(scanned.frames[0].raw_ac4_frame);
+    const auto result = iclforge::ac4::parse_raw_frame(scanned.frames[0].raw_ac4_frame);
     REQUIRE(result.has_value());
     const auto& toc = result->toc;
 
@@ -92,7 +92,7 @@ TEST_CASE("parse_raw_frame reads a real stereo DEE frame's TOC and presentation"
     CHECK(group.b_channel_coded);
     CHECK_FALSE(group.oamd.has_value());
     REQUIRE(group.substreams.size() == 1);
-    REQUIRE(group.substreams[0].kind == ac4::GroupSubstream::Kind::kChan);
+    REQUIRE(group.substreams[0].kind == iclforge::ac4::GroupSubstream::Kind::kChan);
     REQUIRE(group.substreams[0].chan.has_value());
     const auto& chan = *group.substreams[0].chan;
     CHECK(chan.channel_mode_name == "Stereo");
@@ -131,19 +131,19 @@ TEST_CASE("parse_raw_frame agrees with itself across every frame of a real strea
     // of real, varying-size VBR content rather than only the one frame
     // that was used to debug it.
     const auto data = read_file(fixture_path());
-    const auto scanned = ac4::scan(data);
+    const auto scanned = iclforge::ac4::scan(data);
     REQUIRE(scanned.frames.size() == 73);
 
     for (const auto& frame : scanned.frames) {
         CAPTURE(frame.offset);
-        const auto result = ac4::parse_raw_frame(frame.raw_ac4_frame);
+        const auto result = iclforge::ac4::parse_raw_frame(frame.raw_ac4_frame);
         REQUIRE(result.has_value());
         CHECK(result->toc.bitstream_version == 2);
         CHECK(result->toc.n_presentations == 1);
         REQUIRE(result->toc.substream_groups.size() == 1);
         REQUIRE(result->toc.substream_groups[0].substreams.size() == 1);
         const auto& sub0 = result->toc.substream_groups[0].substreams[0];
-        REQUIRE(sub0.kind == ac4::GroupSubstream::Kind::kChan);
+        REQUIRE(sub0.kind == iclforge::ac4::GroupSubstream::Kind::kChan);
         REQUIRE(sub0.chan.has_value());
         CHECK(sub0.chan->channel_mode_name == "Stereo");
         std::size_t total = 0;
@@ -156,28 +156,28 @@ TEST_CASE("parse_raw_frame agrees with itself across every frame of a real strea
 
 TEST_CASE("parse_raw_frame rejects a frame truncated inside the TOC", "[ac4]") {
     const auto data = read_file(fixture_path());
-    const auto scanned = ac4::scan(data);
+    const auto scanned = iclforge::ac4::scan(data);
     REQUIRE(!scanned.frames.empty());
     const auto& raw = scanned.frames[0].raw_ac4_frame;
 
     for (const std::size_t cut : {std::size_t{0}, std::size_t{1}, std::size_t{5}, raw.size() / 2}) {
         CAPTURE(cut);
-        const auto result = ac4::parse_raw_frame(raw.subspan(0, cut));
+        const auto result = iclforge::ac4::parse_raw_frame(raw.subspan(0, cut));
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac4::Error::kTruncated);
+        CHECK(result.error() == iclforge::ac4::Error::kTruncated);
     }
 }
 
 TEST_CASE("scan reports kLostSync at the offset of a corrupted sync word", "[ac4]") {
     auto data = read_file(fixture_path());
-    const auto first = ac4::scan(data);
+    const auto first = iclforge::ac4::scan(data);
     REQUIRE(first.frames.size() > 1);
     const std::size_t second_frame_offset = first.frames[1].offset;
 
     data[second_frame_offset] = std::byte{0x00};  // was the high byte of 0xAC41
-    const auto result = ac4::scan(data);
+    const auto result = iclforge::ac4::scan(data);
     REQUIRE(result.stopped_at.has_value());
-    CHECK(*result.stopped_at == ac4::Error::kLostSync);
+    CHECK(*result.stopped_at == iclforge::ac4::Error::kLostSync);
     CHECK(result.stopped_at_offset == second_frame_offset);
     // Everything before the corruption still parsed.
     CHECK(result.frames.size() == 1);
@@ -189,7 +189,7 @@ TEST_CASE("scan reports kLostSync at the offset of a corrupted sync word", "[ac4
 // ac4_substream_info_obj()/oamd_substream_info() - see ac4.hpp's module
 // docs and docs/verification.md's AC-4 section. Each vector below is a
 // hand-built bitstream assembled by the MSB-first BitWriter below (which
-// shares no code with ac4::, so this is a genuine encode-side cross-check,
+// shares no code with iclforge::ac4::, so this is a genuine encode-side cross-check,
 // not a tautology): a fixed, minimal TOC/presentation/single-substream-
 // group preamble (write_ac4_object_coded_preamble(), traced field by field
 // against parse_toc()/parse_presentation_v1_info()/
@@ -321,7 +321,7 @@ void write_ac4_single_empty_substream_index_table(BitWriter& w) {
 // single substream's *_info() element - i.e. everything after
 // write_ac4_object_coded_group_preamble()'s b_channel_coded=0 and before
 // the trailing b_content_type flag this function appends itself.
-ac4::RawFrame parse_wrapped_object_coded_group(
+iclforge::ac4::RawFrame parse_wrapped_object_coded_group(
     const std::function<void(BitWriter&)>& write_payload) {
     BitWriter w;
     write_ac4_object_coded_preamble(w);
@@ -330,7 +330,7 @@ ac4::RawFrame parse_wrapped_object_coded_group(
     w.put(0, 1);  // b_content_type = 0
     write_ac4_single_empty_substream_index_table(w);
     const auto data = w.bytes();
-    auto result = ac4::parse_raw_frame(data);
+    auto result = iclforge::ac4::parse_raw_frame(data);
     REQUIRE(result.has_value());
     return std::move(*result);
 }
@@ -376,7 +376,7 @@ TEST_CASE("parse_raw_frame: a substream whose size is not transmitted runs to th
     const std::size_t toc_bytes = data.size();
     data.insert(data.end(), 8, std::byte{0});
 
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     REQUIRE(result.has_value());
     REQUIRE(result->toc.n_substreams == 1);
     CHECK(result->toc.substream_sizes.empty());
@@ -411,7 +411,7 @@ TEST_CASE("parse_substream_info_ajoc: static_dmx, minimal upmix", "[ac4]") {
     CHECK_FALSE(group.b_channel_coded);
     CHECK_FALSE(group.oamd.has_value());
     REQUIRE(group.substreams.size() == 1);
-    REQUIRE(group.substreams[0].kind == ac4::GroupSubstream::Kind::kAjoc);
+    REQUIRE(group.substreams[0].kind == iclforge::ac4::GroupSubstream::Kind::kAjoc);
     REQUIRE(group.substreams[0].ajoc.has_value());
     const auto& ajoc = *group.substreams[0].ajoc;
     CHECK(ajoc.b_lfe);
@@ -563,9 +563,9 @@ TEST_CASE("oamd_common_data: a nested element reading past its add_data budget f
     w.put(0, 64);
     const auto data = w.bytes();
 
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(result.error() == iclforge::ac4::Error::kTruncated);
 }
 
 TEST_CASE("parse_bed_dyn_obj_assignment: nonstd flags exclude LFE (A-JOC dmx assignment)",
@@ -612,7 +612,7 @@ TEST_CASE("parse_bed_dyn_obj_assignment: nonstd flags exclude LFE (A-JOC dmx ass
     CHECK(ajoc.n_fullband_dmx_signals == 2);
     REQUIRE(ajoc.static_objects.size() == 3);  // L, R, C - LFE excluded
     for (const auto& obj : ajoc.static_objects) {
-        CHECK(obj.kind == ac4::ObjectKind::kBed);
+        CHECK(obj.kind == iclforge::ac4::ObjectKind::kBed);
         CHECK_FALSE(obj.lfe);
         CHECK(obj.ajoc_coded);
     }
@@ -637,7 +637,7 @@ TEST_CASE("parse_substream_info_obj: dynamic objects with an LFE bed object", "[
     REQUIRE(frame.toc.substream_groups.size() == 1);
     const auto& group = frame.toc.substream_groups[0];
     REQUIRE(group.substreams.size() == 1);
-    REQUIRE(group.substreams[0].kind == ac4::GroupSubstream::Kind::kObj);
+    REQUIRE(group.substreams[0].kind == iclforge::ac4::GroupSubstream::Kind::kObj);
     REQUIRE(group.substreams[0].obj.has_value());
     const auto& obj = *group.substreams[0].obj;
     CHECK(obj.b_dynamic_objects);
@@ -646,14 +646,14 @@ TEST_CASE("parse_substream_info_obj: dynamic objects with an LFE bed object", "[
     // The LFE is counted on top of the two dynamic objects, first
     // (src/ac4dec/ERRATA.md, "n_objects_code and the LFE").
     REQUIRE(obj.objects.size() == 3);
-    CHECK(obj.objects[0].kind == ac4::ObjectKind::kBed);
+    CHECK(obj.objects[0].kind == iclforge::ac4::ObjectKind::kBed);
     CHECK(obj.objects[0].lfe);
     CHECK(obj.objects[0].speaker == 11);  // Table A.27's LFE
     CHECK_FALSE(obj.objects[0].ajoc_coded);
-    CHECK(obj.objects[1].kind == ac4::ObjectKind::kDyn);
+    CHECK(obj.objects[1].kind == iclforge::ac4::ObjectKind::kDyn);
     CHECK_FALSE(obj.objects[1].lfe);
     CHECK_FALSE(obj.objects[1].speaker.has_value());
-    CHECK(obj.objects[2].kind == ac4::ObjectKind::kDyn);
+    CHECK(obj.objects[2].kind == iclforge::ac4::ObjectKind::kDyn);
     REQUIRE(obj.b_iframe.size() == 1);
     CHECK(obj.b_iframe[0]);
     REQUIRE(obj.substream_index.has_value());
@@ -692,17 +692,17 @@ TEST_CASE("parse_substream_info_obj: std bed flags include LFE, unlike bed_dyn_o
     REQUIRE(frame.toc.substream_groups[0].substreams[0].obj.has_value());
     const auto& obj = *frame.toc.substream_groups[0].substreams[0].obj;
     REQUIRE(obj.objects.size() == 3);  // L, R (order 0's 2-channel group), LFE (order 2)
-    CHECK(obj.objects[0].kind == ac4::ObjectKind::kBed);
+    CHECK(obj.objects[0].kind == iclforge::ac4::ObjectKind::kBed);
     CHECK_FALSE(obj.objects[0].lfe);
     CHECK(obj.objects[0].speaker == 0);  // Table A.27: L
-    CHECK(obj.objects[1].kind == ac4::ObjectKind::kBed);
+    CHECK(obj.objects[1].kind == iclforge::ac4::ObjectKind::kBed);
     CHECK_FALSE(obj.objects[1].lfe);
     CHECK(obj.objects[1].speaker == 1);  // R
-    CHECK(obj.objects[2].kind == ac4::ObjectKind::kBed);
+    CHECK(obj.objects[2].kind == iclforge::ac4::ObjectKind::kBed);
     CHECK(obj.objects[2].lfe);  // order 2 IS flagged lfe here
     CHECK(obj.objects[2].speaker == 11);  // LFE
     CHECK_FALSE(obj.b_dynamic_objects);
-    CHECK(obj.static_kind == ac4::ObjSubstreamInfo::Static::kBed);
+    CHECK(obj.static_kind == iclforge::ac4::ObjSubstreamInfo::Static::kBed);
     CHECK(obj.static_start);
 }
 
@@ -775,7 +775,7 @@ TEST_CASE("parse_substream_info_obj: a reserved isf_config names no objects", "[
         const auto& obj = *frame.toc.substream_groups[0].substreams[0].obj;
         CHECK(obj.objects.size() == tc.objects);
         for (const auto& object : obj.objects) {
-            CHECK(object.kind == ac4::ObjectKind::kIsf);
+            CHECK(object.kind == iclforge::ac4::ObjectKind::kIsf);
         }
         REQUIRE(obj.substream_index.has_value());
         CHECK(*obj.substream_index == 2);
@@ -811,7 +811,7 @@ TEST_CASE("parse_bed_dyn_obj_assignment: a reserved isf_config names no objects"
         CHECK(ajoc.n_fullband_dmx_signals == 1);
         CHECK(ajoc.static_objects.size() == tc.objects);
         for (const auto& object : ajoc.static_objects) {
-            CHECK(object.kind == ac4::ObjectKind::kIsf);
+            CHECK(object.kind == iclforge::ac4::ObjectKind::kIsf);
             CHECK(object.ajoc_coded);
         }
         CHECK(ajoc.n_fullband_upmix_signals == 1);
@@ -895,9 +895,9 @@ TEST_CASE("parse_raw_frame refuses bitstream_version above 2", "[ac4]") {
     // exercises the refusal.
     const std::vector<std::byte> raw = {std::byte{0xC0}, std::byte{0x00}, std::byte{0x00},
                                         std::byte{0x00}};
-    const auto result = ac4::parse_raw_frame(raw);
+    const auto result = iclforge::ac4::parse_raw_frame(raw);
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kUnsupportedBitstreamVersion);
+    CHECK(result.error() == iclforge::ac4::Error::kUnsupportedBitstreamVersion);
 }
 
 // --- EMDF-only presentations (presentation_config 6) ------------------------
@@ -1056,7 +1056,7 @@ TEST_CASE("parse_raw_frame: a v0 EMDF-only presentation followed by an ordinary 
     data.insert(data.end(), {std::byte{0x02}, std::byte{0x46}, std::byte{0}, std::byte{0}});
     data.insert(data.end(), 3, std::byte{0});  // substreams 1 and 2
 
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     REQUIRE(result.has_value());
     const auto& toc = result->toc;
     CHECK(toc.bitstream_version == 0);
@@ -1152,7 +1152,7 @@ TEST_CASE("parse_raw_frame: a v1 EMDF-only presentation followed by an ordinary 
     data.insert(data.end(), {std::byte{0x02}, std::byte{0xAA}, std::byte{0}, std::byte{0}});
     data.insert(data.end(), 3, std::byte{0});  // substreams 1 and 2
 
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     REQUIRE(result.has_value());
     const auto& toc = result->toc;
     CHECK(toc.bitstream_version == 2);
@@ -1261,7 +1261,7 @@ TEST_CASE("parse_raw_frame: substream groups take frame_rate_factor past an EMDF
     data.insert(data.end(), {std::byte{0x00}, std::byte{0x2A}, std::byte{0}, std::byte{0}});
     data.insert(data.end(), 4, std::byte{0});  // substream 2
 
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     REQUIRE(result.has_value());
     const auto& toc = result->toc;
     REQUIRE(toc.presentations_v1.size() == 2);
@@ -1344,11 +1344,11 @@ TEST_CASE("parse_raw_frame: a v0 presentation's runaway EMDF-substream count sto
 
     const auto data = w.bytes();
     const auto start = std::chrono::steady_clock::now();
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     const auto elapsed = std::chrono::steady_clock::now() - start;
 
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(result.error() == iclforge::ac4::Error::kTruncated);
     // The guard's whole job is to notice on the first iteration rather than
     // the 22-millionth - generous even against a loaded shared runner, since
     // the guarded path is a handful of reads, not a loop bound by the
@@ -1404,11 +1404,11 @@ TEST_CASE("parse_raw_frame: a v1 presentation's runaway EMDF-substream count sto
 
     const auto data = w.bytes();
     const auto start = std::chrono::steady_clock::now();
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     const auto elapsed = std::chrono::steady_clock::now() - start;
 
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(result.error() == iclforge::ac4::Error::kTruncated);
     CHECK(elapsed < std::chrono::seconds(2));
 }
 
@@ -1494,11 +1494,11 @@ TEST_CASE("parse_raw_frame: presentation_config_ext_info's skip count runs past 
 
     const auto data = w.bytes();
     const auto start = std::chrono::steady_clock::now();
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     const auto elapsed = std::chrono::steady_clock::now() - start;
 
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(result.error() == iclforge::ac4::Error::kTruncated);
     // Skipping 2^32 bits one at a time takes seconds; moving the position
     // does not. Same generous bound as the runaway-count tests above.
     CHECK(elapsed < std::chrono::seconds(2));
@@ -1558,16 +1558,16 @@ TEST_CASE("parse_raw_frame: a payload_base and substream size that wrap are trun
     auto data = w.bytes();
     data.resize(data.size() + 4, std::byte{0});
 
-    const auto result = ac4::parse_raw_frame(data);
+    const auto result = iclforge::ac4::parse_raw_frame(data);
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(result.error() == iclforge::ac4::Error::kTruncated);
 }
 
 TEST_CASE("describe returns a distinct, non-empty string for every Error", "[ac4]") {
     for (const auto error :
-         {ac4::Error::kTruncated, ac4::Error::kLostSync, ac4::Error::kUnsupportedBitstreamVersion}) {
+         {iclforge::ac4::Error::kTruncated, iclforge::ac4::Error::kLostSync, iclforge::ac4::Error::kUnsupportedBitstreamVersion}) {
         CAPTURE(static_cast<int>(error));
-        CHECK_FALSE(ac4::describe(error).empty());
+        CHECK_FALSE(iclforge::ac4::describe(error).empty());
     }
 }
 
@@ -1605,15 +1605,15 @@ TEST_CASE("build_dac4 writes the dac4 DEE's MP4 muxer writes for DEE's streams",
         CAPTURE(leg.name);
         const auto data =
             read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg.name / "dee.ac4");
-        const auto scanned = ac4::scan(data);
+        const auto scanned = iclforge::ac4::scan(data);
         REQUIRE_FALSE(scanned.frames.empty());
-        auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+        auto frame = iclforge::ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
         REQUIRE(frame.has_value());
         REQUIRE(frame->toc.presentations_v1.size() == 1);
 
         // The indicators are no part of the table of contents: unset, the
         // DSI closes before them, one byte short of the muxer's.
-        const std::string without = hex(ac4::build_dac4(frame->toc));
+        const std::string without = hex(iclforge::ac4::build_dac4(frame->toc));
         const std::string expected = leg.dac4;
         CHECK(without.size() == expected.size() - 2);
         CHECK(without.substr(0, 26) == expected.substr(0, 26));
@@ -1622,7 +1622,7 @@ TEST_CASE("build_dac4 writes the dac4 DEE's MP4 muxer writes for DEE's streams",
 
         frame->toc.presentations_v1[0].de_indicator = true;
         frame->toc.presentations_v1[0].immersive_audio_indicator = false;
-        CHECK(hex(ac4::build_dac4(frame->toc)) == expected);
+        CHECK(hex(iclforge::ac4::build_dac4(frame->toc)) == expected);
     }
 }
 
@@ -1935,22 +1935,22 @@ Dac4 read_dac4(const std::vector<std::byte>& bytes) {
 
 // A table of contents with one presentation of one substream group of one
 // channel-coded substream in `ch_mode`, at 48 kHz and frame_rate_index 13.
-ac4::Toc one_substream_toc(int ch_mode) {
-    ac4::Toc toc;
+iclforge::ac4::Toc one_substream_toc(int ch_mode) {
+    iclforge::ac4::Toc toc;
     toc.bitstream_version = 2;
     toc.sample_rate_hz = 48000;
     toc.frame_rate_index = 13;
     toc.wait_frames = 0;
     toc.n_presentations = 1;
-    ac4::PresentationInfoV1 pres;
+    iclforge::ac4::PresentationInfoV1 pres;
     pres.presentation_version = 1;
     pres.group_refs = {0};
     toc.presentations_v1.push_back(pres);
-    ac4::ChannelSubstreamInfo chan;
+    iclforge::ac4::ChannelSubstreamInfo chan;
     chan.ch_mode = ch_mode;
-    ac4::GroupSubstream substream;
+    iclforge::ac4::GroupSubstream substream;
     substream.chan = chan;
-    ac4::SubstreamGroupInfo group;
+    iclforge::ac4::SubstreamGroupInfo group;
     group.substreams.push_back(substream);
     toc.substream_groups.push_back(group);
     return toc;
@@ -1964,9 +1964,9 @@ std::uint32_t groups_of(std::initializer_list<int> groups) {
     return mask;
 }
 
-PresentationDsi presentation_of(const ac4::Toc& toc) {
-    INFO(ac4::dac4_refusal(toc));
-    const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+PresentationDsi presentation_of(const iclforge::ac4::Toc& toc) {
+    INFO(iclforge::ac4::dac4_refusal(toc));
+    const Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
     REQUIRE(dac4.presentations.size() == 1);
     REQUIRE(dac4.presentations.front().has_value());
     return *dac4.presentations.front();
@@ -2027,9 +2027,9 @@ TEST_CASE("build_dac4 gives each channel mode the channel groups Table A.27 list
             for (const bool back : {false, true}) {
                 for (int top = 0; top <= 3; ++top) {
                     CAPTURE(ch_mode, centre, back, top);
-                    ac4::Toc toc = one_substream_toc(ch_mode);
+                    iclforge::ac4::Toc toc = one_substream_toc(ch_mode);
                     toc.substream_groups[0].substreams[0].chan->original_content =
-                        ac4::OriginalContent{.b_4_back_channels_present = back,
+                        iclforge::ac4::OriginalContent{.b_4_back_channels_present = back,
                                              .b_centre_present = centre,
                                              .top_channels_present = top};
                     const std::uint32_t pairs = top == 0 ? 0U : (top == 3 ? 2U : 1U);
@@ -2062,10 +2062,10 @@ TEST_CASE(
     };
     for (const Wait w : {Wait{0, 1}, Wait{1, 2}, Wait{6, 2}, Wait{7, 3}, Wait{std::nullopt, 3}}) {
         CAPTURE(w.wait_frames.value_or(-1));
-        ac4::Toc toc = one_substream_toc(1);
+        iclforge::ac4::Toc toc = one_substream_toc(1);
         toc.wait_frames = w.wait_frames;
         toc.substream_groups[0].substreams[0].chan->brate_ind = 13;
-        const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+        const Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
         CHECK(dac4.bitrate.mode == w.mode);
         CHECK(dac4.bitrate.rate == 0);
         CHECK(dac4.bitrate.precision == 0xFFFFFFFFU);
@@ -2083,8 +2083,8 @@ TEST_CASE(
 
 TEST_CASE("build_dac4 carries a presentation's identity, filter, EMDF, content type and indicators",
           "[ac4][carriage]") {
-    ac4::Toc toc = one_substream_toc(4);
-    ac4::PresentationInfoV1& pres = toc.presentations_v1[0];
+    iclforge::ac4::Toc toc = one_substream_toc(4);
+    iclforge::ac4::PresentationInfoV1& pres = toc.presentations_v1[0];
     pres.md_compat = 3;
     pres.presentation_id = 17;
     pres.emdf = {.emdf_version = 5, .key_id = 700};
@@ -2094,10 +2094,10 @@ TEST_CASE("build_dac4 carries a presentation's identity, filter, EMDF, content t
     pres.add_emdf = {{.emdf_version = 1, .key_id = 2}, {.emdf_version = 31, .key_id = 1023}};
     pres.de_indicator = true;
     pres.immersive_audio_indicator = false;
-    ac4::SubstreamGroupInfo& group = toc.substream_groups[0];
+    iclforge::ac4::SubstreamGroupInfo& group = toc.substream_groups[0];
     group.b_substreams_present = true;
     const std::vector<std::byte> english = {std::byte{'e'}, std::byte{'n'}, std::byte{'g'}};
-    group.content_type = ac4::ContentType{.content_classifier = 2, .language_tag = english};
+    group.content_type = iclforge::ac4::ContentType{.content_classifier = 2, .language_tag = english};
     group.b_hsf_ext = true;
     group.substreams[0].hsf_ext_substream_index = 3;
     group.substreams[0].chan->sf_multiplier = 1;
@@ -2121,7 +2121,7 @@ TEST_CASE("build_dac4 carries a presentation's identity, filter, EMDF, content t
 
     // A content type with no language, an enabled filter, and an id past
     // presentation_id's five bits, which the extended id carries whole.
-    group.content_type = ac4::ContentType{.content_classifier = 7, .language_tag = std::nullopt};
+    group.content_type = iclforge::ac4::ContentType{.content_classifier = 7, .language_tag = std::nullopt};
     pres.enable_presentation = true;
     pres.presentation_id = 300;
     p = presentation_of(toc);
@@ -2148,11 +2148,11 @@ TEST_CASE(
     };
     for (const Rate& rate : rates) {
         CAPTURE(rate.index, rate.factor, rate.fraction);
-        ac4::Toc toc = one_substream_toc(1);
+        iclforge::ac4::Toc toc = one_substream_toc(1);
         toc.frame_rate_index = rate.index;
         toc.presentations_v1[0].frame_rate_factor = rate.factor;
         toc.presentations_v1[0].frame_rate_fraction = rate.fraction;
-        const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+        const Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
         CHECK(dac4.frame_rate_index == static_cast<std::uint32_t>(rate.index));
         REQUIRE(dac4.presentations.front().has_value());
         CHECK(dac4.presentations.front()->multiply == rate.multiply);
@@ -2162,15 +2162,15 @@ TEST_CASE(
 
 TEST_CASE("build_dac4 sends a presentation of 255 bytes or more with add_pres_bytes",
           "[ac4][carriage]") {
-    ac4::Toc toc = one_substream_toc(1);
-    ac4::PresentationInfoV1& pres = toc.presentations_v1[0];
+    iclforge::ac4::Toc toc = one_substream_toc(1);
+    iclforge::ac4::PresentationInfoV1& pres = toc.presentations_v1[0];
     pres.b_add_emdf_substreams = true;
     for (int j = 0; j < 127; ++j) {
         pres.add_emdf.push_back({.emdf_version = j % 32, .key_id = j * 8});
     }
-    toc.substream_groups[0].content_type = ac4::ContentType{
+    toc.substream_groups[0].content_type = iclforge::ac4::ContentType{
         .content_classifier = 1, .language_tag = std::vector<std::byte>(63, std::byte{'a'})};
-    const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+    const Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
     REQUIRE(dac4.sizes.size() == 1);
     CHECK(dac4.sizes.front() > 255U);
     REQUIRE(dac4.presentations.front().has_value());
@@ -2200,17 +2200,17 @@ std::uint32_t mode_groups(int ch_mode) {
 
 // A substream group of one channel-coded substream in `ch_mode`, with a
 // content type of `classifier` and `language` where there is one.
-ac4::SubstreamGroupInfo chan_group(int ch_mode, std::optional<int> classifier,
+iclforge::ac4::SubstreamGroupInfo chan_group(int ch_mode, std::optional<int> classifier,
                                    std::string_view language = {}) {
-    ac4::ChannelSubstreamInfo chan;
+    iclforge::ac4::ChannelSubstreamInfo chan;
     chan.ch_mode = ch_mode;
-    ac4::GroupSubstream substream;
+    iclforge::ac4::GroupSubstream substream;
     substream.chan = chan;
-    ac4::SubstreamGroupInfo group;
+    iclforge::ac4::SubstreamGroupInfo group;
     group.b_substreams_present = true;
     group.substreams.push_back(substream);
     if (classifier) {
-        ac4::ContentType type;
+        iclforge::ac4::ContentType type;
         type.content_classifier = *classifier;
         if (!language.empty()) {
             std::vector<std::byte> tag;
@@ -2224,9 +2224,9 @@ ac4::SubstreamGroupInfo chan_group(int ch_mode, std::optional<int> classifier,
     return group;
 }
 
-ac4::PresentationInfoV1 presentation_v1(std::optional<int> config, std::vector<int> groups,
+iclforge::ac4::PresentationInfoV1 presentation_v1(std::optional<int> config, std::vector<int> groups,
                                         int id) {
-    ac4::PresentationInfoV1 p;
+    iclforge::ac4::PresentationInfoV1 p;
     p.presentation_version = 1;
     p.presentation_config = config;
     p.group_refs = std::move(groups);
@@ -2239,8 +2239,8 @@ ac4::PresentationInfoV1 presentation_v1(std::optional<int> config, std::vector<i
 // description, 3 a stereo main in German, 4 the mono waveform of its dialogue
 // enhancement; and a presentation of each configuration of Table 53 over them,
 // ids 1 to 7, the last with b_multi_pid.
-ac4::Toc configurations_toc() {
-    ac4::Toc toc;
+iclforge::ac4::Toc configurations_toc() {
+    iclforge::ac4::Toc toc;
     toc.bitstream_version = 2;
     toc.sample_rate_hz = 48000;
     toc.frame_rate_index = 13;
@@ -2260,9 +2260,9 @@ ac4::Toc configurations_toc() {
 
 TEST_CASE("build_dac4 describes each configuration's substream groups in its specifiers' order",
           "[ac4][carriage]") {
-    const ac4::Toc toc = configurations_toc();
-    INFO(ac4::dac4_refusal(toc));
-    const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+    const iclforge::ac4::Toc toc = configurations_toc();
+    INFO(iclforge::ac4::dac4_refusal(toc));
+    const Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
     REQUIRE(dac4.presentations.size() == 7);
     // Each presentation's channel mode is the superset of its substreams'
     // (Pseudocode 25), superset(0, 1) being 1: a stereo main with mono
@@ -2296,7 +2296,7 @@ TEST_CASE("build_dac4 describes each configuration's substream groups in its spe
         REQUIRE(p.group_dsis.size() == expected[i].groups.size());
         for (std::size_t g = 0; g < p.group_dsis.size(); ++g) {
             CAPTURE(g);
-            const ac4::SubstreamGroupInfo& group =
+            const iclforge::ac4::SubstreamGroupInfo& group =
                 toc.substream_groups[static_cast<std::size_t>(expected[i].groups[g])];
             const GroupDsi& dsi = p.group_dsis[g];
             CHECK(dsi.substreams_present);
@@ -2327,28 +2327,28 @@ TEST_CASE("build_dac4 describes every presentation of the encoder's committed pr
         const auto raw =
             read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." /
                       "ac4dec" / "presentations" / (std::string{name} + ".ac4"));
-        const auto scanned = ac4::scan(raw);
+        const auto scanned = iclforge::ac4::scan(raw);
         REQUIRE_FALSE(scanned.frames.empty());
-        auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+        auto frame = iclforge::ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
         REQUIRE(frame.has_value());
-        ac4::Toc toc = frame->toc;
+        iclforge::ac4::Toc toc = frame->toc;
         // An alternative presentation's name is in its presentation substream,
         // which the inspector does not read: the broadcast stream's is Deutsch.
-        for (ac4::PresentationInfoV1& p : toc.presentations_v1) {
+        for (iclforge::ac4::PresentationInfoV1& p : toc.presentations_v1) {
             if (p.b_alternative) {
-                p.alternative_info = ac4::AlternativeInfo{
+                p.alternative_info = iclforge::ac4::AlternativeInfo{
                     .name = "Deutsch",
                     .targets = {{.md_compat = p.md_compat.value_or(0), .device_category = 15}}};
             }
         }
-        INFO(ac4::dac4_refusal(toc));
-        const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+        INFO(iclforge::ac4::dac4_refusal(toc));
+        const Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
         REQUIRE(dac4.presentations.size() == toc.presentations_v1.size());
         for (std::size_t i = 0; i < dac4.presentations.size(); ++i) {
             CAPTURE(i);
             REQUIRE(dac4.presentations[i].has_value());
             const PresentationDsi& p = *dac4.presentations[i];
-            const ac4::PresentationInfoV1& pres = toc.presentations_v1[i];
+            const iclforge::ac4::PresentationInfoV1& pres = toc.presentations_v1[i];
             CHECK(p.config == static_cast<std::uint32_t>(pres.presentation_config.value_or(0x1F)));
             if (pres.presentation_config == 6) {
                 CHECK(p.add_emdf.size() == pres.add_emdf.size());
@@ -2363,7 +2363,7 @@ TEST_CASE("build_dac4 describes every presentation of the encoder's committed pr
             REQUIRE(p.group_dsis.size() == pres.group_refs.size());
             for (std::size_t g = 0; g < p.group_dsis.size(); ++g) {
                 CAPTURE(g);
-                const ac4::SubstreamGroupInfo& group =
+                const iclforge::ac4::SubstreamGroupInfo& group =
                     toc.substream_groups.at(static_cast<std::size_t>(pres.group_refs[g]));
                 CHECK(p.group_dsis[g].substreams.size() == group.substreams.size());
                 CHECK(p.group_dsis[g].content_classifier.has_value() ==
@@ -2382,11 +2382,11 @@ TEST_CASE("build_dac4 sends a presentation's bit rate where each of its substrea
           "[ac4][carriage]") {
     // Table E.11: b_presentation_bitrate_info where every substream of the
     // presentation carries b_bitrate_info. Groups 0 and 1 send one, 2 does not.
-    ac4::Toc toc = configurations_toc();
+    iclforge::ac4::Toc toc = configurations_toc();
     for (const std::size_t g : {0U, 1U}) {
         toc.substream_groups[g].substreams[0].chan->brate_ind = 9;
     }
-    const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+    const Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
     REQUIRE(dac4.presentations.size() == 7);
     REQUIRE(dac4.presentations[1].has_value());
     const PresentationDsi& both = *dac4.presentations[1];  // configuration 0 over groups 0 and 1
@@ -2399,15 +2399,15 @@ TEST_CASE("build_dac4 sends a presentation's bit rate where each of its substrea
 
 TEST_CASE("build_dac4 describes an EMDF-only presentation by its additional EMDF substreams",
           "[ac4][carriage]") {
-    ac4::Toc toc = one_substream_toc(1);
-    ac4::PresentationInfoV1 emdf;
+    iclforge::ac4::Toc toc = one_substream_toc(1);
+    iclforge::ac4::PresentationInfoV1 emdf;
     emdf.presentation_version = 1;
     emdf.presentation_config = 6;
     emdf.b_add_emdf_substreams = true;
     emdf.add_emdf = {{.emdf_version = 0, .key_id = 0}, {.emdf_version = 3, .key_id = 900}};
     toc.presentations_v1.push_back(emdf);
     toc.n_presentations = 2;
-    Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+    Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
     REQUIRE(dac4.presentations.size() == 2);
     REQUIRE(dac4.presentations[1].has_value());
     PresentationDsi p = *dac4.presentations[1];
@@ -2420,7 +2420,7 @@ TEST_CASE("build_dac4 describes an EMDF-only presentation by its additional EMDF
     // With the indicators a writer gives, the closing byte, and no id.
     toc.presentations_v1[1].de_indicator = false;
     toc.presentations_v1[1].immersive_audio_indicator = false;
-    dac4 = read_dac4(ac4::build_dac4(toc));
+    dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
     REQUIRE(dac4.presentations[1].has_value());
     p = *dac4.presentations[1];
     CHECK(p.de_indicator == false);
@@ -2431,14 +2431,14 @@ TEST_CASE("build_dac4 describes an EMDF-only presentation by its additional EMDF
 TEST_CASE(
     "build_dac4 describes an alternative presentation by the name and targets a writer gives it",
     "[ac4][carriage]") {
-    ac4::Toc toc = one_substream_toc(4);
+    iclforge::ac4::Toc toc = one_substream_toc(4);
     toc.presentations_v1[0].b_alternative = true;
     // The name is in the presentation substream, which the table of contents
     // does not describe: refused without it.
-    CHECK(ac4::build_dac4(toc).empty());
-    CHECK(ac4::dac4_refusal(toc).find("alternative presentation") != std::string_view::npos);
+    CHECK(iclforge::ac4::build_dac4(toc).empty());
+    CHECK(iclforge::ac4::dac4_refusal(toc).find("alternative presentation") != std::string_view::npos);
     toc.presentations_v1[0].alternative_info =
-        ac4::AlternativeInfo{.name = "Deutsch",
+        iclforge::ac4::AlternativeInfo{.name = "Deutsch",
                              .targets = {{.md_compat = 1, .device_category = 0b1111},
                                          {.md_compat = 3, .device_category = 0b0101}}};
     const PresentationDsi p = presentation_of(toc);
@@ -2455,30 +2455,30 @@ TEST_CASE("build_dac4 writes the dac4 DEE's muxer writes for an A-JOC stream", "
     // downmix signals and seventeen upmix signals are dynamic objects. DEE's
     // muxer (6.5.4) writes this box for the stream, with de_indicator 0 and an
     // immersive_audio_indicator it computes.
-    ac4::Toc toc;
+    iclforge::ac4::Toc toc;
     toc.bitstream_version = 2;
     toc.sample_rate_hz = 48000;
     toc.frame_rate_index = 3;
     toc.n_presentations = 1;
-    ac4::PresentationInfoV1 pres;
+    iclforge::ac4::PresentationInfoV1 pres;
     pres.presentation_version = 1;
     pres.md_compat = 3;
     pres.group_refs = {0};
     pres.de_indicator = false;
     pres.immersive_audio_indicator = true;
     toc.presentations_v1.push_back(pres);
-    ac4::AjocSubstreamInfo ajoc;
+    iclforge::ac4::AjocSubstreamInfo ajoc;
     ajoc.n_fullband_dmx_signals = 10;
     ajoc.n_fullband_upmix_signals = 17;
-    ac4::GroupSubstream substream;
-    substream.kind = ac4::GroupSubstream::Kind::kAjoc;
+    iclforge::ac4::GroupSubstream substream;
+    substream.kind = iclforge::ac4::GroupSubstream::Kind::kAjoc;
     substream.ajoc = ajoc;
-    ac4::SubstreamGroupInfo group;
+    iclforge::ac4::SubstreamGroupInfo group;
     group.b_substreams_present = true;
     group.b_channel_coded = false;
     group.substreams.push_back(substream);
     toc.substream_groups.push_back(group);
-    CHECK(hex_of(ac4::build_dac4(toc)) == "20a601600000001fffffffe0010afb000001004528200040");
+    CHECK(hex_of(iclforge::ac4::build_dac4(toc)) == "20a601600000001fffffffe0010afb000001004528200040");
 
     // Objects are no channel mode, and an adaptive downmix no core: neither
     // is sent, where Table E.11's text would set b_presentation_core_differs
@@ -2502,8 +2502,8 @@ TEST_CASE("build_dac4 writes the dac4 DEE's muxer writes for an A-JOC stream", "
     // leaves signals unlisted.
     toc.substream_groups[0].substreams[0].ajoc->b_static_dmx = true;
     toc.substream_groups[0].substreams[0].ajoc->b_lfe = true;
-    toc.substream_groups[0].substreams[0].ajoc->upmix_objects = std::vector<ac4::ObjectEntry>(
-        17, ac4::ObjectEntry{.kind = ac4::ObjectKind::kBed, .lfe = false, .ajoc_coded = true});
+    toc.substream_groups[0].substreams[0].ajoc->upmix_objects = std::vector<iclforge::ac4::ObjectEntry>(
+        17, iclforge::ac4::ObjectEntry{.kind = iclforge::ac4::ObjectKind::kBed, .lfe = false, .ajoc_coded = true});
     p = presentation_of(toc);
     CHECK(p.core == 1U);
     const SubstreamDsi& bed = p.group_dsis[0].substreams.at(0);
@@ -2519,17 +2519,17 @@ TEST_CASE("build_dac4 writes the dac4 of DASH-IF's test vectors with their progr
     // (dashif3 and dashif5): program 300, one presentation, id 10 at
     // md_compat 1, of one 5.1 group in English. Their MP4 files carry this
     // box, which DEE's muxer writes again from the elementary stream.
-    ac4::Toc toc = one_substream_toc(4);
+    iclforge::ac4::Toc toc = one_substream_toc(4);
     toc.frame_rate_index = 2;
     toc.wait_frames = std::nullopt;
     toc.short_program_id = 300;
-    ac4::PresentationInfoV1& pres = toc.presentations_v1[0];
+    iclforge::ac4::PresentationInfoV1& pres = toc.presentations_v1[0];
     pres.md_compat = 1;
     pres.presentation_id = 10;
     pres.de_indicator = true;
     pres.immersive_audio_indicator = false;
     toc.substream_groups[0] = chan_group(4, 0, "en");
-    CHECK(hex_of(ac4::build_dac4(toc)) ==
+    CHECK(hex_of(iclforge::ac4::build_dac4(toc)) ==
           "20a4018096300000000ffffffff00112f9a800004800008e501000008f10995b8080");
 
     // A program UUID follows the id.
@@ -2538,7 +2538,7 @@ TEST_CASE("build_dac4 writes the dac4 of DASH-IF's test vectors with their progr
         uuid[i] = static_cast<std::byte>(0xA0 + i);
     }
     toc.program_uuid = uuid;
-    const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+    const Dac4 dac4 = read_dac4(iclforge::ac4::build_dac4(toc));
     CHECK(dac4.short_program_id == 300U);
     REQUIRE(dac4.program_uuid.has_value());
     CHECK(std::ranges::equal(*dac4.program_uuid, uuid));
@@ -2548,21 +2548,21 @@ TEST_CASE("build_dac4 describes direct-coded object substreams by what each send
           "[ac4][carriage]") {
     // One group of three object substreams: dynamic objects, bed objects and
     // ISF objects, the first with a rate indicator.
-    ac4::Toc toc = one_substream_toc(1);
-    ac4::SubstreamGroupInfo group;
+    iclforge::ac4::Toc toc = one_substream_toc(1);
+    iclforge::ac4::SubstreamGroupInfo group;
     group.b_substreams_present = true;
     group.b_channel_coded = false;
     for (int kind = 0; kind < 3; ++kind) {
-        ac4::ObjSubstreamInfo obj;
+        iclforge::ac4::ObjSubstreamInfo obj;
         obj.b_dynamic_objects = kind == 0;
-        obj.static_kind = kind == 1   ? ac4::ObjSubstreamInfo::Static::kBed
-                          : kind == 2 ? ac4::ObjSubstreamInfo::Static::kIsf
-                                      : ac4::ObjSubstreamInfo::Static::kNone;
+        obj.static_kind = kind == 1   ? iclforge::ac4::ObjSubstreamInfo::Static::kBed
+                          : kind == 2 ? iclforge::ac4::ObjSubstreamInfo::Static::kIsf
+                                      : iclforge::ac4::ObjSubstreamInfo::Static::kNone;
         if (kind == 0) {
             obj.brate_ind = 12;
         }
-        ac4::GroupSubstream substream;
-        substream.kind = ac4::GroupSubstream::Kind::kObj;
+        iclforge::ac4::GroupSubstream substream;
+        substream.kind = iclforge::ac4::GroupSubstream::Kind::kObj;
         substream.obj = obj;
         group.substreams.push_back(substream);
     }
@@ -2587,119 +2587,119 @@ TEST_CASE("build_dac4 describes direct-coded object substreams by what each send
 
 TEST_CASE("build_dac4 writes nothing for what it cannot describe whole and dac4_refusal says what",
           "[ac4][carriage]") {
-    REQUIRE(ac4::dac4_refusal(one_substream_toc(1)).empty());
+    REQUIRE(iclforge::ac4::dac4_refusal(one_substream_toc(1)).empty());
     struct Case {
         const char* name;
-        std::function<void(ac4::Toc&)> change;
+        std::function<void(iclforge::ac4::Toc&)> change;
         std::string_view says;
     };
     const std::vector<Case> cases = {
         {"an alternative with no name",
-         [](ac4::Toc& t) { t.presentations_v1[0].b_alternative = true; },
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].b_alternative = true; },
          "alternative presentation"},
-        {"a group the TOC lacks", [](ac4::Toc& t) { t.presentations_v1[0].group_refs = {5}; },
+        {"a group the TOC lacks", [](iclforge::ac4::Toc& t) { t.presentations_v1[0].group_refs = {5}; },
          "b_multi_pid"},
         {"a reserved channel mode",
-         [](ac4::Toc& t) { t.substream_groups[0].substreams[0].chan->ch_mode.reset(); },
+         [](iclforge::ac4::Toc& t) { t.substream_groups[0].substreams[0].chan->ch_mode.reset(); },
          "reserves"},
         {"no channel substream",
-         [](ac4::Toc& t) { t.substream_groups[0].substreams[0].chan.reset(); },
+         [](iclforge::ac4::Toc& t) { t.substream_groups[0].substreams[0].chan.reset(); },
          "does not describe"},
         {"an object substream in a channel-coded group",
-         [](ac4::Toc& t) {
-             t.substream_groups[0].substreams[0].kind = ac4::GroupSubstream::Kind::kObj;
-             t.substream_groups[0].substreams[0].obj = ac4::ObjSubstreamInfo{};
+         [](iclforge::ac4::Toc& t) {
+             t.substream_groups[0].substreams[0].kind = iclforge::ac4::GroupSubstream::Kind::kObj;
+             t.substream_groups[0].substreams[0].obj = iclforge::ac4::ObjSubstreamInfo{};
          },
          "not a channel-coded one"},
         {"an EMDF version past 5 bits",
-         [](ac4::Toc& t) { t.presentations_v1[0].emdf.emdf_version = 32; }, "EMDF version"},
-        {"a key_id past 10 bits", [](ac4::Toc& t) { t.presentations_v1[0].emdf.key_id = 1024; },
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].emdf.emdf_version = 32; }, "EMDF version"},
+        {"a key_id past 10 bits", [](iclforge::ac4::Toc& t) { t.presentations_v1[0].emdf.key_id = 1024; },
          "EMDF version"},
         {"an id past 5 bits with no indicators",
-         [](ac4::Toc& t) { t.presentations_v1[0].presentation_id = 40; }, "above 31"},
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].presentation_id = 40; }, "above 31"},
         {"an id past 9 bits",
-         [](ac4::Toc& t) {
+         [](iclforge::ac4::Toc& t) {
              t.presentations_v1[0].presentation_id = 600;
              t.presentations_v1[0].de_indicator = true;
          },
          "nine bits"},
         {"a reserved configuration",
-         [](ac4::Toc& t) { t.presentations_v1[0].presentation_config = 7; }, "reserves"},
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].presentation_config = 7; }, "reserves"},
         {"a configuration short of its groups",
-         [](ac4::Toc& t) { t.presentations_v1[0].presentation_config = 0; }, "did not all read"},
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].presentation_config = 0; }, "did not all read"},
         {"ten groups in configuration 5",
-         [](ac4::Toc& t) {
+         [](iclforge::ac4::Toc& t) {
              t.presentations_v1[0].presentation_config = 5;
              t.presentations_v1[0].group_refs = std::vector<int>(10, 0);
          },
          "three bits"},
         {"a language in chunks",
-         [](ac4::Toc& t) {
-             t.substream_groups[0].content_type = ac4::ContentType{.content_classifier = 0,
+         [](iclforge::ac4::Toc& t) {
+             t.substream_groups[0].content_type = iclforge::ac4::ContentType{.content_classifier = 0,
                                                                    .language_tag = std::nullopt,
                                                                    .serialized_language_tag = true};
          },
          "chunk"},
         {"65 upmix objects",
-         [](ac4::Toc& t) {
-             ac4::AjocSubstreamInfo ajoc;
+         [](iclforge::ac4::Toc& t) {
+             iclforge::ac4::AjocSubstreamInfo ajoc;
              ajoc.n_fullband_dmx_signals = 5;
              ajoc.b_static_dmx = true;
              ajoc.n_fullband_upmix_signals = 65;
              t.substream_groups[0].b_channel_coded = false;
-             t.substream_groups[0].substreams[0].kind = ac4::GroupSubstream::Kind::kAjoc;
+             t.substream_groups[0].substreams[0].kind = iclforge::ac4::GroupSubstream::Kind::kAjoc;
              t.substream_groups[0].substreams[0].ajoc = ajoc;
          },
          "six bits"},
-        {"presentations that did not read", [](ac4::Toc& t) { t.n_presentations = 2; },
+        {"presentations that did not read", [](iclforge::ac4::Toc& t) { t.n_presentations = 2; },
          "table of contents whose presentations"},
-        {"512 presentations", [](ac4::Toc& t) { t.n_presentations = 512; }, "nine bits"},
+        {"512 presentations", [](iclforge::ac4::Toc& t) { t.n_presentations = 512; }, "nine bits"},
         {"a presentation_version 0",
-         [](ac4::Toc& t) { t.presentations_v1[0].presentation_version = 0; },
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[0].presentation_version = 0; },
          "presentation_version"},
     };
     for (const Case& c : cases) {
         CAPTURE(c.name);
-        ac4::Toc toc = one_substream_toc(1);
+        iclforge::ac4::Toc toc = one_substream_toc(1);
         c.change(toc);
-        CHECK(ac4::build_dac4(toc).empty());
-        CHECK(ac4::dac4_refusal(toc).find(c.says) != std::string_view::npos);
+        CHECK(iclforge::ac4::build_dac4(toc).empty());
+        CHECK(iclforge::ac4::dac4_refusal(toc).find(c.says) != std::string_view::npos);
     }
 
     // A version 0 table of contents, which Part 1 Annex E.4a describes.
-    ac4::Toc legacy;
+    iclforge::ac4::Toc legacy;
     legacy.bitstream_version = 1;
     legacy.frame_rate_index = 13;
     legacy.n_presentations = 1;
-    legacy.presentations_v0.push_back(ac4::PresentationInfoV0{});
-    CHECK(ac4::build_dac4(legacy).empty());
-    CHECK(ac4::dac4_refusal(legacy).find("bitstream_version 0 or 1") != std::string_view::npos);
+    legacy.presentations_v0.push_back(iclforge::ac4::PresentationInfoV0{});
+    CHECK(iclforge::ac4::build_dac4(legacy).empty());
+    CHECK(iclforge::ac4::dac4_refusal(legacy).find("bitstream_version 0 or 1") != std::string_view::npos);
 }
 
 TEST_CASE("cmaf_refusal names the rule of Part 2 Annex H.1.2.1 a stream breaks",
           "[ac4][carriage]") {
     // Every presentation with a presentation_id of its own: the rules hold.
-    CHECK(ac4::cmaf_refusal(configurations_toc()).empty());
-    ac4::Toc one = one_substream_toc(1);
-    CHECK(ac4::cmaf_refusal(one) == "a presentation without a presentation_id");
+    CHECK(iclforge::ac4::cmaf_refusal(configurations_toc()).empty());
+    iclforge::ac4::Toc one = one_substream_toc(1);
+    CHECK(iclforge::ac4::cmaf_refusal(one) == "a presentation without a presentation_id");
     one.presentations_v1[0].presentation_id = 0;
-    CHECK(ac4::cmaf_refusal(one).empty());
+    CHECK(iclforge::ac4::cmaf_refusal(one).empty());
 
     struct Case {
         const char* name;
-        std::function<void(ac4::Toc&)> change;
+        std::function<void(iclforge::ac4::Toc&)> change;
         std::string_view says;
     };
     const std::vector<Case> cases = {
-        {"a version 1 table of contents", [](ac4::Toc& t) { t.bitstream_version = 1; },
+        {"a version 1 table of contents", [](iclforge::ac4::Toc& t) { t.bitstream_version = 1; },
          "bitstream_version other than 2"},
-        {"65 presentations", [](ac4::Toc& t) { t.n_presentations = 65; }, "more than 64"},
+        {"65 presentations", [](iclforge::ac4::Toc& t) { t.n_presentations = 65; }, "more than 64"},
         {"a presentation_version 2",
-         [](ac4::Toc& t) { t.presentations_v1[1].presentation_version = 2; },
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[1].presentation_version = 2; },
          "presentation_version other than 1"},
         {"EMDF payloads alone",
-         [](ac4::Toc& t) {
-             ac4::PresentationInfoV1 emdf;
+         [](iclforge::ac4::Toc& t) {
+             iclforge::ac4::PresentationInfoV1 emdf;
              emdf.presentation_version = 1;
              emdf.presentation_config = 6;
              emdf.b_add_emdf_substreams = true;
@@ -2709,53 +2709,53 @@ TEST_CASE("cmaf_refusal names the rule of Part 2 Annex H.1.2.1 a stream breaks",
          },
          "configuration 6, EMDF payloads alone"},
         {"a presentation without an id",
-         [](ac4::Toc& t) { t.presentations_v1[2].presentation_id.reset(); },
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[2].presentation_id.reset(); },
          "without a presentation_id"},
         {"two presentations with one id",
-         [](ac4::Toc& t) { t.presentations_v1[3].presentation_id = 2; },
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[3].presentation_id = 2; },
          "two presentations with one presentation_id"},
     };
     for (const Case& c : cases) {
         CAPTURE(c.name);
-        ac4::Toc toc = configurations_toc();
+        iclforge::ac4::Toc toc = configurations_toc();
         c.change(toc);
-        CHECK(ac4::cmaf_refusal(toc).find(c.says) != std::string_view::npos);
+        CHECK(iclforge::ac4::cmaf_refusal(toc).find(c.says) != std::string_view::npos);
     }
 
     // The encoder's EMDF stream: an MP4 carries its presentation of
     // configuration 6, and a CMAF track cannot.
     const auto raw = read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." /
                                "ac4dec" / "presentations" / "encoder-emdf.ac4");
-    const auto scanned = ac4::scan(raw);
+    const auto scanned = iclforge::ac4::scan(raw);
     REQUIRE_FALSE(scanned.frames.empty());
-    const auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+    const auto frame = iclforge::ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
     REQUIRE(frame.has_value());
-    CHECK(ac4::dac4_refusal(frame->toc).empty());
-    CHECK(ac4::cmaf_refusal(frame->toc).find("configuration 6") != std::string_view::npos);
+    CHECK(iclforge::ac4::dac4_refusal(frame->toc).empty());
+    CHECK(iclforge::ac4::cmaf_refusal(frame->toc).find("configuration 6") != std::string_view::npos);
 }
 
 TEST_CASE("signalled_presentation takes Annex G.2.3's widest compatibility", "[ac4][carriage]") {
     // Every presentation of configurations_toc() needs md_compat 1: the first.
-    ac4::Toc toc = configurations_toc();
-    CHECK(ac4::signalled_presentation(toc) == std::optional<std::size_t>{0});
+    iclforge::ac4::Toc toc = configurations_toc();
+    CHECK(iclforge::ac4::signalled_presentation(toc) == std::optional<std::size_t>{0});
     // The lowest level wins, the first among equals.
     toc.presentations_v1[3].md_compat = 0;
     toc.presentations_v1[5].md_compat = 0;
-    CHECK(ac4::signalled_presentation(toc) == std::optional<std::size_t>{3});
-    CHECK(ac4::rfc6381_codec_string(toc) == "ac-4.02.01.00");
+    CHECK(iclforge::ac4::signalled_presentation(toc) == std::optional<std::size_t>{3});
+    CHECK(iclforge::ac4::rfc6381_codec_string(toc) == "ac-4.02.01.00");
     // A presentation the stream disables is not one a decoder may select.
     toc.presentations_v1[3].enable_presentation = false;
-    CHECK(ac4::signalled_presentation(toc) == std::optional<std::size_t>{5});
+    CHECK(iclforge::ac4::signalled_presentation(toc) == std::optional<std::size_t>{5});
     // EMDF payloads alone carry no audio; where nothing does, the first.
-    ac4::Toc emdf;
+    iclforge::ac4::Toc emdf;
     emdf.bitstream_version = 2;
-    ac4::PresentationInfoV1 payloads;
+    iclforge::ac4::PresentationInfoV1 payloads;
     payloads.presentation_version = 1;
     payloads.presentation_config = 6;
     emdf.presentations_v1 = {payloads};
     emdf.n_presentations = 1;
-    CHECK(ac4::signalled_presentation(emdf) == std::optional<std::size_t>{0});
-    CHECK_FALSE(ac4::signalled_presentation(ac4::Toc{}).has_value());
+    CHECK(iclforge::ac4::signalled_presentation(emdf) == std::optional<std::size_t>{0});
+    CHECK_FALSE(iclforge::ac4::signalled_presentation(iclforge::ac4::Toc{}).has_value());
 }
 
 TEST_CASE("dash_channel_configuration maps channel groups by Table G.1 or the Dolby:2015 word",
@@ -2764,7 +2764,7 @@ TEST_CASE("dash_channel_configuration maps channel groups by Table G.1 or the Do
     constexpr std::string_view kDolby = "tag:dolby.com,2015:dash:audio_channel_configuration:2015";
     struct Case {
         int ch_mode;
-        std::optional<ac4::OriginalContent> content;
+        std::optional<iclforge::ac4::OriginalContent> content;
         std::string_view scheme;
         std::string_view value;
         int channels;
@@ -2781,45 +2781,45 @@ TEST_CASE("dash_channel_configuration maps channel groups by Table G.1 or the Do
         {10, std::nullopt, kCicp, "14", 8},  // 7.1 3/2/2: 000057
         // 7.1.4 and 5.1.4 (00007F, 000077), and 5.1.2 (0000C7), which Table
         // G.1 does not list: G.3.3.2's Example 1, in the Dolby scheme.
-        {12, ac4::OriginalContent{.b_4_back_channels_present = true, .b_centre_present = true,
+        {12, iclforge::ac4::OriginalContent{.b_4_back_channels_present = true, .b_centre_present = true,
                                   .top_channels_present = 3},
          kCicp, "19", 12},
-        {12, ac4::OriginalContent{.b_4_back_channels_present = false, .b_centre_present = true,
+        {12, iclforge::ac4::OriginalContent{.b_4_back_channels_present = false, .b_centre_present = true,
                                   .top_channels_present = 3},
          kCicp, "16", 10},
-        {12, ac4::OriginalContent{.b_4_back_channels_present = false, .b_centre_present = true,
+        {12, iclforge::ac4::OriginalContent{.b_4_back_channels_present = false, .b_centre_present = true,
                                   .top_channels_present = 1},
          kDolby, "0000C7", 8},
     };
     // clang-format on
     for (const Case& c : cases) {
         CAPTURE(c.ch_mode, c.value);
-        ac4::Toc toc = one_substream_toc(c.ch_mode);
+        iclforge::ac4::Toc toc = one_substream_toc(c.ch_mode);
         toc.substream_groups[0].substreams[0].chan->original_content = c.content;
-        const auto configuration = ac4::dash_channel_configuration(toc);
+        const auto configuration = iclforge::ac4::dash_channel_configuration(toc);
         REQUIRE(configuration.has_value());
         CHECK(configuration->scheme_id_uri == c.scheme);
         CHECK(configuration->value == c.value);
-        CHECK(ac4::presentation_channel_count(toc) == std::optional<int>{c.channels});
+        CHECK(iclforge::ac4::presentation_channel_count(toc) == std::optional<int>{c.channels});
     }
 
     // Object audio: G.3.3.2's Example 2, and no channel count.
-    ac4::Toc objects = one_substream_toc(1);
+    iclforge::ac4::Toc objects = one_substream_toc(1);
     objects.substream_groups[0].b_channel_coded = false;
-    ac4::GroupSubstream ajoc;
-    ajoc.kind = ac4::GroupSubstream::Kind::kAjoc;
-    ajoc.ajoc = ac4::AjocSubstreamInfo{};
+    iclforge::ac4::GroupSubstream ajoc;
+    ajoc.kind = iclforge::ac4::GroupSubstream::Kind::kAjoc;
+    ajoc.ajoc = iclforge::ac4::AjocSubstreamInfo{};
     objects.substream_groups[0].substreams[0] = ajoc;
-    const auto object_configuration = ac4::dash_channel_configuration(objects);
+    const auto object_configuration = iclforge::ac4::dash_channel_configuration(objects);
     REQUIRE(object_configuration.has_value());
     CHECK(object_configuration->scheme_id_uri == kDolby);
     CHECK(object_configuration->value == "800000");
-    CHECK_FALSE(ac4::presentation_channel_count(objects).has_value());
+    CHECK_FALSE(iclforge::ac4::presentation_channel_count(objects).has_value());
 
     // Below bitstream_version 2 there is no version 1 presentation to read.
-    ac4::Toc legacy = one_substream_toc(1);
+    iclforge::ac4::Toc legacy = one_substream_toc(1);
     legacy.bitstream_version = 1;
-    CHECK_FALSE(ac4::dash_channel_configuration(legacy).has_value());
+    CHECK_FALSE(iclforge::ac4::dash_channel_configuration(legacy).has_value());
 }
 
 TEST_CASE("dash_supplemental_properties sends Annex G.3's frame rate and pre-virtualized content",
@@ -2834,86 +2834,86 @@ TEST_CASE("dash_supplemental_properties sends Annex G.3's frame rate and pre-vir
          {Case{48000, 13, "375/16"}, Case{48000, 3, "30000/1001"}, Case{48000, 0, "24000/1001"},
           Case{48000, 2, "25"}, Case{48000, 11, "120000/1001"}, Case{44100, 13, "11025/512"}}) {
         CAPTURE(c.sample_rate, c.frame_rate_index);
-        ac4::Toc toc = one_substream_toc(4);
+        iclforge::ac4::Toc toc = one_substream_toc(4);
         toc.sample_rate_hz = c.sample_rate;
         toc.frame_rate_index = c.frame_rate_index;
-        const auto properties = ac4::dash_supplemental_properties(toc);
+        const auto properties = iclforge::ac4::dash_supplemental_properties(toc);
         REQUIRE(properties.size() == 1);
         CHECK(properties.front().scheme_id_uri == kRate);
         CHECK(properties.front().value == c.value);
     }
-    ac4::Toc virtualized = one_substream_toc(1);
+    iclforge::ac4::Toc virtualized = one_substream_toc(1);
     virtualized.presentations_v1[0].b_pre_virtualized = true;
-    const auto properties = ac4::dash_supplemental_properties(virtualized);
+    const auto properties = iclforge::ac4::dash_supplemental_properties(virtualized);
     REQUIRE(properties.size() == 2);
     CHECK(properties[1].scheme_id_uri == "tag:dolby.com,2016:dash:virtualized_content:2016");
     CHECK(properties[1].value == "1");
     // A frame rate the tables leave undefined sends none.
-    ac4::Toc reserved = one_substream_toc(1);
+    iclforge::ac4::Toc reserved = one_substream_toc(1);
     reserved.frame_rate_index = 14;
-    CHECK(ac4::dash_supplemental_properties(reserved).empty());
+    CHECK(iclforge::ac4::dash_supplemental_properties(reserved).empty());
 }
 
 TEST_CASE("configuration_difference names the parameter of Annex H.1.2.4 that differs",
           "[ac4][carriage]") {
-    const ac4::Toc base = configurations_toc();
-    CHECK(ac4::configuration_difference(base, base).empty());
+    const iclforge::ac4::Toc base = configurations_toc();
+    CHECK(iclforge::ac4::configuration_difference(base, base).empty());
     // What H.1.2.4 does not list may change from sample to sample.
-    ac4::Toc same = base;
+    iclforge::ac4::Toc same = base;
     same.sequence_counter = 7;
     same.b_iframe_global = !base.b_iframe_global;
     same.presentations_v1[1].md_compat = 3;
-    CHECK(ac4::configuration_difference(base, same).empty());
+    CHECK(iclforge::ac4::configuration_difference(base, same).empty());
     // The same primary language subtag is the same language.
-    ac4::Toc region = base;
+    iclforge::ac4::Toc region = base;
     region.substream_groups[1] = chan_group(0, 4, "en-GB");
-    CHECK(ac4::configuration_difference(base, region).empty());
+    CHECK(iclforge::ac4::configuration_difference(base, region).empty());
 
     struct Case {
         const char* name;
-        std::function<void(ac4::Toc&)> change;
+        std::function<void(iclforge::ac4::Toc&)> change;
         std::string_view says;
     };
     const std::vector<Case> cases = {
-        {"frame rate", [](ac4::Toc& t) { t.frame_rate_index = 2; }, "frame_rate_index"},
-        {"sample rate", [](ac4::Toc& t) { t.sample_rate_hz = 44100; }, "fs_index"},
+        {"frame rate", [](iclforge::ac4::Toc& t) { t.frame_rate_index = 2; }, "frame_rate_index"},
+        {"sample rate", [](iclforge::ac4::Toc& t) { t.sample_rate_hz = 44100; }, "fs_index"},
         {"a presentation more",
-         [](ac4::Toc& t) {
+         [](iclforge::ac4::Toc& t) {
              t.presentations_v1.push_back(t.presentations_v1.front());
              t.n_presentations += 1;
          },
          "n_presentations"},
         {"a presentation_config",
-         [](ac4::Toc& t) { t.presentations_v1[1].presentation_config = 5; }, "presentation_config"},
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[1].presentation_config = 5; }, "presentation_config"},
         {"a single substream group",
-         [](ac4::Toc& t) { t.presentations_v1[1].presentation_config.reset(); },
+         [](iclforge::ac4::Toc& t) { t.presentations_v1[1].presentation_config.reset(); },
          "b_single_substream_group"},
         {"a content_classifier",
-         [](ac4::Toc& t) { t.substream_groups[1].content_type->content_classifier = 5; },
+         [](iclforge::ac4::Toc& t) { t.substream_groups[1].content_type->content_classifier = 5; },
          "content_classifier"},
-        {"a language", [](ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4, "fr"); },
+        {"a language", [](iclforge::ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4, "fr"); },
          "language"},
-        {"no language", [](ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4); }, "language"},
+        {"no language", [](iclforge::ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4); }, "language"},
         {"a channel_mode",
-         [](ac4::Toc& t) { t.substream_groups[3].substreams[0].chan->channel_mode = 4; },
+         [](iclforge::ac4::Toc& t) { t.substream_groups[3].substreams[0].chan->channel_mode = 4; },
          "channel_mode"},
         {"an sf_multiplier",
-         [](ac4::Toc& t) { t.substream_groups[0].substreams[0].chan->sf_multiplier = 1; },
+         [](iclforge::ac4::Toc& t) { t.substream_groups[0].substreams[0].chan->sf_multiplier = 1; },
          "sf_multiplier"},
-        {"a substream group fewer", [](ac4::Toc& t) { t.substream_groups.pop_back(); },
+        {"a substream group fewer", [](iclforge::ac4::Toc& t) { t.substream_groups.pop_back(); },
          "substream groups"},
     };
     for (const Case& c : cases) {
         CAPTURE(c.name);
-        ac4::Toc toc = base;
+        iclforge::ac4::Toc toc = base;
         c.change(toc);
-        CHECK(ac4::configuration_difference(base, toc).find(c.says) != std::string_view::npos);
+        CHECK(iclforge::ac4::configuration_difference(base, toc).find(c.says) != std::string_view::npos);
     }
 }
 
 TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",
           "[ac4][carriage]") {
-    ac4::Toc toc;
+    iclforge::ac4::Toc toc;
     toc.sample_rate_hz = 48000;
     const std::array<std::optional<std::uint32_t>, 14> expected{{
         2002, 2000, 1920, std::nullopt, 1600, 1001, 1000, 960,
@@ -2922,46 +2922,46 @@ TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",
     for (int index = 0; index < static_cast<int>(expected.size()); ++index) {
         toc.frame_rate_index = index;
         CAPTURE(index);
-        CHECK(ac4::samples_per_frame(toc) == expected[static_cast<std::size_t>(index)]);
+        CHECK(iclforge::ac4::samples_per_frame(toc) == expected[static_cast<std::size_t>(index)]);
     }
     // 44,1 kHz: Table 83 defines only the sample-rate-locked 2048 frame.
     toc.sample_rate_hz = 44100;
     toc.frame_rate_index = 13;
-    CHECK(ac4::samples_per_frame(toc) == std::optional<std::uint32_t>{2048});
+    CHECK(iclforge::ac4::samples_per_frame(toc) == std::optional<std::uint32_t>{2048});
     toc.frame_rate_index = 0;
-    CHECK_FALSE(ac4::samples_per_frame(toc).has_value());
+    CHECK_FALSE(iclforge::ac4::samples_per_frame(toc).has_value());
 }
 
 TEST_CASE("media_timing follows Part 2 Table E.1, at 240 000 Hz where frames alternate",
           "[ac4][carriage]") {
-    ac4::Toc toc;
+    iclforge::ac4::Toc toc;
     toc.sample_rate_hz = 48000;
     constexpr std::array<std::uint32_t, 14> kDelta = {2002, 2000, 1920, 8008, 1600, 1001, 1000,
                                                       960,  4004, 800,  480,  2002, 400,  2048};
     for (int index = 0; index < static_cast<int>(kDelta.size()); ++index) {
         toc.frame_rate_index = index;
         CAPTURE(index);
-        const auto timing = ac4::media_timing(toc);
+        const auto timing = iclforge::ac4::media_timing(toc);
         REQUIRE(timing.has_value());
         const bool alternates = index == 3 || index == 8 || index == 11;
         CHECK(timing->timescale == (alternates ? 240000U : 48000U));
         CHECK(timing->sample_delta == kDelta[static_cast<std::size_t>(index)]);
     }
     toc.frame_rate_index = 14;
-    CHECK_FALSE(ac4::media_timing(toc).has_value());
+    CHECK_FALSE(iclforge::ac4::media_timing(toc).has_value());
     toc.sample_rate_hz = 44100;
     toc.frame_rate_index = 13;
-    const auto timing = ac4::media_timing(toc);
+    const auto timing = iclforge::ac4::media_timing(toc);
     REQUIRE(timing.has_value());
     CHECK(timing->timescale == 44100U);
     CHECK(timing->sample_delta == 2048U);
     toc.frame_rate_index = 3;
-    CHECK_FALSE(ac4::media_timing(toc).has_value());
+    CHECK_FALSE(iclforge::ac4::media_timing(toc).has_value());
 }
 
 TEST_CASE("frame_rate gives Part 1 Tables 83 and 84's frame rates and internal rates",
           "[ac4][carriage]") {
-    ac4::Toc toc;
+    iclforge::ac4::Toc toc;
     toc.sample_rate_hz = 48000;
     struct Row {
         double fps;
@@ -2988,7 +2988,7 @@ TEST_CASE("frame_rate gives Part 1 Tables 83 and 84's frame rates and internal r
     for (int index = 0; index < static_cast<int>(kRows.size()); ++index) {
         CAPTURE(index);
         toc.frame_rate_index = index;
-        const auto rate = ac4::frame_rate(toc);
+        const auto rate = iclforge::ac4::frame_rate(toc);
         REQUIRE(rate.has_value());
         const Row& row = kRows[static_cast<std::size_t>(index)];
         CHECK(std::abs(rate->frames_per_second - row.fps) < 1e-9);
@@ -2996,24 +2996,24 @@ TEST_CASE("frame_rate gives Part 1 Tables 83 and 84's frame rates and internal r
         CHECK(std::abs(rate->internal_rate_hz - row.internal_rate_hz) < 1e-6);
     }
     toc.frame_rate_index = 14;
-    CHECK_FALSE(ac4::frame_rate(toc).has_value());
+    CHECK_FALSE(iclforge::ac4::frame_rate(toc).has_value());
     toc.sample_rate_hz = 44100;
     toc.frame_rate_index = 13;
-    const auto rate = ac4::frame_rate(toc);
+    const auto rate = iclforge::ac4::frame_rate(toc);
     REQUIRE(rate.has_value());
     CHECK(rate->internal_rate_hz == 44100.0);
     toc.frame_rate_index = 2;
-    CHECK_FALSE(ac4::frame_rate(toc).has_value());
+    CHECK_FALSE(iclforge::ac4::frame_rate(toc).has_value());
 }
 
 TEST_CASE("rfc6381_codec_string renders Annex E.13's dotted hex fields", "[ac4][carriage]") {
     const auto data = read_file(fixture_path());
-    const auto scanned = ac4::scan(data);
+    const auto scanned = iclforge::ac4::scan(data);
     REQUIRE_FALSE(scanned.frames.empty());
-    const auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+    const auto frame = iclforge::ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
     REQUIRE(frame.has_value());
     // bitstream_version 2, presentation_version 1, md_compat 0 on this DEE
     // encode - cross-checked against the probe table docs/verification.md
     // records for the same fixture.
-    CHECK(ac4::rfc6381_codec_string(frame->toc) == "ac-4.02.01.00");
+    CHECK(iclforge::ac4::rfc6381_codec_string(frame->toc) == "ac-4.02.01.00");
 }

@@ -5,7 +5,7 @@
 #include <thread>
 #include <utility>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 TapPool::TapPool(std::shared_ptr<AudioDevices> devices, std::uint16_t channels,
                  std::uint32_t sample_rate)
@@ -81,4 +81,4 @@ const std::vector<TapRead>& TapPool::read(std::size_t frames, int wait_ms) {
     return reads_;
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

@@ -13,7 +13,7 @@
 #include "iclforge/base/bitreader.hpp"
 #include "iclforge/base/bitwriter.hpp"
 
-namespace ac3::emdf {
+namespace iclforge::emdf {
 
 namespace {
 
@@ -305,4 +305,4 @@ std::expected<std::optional<std::vector<DecodedPayload>>, ParseError> parse_cont
     return std::optional<std::vector<DecodedPayload>>{std::move(payloads)};
 }
 
-}  // namespace ac3::emdf
+}  // namespace iclforge::emdf

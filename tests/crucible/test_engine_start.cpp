@@ -26,8 +26,8 @@
 // so the first probe's verdict reaches start() well inside its deadline
 // even on a loaded host.
 
-using namespace ac3::crucible;
-using namespace ac3::crucible::testing;
+using namespace iclforge::crucible;
+using namespace iclforge::crucible::testing;
 
 namespace {
 

@@ -14,24 +14,24 @@
 #include "iclforge/adm/model.hpp"
 
 // Roadmap item B1 phase 2 of 3 ("ADM BWF reader feeding the JOC encoder"): maps
-// the object graph ac3adm::ac3adm (phase 1) parses from a BW64/ADM master onto
-// ac3::oba::AtmosEncoder's input shape - one ac3::oba::ObjectPath plus one mono PCM span per
+// the object graph iclforge::adm (phase 1) parses from a BW64/ADM master onto
+// iclforge::oba::AtmosEncoder's input shape - one iclforge::oba::ObjectPath plus one mono PCM span per
 // channel, ready to drive encode_frame() in a loop. Phase 3 (a CLI/GUI-facing end-to-end command)
 // is a separate, later task; this module is the mapping/bridge library only.
 //
-// ac3::admbridge sits between two modules that otherwise know nothing about each other:
-// ac3adm::ac3adm (src/adm, codec-blind by design - see its own header comments) and
-// ac3::forge/ac3::oba (src/ac3, always built, no dependency on the opt-in, Boost-requiring
-// ac3adm). This module is the one place both are allowed to meet, and - like ac3adm::ac3adm
+// iclforge::admbridge sits between two modules that otherwise know nothing about each other:
+// iclforge::adm (src/adm, codec-blind by design - see its own header comments) and
+// iclforge::ac3/iclforge::oba (src/ac3, always built, no dependency on the opt-in, Boost-requiring
+// ac3adm). This module is the one place both are allowed to meet, and - like iclforge::adm
 // itself - it is gated behind AC3FORGE_BUILD_ADM: it is meaningless without ac3adm, and
-// ac3::forge is unconditionally available regardless of whether this module is built at all. See
+// iclforge::ac3 is unconditionally available regardless of whether this module is built at all. See
 // src/admbridge/CMakeLists.txt's own header comment for the full reasoning, including why this
 // is a new standalone module rather than folded into either side.
 //
 // a future DAMF reader (out of scope; was B2 `.atmos`/`.atmos.metadata`/`.atmos.audio` reader) names
 // this module as the "mapping layer" it plans to share - reason enough to keep the bed/object
 // classification, coordinate conversion (coordinates.hpp) and keyframe-timeline construction
-// below independent of ac3adm's own BW64/ADM-XML-specific parsing, even though ac3adm::AdmDocument
+// below independent of ac3adm's own BW64/ADM-XML-specific parsing, even though iclforge::adm::AdmDocument
 // is still this module's only current input shape.
 //
 // What gets mapped, and what does not:
@@ -62,7 +62,7 @@
 //     function's own comment for the full walkthrough, verified against the standard's own
 //     Figs 7-10, not assumed from a paraphrase.
 //   - width/height/depth/diffuse/objectDivergence (parsed by ac3adm, per Clause 10.3 also
-//     nominally interpolatable) have no equivalent in ac3::oba::Keyframe/ObjectPlacement at all -
+//     nominally interpolatable) have no equivalent in iclforge::oba::Keyframe/ObjectPlacement at all -
 //     AtmosEncoder's object model is a pure point source. This bridge silently drops them; every
 //     channel it produces is a point source regardless of what the source ADM data's spread
 //     parameters said. Documented here and in docs/library/adm-bridge.md rather than left for a
@@ -70,7 +70,7 @@
 //   - channelLock/zoneExclusion (Clause 10.2/10.4) are parsed by ac3adm but have no AtmosEncoder
 //     equivalent either (no notion of "the nearest bed speaker" or "a masked zone" downstream of
 //     a fixed 5.1 VBAP ring) and are likewise dropped.
-namespace ac3::admbridge {
+namespace iclforge::admbridge {
 
 enum class BridgeError : std::uint8_t {
     kNoProgramme,           // the document's ADM model has no audioProgramme at all
@@ -100,7 +100,7 @@ enum class BridgeError : std::uint8_t {
                             // DynamicObject state to place it, even a static, never-moving one)
     kEmptyIabStream,        // build_iab() only: the frame span passed to it was empty
     kUnsupportedIabChannel, // build_iab() only: a BedDefinition used a Table 19 ChannelID with no
-                            // ac3::oba::BedLabel equivalent - see iab_bridge.cpp's own comment on
+                            // iclforge::oba::BedLabel equivalent - see iab_bridge.cpp's own comment on
                             // exactly which codes map and which are refused
     kNoIabEssenceForChannel, // build_iab() only: a channel's non-zero AudioDataID (§10.3.6/Table 8's
                             // own field) never resolved to an AudioDataPCM element in any frame it
@@ -111,10 +111,10 @@ enum class BridgeError : std::uint8_t {
 
 [[nodiscard]] AC3ADMBRIDGE_EXPORT std::string_view describe(BridgeError error);
 
-// Builds one channel's ac3::oba::ObjectPath from its audioBlockFormat sequence.
+// Builds one channel's iclforge::oba::ObjectPath from its audioBlockFormat sequence.
 //
 // BS.2076-2 §5.4.1: a channel with exactly one audioBlockFormat is static - one keyframe, held
-// everywhere (ac3::oba::KeyframePath's own "a single keyframe holds its placement everywhere"
+// everywhere (iclforge::oba::KeyframePath's own "a single keyframe holds its placement everywhere"
 // behaviour is exactly this).
 //
 // For more than one block, §10.3's own state machine (verified directly against the standard's
@@ -149,31 +149,31 @@ enum class BridgeError : std::uint8_t {
 // on why) - pass true only for a bed channel whose speakerLabel identifies it as the LFE.
 //
 // Exposed (not file-local) specifically so this state machine can be tested directly against
-// hand-built ac3adm::AudioChannelFormat fixtures, independent of a full BW64 file/<chna>/pack
+// hand-built iclforge::adm::AudioChannelFormat fixtures, independent of a full BW64 file/<chna>/pack
 // resolution round trip.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<ac3::oba::ObjectPath, BridgeError>
-build_channel_path(const ac3adm::AudioChannelFormat& channel, double object_start_s,
+[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<iclforge::oba::ObjectPath, BridgeError>
+build_channel_path(const iclforge::adm::AudioChannelFormat& channel, double object_start_s,
                     bool force_lfe);
 
-// The result of bridging one ac3adm::AdmDocument: everything needed to construct and drive an
-// ac3::oba::AtmosEncoder, one entry per channel (bed speaker feed or dynamic object), all vectors
+// The result of bridging one iclforge::adm::AdmDocument: everything needed to construct and drive an
+// iclforge::oba::AtmosEncoder, one entry per channel (bed speaker feed or dynamic object), all vectors
 // indexed identically - entry i of every vector describes the same channel. Channels appear in
 // programme -> audioContent -> audioObject (including nested audioObjects, depth-first)
 // traversal order; that order has no significance to AtmosEncoder itself (see this header's own
 // top comment - every channel becomes one of its `objects_` slots identically, bed-pinned or
 // not), it exists only so BridgeResult is deterministic and its diagnostics read sensibly.
 struct BridgeResult {
-    std::vector<std::string> channel_ids;     // ac3adm::AudioChannelFormat::id, for diagnostics
+    std::vector<std::string> channel_ids;     // iclforge::adm::AudioChannelFormat::id, for diagnostics
     std::vector<bool> is_bed;                 // true: a DirectSpeakers bed channel
     std::vector<bool> is_lfe;                 // true only for a bed channel routed via lfe_send
                                                // (see this header's own top comment)
-    std::vector<ac3::oba::ObjectPath> paths;  // pass directly to ac3::oba::evaluate_placements
+    std::vector<iclforge::oba::ObjectPath> paths;  // pass directly to iclforge::oba::evaluate_placements
     std::vector<std::span<const float>> pcm;  // one mono span per channel, borrowed from the
                                                // AdmDocument passed to build() - the caller must
-                                               // keep that document (and its ac3adm::PcmAudio)
+                                               // keep that document (and its iclforge::adm::PcmAudio)
                                                // alive for as long as these spans are used
-    std::uint32_t sample_rate = 0;            // ac3adm::PcmAudio::sample_rate, unconverted - the
-                                               // caller maps this to ac3::SampleRate (and rejects
+    std::uint32_t sample_rate = 0;            // iclforge::adm::PcmAudio::sample_rate, unconverted - the
+                                               // caller maps this to iclforge::SampleRate (and rejects
                                                // an unsupported rate) the same way every existing
                                                // WAV-reading entry point already does; not
                                                // duplicated here
@@ -188,7 +188,7 @@ struct BridgeResult {
 // audioObjects - §5.6: "AudioObjects can be nested and so they can refer to other audioObjects" -
 // with a cycle guard per §5.6.7's own prohibition), classifies each leaf audioObject as a bed or
 // a dynamic object via its resolved audioPackFormat's TypeDefinition, builds one
-// ac3::oba::ObjectPath per channel from its audioBlockFormat sequence, and resolves its audio via
+// iclforge::oba::ObjectPath per channel from its audioBlockFormat sequence, and resolves its audio via
 // <chna>.
 //
 // Absolute program-timeline time for a channel's automation is `object.start_s + block.rtime_s` -
@@ -199,21 +199,21 @@ struct BridgeResult {
 // parent's. audioProgramme's own optional `start`/`end` attributes (Table 37) are a SEPARATE,
 // video-alignment concept ("used for alignment with video times"), not a third offset the object
 // timeline is measured against - confirmed both by that clause's own wording and by
-// ac3adm::AudioProgramme (ac3adm/model.hpp) carrying no start_s field of its own at all to add.
+// iclforge::adm::AudioProgramme (ac3adm/model.hpp) carrying no start_s field of its own at all to add.
 //
 // Channel count is capped at 15: AtmosEncoder's own constructor `objects` parameter is dynamic
 // objects only, with the bed's own LFE bookkeeping as an implicit, always-present 16th (TS 103
 // 420 §8.3.2.2 caps the total at 16) - the exact cap apps/cli/main.cpp's run_atmos_encode/
 // run_atmos_path already enforce for the same reason, reused here rather than re-derived.
 [[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<BridgeResult, BridgeError> build(
-    const ac3adm::AdmDocument& document, std::string_view programme_id = {});
+    const iclforge::adm::AdmDocument& document, std::string_view programme_id = {});
 
 // --- Write direction: roadmap item IM2 ("JOC -> ADM BWF writer") ---------------------------
 //
-// The mirror image of build() above: instead of mapping an already-parsed ac3adm::AdmDocument
+// The mirror image of build() above: instead of mapping an already-parsed iclforge::adm::AdmDocument
 // onto AtmosEncoder's input shape, this maps a DECODED E-AC-3/Atmos programme's own bed/object
-// PCM and OAMD automation onto an ac3adm::AdmDocument, ready for ac3adm::write_bw64(). Still the
-// one place ac3adm and ac3::forge/ac3::oba are allowed to meet - see this header's own top
+// PCM and OAMD automation onto an iclforge::adm::AdmDocument, ready for iclforge::adm::write_bw64(). Still the
+// one place ac3adm and iclforge::ac3/iclforge::oba are allowed to meet - see this header's own top
 // comment - just travelling the other way.
 //
 // Scope is deliberately narrower than build()'s own read-side generality, matching what this
@@ -226,20 +226,20 @@ struct BridgeResult {
 
 // One OAMD update to a dynamic object's DynamicObject state, timestamped in absolute samples from
 // the start of the whole decode (not the access unit it arrived in) - the flattened form of
-// ac3::oba::DecodedProgram::UpdateBlock (oamd.hpp) a caller assembles by walking every decoded
+// iclforge::oba::DecodedProgram::UpdateBlock (oamd.hpp) a caller assembles by walking every decoded
 // access unit's own object_metadata->blocks in file order and adding each block's own
 // sample_offset to a running total of samples already emitted.
 struct AC3ADMBRIDGE_EXPORT WriteObjectUpdate {
     std::uint64_t sample_offset = 0;
-    // ac3::oba::UpdateBlock::ramp_duration verbatim - samples, or -1 for the one
+    // iclforge::oba::UpdateBlock::ramp_duration verbatim - samples, or -1 for the one
     // ramp_duration_bits codeword TS 103 420's own table does not name (oamd.hpp's own comment);
     // build_block_formats() (bridge.cpp) treats a negative value as an instant jump (ramp 0).
     int ramp_duration_samples = 0;
-    ac3::oba::DynamicObject state;
+    iclforge::oba::DynamicObject state;
 };
 
 // One channel to write into the master. A bed channel (`bed_label` set) is written as a static
-// DirectSpeakers channel pinned at its own room position (ac3::oba::bed_label_position) - `updates`
+// DirectSpeakers channel pinned at its own room position (iclforge::oba::bed_label_position) - `updates`
 // is ignored for these, the same "a bed channel has no direction to pin, `force_lfe` discards it
 // entirely" convention build_channel_path's own doc comment states for the read direction. A
 // dynamic object (`bed_label` empty) is written as an Objects channel whose audioBlockFormat
@@ -250,7 +250,7 @@ struct AC3ADMBRIDGE_EXPORT WriteObjectUpdate {
 struct AC3ADMBRIDGE_EXPORT WriteChannel {
     std::string name;
     std::span<const float> pcm;                       // this channel's whole-file mono audio
-    std::optional<ac3::oba::BedLabel> bed_label{};     // set: bed/LFE channel; empty: dynamic object
+    std::optional<iclforge::oba::BedLabel> bed_label{};     // set: bed/LFE channel; empty: dynamic object
     std::span<const WriteObjectUpdate> updates{};      // dynamic objects only
 };
 
@@ -259,12 +259,12 @@ struct AC3ADMBRIDGE_EXPORT WriteInput {
     std::vector<WriteChannel> channels;
 };
 
-// Builds one ac3adm::AdmDocument programme -> content -> {one audioObject per channel}, cartesian
-// positions throughout, ready for ac3adm::write_bw64(). `input.channels[i].pcm` is copied into the
+// Builds one iclforge::adm::AdmDocument programme -> content -> {one audioObject per channel}, cartesian
+// positions throughout, ready for iclforge::adm::write_bw64(). `input.channels[i].pcm` is copied into the
 // returned document's own `audio.channels[i]` (unlike build()'s own BridgeResult::pcm, which
 // borrows - there is no caller-owned buffer here for the result to borrow from once this function
 // returns, since the document is the thing about to be written to disk).
-[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<ac3adm::AdmDocument, BridgeError> write(
+[[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<iclforge::adm::AdmDocument, BridgeError> write(
     const WriteInput& input);
 
-}  // namespace ac3::admbridge
+}  // namespace iclforge::admbridge

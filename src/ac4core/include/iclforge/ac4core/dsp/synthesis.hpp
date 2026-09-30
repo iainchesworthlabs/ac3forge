@@ -35,7 +35,7 @@
 // < 2N it defines KBD_RIGHT on; the reading taken is the right half at the
 // same position, offset by NW (src/ac4dec/ERRATA.md, "KBD_RIGHT's argument").
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 
 // The transforms and windows for one full block length at one sampling
 // frequency: an inverse MDCT and a KBD_LEFT half window, with Table 186's
@@ -47,7 +47,7 @@ namespace ac4::detail::dsp {
 template <typename Real>
 class TransformSet {
    public:
-    using Complex = ac4::detail::dsp::Complex<Real>;
+    using Complex = iclforge::ac4::detail::dsp::Complex<Real>;
 
     // `rate_multiplier` is 1 at 44.1 and 48 kHz, 2 at 96 kHz and 4 at 192 kHz.
     TransformSet(int full_length, int rate_multiplier);
@@ -104,4 +104,4 @@ class ChannelSynthesis {
 extern template class TransformSet<Real>;
 extern template class ChannelSynthesis<Real>;
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

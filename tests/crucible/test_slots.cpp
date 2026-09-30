@@ -6,31 +6,31 @@
 // rules (five-slot bed, ten positioned, full-screen forces the bed, waiters
 // get freed slots in order) are what the UI's behaviour hangs on.
 
-using ac3::crucible::AppId;
-using ac3::crucible::BedChannel;
-using ac3::crucible::kBedSlots;
-using ac3::crucible::kObjectSlots;
-using ac3::crucible::kPositionedSlots;
-using ac3::crucible::SlotAllocator;
+using iclforge::crucible::AppId;
+using iclforge::crucible::BedChannel;
+using iclforge::crucible::kBedSlots;
+using iclforge::crucible::kObjectSlots;
+using iclforge::crucible::kPositionedSlots;
+using iclforge::crucible::SlotAllocator;
 
 TEST_CASE("the plan spends fifteen objects as ten positioned plus five bed", "[crucible]") {
     STATIC_CHECK(kObjectSlots == 15);
     STATIC_CHECK(kPositionedSlots == 10);
     STATIC_CHECK(kBedSlots == 5);
-    CHECK(ac3::crucible::bed_slot(BedChannel::kL) == 10);
-    CHECK(ac3::crucible::bed_slot(BedChannel::kRs) == 14);
+    CHECK(iclforge::crucible::bed_slot(BedChannel::kL) == 10);
+    CHECK(iclforge::crucible::bed_slot(BedChannel::kRs) == 14);
 }
 
 TEST_CASE("bed placements are pinned to the speakers and snapped", "[crucible]") {
-    const auto l = ac3::crucible::bed_placement(BedChannel::kL);
-    const auto rs = ac3::crucible::bed_placement(BedChannel::kRs);
+    const auto l = iclforge::crucible::bed_placement(BedChannel::kL);
+    const auto rs = iclforge::crucible::bed_placement(BedChannel::kRs);
     CHECK(l.snap);
     CHECK(rs.snap);
     CHECK(l.position.x == 0.0);
     CHECK(l.position.y == 0.0);
     CHECK(rs.position.x == 1.0);
     CHECK(rs.position.y == 1.0);
-    CHECK(ac3::crucible::bed_placement(BedChannel::kC).position.x == 0.5);
+    CHECK(iclforge::crucible::bed_placement(BedChannel::kC).position.x == 0.5);
 }
 
 TEST_CASE("a new application starts in the bed and positioning takes the lowest slot", "[crucible]") {

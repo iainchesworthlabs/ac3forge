@@ -22,7 +22,7 @@
 
 #include "windows_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -253,4 +253,4 @@ void DeviceWatcher::stop() {
     impl_->running.store(false, std::memory_order_release);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

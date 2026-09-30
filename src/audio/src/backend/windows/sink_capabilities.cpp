@@ -10,10 +10,10 @@
 // public API this project found. 'ac3cli play' falls back to
 // enumerate_render_devices()'s live probe here - see docs/platforms/windows.md.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(const std::string&) {
     return std::unexpected(EdidError::kNoBackend);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

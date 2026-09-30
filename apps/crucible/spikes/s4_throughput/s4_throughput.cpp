@@ -54,13 +54,13 @@ struct Result {
 };
 
 Result run(int numblkscod, unsigned bitrate_kbps, int seconds) {
-    ac3::oba::AtmosConfig config;
+    iclforge::oba::AtmosConfig config;
     config.numblkscod = numblkscod;
     config.bitrate_kbps = bitrate_kbps;
-    ac3::oba::AtmosEncoder encoder(config, kObjects);
+    iclforge::oba::AtmosEncoder encoder(config, kObjects);
 
     const int blocks = numblkscod == 0 ? 1 : numblkscod == 1 ? 2 : numblkscod == 2 ? 3 : 6;
-    const auto frames_per = static_cast<std::size_t>(blocks * ac3::kSamplesPerBlock);
+    const auto frames_per = static_cast<std::size_t>(blocks * iclforge::kSamplesPerBlock);
     const double rate = 48000.0;
     const double budget_ms = 1000.0 * static_cast<double>(frames_per) / rate;
 
@@ -69,10 +69,10 @@ Result run(int numblkscod, unsigned bitrate_kbps, int seconds) {
     std::vector<std::vector<float>> tap_pcm(kTaps);
     std::vector<std::vector<float>> objects(kObjects, std::vector<float>(frames_per, 0.0f));
     std::vector<std::span<const float>> views(kObjects);
-    std::vector<ac3::oba::ObjectPlacement> placement(kObjects);
+    std::vector<iclforge::oba::ObjectPlacement> placement(kObjects);
 
     // Bed slots: pinned to speakers, snapped.
-    const ac3::oba::Position bed_pos[kBedSlots] = {
+    const iclforge::oba::Position bed_pos[kBedSlots] = {
         {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {0.5, 0.0, 0.0}, {0.0, 1.0, 0.0}, {1.0, 1.0, 0.0}};
     for (int b = 0; b < kBedSlots; ++b) {
         placement[kPositioned + b].position = bed_pos[b];
@@ -84,7 +84,7 @@ Result run(int numblkscod, unsigned bitrate_kbps, int seconds) {
     std::vector<double> times;
     times.reserve(static_cast<std::size_t>(total_frames));
     std::size_t bytes = 0;
-    ac3::iec61937::Eac3BurstPacker packer;
+    iclforge::iec61937::Eac3BurstPacker packer;
     double t = 0.0;
 
     for (int f = 0; f < total_frames; ++f) {
@@ -128,7 +128,7 @@ Result run(int numblkscod, unsigned bitrate_kbps, int seconds) {
         if (!unit) {
             std::printf("  encode_frame refused at frame %d: FrameError %d (%s)\n", f,
                         static_cast<int>(std::to_underlying(unit.error())),
-                        std::string(ac3::describe(unit.error())).c_str());
+                        std::string(iclforge::describe(unit.error())).c_str());
             return {0, 0, 0, budget_ms, 0};
         }
         bytes += unit->bytes.size();

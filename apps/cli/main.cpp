@@ -31,7 +31,7 @@
 
 namespace {
 
-namespace plan = ac3::plan;
+namespace plan = iclforge::plan;
 
 using namespace ac3cli;
 using namespace ac3cli::commands;
@@ -118,7 +118,7 @@ struct Args {
 // What a command needs beyond plain file I/O to run at all in THIS build. Most commands need
 // nothing. Several need the machine's audio hardware; one (atmos-adm) needs a library that is not
 // part of every build - either way, unmet() below answers with the same {available, reason} shape
-// (ac3::audio::Capability), so dispatch and the usage listing treat both kinds of "not here"
+// (iclforge::audio::Capability), so dispatch and the usage listing treat both kinds of "not here"
 // identically.
 //
 // This is a column in the table rather than a check inside each handler for
@@ -135,7 +135,7 @@ struct Args {
 // kPassthrough.
 //
 // kAdm ('atmos-adm', ADM BWF reader phase 3): unlike the three audio ones, this is not a hardware
-// question - it is whether ac3adm::ac3adm/ac3::admbridge were linked into this build at all
+// question - it is whether iclforge::adm/iclforge::admbridge were linked into this build at all
 // (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own option()). Answered the
 // same way regardless: adm/atmos_adm.hpp's ac3cli::adm_capability(), backed by exactly one of
 // adm/enabled/atmos_adm.cpp or adm/disabled/atmos_adm.cpp (see run_atmos_adm's own comment for
@@ -152,8 +152,8 @@ enum class Needs : std::uint8_t { kNothing, kCapture, kPassthrough, kMonitor, kS
 // with no change to this file. kAdm asks the analogous question of
 // adm/{enabled,disabled}/atmos_adm.cpp instead - a library-linked-or-not fact rather than an
 // OS one, answered by the identical "ask the compiled-in file" shape.
-const ac3::audio::Capability* unmet(Needs needs) {
-    const auto& backend = ac3::audio::audio_backend();
+const iclforge::audio::Capability* unmet(Needs needs) {
+    const auto& backend = iclforge::audio::audio_backend();
     switch (needs) {
         case Needs::kNothing: return nullptr;
         case Needs::kCapture: return backend.capture.available ? nullptr : &backend.capture;
@@ -194,7 +194,7 @@ int run_man();
 int run_completions(std::string_view shell);
 
 // 44 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
-// linked ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above
+// linked iclforge::adm/iclforge::admbridge into this particular build (see Needs::kAdm/unmet() above
 // and run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating
 // it, never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
@@ -622,7 +622,7 @@ public:
         // failure here anyway - the run is over and the report has been
         // written or it has not.
         (void)std::fflush(nullptr);
-        ac3::cli::platform::restore_console_encoding(previous_);
+        iclforge::cli::platform::restore_console_encoding(previous_);
     }
 
     ConsoleEncoding(const ConsoleEncoding&) = delete;
@@ -631,7 +631,7 @@ public:
     ConsoleEncoding& operator=(ConsoleEncoding&&) = delete;
 
 private:
-    unsigned int previous_ = ac3::cli::platform::set_console_utf8();
+    unsigned int previous_ = iclforge::cli::platform::set_console_utf8();
 };
 
 }  // namespace
@@ -640,7 +640,7 @@ int run_main(int argc, char** argv) {
     const std::span<char*> raw{argv, static_cast<std::size_t>(argc)};
     if (raw.size() > 1 &&
         (std::string_view{raw[1]} == "--version" || std::string_view{raw[1]} == "-v")) {
-        fmt::println("{}", ac3::version_details());
+        fmt::println("{}", iclforge::version_details());
         return kExitOk;
     }
     // Split the command line into positional arguments and metadata options. An

@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <initializer_list>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 using S = Speaker;
@@ -382,4 +382,4 @@ LoudCorrOutput loud_corr_output(const ImmersiveLayout& layout,
                             : (output.tops == 2 ? LoudCorrOutput::k7X2 : LoudCorrOutput::k7X4);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

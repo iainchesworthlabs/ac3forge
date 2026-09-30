@@ -17,7 +17,7 @@
 
 // See diagnostics_report.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -167,4 +167,4 @@ std::string render_report(const ReportFacts& facts, const EngineStatus& engine,
     return scrub(std::move(out), withheld);
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

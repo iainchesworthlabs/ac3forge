@@ -15,7 +15,7 @@
 // levels here are measured against full scale 1.0 (src/ac4dec/ERRATA.md,
 // "Companding measures against full scale 1.0").
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // One channel companding_control() lists, in its order (Part 1 Table 212).
 struct CompandingChannel {
@@ -32,4 +32,4 @@ struct CompandingChannel {
 void apply_companding(const CompandingControl& control, int sb0, Real full_scale,
                       std::span<const CompandingChannel> channels);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -8,7 +8,7 @@
 
 #include "engine.hpp"
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 // One application as the window sees it: a live object whose properties
 // change in place as the engine's status changes. The rail, the room views,
@@ -54,7 +54,7 @@ public:
     explicit AppEntry(int app, QObject* parent = nullptr) : QObject(parent), app_(app) {}
 
     // Returns true when anything other than the level changed.
-    bool update(const ac3::crucible::AppStatus& s, const QString& name, bool background) {
+    bool update(const iclforge::crucible::AppStatus& s, const QString& name, bool background) {
         bool structural = false;
         auto set = [&structural](auto& field, const auto& value) {
             if (field != value) {
@@ -151,4 +151,4 @@ private:
     double level_ = -120.0;
 };
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

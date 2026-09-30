@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstddef>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr int kSubbands = 64;
@@ -239,4 +239,4 @@ void DeStage::process(double gain_db, const DeFrameValues& values,
     previous_identity_ = current_identity;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

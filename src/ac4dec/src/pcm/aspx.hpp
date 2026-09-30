@@ -26,7 +26,7 @@
 // last slot waits for the next frame. src/ac4dec/ERRATA.md records the
 // readings taken, under "A-SPX".
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // ac4core's own complex type (in place of std::complex<double>): the
 // decoder's QMF-domain reconstruction (this file and its neighbours in
@@ -39,7 +39,7 @@ namespace ac4::detail {
 // src/ac4core's kernels are explicitly instantiated at, resolved by
 // AC3FORGE_DECODE_SCALAR (double or float): one concrete type per build,
 // used directly here rather than as a template parameter, the way
-// ac3::forge's own decode path uses ac3::internal::decode_scalar_t (that
+// iclforge::ac3's own decode path uses iclforge::internal::decode_scalar_t (that
 // header's own comment explains the distinction). pcm/'s classes and free
 // functions are not C++ templates - they call the same one Real every other
 // pcm/ file resolves, since a build never needs two at once - so this second
@@ -139,4 +139,4 @@ struct AspxScratch {
                                       AspxScratch& scratch);
 [[nodiscard]] ParseResult decode_aspx(const AspxFrame& frame, std::span<AspxChannelIo> channels);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

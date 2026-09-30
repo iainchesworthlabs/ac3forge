@@ -11,7 +11,7 @@
 
 // See ac3_transcoder.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -223,7 +223,7 @@ std::expected<void, std::string> Ac3Transcoder::encode_frame(std::size_t count,
     auto encoded = encoder_->encode_frame(views);
     if (!encoded) {
         return std::unexpected(fmt::format("The AC-3 encoder refused a frame: {}.",
-                                           ac3::describe(encoded.error())));
+                                           iclforge::describe(encoded.error())));
     }
     const auto edited = io::edit_frame_metadata(
         *encoded,
@@ -320,4 +320,4 @@ void Ac3Transcoder::reset() {
     }
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

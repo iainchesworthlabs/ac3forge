@@ -30,7 +30,7 @@
 // a frame of padding plus the 256-sample transform delay remains - and the
 // note this returns is where the app gets the sentence to show.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 enum class TransportState : std::uint8_t {
     kStopped,
@@ -172,4 +172,4 @@ private:
     OpenOutputFormat open_;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

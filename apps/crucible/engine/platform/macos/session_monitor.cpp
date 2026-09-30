@@ -48,7 +48,7 @@
 // The three properties are read through the library's own CoreAudio helpers
 // (src/audio/src/backend/macos/coreaudio_support.hpp: address(),
 // get_property<T>(), CFOwned, to_utf8), reused rather than reimplemented for
-// the same reason the Linux half reuses ac3::pipewire's - a second copy of
+// the same reason the Linux half reuses iclforge::pipewire's - a second copy of
 // the two-call property idiom is a second place for it to be wrong. That is
 // what the private include directory in apps/crucible/CMakeLists.txt's APPLE
 // arm is for.
@@ -153,7 +153,7 @@
 // "Per-application capture: the Core Audio process tap" carries the whole of
 // it, including both figures in circulation for the version floor.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -335,4 +335,4 @@ std::shared_ptr<SessionMonitor> platform_session_monitor() {
     return std::make_shared<MacosSessionMonitor>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

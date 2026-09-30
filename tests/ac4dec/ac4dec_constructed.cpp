@@ -27,17 +27,17 @@
 namespace ac4dec_test {
 namespace {
 
-using ac4::Speaker;
-using ac4::detail::AcplConfig1chFields;
-using ac4::detail::AcplConfig2chFields;
-using ac4::detail::AcplData1chFields;
-using ac4::detail::AcplData2chFields;
-using ac4::detail::AcplParamFields;
-using ac4::detail::AspxChannelFields;
-using ac4::detail::AspxSetup;
-using ac4::detail::BitWriter;
-using ac4::detail::CodedTrack;
-using ac4::detail::FrameLayout;
+using iclforge::ac4::Speaker;
+using iclforge::ac4::detail::AcplConfig1chFields;
+using iclforge::ac4::detail::AcplConfig2chFields;
+using iclforge::ac4::detail::AcplData1chFields;
+using iclforge::ac4::detail::AcplData2chFields;
+using iclforge::ac4::detail::AcplParamFields;
+using iclforge::ac4::detail::AspxChannelFields;
+using iclforge::ac4::detail::AspxSetup;
+using iclforge::ac4::detail::BitWriter;
+using iclforge::ac4::detail::CodedTrack;
+using iclforge::ac4::detail::FrameLayout;
 using Lines = std::vector<double>;
 using Matrix = std::vector<std::vector<double>>;
 
@@ -231,7 +231,7 @@ constexpr double kGamma = 6552.0 / 16384.0;
 
 // One track coded finely: each band's step a 2^-12 of its peak.
 [[nodiscard]] CodedTrack code(const Lines& lines, const FrameLayout& layout, int max_sfb) {
-    const ac4::detail::Grouped grouped = ac4::detail::regroup(lines, layout, {max_sfb, max_sfb});
+    const iclforge::ac4::detail::Grouped grouped = iclforge::ac4::detail::regroup(lines, layout, {max_sfb, max_sfb});
     std::vector<std::vector<int>> sf(grouped.offset.size());
     for (std::size_t g = 0; g < grouped.offset.size(); ++g) {
         for (std::size_t b = 0; b + 1 < grouped.offset[g].size(); ++b) {
@@ -244,14 +244,14 @@ constexpr double kGamma = 6552.0 / 16384.0;
             sf[g].push_back(static_cast<int>(std::lround(100.0 + 4.0 * std::log2(step))));
         }
     }
-    return ac4::detail::code_track(grouped, sf, 0, layout);
+    return iclforge::ac4::detail::code_track(grouped, sf, 0, layout);
 }
 
 class ElementWriter {
    public:
     ElementWriter(BitWriter& w, const std::map<Speaker, Lines>& lines, const ElementCase& c)
-        : w_(w), lines_(lines), c_(c), layout_(ac4::detail::long_layout(kFrameLength)) {
-        const auto offsets = ac4::detail::band_offsets(kFrameLength);
+        : w_(w), lines_(lines), c_(c), layout_(iclforge::ac4::detail::long_layout(kFrameLength)) {
+        const auto offsets = iclforge::ac4::detail::band_offsets(kFrameLength);
         const std::size_t top = is_immersive(c.ch_mode) ? kImmersiveTopLine : kTopLine;
         while (max_sfb_ + 1 < static_cast<int>(offsets.size()) &&
                offsets[static_cast<std::size_t>(max_sfb_)] < top) {
@@ -266,19 +266,19 @@ class ElementWriter {
             chparam(0);
             return;
         }
-        ac4::detail::StereoChoice choice;
+        iclforge::ac4::detail::StereoChoice choice;
         choice.sap_mode = 3;
         choice.sap_coeff_all = true;
         const auto pairs = static_cast<std::size_t>((max_sfb_ + 1) / 2);
         choice.sap_used = {std::vector<bool>(pairs, true)};
         choice.alpha_q = {std::vector<int>(pairs, alpha_q)};
-        ac4::detail::write_chparam_info(w_, choice);
+        iclforge::ac4::detail::write_chparam_info(w_, choice);
     }
 
     // mono_data(1): sf_info_lfe() is max_sfb alone.
     void lfe() {
         w_.write(3, kLfeMaxSfb, "max_sfb");
-        ac4::detail::write_sf_data(w_, code(lines_.at(Speaker::kLfe), layout_, kLfeMaxSfb), layout_);
+        iclforge::ac4::detail::write_sf_data(w_, code(lines_.at(Speaker::kLfe), layout_, kLfeMaxSfb), layout_);
     }
 
     // mono_data(0).
@@ -346,9 +346,9 @@ class ElementWriter {
     }
 
     void chparam(int sap_mode) {
-        ac4::detail::StereoChoice choice;
+        iclforge::ac4::detail::StereoChoice choice;
         choice.sap_mode = sap_mode;
-        ac4::detail::write_chparam_info(w_, choice);
+        iclforge::ac4::detail::write_chparam_info(w_, choice);
     }
 
     // The channel pair's ASPX_ACPL_1 data (Table 21): with stereo processing
@@ -377,7 +377,7 @@ class ElementWriter {
         const std::vector<Lines> tracks =
             tracks_for(printed_matrix("a0 b0 | c0 d0", p), {&lines_.at(a), &lines_.at(b)});
         sf_data(tracks[0]);
-        ac4::detail::write_sf_data(w_, code(tracks[1], layout_, side), layout_);
+        iclforge::ac4::detail::write_sf_data(w_, code(tracks[1], layout_, side), layout_);
     }
 
     // ASPX_ACPL_1's residuals (Tables 25 and 33): max_sfb_master at the long
@@ -391,9 +391,9 @@ class ElementWriter {
     }
 
    private:
-    void sf_info() { ac4::detail::write_sf_info(w_, layout_, {max_sfb_, max_sfb_}); }
+    void sf_info() { iclforge::ac4::detail::write_sf_info(w_, layout_, {max_sfb_, max_sfb_}); }
 
-    void sf_data(const Lines& lines) { ac4::detail::write_sf_data(w_, code(lines, layout_, max_sfb_), layout_); }
+    void sf_data(const Lines& lines) { iclforge::ac4::detail::write_sf_data(w_, code(lines, layout_, max_sfb_), layout_); }
 
     void pair_tracks(Speaker a, Speaker b) {
         if (c_.stereo_proc) {
@@ -426,13 +426,13 @@ class ElementWriter {
 // or silent.
 [[nodiscard]] AspxChannelFields aspx_channel(const AspxSetup& setup, bool loud) {
     AspxChannelFields c;
-    c.framing.int_class = ac4::detail::AspxIntervalClass::kFixFix;
+    c.framing.int_class = iclforge::ac4::detail::AspxIntervalClass::kFixFix;
     c.framing.tmp_num_env = 0;
     if (setup.config.freq_res_mode == 0) {
         c.framing.freq_res = {1};
     }
     c.qmode_env = 0;  // one FIXFIX envelope is sent in 1.5 dB steps
-    const std::vector<int> borders = ac4::detail::interval_borders(c.framing, 0);
+    const std::vector<int> borders = iclforge::ac4::detail::interval_borders(c.framing, 0);
     bool high = true;
     switch (setup.config.freq_res_mode) {
         case 0:
@@ -442,7 +442,7 @@ class ElementWriter {
             high = false;
             break;
         case 2:
-            high = ac4::detail::envelope_high_res(borders, 0, c.framing.tsg_ptr);
+            high = iclforge::ac4::detail::envelope_high_res(borders, 0, c.framing.tsg_ptr);
             break;
         default:
             break;
@@ -455,7 +455,7 @@ class ElementWriter {
         if (!values.empty()) {
             values.front() = first;
         }
-        return ac4::detail::AspxEnvelopeFields{.delta_dir = 0, .values = values};
+        return iclforge::ac4::detail::AspxEnvelopeFields{.delta_dir = 0, .values = values};
     };
     c.sig = {flat(bands, loud ? kLoudEnvelope : 0)};
     c.noise = {flat(setup.counts.num_sbg_noise, loud ? 0 : kNoNoise)};
@@ -469,10 +469,10 @@ void write_aspx_data(BitWriter& w, bool iframe, const AspxSetup& setup, const El
     for (std::size_t e = 0; e < elements.size(); ++e) {
         const bool loud = static_cast<int>(e) == c.loud_unit;
         if (elements[e].size() == 1) {
-            ac4::detail::write_aspx_data_1ch(w, iframe, setup.xover_subband_offset, setup.config, setup.counts,
+            iclforge::ac4::detail::write_aspx_data_1ch(w, iframe, setup.xover_subband_offset, setup.config, setup.counts,
                                              aspx_channel(setup, loud));
         } else {
-            ac4::detail::write_aspx_data_2ch(w, iframe, setup.xover_subband_offset, setup.config, setup.counts,
+            iclforge::ac4::detail::write_aspx_data_2ch(w, iframe, setup.xover_subband_offset, setup.config, setup.counts,
                                              false, {aspx_channel(setup, loud), aspx_channel(setup, loud)});
         }
     }
@@ -480,19 +480,19 @@ void write_aspx_data(BitWriter& w, bool iframe, const AspxSetup& setup, const El
 
 // companding_control(num_chan), b_compand_on for the case's channel only.
 void write_companding(BitWriter& w, int num_chan, const ElementCase& c) {
-    ac4::detail::CompandingFields fields;
+    iclforge::ac4::detail::CompandingFields fields;
     fields.num_chan = num_chan;
     for (int ch = 0; ch < num_chan; ++ch) {
         fields.compand_on[static_cast<std::size_t>(ch)] = ch == c.companded;
     }
-    ac4::detail::write_companding_control(w, fields);
+    iclforge::ac4::detail::write_companding_control(w, fields);
 }
 
 void write_3_0(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& setup, const ElementCase& c) {
     using S = Speaker;
     w.write(1, c.aspx ? 1U : 0U, "3_0_codec_mode");
     if (iframe && c.aspx) {
-        ac4::detail::write_aspx_config(w, setup.config);
+        iclforge::ac4::detail::write_aspx_config(w, setup.config);
     }
     if (c.aspx) {
         write_companding(w, 3, c);
@@ -514,7 +514,7 @@ void write_5_x(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& set
     using S = Speaker;
     w.write(3, c.aspx ? 1U : 0U, "5_X_codec_mode");
     if (iframe && c.aspx) {
-        ac4::detail::write_aspx_config(w, setup.config);
+        iclforge::ac4::detail::write_aspx_config(w, setup.config);
     }
     if (has_lfe(c.ch_mode)) {
         e.lfe();
@@ -560,7 +560,7 @@ void write_7_x(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& set
     const auto [f, g] = last_pair(c.ch_mode);
     w.write(2, c.aspx ? 1U : 0U, "7_X_codec_mode");
     if (iframe && c.aspx) {
-        ac4::detail::write_aspx_config(w, setup.config);
+        iclforge::ac4::detail::write_aspx_config(w, setup.config);
     }
     if (has_lfe(c.ch_mode)) {
         e.lfe();
@@ -618,7 +618,7 @@ void write_7_x(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& set
 // frequency, the first band's value and no change after it; otherwise along
 // time, no change from the frame before.
 [[nodiscard]] AcplParamFields constant_param(int value, int first, int bands, bool iframe) {
-    ac4::detail::AcplSetFields set;
+    iclforge::ac4::detail::AcplSetFields set;
     set.diff_type = iframe ? 0 : 1;
     set.values.assign(static_cast<std::size_t>(bands - first), 0);
     if (iframe && !set.values.empty()) {
@@ -640,8 +640,8 @@ void write_7_x(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& set
 
 [[nodiscard]] AcplData1chFields acpl_data_1ch_of(const ElementCase& c, bool iframe) {
     const AcplConfig1chFields config = acpl_config_1ch_of(c);
-    const int bands = ac4::detail::acpl_num_param_bands(config.num_param_bands_id);
-    const int first = ac4::detail::acpl_param_band(config);
+    const int bands = iclforge::ac4::detail::acpl_num_param_bands(config.num_param_bands_id);
+    const int first = iclforge::ac4::detail::acpl_param_band(config);
     const bool decorrelated = c.acpl_beta_q > 0;
     AcplData1chFields d;
     d.alpha1 = constant_param(decorrelated ? alpha_zero_q(c.acpl_quant) : alpha_q(c.acpl_second, c.acpl_quant),
@@ -653,7 +653,7 @@ void write_7_x(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& set
 // ASPX_ACPL_3: gamma1 and gamma4 route L's and R's downmixes, alpha1 and
 // alpha2 to L and R or to Ls and Rs; every beta 0.
 [[nodiscard]] AcplData2chFields acpl_data_2ch_of(const ElementCase& c, bool iframe) {
-    const int bands = ac4::detail::acpl_num_param_bands(c.acpl_bands_id);
+    const int bands = iclforge::ac4::detail::acpl_num_param_bands(c.acpl_bands_id);
     const int gamma_q = c.acpl_quant == 0 ? 4 : 2;
     AcplData2chFields d;
     for (auto& alpha : d.alpha) {
@@ -673,7 +673,7 @@ void write_acpl_1ch_pair(BitWriter& w, const ElementCase& c, bool iframe, int co
     const AcplConfig1chFields config = acpl_config_1ch_of(c);
     const AcplData1chFields data = acpl_data_1ch_of(c, iframe);
     for (int k = 0; k < count; ++k) {
-        ac4::detail::write_acpl_data_1ch(w, config, data);
+        iclforge::ac4::detail::write_acpl_data_1ch(w, config, data);
     }
 }
 
@@ -682,8 +682,8 @@ void write_pair_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetu
     using S = Speaker;
     w.write(2, static_cast<std::uint64_t>(c.acpl), "stereo_codec_mode");
     if (iframe) {
-        ac4::detail::write_aspx_config(w, setup.config);
-        ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
+        iclforge::ac4::detail::write_aspx_config(w, setup.config);
+        iclforge::ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
     }
     write_companding(w, 1, c);
     if (c.acpl == 2) {
@@ -701,11 +701,11 @@ void write_5_x_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup
     using S = Speaker;
     w.write(3, static_cast<std::uint64_t>(c.acpl), "5_X_codec_mode");
     if (iframe) {
-        ac4::detail::write_aspx_config(w, setup.config);
+        iclforge::ac4::detail::write_aspx_config(w, setup.config);
         if (c.acpl == 4) {
-            ac4::detail::write_acpl_config_2ch(w, acpl_config_2ch_of(c));
+            iclforge::ac4::detail::write_acpl_config_2ch(w, acpl_config_2ch_of(c));
         } else {
-            ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
+            iclforge::ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
         }
     }
     if (has_lfe(c.ch_mode)) {
@@ -715,7 +715,7 @@ void write_5_x_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup
         write_companding(w, 2, c);
         e.stereo_data(S::kLeft, S::kRight);
         write_aspx_data(w, iframe, setup, c);
-        ac4::detail::write_acpl_data_2ch(w, acpl_config_2ch_of(c), acpl_data_2ch_of(c, iframe));
+        iclforge::ac4::detail::write_acpl_data_2ch(w, acpl_config_2ch_of(c), acpl_data_2ch_of(c, iframe));
         return;
     }
     write_companding(w, 3, c);
@@ -742,8 +742,8 @@ void write_7_x_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup
     const auto [f, g] = last_pair(c.ch_mode);
     w.write(2, static_cast<std::uint64_t>(c.acpl), "7_X_codec_mode");
     if (iframe) {
-        ac4::detail::write_aspx_config(w, setup.config);
-        ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
+        iclforge::ac4::detail::write_aspx_config(w, setup.config);
+        iclforge::ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
     }
     if (has_lfe(c.ch_mode)) {
         e.lfe();
@@ -803,8 +803,8 @@ void write_7_x_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup
 // in ASPX_ACPL_1 the tones are below acpl_qmf_band, where alpha plays no part.
 [[nodiscard]] AcplData1chFields immersive_acpl_data(const ElementCase& c, bool iframe) {
     const AcplConfig1chFields config = immersive_acpl_config(c);
-    const int bands = ac4::detail::acpl_num_param_bands(config.num_param_bands_id);
-    const int first = ac4::detail::acpl_param_band(config);
+    const int bands = iclforge::ac4::detail::acpl_num_param_bands(config.num_param_bands_id);
+    const int first = iclforge::ac4::detail::acpl_param_band(config);
     AcplData1chFields d;
     d.alpha1 = constant_param(alpha_q(c.acpl_second, c.acpl_quant), first, bands, iframe);
     d.beta1 = constant_param(0, first, bands, iframe);
@@ -830,8 +830,8 @@ struct AjccRoute {
 
 // ajcc_data() for the case's route, in both modules: each parameter one set,
 // along frequency in I-frames and along time, unchanged, after them.
-[[nodiscard]] ac4::detail::AjccDataFields ajcc_data_of(const ElementCase& c, bool iframe) {
-    ac4::detail::AjccDataFields d;
+[[nodiscard]] iclforge::ac4::detail::AjccDataFields ajcc_data_of(const ElementCase& c, bool iframe) {
+    iclforge::ac4::detail::AjccDataFields d;
     d.num_param_bands_id = c.acpl_bands_id;
     d.core_mode = c.ajcc_core_mode;
     d.qm_ab = c.acpl_quant;
@@ -858,9 +858,9 @@ struct AjccRoute {
                                         wet_zero,
                                         wet_zero,
                                         wet_zero};
-    const int bands = ac4::detail::ajcc_num_param_bands(d.num_param_bands_id);
+    const int bands = iclforge::ac4::detail::ajcc_num_param_bands(d.num_param_bands_id);
     for (std::size_t p = 0; p < values.size(); ++p) {
-        ac4::detail::AjccSetFields set;
+        iclforge::ac4::detail::AjccSetFields set;
         set.diff_type = iframe ? 0 : 1;
         set.values.assign(static_cast<std::size_t>(bands), 0);
         if (iframe && !set.values.empty()) {
@@ -996,10 +996,10 @@ void write_immersive(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetu
     }
     if (iframe) {
         if (mode != kScpl) {
-            ac4::detail::write_aspx_config(w, setup.config);
+            iclforge::ac4::detail::write_aspx_config(w, setup.config);
         }
         if (mode == kAspxAcpl1 || mode == kAspxAcpl2) {
-            ac4::detail::write_acpl_config_1ch(w, immersive_acpl_config(c));
+            iclforge::ac4::detail::write_acpl_config_1ch(w, immersive_acpl_config(c));
         }
     }
     if (has_lfe(c.ch_mode)) {
@@ -1046,7 +1046,7 @@ void write_immersive(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetu
         write_aspx_data(w, iframe, setup, c);
     }
     if (mode == kAspxAjcc) {
-        ac4::detail::write_ajcc_data(w, ajcc_data_of(c, iframe));
+        iclforge::ac4::detail::write_ajcc_data(w, ajcc_data_of(c, iframe));
     }
     if (mode == kScpl || mode == kAspxScpl || mode == kAspxAcpl1) {
         e.two_channel_data(S::kLeftBack, S::kRightBack);
@@ -1059,7 +1059,7 @@ void write_immersive(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetu
         const AcplConfig1chFields config = immersive_acpl_config(c);
         const AcplData1chFields data = immersive_acpl_data(c, iframe);
         for (int k = 0; k < 4; ++k) {
-            ac4::detail::write_acpl_data_1ch(w, config, data);
+            iclforge::ac4::detail::write_acpl_data_1ch(w, config, data);
         }
     }
 }
@@ -1157,7 +1157,7 @@ std::vector<Speaker> acpl_lines(std::map<Speaker, Lines>& lines, const ElementCa
 
 // Each channel's lines for frame `frame`: its tone over the 2N samples the
 // frame's one long block transforms (asf/analysis.hpp).
-[[nodiscard]] std::map<Speaker, Lines> channel_lines(ac4::detail::Analysis& analysis,
+[[nodiscard]] std::map<Speaker, Lines> channel_lines(iclforge::ac4::detail::Analysis& analysis,
                                                      const FrameLayout& layout,
                                                      const std::vector<Speaker>& speakers,
                                                      int ch_mode, int frame) {
@@ -1249,12 +1249,12 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
     for (const Speaker speaker : out.speakers) {
         out.tone_hz.push_back(tone_for(c.ch_mode, speaker));
     }
-    const std::optional<AspxSetup> setup = ac4::detail::aspx_setup_for(kAspxKbpsPerChannel, kRate);
+    const std::optional<AspxSetup> setup = iclforge::ac4::detail::aspx_setup_for(kAspxKbpsPerChannel, kRate);
     if (!setup) {
         throw std::runtime_error("no A-SPX configuration at 48 kHz");
     }
-    ac4::detail::Analysis analysis(kFrameLength, 1);
-    const FrameLayout layout = ac4::detail::long_layout(kFrameLength);
+    iclforge::ac4::detail::Analysis analysis(kFrameLength, 1);
+    const FrameLayout layout = iclforge::ac4::detail::long_layout(kFrameLength);
     for (int frame = 0; frame < frames; ++frame) {
         const bool iframe = frame % 4 == 0;
         std::map<Speaker, Lines> lines =
@@ -1304,14 +1304,14 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
         } else {
             write_7_x(audio, element, iframe, *setup, c);
         }
-        ac4::detail::FrameFields fields;
+        iclforge::ac4::detail::FrameFields fields;
         fields.sequence_counter = frame;
         fields.iframe = iframe;
         fields.ch_mode = c.ch_mode;
         fields.add_ch_base = c.add_ch_base;
-        std::vector<ac4::SyntaxRecord>& trace = out.traces.emplace_back();
-        const auto keep = [&trace](const ac4::SyntaxRecord& record) { trace.push_back(record); };
-        auto raw = ac4::detail::write_frame(fields, audio, 0, keep);
+        std::vector<iclforge::ac4::SyntaxRecord>& trace = out.traces.emplace_back();
+        const auto keep = [&trace](const iclforge::ac4::SyntaxRecord& record) { trace.push_back(record); };
+        auto raw = iclforge::ac4::detail::write_frame(fields, audio, 0, keep);
         if (!raw) {
             throw std::runtime_error("the frame writer refused a frame");
         }
@@ -1323,7 +1323,7 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
 std::vector<std::byte> sync_framed(const BuiltStream& stream) {
     std::vector<std::byte> out;
     for (const auto& frame : stream.frames) {
-        const std::vector<std::byte> framed = ac4::sync_frame(frame, true);
+        const std::vector<std::byte> framed = iclforge::ac4::sync_frame(frame, true);
         out.insert(out.end(), framed.begin(), framed.end());
     }
     return out;

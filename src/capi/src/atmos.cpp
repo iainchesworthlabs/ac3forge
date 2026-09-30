@@ -10,8 +10,8 @@ using ac3forge_c::guard;
 // Kept outside extern "C" below - see encoder.cpp's identical comment on
 // -Wreturn-type-c-linkage.
 namespace {
-ac3::oba::AtmosConfig atmos_config_to_cpp(const ac3forge_atmos_config_t& config) {
-    return ac3::oba::AtmosConfig{.sample_rate = ac3forge_c::to_cpp(config.sample_rate),
+iclforge::oba::AtmosConfig atmos_config_to_cpp(const ac3forge_atmos_config_t& config) {
+    return iclforge::oba::AtmosConfig{.sample_rate = ac3forge_c::to_cpp(config.sample_rate),
                                   .bitrate_kbps = config.bitrate_kbps,
                                   .dialnorm = config.dialnorm,
                                   .num_bands_idx = config.num_bands_idx,
@@ -27,7 +27,7 @@ void ac3forge_atmos_config_init(ac3forge_atmos_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const ac3::oba::AtmosConfig defaults{};
+    const iclforge::oba::AtmosConfig defaults{};
     *config = ac3forge_atmos_config_t{.sample_rate = ac3forge_c::from_cpp(defaults.sample_rate),
                                        .bitrate_kbps = defaults.bitrate_kbps,
                                        .dialnorm = defaults.dialnorm,
@@ -41,7 +41,7 @@ void ac3forge_object_placement_init(ac3forge_object_placement_t* placement) {
     if (placement == nullptr) {
         return;
     }
-    const ac3::oba::ObjectPlacement defaults{};
+    const iclforge::oba::ObjectPlacement defaults{};
     *placement = ac3forge_object_placement_t{.x = defaults.position.x,
                                               .y = defaults.position.y,
                                               .z = defaults.position.z,
@@ -56,11 +56,11 @@ ac3forge_status_t ac3forge_atmos_encoder_create(const ac3forge_atmos_config_t* c
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
     // num_bands_idx indexes joc::kNumBands (Table 50) and kSubbandToBand
-    // directly, starting in ac3::oba::AtmosEncoder's own constructor - which
+    // directly, starting in iclforge::oba::AtmosEncoder's own constructor - which
     // cannot report a failure - so an index outside the table is refused
     // before the encoder is built, not after it has already read past it.
     if (config->num_bands_idx < 0 ||
-        config->num_bands_idx >= static_cast<int>(ac3::oba::joc::kNumBands.size())) {
+        config->num_bands_idx >= static_cast<int>(iclforge::oba::joc::kNumBands.size())) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&config, &object_count, &out_encoder] {
@@ -84,7 +84,7 @@ ac3forge_status_t ac3forge_atmos_encoder_encode_frame(
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
     if (object_count != static_cast<size_t>(ac3forge_atmos_encoder_dynamic_object_count(encoder)) ||
-        placement_count != object_count || samples_per_object != ac3::kSamplesPerFrame) {
+        placement_count != object_count || samples_per_object != iclforge::kSamplesPerFrame) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&encoder, &objects, &object_count, &samples_per_object, &placements,
@@ -97,12 +97,12 @@ ac3forge_status_t ac3forge_atmos_encoder_encode_frame(
             }
             object_spans.emplace_back(objects[i], samples_per_object);
         }
-        std::vector<ac3::oba::ObjectPlacement> placement_values;
+        std::vector<iclforge::oba::ObjectPlacement> placement_values;
         placement_values.reserve(placement_count);
         for (size_t i = 0; i < placement_count; ++i) {
             const auto& p = placements[i];
-            placement_values.push_back(ac3::oba::ObjectPlacement{
-                .position = ac3::oba::Position{.x = p.x, .y = p.y, .z = p.z},
+            placement_values.push_back(iclforge::oba::ObjectPlacement{
+                .position = iclforge::oba::Position{.x = p.x, .y = p.y, .z = p.z},
                 .gain = p.gain,
                 .lfe_send = p.lfe_send});
         }

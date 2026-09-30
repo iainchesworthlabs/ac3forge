@@ -14,7 +14,7 @@
 
 #include "ts_detail.hpp"
 
-namespace mpegts {
+namespace iclforge::mpegts {
 
 namespace {
 
@@ -1118,7 +1118,7 @@ std::expected<std::vector<std::byte>, MuxError> mux(
                           stream_type_for(track, options.profile), descriptor);
 
     // PTS and PCR share one 90 kHz clock derived from the cumulative sample
-    // count, the same way matroska::mux derives its millisecond timestamps -
+    // count, the same way iclforge::matroska::mux derives its millisecond timestamps -
     // see that module's own comment on why the cumulative count is used
     // rather than a per-frame increment (a frame duration that is not a
     // whole number of clock ticks - 1536 samples at 44.1 kHz, for one -
@@ -1214,4 +1214,4 @@ std::expected<std::vector<std::byte>, MuxError> Writer::push(
 
 std::vector<std::byte> Writer::finalize() { return {}; }
 
-}  // namespace mpegts
+}  // namespace iclforge::mpegts

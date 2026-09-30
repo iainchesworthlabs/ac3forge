@@ -45,7 +45,7 @@
 // "no window" rather than as a lost display, so the rule is quietly off until
 // the manager is back.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -278,4 +278,4 @@ std::unique_ptr<X11WindowReader> make_x11_window_reader() {
     return std::make_unique<XcbWindowReader>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

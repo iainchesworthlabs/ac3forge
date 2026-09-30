@@ -59,7 +59,7 @@
 
 namespace ac3cli {
 
-namespace plan = ac3::plan;
+namespace plan = iclforge::plan;
 
 namespace {
 
@@ -101,16 +101,16 @@ std::vector<std::string_view> split(std::string_view text, char sep) {
 // Tables D2.3-D2.6's eight levels, spelled as the decibel figure the table
 // prints. "off" is the -inf row, which is a real value there rather than an
 // absent field.
-bool parse_mix_level(std::string_view text, ac3::meta::MixLevel& out) {
-    static constexpr std::array<std::pair<std::string_view, ac3::meta::MixLevel>, 8> kLevels{{
-        {"+3", ac3::meta::MixLevel::kPlus3dB},
-        {"+1.5", ac3::meta::MixLevel::kPlus1_5dB},
-        {"0", ac3::meta::MixLevel::kUnity},
-        {"-1.5", ac3::meta::MixLevel::kMinus1_5dB},
-        {"-3", ac3::meta::MixLevel::kMinus3dB},
-        {"-4.5", ac3::meta::MixLevel::kMinus4_5dB},
-        {"-6", ac3::meta::MixLevel::kMinus6dB},
-        {"off", ac3::meta::MixLevel::kSilent},
+bool parse_mix_level(std::string_view text, iclforge::meta::MixLevel& out) {
+    static constexpr std::array<std::pair<std::string_view, iclforge::meta::MixLevel>, 8> kLevels{{
+        {"+3", iclforge::meta::MixLevel::kPlus3dB},
+        {"+1.5", iclforge::meta::MixLevel::kPlus1_5dB},
+        {"0", iclforge::meta::MixLevel::kUnity},
+        {"-1.5", iclforge::meta::MixLevel::kMinus1_5dB},
+        {"-3", iclforge::meta::MixLevel::kMinus3dB},
+        {"-4.5", iclforge::meta::MixLevel::kMinus4_5dB},
+        {"-6", iclforge::meta::MixLevel::kMinus6dB},
+        {"off", iclforge::meta::MixLevel::kSilent},
     }};
     for (const auto& [name, level] : kLevels) {
         if (name == text) {
@@ -126,7 +126,7 @@ bool parse_mix_level(std::string_view text, ac3::meta::MixLevel& out) {
 // shows and the mapping is exact either way.
 bool parse_pgm_scale(std::string_view text, int& out) {
     if (text == "mute") {
-        out = ac3::meta::kPgmScaleMute;
+        out = iclforge::meta::kPgmScaleMute;
         return true;
     }
     // A leading + is how a signed decibel figure reads on a mixing desk and
@@ -140,7 +140,7 @@ bool parse_pgm_scale(std::string_view text, int& out) {
         return false;
     }
     const auto code = static_cast<int>(std::lround(db)) + 51;
-    if (code < 1 || code > ac3::meta::kPgmScaleMax) {
+    if (code < 1 || code > iclforge::meta::kPgmScaleMax) {
         return false;
     }
     out = code;
@@ -149,22 +149,22 @@ bool parse_pgm_scale(std::string_view text, int& out) {
 
 // "<dynrng|compr>:<external|local>:<0..7>" - §E2.3.1.19-21's three fields,
 // which always travel together and so take one token.
-bool parse_premix(std::string_view text, ac3::meta::PremixCompression& out) {
+bool parse_premix(std::string_view text, iclforge::meta::PremixCompression& out) {
     const auto parts = split(text, ':');
     if (parts.size() != 3) {
         return false;
     }
     if (parts[0] == "dynrng") {
-        out.premixcmpsel = ac3::meta::PremixCompressionSource::kDynrng;
+        out.premixcmpsel = iclforge::meta::PremixCompressionSource::kDynrng;
     } else if (parts[0] == "compr") {
-        out.premixcmpsel = ac3::meta::PremixCompressionSource::kCompr;
+        out.premixcmpsel = iclforge::meta::PremixCompressionSource::kCompr;
     } else {
         return false;
     }
     if (parts[1] == "external") {
-        out.drcsrc = ac3::meta::DrcSource::kExternal;
+        out.drcsrc = iclforge::meta::DrcSource::kExternal;
     } else if (parts[1] == "local") {
-        out.drcsrc = ac3::meta::DrcSource::kThisSubstream;
+        out.drcsrc = iclforge::meta::DrcSource::kThisSubstream;
     } else {
         return false;
     }
@@ -193,7 +193,7 @@ bool parse_scale_list(std::string_view text, std::vector<std::optional<int>>& ou
 // "<spchdat>[,<spchdat1>:<spchan1att>[,<spchdat2>:<spchan2att>]]" - the
 // nesting is §E2.3.1.44-51's own, each stage present only when the one above
 // it is.
-bool parse_speech(std::string_view text, ac3::meta::SpeechEnhancement& out) {
+bool parse_speech(std::string_view text, iclforge::meta::SpeechEnhancement& out) {
     const auto parts = split(text, ',');
     if (parts.empty() || parts.size() > 3) {
         return false;
@@ -210,12 +210,12 @@ bool parse_speech(std::string_view text, ac3::meta::SpeechEnhancement& out) {
         return halves.size() == 2 && parse_index(halves[0], data_high, data) &&
                parse_index(halves[1], att_high, att);
     };
-    ac3::meta::SpeechEnhancement::Additional additional;
+    iclforge::meta::SpeechEnhancement::Additional additional;
     if (!pair(parts[1], 31, 3, additional.spchdat1, additional.spchan1att)) {
         return false;
     }
     if (parts.size() == 3) {
-        ac3::meta::SpeechEnhancement::Additional::More more;
+        iclforge::meta::SpeechEnhancement::Additional::More more;
         if (!pair(parts[2], 31, 7, more.spchdat2, more.spchan2att)) {
             return false;
         }
@@ -227,12 +227,12 @@ bool parse_speech(std::string_view text, ac3::meta::SpeechEnhancement& out) {
 
 // "<panmean>[:<paninfo>]" - the 6-bit paninfo half is reserved
 // (§E2.3.1.55), so it defaults to zero and is rarely worth naming.
-bool parse_pan(std::string_view text, ac3::meta::PanInfo& out) {
+bool parse_pan(std::string_view text, iclforge::meta::PanInfo& out) {
     const auto parts = split(text, ':');
     if (parts.size() > 2) {
         return false;
     }
-    if (!parse_index(parts[0], ac3::meta::kPanMeanMax, out.panmean)) {
+    if (!parse_index(parts[0], iclforge::meta::kPanMeanMax, out.panmean)) {
         return false;
     }
     return parts.size() == 1 || parse_index(parts[1], 63, out.paninfo);
@@ -241,7 +241,7 @@ bool parse_pan(std::string_view text, ac3::meta::PanInfo& out) {
 // Six comma-separated 5-bit words, "-" for a block whose blkmixcfginfoe stays
 // clear.
 bool parse_block_mix_config(std::string_view text,
-                            std::array<std::optional<int>, ac3::kBlocksPerFrame>& out) {
+                            std::array<std::optional<int>, iclforge::kBlocksPerFrame>& out) {
     const auto parts = split(text, ',');
     if (parts.size() != out.size()) {
         return false;
@@ -378,13 +378,13 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         return MetadataOptionResult::kOk;
     }
     if (suffix == "drc") {
-        ac3::meta::ProfileId id{};
-        if (!ac3::meta::parse_profile(value, id)) {
+        iclforge::meta::ProfileId id{};
+        if (!iclforge::meta::parse_profile(value, id)) {
             fmt::println(stderr, "error: unknown DRC profile '{}' ({})", value,
-                         ac3::meta::kProfileNames);
+                         iclforge::meta::kProfileNames);
             return MetadataOptionResult::kError;
         }
-        p.drc = ac3::meta::profile(id);
+        p.drc = iclforge::meta::profile(id);
         return MetadataOptionResult::kOk;
     }
     if (suffix == "ceiling" || suffix == "dialogue") {
@@ -417,10 +417,10 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         return MetadataOptionResult::kOk;
     }
     if (suffix == "bsmod") {
-        ac3::meta::BitstreamMode mode{};
-        if (!ac3::meta::parse_bsmod(value, mode)) {
+        iclforge::meta::BitstreamMode mode{};
+        if (!iclforge::meta::parse_bsmod(value, mode)) {
             fmt::println(stderr, "error: {} must be 0..7 (Table 5.5's service type) or one of: {}",
-                         full_key, ac3::meta::kBsmodNames);
+                         full_key, iclforge::meta::kBsmodNames);
             return MetadataOptionResult::kError;
         }
         p.infomdat = true;
@@ -429,14 +429,14 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
     }
     if (suffix == "dsurmod") {
         const auto n = parse_u32_or(value, 4);
-        ac3::meta::SurroundMode mode{};
+        iclforge::meta::SurroundMode mode{};
         if (n <= 3) {
-            mode = n < 3 ? static_cast<ac3::meta::SurroundMode>(n)
-                         : ac3::meta::SurroundMode::kNotIndicated;
-        } else if (!ac3::meta::parse_surround_mode(value, mode)) {
+            mode = n < 3 ? static_cast<iclforge::meta::SurroundMode>(n)
+                         : iclforge::meta::SurroundMode::kNotIndicated;
+        } else if (!iclforge::meta::parse_surround_mode(value, mode)) {
             fmt::println(stderr,
                          "error: {} must be 0..3 (Table 5.11's Dolby Surround mode) or one of: {}",
-                         full_key, ac3::meta::kSurroundModeNames);
+                         full_key, iclforge::meta::kSurroundModeNames);
             return MetadataOptionResult::kError;
         }
         p.infomdat = true;
@@ -445,11 +445,11 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
     }
     if (suffix == "cmixlev") {
         if (value == "-3") {
-            p.cmixlev = ac3::meta::CentreMixLevel::kMinus3dB;
+            p.cmixlev = iclforge::meta::CentreMixLevel::kMinus3dB;
         } else if (value == "-4.5") {
-            p.cmixlev = ac3::meta::CentreMixLevel::kMinus4_5dB;
+            p.cmixlev = iclforge::meta::CentreMixLevel::kMinus4_5dB;
         } else if (value == "-6") {
-            p.cmixlev = ac3::meta::CentreMixLevel::kMinus6dB;
+            p.cmixlev = iclforge::meta::CentreMixLevel::kMinus6dB;
         } else {
             fmt::println(stderr, "error: {} must be -3, -4.5 or -6 (Table 5.9)", full_key);
             return MetadataOptionResult::kError;
@@ -458,11 +458,11 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
     }
     if (suffix == "surmixlev") {
         if (value == "-3") {
-            p.surmixlev = ac3::meta::SurroundMixLevel::kMinus3dB;
+            p.surmixlev = iclforge::meta::SurroundMixLevel::kMinus3dB;
         } else if (value == "-6") {
-            p.surmixlev = ac3::meta::SurroundMixLevel::kMinus6dB;
+            p.surmixlev = iclforge::meta::SurroundMixLevel::kMinus6dB;
         } else if (value == "off") {
-            p.surmixlev = ac3::meta::SurroundMixLevel::kSilent;
+            p.surmixlev = iclforge::meta::SurroundMixLevel::kSilent;
         } else {
             fmt::println(stderr, "error: {} must be -3, -6 or off (Table 5.10)", full_key);
             return MetadataOptionResult::kError;
@@ -487,11 +487,11 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         p.mixmeta = true;
         p.annexd = true;
         if (value == "ltrt") {
-            p.dmixmod = ac3::meta::DownmixMode::kLtRt;
+            p.dmixmod = iclforge::meta::DownmixMode::kLtRt;
         } else if (value == "loro") {
-            p.dmixmod = ac3::meta::DownmixMode::kLoRo;
+            p.dmixmod = iclforge::meta::DownmixMode::kLoRo;
         } else if (value == "none") {
-            p.dmixmod = ac3::meta::DownmixMode::kNotIndicated;
+            p.dmixmod = iclforge::meta::DownmixMode::kNotIndicated;
         } else {
             fmt::println(stderr, "error: {} must be ltrt, loro or none (Table D2.2)", full_key);
             return MetadataOptionResult::kError;
@@ -500,7 +500,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
     }
     if (suffix == "ltrtcmixlev" || suffix == "lorocmixlev" || suffix == "ltrtsurmixlev" ||
         suffix == "lorosurmixlev") {
-        ac3::meta::MixLevel level{};
+        iclforge::meta::MixLevel level{};
         if (!parse_mix_level(value, level)) {
             fmt::println(stderr,
                          "error: {} must be +3, +1.5, 0, -1.5, -3, -4.5, -6 or off "
@@ -509,7 +509,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
             return MetadataOptionResult::kError;
         }
         const bool surround = suffix == "ltrtsurmixlev" || suffix == "lorosurmixlev";
-        if (surround && !ac3::meta::valid_surround_mix_level(level)) {
+        if (surround && !iclforge::meta::valid_surround_mix_level(level)) {
             fmt::println(stderr,
                          "error: {} must be -1.5, -3, -4.5, -6 or off - Tables D2.4/D2.6 "
                          "reserve the three louder codes",
@@ -534,17 +534,17 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         p.annexd = true;
         bool ok = false;
         if (suffix == "dsurexmod") {
-            ok = ac3::meta::parse_surround_ex_mode(value, p.info.dsurexmod);
+            ok = iclforge::meta::parse_surround_ex_mode(value, p.info.dsurexmod);
         } else if (suffix == "dheadphonmod") {
-            ok = ac3::meta::parse_headphone_mode(value, p.info.dheadphonmod);
+            ok = iclforge::meta::parse_headphone_mode(value, p.info.dheadphonmod);
         } else {
-            ok = ac3::meta::parse_ad_converter(value, p.adconvtyp);
+            ok = iclforge::meta::parse_ad_converter(value, p.adconvtyp);
         }
         if (!ok) {
             fmt::println(stderr, "error: {} must be one of: {}", full_key,
-                         suffix == "dsurexmod"      ? ac3::meta::kSurroundExModeNames
-                         : suffix == "dheadphonmod" ? ac3::meta::kHeadphoneModeNames
-                                                    : ac3::meta::kAdConverterNames);
+                         suffix == "dsurexmod"      ? iclforge::meta::kSurroundExModeNames
+                         : suffix == "dheadphonmod" ? iclforge::meta::kHeadphoneModeNames
+                                                    : iclforge::meta::kAdConverterNames);
             return MetadataOptionResult::kError;
         }
         return MetadataOptionResult::kOk;
@@ -560,14 +560,14 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         if (!p.info.audprod) {
             p.info.audprod.emplace();
         }
-        p.info.audprod->mixlevel = static_cast<int>(db) - ac3::meta::kMixLevelBaseDbSpl;
+        p.info.audprod->mixlevel = static_cast<int>(db) - iclforge::meta::kMixLevelBaseDbSpl;
         return MetadataOptionResult::kOk;
     }
     if (suffix == "roomtyp") {
-        ac3::meta::RoomType room{};
-        if (!ac3::meta::parse_room_type(value, room)) {
+        iclforge::meta::RoomType room{};
+        if (!iclforge::meta::parse_room_type(value, room)) {
             fmt::println(stderr, "error: {} must be one of: {} (Table 5.12)", full_key,
-                         ac3::meta::kRoomTypeNames);
+                         iclforge::meta::kRoomTypeNames);
             return MetadataOptionResult::kError;
         }
         p.infomdat = true;
@@ -603,13 +603,13 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
     if (suffix == "mixdef") {
         p.mixmeta = true;
         if (value == "none") {
-            p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kNone;
+            p.mixdepth.mixing.mixdef = iclforge::meta::MixDefinition::kNone;
         } else if (value == "premix") {
-            p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kPremix;
+            p.mixdepth.mixing.mixdef = iclforge::meta::MixDefinition::kPremix;
         } else if (value == "reserved") {
-            p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kReserved;
+            p.mixdepth.mixing.mixdef = iclforge::meta::MixDefinition::kReserved;
         } else if (value == "ext") {
-            p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+            p.mixdepth.mixing.mixdef = iclforge::meta::MixDefinition::kExtended;
         } else {
             fmt::println(stderr, "error: {} must be none, premix, reserved or ext (Table E2.6)",
                          full_key);
@@ -618,7 +618,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         return MetadataOptionResult::kOk;
     }
     if (suffix == "premixcmp") {
-        ac3::meta::PremixCompression premix;
+        iclforge::meta::PremixCompression premix;
         if (!parse_premix(value, premix)) {
             fmt::println(stderr,
                          "error: {} is <dynrng|compr>:<external|local>:<0..7> (§E2.3.1.19-21)",
@@ -677,7 +677,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         return MetadataOptionResult::kOk;
     }
     if (suffix == "speechmix") {
-        ac3::meta::SpeechEnhancement speech;
+        iclforge::meta::SpeechEnhancement speech;
         if (!parse_speech(value, speech)) {
             fmt::println(stderr,
                          "error: {} is <0..31>[,<0..31>:<0..3>[,<0..31>:<0..7>]] (§E2.3.1.44-51)",
@@ -689,7 +689,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         return MetadataOptionResult::kOk;
     }
     if (suffix == "paninfo") {
-        ac3::meta::PanInfo pan;
+        iclforge::meta::PanInfo pan;
         if (!parse_pan(value, pan)) {
             fmt::println(stderr,
                          "error: {} is <0..239>[:<0..63>] - 1.5 degree steps clockwise from "
@@ -702,7 +702,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         return MetadataOptionResult::kOk;
     }
     if (suffix == "blkmixcfg") {
-        std::array<std::optional<int>, ac3::kBlocksPerFrame> words{};
+        std::array<std::optional<int>, iclforge::kBlocksPerFrame> words{};
         if (!parse_block_mix_config(value, words)) {
             fmt::println(stderr,
                          "error: {} is six comma-separated 0..31 words, '-' for a block that "
@@ -723,30 +723,30 @@ bool on_grid(double value, double step) {
 }
 
 // A DRC profile by the name drc= gives it, or "none" (Part 1 Table 160).
-std::optional<ac4::DrcProfile> parse_ac4_drc_profile(std::string_view name) {
+std::optional<iclforge::ac4::DrcProfile> parse_ac4_drc_profile(std::string_view name) {
     if (name == "none") {
-        return ac4::DrcProfile::kNone;
+        return iclforge::ac4::DrcProfile::kNone;
     }
-    ac3::meta::ProfileId id{};
-    if (!ac3::meta::parse_profile(name, id)) {
+    iclforge::meta::ProfileId id{};
+    if (!iclforge::meta::parse_profile(name, id)) {
         return std::nullopt;
     }
     switch (id) {
-        case ac3::meta::ProfileId::kFilmStandard:
-            return ac4::DrcProfile::kFilmStandard;
-        case ac3::meta::ProfileId::kFilmLight:
-            return ac4::DrcProfile::kFilmLight;
-        case ac3::meta::ProfileId::kMusicStandard:
-            return ac4::DrcProfile::kMusicStandard;
-        case ac3::meta::ProfileId::kMusicLight:
-            return ac4::DrcProfile::kMusicLight;
-        case ac3::meta::ProfileId::kSpeech:
-            return ac4::DrcProfile::kSpeech;
+        case iclforge::meta::ProfileId::kFilmStandard:
+            return iclforge::ac4::DrcProfile::kFilmStandard;
+        case iclforge::meta::ProfileId::kFilmLight:
+            return iclforge::ac4::DrcProfile::kFilmLight;
+        case iclforge::meta::ProfileId::kMusicStandard:
+            return iclforge::ac4::DrcProfile::kMusicStandard;
+        case iclforge::meta::ProfileId::kMusicLight:
+            return iclforge::ac4::DrcProfile::kMusicLight;
+        case iclforge::meta::ProfileId::kSpeech:
+            return iclforge::ac4::DrcProfile::kSpeech;
     }
     return std::nullopt;
 }
 
-// codec-mode='s values (ac4::CodecMode): Part 1's, and the immersive
+// codec-mode='s values (iclforge::ac4::CodecMode): Part 1's, and the immersive
 // element's SCPL, ASPX_SCPL and ASPX_AJCC.
 bool is_ac4_codec_mode(std::string_view value) {
     constexpr std::array<std::string_view, 9> kModes = {"auto",        "simple",      "aspx",
@@ -787,7 +787,7 @@ std::optional<std::pair<std::size_t, std::string_view>> match_numbered(std::stri
 
 // An EMDF payload as <id>:<hex bytes>, the id from 1 (Part 1 Table 79's
 // emdf_payload_id), the bytes two hex digits each, none for an empty payload.
-std::optional<ac4::EmdfPayload> parse_emdf_payload(std::string_view value) {
+std::optional<iclforge::ac4::EmdfPayload> parse_emdf_payload(std::string_view value) {
     const std::size_t colon = value.find(':');
     if (colon == std::string_view::npos) {
         return std::nullopt;
@@ -800,7 +800,7 @@ std::optional<ac4::EmdfPayload> parse_emdf_payload(std::string_view value) {
         hex.size() % 2 != 0) {
         return std::nullopt;
     }
-    ac4::EmdfPayload payload;
+    iclforge::ac4::EmdfPayload payload;
     payload.id = id;
     for (std::size_t i = 0; i < hex.size(); i += 2) {
         unsigned byte = 0;
@@ -880,11 +880,11 @@ MetadataOptionResult parse_ac4_dialogue_option(
     }
     if (key == "dialogue-method") {
         if (value == "independent") {
-            out.method = ac4::DialogueMethod::kChannelIndependent;
+            out.method = iclforge::ac4::DialogueMethod::kChannelIndependent;
         } else if (value == "mid") {
-            out.method = ac4::DialogueMethod::kMid;
+            out.method = iclforge::ac4::DialogueMethod::kMid;
         } else if (value == "cross") {
-            out.method = ac4::DialogueMethod::kCrossChannel;
+            out.method = iclforge::ac4::DialogueMethod::kCrossChannel;
         } else {
             return refuse("dialogue-method is independent, mid or cross");
         }
@@ -910,16 +910,16 @@ MetadataOptionResult parse_ac4_dialogue_option(
 }
 
 // Part 1 Table 91's content classifiers, as substreamN-content= names them.
-std::optional<ac4::ContentClassifier> parse_content_classifier(std::string_view value) {
-    constexpr std::array<std::pair<std::string_view, ac4::ContentClassifier>, 8> kNames{{
-        {"main", ac4::ContentClassifier::kCompleteMain},
-        {"music-and-effects", ac4::ContentClassifier::kMusicAndEffects},
-        {"visually-impaired", ac4::ContentClassifier::kVisuallyImpaired},
-        {"hearing-impaired", ac4::ContentClassifier::kHearingImpaired},
-        {"dialogue", ac4::ContentClassifier::kDialogue},
-        {"commentary", ac4::ContentClassifier::kCommentary},
-        {"emergency", ac4::ContentClassifier::kEmergency},
-        {"voice-over", ac4::ContentClassifier::kVoiceOver},
+std::optional<iclforge::ac4::ContentClassifier> parse_content_classifier(std::string_view value) {
+    constexpr std::array<std::pair<std::string_view, iclforge::ac4::ContentClassifier>, 8> kNames{{
+        {"main", iclforge::ac4::ContentClassifier::kCompleteMain},
+        {"music-and-effects", iclforge::ac4::ContentClassifier::kMusicAndEffects},
+        {"visually-impaired", iclforge::ac4::ContentClassifier::kVisuallyImpaired},
+        {"hearing-impaired", iclforge::ac4::ContentClassifier::kHearingImpaired},
+        {"dialogue", iclforge::ac4::ContentClassifier::kDialogue},
+        {"commentary", iclforge::ac4::ContentClassifier::kCommentary},
+        {"emergency", iclforge::ac4::ContentClassifier::kEmergency},
+        {"voice-over", iclforge::ac4::ContentClassifier::kVoiceOver},
     }};
     for (const auto& [name, classifier] : kNames) {
         if (name == value) {
@@ -1208,11 +1208,11 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
     }
     if (key == "rate-mode") {
         if (value == "constant") {
-            out.rate_mode = ac4::RateMode::kConstant;
+            out.rate_mode = iclforge::ac4::RateMode::kConstant;
         } else if (value == "average") {
-            out.rate_mode = ac4::RateMode::kAverage;
+            out.rate_mode = iclforge::ac4::RateMode::kAverage;
         } else if (value == "variable") {
-            out.rate_mode = ac4::RateMode::kVariable;
+            out.rate_mode = iclforge::ac4::RateMode::kVariable;
         } else {
             return refuse("rate-mode is constant, average or variable");
         }
@@ -1270,14 +1270,14 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
     }
     if (key == "loudness") {
         // Part 1 Table 156's practices.
-        constexpr std::array<std::pair<std::string_view, ac4::LoudnessPractice>, 7> kPractices{{
-            {"not-indicated", ac4::LoudnessPractice::kNotIndicated},
-            {"atsc-a85", ac4::LoudnessPractice::kAtscA85},
-            {"ebu-r128", ac4::LoudnessPractice::kEbuR128},
-            {"arib-tr-b32", ac4::LoudnessPractice::kAribTrB32},
-            {"freetv-op59", ac4::LoudnessPractice::kFreeTvOp59},
-            {"manual", ac4::LoudnessPractice::kManual},
-            {"consumer-leveller", ac4::LoudnessPractice::kConsumerLeveller},
+        constexpr std::array<std::pair<std::string_view, iclforge::ac4::LoudnessPractice>, 7> kPractices{{
+            {"not-indicated", iclforge::ac4::LoudnessPractice::kNotIndicated},
+            {"atsc-a85", iclforge::ac4::LoudnessPractice::kAtscA85},
+            {"ebu-r128", iclforge::ac4::LoudnessPractice::kEbuR128},
+            {"arib-tr-b32", iclforge::ac4::LoudnessPractice::kAribTrB32},
+            {"freetv-op59", iclforge::ac4::LoudnessPractice::kFreeTvOp59},
+            {"manual", iclforge::ac4::LoudnessPractice::kManual},
+            {"consumer-leveller", iclforge::ac4::LoudnessPractice::kConsumerLeveller},
         }};
         for (const auto& [name, practice] : kPractices) {
             if (name == value) {
@@ -1298,7 +1298,7 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
         const auto profile = parse_ac4_drc_profile(value);
         if (!profile) {
             fmt::println(stderr, "error: unknown DRC profile '{}' ({} | none)", value,
-                         ac3::meta::kProfileNames);
+                         iclforge::meta::kProfileNames);
             return MetadataOptionResult::kError;
         }
         if (key == "drc") {
@@ -1310,7 +1310,7 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
     }
     if (key == "cmixlev" || key == "lorocmixlev" || key == "ltrtcmixlev") {
         // Part 1 Table 149.
-        ac3::meta::MixLevel level{};
+        iclforge::meta::MixLevel level{};
         if (!parse_mix_level(value, level)) {
             return refuse("an AC-4 centre mix level is +3, +1.5, 0, -1.5, -3, -4.5, -6 or off");
         }
@@ -1357,13 +1357,13 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
     if (key == "dmixmod") {
         // Part 1 Table 150.
         if (value == "loro") {
-            out.preferred_downmix = ac4::PreferredDownmix::kLoRo;
+            out.preferred_downmix = iclforge::ac4::PreferredDownmix::kLoRo;
         } else if (value == "ltrt") {
-            out.preferred_downmix = ac4::PreferredDownmix::kLtRt;
+            out.preferred_downmix = iclforge::ac4::PreferredDownmix::kLtRt;
         } else if (value == "pl2") {
-            out.preferred_downmix = ac4::PreferredDownmix::kLtRtProLogicII;
+            out.preferred_downmix = iclforge::ac4::PreferredDownmix::kLtRtProLogicII;
         } else if (value == "none") {
-            out.preferred_downmix = ac4::PreferredDownmix::kNotIndicated;
+            out.preferred_downmix = iclforge::ac4::PreferredDownmix::kNotIndicated;
         } else {
             return refuse("AC-4's dmixmod is loro, ltrt, pl2 (Lt/Rt for Pro Logic II) or none");
         }
@@ -1381,11 +1381,11 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
     if (key == "height-downmix") {
         // Part 2 clause 6.2.9.8, tool_t4_to_f_s(): where the top pairs go.
         if (value == "front") {
-            out.height_downmix = ac4::HeightDownmix::kFront;
+            out.height_downmix = iclforge::ac4::HeightDownmix::kFront;
         } else if (value == "surround") {
-            out.height_downmix = ac4::HeightDownmix::kSurround;
+            out.height_downmix = iclforge::ac4::HeightDownmix::kSurround;
         } else if (value == "front-and-surround") {
-            out.height_downmix = ac4::HeightDownmix::kFrontAndSurround;
+            out.height_downmix = iclforge::ac4::HeightDownmix::kFrontAndSurround;
         } else {
             return refuse("height-downmix is front, surround or front-and-surround");
         }
@@ -1426,21 +1426,21 @@ std::vector<std::byte> to_bytes(std::span<const char> raw) {
     return bytes;
 }
 
-// Wraps ac3::io::write_wav_f32 to honor the "-" stdout convention: "-"
+// Wraps iclforge::io::write_wav_f32 to honor the "-" stdout convention: "-"
 // writes the WAV to stdout, binary mode set first, instead of opening a file
-// with that literal name. ac3::io::write_wav_f32(std::ostream&, ...) never
+// with that literal name. iclforge::io::write_wav_f32(std::ostream&, ...) never
 // seeks (see its own comment), so this is exactly as safe on the unseekable
 // pipe stdout usually is as the path overload is on a plain file.
-std::expected<void, ac3::io::WavError> write_wav_f32_arg(
+std::expected<void, iclforge::io::WavError> write_wav_f32_arg(
         std::string_view path, std::span<const std::vector<float>> channels,
         std::uint32_t sample_rate, std::span<const std::size_t> channel_order = {}) {
     if (is_stdio_path(path)) {
-        ac3::cli::platform::set_stdio_binary();
-        auto result = ac3::io::write_wav_f32(std::cout, channels, sample_rate, channel_order);
+        iclforge::cli::platform::set_stdio_binary();
+        auto result = iclforge::io::write_wav_f32(std::cout, channels, sample_rate, channel_order);
         std::cout.flush();
         return result;
     }
-    return ac3::io::write_wav_f32(std::string{path}, channels, sample_rate, channel_order);
+    return iclforge::io::write_wav_f32(std::string{path}, channels, sample_rate, channel_order);
 }
 
 }  // namespace
@@ -1755,11 +1755,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "joc-domain") {
             if (value == "qmf") {
-                out.joc_domain = ac3::oba::joc::Domain::kQmf;
+                out.joc_domain = iclforge::oba::joc::Domain::kQmf;
                 continue;
             }
             if (value == "mdct") {
-                out.joc_domain = ac3::oba::joc::Domain::kMdctBand;
+                out.joc_domain = iclforge::oba::joc::Domain::kMdctBand;
                 continue;
             }
             fmt::println(stderr,
@@ -1775,15 +1775,15 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // two points on one scale - one is waveform error, the other is
             // that error weighted by what the signal can hide.
             if (value == "off") {
-                out.search = ac3::quality::Criterion::kNone;
+                out.search = iclforge::quality::Criterion::kNone;
                 continue;
             }
             if (value == "distortion") {
-                out.search = ac3::quality::Criterion::kDistortion;
+                out.search = iclforge::quality::Criterion::kDistortion;
                 continue;
             }
             if (value == "perceptual") {
-                out.search = ac3::quality::Criterion::kPerceptual;
+                out.search = iclforge::quality::Criterion::kPerceptual;
                 continue;
             }
             fmt::println(stderr,
@@ -1907,13 +1907,13 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // stereo matrix is downmix='s question, and it has a default, so
             // channels= alone is enough to get a usable fold.
             if (value == "as-coded") {
-                out.output.target = ac3::DownmixTarget::kAsCoded;
+                out.output.target = iclforge::DownmixTarget::kAsCoded;
                 out.downmix_auto = false;
                 out.ac4_fold_5x = false;
                 continue;
             }
             if (value == "1") {
-                out.output.target = ac3::DownmixTarget::kMono;
+                out.output.target = iclforge::DownmixTarget::kMono;
                 out.downmix_auto = false;
                 out.ac4_fold_5x = false;
                 continue;
@@ -1923,7 +1923,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 // A downmix= earlier on the same command line already chose
                 // the matrix; channels=2 only confirms the width.
                 if (!out.downmix_named) {
-                    out.output.target = ac3::DownmixTarget::kLoRo;
+                    out.output.target = iclforge::DownmixTarget::kLoRo;
                 }
                 continue;
             }
@@ -1931,7 +1931,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 // AC-4's 7.X element folded to 5.X (ETSI TS 103 190-1 Table
                 // 219), and transcode's AC-4 source's; decode refuses it for
                 // AC-3 and E-AC-3.
-                out.output.target = ac3::DownmixTarget::kAsCoded;
+                out.output.target = iclforge::DownmixTarget::kAsCoded;
                 out.downmix_auto = false;
                 out.ac4_fold_5x = true;
                 continue;
@@ -1953,17 +1953,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             } else if (value == "off") {
                 out.downmix_leg = false;
             } else if (value == "loro") {
-                out.output.target = ac3::DownmixTarget::kLoRo;
+                out.output.target = iclforge::DownmixTarget::kLoRo;
                 out.downmix_named = true;
                 out.downmix_auto = false;
                 out.ac4_fold_5x = false;
             } else if (value == "ltrt") {
-                out.output.target = ac3::DownmixTarget::kLtRt;
+                out.output.target = iclforge::DownmixTarget::kLtRt;
                 out.downmix_named = true;
                 out.downmix_auto = false;
                 out.ac4_fold_5x = false;
             } else if (value == "mono") {
-                out.output.target = ac3::DownmixTarget::kMono;
+                out.output.target = iclforge::DownmixTarget::kMono;
                 out.downmix_named = true;
                 out.downmix_auto = false;
                 out.ac4_fold_5x = false;
@@ -1972,7 +1972,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 // §D3.1.1's automatic choice, which needs the stream -
                 // resolve_output() settles it. Lo/Ro stands in until then, so
                 // a channels=2 either side of it sees a stereo target.
-                out.output.target = ac3::DownmixTarget::kLoRo;
+                out.output.target = iclforge::DownmixTarget::kLoRo;
                 out.downmix_named = true;
                 out.downmix_auto = true;
             } else {
@@ -2024,11 +2024,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 "off",           "default",           "home-theatre",
                 "flat-panel-tv", "portable-speakers", "portable-headphones"};
             if (value == "line") {
-                out.output.mode = ac3::OperatingMode::kLine;
+                out.output.mode = iclforge::OperatingMode::kLine;
             } else if (value == "rf") {
-                out.output.mode = ac3::OperatingMode::kRf;
+                out.output.mode = iclforge::OperatingMode::kRf;
             } else if (value == "none") {
-                out.output.mode = ac3::OperatingMode::kCustom;
+                out.output.mode = iclforge::OperatingMode::kCustom;
             } else if (std::ranges::find(kAc4Modes, value) != kAc4Modes.end()) {
                 out.ac4_drc_mode = std::string{value};
             } else {
@@ -2129,16 +2129,16 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             struct Service {
                 std::string_view name;
                 int classifier;
-                ac4::AssociatedType type;
+                iclforge::ac4::AssociatedType type;
             };
             constexpr std::array<Service, 7> kServices = {{
-                {"visually-impaired", 0b010, ac4::AssociatedType::kAny},
-                {"audio-description", 0b010, ac4::AssociatedType::kAudioDescription},
-                {"audio-description-subtitles", 0b010, ac4::AssociatedType::kAudioDescriptionSubtitles},
-                {"spoken-subtitles", 0b111, ac4::AssociatedType::kSpokenSubtitles},
-                {"emergency-information", 0b010, ac4::AssociatedType::kEmergencyInformation},
-                {"hearing-impaired", 0b011, ac4::AssociatedType::kAny},
-                {"commentary", 0b101, ac4::AssociatedType::kAny},
+                {"visually-impaired", 0b010, iclforge::ac4::AssociatedType::kAny},
+                {"audio-description", 0b010, iclforge::ac4::AssociatedType::kAudioDescription},
+                {"audio-description-subtitles", 0b010, iclforge::ac4::AssociatedType::kAudioDescriptionSubtitles},
+                {"spoken-subtitles", 0b111, iclforge::ac4::AssociatedType::kSpokenSubtitles},
+                {"emergency-information", 0b010, iclforge::ac4::AssociatedType::kEmergencyInformation},
+                {"hearing-impaired", 0b011, iclforge::ac4::AssociatedType::kAny},
+                {"commentary", 0b101, iclforge::ac4::AssociatedType::kAny},
             }};
             const auto service = std::ranges::find(kServices, value, &Service::name);
             if (service == kServices.end()) {
@@ -2223,7 +2223,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "experimental" && command == "ac4-encode") {
             // A comma-separated list of the encoder's experimental tools
-            // (ac4::EncoderConfig::Experimental).
+            // (iclforge::ac4::EncoderConfig::Experimental).
             std::string_view rest = value;
             while (!rest.empty()) {
                 const std::size_t comma = rest.find(',');
@@ -2271,11 +2271,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // §7.10. Off by default: a decode that hits a damaged frame says
             // so and stops, which is what a verification tool should do.
             if (value == "repeat") {
-                out.concealment = ac3::ConcealmentPolicy::kRepeatFade;
+                out.concealment = iclforge::ConcealmentPolicy::kRepeatFade;
             } else if (value == "mute") {
-                out.concealment = ac3::ConcealmentPolicy::kMute;
+                out.concealment = iclforge::ConcealmentPolicy::kMute;
             } else if (value == "off") {
-                out.concealment = ac3::ConcealmentPolicy::kNone;
+                out.concealment = iclforge::ConcealmentPolicy::kNone;
             } else {
                 fmt::println(stderr,
                              "error: conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
@@ -2294,13 +2294,13 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 out.drc_scale = scale;
                 continue;
             }
-            ac3::meta::ProfileId id{};
-            if (!ac3::meta::parse_profile(value, id)) {
+            iclforge::meta::ProfileId id{};
+            if (!iclforge::meta::parse_profile(value, id)) {
                 fmt::println(stderr, "error: unknown DRC profile '{}' ({})", value,
-                             ac3::meta::kProfileNames);
+                             iclforge::meta::kProfileNames);
                 return false;
             }
-            out.p.drc = ac3::meta::profile(id);
+            out.p.drc = iclforge::meta::profile(id);
             continue;
         }
         if (key == "ceiling" || key == "dialogue") {
@@ -2323,13 +2323,13 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // Encode-side only, unlike drc= - nothing on the decode side
             // corresponds to a per-programme DRC profile, since a decoder
             // just applies whatever dynrng2 the stream carries.
-            ac3::meta::ProfileId id{};
-            if (!ac3::meta::parse_profile(value, id)) {
+            iclforge::meta::ProfileId id{};
+            if (!iclforge::meta::parse_profile(value, id)) {
                 fmt::println(stderr, "error: unknown DRC profile '{}' ({})", value,
-                             ac3::meta::kProfileNames);
+                             iclforge::meta::kProfileNames);
                 return false;
             }
-            out.p.drc2 = ac3::meta::profile(id);
+            out.p.drc2 = iclforge::meta::profile(id);
             continue;
         }
         if (key == "ceiling2" || key == "dialogue2") {
@@ -2388,7 +2388,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 fmt::println(stderr, "error: {} takes a gain in dB (got '{}')", key, value);
                 return false;
             }
-            const auto word = ac3::meta::encode_compr_at_most(db);
+            const auto word = iclforge::meta::encode_compr_at_most(db);
             if (key == "compr") {
                 out.compr_word = word;
             } else {
@@ -2399,18 +2399,18 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         // bsmod/dsurmod are read by two different consumers: `metadata`/
         // `transcode` (the raw code, `out.bsmod`/`out.dsurmod`, straight off
         // Table 5.5/5.11) and `encode`/`eac3-encode` (the same code wrapped
-        // in `ac3::meta::BitstreamMode`/`SurroundMode` for the Plan below).
+        // in `iclforge::meta::BitstreamMode`/`SurroundMode` for the Plan below).
         // One parse feeds both, so a value valid for one is valid for the
         // other and the two consumers can never disagree about what was
         // typed.
         if (key == "bsmod") {
-            ac3::meta::BitstreamMode mode{};
+            iclforge::meta::BitstreamMode mode{};
             // parse_bsmod already accepts the raw Table 5.7 code as well as
             // the named service tokens - see its own comment.
-            if (!ac3::meta::parse_bsmod(value, mode)) {
+            if (!iclforge::meta::parse_bsmod(value, mode)) {
                 fmt::println(stderr, "error: bsmod must be 0..7 (Table 5.5's service type) "
                                      "or one of: {}",
-                             ac3::meta::kBsmodNames);
+                             iclforge::meta::kBsmodNames);
                 return false;
             }
             out.bsmod = static_cast<int>(mode);
@@ -2424,14 +2424,14 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // as "not indicated", same as 0), so the raw digit is read
             // directly rather than routed through the named-token parser.
             const auto n = parse_u32_or(value, 4);
-            ac3::meta::SurroundMode mode{};
+            iclforge::meta::SurroundMode mode{};
             if (n <= 3) {
-                mode = n < 3 ? static_cast<ac3::meta::SurroundMode>(n)
-                             : ac3::meta::SurroundMode::kNotIndicated;
-            } else if (!ac3::meta::parse_surround_mode(value, mode)) {
+                mode = n < 3 ? static_cast<iclforge::meta::SurroundMode>(n)
+                             : iclforge::meta::SurroundMode::kNotIndicated;
+            } else if (!iclforge::meta::parse_surround_mode(value, mode)) {
                 fmt::println(stderr, "error: dsurmod must be 0..3 (Table 5.11's Dolby Surround "
                                      "mode) or one of: {}",
-                             ac3::meta::kSurroundModeNames);
+                             iclforge::meta::kSurroundModeNames);
                 return false;
             }
             out.dsurmod = n <= 3 ? static_cast<int>(n) : static_cast<int>(mode);
@@ -2441,11 +2441,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "cmixlev") {
             if (value == "-3") {
-                out.p.cmixlev = ac3::meta::CentreMixLevel::kMinus3dB;
+                out.p.cmixlev = iclforge::meta::CentreMixLevel::kMinus3dB;
             } else if (value == "-4.5") {
-                out.p.cmixlev = ac3::meta::CentreMixLevel::kMinus4_5dB;
+                out.p.cmixlev = iclforge::meta::CentreMixLevel::kMinus4_5dB;
             } else if (value == "-6") {
-                out.p.cmixlev = ac3::meta::CentreMixLevel::kMinus6dB;
+                out.p.cmixlev = iclforge::meta::CentreMixLevel::kMinus6dB;
             } else {
                 fmt::println(stderr, "error: cmixlev must be -3, -4.5 or -6 (Table 5.9)");
                 return false;
@@ -2454,11 +2454,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "surmixlev") {
             if (value == "-3") {
-                out.p.surmixlev = ac3::meta::SurroundMixLevel::kMinus3dB;
+                out.p.surmixlev = iclforge::meta::SurroundMixLevel::kMinus3dB;
             } else if (value == "-6") {
-                out.p.surmixlev = ac3::meta::SurroundMixLevel::kMinus6dB;
+                out.p.surmixlev = iclforge::meta::SurroundMixLevel::kMinus6dB;
             } else if (value == "off") {
-                out.p.surmixlev = ac3::meta::SurroundMixLevel::kSilent;
+                out.p.surmixlev = iclforge::meta::SurroundMixLevel::kSilent;
             } else {
                 fmt::println(stderr, "error: surmixlev must be -3, -6 or off (Table 5.10)");
                 return false;
@@ -2486,11 +2486,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.p.mixmeta = true;
             out.p.annexd = true;
             if (value == "ltrt") {
-                out.p.dmixmod = ac3::meta::DownmixMode::kLtRt;
+                out.p.dmixmod = iclforge::meta::DownmixMode::kLtRt;
             } else if (value == "loro") {
-                out.p.dmixmod = ac3::meta::DownmixMode::kLoRo;
+                out.p.dmixmod = iclforge::meta::DownmixMode::kLoRo;
             } else if (value == "none") {
-                out.p.dmixmod = ac3::meta::DownmixMode::kNotIndicated;
+                out.p.dmixmod = iclforge::meta::DownmixMode::kNotIndicated;
             } else {
                 fmt::println(stderr, "error: dmixmod must be ltrt, loro or none (Table D2.2)");
                 return false;
@@ -2499,7 +2499,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "ltrtcmixlev" || key == "lorocmixlev" || key == "ltrtsurmixlev" ||
             key == "lorosurmixlev") {
-            ac3::meta::MixLevel level{};
+            iclforge::meta::MixLevel level{};
             if (!parse_mix_level(value, level)) {
                 fmt::println(stderr,
                              "error: {} must be +3, +1.5, 0, -1.5, -3, -4.5, -6 or off "
@@ -2511,7 +2511,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // Tables D2.4/D2.6 reserve the three loudest surround codes, and a
             // decoder receiving one substitutes 0.841 - so the level asked for
             // is not the level applied. Refuse rather than write it.
-            if (surround && !ac3::meta::valid_surround_mix_level(level)) {
+            if (surround && !iclforge::meta::valid_surround_mix_level(level)) {
                 fmt::println(stderr,
                              "error: {} must be -1.5, -3, -4.5, -6 or off - Tables D2.4/D2.6 "
                              "reserve the three louder codes",
@@ -2538,17 +2538,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.p.annexd = true;
             bool ok = false;
             if (key == "dsurexmod") {
-                ok = ac3::meta::parse_surround_ex_mode(value, out.p.info.dsurexmod);
+                ok = iclforge::meta::parse_surround_ex_mode(value, out.p.info.dsurexmod);
             } else if (key == "dheadphonmod") {
-                ok = ac3::meta::parse_headphone_mode(value, out.p.info.dheadphonmod);
+                ok = iclforge::meta::parse_headphone_mode(value, out.p.info.dheadphonmod);
             } else {
-                ok = ac3::meta::parse_ad_converter(value, out.p.adconvtyp);
+                ok = iclforge::meta::parse_ad_converter(value, out.p.adconvtyp);
             }
             if (!ok) {
                 fmt::println(stderr, "error: {} must be one of: {}", key,
-                             key == "dsurexmod"      ? ac3::meta::kSurroundExModeNames
-                             : key == "dheadphonmod" ? ac3::meta::kHeadphoneModeNames
-                                                     : ac3::meta::kAdConverterNames);
+                             key == "dsurexmod"      ? iclforge::meta::kSurroundExModeNames
+                             : key == "dheadphonmod" ? iclforge::meta::kHeadphoneModeNames
+                                                     : iclforge::meta::kAdConverterNames);
                 return false;
             }
             continue;
@@ -2558,7 +2558,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // below the same way layout= is, a few blocks down. Named rather
             // than inferred when out_path is "-" or has no .ac3/.ec3/.ac4
             // suffix to read - see Options::codec.
-            out.codec = ac3::plan::parse_codec(value);
+            out.codec = iclforge::plan::parse_codec(value);
             if (!out.codec.has_value()) {
                 fmt::println(stderr, "error: codec must be ac3, eac3 or ac4 (got '{}')", value);
                 return false;
@@ -2578,14 +2578,14 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             if (!production) {
                 production.emplace();
             }
-            production->mixlevel = static_cast<int>(db) - ac3::meta::kMixLevelBaseDbSpl;
+            production->mixlevel = static_cast<int>(db) - iclforge::meta::kMixLevelBaseDbSpl;
             continue;
         }
         if (key == "roomtyp" || key == "roomtyp2") {
-            ac3::meta::RoomType room{};
-            if (!ac3::meta::parse_room_type(value, room)) {
+            iclforge::meta::RoomType room{};
+            if (!iclforge::meta::parse_room_type(value, room)) {
                 fmt::println(stderr, "error: {} must be one of: {} (Table 5.12)", key,
-                             ac3::meta::kRoomTypeNames);
+                             iclforge::meta::kRoomTypeNames);
                 return false;
             }
             out.p.infomdat = true;
@@ -2609,11 +2609,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "timecode") {
-            ac3::meta::TimeCodeCoarse coarse;
-            ac3::meta::TimeCodeFine fine;
-            if (!ac3::meta::parse_timecode(value, coarse, fine)) {
+            iclforge::meta::TimeCodeCoarse coarse;
+            iclforge::meta::TimeCodeFine fine;
+            if (!iclforge::meta::parse_timecode(value, coarse, fine)) {
                 fmt::println(stderr, "error: timecode is {} (§5.4.2.26-28)",
-                             ac3::meta::kTimeCodeSyntax);
+                             iclforge::meta::kTimeCodeSyntax);
                 return false;
             }
             out.p.info.timecod1 = coarse;
@@ -2640,13 +2640,13 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         if (key == "mixdef") {
             out.p.mixmeta = true;
             if (value == "none") {
-                out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kNone;
+                out.p.mixdepth.mixing.mixdef = iclforge::meta::MixDefinition::kNone;
             } else if (value == "premix") {
-                out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kPremix;
+                out.p.mixdepth.mixing.mixdef = iclforge::meta::MixDefinition::kPremix;
             } else if (value == "reserved") {
-                out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kReserved;
+                out.p.mixdepth.mixing.mixdef = iclforge::meta::MixDefinition::kReserved;
             } else if (value == "ext") {
-                out.p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+                out.p.mixdepth.mixing.mixdef = iclforge::meta::MixDefinition::kExtended;
             } else {
                 fmt::println(stderr,
                              "error: mixdef must be none, premix, reserved or ext "
@@ -2656,7 +2656,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "premixcmp") {
-            ac3::meta::PremixCompression premix;
+            iclforge::meta::PremixCompression premix;
             if (!parse_premix(value, premix)) {
                 fmt::println(stderr,
                              "error: premixcmp is <dynrng|compr>:<external|local>:<0..7> "
@@ -2716,7 +2716,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "speechmix") {
-            ac3::meta::SpeechEnhancement speech;
+            iclforge::meta::SpeechEnhancement speech;
             if (!parse_speech(value, speech)) {
                 fmt::println(stderr,
                              "error: speechmix is <0..31>[,<0..31>:<0..3>[,<0..31>:<0..7>]] "
@@ -2728,7 +2728,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "paninfo" || key == "paninfo2") {
-            ac3::meta::PanInfo pan;
+            iclforge::meta::PanInfo pan;
             if (!parse_pan(value, pan)) {
                 fmt::println(stderr,
                              "error: {} is <0..239>[:<0..63>] - 1.5 degree steps clockwise "
@@ -2741,7 +2741,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "blkmixcfg") {
-            std::array<std::optional<int>, ac3::kBlocksPerFrame> words{};
+            std::array<std::optional<int>, iclforge::kBlocksPerFrame> words{};
             if (!parse_block_mix_config(value, words)) {
                 fmt::println(stderr,
                              "error: blkmixcfg is six comma-separated 0..31 words, '-' for a "
@@ -2841,10 +2841,10 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "objects" && command == "qc") {
-            const auto id = ac3::plan::parse_layout(value);
+            const auto id = iclforge::plan::parse_layout(value);
             if (!id.has_value()) {
                 fmt::println(stderr, "error: objects layout '{}' not recognised ({})", value,
-                             ac3::plan::layout_names());
+                             iclforge::plan::layout_names());
                 return false;
             }
             out.qc_objects_layout = id;
@@ -2874,9 +2874,9 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         if (key == "coding" &&
             (command == "atmos-adm" || command == "atmos-iab" || command == "atmos-encode")) {
             if (value == "ajoc") {
-                out.ac4_atmos_coding = ac4::ObjectCoding::kAjoc;
+                out.ac4_atmos_coding = iclforge::ac4::ObjectCoding::kAjoc;
             } else if (value == "direct") {
-                out.ac4_atmos_coding = ac4::ObjectCoding::kDirect;
+                out.ac4_atmos_coding = iclforge::ac4::ObjectCoding::kDirect;
             } else {
                 fmt::println(stderr, "error: coding must be ajoc or direct (got '{}')", token);
                 return false;
@@ -2983,10 +2983,10 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "preset") {
             if (value != "all") {
-                ac3::meta::QcPresetId id{};
-                if (!ac3::meta::parse_qc_preset(value, id)) {
+                iclforge::meta::QcPresetId id{};
+                if (!iclforge::meta::parse_qc_preset(value, id)) {
                     fmt::println(stderr, "error: unknown qc preset '{}' ({} | all)", value,
-                                 ac3::meta::kQcPresetNames);
+                                 iclforge::meta::kQcPresetNames);
                     return false;
                 }
             }
@@ -3093,14 +3093,14 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
     return true;
 }
 
-std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
+std::optional<int> finish_measurement(const iclforge::meta::LoudnessMeter& meter,
                                       std::string_view programme, std::string_view field,
                                       FILE* out) {
     const auto lkfs = meter.integrated_lkfs();
     if (!lkfs.has_value()) {
         return std::nullopt;
     }
-    const int dialnorm = ac3::meta::dialnorm_from_lkfs(*lkfs);
+    const int dialnorm = iclforge::meta::dialnorm_from_lkfs(*lkfs);
     if (programme.empty()) {
         status_println(out, "measured {:.2f} LKFS (BS.1770-4, gated) -> {} {}", *lkfs, field,
                      dialnorm);
@@ -3111,9 +3111,9 @@ std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
     return dialnorm;
 }
 
-std::optional<int> measured_dialnorm(const ac3::io::WavData& wav, ac3::SampleRate rate,
-                                     ac3::Acmod acmod, bool lfe, FILE* out) {
-    ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
+std::optional<int> measured_dialnorm(const iclforge::io::WavData& wav, iclforge::SampleRate rate,
+                                     iclforge::Acmod acmod, bool lfe, FILE* out) {
+    iclforge::meta::LoudnessMeter meter{rate, acmod, lfe};
     // LoudnessMeter takes its spans in AC-3 CODED order (Table 5.8: L, C, R,
     // Ls, Rs, LFE), which is not WAV order (FL, FR, FC, LFE, BL, BR) for any
     // layout wider than stereo. Pushing the file's own order straight in put
@@ -3127,7 +3127,7 @@ std::optional<int> measured_dialnorm(const ac3::io::WavData& wav, ac3::SampleRat
     // ac3_layout_for's wav_index[k] is "the position in a WAV frame of AC-3
     // channel k" - the same permutation run_levels already applies before it
     // meters, which is why that command never had the fault.
-    const auto layout = ac3::io::ac3_layout_for(wav.channels.size());
+    const auto layout = iclforge::io::ac3_layout_for(wav.channels.size());
     std::vector<std::span<const float>> views;
     views.reserve(wav.channels.size());
     if (layout && layout->wav_index.size() == wav.channels.size()) {
@@ -3147,16 +3147,16 @@ std::optional<int> measured_dialnorm(const ac3::io::WavData& wav, ac3::SampleRat
     return finish_measurement(meter, {}, "dialnorm", out);
 }
 
-std::optional<int> measured_dialnorm_channel(std::span<const float> channel, ac3::SampleRate rate,
+std::optional<int> measured_dialnorm_channel(std::span<const float> channel, iclforge::SampleRate rate,
                                              std::string_view programme, std::string_view field,
                                              FILE* out) {
-    ac3::meta::LoudnessMeter meter{rate, ac3::Acmod::k1_0, false};
+    iclforge::meta::LoudnessMeter meter{rate, iclforge::Acmod::k1_0, false};
     const std::array<std::span<const float>, 1> views{channel};
     meter.push(views);
     return finish_measurement(meter, programme, field, out);
 }
 
-bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
+bool prepare_dual_mono_source(iclforge::io::WavData& wav, std::string_view layout,
                               std::string_view in2_path) {
     if (layout != "1+1") {
         if (!in2_path.empty()) {
@@ -3186,9 +3186,9 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
                      wav.channels.size());
         return false;
     }
-    auto second = ac3::io::read_wav(std::string{in2_path});
+    auto second = iclforge::io::read_wav(std::string{in2_path});
     if (!second.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in2_path, ac3::io::describe(second.error()));
+        fmt::println(stderr, "error: {}: {}", in2_path, iclforge::io::describe(second.error()));
         return false;
     }
     if (second->channels.size() != 1) {
@@ -3249,7 +3249,7 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
 namespace {
 
 // The first dmixmod a programme's independent substream sends, and the acmod
-// it rode in on - ac3::automatic_stereo_target() needs both, since Table
+// it rode in on - iclforge::automatic_stereo_target() needs both, since Table
 // D2.2's own note leaves dmixmod's meaning reserved below acmod 3/0 (see that
 // function's comment). Same value `ac3cli probe` reports for the lead
 // programme. Headers only, and it stops at the first answer, which is the
@@ -3258,19 +3258,19 @@ namespace {
 // passed over, since the independent substream is the one every decoder of
 // the programme reads.
 struct PreferredDownmix {
-    ac3::meta::DownmixMode dmixmod;
-    ac3::Acmod acmod;
+    iclforge::meta::DownmixMode dmixmod;
+    iclforge::Acmod acmod;
 };
 
 std::optional<PreferredDownmix> preferred_downmix(std::span<const std::byte> stream,
                                                    std::optional<int> programme) {
     std::size_t offset = 0;
     while (offset < stream.size()) {
-        const auto header = ac3::io::read_frame_header(stream.subspan(offset));
+        const auto header = iclforge::io::read_frame_header(stream.subspan(offset));
         if (!header.has_value()) {
             break;
         }
-        if (header->strmtyp != ac3::eac3::StreamType::kDependent) {
+        if (header->strmtyp != iclforge::eac3::StreamType::kDependent) {
             if (!programme.has_value()) {
                 programme = header->substreamid;
             }
@@ -3285,7 +3285,7 @@ std::optional<PreferredDownmix> preferred_downmix(std::span<const std::byte> str
 
 }  // namespace
 
-ac3::OutputConfig resolve_output(const Options& meta, std::span<const std::byte> stream,
+iclforge::OutputConfig resolve_output(const Options& meta, std::span<const std::byte> stream,
                                  FILE* status) {
     auto output = meta.output;
     if (!meta.downmix_auto) {
@@ -3296,14 +3296,14 @@ ac3::OutputConfig resolve_output(const Options& meta, std::span<const std::byte>
     // automatic_stereo_target() answers Lo/Ro to for any acmod, so there is no
     // acmod to invent one for here.
     output.target = preferred.has_value()
-                        ? ac3::automatic_stereo_target(preferred->acmod, preferred->dmixmod)
-                        : ac3::DownmixTarget::kLoRo;
+                        ? iclforge::automatic_stereo_target(preferred->acmod, preferred->dmixmod)
+                        : iclforge::DownmixTarget::kLoRo;
     status_println(status, "  downmix=auto: dmixmod {} -> {} (§D3.1.1)",
                    preferred.has_value()
                        ? fmt::format("{} ({})", static_cast<int>(preferred->dmixmod),
-                                     ac3::meta::describe(preferred->dmixmod))
+                                     iclforge::meta::describe(preferred->dmixmod))
                        : std::string{"absent"},
-                   output.target == ac3::DownmixTarget::kLtRt ? "Lt/Rt stereo" : "Lo/Ro stereo");
+                   output.target == iclforge::DownmixTarget::kLtRt ? "Lt/Rt stereo" : "Lo/Ro stereo");
     return output;
 }
 
@@ -3314,7 +3314,7 @@ bool write_frames(std::string_view path, std::span<const std::vector<std::byte>>
         // invocations) should not pay for it, and calling it more than once
         // in the rare case both the input and output of one command are "-"
         // is harmless - see platform/stdio_binary.hpp for what it fixes.
-        ac3::cli::platform::set_stdio_binary();
+        iclforge::cli::platform::set_stdio_binary();
         for (const auto& frame : frames) {
             std::cout.write(reinterpret_cast<const char*>(frame.data()),
                             static_cast<std::streamsize>(frame.size()));
@@ -3404,7 +3404,7 @@ bool EncodedStreamSink::close() {
         return write_frames(path_, deferred_);
     }
     if (stdio_) {
-        ac3::cli::platform::set_stdio_binary();
+        iclforge::cli::platform::set_stdio_binary();
         std::cout.write(reinterpret_cast<const char*>(buffered_.data()),
                         static_cast<std::streamsize>(buffered_.size()));
         std::cout.flush();
@@ -3437,7 +3437,7 @@ void EncodedStreamSink::abort() {
         // "beside the intended output" has no meaning for a pipe - see
         // write_partial_output's identical stdout reasoning and wording.
         if (keep_partial_ && frames_ > 0) {
-            ac3::cli::platform::set_stdio_binary();
+            iclforge::cli::platform::set_stdio_binary();
             std::cout.write(reinterpret_cast<const char*>(buffered_.data()),
                             static_cast<std::streamsize>(buffered_.size()));
             std::cout.flush();
@@ -3490,7 +3490,7 @@ bool Pcm16RawWavSink::open(std::string_view path, std::uint32_t sample_rate,
     path_ = std::string{path};
     data_bytes_ = 0;
     // Create/truncate first, then reopen read+write for the close()-time
-    // size patch - the same two-step ac3::io::WavStreamWriter::open uses,
+    // size patch - the same two-step iclforge::io::WavStreamWriter::open uses,
     // and for the same reason: `in|out|trunc` is not reliably
     // create-capable for a not-yet-existing file everywhere.
     {
@@ -3499,7 +3499,7 @@ bool Pcm16RawWavSink::open(std::string_view path, std::uint32_t sample_rate,
             fmt::println(stderr, "error: cannot open {} for writing", path_);
             return false;
         }
-        // Field for field ac3::io::write_wav_pcm16_raw's header (format tag
+        // Field for field iclforge::io::write_wav_pcm16_raw's header (format tag
         // 1, 16-bit), sizes zero until close() patches them.
         const auto block_align = static_cast<std::uint32_t>(channels) * 2;
         create.write("RIFF", 4);
@@ -3576,7 +3576,7 @@ bool write_repeated_frame(std::string_view path, std::span<const std::byte> fram
         return static_cast<bool>(out);
     };
     if (is_stdio_path(path)) {
-        ac3::cli::platform::set_stdio_binary();
+        iclforge::cli::platform::set_stdio_binary();
         const bool ok = emit(std::cout);
         std::cout.flush();
         if (!ok || !std::cout) {
@@ -3634,7 +3634,7 @@ std::vector<std::byte> read_all(std::string_view path) {
         // stdin's length is unknown up front, so this path keeps the
         // iterator read (and to_bytes' copy) the file branch below no
         // longer needs.
-        ac3::cli::platform::set_stdio_binary();
+        iclforge::cli::platform::set_stdio_binary();
         const std::vector<char> raw{std::istreambuf_iterator<char>(std::cin),
                                     std::istreambuf_iterator<char>()};
         return to_bytes(raw);
@@ -3665,7 +3665,7 @@ std::vector<std::byte> read_elementary_stream(std::string_view in_path) {
         fmt::println(stderr, "error: cannot read {}", in_path);
         return {};
     }
-    auto result = ac3::apps::elementary_stream_from_bytes(bytes);
+    auto result = iclforge::apps::elementary_stream_from_bytes(bytes);
     if (!result.error.empty()) {
         fmt::println(stderr, "error: {} is a {}", in_path, result.error);
         return {};
@@ -3673,12 +3673,12 @@ std::vector<std::byte> read_elementary_stream(std::string_view in_path) {
     return std::move(result.bytes);
 }
 
-std::expected<ac3::io::WavData, ac3::io::WavError> read_wav_arg(std::string_view path) {
+std::expected<iclforge::io::WavData, iclforge::io::WavError> read_wav_arg(std::string_view path) {
     if (is_stdio_path(path)) {
-        ac3::cli::platform::set_stdio_binary();
-        return ac3::io::read_wav(std::cin);
+        iclforge::cli::platform::set_stdio_binary();
+        return iclforge::io::read_wav(std::cin);
     }
-    return ac3::io::read_wav(std::string{path});
+    return iclforge::io::read_wav(std::string{path});
 }
 
 bool PlanarWavSink::open(std::string_view path, std::uint32_t sample_rate, std::size_t slots,
@@ -3710,9 +3710,9 @@ bool PlanarWavSink::append(std::size_t slot, std::span<const float> samples) {
     return drain();
 }
 
-std::expected<void, ac3::io::WavError> PlanarWavSink::close() {
+std::expected<void, iclforge::io::WavError> PlanarWavSink::close() {
     if (!open_) {
-        return std::unexpected(ac3::io::WavError::kCannotOpen);
+        return std::unexpected(iclforge::io::WavError::kCannotOpen);
     }
     open_ = false;
     if (stdio_) {
@@ -3720,7 +3720,7 @@ std::expected<void, ac3::io::WavError> PlanarWavSink::close() {
     }
     if (!drain()) {
         writer_.close();
-        return std::unexpected(ac3::io::WavError::kCannotOpen);
+        return std::unexpected(iclforge::io::WavError::kCannotOpen);
     }
     for (std::size_t s = 0; s < slots_.size(); ++s) {
         if (slots_[s].size() != consumed_[s]) {
@@ -3781,40 +3781,40 @@ bool PlanarWavSink::drain() {
 
 std::string meter_bar(double db, int width) {
     std::string bar(static_cast<std::size_t>(width), '-');
-    const auto filled = static_cast<int>(std::lround(ac3::analysis::meter_fraction(db) * width));
+    const auto filled = static_cast<int>(std::lround(iclforge::analysis::meter_fraction(db) * width));
     for (int i = 0; i < filled; ++i) {
         bar[static_cast<std::size_t>(i)] = '#';
     }
     return bar;
 }
 
-void print_channel_summary(const ac3::analysis::LevelMeter& meter, FILE* out) {
+void print_channel_summary(const iclforge::analysis::LevelMeter& meter, FILE* out) {
     if (out == nullptr) {
         return;
     }
     const auto acmod = meter.acmod();
     const bool lfe = meter.lfe();
     fmt::println(out, "");
-    fmt::println(out, "per-channel levels ({}):", ac3::analysis::layout_name(acmod, lfe));
+    fmt::println(out, "per-channel levels ({}):", iclforge::analysis::layout_name(acmod, lfe));
     fmt::println(out, "  {:<4} {:>8} {:>8}  {:<20} {}", "ch", "peak", "rms",
                 "peak (-60..0 dBFS)", "clipped");
     for (int ch = 0; ch < meter.channel_count(); ++ch) {
         const auto& stats = meter.summary()[static_cast<std::size_t>(ch)];
         fmt::println(out, "  {:<4} {:>8.2f} {:>8.2f}  [{}] {}",
-                     ac3::analysis::channel_name(acmod, lfe, ch), stats.peak_db(),
+                     iclforge::analysis::channel_name(acmod, lfe, ch), stats.peak_db(),
                      stats.rms_db(), meter_bar(stats.peak_db(), 18),
                      stats.clipped_samples > 0 ? std::to_string(stats.clipped_samples) : "-");
     }
     // The energy vector over the whole run, not the last few hundred
     // milliseconds levels() remembers: a summary line has to describe the
     // same span of audio as the table above it.
-    std::vector<ac3::analysis::ChannelLevel> whole(
+    std::vector<iclforge::analysis::ChannelLevel> whole(
         static_cast<std::size_t>(meter.channel_count()));
     for (std::size_t ch = 0; ch < whole.size(); ++ch) {
         whole[ch].rms_db = meter.summary()[ch].rms_db();
     }
-    const auto field = ac3::analysis::energy_vector(whole, acmod);
-    if (ac3::fullbw_channel_count(acmod) >= 2 && field.magnitude > 0.0) {
+    const auto field = iclforge::analysis::energy_vector(whole, acmod);
+    if (iclforge::fullbw_channel_count(acmod) >= 2 && field.magnitude > 0.0) {
         // A perfectly centred image leaves a vanishing negative y, which
         // rounds to a correct but ridiculous "-0°".
         const double azimuth = std::round(field.azimuth_deg);
@@ -3823,7 +3823,7 @@ void print_channel_summary(const ac3::analysis::LevelMeter& meter, FILE* out) {
     }
 }
 
-void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds) {
+void print_live_meter(const iclforge::analysis::LevelMeter& meter, double seconds) {
     if (quiet_mode()) {
         return;
     }
@@ -3833,7 +3833,7 @@ void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds) {
     for (int ch = 0; ch < meter.channel_count(); ++ch) {
         const auto& level = meter.levels()[static_cast<std::size_t>(ch)];
         line += fmt::format(
-            "  {:>3} [{}]", ac3::analysis::channel_name(meter.acmod(), meter.lfe(), ch),
+            "  {:>3} [{}]", iclforge::analysis::channel_name(meter.acmod(), meter.lfe(), ch),
             meter_bar(level.peak_db, width));
         if (!narrow) {
             line += fmt::format(" {:>6.1f} {:<4}", level.peak_db, level.clipped ? "CLIP" : "");
@@ -3846,41 +3846,41 @@ void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds) {
     (void)std::fflush(stdout);  // best-effort: a live meter with nothing left to do on failure
 }
 
-bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Plan& plan_out,
+bool resolve_layout(std::string_view name, iclforge::plan::Codec codec, iclforge::plan::Plan& plan_out,
                     std::string& label) {
-    if (const auto id = ac3::plan::parse_layout(name)) {
-        if (!ac3::plan::carries(codec, *id)) {
-            fmt::println(stderr, "error: {} cannot carry {} - {}", ac3::plan::codec_label(codec),
-                         ac3::plan::layout(*id).label,
-                         ac3::plan::describe(codec == ac3::plan::Codec::kAc4
-                                                 ? ac3::plan::PlanError::kLayoutNotInAc4
-                                                 : ac3::plan::PlanError::kLayoutNeedsEac3));
+    if (const auto id = iclforge::plan::parse_layout(name)) {
+        if (!iclforge::plan::carries(codec, *id)) {
+            fmt::println(stderr, "error: {} cannot carry {} - {}", iclforge::plan::codec_label(codec),
+                         iclforge::plan::layout(*id).label,
+                         iclforge::plan::describe(codec == iclforge::plan::Codec::kAc4
+                                                 ? iclforge::plan::PlanError::kLayoutNotInAc4
+                                                 : iclforge::plan::PlanError::kLayoutNeedsEac3));
             return false;
         }
         plan_out.layout = *id;
         plan_out.custom_locations = std::nullopt;
-        label = std::string(ac3::plan::layout(*id).label);
+        label = std::string(iclforge::plan::layout(*id).label);
         return true;
     }
-    const auto custom = ac3::plan::parse_channels(name);
+    const auto custom = iclforge::plan::parse_channels(name);
     if (!custom.has_value()) {
         fmt::println(stderr, "error: unknown layout '{}' ({})", name,
-                     ac3::plan::layout_names(codec));
+                     iclforge::plan::layout_names(codec));
         return false;
     }
-    const auto allocated = ac3::eac3::chanmap::allocate(*custom);
+    const auto allocated = iclforge::eac3::chanmap::allocate(*custom);
     if (!allocated.has_value()) {
         fmt::println(stderr, "error: channel selection '{}' is invalid - {}", name,
-                     ac3::eac3::chanmap::describe(allocated.error()));
+                     iclforge::eac3::chanmap::describe(allocated.error()));
         return false;
     }
-    if (codec == ac3::plan::Codec::kAc3 && !allocated->dependents.empty()) {
-        fmt::println(stderr, "error: {} cannot carry '{}' - {}", ac3::plan::codec_label(codec),
-                     name, ac3::plan::describe(ac3::plan::PlanError::kLayoutNeedsEac3));
+    if (codec == iclforge::plan::Codec::kAc3 && !allocated->dependents.empty()) {
+        fmt::println(stderr, "error: {} cannot carry '{}' - {}", iclforge::plan::codec_label(codec),
+                     name, iclforge::plan::describe(iclforge::plan::PlanError::kLayoutNeedsEac3));
         return false;
     }
     plan_out.custom_locations = custom;
-    label = ac3::plan::format_channels(*custom);
+    label = iclforge::plan::format_channels(*custom);
     return true;
 }
 
@@ -3896,7 +3896,7 @@ std::string_view container_note(RecordingSink::Container container) {
 }
 
 std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bitrate,
-                                          ac3::SampleRate rate) {
+                                          iclforge::SampleRate rate) {
     // dialnorm=auto measures a whole programme's BS.1770 loudness before
     // encoding it, which a live capture has not got: the programme does not
     // exist yet when the first frame has to be encoded. Refused rather than
@@ -3922,8 +3922,8 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
     // parser failing first.
     const std::string_view name =
         meta.take_layout.empty() ? std::string_view{"stereo"} : std::string_view{meta.take_layout};
-    take.plan.codec = ac3::plan::Codec::kEac3;
-    if (!resolve_layout(name, ac3::plan::Codec::kEac3, take.plan, take.label)) {
+    take.plan.codec = iclforge::plan::Codec::kEac3;
+    if (!resolve_layout(name, iclforge::plan::Codec::kEac3, take.plan, take.label)) {
         return std::nullopt;
     }
     // Whether plain AC-3 could carry what was asked for: a named layout says
@@ -3933,27 +3933,27 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
     // ordinary path into E-AC-3 rather than an error.
     bool ac3_can_carry = false;
     if (take.plan.custom_locations.has_value()) {
-        const auto allocated = ac3::eac3::chanmap::allocate(*take.plan.custom_locations);
+        const auto allocated = iclforge::eac3::chanmap::allocate(*take.plan.custom_locations);
         ac3_can_carry = allocated.has_value() && allocated->dependents.empty();
     } else {
-        ac3_can_carry = ac3::plan::carries(ac3::plan::Codec::kAc3, take.plan.layout);
+        ac3_can_carry = iclforge::plan::carries(iclforge::plan::Codec::kAc3, take.plan.layout);
     }
-    take.plan.codec = meta.take_codec.value_or(ac3_can_carry ? ac3::plan::Codec::kAc3
-                                                            : ac3::plan::Codec::kEac3);
-    if (take.plan.codec == ac3::plan::Codec::kAc3 && !ac3_can_carry) {
+    take.plan.codec = meta.take_codec.value_or(ac3_can_carry ? iclforge::plan::Codec::kAc3
+                                                            : iclforge::plan::Codec::kEac3);
+    if (take.plan.codec == iclforge::plan::Codec::kAc3 && !ac3_can_carry) {
         fmt::println(stderr, "error: {} cannot carry {} - {}",
-                     ac3::plan::codec_label(ac3::plan::Codec::kAc3), take.label,
-                     ac3::plan::describe(ac3::plan::PlanError::kLayoutNeedsEac3));
+                     iclforge::plan::codec_label(iclforge::plan::Codec::kAc3), take.label,
+                     iclforge::plan::describe(iclforge::plan::PlanError::kLayoutNeedsEac3));
         return std::nullopt;
     }
-    if (const auto bad = ac3::plan::validate(take.plan)) {
-        fmt::println(stderr, "error: {}", ac3::plan::describe(*bad));
+    if (const auto bad = iclforge::plan::validate(take.plan)) {
+        fmt::println(stderr, "error: {}", iclforge::plan::describe(*bad));
         return std::nullopt;
     }
-    take.eac3 = take.plan.codec == ac3::plan::Codec::kEac3;
-    const auto channel_plan = ac3::plan::resolve(take.plan);
-    take.coded_channels = static_cast<int>(ac3::plan::coded_channels(channel_plan).size());
-    take.rendered_channels = ac3::plan::rendered_channel_count(channel_plan);
+    take.eac3 = take.plan.codec == iclforge::plan::Codec::kEac3;
+    const auto channel_plan = iclforge::plan::resolve(take.plan);
+    take.coded_channels = static_cast<int>(iclforge::plan::coded_channels(channel_plan).size());
+    take.rendered_channels = iclforge::plan::rendered_channel_count(channel_plan);
     return take;
 }
 
@@ -3964,7 +3964,7 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
                                  .sample_rate = sample_rate_hz,
                                  .channels = take.rendered_channels,
                                  .fmp4_window_segments = meta.fmp4_window_segments};
-    const ac4::Toc* toc = encoder != nullptr ? encoder->ac4_toc() : nullptr;
+    const iclforge::ac4::Toc* toc = encoder != nullptr ? encoder->ac4_toc() : nullptr;
     if (toc == nullptr) {
         return config;
     }
@@ -3972,17 +3972,17 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
     // A PES timestamp's step. The 1000/1001 rates' frames alternate in
     // length, which a fixed step cannot follow; the encoder writes frame
     // rate index 13 unless asked otherwise, whose frames do not.
-    ac4.samples_per_frame = ac4::samples_per_frame(*toc).value_or(2048);
+    ac4.samples_per_frame = iclforge::ac4::samples_per_frame(*toc).value_or(2048);
     // IEC 61937-14's smallest burst type that carries the rate's largest
     // frame, as run_spdif chooses it for a finished stream; no carrier where
     // none does.
     ac4.carrier_rate_hz = 0;
     const int fs_index = toc->sample_rate_hz == 44100 ? 0 : 1;
-    if (const auto type = ac3::iec61937::ac4_burst_type_for(encoder->ac4_max_frame_bytes(),
+    if (const auto type = iclforge::iec61937::ac4_burst_type_for(encoder->ac4_max_frame_bytes(),
                                                             fs_index, toc->frame_rate_index)) {
         if (const auto timing =
-                ac3::iec61937::ac4_burst_timing(*type, fs_index, toc->frame_rate_index)) {
-            const bool hbr16 = *type == ac3::iec61937::BurstDataType::kAc4Hbr16;
+                iclforge::iec61937::ac4_burst_timing(*type, fs_index, toc->frame_rate_index)) {
+            const bool hbr16 = *type == iclforge::iec61937::BurstDataType::kAc4Hbr16;
             ac4.burst_type = *type;
             ac4.carrier_rate_hz = hbr16 ? timing->link_rate_hz / 4 : timing->link_rate_hz;
             ac4.carrier_channels = hbr16 ? 8 : 2;
@@ -3991,38 +3991,38 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
     // TS 103 190-2 Annexes E, G and H: the 'ac-4' sample entry, Table E.1's
     // time scale, Table H.1's brands, and the manifests' values for the
     // presentation with the widest compatibility, as fmp4 writes them.
-    if (const auto timing = ac4::media_timing(*toc)) {
+    if (const auto timing = iclforge::ac4::media_timing(*toc)) {
         ac4.fmp4.audio =
-            mp4::AudioTrack{.codec_id = std::string{mp4::kCodecAc4},
+            iclforge::mp4::AudioTrack{.codec_id = std::string{iclforge::mp4::kCodecAc4},
                             .sample_rate = static_cast<std::uint32_t>(toc->sample_rate_hz),
                             .channels = 2,  // TS 103 190-2 E.4.5
                             .samples_per_frame = timing->sample_delta,
-                            .codec_config = ac4::build_dac4(*toc),
-                            .rfc6381 = ac4::rfc6381_codec_string(*toc),
+                            .codec_config = iclforge::ac4::build_dac4(*toc),
+                            .rfc6381 = iclforge::ac4::rfc6381_codec_string(*toc),
                             .timescale = timing->timescale};
     }
     ac4.fmp4.brands = {"ca4m", "ca4s"};
-    if (const std::optional<int> channels = ac4::presentation_channel_count(*toc)) {
+    if (const std::optional<int> channels = iclforge::ac4::presentation_channel_count(*toc)) {
         ac4.fmp4.hls.channels_attribute = fmt::format("{}", *channels);
     }
-    if (const auto configuration = ac4::dash_channel_configuration(*toc)) {
-        ac4.fmp4.dash.channel_configuration = mp4::Descriptor{
+    if (const auto configuration = iclforge::ac4::dash_channel_configuration(*toc)) {
+        ac4.fmp4.dash.channel_configuration = iclforge::mp4::Descriptor{
             .scheme_id_uri = configuration->scheme_id_uri, .value = configuration->value};
     }
-    for (const ac4::ManifestDescriptor& property : ac4::dash_supplemental_properties(*toc)) {
+    for (const iclforge::ac4::ManifestDescriptor& property : iclforge::ac4::dash_supplemental_properties(*toc)) {
         ac4.fmp4.dash.supplemental_properties.push_back(
-            mp4::Descriptor{.scheme_id_uri = property.scheme_id_uri, .value = property.value});
+            iclforge::mp4::Descriptor{.scheme_id_uri = property.scheme_id_uri, .value = property.value});
     }
     config.channels = 2;
     config.ac4 = std::move(ac4);
     return config;
 }
 
-std::optional<ac3::meta::ProfileId> profile_id_of(const ac3::meta::Profile& p) {
-    for (const auto id : {ac3::meta::ProfileId::kFilmStandard, ac3::meta::ProfileId::kFilmLight,
-                          ac3::meta::ProfileId::kMusicStandard, ac3::meta::ProfileId::kMusicLight,
-                          ac3::meta::ProfileId::kSpeech}) {
-        const ac3::meta::Profile q = ac3::meta::profile(id);
+std::optional<iclforge::meta::ProfileId> profile_id_of(const iclforge::meta::Profile& p) {
+    for (const auto id : {iclforge::meta::ProfileId::kFilmStandard, iclforge::meta::ProfileId::kFilmLight,
+                          iclforge::meta::ProfileId::kMusicStandard, iclforge::meta::ProfileId::kMusicLight,
+                          iclforge::meta::ProfileId::kSpeech}) {
+        const iclforge::meta::Profile q = iclforge::meta::profile(id);
         if (p.null_low_db == q.null_low_db && p.null_high_db == q.null_high_db &&
             p.boost_ratio == q.boost_ratio && p.max_boost_db == q.max_boost_db &&
             p.early_cut_ratio == q.early_cut_ratio && p.early_cut_end_db == q.early_cut_end_db &&
@@ -4034,31 +4034,31 @@ std::optional<ac3::meta::ProfileId> profile_id_of(const ac3::meta::Profile& p) {
     return std::nullopt;
 }
 
-ac4::DrcProfile ac4_profile_of(ac3::meta::ProfileId id) {
+iclforge::ac4::DrcProfile ac4_profile_of(iclforge::meta::ProfileId id) {
     switch (id) {
-        case ac3::meta::ProfileId::kFilmStandard:
-            return ac4::DrcProfile::kFilmStandard;
-        case ac3::meta::ProfileId::kFilmLight:
+        case iclforge::meta::ProfileId::kFilmStandard:
+            return iclforge::ac4::DrcProfile::kFilmStandard;
+        case iclforge::meta::ProfileId::kFilmLight:
             break;
-        case ac3::meta::ProfileId::kMusicStandard:
-            return ac4::DrcProfile::kMusicStandard;
-        case ac3::meta::ProfileId::kMusicLight:
-            return ac4::DrcProfile::kMusicLight;
-        case ac3::meta::ProfileId::kSpeech:
-            return ac4::DrcProfile::kSpeech;
+        case iclforge::meta::ProfileId::kMusicStandard:
+            return iclforge::ac4::DrcProfile::kMusicStandard;
+        case iclforge::meta::ProfileId::kMusicLight:
+            return iclforge::ac4::DrcProfile::kMusicLight;
+        case iclforge::meta::ProfileId::kSpeech:
+            return iclforge::ac4::DrcProfile::kSpeech;
     }
-    return ac4::DrcProfile::kFilmLight;
+    return iclforge::ac4::DrcProfile::kFilmLight;
 }
 
-ac4::EncoderConfig ac4_config_for(const plan::Plan& p) {
-    ac4::EncoderConfig config;
+iclforge::ac4::EncoderConfig ac4_config_for(const plan::Plan& p) {
+    iclforge::ac4::EncoderConfig config;
     config.channels = static_cast<int>(plan::coded_channels(plan::resolve(p)).size());
-    config.sample_rate_hz = static_cast<int>(ac3::sample_rate_hz(p.sample_rate));
+    config.sample_rate_hz = static_cast<int>(iclforge::sample_rate_hz(p.sample_rate));
     config.bitrate_kbps = static_cast<int>(p.bitrate_kbps);
     config.dialnorm_db = -static_cast<double>(p.meta.dialnorm);
     if (p.meta.drc.has_value()) {
         if (const auto id = profile_id_of(*p.meta.drc)) {
-            ac4::DrcConfig drc;
+            iclforge::ac4::DrcConfig drc;
             drc.profile = ac4_profile_of(*id);
             config.drc = drc;
         }
@@ -4073,10 +4073,10 @@ TakeEncoder& TakeEncoder::operator=(TakeEncoder&&) noexcept = default;
 
 namespace {
 
-// Where AC-4's encoder takes a coded channel (ac4::EncoderConfig::channels):
+// Where AC-4's encoder takes a coded channel (iclforge::ac4::EncoderConfig::channels):
 // L, R, C, the LFE, Ls, Rs.
-int ac4_input_rank(ac3::eac3::chanmap::Location location) {
-    using L = ac3::eac3::chanmap::Location;
+int ac4_input_rank(iclforge::eac3::chanmap::Location location) {
+    using L = iclforge::eac3::chanmap::Location;
     switch (location) {
         case L::kLeft:
             return 0;
@@ -4097,7 +4097,7 @@ int ac4_input_rank(ac3::eac3::chanmap::Location location) {
 
 }  // namespace
 
-std::string TakeEncoder::open(const plan::Plan& p, std::optional<ac4::EncoderConfig> ac4) {
+std::string TakeEncoder::open(const plan::Plan& p, std::optional<iclforge::ac4::EncoderConfig> ac4) {
     ac3_.reset();
     eac3_.reset();
     ac4_.reset();
@@ -4107,21 +4107,21 @@ std::string TakeEncoder::open(const plan::Plan& p, std::optional<ac4::EncoderCon
         case plan::Codec::kAc3:
             // Heap-allocated: FrameEncoder carries several KB of MDCT
             // scratch/history state (PREfast's C6262).
-            ac3_ = std::make_unique<ac3::FrameEncoder>(plan::ac3_config(p));
+            ac3_ = std::make_unique<iclforge::FrameEncoder>(plan::ac3_config(p));
             coded_channels_ = static_cast<std::size_t>(ac3_->channel_count());
             return {};
         case plan::Codec::kEac3: {
             const auto config = plan::eac3_config(p);
-            eac3_ = std::make_unique<ac3::eac3::AccessUnitEncoder>(config);
+            eac3_ = std::make_unique<iclforge::eac3::AccessUnitEncoder>(config);
             coded_channels_ = static_cast<std::size_t>(eac3_->channel_count());
             // AccessUnitEncoder refuses a configuration by building no
             // substreams; build_silent_access_unit() makes the same checks
             // and names the one that failed.
             if (coded_channels_ == 0) {
-                const auto check = ac3::eac3::build_silent_access_unit(config);
+                const auto check = iclforge::eac3::build_silent_access_unit(config);
                 return fmt::format("the encoder cannot express this configuration: {}",
                                    check.has_value() ? std::string_view{"no substreams were built"}
-                                                     : ac3::describe(check.error()));
+                                                     : iclforge::describe(check.error()));
             }
             return {};
         }
@@ -4131,22 +4131,22 @@ std::string TakeEncoder::open(const plan::Plan& p, std::optional<ac4::EncoderCon
             std::iota(ac4_order_.begin(), ac4_order_.end(), std::size_t{0});
             std::ranges::stable_sort(
                 ac4_order_, {}, [&](std::size_t c) { return ac4_input_rank(coded[c].location); });
-            ac4::EncoderConfig config = ac4.value_or(ac4_config_for(p));
+            iclforge::ac4::EncoderConfig config = ac4.value_or(ac4_config_for(p));
             config.channels = static_cast<int>(coded.size());
-            config.sample_rate_hz = static_cast<int>(ac3::sample_rate_hz(p.sample_rate));
+            config.sample_rate_hz = static_cast<int>(iclforge::sample_rate_hz(p.sample_rate));
             config.bitrate_kbps = static_cast<int>(p.bitrate_kbps);
-            auto encoder = ac4::Encoder::create(config);
+            auto encoder = iclforge::ac4::Encoder::create(config);
             if (!encoder.has_value()) {
                 return fmt::format("the AC-4 encoder refuses {}",
-                                   ac4::Encoder::refusal_reason(config));
+                                   iclforge::ac4::Encoder::refusal_reason(config));
             }
-            ac4_ = std::make_unique<ac4::Encoder>(std::move(*encoder));
+            ac4_ = std::make_unique<iclforge::ac4::Encoder>(std::move(*encoder));
             ac4_views_.resize(coded.size());
             coded_channels_ = coded.size();
             // The largest sync frame: the rate's share of the longest frame
             // (a frame at 29.97 fps is a sample longer every other time), its
             // head with frame_size's escape, and its CRC.
-            const auto timing = ac4::media_timing(ac4_->toc());
+            const auto timing = iclforge::ac4::media_timing(ac4_->toc());
             const double seconds = timing.has_value()
                                        ? static_cast<double>(timing->sample_delta) /
                                              static_cast<double>(timing->timescale)
@@ -4162,12 +4162,12 @@ std::string TakeEncoder::open(const plan::Plan& p, std::optional<ac4::EncoderCon
 }
 
 std::vector<TakeEncoder::Unit> TakeEncoder::ac4_units(
-    const std::vector<ac4::EncodedFrame>& frames) const {
+    const std::vector<iclforge::ac4::EncodedFrame>& frames) const {
     std::vector<Unit> out;
     out.reserve(frames.size());
-    for (const ac4::EncodedFrame& frame : frames) {
+    for (const iclforge::ac4::EncodedFrame& frame : frames) {
         out.push_back(
-            Unit{.bytes = ac4::sync_frame(frame.raw_ac4_frame, true), .sync = frame.iframe});
+            Unit{.bytes = iclforge::ac4::sync_frame(frame.raw_ac4_frame, true), .sync = frame.iframe});
     }
     return out;
 }
@@ -4182,7 +4182,7 @@ std::expected<std::vector<TakeEncoder::Unit>, std::string> TakeEncoder::encode(
         auto frames = ac4_->encode(ac4_views_);
         if (!frames.has_value()) {
             return std::unexpected(
-                fmt::format("the AC-4 encoder: {}", ac4::describe(frames.error())));
+                fmt::format("the AC-4 encoder: {}", iclforge::ac4::describe(frames.error())));
         }
         return ac4_units(*frames);
     }
@@ -4190,7 +4190,7 @@ std::expected<std::vector<TakeEncoder::Unit>, std::string> TakeEncoder::encode(
         auto unit = eac3_->encode_access_unit(coded);
         if (!unit.has_value()) {
             return std::unexpected(fmt::format("the encoder cannot express this configuration: {}",
-                                               ac3::describe(unit.error())));
+                                               iclforge::describe(unit.error())));
         }
         out.push_back(Unit{.bytes = std::move(unit->bytes), .sync = true});
         return out;
@@ -4199,7 +4199,7 @@ std::expected<std::vector<TakeEncoder::Unit>, std::string> TakeEncoder::encode(
         auto frame = ac3_->encode_frame(coded);
         if (!frame.has_value()) {
             return std::unexpected(fmt::format("the encoder cannot express this configuration: {}",
-                                               ac3::describe(frame.error())));
+                                               iclforge::describe(frame.error())));
         }
         out.push_back(Unit{.bytes = std::move(*frame), .sync = true});
         return out;
@@ -4213,24 +4213,24 @@ std::expected<std::vector<TakeEncoder::Unit>, std::string> TakeEncoder::flush() 
     }
     auto frames = ac4_->flush();
     if (!frames.has_value()) {
-        return std::unexpected(fmt::format("the AC-4 encoder: {}", ac4::describe(frames.error())));
+        return std::unexpected(fmt::format("the AC-4 encoder: {}", iclforge::ac4::describe(frames.error())));
     }
     return ac4_units(*frames);
 }
 
-const ac4::Toc* TakeEncoder::ac4_toc() const {
+const iclforge::ac4::Toc* TakeEncoder::ac4_toc() const {
     return ac4_ ? &ac4_->toc() : nullptr;
 }
 
-std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,
+std::optional<iclforge::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,
                                                bool eac3) {
     switch (hz) {
-        case 48000: return ac3::SampleRate::k48000;
-        case 44100: return ac3::SampleRate::k44100;
-        case 32000: return ac3::SampleRate::k32000;
-        case 24000: if (eac3) return ac3::SampleRate::k24000; break;
-        case 22050: if (eac3) return ac3::SampleRate::k22050; break;
-        case 16000: if (eac3) return ac3::SampleRate::k16000; break;
+        case 48000: return iclforge::SampleRate::k48000;
+        case 44100: return iclforge::SampleRate::k44100;
+        case 32000: return iclforge::SampleRate::k32000;
+        case 24000: if (eac3) return iclforge::SampleRate::k24000; break;
+        case 22050: if (eac3) return iclforge::SampleRate::k22050; break;
+        case 16000: if (eac3) return iclforge::SampleRate::k16000; break;
         default: break;
     }
     fmt::println(stderr, "error: sample rate {} is not legal for {} (need {})", hz, codec,
@@ -4238,7 +4238,7 @@ std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_vie
     return std::nullopt;
 }
 
-std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std::size_t channels) {
+std::optional<iclforge::plan::Routing> routing_or_error(const iclforge::plan::Plan& p, std::size_t channels) {
     auto routing = plan::route(plan::resolve(p), channels, p.meta.cmixlev, p.meta.surmixlev);
     if (!routing.has_value()) {
         fmt::println(stderr, "error: {} channels - {}", channels,
@@ -4253,117 +4253,117 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 namespace {
 
 // AC-4's DRC decoder mode by drcmode='s name (parse_options checked it).
-ac4::DrcMode ac4_drc_mode(std::string_view name) {
+iclforge::ac4::DrcMode ac4_drc_mode(std::string_view name) {
     if (name == "off") {
-        return ac4::DrcMode::kOff;
+        return iclforge::ac4::DrcMode::kOff;
     }
     if (name == "home-theatre") {
-        return ac4::DrcMode::kHomeTheatre;
+        return iclforge::ac4::DrcMode::kHomeTheatre;
     }
     if (name == "flat-panel-tv") {
-        return ac4::DrcMode::kFlatPanelTv;
+        return iclforge::ac4::DrcMode::kFlatPanelTv;
     }
     if (name == "portable-speakers") {
-        return ac4::DrcMode::kPortableSpeakers;
+        return iclforge::ac4::DrcMode::kPortableSpeakers;
     }
     if (name == "portable-headphones") {
-        return ac4::DrcMode::kPortableHeadphones;
+        return iclforge::ac4::DrcMode::kPortableHeadphones;
     }
-    return ac4::DrcMode::kDefault;
+    return iclforge::ac4::DrcMode::kDefault;
 }
 
 // speakers='s layout for an immersive element (ETSI TS 103 190-2 clause
 // 5.10.2); without one, as coded.
-ac4::DownmixTarget ac4_layout(std::string_view speakers) {
+iclforge::ac4::DownmixTarget ac4_layout(std::string_view speakers) {
     if (speakers == "5.1") {
-        return ac4::DownmixTarget::k5X;
+        return iclforge::ac4::DownmixTarget::k5X;
     }
     if (speakers == "5.1.2") {
-        return ac4::DownmixTarget::k5X2;
+        return iclforge::ac4::DownmixTarget::k5X2;
     }
     if (speakers == "5.1.4") {
-        return ac4::DownmixTarget::k5X4;
+        return iclforge::ac4::DownmixTarget::k5X4;
     }
     if (speakers == "7.1") {
-        return ac4::DownmixTarget::k7X0;
+        return iclforge::ac4::DownmixTarget::k7X0;
     }
     if (speakers == "7.1.2") {
-        return ac4::DownmixTarget::k7X2;
+        return iclforge::ac4::DownmixTarget::k7X2;
     }
     if (speakers == "7.1.4") {
-        return ac4::DownmixTarget::k7X4;
+        return iclforge::ac4::DownmixTarget::k7X4;
     }
-    return ac4::DownmixTarget::kAsCoded;
+    return iclforge::ac4::DownmixTarget::kAsCoded;
 }
 
 // AC-4's downmix for channels=, downmix= and speakers=: downmix=loro, ltrt and
 // mono as named, downmix=auto or channels=2 alone the stream's preferred
 // method (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send, and
 // without a fold speakers='s layout.
-ac4::DownmixTarget ac4_downmix(const Options& meta) {
+iclforge::ac4::DownmixTarget ac4_downmix(const Options& meta) {
     if (meta.ac4_fold_5x) {
-        return ac4::DownmixTarget::k5X;
+        return iclforge::ac4::DownmixTarget::k5X;
     }
     if (meta.downmix_auto) {
-        return ac4::DownmixTarget::kStereo;
+        return iclforge::ac4::DownmixTarget::kStereo;
     }
     switch (meta.output.target) {
-        case ac3::DownmixTarget::kAsCoded:
+        case iclforge::DownmixTarget::kAsCoded:
             return ac4_layout(meta.ac4_speakers);
-        case ac3::DownmixTarget::kLoRo:
-            return meta.downmix_named ? ac4::DownmixTarget::kLoRo : ac4::DownmixTarget::kStereo;
-        case ac3::DownmixTarget::kLtRt:
-            return ac4::DownmixTarget::kLtRt;
-        case ac3::DownmixTarget::kMono:
-            return ac4::DownmixTarget::kMono;
+        case iclforge::DownmixTarget::kLoRo:
+            return meta.downmix_named ? iclforge::ac4::DownmixTarget::kLoRo : iclforge::ac4::DownmixTarget::kStereo;
+        case iclforge::DownmixTarget::kLtRt:
+            return iclforge::ac4::DownmixTarget::kLtRt;
+        case iclforge::DownmixTarget::kMono:
+            return iclforge::ac4::DownmixTarget::kMono;
     }
-    return ac4::DownmixTarget::kAsCoded;
+    return iclforge::ac4::DownmixTarget::kAsCoded;
 }
 
 // conceal='s policy, which AC-4's decoder offers as AC-3's and E-AC-3's do.
-ac4::ConcealmentPolicy ac4_concealment(ac3::ConcealmentPolicy policy) {
+iclforge::ac4::ConcealmentPolicy ac4_concealment(iclforge::ConcealmentPolicy policy) {
     switch (policy) {
-        case ac3::ConcealmentPolicy::kNone:
-            return ac4::ConcealmentPolicy::kNone;
-        case ac3::ConcealmentPolicy::kRepeatFade:
-            return ac4::ConcealmentPolicy::kRepeatFade;
-        case ac3::ConcealmentPolicy::kMute:
-            return ac4::ConcealmentPolicy::kMute;
+        case iclforge::ConcealmentPolicy::kNone:
+            return iclforge::ac4::ConcealmentPolicy::kNone;
+        case iclforge::ConcealmentPolicy::kRepeatFade:
+            return iclforge::ac4::ConcealmentPolicy::kRepeatFade;
+        case iclforge::ConcealmentPolicy::kMute:
+            return iclforge::ac4::ConcealmentPolicy::kMute;
     }
-    return ac4::ConcealmentPolicy::kNone;
+    return iclforge::ac4::ConcealmentPolicy::kNone;
 }
 
 }  // namespace
 
-ac4::DecoderConfig ac4_decoder_config(const Options& meta) {
-    ac4::DecoderConfig config = ac4_coded_config(meta);
+iclforge::ac4::DecoderConfig ac4_decoder_config(const Options& meta) {
+    iclforge::ac4::DecoderConfig config = ac4_coded_config(meta);
     config.output.output_level_dbfs = meta.ac4_output_level;
     config.output.drc = ac4_drc_mode(meta.ac4_drc_mode);
     config.output.dialogue_enhancement_db = meta.ac4_dialogue_enhancement;
     config.output.downmix = ac4_downmix(meta);
     config.output.mix_lfe = meta.ac4_mix_lfe;
     config.output.headphones = meta.ac4_headphones;
-    config.decoding = meta.ac4_core_decoding ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
+    config.decoding = meta.ac4_core_decoding ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull;
     return config;
 }
 
-std::optional<std::vector<ac4::Speaker>> ac4_presentation_speakers(
-    std::span<const ac4::SyncFrame> frames, const ac4::DecoderConfig& config) {
+std::optional<std::vector<iclforge::ac4::Speaker>> ac4_presentation_speakers(
+    std::span<const iclforge::ac4::SyncFrame> frames, const iclforge::ac4::DecoderConfig& config) {
     // A decoder of its own, which parse() leaves untouched by audio: the
     // caller's starts afresh at the first frame.
-    ac4::DecoderConfig parsing = config;
+    iclforge::ac4::DecoderConfig parsing = config;
     parsing.syntax = {};
-    ac4::Decoder decoder(parsing);
-    for (const ac4::SyncFrame& frame : frames) {
+    iclforge::ac4::Decoder decoder(parsing);
+    for (const iclforge::ac4::SyncFrame& frame : frames) {
         if (!decoder.parse(frame.raw_ac4_frame).has_value()) {
             continue;
         }
         const std::optional<std::size_t> selected = decoder.metadata().presentation;
-        const std::span<const ac4::PresentationInfo> presentations = decoder.presentations();
+        const std::span<const iclforge::ac4::PresentationInfo> presentations = decoder.presentations();
         if (!selected.has_value() || *selected >= presentations.size()) {
             continue;
         }
-        const std::vector<ac4::Speaker>& speakers = presentations[*selected].speakers;
+        const std::vector<iclforge::ac4::Speaker>& speakers = presentations[*selected].speakers;
         if (speakers.empty()) {
             return std::nullopt;
         }
@@ -4372,36 +4372,36 @@ std::optional<std::vector<ac4::Speaker>> ac4_presentation_speakers(
     return std::nullopt;
 }
 
-std::string ac4_processing(const ac4::OutputConfig& output) {
+std::string ac4_processing(const iclforge::ac4::OutputConfig& output) {
     std::string done;
     const auto add = [&done](const std::string& part) {
         done += (done.empty() ? "" : "; ") + part;
     };
     if (output.output_level_dbfs.has_value()) {
         add(fmt::format("dialnorm to {:g} dBFS, DRC {}", *output.output_level_dbfs,
-                        ac4::describe(output.drc)));
+                        iclforge::ac4::describe(output.drc)));
     }
     if (output.dialogue_enhancement_db > 0.0) {
         add(fmt::format("dialogue raised {:g} dB where the stream allows",
                         output.dialogue_enhancement_db));
     }
     switch (output.downmix) {
-        case ac4::DownmixTarget::kAsCoded:
+        case iclforge::ac4::DownmixTarget::kAsCoded:
             break;
-        case ac4::DownmixTarget::k7X4:
-        case ac4::DownmixTarget::k7X2:
-        case ac4::DownmixTarget::k7X0:
-        case ac4::DownmixTarget::k5X4:
-        case ac4::DownmixTarget::k5X2:
+        case iclforge::ac4::DownmixTarget::k7X4:
+        case iclforge::ac4::DownmixTarget::k7X2:
+        case iclforge::ac4::DownmixTarget::k7X0:
+        case iclforge::ac4::DownmixTarget::k5X4:
+        case iclforge::ac4::DownmixTarget::k5X2:
             // Only the immersive element takes these; the rest come out as coded.
-            add(fmt::format("an immersive element rendered to {}", ac4::describe(output.downmix)));
+            add(fmt::format("an immersive element rendered to {}", iclforge::ac4::describe(output.downmix)));
             break;
-        case ac4::DownmixTarget::k5X:
-        case ac4::DownmixTarget::kStereo:
-        case ac4::DownmixTarget::kLoRo:
-        case ac4::DownmixTarget::kLtRt:
-        case ac4::DownmixTarget::kMono:
-            add(fmt::format("downmixed to {}{}", ac4::describe(output.downmix),
+        case iclforge::ac4::DownmixTarget::k5X:
+        case iclforge::ac4::DownmixTarget::kStereo:
+        case iclforge::ac4::DownmixTarget::kLoRo:
+        case iclforge::ac4::DownmixTarget::kLtRt:
+        case iclforge::ac4::DownmixTarget::kMono:
+            add(fmt::format("downmixed to {}{}", iclforge::ac4::describe(output.downmix),
                             output.mix_lfe ? "" : " without the LFE"));
             break;
     }
@@ -4418,8 +4418,8 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
     return done.empty() ? "the coded channels, with no DRC, downmix or dialogue processing" : done;
 }
 
-ac4::DecoderConfig ac4_coded_config(const Options& meta) {
-    ac4::DecoderConfig config;
+iclforge::ac4::DecoderConfig ac4_coded_config(const Options& meta) {
+    iclforge::ac4::DecoderConfig config;
     // The mix of the presentation's substreams belongs to the presentation,
     // so it is the same whatever the output processing.
     config.output.dialogue_gain_db = meta.ac4_dialogue_gain;
@@ -4435,14 +4435,14 @@ ac4::DecoderConfig ac4_coded_config(const Options& meta) {
     return config;
 }
 
-std::optional<ac3::signing::VerifySummary> apply_object_verification(
+std::optional<iclforge::signing::VerifySummary> apply_object_verification(
     std::span<const std::byte> stream, const Options& meta, FILE* status) {
     if (!meta.verify_objects) {
-        return ac3::signing::VerifySummary{};
+        return iclforge::signing::VerifySummary{};
     }
-    const auto key = ac3::signing::load_signing_key(meta.signing_key.value_or(""));
+    const auto key = iclforge::signing::load_signing_key(meta.signing_key.value_or(""));
     if (!key.has_value()) {
-        if (key.error().kind == ac3::signing::KeyErrorKind::kAbsent) {
+        if (key.error().kind == iclforge::signing::KeyErrorKind::kAbsent) {
             fmt::println(stderr,
                          "error: verify-objects needs a key — pass signing-key=<path>, or set "
                          "AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY");
@@ -4451,7 +4451,7 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
         }
         return std::nullopt;
     }
-    const auto summary = ac3::signing::verify_atmos_stream(stream, *key);
+    const auto summary = iclforge::signing::verify_atmos_stream(stream, *key);
     status_println(status, "  object signature: {} valid, {} mismatched, {} unsigned frame(s)",
                    summary.valid, summary.mismatch, summary.no_container);
     if (summary.mismatch > 0) {
@@ -4464,7 +4464,7 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
     return summary;
 }
 
-void print_object_summary(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
+void print_object_summary(FILE* status, const std::optional<iclforge::oba::DecodedProgram>& metadata,
                           std::string_view joc_note) {
     if (!metadata.has_value()) {
         return;
@@ -4474,24 +4474,24 @@ void print_object_summary(FILE* status, const std::optional<ac3::oba::DecodedPro
     if (program.dynamic_only) {
         status_println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
                        decoded.objects.size(), program.lfe ? " + the bed's LFE" : "",
-                       ac3::oba::object_count(program), joc_note);
+                       iclforge::oba::object_count(program), joc_note);
     } else {
         // A bed program - what channel-based-immersive third-party content
         // is. Naming the bed's channels is the useful half here: "12 objects"
         // says nothing, "L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl Tbr" says what the
         // stream actually carries.
         std::string labels;
-        for (const auto label : ac3::oba::bed_labels(program.bed)) {
+        for (const auto label : iclforge::oba::bed_labels(program.bed)) {
             if (!labels.empty()) {
                 labels += ' ';
             }
-            labels += ac3::oba::describe(label);
+            labels += iclforge::oba::describe(label);
         }
         if (labels.empty()) {
-            labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
+            labels = fmt::format("{} channels", iclforge::oba::bed_channel_count(program));
         }
         status_println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
-                       labels, program.dynamic_objects, ac3::oba::object_count(program),
+                       labels, program.dynamic_objects, iclforge::oba::object_count(program),
                        joc_note);
     }
     if (decoded.trim.has_value()) {

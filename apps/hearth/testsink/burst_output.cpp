@@ -25,7 +25,7 @@
 #include "iclforge/ac4/ac4.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-namespace ac3::hearth::testsink {
+namespace iclforge::hearth::testsink {
 
 namespace {
 
@@ -111,11 +111,11 @@ struct Ac4Payload {
 };
 
 [[nodiscard]] std::optional<Ac4Payload> ac4_payload(std::span<const std::byte> payload) {
-    const ac4::ScanResult scanned = ac4::scan(payload);
+    const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(payload);
     if (scanned.frames.empty() || scanned.frames.front().offset != 0) {
         return std::nullopt;
     }
-    const ac4::SyncFrame& frame = scanned.frames.front();
+    const iclforge::ac4::SyncFrame& frame = scanned.frames.front();
     const auto end = static_cast<std::size_t>(frame.raw_ac4_frame.data() - payload.data()) +
                      frame.raw_ac4_frame.size() + (frame.sync_word == 0xAC41 ? 2U : 0U);
     if (end > payload.size()) {
@@ -141,48 +141,48 @@ struct Ac4Payload {
 // The A/52 audio coding mode with the decoded channels' front and surround speakers (Table 5.8):
 // what DecoderReport::acmod says for AC-4, whose channel modes are all one of 1/0, 2/0, 3/0 or
 // 3/2 there, with any back, wide or height pair left out.
-[[nodiscard]] std::int32_t ac4_acmod(std::span<const ac4::Speaker> speakers) {
-    const auto has = [&](ac4::Speaker speaker) {
+[[nodiscard]] std::int32_t ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers) {
+    const auto has = [&](iclforge::ac4::Speaker speaker) {
         return std::find(speakers.begin(), speakers.end(), speaker) != speakers.end();
     };
-    if (!has(ac4::Speaker::kLeft)) {
+    if (!has(iclforge::ac4::Speaker::kLeft)) {
         return 1;
     }
-    if (has(ac4::Speaker::kLeftSurround)) {
-        return has(ac4::Speaker::kCentre) ? 7 : 6;
+    if (has(iclforge::ac4::Speaker::kLeftSurround)) {
+        return has(iclforge::ac4::Speaker::kCentre) ? 7 : 6;
     }
-    return has(ac4::Speaker::kCentre) ? 3 : 2;
+    return has(iclforge::ac4::Speaker::kCentre) ? 3 : 2;
 }
 
 }  // namespace
 
-eac3::chanmap::Layout ac4_bed(std::span<const ac4::Speaker> speakers) {
+eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers) {
     using eac3::chanmap::Location;
     eac3::chanmap::Layout bed;
-    for (const ac4::Speaker speaker : speakers) {
+    for (const iclforge::ac4::Speaker speaker : speakers) {
         if (bed.count >= eac3::chanmap::kMaxChannels) {
             break;
         }
         Location location = Location::kLeft;
         // clang-format off
         switch (speaker) {
-            case ac4::Speaker::kLeft: location = Location::kLeft; break;
-            case ac4::Speaker::kRight: location = Location::kRight; break;
-            case ac4::Speaker::kCentre: location = Location::kCentre; break;
-            case ac4::Speaker::kLfe: location = Location::kLfe; break;
-            case ac4::Speaker::kLeftSurround: location = Location::kLeftSurround; break;
-            case ac4::Speaker::kRightSurround: location = Location::kRightSurround; break;
-            case ac4::Speaker::kLeftBack: location = Location::kLrs; break;
-            case ac4::Speaker::kRightBack: location = Location::kRrs; break;
-            case ac4::Speaker::kLeftWide: location = Location::kLw; break;
-            case ac4::Speaker::kRightWide: location = Location::kRw; break;
-            case ac4::Speaker::kTopFrontLeft: location = Location::kVhl; break;
-            case ac4::Speaker::kTopFrontRight: location = Location::kVhr; break;
-            case ac4::Speaker::kTopBackLeft:
-            case ac4::Speaker::kTopSideLeft: location = Location::kLts; break;
-            case ac4::Speaker::kTopBackRight:
-            case ac4::Speaker::kTopSideRight: location = Location::kRts; break;
-            case ac4::Speaker::kLfe2: location = Location::kLfe2; break;
+            case iclforge::ac4::Speaker::kLeft: location = Location::kLeft; break;
+            case iclforge::ac4::Speaker::kRight: location = Location::kRight; break;
+            case iclforge::ac4::Speaker::kCentre: location = Location::kCentre; break;
+            case iclforge::ac4::Speaker::kLfe: location = Location::kLfe; break;
+            case iclforge::ac4::Speaker::kLeftSurround: location = Location::kLeftSurround; break;
+            case iclforge::ac4::Speaker::kRightSurround: location = Location::kRightSurround; break;
+            case iclforge::ac4::Speaker::kLeftBack: location = Location::kLrs; break;
+            case iclforge::ac4::Speaker::kRightBack: location = Location::kRrs; break;
+            case iclforge::ac4::Speaker::kLeftWide: location = Location::kLw; break;
+            case iclforge::ac4::Speaker::kRightWide: location = Location::kRw; break;
+            case iclforge::ac4::Speaker::kTopFrontLeft: location = Location::kVhl; break;
+            case iclforge::ac4::Speaker::kTopFrontRight: location = Location::kVhr; break;
+            case iclforge::ac4::Speaker::kTopBackLeft:
+            case iclforge::ac4::Speaker::kTopSideLeft: location = Location::kLts; break;
+            case iclforge::ac4::Speaker::kTopBackRight:
+            case iclforge::ac4::Speaker::kTopSideRight: location = Location::kRts; break;
+            case iclforge::ac4::Speaker::kLfe2: location = Location::kLfe2; break;
         }
         // clang-format on
         bed.items[static_cast<std::size_t>(bed.count++)] = location;
@@ -403,7 +403,7 @@ void BurstOutput::write_ac4(const sendspin::BurstChunk& chunk, std::int64_t loca
     if (!ac4_decoder_) {
         ac4_decoder_.emplace();
     }
-    const std::expected<std::optional<ac4::DecodedFrame>, ac4::DecodeError> decoded =
+    const std::expected<std::optional<iclforge::ac4::DecodedFrame>, iclforge::ac4::DecodeError> decoded =
         ac4_decoder_->decode(payload->raw_ac4_frame);
     if (!decoded) {
         ++undecodable_;
@@ -416,7 +416,7 @@ void BurstOutput::write_ac4(const sendspin::BurstChunk& chunk, std::int64_t loca
     }
 }
 
-void BurstOutput::render_ac4(const ac4::DecodedFrame& frame) {
+void BurstOutput::render_ac4(const iclforge::ac4::DecodedFrame& frame) {
     const eac3::chanmap::Layout bed = ac4_bed(frame.speakers);
     if (!renderer_bed_ || !same_layout(*renderer_bed_, bed)) {
         renderer_.set_bed(bed);
@@ -449,7 +449,7 @@ void BurstOutput::render_ac4(const ac4::DecodedFrame& frame) {
         decoder_ = ac::DecoderReport{.data_type = ac::DataType::kAc4,
                                      .acmod = ac4_acmod(frame.speakers),
                                      .lfe = std::find(frame.speakers.begin(), frame.speakers.end(),
-                                                      ac4::Speaker::kLfe) != frame.speakers.end(),
+                                                      iclforge::ac4::Speaker::kLfe) != frame.speakers.end(),
                                      .substreams = 1,
                                      .objects = 0,
                                      .objects_placed = false,
@@ -457,4 +457,4 @@ void BurstOutput::render_ac4(const ac4::DecodedFrame& frame) {
     }
 }
 
-}  // namespace ac3::hearth::testsink
+}  // namespace iclforge::hearth::testsink

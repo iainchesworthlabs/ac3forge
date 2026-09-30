@@ -41,7 +41,7 @@
 // out. A count is exact and comparable, and dividing early would lose the bin
 // total that says how much evidence each figure rests on.
 
-namespace ac3::verify {
+namespace iclforge::verify {
 
 // One coded stream's census. Streams are numbered exactly as StreamTrace and
 // Eac3StreamTrace already number them: the full-bandwidth channels first, then
@@ -89,4 +89,4 @@ class ICLFORGE_AC3_EXPORT BapCensus {
     std::uint64_t frames_ = 0;
 };
 
-}  // namespace ac3::verify
+}  // namespace iclforge::verify

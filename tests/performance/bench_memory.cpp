@@ -9,7 +9,7 @@
 // Counting works by replacing the global allocation functions with counting
 // wrappers, so every operator new/delete in the process - the harness AND
 // the statically linked codec - is observed. That is also why this binary
-// links ac3::forge_static explicitly: on Windows a DLL's allocations bind
+// links iclforge::ac3_static explicitly: on Windows a DLL's allocations bind
 // to the DLL's own operator new at its link time, and an exe-side
 // replacement would never see them. The platform-specific pieces (exact
 // allocator size introspection, peak RSS) live behind mem_probe.hpp's
@@ -159,7 +159,7 @@ void reset_peak() {
 // per channel. Silence (or a lone pure tone) under-exercises the mantissa
 // and coupling paths and would understate per-frame costs.
 std::vector<float> signal_frame(std::uint64_t& n, double base_freq, std::uint32_t& lcg) {
-    std::vector<float> samples(static_cast<std::size_t>(ac3::kSamplesPerFrame));
+    std::vector<float> samples(static_cast<std::size_t>(iclforge::kSamplesPerFrame));
     for (auto& s : samples) {
         const double t = static_cast<double>(n) / kSampleRate;
         lcg = lcg * 1664525U + 1013904223U;
@@ -256,8 +256,8 @@ Result bench_ac3_51_encode(std::vector<std::byte>& stream_out) {
     stream_out.reserve(static_cast<std::size_t>(kFrames) * 2048);
 
     const Snap before = snap();
-    ac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .fast_mdct = true}};
+    iclforge::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .fast_mdct = true}};
     const Snap after = snap();
 
     Result r = run_encode(
@@ -273,8 +273,8 @@ Result bench_eac3_51_encode(std::vector<std::byte>& stream_out) {
     stream_out.reserve(static_cast<std::size_t>(kFrames) * 2048);
 
     const Snap before = snap();
-    ac3::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     const Snap after = snap();
 
     Result r = run_encode(
@@ -313,8 +313,8 @@ Result bench_ecpl_51_encode() {
     const auto views = make_views(channels);
 
     const Snap before = snap();
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448,
-                                     .acmod = ac3::Acmod::k3_2,
+    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 448,
+                                     .acmod = iclforge::Acmod::k3_2,
                                      .lfe = true,
                                      .coupling = true,
                                      .enhanced = true}};
@@ -331,7 +331,7 @@ Result bench_atmos_4obj_encode(std::vector<std::byte>& stream_out) {
     constexpr int kObjects = 4;
     const Channels channels = make_channels(kObjects);
     const auto views = make_views(channels);
-    std::vector<ac3::oba::ObjectPlacement> placement(static_cast<std::size_t>(kObjects));
+    std::vector<iclforge::oba::ObjectPlacement> placement(static_cast<std::size_t>(kObjects));
     for (int obj = 0; obj < kObjects; ++obj) {
         placement[static_cast<std::size_t>(obj)] = {
             .position = {.x = 0.2 + 0.2 * obj, .y = 0.5, .z = 0.0}, .gain = 1.0};
@@ -339,7 +339,7 @@ Result bench_atmos_4obj_encode(std::vector<std::byte>& stream_out) {
     stream_out.reserve(static_cast<std::size_t>(kFrames) * 4096);
 
     const Snap before = snap();
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .fast_mdct = true}, kObjects};
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448, .fast_mdct = true}, kObjects};
     const Snap after = snap();
 
     Result r{.name = "atmos_4obj_encode", .frames = kFrames};
@@ -380,7 +380,7 @@ Result bench_atmos_4obj_encode(std::vector<std::byte>& stream_out) {
 }
 
 Result bench_ac3_51_decode(std::span<const std::byte> stream) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         std::fprintf(stderr, "ac3_51_decode: split_frames failed\n");
         std::exit(1);
@@ -389,7 +389,7 @@ Result bench_ac3_51_decode(std::span<const std::byte> stream) {
     Result r{.name = "ac3_51_decode", .frames = static_cast<int>(frames->size())};
 
     const Snap before = snap();
-    ac3::FrameDecoder decoder{};
+    iclforge::FrameDecoder decoder{};
     const Snap after = snap();
     r.setup_allocs = after.allocs - before.allocs;
     r.setup_bytes = after.bytes - before.bytes;
@@ -426,7 +426,7 @@ Result bench_ac3_51_decode(std::span<const std::byte> stream) {
 }
 
 Result bench_eac3_decode(std::string name, std::span<const std::byte> stream) {
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     if (!units || units->empty()) {
         std::fprintf(stderr, "%s: split_access_units failed\n", name.c_str());
         std::exit(1);
@@ -435,7 +435,7 @@ Result bench_eac3_decode(std::string name, std::span<const std::byte> stream) {
     Result r{.name = std::move(name), .frames = static_cast<int>(units->size())};
 
     const Snap before = snap();
-    ac3::Eac3Decoder decoder{};
+    iclforge::Eac3Decoder decoder{};
     const Snap after = snap();
     r.setup_allocs = after.allocs - before.allocs;
     r.setup_bytes = after.bytes - before.bytes;
@@ -479,14 +479,14 @@ Result bench_eac3_decode(std::string name, std::span<const std::byte> stream) {
 // returns no frame while the encoder's delay fills, and is counted as the
 // first frame all the same.
 Result bench_ac4_encode(std::string name, perf::ac4_bench::FrameSource& source,
-                        const ac4::EncoderConfig& config) {
+                        const iclforge::ac4::EncoderConfig& config) {
     Result r{.name = std::move(name), .frames = kFrames};
 
     const Snap before = snap();
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     const Snap after = snap();
     if (!encoder) {
-        std::fprintf(stderr, "%s: ac4::Encoder::create failed\n", r.name.c_str());
+        std::fprintf(stderr, "%s: iclforge::ac4::Encoder::create failed\n", r.name.c_str());
         std::exit(1);
     }
     r.setup_allocs = after.allocs - before.allocs;
@@ -495,7 +495,7 @@ Result bench_ac4_encode(std::string name, perf::ac4_bench::FrameSource& source,
     const Snap before_first = snap();
     reset_peak();
     if (!encoder->encode(source.frame(0))) {
-        std::fprintf(stderr, "%s: ac4::Encoder::encode failed\n", r.name.c_str());
+        std::fprintf(stderr, "%s: iclforge::ac4::Encoder::encode failed\n", r.name.c_str());
         std::exit(1);
     }
     const Snap after_first = snap();
@@ -506,7 +506,7 @@ Result bench_ac4_encode(std::string name, perf::ac4_bench::FrameSource& source,
     reset_peak();
     for (int frame = 1; frame < kFrames; ++frame) {
         if (!encoder->encode(source.frame(static_cast<std::size_t>(frame)))) {
-            std::fprintf(stderr, "%s: ac4::Encoder::encode failed\n", r.name.c_str());
+            std::fprintf(stderr, "%s: iclforge::ac4::Encoder::encode failed\n", r.name.c_str());
             std::exit(1);
         }
     }
@@ -528,7 +528,7 @@ Result bench_ac4_decode(std::string name, const std::vector<std::vector<std::byt
     Result r{.name = std::move(name), .frames = static_cast<int>(frames.size())};
 
     const Snap before = snap();
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     const Snap after = snap();
     r.setup_allocs = after.allocs - before.allocs;
     r.setup_bytes = after.bytes - before.bytes;
@@ -536,7 +536,7 @@ Result bench_ac4_decode(std::string name, const std::vector<std::vector<std::byt
     const Snap before_first = snap();
     reset_peak();
     if (!decoder.decode(frames[0])) {
-        std::fprintf(stderr, "%s: ac4::Decoder::decode failed\n", r.name.c_str());
+        std::fprintf(stderr, "%s: iclforge::ac4::Decoder::decode failed\n", r.name.c_str());
         std::exit(1);
     }
     const Snap after_first = snap();
@@ -547,7 +547,7 @@ Result bench_ac4_decode(std::string name, const std::vector<std::vector<std::byt
     reset_peak();
     for (std::size_t i = 1; i < frames.size(); ++i) {
         if (!decoder.decode(frames[i])) {
-            std::fprintf(stderr, "%s: ac4::Decoder::decode failed\n", r.name.c_str());
+            std::fprintf(stderr, "%s: iclforge::ac4::Decoder::decode failed\n", r.name.c_str());
             std::exit(1);
         }
     }
@@ -604,7 +604,7 @@ int main(int argc, char** argv) {
     results.push_back(bench_atmos_4obj_encode(atmos_stream));
     results.push_back(bench_eac3_decode("atmos_4obj_decode", atmos_stream));
 
-    const ac3::io::WavData audio =
+    const iclforge::io::WavData audio =
         perf::load_real_audio(perf::kReference51Wav, 6, perf::ac4_bench::kSamplesPerFrame);
     perf::ac4_bench::FrameSource ac4_stereo{audio, perf::ac4_bench::kStereoChannels};
     perf::ac4_bench::FrameSource ac4_five_one{audio, perf::ac4_bench::kFiveOneChannels};

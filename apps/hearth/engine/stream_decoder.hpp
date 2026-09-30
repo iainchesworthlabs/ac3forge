@@ -68,7 +68,7 @@
 //
 // AC-4 (planning/ac4.md, I2; objects and the immersive layout control, I5): a
 // unit that starts with an AC-4 sync word is one sync frame, which goes to
-// ac4::Decoder through its public API alone (ac4dec/decoder.hpp): decode()
+// iclforge::ac4::Decoder through its public API alone (ac4dec/decoder.hpp): decode()
 // reads the whole frame at once - channels, and, where a presentation carries
 // them, objects with their Annex F properties - and place_ac4_frame() places
 // it on the layout a kBlockSamples chunk at a time, by the channels' (or, with
@@ -87,19 +87,19 @@
 // stays true. The unit report says what the frame was: its presentation, its
 // speakers as an acmod, its dialnorm and DRC mode and the decoder's latency.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // The coded layout an AC-4 decoder's channels make, for the renderer: each
 // speaker at the E-AC-3 channel map's location of the same place. Ls and Rs
 // stay the surround pair, which a 7.X mode keeps at the sides; Lb and Rb, Lw
 // and Rw, and Tfl and Tfr are the rear, wide and front height pairs (ETSI TS
 // 103 190-1 clause D.1; A/52 Table E2.5).
-[[nodiscard]] eac3::chanmap::Layout ac4_bed(std::span<const ac4::Speaker> speakers);
+[[nodiscard]] eac3::chanmap::Layout ac4_bed(std::span<const iclforge::ac4::Speaker> speakers);
 
 // The A/52 audio coding mode with those speakers' front and surround channels,
 // which is how an AC-4 unit's layout reads where an acmod is asked for:
 // 1/0, 2/0, 3/0 or 3/2, any back, wide or height pair left out.
-[[nodiscard]] Acmod ac4_acmod(std::span<const ac4::Speaker> speakers);
+[[nodiscard]] Acmod ac4_acmod(std::span<const iclforge::ac4::Speaker> speakers);
 
 // What an AC-4 frame said about itself, as decoded.
 struct Ac4UnitReport {
@@ -267,13 +267,13 @@ private:
     // every frame this delivers ends on a whole block; a frame at another rate (no encoder here
     // writes one with objects) ends in a short final block instead of carrying the remainder into
     // the next frame, unlike decode_by_block()'s own internal buffering - see the engine's PR notes.
-    void place_ac4_frame(const ac4::DecodedFrame& pcm, const BlockFn& deliver);
+    void place_ac4_frame(const iclforge::ac4::DecodedFrame& pcm, const BlockFn& deliver);
     // Hands `frames` of silence on every slot to `deliver`, a block at a time.
     void deliver_silence(std::size_t frames, const BlockFn& deliver);
     // What decode_by_block() would still hold back - always nothing now that decode_ac4() reads
     // whole frames through decode() instead, kept so finish()'s call site needs no special case.
     void flush_ac4(const BlockFn& deliver);
-    void report_ac4(const ac4::DecodedFrame& pcm, std::size_t unit_bytes, const UnitFn& reported);
+    void report_ac4(const iclforge::ac4::DecodedFrame& pcm, std::size_t unit_bytes, const UnitFn& reported);
     // The two fields report_frame()/report_unit() cannot fill in themselves:
     // `out.blocks` must already be set (both of those, or render_flushed()'s
     // own manual block, do this first). `unit_bytes` is the raw bytes this
@@ -306,14 +306,14 @@ private:
     std::uint64_t sequence_ = 0;
     // AC-4: the decoder's configuration, the decoder once a unit has needed
     // it, and the speakers renderer_'s bed was last set from.
-    ac4::DecoderConfig ac4_config_{};
-    std::optional<ac4::Decoder> ac4_decoder_;
-    std::vector<ac4::Speaker> ac4_speakers_;
+    iclforge::ac4::DecoderConfig ac4_config_{};
+    std::optional<iclforge::ac4::Decoder> ac4_decoder_;
+    std::vector<iclforge::ac4::Speaker> ac4_speakers_;
     // Objects (planning/ac4.md, I5): built the first time a presentation carries any, and rebuilt
     // whenever the configured layout or the stream's own rate changes under it - both tracked
     // alongside it since Ac4ObjectRenderer takes them at construction and reports neither back.
-    std::optional<ac3::apps::Ac4ObjectRenderer> ac4_objects_;
-    ac4::DownmixTarget ac4_objects_target_ = ac4::DownmixTarget::kAsCoded;
+    std::optional<iclforge::apps::Ac4ObjectRenderer> ac4_objects_;
+    iclforge::ac4::DownmixTarget ac4_objects_target_ = iclforge::ac4::DownmixTarget::kAsCoded;
     std::uint32_t ac4_objects_rate_ = 0;
     // Ac4ObjectRenderer::render()'s own out-parameter, kept here so its storage is reused frame to
     // frame instead of reallocated; and a per-block view of whichever of it or DecodedFrame::channels
@@ -324,4 +324,4 @@ private:
     std::array<float, kSamplesPerBlock> zeros_{};
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

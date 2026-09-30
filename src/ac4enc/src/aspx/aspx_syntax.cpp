@@ -6,7 +6,7 @@
 #include "iclforge/ac4core/tables/huffman_codes.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // get_aspx_hcb(), Pseudocode 79: the codebook's codewords, for writing, and
@@ -312,4 +312,4 @@ bool aspx_envelope_codable(bool signal, int quant_mode, bool balance,
     return true;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

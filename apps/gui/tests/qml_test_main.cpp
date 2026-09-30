@@ -178,7 +178,7 @@ public slots:
         // AboutDialog's version line is a ReferenceError here and the About
         // dialog could only ever be tested showing nothing.
         engine->rootContext()->setContextProperty(
-            QStringLiteral("appVersionDetails"), QString::fromStdString(ac3::version_details()));
+            QStringLiteral("appVersionDetails"), QString::fromStdString(iclforge::version_details()));
         engine->rootContext()->setContextProperty(QStringLiteral("cliRunner"), &cli_runner_);
     }
 

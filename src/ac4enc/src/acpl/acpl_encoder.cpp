@@ -11,7 +11,7 @@
 
 #include "iclforge/ac4core/ajcc/ajcc.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 using acpl::kMaxParamBands;
@@ -864,4 +864,4 @@ std::vector<double> acpl_residuals(AcplLayout layout, std::span<const double> in
     return {0.5 * (input[0] - kHalfRoot2 * input[3]), 0.5 * (input[1] - kHalfRoot2 * input[4])};
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -1,4 +1,4 @@
-// ac4::Decoder on hand-built frames: which syntax each substream of a frame
+// iclforge::ac4::Decoder on hand-built frames: which syntax each substream of a frame
 // is read with, for the table-of-contents shapes the committed DEE streams do
 // not have - bitstream_version 0 and 1 presentations, a frame-rate-multiplied
 // series, the efficient high frame rate mode, object and A-JOC groups, and
@@ -25,8 +25,8 @@
 
 namespace {
 
-using ac4::DecodeError;
-using ac4::SubstreamReport;
+using iclforge::ac4::DecodeError;
+using iclforge::ac4::SubstreamReport;
 using ac4_toc_test::BitWriter;
 using ac4_toc_test::ChanInfo;
 using ac4_toc_test::PresV1;
@@ -135,7 +135,7 @@ std::vector<std::byte> emdf_payloads() {
     return w.bytes();
 }
 
-const SubstreamReport& find(const ac4::FrameReport& report, int index) {
+const SubstreamReport& find(const iclforge::ac4::FrameReport& report, int index) {
     const auto it = std::find_if(report.substreams.begin(), report.substreams.end(),
                                  [index](const SubstreamReport& s) { return s.index == index; });
     REQUIRE(it != report.substreams.end());
@@ -157,8 +157,8 @@ void check_refused(const SubstreamReport& s, DecodeError error) {
     CHECK_FALSE(s.refused_reason.empty());
 }
 
-ac4::FrameReport decode(const std::vector<std::byte>& frame) {
-    ac4::Decoder decoder;
+iclforge::ac4::FrameReport decode(const std::vector<std::byte>& frame) {
+    iclforge::ac4::Decoder decoder;
     const auto report = decoder.parse(frame);
     REQUIRE(report.has_value());
     return *report;
@@ -183,12 +183,12 @@ TEST_CASE("DecodeError describes every value", "[ac4dec][frames]") {
     std::set<std::string_view> seen;
     for (const DecodeError error : {DecodeError::kTruncated, DecodeError::kInvalidToc, DecodeError::kInvalidStream,
                                     DecodeError::kUnsupported, DecodeError::kMissingIFrame}) {
-        const std::string_view text = ac4::describe(error);
+        const std::string_view text = iclforge::ac4::describe(error);
         CHECK_FALSE(text.empty());
         seen.insert(text);
     }
     CHECK(seen.size() == 5);
-    CHECK(ac4::describe(static_cast<DecodeError>(99)) == "unknown error");
+    CHECK(iclforge::ac4::describe(static_cast<DecodeError>(99)) == "unknown error");
 }
 
 TEST_CASE("a bitstream_version 0 presentation's audio and EMDF substreams are read", "[ac4dec][frames]") {
@@ -569,7 +569,7 @@ TEST_CASE("an HSF extension is refused alone when its own data is malformed", "[
     }
 }
 
-TEST_CASE("ac4::Decoder keeps its carried state when moved", "[ac4dec][frames]") {
+TEST_CASE("iclforge::ac4::Decoder keeps its carried state when moved", "[ac4dec][frames]") {
     // A moved-to or moved-assigned decoder is the same decoder: the frame
     // after the last one it read continues the stream (sequence_counter 2
     // after 1) and is read as such.
@@ -579,13 +579,13 @@ TEST_CASE("ac4::Decoder keeps its carried state when moved", "[ac4dec][frames]")
     const auto frame = [&](int counter) {
         return single_group_frame({.sequence_counter = counter}, p, {info}, {mono_audio({}), presentation()});
     };
-    ac4::Decoder first;
+    iclforge::ac4::Decoder first;
     REQUIRE(first.parse(frame(1)).has_value());
-    ac4::Decoder moved(std::move(first));
+    iclforge::ac4::Decoder moved(std::move(first));
     const auto second = moved.parse(frame(2));
     REQUIRE(second.has_value());
     CHECK(second->sequence_counter == 2);
-    ac4::Decoder assigned;
+    iclforge::ac4::Decoder assigned;
     assigned = std::move(moved);
     const auto third = assigned.parse(frame(3));
     REQUIRE(third.has_value());
@@ -759,7 +759,7 @@ std::vector<std::byte> ajoc_audio() {
     w.put(1, 1);    // ajoc_quant_select: coarse
     w.put(0, 1);    // ajoc_sparse_select
     w.flag(true);   // ajoc_b_nodt: the first data point frequency-differential only
-    const ac4::detail::HuffCode centre = ac4::detail::tables::kAjocHcbDryCoarseF0Codes[25];
+    const iclforge::ac4::detail::HuffCode centre = iclforge::ac4::detail::tables::kAjocHcbDryCoarseF0Codes[25];
     w.put(centre.code, centre.bits);  // ajoc_hcw
     w.flag(true);                     // b_dmx_de_cfg
     w.flag(false);                    // b_keep_dmx_de_coeffs
@@ -920,12 +920,12 @@ TEST_CASE("an object group of A-JOC and direct-coded substreams and OAMD reads e
     ac4_toc_test::index_table(toc, ac4_toc_test::sizes_of(substreams));
     toc.align();
 
-    std::vector<ac4::SyntaxRecord> records;
+    std::vector<iclforge::ac4::SyntaxRecord> records;
     // A named callable: the sink refers to it and does not own it.
-    const auto keep = [&records](const ac4::SyntaxRecord& record) { records.push_back(record); };
-    ac4::DecoderConfig config;
+    const auto keep = [&records](const iclforge::ac4::SyntaxRecord& record) { records.push_back(record); };
+    iclforge::ac4::DecoderConfig config;
     config.syntax = keep;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     const auto report = decoder.parse(ac4_toc_test::assemble(toc, substreams));
     REQUIRE(report.has_value());
     REQUIRE(report->substreams.size() == 4);
@@ -937,7 +937,7 @@ TEST_CASE("an object group of A-JOC and direct-coded substreams and OAMD reads e
     // The OAMD substream's own common data, as it sent it: a screen size ratio
     // code, bed and object channels distributed, no trim, no bed render info,
     // and the headphone data in add_data. No other substream reports any.
-    const std::optional<ac4::OamdCommonData>& common = find(*report, 2).oamd_common_data;
+    const std::optional<iclforge::ac4::OamdCommonData>& common = find(*report, 2).oamd_common_data;
     REQUIRE(common.has_value());
     CHECK_FALSE(common->b_default_screen_size_ratio);
     CHECK(common->master_screen_size_ratio_code == 9);
@@ -953,7 +953,7 @@ TEST_CASE("an object group of A-JOC and direct-coded substreams and OAMD reads e
 
     const auto value_of = [&records](int substream, std::string_view name,
                                      int nth = 0) -> std::optional<std::uint64_t> {
-        for (const ac4::SyntaxRecord& record : records) {
+        for (const iclforge::ac4::SyntaxRecord& record : records) {
             if (record.substream == substream && record.name == name && nth-- == 0) {
                 return record.value;
             }
@@ -1100,9 +1100,9 @@ TEST_CASE("an A-JOC substream of more upmix signals than the decoder describes i
         // The count itself is the table of contents' to report; one past
         // what an int holds is kept as INT_MAX, not wrapped to a negative
         // count that would be refused as invalid instead.
-        const auto parsed = ac4::parse_raw_frame(frame);
+        const auto parsed = iclforge::ac4::parse_raw_frame(frame);
         REQUIRE(parsed.has_value());
-        const ac4::AjocSubstreamInfo& ajoc =
+        const iclforge::ac4::AjocSubstreamInfo& ajoc =
             *parsed->toc.substream_groups.at(0).substreams.at(0).ajoc;
         constexpr std::uint32_t kIntMax = std::numeric_limits<int>::max();
         CHECK(ajoc.n_fullband_upmix_signals == static_cast<int>(std::min(c.signals, kIntMax)));

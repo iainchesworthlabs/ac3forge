@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // Substream indices in substream_index_table() of the frame of one
@@ -332,4 +332,4 @@ std::optional<std::vector<std::byte>> write_frame(const FrameFields& fields, con
     return frame;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

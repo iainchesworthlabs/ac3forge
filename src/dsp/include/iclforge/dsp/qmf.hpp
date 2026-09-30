@@ -37,7 +37,7 @@
 // in an oversampled complex domain, which any prototype of this structure
 // provides.
 
-namespace ac3::dsp {
+namespace iclforge::dsp {
 
 // §7.1's subband count, and the hop that goes with it: one timeslot of 64
 // complex subband samples per 64 input samples.
@@ -98,4 +98,4 @@ private:
 // round trip.
 [[nodiscard]] ICLFORGE_DSP_EXPORT std::span<const double, kQmfTaps> qmf_prototype();
 
-}  // namespace ac3::dsp
+}  // namespace iclforge::dsp

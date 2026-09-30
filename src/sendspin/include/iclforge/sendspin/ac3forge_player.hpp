@@ -22,9 +22,9 @@
 // which revision it refused and why, for the sink's settings_error.
 //
 // Nothing here depends on the codec library: the enumerations name what the page's text names, and
-// a sink maps them onto ac3::forge and ac3::render.
+// a sink maps them onto iclforge::ac3 and iclforge::render.
 
-namespace ac3::sendspin::ac3forge {
+namespace iclforge::sendspin::ac3forge {
 
 inline constexpr std::string_view kRole = "_ac3forge_player@v1";
 inline constexpr std::string_view kSupportKey = "_ac3forge_player@v1_support";
@@ -242,8 +242,8 @@ struct CommandFailure {
 // per output, each inside management's range; a crossover inside its range; routing only when
 // management offers it; and decoder keys only from decoder_settings. The reason for
 // settings_error, or nothing when the settings fit. The layout and routing text are the sink's
-// to parse, with ac3::render.
+// to parse, with iclforge::render.
 [[nodiscard]] std::optional<std::string> check_settings(const Settings& settings,
                                                         const Support& support);
 
-}  // namespace ac3::sendspin::ac3forge
+}  // namespace iclforge::sendspin::ac3forge

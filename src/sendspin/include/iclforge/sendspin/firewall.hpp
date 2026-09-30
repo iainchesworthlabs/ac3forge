@@ -13,7 +13,7 @@
 // today whether or not a rule could be added, this only changes whether the operating system has
 // to ask about it first.
 
-namespace ac3::sendspin::firewall {
+namespace iclforge::sendspin::firewall {
 
 enum class Protocol { kTcp, kUdp };
 
@@ -50,4 +50,4 @@ bool ensure_inbound_rule(const RuleSpec& spec);
 // POSIX implementation always does this, since ensure_inbound_rule() never relaunches there.
 void maybe_run_as_firewall_helper_and_exit(int argc, char** argv);
 
-}  // namespace ac3::sendspin::firewall
+}  // namespace iclforge::sendspin::firewall

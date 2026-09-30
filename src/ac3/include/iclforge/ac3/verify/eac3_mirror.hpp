@@ -53,7 +53,7 @@
 // See ac3/verify/eac3_selfcheck.hpp for the encode-then-decode-then-compare
 // driver most callers actually want.
 
-namespace ac3::verify {
+namespace iclforge::verify {
 
 // One coded stream's state within one block. Streams are numbered the way
 // the ENCODER numbers them and the way ac3/verify/mirror.hpp already does:
@@ -96,7 +96,7 @@ struct Eac3StreamTrace {
     int gaqmod = 0;
     std::vector<std::uint8_t> gain;
     // --- AP12: research trace export --------------------------------
-    // See ac3::verify::StreamTrace's own pair of these (ac3/verify/mirror.hpp)
+    // See iclforge::verify::StreamTrace's own pair of these (ac3/verify/mirror.hpp)
     // for what they hold and why they are not part of compare(). Same
     // decode-side-only population, same band-indexed `mask` against a
     // bin-indexed `exponents`/`bap`.
@@ -346,4 +346,4 @@ inline constexpr int kEac3MaxPerArray = 4;
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string report(std::span<const Eac3Mismatch> mismatches,
                                                  const Eac3AccessUnitTrace& shape);
 
-}  // namespace ac3::verify
+}  // namespace iclforge::verify

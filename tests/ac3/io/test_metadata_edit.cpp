@@ -17,7 +17,7 @@
 #include "iclforge/ac3/io/metadata_edit.hpp"
 #include "iclforge/ac3/meta/drc.hpp"
 
-// ac3::io::edit_frame_metadata rewrites bsi fields in an already-encoded
+// iclforge::io::edit_frame_metadata rewrites bsi fields in an already-encoded
 // stream and re-stamps its CRCs. Two claims are worth pinning, and they pull
 // in opposite directions:
 //
@@ -37,9 +37,9 @@ namespace {
 
 std::vector<std::vector<float>> tone(std::size_t channels) {
     std::vector<std::vector<float>> pcm(channels,
-                                        std::vector<float>(ac3::kSamplesPerFrame));
+                                        std::vector<float>(iclforge::kSamplesPerFrame));
     for (std::size_t ch = 0; ch < channels; ++ch) {
-        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
             const double f = 300.0 + 190.0 * static_cast<double>(ch);
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 0.45 * std::sin(2.0 * std::numbers::pi * f * i / 48000.0));
@@ -61,10 +61,10 @@ std::vector<std::span<const float>> views_of(const std::vector<std::vector<float
 // stream is the one frame whose exponent/allocation state is unconditional,
 // so a bug that only bites once the encoder is carrying state forward hides
 // completely in a single-frame fixture.
-std::vector<std::byte> ac3_stream(const ac3::EncoderConfig& config, int frames = 3) {
-    ac3::FrameEncoder encoder{config};
+std::vector<std::byte> ac3_stream(const iclforge::EncoderConfig& config, int frames = 3) {
+    iclforge::FrameEncoder encoder{config};
     const auto pcm = tone(static_cast<std::size_t>(
-        ac3::fullbw_channel_count(config.acmod) + (config.lfe ? 1 : 0)));
+        iclforge::fullbw_channel_count(config.acmod) + (config.lfe ? 1 : 0)));
     const auto views = views_of(pcm);
     std::vector<std::byte> stream;
     for (int i = 0; i < frames; ++i) {
@@ -75,8 +75,8 @@ std::vector<std::byte> ac3_stream(const ac3::EncoderConfig& config, int frames =
     return stream;
 }
 
-std::vector<std::byte> eac3_stream(const ac3::eac3::AccessUnitConfig& config, int units = 3) {
-    ac3::eac3::AccessUnitEncoder encoder{config};
+std::vector<std::byte> eac3_stream(const iclforge::eac3::AccessUnitConfig& config, int units = 3) {
+    iclforge::eac3::AccessUnitEncoder encoder{config};
     const auto pcm = tone(static_cast<std::size_t>(encoder.channel_count()));
     const auto views = views_of(pcm);
     std::vector<std::byte> stream;
@@ -90,10 +90,10 @@ std::vector<std::byte> eac3_stream(const ac3::eac3::AccessUnitConfig& config, in
 
 // Every AC-3 frame's decoded PCM, concatenated. A decode failure (a bad CRC
 // included) fails the test rather than returning short.
-std::vector<float> decode_ac3(std::span<const std::byte> stream, ac3::DecodedFrame& first) {
-    const auto frames = ac3::split_frames(stream);
+std::vector<float> decode_ac3(std::span<const std::byte> stream, iclforge::DecodedFrame& first) {
+    const auto frames = iclforge::split_frames(stream);
     REQUIRE(frames.has_value());
-    ac3::FrameDecoder decoder;
+    iclforge::FrameDecoder decoder;
     std::vector<float> out;
     bool have_first = false;
     for (const auto& frame : *frames) {
@@ -110,10 +110,10 @@ std::vector<float> decode_ac3(std::span<const std::byte> stream, ac3::DecodedFra
     return out;
 }
 
-std::vector<float> decode_eac3(std::span<const std::byte> stream, ac3::DecodedAccessUnit& first) {
-    const auto units = ac3::split_access_units(stream);
+std::vector<float> decode_eac3(std::span<const std::byte> stream, iclforge::DecodedAccessUnit& first) {
+    const auto units = iclforge::split_access_units(stream);
     REQUIRE(units.has_value());
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     std::vector<float> out;
     bool have_first = false;
     for (const auto& unit : *units) {
@@ -139,14 +139,14 @@ TEST_CASE("read_frame_metadata reports what the encoder actually wrote", "[metad
     SECTION("AC-3 3/2 + LFE with heavy compression") {
         const auto stream = ac3_stream({.bitrate_kbps = 448,
                                         .dialnorm = 27,
-                                        .acmod = ac3::Acmod::k3_2,
+                                        .acmod = iclforge::Acmod::k3_2,
                                         .lfe = true,
-                                        .heavy = ac3::meta::HeavyConfig{}});
-        const auto meta = ac3::io::read_frame_metadata(stream);
+                                        .heavy = iclforge::meta::HeavyConfig{}});
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
-        CHECK(meta->kind == ac3::io::StreamKind::kAc3);
+        CHECK(meta->kind == iclforge::io::StreamKind::kAc3);
         CHECK(meta->bsid == 8);
-        CHECK(meta->acmod == ac3::Acmod::k3_2);
+        CHECK(meta->acmod == iclforge::Acmod::k3_2);
         CHECK(meta->lfe);
         CHECK(meta->dialnorm == 27);
         CHECK(meta->compr.has_value());
@@ -165,8 +165,8 @@ TEST_CASE("read_frame_metadata reports what the encoder actually wrote", "[metad
 
     SECTION("AC-3 2/0 carries dsurmod and neither mix level") {
         const auto stream =
-            ac3_stream({.bitrate_kbps = 192, .dialnorm = 31, .acmod = ac3::Acmod::k2_0});
-        const auto meta = ac3::io::read_frame_metadata(stream);
+            ac3_stream({.bitrate_kbps = 192, .dialnorm = 31, .acmod = iclforge::Acmod::k2_0});
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
         REQUIRE(meta->dsurmod.has_value());
         CHECK(*meta->dsurmod == 0);
@@ -179,8 +179,8 @@ TEST_CASE("read_frame_metadata reports what the encoder actually wrote", "[metad
         const auto stream = ac3_stream({.bitrate_kbps = 192,
                                         .dialnorm = 24,
                                         .dialnorm2 = 20,
-                                        .acmod = ac3::Acmod::kDualMono});
-        const auto meta = ac3::io::read_frame_metadata(stream);
+                                        .acmod = iclforge::Acmod::kDualMono});
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
         CHECK(meta->dialnorm == 24);
         REQUIRE(meta->dialnorm2.has_value());
@@ -188,16 +188,16 @@ TEST_CASE("read_frame_metadata reports what the encoder actually wrote", "[metad
     }
 
     SECTION("E-AC-3 with mixmdate reports the whole group") {
-        ac3::eac3::AccessUnitConfig config;
+        iclforge::eac3::AccessUnitConfig config;
         config.independent = {.bitrate_kbps = 448,
-                              .acmod = ac3::Acmod::k3_2,
+                              .acmod = iclforge::Acmod::k3_2,
                               .lfe = true,
                               .dialnorm = 23,
-                              .mixing = ac3::meta::MixMetadata{}};
+                              .mixing = iclforge::meta::MixMetadata{}};
         const auto stream = eac3_stream(config);
-        const auto meta = ac3::io::read_frame_metadata(stream);
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
-        CHECK(meta->kind == ac3::io::StreamKind::kEac3);
+        CHECK(meta->kind == iclforge::io::StreamKind::kEac3);
         CHECK(meta->bsid == 16);
         CHECK(meta->dialnorm == 23);
         CHECK(meta->strmtyp == 0);
@@ -218,22 +218,22 @@ TEST_CASE("read_frame_metadata reports what the encoder actually wrote", "[metad
 TEST_CASE("editing dialnorm changes the metadata and nothing else", "[metadata-edit]") {
     auto stream = ac3_stream({.bitrate_kbps = 448,
                               .dialnorm = 27,
-                              .acmod = ac3::Acmod::k3_2,
+                              .acmod = iclforge::Acmod::k3_2,
                               .lfe = true});
     const std::vector<std::byte> original = stream;
 
-    ac3::DecodedFrame before_meta{};
+    iclforge::DecodedFrame before_meta{};
     const auto before = decode_ac3(original, before_meta);
     CHECK(before_meta.dialnorm == 27);
 
-    const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 14});
+    const auto summary = iclforge::io::edit_stream_metadata(stream, {.dialnorm = 14});
     REQUIRE(summary.has_value());
     CHECK(summary->syncframes == 3);
     CHECK(summary->changed == 3);
     // The rewrite is in place: not one byte more or fewer.
     CHECK(stream.size() == original.size());
 
-    ac3::DecodedFrame after_meta{};
+    iclforge::DecodedFrame after_meta{};
     const auto after = decode_ac3(stream, after_meta);
     CHECK(after_meta.dialnorm == 14);
     // Bit-identical audio, sample for sample. This is the claim that separates
@@ -243,9 +243,9 @@ TEST_CASE("editing dialnorm changes the metadata and nothing else", "[metadata-e
 }
 
 TEST_CASE("editing dialnorm to the value already there changes no bytes", "[metadata-edit]") {
-    auto stream = ac3_stream({.bitrate_kbps = 192, .dialnorm = 20, .acmod = ac3::Acmod::k2_0});
+    auto stream = ac3_stream({.bitrate_kbps = 192, .dialnorm = 20, .acmod = iclforge::Acmod::k2_0});
     const std::vector<std::byte> original = stream;
-    const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 20});
+    const auto summary = iclforge::io::edit_stream_metadata(stream, {.dialnorm = 20});
     REQUIRE(summary.has_value());
     CHECK(summary->syncframes == 3);
     CHECK(summary->changed == 0);
@@ -256,10 +256,10 @@ TEST_CASE("editing compr, bsmod and dsurmod rewrites each field in place", "[met
     SECTION("compr, where the stream carries one") {
         auto stream = ac3_stream({.bitrate_kbps = 192,
                                   .dialnorm = 27,
-                                  .acmod = ac3::Acmod::k2_0,
-                                  .heavy = ac3::meta::HeavyConfig{}});
+                                  .acmod = iclforge::Acmod::k2_0,
+                                  .heavy = iclforge::meta::HeavyConfig{}});
         const std::vector<std::byte> original = stream;
-        ac3::DecodedFrame before_meta{};
+        iclforge::DecodedFrame before_meta{};
         const auto before = decode_ac3(original, before_meta);
         REQUIRE(before_meta.compr.has_value());
 
@@ -267,11 +267,11 @@ TEST_CASE("editing compr, bsmod and dsurmod rewrites each field in place", "[met
         // "it was already that" cannot pass this by accident.
         constexpr std::uint8_t kWord = 0x93;
         REQUIRE(*before_meta.compr != kWord);
-        const auto summary = ac3::io::edit_stream_metadata(stream, {.compr = kWord});
+        const auto summary = iclforge::io::edit_stream_metadata(stream, {.compr = kWord});
         REQUIRE(summary.has_value());
         CHECK(summary->changed == 3);
 
-        ac3::DecodedFrame after_meta{};
+        iclforge::DecodedFrame after_meta{};
         const auto after = decode_ac3(stream, after_meta);
         REQUIRE(after_meta.compr.has_value());
         CHECK(*after_meta.compr == kWord);
@@ -279,32 +279,32 @@ TEST_CASE("editing compr, bsmod and dsurmod rewrites each field in place", "[met
     }
 
     SECTION("bsmod, which AC-3 always transmits") {
-        auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0});
-        const auto summary = ac3::io::edit_stream_metadata(stream, {.bsmod = 2});
+        auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
+        const auto summary = iclforge::io::edit_stream_metadata(stream, {.bsmod = 2});
         REQUIRE(summary.has_value());
         CHECK(summary->changed == 3);
         // Read back through scan(), which walks bsi independently of the
         // rewriter's own parse.
-        const auto scanned = ac3::io::scan(stream);
+        const auto scanned = iclforge::io::scan(stream);
         REQUIRE(scanned.has_value());
         CHECK(scanned->bsmod == 2);
     }
 
     SECTION("dsurmod, on the one acmod that carries it") {
-        auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0});
+        auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
         const std::vector<std::byte> original = stream;
-        ac3::DecodedFrame before_meta{};
+        iclforge::DecodedFrame before_meta{};
         const auto before = decode_ac3(original, before_meta);
 
-        const auto summary = ac3::io::edit_stream_metadata(stream, {.dsurmod = 2});
+        const auto summary = iclforge::io::edit_stream_metadata(stream, {.dsurmod = 2});
         REQUIRE(summary.has_value());
         CHECK(summary->changed == 3);
-        const auto meta = ac3::io::read_frame_metadata(stream);
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
         REQUIRE(meta->dsurmod.has_value());
         CHECK(*meta->dsurmod == 2);
 
-        ac3::DecodedFrame after_meta{};
+        iclforge::DecodedFrame after_meta{};
         const auto after = decode_ac3(stream, after_meta);
         CHECK(after == before);
     }
@@ -313,11 +313,11 @@ TEST_CASE("editing compr, bsmod and dsurmod rewrites each field in place", "[met
         auto stream = ac3_stream({.bitrate_kbps = 192,
                                   .dialnorm = 24,
                                   .dialnorm2 = 20,
-                                  .acmod = ac3::Acmod::kDualMono});
+                                  .acmod = iclforge::Acmod::kDualMono});
         const auto summary =
-            ac3::io::edit_stream_metadata(stream, {.dialnorm = 18, .dialnorm2 = 12});
+            iclforge::io::edit_stream_metadata(stream, {.dialnorm = 18, .dialnorm2 = 12});
         REQUIRE(summary.has_value());
-        ac3::DecodedFrame meta{};
+        iclforge::DecodedFrame meta{};
         const auto pcm = decode_ac3(stream, meta);
         CHECK(pcm.size() > 0);
         CHECK(meta.dialnorm == 18);
@@ -327,23 +327,23 @@ TEST_CASE("editing compr, bsmod and dsurmod rewrites each field in place", "[met
 }
 
 TEST_CASE("an E-AC-3 stream rewrites the same way, dependents included", "[metadata-edit]") {
-    namespace cm = ac3::eac3::chanmap;
-    ac3::eac3::AccessUnitConfig config;
+    namespace cm = iclforge::eac3::chanmap;
+    iclforge::eac3::AccessUnitConfig config;
     config.independent = {
-        .bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .dialnorm = 25};
+        .bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true, .dialnorm = 25};
     // A dependent substream, so the per-substream rules actually get
     // exercised: its own dialnorm is rewritten, its compre bit is left alone.
     config.dependents.push_back(
-        {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .chanmap = cm::k512Height});
+        {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0, .chanmap = cm::k512Height});
     auto stream = eac3_stream(config);
     const std::vector<std::byte> original = stream;
 
-    ac3::DecodedAccessUnit before_meta{};
+    iclforge::DecodedAccessUnit before_meta{};
     const auto before = decode_eac3(original, before_meta);
     CHECK(before_meta.dialnorm == 25);
     CHECK(before_meta.substream_count == 2);
 
-    const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 11});
+    const auto summary = iclforge::io::edit_stream_metadata(stream, {.dialnorm = 11});
     REQUIRE(summary.has_value());
     // Six syncframes: three access units of one independent plus one
     // dependent each.
@@ -351,7 +351,7 @@ TEST_CASE("an E-AC-3 stream rewrites the same way, dependents included", "[metad
     CHECK(summary->changed == 6);
     CHECK(stream.size() == original.size());
 
-    ac3::DecodedAccessUnit after_meta{};
+    iclforge::DecodedAccessUnit after_meta{};
     const auto after = decode_eac3(stream, after_meta);
     CHECK(after_meta.dialnorm == 11);
     REQUIRE(after.size() == before.size());
@@ -361,52 +361,52 @@ TEST_CASE("an E-AC-3 stream rewrites the same way, dependents included", "[metad
 TEST_CASE("an absent field is refused rather than invented", "[metadata-edit]") {
     // No heavy config, so compre is clear: there are no compr bits to
     // overwrite, and adding them would re-frame the syncframe.
-    auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0});
+    auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
     const std::vector<std::byte> original = stream;
-    const auto result = ac3::io::edit_stream_metadata(stream, {.compr = 0x40});
+    const auto result = iclforge::io::edit_stream_metadata(stream, {.compr = 0x40});
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac3::io::EditError::kFieldAbsent);
+    CHECK(result.error() == iclforge::io::EditError::kFieldAbsent);
     // Refused BEFORE writing anything - a partly-rewritten stream would be
     // worse than a refusal.
     CHECK(stream == original);
 
     SECTION("dialnorm2 on a stream that is not 1+1") {
-        const auto no_ch2 = ac3::io::edit_stream_metadata(stream, {.dialnorm2 = 20});
+        const auto no_ch2 = iclforge::io::edit_stream_metadata(stream, {.dialnorm2 = 20});
         REQUIRE_FALSE(no_ch2.has_value());
-        CHECK(no_ch2.error() == ac3::io::EditError::kFieldAbsent);
+        CHECK(no_ch2.error() == iclforge::io::EditError::kFieldAbsent);
     }
 
     SECTION("dsurmod on an acmod that has none") {
         auto wide = ac3_stream(
-            {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true});
-        const auto result_wide = ac3::io::edit_stream_metadata(wide, {.dsurmod = 1});
+            {.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true});
+        const auto result_wide = iclforge::io::edit_stream_metadata(wide, {.dsurmod = 1});
         REQUIRE_FALSE(result_wide.has_value());
-        CHECK(result_wide.error() == ac3::io::EditError::kFieldAbsent);
+        CHECK(result_wide.error() == iclforge::io::EditError::kFieldAbsent);
     }
 
     SECTION("bsmod on an E-AC-3 stream with no infomdate") {
-        ac3::eac3::AccessUnitConfig config;
-        config.independent = {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
+        iclforge::eac3::AccessUnitConfig config;
+        config.independent = {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
         auto eac3 = eac3_stream(config);
-        const auto result_eac3 = ac3::io::edit_stream_metadata(eac3, {.bsmod = 3});
+        const auto result_eac3 = iclforge::io::edit_stream_metadata(eac3, {.bsmod = 3});
         REQUIRE_FALSE(result_eac3.has_value());
-        CHECK(result_eac3.error() == ac3::io::EditError::kFieldAbsent);
+        CHECK(result_eac3.error() == iclforge::io::EditError::kFieldAbsent);
     }
 }
 
 TEST_CASE("an out-of-range value is refused", "[metadata-edit]") {
-    auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0});
+    auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
     const std::vector<std::byte> original = stream;
     // §5.4.2.8: dialnorm 0 is reserved ("indicates that dialnorm is not
     // used"), which this refuses rather than writes.
     for (const int bad : {0, 32, -1}) {
-        const auto result = ac3::io::edit_stream_metadata(stream, {.dialnorm = bad});
+        const auto result = iclforge::io::edit_stream_metadata(stream, {.dialnorm = bad});
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::EditError::kOutOfRange);
+        CHECK(result.error() == iclforge::io::EditError::kOutOfRange);
     }
-    const auto bad_bsmod = ac3::io::edit_stream_metadata(stream, {.bsmod = 8});
+    const auto bad_bsmod = iclforge::io::edit_stream_metadata(stream, {.bsmod = 8});
     REQUIRE_FALSE(bad_bsmod.has_value());
-    CHECK(bad_bsmod.error() == ac3::io::EditError::kOutOfRange);
+    CHECK(bad_bsmod.error() == iclforge::io::EditError::kOutOfRange);
     CHECK(stream == original);
 }
 
@@ -415,8 +415,8 @@ TEST_CASE("a rewrite really does re-stamp the CRCs", "[metadata-edit]") {
     // a frame whose bsi was changed without the CRCs being fixed. Without
     // this, every "the decode still worked" assertion above could be passing
     // for the wrong reason - a decoder that never checked.
-    auto stream = ac3_stream({.bitrate_kbps = 192, .dialnorm = 27, .acmod = ac3::Acmod::k2_0});
-    const auto frames = ac3::split_frames(stream);
+    auto stream = ac3_stream({.bitrate_kbps = 192, .dialnorm = 27, .acmod = iclforge::Acmod::k2_0});
+    const auto frames = iclforge::split_frames(stream);
     REQUIRE(frames.has_value());
     const auto frame_bytes = frames->front().size();
 
@@ -425,15 +425,15 @@ TEST_CASE("a rewrite really does re-stamp the CRCs", "[metadata-edit]") {
     // no surmixlev, dsurmod present) - flip a bit of it by hand, with no
     // re-stamp.
     tampered[6] ^= std::byte{0x20};
-    ac3::FrameDecoder decoder;
+    iclforge::FrameDecoder decoder;
     const auto refused = decoder.decode_frame(std::span{tampered}.first(frame_bytes));
     REQUIRE_FALSE(refused.has_value());
-    CHECK(refused.error() == ac3::DecodeError::kBadCrc);
+    CHECK(refused.error() == iclforge::DecodeError::kBadCrc);
 
     // The same byte reachable through the rewriter instead: accepted.
-    const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 27 ^ 4});
+    const auto summary = iclforge::io::edit_stream_metadata(stream, {.dialnorm = 27 ^ 4});
     REQUIRE(summary.has_value());
-    ac3::FrameDecoder ok_decoder;
+    iclforge::FrameDecoder ok_decoder;
     const auto accepted = ok_decoder.decode_frame(std::span{stream}.first(frame_bytes));
     REQUIRE(accepted.has_value());
     CHECK(accepted->dialnorm == (27 ^ 4));
@@ -441,21 +441,21 @@ TEST_CASE("a rewrite really does re-stamp the CRCs", "[metadata-edit]") {
 
 TEST_CASE("a stream that is not AC-3 or E-AC-3 is refused", "[metadata-edit]") {
     std::vector<std::byte> junk(64, std::byte{0x00});
-    const auto no_sync = ac3::io::read_frame_metadata(junk);
+    const auto no_sync = iclforge::io::read_frame_metadata(junk);
     REQUIRE_FALSE(no_sync.has_value());
-    CHECK(no_sync.error() == ac3::io::EditError::kBadSyncWord);
+    CHECK(no_sync.error() == iclforge::io::EditError::kBadSyncWord);
 
     std::vector<std::byte> too_short{std::byte{0x0B}, std::byte{0x77}, std::byte{0x00}};
-    const auto short_frame = ac3::io::read_frame_metadata(too_short);
+    const auto short_frame = iclforge::io::read_frame_metadata(too_short);
     REQUIRE_FALSE(short_frame.has_value());
-    CHECK(short_frame.error() == ac3::io::EditError::kTruncated);
+    CHECK(short_frame.error() == iclforge::io::EditError::kTruncated);
 
     // A real syncframe cut short of its own declared size.
-    const auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}, 1);
+    const auto stream = ac3_stream({.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}, 1);
     const auto clipped =
-        ac3::io::read_frame_metadata(std::span{stream}.first(stream.size() - 1));
+        iclforge::io::read_frame_metadata(std::span{stream}.first(stream.size() - 1));
     REQUIRE_FALSE(clipped.has_value());
-    CHECK(clipped.error() == ac3::io::EditError::kTruncated);
+    CHECK(clipped.error() == iclforge::io::EditError::kTruncated);
 }
 
 TEST_CASE("every rewritable field is found behind the optional bsi groups ahead of it",
@@ -468,20 +468,20 @@ TEST_CASE("every rewritable field is found behind the optional bsi groups ahead 
     // the write on the wrong bits: the decoder would then read back the old
     // value, or refuse the frame.
     SECTION("AC-3 1+1 with langcod and audprodie on both channels") {
-        ac3::meta::BsiInfo info;
+        iclforge::meta::BsiInfo info;
         info.langcod = true;
         info.langcod2 = true;
-        info.audprod = ac3::meta::AudioProduction{.mixlevel = 17};
-        info.audprod2 = ac3::meta::AudioProduction{.mixlevel = 9};
+        info.audprod = iclforge::meta::AudioProduction{.mixlevel = 17};
+        info.audprod2 = iclforge::meta::AudioProduction{.mixlevel = 9};
         auto stream = ac3_stream({.bitrate_kbps = 192,
                                   .dialnorm = 24,
                                   .dialnorm2 = 20,
-                                  .acmod = ac3::Acmod::kDualMono,
-                                  .heavy = ac3::meta::HeavyConfig{},
-                                  .heavy2 = ac3::meta::HeavyConfig{},
+                                  .acmod = iclforge::Acmod::kDualMono,
+                                  .heavy = iclforge::meta::HeavyConfig{},
+                                  .heavy2 = iclforge::meta::HeavyConfig{},
                                   .info = info});
         const std::vector<std::byte> original = stream;
-        const auto meta = ac3::io::read_frame_metadata(stream);
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
         REQUIRE(meta->compr.has_value());
         REQUIRE(meta->compr2.has_value());
@@ -490,92 +490,92 @@ TEST_CASE("every rewritable field is found behind the optional bsi groups ahead 
         constexpr std::uint8_t kWord2 = 0x5A;
         REQUIRE(*meta->compr2 != kWord2);
         const auto summary =
-            ac3::io::edit_stream_metadata(stream, {.dialnorm2 = 7, .compr2 = kWord2});
+            iclforge::io::edit_stream_metadata(stream, {.dialnorm2 = 7, .compr2 = kWord2});
         REQUIRE(summary.has_value());
         CHECK(summary->changed == 3);
-        const auto after = ac3::io::read_frame_metadata(stream);
+        const auto after = iclforge::io::read_frame_metadata(stream);
         REQUIRE(after.has_value());
         CHECK(after->dialnorm2 == 7);
         CHECK(after->compr2 == kWord2);
         CHECK(after->compr == meta->compr);  // Ch1's word untouched
         CHECK(after->dialnorm == 24);
 
-        ac3::DecodedFrame before_meta{};
-        ac3::DecodedFrame after_meta{};
+        iclforge::DecodedFrame before_meta{};
+        iclforge::DecodedFrame after_meta{};
         CHECK(decode_ac3(stream, after_meta) == decode_ac3(original, before_meta));
     }
 
     SECTION("E-AC-3 infomdate carries bsmod and, on 2/0, dsurmod") {
-        ac3::eac3::AccessUnitConfig config;
+        iclforge::eac3::AccessUnitConfig config;
         config.independent = {.bitrate_kbps = 192,
-                              .acmod = ac3::Acmod::k2_0,
-                              .info = ac3::meta::BsiInfo{
-                                  .bsmod = ac3::meta::BitstreamMode::kCommentary,
-                                  .dsurmod = ac3::meta::SurroundMode::kDolbySurround}};
+                              .acmod = iclforge::Acmod::k2_0,
+                              .info = iclforge::meta::BsiInfo{
+                                  .bsmod = iclforge::meta::BitstreamMode::kCommentary,
+                                  .dsurmod = iclforge::meta::SurroundMode::kDolbySurround}};
         auto stream = eac3_stream(config);
         const std::vector<std::byte> original = stream;
-        const auto meta = ac3::io::read_frame_metadata(stream);
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
         CHECK(meta->bsmod == 5);
         CHECK(meta->dsurmod == 2);
 
-        const auto summary = ac3::io::edit_stream_metadata(stream, {.bsmod = 1, .dsurmod = 1});
+        const auto summary = iclforge::io::edit_stream_metadata(stream, {.bsmod = 1, .dsurmod = 1});
         REQUIRE(summary.has_value());
         CHECK(summary->changed == 3);
-        const auto after = ac3::io::read_frame_metadata(stream);
+        const auto after = iclforge::io::read_frame_metadata(stream);
         REQUIRE(after.has_value());
         CHECK(after->bsmod == 1);
         CHECK(after->dsurmod == 1);
 
-        ac3::DecodedAccessUnit before_meta{};
-        ac3::DecodedAccessUnit after_meta{};
+        iclforge::DecodedAccessUnit before_meta{};
+        iclforge::DecodedAccessUnit after_meta{};
         CHECK(decode_eac3(stream, after_meta) == decode_eac3(original, before_meta));
     }
 
     SECTION("E-AC-3 1+1 rewrites both channels' compression words") {
-        ac3::eac3::AccessUnitConfig config;
+        iclforge::eac3::AccessUnitConfig config;
         config.independent = {.bitrate_kbps = 192,
-                              .acmod = ac3::Acmod::kDualMono,
+                              .acmod = iclforge::Acmod::kDualMono,
                               .dialnorm = 22,
                               .dialnorm2 = 18,
-                              .heavy = ac3::meta::HeavyConfig{},
-                              .heavy2 = ac3::meta::HeavyConfig{}};
+                              .heavy = iclforge::meta::HeavyConfig{},
+                              .heavy2 = iclforge::meta::HeavyConfig{}};
         auto stream = eac3_stream(config);
-        const auto meta = ac3::io::read_frame_metadata(stream);
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
         REQUIRE(meta->compr.has_value());
         REQUIRE(meta->compr2.has_value());
         CHECK(meta->dialnorm2 == 18);
 
-        const auto summary = ac3::io::edit_stream_metadata(
+        const auto summary = iclforge::io::edit_stream_metadata(
             stream, {.dialnorm2 = 30, .compr = 0x11, .compr2 = 0x22});
         REQUIRE(summary.has_value());
-        const auto after = ac3::io::read_frame_metadata(stream);
+        const auto after = iclforge::io::read_frame_metadata(stream);
         REQUIRE(after.has_value());
         CHECK(after->dialnorm == 22);
         CHECK(after->dialnorm2 == 30);
         CHECK(after->compr == 0x11);
         CHECK(after->compr2 == 0x22);
-        ac3::DecodedAccessUnit after_meta{};
+        iclforge::DecodedAccessUnit after_meta{};
         CHECK_FALSE(decode_eac3(stream, after_meta).empty());
     }
 
     SECTION("E-AC-3 at a reduced rate reads its rate from fscod2") {
-        ac3::eac3::AccessUnitConfig config;
-        config.independent = {.sample_rate = ac3::SampleRate::k24000,
+        iclforge::eac3::AccessUnitConfig config;
+        config.independent = {.sample_rate = iclforge::SampleRate::k24000,
                               .bitrate_kbps = 96,
-                              .acmod = ac3::Acmod::k2_0,
+                              .acmod = iclforge::Acmod::k2_0,
                               .dialnorm = 19};
         auto stream = eac3_stream(config);
-        const auto meta = ac3::io::read_frame_metadata(stream);
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
-        CHECK(meta->sample_rate == ac3::SampleRate::k24000);
+        CHECK(meta->sample_rate == iclforge::SampleRate::k24000);
         CHECK(meta->numblkscod == 3);
         CHECK(meta->dialnorm == 19);
-        const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 4});
+        const auto summary = iclforge::io::edit_stream_metadata(stream, {.dialnorm = 4});
         REQUIRE(summary.has_value());
-        CHECK(ac3::io::read_frame_metadata(stream)->dialnorm == 4);
-        ac3::DecodedAccessUnit after_meta{};
+        CHECK(iclforge::io::read_frame_metadata(stream)->dialnorm == 4);
+        iclforge::DecodedAccessUnit after_meta{};
         CHECK_FALSE(decode_eac3(stream, after_meta).empty());
         CHECK(after_meta.dialnorm == 4);
     }
@@ -585,20 +585,20 @@ TEST_CASE("every rewritable field is found behind the optional bsi groups ahead 
         // unconditional field rather than a per-block flag-and-field list,
         // and 1/0 is what carries panmean - so this is the mixmdate walk's
         // own odd corner, with infomdate's bsmod right behind it.
-        ac3::meta::MixMetadata mix;
+        iclforge::meta::MixMetadata mix;
         mix.pgmscl = 20;
         mix.extpgmscl = 30;
-        mix.mixing.mixdef = ac3::meta::MixDefinition::kPremix;
-        mix.pan = ac3::meta::PanInfo{.panmean = 60};
-        std::array<std::optional<int>, ac3::kBlocksPerFrame> blocks{};
+        mix.mixing.mixdef = iclforge::meta::MixDefinition::kPremix;
+        mix.pan = iclforge::meta::PanInfo{.panmean = 60};
+        std::array<std::optional<int>, iclforge::kBlocksPerFrame> blocks{};
         blocks[0] = 5;
         mix.blkmixcfginfo = blocks;
-        ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 256,
-                                         .acmod = ac3::Acmod::k1_0,
+        iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 256,
+                                         .acmod = iclforge::Acmod::k1_0,
                                          .numblkscod = 0,
                                          .mixing = mix,
-                                         .info = ac3::meta::BsiInfo{
-                                             .bsmod = ac3::meta::BitstreamMode::kEmergency}}};
+                                         .info = iclforge::meta::BsiInfo{
+                                             .bsmod = iclforge::meta::BitstreamMode::kEmergency}}};
         const auto samples = static_cast<std::size_t>(encoder.samples_per_frame());
         REQUIRE(samples == 256);
         std::vector<float> pcm(samples);
@@ -615,19 +615,19 @@ TEST_CASE("every rewritable field is found behind the optional bsi groups ahead 
             REQUIRE(frame.has_value());
             stream.insert(stream.end(), frame->begin(), frame->end());
         }
-        const auto meta = ac3::io::read_frame_metadata(stream);
+        const auto meta = iclforge::io::read_frame_metadata(stream);
         REQUIRE(meta.has_value());
         CHECK(meta->numblkscod == 0);
         REQUIRE(meta->mix.has_value());
         CHECK(meta->bsmod == 6);
 
-        const auto summary = ac3::io::edit_stream_metadata(stream, {.bsmod = 3});
+        const auto summary = iclforge::io::edit_stream_metadata(stream, {.bsmod = 3});
         REQUIRE(summary.has_value());
         CHECK(summary->syncframes == 4);
         CHECK(summary->changed == 4);
-        CHECK(ac3::io::read_frame_metadata(stream)->bsmod == 3);
-        ac3::Eac3Decoder decoder;
-        const auto units = ac3::split_access_units(stream);
+        CHECK(iclforge::io::read_frame_metadata(stream)->bsmod == 3);
+        iclforge::Eac3Decoder decoder;
+        const auto units = iclforge::split_access_units(stream);
         REQUIRE(units.has_value());
         for (const auto& unit : *units) {
             CHECK(decoder.decode_access_unit(unit).has_value());
@@ -637,18 +637,18 @@ TEST_CASE("every rewritable field is found behind the optional bsi groups ahead 
 
 TEST_CASE("reserved and foreign syncframe headers are refused before anything is written",
           "[metadata-edit]") {
-    const auto ac3_frame = ac3_stream({.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}, 1);
-    ac3::eac3::AccessUnitConfig config;
-    config.independent = {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
+    const auto ac3_frame = ac3_stream({.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0}, 1);
+    iclforge::eac3::AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0};
     const auto eac3_frame = eac3_stream(config, 1);
-    const auto refused = [](std::vector<std::byte> frame, ac3::io::EditError error) {
+    const auto refused = [](std::vector<std::byte> frame, iclforge::io::EditError error) {
         const auto original = frame;
-        const auto result = ac3::io::edit_stream_metadata(frame, {.dialnorm = 5});
+        const auto result = iclforge::io::edit_stream_metadata(frame, {.dialnorm = 5});
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error() == error);
         CHECK(frame == original);
     };
-    using ac3::io::EditError;
+    using iclforge::io::EditError;
 
     auto patched = ac3_frame;
     patched[4] |= std::byte{0xC0};  // fscod '11' (Table 5.6)
@@ -678,14 +678,14 @@ TEST_CASE("reserved and foreign syncframe headers are refused before anything is
 }
 
 TEST_CASE("describe() gives every EditError a distinct, non-empty message", "[metadata-edit]") {
-    const ac3::io::EditError all[] = {
-        ac3::io::EditError::kBadSyncWord,   ac3::io::EditError::kTruncated,
-        ac3::io::EditError::kUnsupportedBsid, ac3::io::EditError::kReservedValue,
-        ac3::io::EditError::kFieldAbsent,   ac3::io::EditError::kOutOfRange};
+    const iclforge::io::EditError all[] = {
+        iclforge::io::EditError::kBadSyncWord,   iclforge::io::EditError::kTruncated,
+        iclforge::io::EditError::kUnsupportedBsid, iclforge::io::EditError::kReservedValue,
+        iclforge::io::EditError::kFieldAbsent,   iclforge::io::EditError::kOutOfRange};
     for (std::size_t i = 0; i < std::size(all); ++i) {
-        CHECK_FALSE(ac3::io::describe(all[i]).empty());
+        CHECK_FALSE(iclforge::io::describe(all[i]).empty());
         for (std::size_t j = i + 1; j < std::size(all); ++j) {
-            CHECK(ac3::io::describe(all[i]) != ac3::io::describe(all[j]));
+            CHECK(iclforge::io::describe(all[i]) != iclforge::io::describe(all[j]));
         }
     }
 }

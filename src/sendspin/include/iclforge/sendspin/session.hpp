@@ -15,7 +15,7 @@
 // session runs under a desktop thread over a transport::Connection and inside a board's
 // WebSocket handler alike. drive() in session_driver.hpp is the desktop's loop.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 struct SessionOutput {
     // To send, in order.
@@ -61,4 +61,4 @@ inline constexpr std::int64_t kHandshakeTimeout = 30'000'000;
 // servers).
 inline constexpr std::int64_t kProvisionalTimeout = 30'000'000;
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

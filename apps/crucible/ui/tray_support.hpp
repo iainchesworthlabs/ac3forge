@@ -18,7 +18,7 @@
 // which is still worth reading: the constraint it leaves behind is that the
 // tray's menu in Main.qml must not nest a submenu.
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 // True where the window may create a tray icon.
 [[nodiscard]] bool tray_is_published();
@@ -28,4 +28,4 @@ namespace ac3::crucible::ui {
 // tray is published.
 [[nodiscard]] QString tray_absent_reason();
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

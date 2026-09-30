@@ -10,24 +10,24 @@
 // AC3FORGE_DECODE_SCALAR"), so no source file asks which it is with a
 // preprocessor conditional (tools/checks/check_platform_macros.ps1's rule).
 //
-// This is not the same mechanism as ac3::internal::decode_scalar_t: that name
-// is used directly, as a concrete type, throughout ac3::forge's own decoder;
+// This is not the same mechanism as iclforge::internal::decode_scalar_t: that name
+// is used directly, as a concrete type, throughout iclforge::ac3's own decoder;
 // AC-4's kernels stay templated on `Real` (a template parameter, in scope
 // only inside each template's own definition) so that a future phase can
-// still instantiate them at ac3::internal::Fixed32 too. `Real` here is the
+// still instantiate them at iclforge::internal::Fixed32 too. `Real` here is the
 // unqualified name every explicit-instantiation line outside those templates
-// resolves through ordinary enclosing-namespace lookup: ac4::detail::dsp,
-// ac4::detail::aspx, ac4::detail::acpl, ac4::detail::ajcc and ac4::detail::ajoc
-// all nest inside ac4::detail, where this alias lives.
+// resolves through ordinary enclosing-namespace lookup: iclforge::ac4::detail::dsp,
+// iclforge::ac4::detail::aspx, iclforge::ac4::detail::acpl, iclforge::ac4::detail::ajcc and iclforge::ac4::detail::ajoc
+// all nest inside iclforge::ac4::detail, where this alias lives.
 //
 // double: every build outside the ESP32 boards, and the reference every
 // other tier is measured against (planning/arithmetic-tiers.md).
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 using Real = double;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail
 
 // Explicit instantiations a translation unit adds at double beside its
 // `template class Foo<Real>;` when Real is not double: the encoder (src/ac4enc)

@@ -35,7 +35,7 @@
 // byte_align, fill_bits and fill_area are not recorded. docs/verification.md
 // states the whole contract.
 
-namespace ac4 {
+namespace iclforge::ac4 {
 
 struct SyntaxRecord {
     int substream = 0;             // index into the frame's substream_index_table
@@ -45,8 +45,8 @@ struct SyntaxRecord {
     std::string_view name;         // the element's name in the syntax table
 };
 
-// Where a configuration sends its trace: ac4::DecoderConfig::syntax and
-// ac4::EncoderConfig::trace. It owns a copy of the callable, so a lambda
+// Where a configuration sends its trace: iclforge::ac4::DecoderConfig::syntax and
+// iclforge::ac4::EncoderConfig::trace. It owns a copy of the callable, so a lambda
 // written in place lives as long as the configuration, and the decoder or
 // encoder built from it keeps a copy of its own. What the callable refers to
 // (the vector a lambda captures by reference, say) must still outlive the
@@ -55,7 +55,7 @@ struct SyntaxRecord {
 using SyntaxTrace = std::function<void(const SyntaxRecord&)>;
 
 // A non-owning reference to any callable taking a const SyntaxRecord&, in the
-// shape of ac3::BlockSink: what the readers and writers inside the libraries
+// shape of iclforge::BlockSink: what the readers and writers inside the libraries
 // hold while they run. It refers to a named callable only; a temporary would be
 // gone before the first record, so binding one does not compile.
 class SyntaxSink {
@@ -97,4 +97,4 @@ template <typename T>
     return trace ? SyntaxSink(trace) : SyntaxSink{};
 }
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

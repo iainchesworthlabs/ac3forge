@@ -525,7 +525,7 @@ int main(int argc, char* argv[]) {
     QGuiApplication::setApplicationName(QStringLiteral("ac3forge"));
     QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
     QGuiApplication::setApplicationVersion(
-        QString::fromUtf8(ac3::version_string.data(), static_cast<qsizetype>(ac3::version_string.size())));
+        QString::fromUtf8(iclforge::version_string.data(), static_cast<qsizetype>(iclforge::version_string.size())));
 
     // The build-tree/taskbar/alt-tab icon - independent of the packaged
     // Windows .rc/macOS .icns wiring in CMakeLists.txt, which only takes
@@ -588,7 +588,7 @@ int main(int argc, char* argv[]) {
     // context property is enough - AboutDialog.qml reads it directly,
     // no C++ round trip needed for something that never changes at runtime.
     engine.rootContext()->setContextProperty(
-        QStringLiteral("appVersionDetails"), QString::fromStdString(ac3::version_details()));
+        QStringLiteral("appVersionDetails"), QString::fromStdString(iclforge::version_details()));
 
     // Installs translators and sets the initial layout direction before any
     // QML is loaded (loadFromModule() below), so the first frame already

@@ -18,7 +18,7 @@
 // mix that folds down badly one way can be corrected without spoiling the
 // other, plus an LFE mix level AC-3 has no way to express.
 
-namespace ac3::meta {
+namespace iclforge::meta {
 
 // The printed table values (0.707, 0.595, 0.841 …) are rounded quarter-powers
 // of two; these are the exact ones, so that a chain of them is exact.
@@ -357,7 +357,7 @@ struct DownmixCoefficients {
 // channels as coded (its surround entries are zero), `surround` holds the
 // coefficients of the channels that form the sum, and the caller applies the
 // shift to that sum before adding it — negated into Lt, positive into Rt.
-// See ac3::OutputStage, which owns the shift itself.
+// See iclforge::OutputStage, which owns the shift itself.
 //
 // Normalisation (§7.8.1) is over the WORST CASE of the two paths together,
 // since the shifted sum is not generally in quadrature with everything at
@@ -418,4 +418,4 @@ inline constexpr int kReferenceDialnorm = 31;
 // §7.8's stated ideal of +10 dB relative to left and right.
 [[nodiscard]] ICLFORGE_AC3_EXPORT double lfe_mix_gain(double level_db);
 
-}  // namespace ac3::meta
+}  // namespace iclforge::meta

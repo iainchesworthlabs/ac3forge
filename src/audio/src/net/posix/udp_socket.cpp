@@ -15,7 +15,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(UdpSocketError error) {
     switch (error) {
@@ -134,4 +134,4 @@ void UdpSocket::close() {
     impl_->port = 0;
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

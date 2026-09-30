@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // Where a channel sits for panning, in degrees clockwise from the front: L, C
@@ -195,4 +195,4 @@ void MixStage::mix(const MixValues& values, std::span<const Speaker> speakers,
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

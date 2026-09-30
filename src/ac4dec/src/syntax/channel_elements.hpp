@@ -26,7 +26,7 @@
 // names, and var_channel_element() (6.2.4.4), the downmix audio_data_ajoc()
 // codes.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Codec mode values: Part 1 Tables 93 and 95 to 98.
 namespace codec_mode {
@@ -163,4 +163,4 @@ struct ChannelElementState {
                                                     ChannelElementState& state,
                                                     ChannelElement& out);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

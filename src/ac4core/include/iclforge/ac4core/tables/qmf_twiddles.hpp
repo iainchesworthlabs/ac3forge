@@ -9,7 +9,7 @@
 // transform is a multiple of pi / 256; dsp/qmf_constants.hpp builds them all from
 // this table by integer angle arithmetic, at compile time.
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 
 inline constexpr std::array<double, 129> kCosQuadrant = {
     1.0, 0.9999247018391445, 0.9996988186962042, 0.9993223845883495, 0.9987954562051724,
@@ -46,4 +46,4 @@ inline constexpr std::array<double, 129> kCosQuadrant = {
     0.024541228522912288, 0.012271538285719925, 0.0,
 };
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

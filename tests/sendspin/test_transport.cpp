@@ -13,11 +13,11 @@
 // The transport seam's threading contract, on the in-memory pair the session tests
 // and loopback groups run over.
 
-using ac3::sendspin::transport::Frame;
-using ac3::sendspin::transport::FrameKind;
+using iclforge::sendspin::transport::Frame;
+using iclforge::sendspin::transport::FrameKind;
 
 TEST_CASE("transport: a memory pair delivers both kinds in order", "[sendspin][transport]") {
-    auto [a, b] = ac3::sendspin::transport::memory_pair("server", "client");
+    auto [a, b] = iclforge::sendspin::transport::memory_pair("server", "client");
     CHECK(a->peer() == "client");
     CHECK(b->peer() == "server");
 
@@ -41,7 +41,7 @@ TEST_CASE("transport: a memory pair delivers both kinds in order", "[sendspin][t
 
 TEST_CASE("transport: close unblocks a waiting reader and fails later sends",
           "[sendspin][transport]") {
-    auto [a, b] = ac3::sendspin::transport::memory_pair();
+    auto [a, b] = iclforge::sendspin::transport::memory_pair();
     std::atomic<bool> returned{false};
     std::optional<Frame> got;
     std::thread reader([&, &connection = *b] {
@@ -60,7 +60,7 @@ TEST_CASE("transport: close unblocks a waiting reader and fails later sends",
 
 TEST_CASE("transport: messages sent before a close are still received",
           "[sendspin][transport]") {
-    auto [a, b] = ac3::sendspin::transport::memory_pair();
+    auto [a, b] = iclforge::sendspin::transport::memory_pair();
     REQUIRE(a->send_text(R"({"type":"client/goodbye","payload":{"reason":"shutdown"}})"));
     a->close();
     const std::optional<Frame> goodbye = b->receive();
@@ -70,7 +70,7 @@ TEST_CASE("transport: messages sent before a close are still received",
 }
 
 TEST_CASE("transport: many senders, one reader, nothing lost", "[sendspin][transport]") {
-    auto [a, b] = ac3::sendspin::transport::memory_pair();
+    auto [a, b] = iclforge::sendspin::transport::memory_pair();
     constexpr int kThreads = 4;
     constexpr int kEach = 250;
     std::vector<std::thread> senders;

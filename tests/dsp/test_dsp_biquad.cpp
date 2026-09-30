@@ -11,8 +11,8 @@
 
 #include "iclforge/dsp/biquad.hpp"
 
-using ac3::dsp::Biquad;
-using ac3::dsp::LfeLowpass;
+using iclforge::dsp::Biquad;
+using iclforge::dsp::LfeLowpass;
 
 namespace {
 
@@ -118,7 +118,7 @@ TEST_CASE("frame-by-frame process() matches processing the whole signal at once"
     // the chunk size (one short final chunk) matches how a real file's last
     // partial frame is handled.
     constexpr std::uint32_t kSampleRate = 48000;
-    constexpr std::size_t kChunk = 1536;  // ac3::kSamplesPerFrame
+    constexpr std::size_t kChunk = 1536;  // iclforge::kSamplesPerFrame
     constexpr std::size_t kTotal = 4 * kChunk + 700;
 
     std::vector<float> low = generate_sine(kTotal, 40.0, kSampleRate, 0.4);

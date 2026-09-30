@@ -22,7 +22,7 @@
 #include "iclforge/ac4enc/encoder.hpp"
 #include "encode.hpp"
 
-// ac4-encode: WAV to AC-4 through ac4::Encoder (src/ac4enc), as a raw stream
+// ac4-encode: WAV to AC-4 through iclforge::ac4::Encoder (src/ac4enc), as a raw stream
 // of sync frames with the CRC of TS 103 190-2 Annex G (without it where
 // crc=off), or in an MP4 file with Annex E's 'ac-4' sample entry when the
 // output is named .mp4, .m4a or .mov. What the encoder writes: mono, stereo,
@@ -43,24 +43,24 @@ namespace {
 
 // The codec mode as Part 1 Table 95 names it, or Part 2 Table 73 the
 // immersive element's.
-[[nodiscard]] std::string_view mode_name(ac4::CodecMode mode) {
+[[nodiscard]] std::string_view mode_name(iclforge::ac4::CodecMode mode) {
     switch (mode) {
-        case ac4::CodecMode::kAspx:
+        case iclforge::ac4::CodecMode::kAspx:
             return "ASPX";
-        case ac4::CodecMode::kAspxAcpl1:
+        case iclforge::ac4::CodecMode::kAspxAcpl1:
             return "ASPX_ACPL_1";
-        case ac4::CodecMode::kAspxAcpl2:
+        case iclforge::ac4::CodecMode::kAspxAcpl2:
             return "ASPX_ACPL_2";
-        case ac4::CodecMode::kAspxAcpl3:
+        case iclforge::ac4::CodecMode::kAspxAcpl3:
             return "ASPX_ACPL_3";
-        case ac4::CodecMode::kScpl:
+        case iclforge::ac4::CodecMode::kScpl:
             return "SCPL";
-        case ac4::CodecMode::kAspxScpl:
+        case iclforge::ac4::CodecMode::kAspxScpl:
             return "ASPX_SCPL";
-        case ac4::CodecMode::kAspxAjcc:
+        case iclforge::ac4::CodecMode::kAspxAjcc:
             return "ASPX_AJCC";
-        case ac4::CodecMode::kAuto:
-        case ac4::CodecMode::kSimple:
+        case iclforge::ac4::CodecMode::kAuto:
+        case iclforge::ac4::CodecMode::kSimple:
             break;
     }
     return "SIMPLE";
@@ -73,13 +73,13 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
     "50", "59.94", "60", "100", "119.88", "120"};
 // clang-format on
 
-[[nodiscard]] std::string_view rate_mode_name(ac4::RateMode mode) {
+[[nodiscard]] std::string_view rate_mode_name(iclforge::ac4::RateMode mode) {
     switch (mode) {
-        case ac4::RateMode::kAverage:
+        case iclforge::ac4::RateMode::kAverage:
             return "average";
-        case ac4::RateMode::kVariable:
+        case iclforge::ac4::RateMode::kVariable:
             return "variable";
-        case ac4::RateMode::kConstant:
+        case iclforge::ac4::RateMode::kConstant:
             break;
     }
     return "constant";
@@ -97,42 +97,42 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
     return false;
 }
 
-// codec-mode='s values as ac4::CodecMode, kAuto for "auto" and none.
-[[nodiscard]] ac4::CodecMode codec_mode_of(std::string_view name) {
+// codec-mode='s values as iclforge::ac4::CodecMode, kAuto for "auto" and none.
+[[nodiscard]] iclforge::ac4::CodecMode codec_mode_of(std::string_view name) {
     if (name == "simple") {
-        return ac4::CodecMode::kSimple;
+        return iclforge::ac4::CodecMode::kSimple;
     }
     if (name == "aspx") {
-        return ac4::CodecMode::kAspx;
+        return iclforge::ac4::CodecMode::kAspx;
     }
     if (name == "aspx-acpl-1") {
-        return ac4::CodecMode::kAspxAcpl1;
+        return iclforge::ac4::CodecMode::kAspxAcpl1;
     }
     if (name == "aspx-acpl-2") {
-        return ac4::CodecMode::kAspxAcpl2;
+        return iclforge::ac4::CodecMode::kAspxAcpl2;
     }
     if (name == "aspx-acpl-3") {
-        return ac4::CodecMode::kAspxAcpl3;
+        return iclforge::ac4::CodecMode::kAspxAcpl3;
     }
     if (name == "scpl") {
-        return ac4::CodecMode::kScpl;
+        return iclforge::ac4::CodecMode::kScpl;
     }
     if (name == "aspx-scpl") {
-        return ac4::CodecMode::kAspxScpl;
+        return iclforge::ac4::CodecMode::kAspxScpl;
     }
     if (name == "aspx-ajcc") {
-        return ac4::CodecMode::kAspxAjcc;
+        return iclforge::ac4::CodecMode::kAspxAjcc;
     }
-    return ac4::CodecMode::kAuto;
+    return iclforge::ac4::CodecMode::kAuto;
 }
 
 // One input of the stream: a substream's WAV file, its channels in the
 // encoder's order, and its dialogue stem where it has one.
 struct Input {
-    ac3::io::WavData wav;
-    std::vector<ac4::Speaker> speakers;
+    iclforge::io::WavData wav;
+    std::vector<iclforge::ac4::Speaker> speakers;
     std::vector<std::size_t> wav_index;  // the WAV file's channel of each encoder channel
-    ac3::io::WavData stem;
+    iclforge::io::WavData stem;
     bool has_stem = false;
 };
 
@@ -141,16 +141,16 @@ struct Input {
 // not.
 [[nodiscard]] std::optional<Input> read_input(std::string_view path, std::size_t number,
                                               const Options::Ac4Encode::Dialogue& dialogue,
-                                              ac4::AdditionalPair pair, bool three_zero,
+                                              iclforge::ac4::AdditionalPair pair, bool three_zero,
                                               bool back_pair) {
     auto wav = read_wav_arg(path);
     if (!wav.has_value()) {
-        fmt::println(stderr, "error: {}: {}", path, ac3::io::describe(wav.error()));
+        fmt::println(stderr, "error: {}: {}", path, iclforge::io::describe(wav.error()));
         return std::nullopt;
     }
     Input input;
     input.speakers =
-        ac3::apps::ac4_input_speakers(wav->channels.size(), pair, three_zero, back_pair);
+        iclforge::apps::ac4_input_speakers(wav->channels.size(), pair, three_zero, back_pair);
     if (input.speakers.empty()) {
         fmt::println(stderr,
                      "error: {}: AC-4 encoding takes mono, stereo, 5.0, 5.1, 5.0.4 and 5.1.4, 7.0 "
@@ -165,13 +165,13 @@ struct Input {
                      path, wav->sample_rate);
         return std::nullopt;
     }
-    input.wav_index = ac3::apps::ac4_wav_index(input.speakers);
+    input.wav_index = iclforge::apps::ac4_wav_index(input.speakers);
     // dialogue-stem=: the dialogue in the programme's channels, sample for
     // sample.
     if (!dialogue.stem.empty()) {
         auto stem = read_wav_arg(dialogue.stem);
         if (!stem.has_value()) {
-            fmt::println(stderr, "error: {}: {}", dialogue.stem, ac3::io::describe(stem.error()));
+            fmt::println(stderr, "error: {}: {}", dialogue.stem, iclforge::io::describe(stem.error()));
             return std::nullopt;
         }
         if (stem->channels.size() != wav->channels.size() ||
@@ -191,15 +191,15 @@ struct Input {
 
 // A substream's dialogue enhancement, from its dialogue-...= options, for a
 // substream of `channels` input channels; nothing where none is asked for.
-[[nodiscard]] std::optional<ac4::DialogueConfig> dialogue_config(
+[[nodiscard]] std::optional<iclforge::ac4::DialogueConfig> dialogue_config(
     const Options::Ac4Encode::Dialogue& options, std::size_t channels) {
     const bool stem = !options.stem.empty();
     if (!options.channels && !stem) {
         return std::nullopt;
     }
-    ac4::DialogueConfig dialogue;
+    iclforge::ac4::DialogueConfig dialogue;
     dialogue.method = options.method;
-    dialogue.source = stem ? ac4::DialogueSource::kStem : ac4::DialogueSource::kMarkedChannels;
+    dialogue.source = stem ? iclforge::ac4::DialogueSource::kStem : iclforge::ac4::DialogueSource::kMarkedChannels;
     dialogue.max_gain_db = options.max_gain_db;
     if (options.channels) {
         dialogue.left = names_channel(*options.channels, "l");
@@ -252,7 +252,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             *opts.drc_gains);
         return kExitUsage;
     }
-    const bool to_mp4 = ac3::apps::ac4_output_names_mp4(out_path);
+    const bool to_mp4 = iclforge::apps::ac4_output_names_mp4(out_path);
     if (opts.crc && to_mp4) {
         fmt::println(stderr,
                      "error: crc= is a raw stream's sync frames' CRC; an MP4 sample is the raw "
@@ -338,7 +338,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     }
     const Options::Ac4Encode::Substream& first = substreams.front();
     // The configuration's substreams form: several substreams, or values of
-    // the first that only ac4::SubstreamConfig carries.
+    // the first that only iclforge::ac4::SubstreamConfig carries.
     const bool substream_form = count > 1 || first.content || !first.language.empty() ||
                                 first.bitrate_kbps || first.max_dialogue_gain_db ||
                                 !first.pan_degrees.empty() || !first.emdf.empty();
@@ -350,13 +350,13 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         return kExitUsage;
     }
 
-    ac4::AdditionalPair pair = ac4::AdditionalPair::kNone;
+    iclforge::ac4::AdditionalPair pair = iclforge::ac4::AdditionalPair::kNone;
     if (meta.ac4_experimental_seven_x == "back") {
-        pair = ac4::AdditionalPair::kBack;
+        pair = iclforge::ac4::AdditionalPair::kBack;
     } else if (meta.ac4_experimental_seven_x == "wide") {
-        pair = ac4::AdditionalPair::kWide;
+        pair = iclforge::ac4::AdditionalPair::kWide;
     } else if (meta.ac4_experimental_seven_x == "top-front") {
-        pair = ac4::AdditionalPair::kTopFront;
+        pair = iclforge::ac4::AdditionalPair::kTopFront;
     }
     // Every substream's input, a dialogue enhancement substream's none.
     std::vector<std::optional<Input>> inputs(count);
@@ -371,7 +371,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         }
     }
     const Input& main = *inputs.front();
-    const std::vector<ac4::Speaker>& speakers = main.speakers;
+    const std::vector<iclforge::ac4::Speaker>& speakers = main.speakers;
     for (std::size_t n = 1; n < count; ++n) {
         if (inputs[n] && (inputs[n]->wav.sample_rate != main.wav.sample_rate ||
                           inputs[n]->wav.frame_count() != main.wav.frame_count())) {
@@ -392,7 +392,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     }
     const bool multichannel = speakers.size() >= 5;
     const bool immersive = speakers.size() >= 9;
-    const bool has_lfe = std::ranges::find(speakers, ac4::Speaker::kLfe) != speakers.end();
+    const bool has_lfe = std::ranges::find(speakers, iclforge::ac4::Speaker::kLfe) != speakers.end();
     const bool downmix_named = opts.loro_centre_db || opts.loro_surround_db ||
                                opts.ltrt_centre_db || opts.ltrt_surround_db || opts.lfe_db ||
                                opts.preferred_downmix || opts.loro_correction_db ||
@@ -404,7 +404,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             stderr,
             "error: the downmix options describe the stereo downmix of 5.0, 5.1, 7.0, 7.1 and the "
             "immersive layouts; the source is {}",
-            ac3::apps::ac4_layout_name(speakers.size(), pair));
+            iclforge::apps::ac4_layout_name(speakers.size(), pair));
         return kExitUsage;
     }
     if (opts.height_db && !opts.height_downmix) {
@@ -417,16 +417,16 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         fmt::println(stderr,
                      "error: height-downmix= describes the top channels' downmix of 5.0.4, 5.1.4, "
                      "7.0.4 and 7.1.4; the source is {}",
-                     ac3::apps::ac4_layout_name(speakers.size(), pair));
+                     iclforge::apps::ac4_layout_name(speakers.size(), pair));
         return kExitUsage;
     }
     if (count == 1 && opts.lfe_db && !has_lfe) {
         fmt::println(stderr, "error: lfemix= is the LFE's gain into the downmix, and {} has no LFE",
-                     ac3::apps::ac4_layout_name(speakers.size(), pair));
+                     iclforge::apps::ac4_layout_name(speakers.size(), pair));
         return kExitUsage;
     }
 
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = static_cast<int>(speakers.size());
     config.sample_rate_hz = static_cast<int>(main.wav.sample_rate);
     config.frame_rate_index = opts.frame_rate_index;
@@ -462,11 +462,11 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         // Table 161's four modes on drc='s profile, and a mode named on a
         // profile of its own takes its curve, or repeats the first mode with
         // the same.
-        ac4::DrcConfig drc;
+        iclforge::ac4::DrcConfig drc;
         drc.profile = opts.drc.value_or(drc.profile);
         for (int id = 0; id < 4; ++id) {
-            ac4::DrcModeConfig mode{.id = id, .gains_config = opts.drc_gains};
-            const std::optional<ac4::DrcProfile>& own =
+            iclforge::ac4::DrcModeConfig mode{.id = id, .gains_config = opts.drc_gains};
+            const std::optional<iclforge::ac4::DrcProfile>& own =
                 opts.drc_modes[static_cast<std::size_t>(id)];
             if (own && *own != drc.profile) {
                 for (int earlier = 0; earlier < id; ++earlier) {
@@ -484,7 +484,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         config.drc = drc;
     }
     if (downmix_named) {
-        ac4::DownmixConfig downmix;
+        iclforge::ac4::DownmixConfig downmix;
         downmix.loro_centre_db = opts.loro_centre_db.value_or(downmix.loro_centre_db);
         downmix.loro_surround_db = opts.loro_surround_db.value_or(downmix.loro_surround_db);
         downmix.ltrt_centre_db = opts.ltrt_centre_db;
@@ -502,7 +502,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     } else {
         for (std::size_t n = 0; n < count; ++n) {
             const Options::Ac4Encode::Substream& s = substreams[n];
-            ac4::SubstreamConfig substream;
+            iclforge::ac4::SubstreamConfig substream;
             substream.channels = inputs[n] ? static_cast<int>(inputs[n]->speakers.size()) : 0;
             substream.bitrate_kbps = s.bitrate_kbps;
             substream.codec_mode = codec_mode_of(n == 0 ? meta.ac4_codec_mode : s.codec_mode);
@@ -512,7 +512,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
                 substream.dialogue = dialogue_config(s.dialogue, inputs[n]->speakers.size());
             }
             if (s.max_dialogue_gain_db || !s.pan_degrees.empty()) {
-                substream.dialogue_mix = ac4::DialogueMix{.max_gain_db = s.max_dialogue_gain_db,
+                substream.dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = s.max_dialogue_gain_db,
                                                           .pan_degrees = s.pan_degrees};
             }
             if (s.enhances) {
@@ -523,7 +523,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         }
     }
     for (const Options::Ac4Encode::Presentation& p : opts.presentations) {
-        ac4::PresentationConfig presentation;
+        iclforge::ac4::PresentationConfig presentation;
         presentation.config = p.config;
         for (const int s : p.substreams) {
             presentation.substreams.push_back(s - 1);
@@ -536,7 +536,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         presentation.dialnorm_db = p.dialnorm_db;
         presentation.gains_db = p.gains_db;
         if (p.main_db || p.main_centre_db || p.main_front_db || p.associated_pan) {
-            presentation.associated = ac4::AssociatedMix{.main_db = p.main_db,
+            presentation.associated = iclforge::ac4::AssociatedMix{.main_db = p.main_db,
                                                          .main_centre_db = p.main_centre_db,
                                                          .main_front_db = p.main_front_db,
                                                          .pan_degrees = p.associated_pan};
@@ -547,14 +547,14 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     // The configuration is checked before loudness= reads the whole file,
     // with loudness values in place: they cost the same bits whatever they
     // are.
-    const auto refuse_config = [](const ac4::EncoderConfig& refused) {
+    const auto refuse_config = [](const iclforge::ac4::EncoderConfig& refused) {
         fmt::println(stderr, "error: the encoder refuses {} (ac3cli help ac4-encode)",
-                     ac4::Encoder::refusal_reason(refused));
+                     iclforge::ac4::Encoder::refusal_reason(refused));
         return kExitUsage;
     };
-    ac4::EncoderConfig sized = config;
+    iclforge::ac4::EncoderConfig sized = config;
     if (opts.loudness) {
-        ac4::FurtherLoudness loudness;
+        iclforge::ac4::FurtherLoudness loudness;
         loudness.practice = *opts.loudness;
         loudness.integrated_lkfs = -23.0;
         loudness.loudness_range_lu = 0.0;
@@ -563,7 +563,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         loudness.max_short_term_lufs = -23.0;
         sized.loudness = loudness;
     }
-    if (!ac4::Encoder::create(sized).has_value()) {
+    if (!iclforge::ac4::Encoder::create(sized).has_value()) {
         return refuse_config(sized);
     }
     // encode() takes every substream's channels one substream after the
@@ -597,7 +597,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     const bool measure_dialnorm =
         meta.p.measure_dialnorm || (opts.loudness && !meta.dialnorm_given);
     if (measure_dialnorm || opts.loudness) {
-        const auto measured = ac3::apps::measure_ac4_programme(main_views, main.wav.sample_rate);
+        const auto measured = iclforge::apps::measure_ac4_programme(main_views, main.wav.sample_rate);
         if (!measured) {
             fmt::println(
                 stderr,
@@ -606,12 +606,12 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             return kExitRuntime;
         }
         if (measure_dialnorm) {
-            dialnorm = ac3::apps::ac4_dialnorm_for(measured->integrated);
+            dialnorm = iclforge::apps::ac4_dialnorm_for(measured->integrated);
         }
         status_println(status, "measured {:.2f} LKFS (BS.1770-4, gated) -> dialnorm -{:g} dB",
                        measured->integrated, dialnorm);
         if (opts.loudness) {
-            config.loudness = ac3::apps::ac4_further_loudness(*opts.loudness, *measured);
+            config.loudness = iclforge::apps::ac4_further_loudness(*opts.loudness, *measured);
             const auto show = [](std::optional<double> value) {
                 return value ? fmt::format("{:.1f}", *value) : std::string{"none"};
             };
@@ -630,7 +630,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     // 0's first element, which is where the frame count moves on.
     std::ofstream trace_file;
     long long trace_frame = -1;
-    const auto trace = [&trace_file, &trace_frame](const ac4::SyntaxRecord& r) {
+    const auto trace = [&trace_file, &trace_frame](const iclforge::ac4::SyntaxRecord& r) {
         if (r.substream == 0 && r.bit_offset == 0) {
             ++trace_frame;
         }
@@ -646,24 +646,24 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         config.trace = trace;
     }
 
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     if (!encoder.has_value()) {
         return refuse_config(config);
     }
     auto frames = stems ? encoder->encode(views, stem_views) : encoder->encode(views);
     if (!frames.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, ac4::describe(frames.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, iclforge::ac4::describe(frames.error()));
         return kExitInput;
     }
     auto rest = encoder->flush();
     if (!rest.has_value()) {
-        fmt::println(stderr, "error: {}", ac4::describe(rest.error()));
+        fmt::println(stderr, "error: {}", iclforge::ac4::describe(rest.error()));
         return kExitInput;
     }
     frames->insert(frames->end(), rest->begin(), rest->end());
 
-    const ac4::Toc& toc = encoder->toc();
-    const auto packaged = ac3::apps::package_ac4(*frames, toc, to_mp4, opts.crc.value_or(true));
+    const iclforge::ac4::Toc& toc = encoder->toc();
+    const auto packaged = iclforge::apps::package_ac4(*frames, toc, to_mp4, opts.crc.value_or(true));
     if (!packaged.has_value()) {
         fmt::println(stderr, "error: {}", packaged.error().message);
         return packaged.error().usage ? kExitUsage : kExitOutput;
@@ -681,7 +681,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     }
     const std::string shape =
         count > 1 ? fmt::format("{} substreams", count)
-                  : std::string{ac3::apps::ac4_layout_name(speakers.size(), pair)};
+                  : std::string{iclforge::apps::ac4_layout_name(speakers.size(), pair)};
     const std::string presentations = toc.n_presentations > 1
                                           ? fmt::format(", {} presentations", toc.n_presentations)
                                           : std::string{};

@@ -62,7 +62,7 @@
 // the way test_group.cpp's own decode_and_render() already proves, in play_joc_programme() against
 // a real sink's own recorded WAV, reproduces a real member's audio sample for sample - carried
 // through the same two steps NetworkGroupSink::submit_pcm() (network_group_sink.cpp) and
-// ac3::sendspin::Group take before a PCM member's encoder ever sees a sample: the group only ever
+// iclforge::sendspin::Group take before a PCM member's encoder ever sees a sample: the group only ever
 // pushes its own full 32-bit scale, and Group rescales each member down to whatever bit depth it
 // negotiated (server_host.cpp's rescaled(), an exact bit shift, never lossy rounding). Applying that
 // same float-to-int32-to-16-bit chain to the local decode's own float PCM, before it goes to
@@ -80,20 +80,20 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace m = ac3::sendspin::messages;
-namespace ss = ac3::sendspin;
-namespace testsink = ac3::hearth::testsink;
+namespace m = iclforge::sendspin::messages;
+namespace ss = iclforge::sendspin;
+namespace testsink = iclforge::hearth::testsink;
 using namespace std::chrono_literals;
-using ac3::hearth::Engine;
-using ac3::hearth::EngineOutputs;
-using ac3::hearth::EngineStatus;
-using ac3::hearth::EngineTiming;
-using ac3::hearth::ItemLoader;
-using ac3::hearth::LoadedItem;
-using ac3::hearth::OutputMode;
-using ac3::hearth::OutputPreferences;
-using ac3::hearth::QueueItem;
-using ac3::hearth::TransportState;
+using iclforge::hearth::Engine;
+using iclforge::hearth::EngineOutputs;
+using iclforge::hearth::EngineStatus;
+using iclforge::hearth::EngineTiming;
+using iclforge::hearth::ItemLoader;
+using iclforge::hearth::LoadedItem;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::OutputPreferences;
+using iclforge::hearth::QueueItem;
+using iclforge::hearth::TransportState;
 
 [[nodiscard]] std::optional<std::string> environment(const char* name) {
     const char* const value = std::getenv(name);
@@ -103,7 +103,7 @@ using ac3::hearth::TransportState;
     return std::string(value);
 }
 
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
    public:
@@ -166,13 +166,13 @@ std::unique_ptr<testsink::Sink> start_sink(const fs::path& directory, std::strin
 // `frames` E-AC-3 access units of a 440 Hz tone - test_engine.cpp's own eac3_stream(): each unit
 // is a full six-block (1,536-sample, 32 ms) burst on its own.
 std::vector<std::byte> eac3_stream(int frames) {
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = ac3::Acmod::k2_0;
-    ac3::eac3::FrameEncoder encoder{config};
+    config.acmod = iclforge::Acmod::k2_0;
+    iclforge::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        std::vector<float> samples(ac3::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
@@ -208,29 +208,29 @@ std::vector<std::byte> eac3_stream(int frames) {
 // DecoderSettings{} default stereo_fold) - the point of this function is to match that, not to
 // assert it away.
 template <class Consume>
-void decode_and_render(const ac3::io::ScannedStream& stream, int passes, const ac3::render::OutputLayout& layout,
+void decode_and_render(const iclforge::io::ScannedStream& stream, int passes, const iclforge::render::OutputLayout& layout,
                        Consume&& consume) {
-    const ac3::render::Serving serving =
-        ac3::render::serve(layout, ac3::DownmixTarget::kLoRo, ac3::render::ObjectsPolicy::kAuto);
-    ac3::DecoderConfig config;
-    config.output.mode = ac3::OperatingMode::kLine;
-    ac3::render::configure_decoder(serving, config);
-    ac3::Eac3Decoder decoder(config);
-    ac3::render::LayoutRenderer renderer(layout);
+    const iclforge::render::Serving serving =
+        iclforge::render::serve(layout, iclforge::DownmixTarget::kLoRo, iclforge::render::ObjectsPolicy::kAuto);
+    iclforge::DecoderConfig config;
+    config.output.mode = iclforge::OperatingMode::kLine;
+    iclforge::render::configure_decoder(serving, config);
+    iclforge::Eac3Decoder decoder(config);
+    iclforge::render::LayoutRenderer renderer(layout);
     const std::size_t slots = layout.slots();
-    std::vector<std::array<float, ac3::kSamplesPerBlock>> block(slots);
+    std::vector<std::array<float, iclforge::kSamplesPerBlock>> block(slots);
     std::vector<std::span<float>> spans;
-    for (std::array<float, ac3::kSamplesPerBlock>& slot : block) {
+    for (std::array<float, iclforge::kSamplesPerBlock>& slot : block) {
         spans.emplace_back(slot);
     }
     // Each unit's bed, taken by its first block whichever call delivers it.
-    std::deque<ac3::eac3::chanmap::Layout> beds;
+    std::deque<iclforge::eac3::chanmap::Layout> beds;
     for (int pass = 0; pass < passes; ++pass) {
         for (const std::span<const std::byte> unit : stream.access_units) {
-            const std::expected<ac3::io::ScannedStream, ac3::io::ScanError> scanned = ac3::io::scan(unit);
+            const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> scanned = iclforge::io::scan(unit);
             REQUIRE(scanned.has_value());
-            beds.push_back(ac3::eac3::chanmap::expand(scanned->channel_map));
-            const auto decoded = decoder.decode_access_unit_by_block(unit, [&](const ac3::PcmBlock& pcm) {
+            beds.push_back(iclforge::eac3::chanmap::expand(scanned->channel_map));
+            const auto decoded = decoder.decode_access_unit_by_block(unit, [&](const iclforge::PcmBlock& pcm) {
                 if (pcm.index == 0) {
                     renderer.set_bed(beds.front());
                     beds.pop_front();
@@ -239,7 +239,7 @@ void decode_and_render(const ac3::io::ScannedStream& stream, int passes, const a
                     }
                 }
                 renderer.render(pcm, serving.reconstruct, 1.0F, spans);
-                consume(std::span<const std::array<float, ac3::kSamplesPerBlock>>(block),
+                consume(std::span<const std::array<float, iclforge::kSamplesPerBlock>>(block),
                         pcm.channels.empty() ? std::size_t{0} : pcm.channels.front().size());
             });
             REQUIRE(decoded.has_value());
@@ -335,11 +335,11 @@ TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin p
         }
         return LoadedItem{.bytes = programme};
     };
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     EngineOutputs outputs{
-        .group = ac3::hearth::make_group_sink([&group](const std::string&) { return group; })};
-    Engine engine(std::move(outputs), loader, *layout, ac3::hearth::DecoderSettings{},
+        .group = iclforge::hearth::make_group_sink([&group](const std::string&) { return group; })};
+    Engine engine(std::move(outputs), loader, *layout, iclforge::hearth::DecoderSettings{},
                  EngineTiming{.period = 5ms, .budget = 4800});
     engine.set_output_preferences(OutputPreferences{.pinned = OutputMode::kNetworkGroup,
                                                      .follow_sink = true,
@@ -380,11 +380,11 @@ TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin p
     // than a copy of the pushed samples, is the reference here), carried through the same
     // float-to-int32-to-16-bit chain NetworkGroupSink::submit_pcm() and Group::rescaled() apply
     // before a PCM member's encoder ever sees a sample.
-    const std::expected<ac3::io::ScannedStream, ac3::io::ScanError> stream = ac3::io::scan(programme);
+    const std::expected<iclforge::io::ScannedStream, iclforge::io::ScanError> stream = iclforge::io::scan(programme);
     REQUIRE(stream.has_value());
     std::vector<std::byte> reference_bytes;
     decode_and_render(*stream, /*passes=*/1, *layout,
-                      [&](std::span<const std::array<float, ac3::kSamplesPerBlock>> block, std::size_t n) {
+                      [&](std::span<const std::array<float, iclforge::kSamplesPerBlock>> block, std::size_t n) {
                           for (std::size_t t = 0; t < n; ++t) {
                               for (std::size_t slot = 0; slot < block.size(); ++slot) {
                                   // network_group_sink.cpp's kBitDepth (32) down to
@@ -398,7 +398,7 @@ TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin p
                               }
                           }
                       });
-    REQUIRE(ac3::io::write_wav_pcm16_raw((directory / "programme.wav").string(), reference_bytes, 48000,
+    REQUIRE(iclforge::io::write_wav_pcm16_raw((directory / "programme.wav").string(), reference_bytes, 48000,
                                          static_cast<std::uint16_t>(layout->slots()))
                .has_value());
 

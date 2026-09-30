@@ -30,7 +30,7 @@
 // from this file.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::arch {
+namespace iclforge::internal::arch {
 
 inline constexpr const char* kSimdName = "aarch64-neon";
 
@@ -130,4 +130,4 @@ template <int Bits>
     return i32x4{vshlq_n_s32(a.v, Bits)};
 }
 
-}  // namespace ac3::internal::arch
+}  // namespace iclforge::internal::arch

@@ -19,7 +19,7 @@
 #include "output_policy.hpp"
 #include "virtual_device.hpp"
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -100,7 +100,7 @@ std::string_view describe_source(KeySource source) {
     return "none";
 }
 
-std::string position_of(const ac3::oba::Position& p) {
+std::string position_of(const iclforge::oba::Position& p) {
     return "(" + fixed(p.x, 2) + ", " + fixed(p.y, 2) + ", " + fixed(p.z, 2) + ")";
 }
 
@@ -342,4 +342,4 @@ std::string render_report(const ReportFacts& facts, const EngineStatus& engine, 
     return scrub(std::move(out), secrets);
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

@@ -19,7 +19,7 @@
 #include "iclforge/sendspin/state_roles.hpp"
 #include "iclforge/sendspin/stream_roles.hpp"
 
-namespace ac3::sendspin::messages {
+namespace iclforge::sendspin::messages {
 
 namespace {
 
@@ -1255,4 +1255,4 @@ std::string write_server_unpair() {
     return empty_envelope("server/unpair");
 }
 
-}  // namespace ac3::sendspin::messages
+}  // namespace iclforge::sendspin::messages

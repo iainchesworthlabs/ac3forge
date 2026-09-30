@@ -73,13 +73,13 @@ std::vector<std::byte> osc_release(std::size_t object) {
     return out;
 }
 
-ac3::oba::SceneCursor two_object_cursor() {
-    auto scene = ac3::oba::ObjectScene::create({
+iclforge::oba::SceneCursor two_object_cursor() {
+    auto scene = iclforge::oba::ObjectScene::create({
         {.name = "a", .automation = {{.time_s = 0.0, .position = {.x = 0.1}, .gain = 0.5}}},
         {.name = "b", .automation = {{.time_s = 0.0, .position = {.x = 0.9}, .gain = 0.6}}},
     });
     REQUIRE(scene.has_value());
-    return ac3::oba::SceneCursor{std::move(*scene)};
+    return iclforge::oba::SceneCursor{std::move(*scene)};
 }
 
 // Retries `predicate` (which itself drains the source) for up to `timeout` -
@@ -100,7 +100,7 @@ bool wait_for(Predicate&& predicate, std::chrono::milliseconds timeout = std::ch
 }  // namespace
 
 TEST_CASE("start/stop lifecycle", "[audio][live_positions][concurrency]") {
-    ac3::audio::LivePositionSource source{2};
+    iclforge::audio::LivePositionSource source{2};
     CHECK_FALSE(source.running());
 
     const auto started = source.start("127.0.0.1", 0);
@@ -116,27 +116,27 @@ TEST_CASE("start/stop lifecycle", "[audio][live_positions][concurrency]") {
 }
 
 TEST_CASE("starting twice on the same instance is refused", "[audio][live_positions][concurrency]") {
-    ac3::audio::LivePositionSource source{1};
+    iclforge::audio::LivePositionSource source{1};
     REQUIRE(source.start("127.0.0.1", 0).has_value());
     const auto second = source.start("127.0.0.1", 0);
     REQUIRE_FALSE(second.has_value());
-    CHECK(second.error() == ac3::audio::PositionSourceError::kAlreadyRunning);
+    CHECK(second.error() == iclforge::audio::PositionSourceError::kAlreadyRunning);
 }
 
 TEST_CASE("a bind address that is not a dotted-quad is refused", "[audio][live_positions][concurrency]") {
-    ac3::audio::LivePositionSource source{1};
+    iclforge::audio::LivePositionSource source{1};
     const auto started = source.start("not-an-ip-address", 0);
     REQUIRE_FALSE(started.has_value());
-    CHECK(started.error() == ac3::audio::PositionSourceError::kBadAddress);
+    CHECK(started.error() == iclforge::audio::PositionSourceError::kBadAddress);
     CHECK_FALSE(source.running());
 }
 
 TEST_CASE("a real loopback datagram reaches the cursor", "[audio][live_positions][concurrency]") {
-    ac3::audio::LivePositionSource source{2};
+    iclforge::audio::LivePositionSource source{2};
     REQUIRE(source.start("127.0.0.1", 0).has_value());
     const auto port = source.local_port();
 
-    ac3::audio::UdpSocket sender;
+    iclforge::audio::UdpSocket sender;
     const auto message = osc_xyz(0, 0.9F, 0.1F, 0.5F);
     REQUIRE(sender.send_to("127.0.0.1", port, message));
 
@@ -163,15 +163,15 @@ TEST_CASE("a real loopback datagram reaches the cursor", "[audio][live_positions
 }
 
 TEST_CASE("a gain-only update waits, across drains, for a position", "[audio][live_positions][concurrency]") {
-    ac3::audio::LivePositionSource source{2};
+    iclforge::audio::LivePositionSource source{2};
     REQUIRE(source.start("127.0.0.1", 0).has_value());
     const auto port = source.local_port();
 
-    ac3::audio::UdpSocket sender;
+    iclforge::audio::UdpSocket sender;
     REQUIRE(sender.send_to("127.0.0.1", port, osc_gain(1, 0.2F)));
 
     auto cursor = two_object_cursor();
-    // The gain-only message has nothing to apply yet (ac3::oba::apply's own
+    // The gain-only message has nothing to apply yet (iclforge::oba::apply's own
     // contract) - draining repeatedly must never spuriously mark it live.
     for (int i = 0; i < 5; ++i) {
         source.drain_into(cursor, 0.0);
@@ -198,11 +198,11 @@ TEST_CASE("a gain-only update waits, across drains, for a position", "[audio][li
 
 TEST_CASE("release hands a driven object back to its authored timeline",
           "[audio][live_positions][concurrency]") {
-    ac3::audio::LivePositionSource source{2};
+    iclforge::audio::LivePositionSource source{2};
     REQUIRE(source.start("127.0.0.1", 0).has_value());
     const auto port = source.local_port();
 
-    ac3::audio::UdpSocket sender;
+    iclforge::audio::UdpSocket sender;
     REQUIRE(sender.send_to("127.0.0.1", port, osc_xyz(0, 0.9F, 0.1F, 0.5F)));
 
     auto cursor = two_object_cursor();
@@ -226,13 +226,13 @@ TEST_CASE("a burst of concurrent sends never crashes or corrupts the mailbox",
     // The shape ThreadSanitizer exists to watch: one thread pushing updates
     // as fast as it can while another drains, for long enough that a real
     // data race (not merely a possible one) would actually be scheduled.
-    ac3::audio::LivePositionSource source{4};
+    iclforge::audio::LivePositionSource source{4};
     REQUIRE(source.start("127.0.0.1", 0).has_value());
     const auto port = source.local_port();
 
     std::atomic_bool keep_sending{true};
     std::thread sender_thread([&] {
-        ac3::audio::UdpSocket sender;
+        iclforge::audio::UdpSocket sender;
         int n = 0;
         while (keep_sending.load(std::memory_order_relaxed)) {
             const auto x = static_cast<float>(n % 100) / 100.0F;
@@ -246,14 +246,14 @@ TEST_CASE("a burst of concurrent sends never crashes or corrupts the mailbox",
     // two_object_cursor only has 2 objects; drain against a 4-object scene
     // instead so every slot LivePositionSource was constructed with has
     // somewhere to land.
-    auto scene = ac3::oba::ObjectScene::create({
+    auto scene = iclforge::oba::ObjectScene::create({
         {.automation = {{.time_s = 0.0}}},
         {.automation = {{.time_s = 0.0}}},
         {.automation = {{.time_s = 0.0}}},
         {.automation = {{.time_s = 0.0}}},
     });
     REQUIRE(scene.has_value());
-    ac3::oba::SceneCursor wide_cursor{std::move(*scene)};
+    iclforge::oba::SceneCursor wide_cursor{std::move(*scene)};
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
     while (std::chrono::steady_clock::now() < deadline) {

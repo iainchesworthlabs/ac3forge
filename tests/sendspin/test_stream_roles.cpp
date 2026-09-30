@@ -18,10 +18,10 @@
 
 namespace {
 
-namespace json = ac3::sendspin::json;
-namespace artwork = ac3::sendspin::artwork;
-namespace visualizer = ac3::sendspin::visualizer;
-namespace source = ac3::sendspin::source;
+namespace json = iclforge::sendspin::json;
+namespace artwork = iclforge::sendspin::artwork;
+namespace visualizer = iclforge::sendspin::visualizer;
+namespace source = iclforge::sendspin::source;
 
 struct Parsed {
     std::string text;

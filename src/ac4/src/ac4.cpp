@@ -9,7 +9,7 @@
 #include <numeric>
 #include <string>
 
-namespace ac4 {
+namespace iclforge::ac4 {
 
 std::string_view describe(Error error) {
     switch (error) {
@@ -20,13 +20,13 @@ std::string_view describe(Error error) {
         case Error::kUnsupportedBitstreamVersion:
             return "bitstream_version > 2 is not decodable per TS 103 190-2 §6.3.2.1.1";
     }
-    return "unknown ac4::Error";
+    return "unknown iclforge::ac4::Error";
 }
 
 namespace {
 
 // MSB-first bit reader with a sticky failure state - the same shape
-// ac3::core::BitReader uses for overflow, extended here to also carry the
+// iclforge::core::BitReader uses for overflow, extended here to also carry the
 // explicit refusal condition (kUnsupportedBitstreamVersion) so every parse_*
 // helper below can bail out with a plain early return instead of threading
 // std::expected through the whole call tree. Only parse_raw_frame(), at the
@@ -2792,4 +2792,4 @@ std::string_view configuration_difference(const Toc& a, const Toc& b) {
     return {};
 }
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

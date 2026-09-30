@@ -21,8 +21,8 @@
 // that refuses to open or to take a submit, and a spatial sink that lost
 // its device being rebuilt on the next probe.
 
-using namespace ac3::crucible;
-using namespace ac3::crucible::testing;
+using namespace iclforge::crucible;
+using namespace iclforge::crucible::testing;
 
 namespace {
 
@@ -31,20 +31,20 @@ constexpr std::size_t kFrames = 1536;
 // test_output_stage.cpp's Encoded, with the object metadata switchable:
 // the headphones decode only has objects to place when the unit carries it.
 struct Encoder {
-    std::unique_ptr<ac3::oba::AtmosEncoder> encoder;
+    std::unique_ptr<iclforge::oba::AtmosEncoder> encoder;
     std::vector<std::vector<float>> objects;
     std::vector<std::span<const float>> views;
-    std::vector<ac3::oba::ObjectPlacement> placements;
+    std::vector<iclforge::oba::ObjectPlacement> placements;
     std::vector<std::span<const float>> bed_views;
     std::vector<std::byte> unit;
     double phase = 0.0;
 
     explicit Encoder(bool object_metadata) {
-        ac3::oba::AtmosConfig atmos;
+        iclforge::oba::AtmosConfig atmos;
         atmos.numblkscod = 3;
         atmos.bitrate_kbps = 448;
         atmos.emit_object_metadata = object_metadata;
-        encoder = std::make_unique<ac3::oba::AtmosEncoder>(atmos, kObjectSlots);
+        encoder = std::make_unique<iclforge::oba::AtmosEncoder>(atmos, kObjectSlots);
         objects.assign(kObjectSlots, std::vector<float>(kFrames, 0.0F));
         views.resize(kObjectSlots);
         placements.resize(kObjectSlots);

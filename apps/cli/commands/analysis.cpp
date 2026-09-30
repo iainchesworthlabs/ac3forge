@@ -42,19 +42,19 @@
 
 namespace ac3cli::commands {
 
-using ac3::apps::ac4_bed_acmod;
-using ac3::apps::ac4_location;
-using ac3::apps::ac4_meter_rank;
-using ac3::apps::ac4_order;
+using iclforge::apps::ac4_bed_acmod;
+using iclforge::apps::ac4_location;
+using iclforge::apps::ac4_meter_rank;
+using iclforge::apps::ac4_order;
 
 namespace {
 
 // --- qc (bitstream-aware loudness QC) --------------------------------------------------------
 // Bitstream-aware loudness QC: decode a whole stream, measure it with the
-// real BS.1770-4/EBU Tech 3342 meter (the same ac3::meta::LoudnessMeter
+// real BS.1770-4/EBU Tech 3342 meter (the same iclforge::meta::LoudnessMeter
 // dialnorm=auto already uses), and compare the result against what the
 // stream's own dialnorm/compr claim and, optionally, a named delivery-spec
-// gate (ac3::meta::qc_preset - see ac3/meta/qc.hpp for the cited sources).
+// gate (iclforge::meta::qc_preset - see ac3/meta/qc.hpp for the cited sources).
 
 // One decoded programme this command measures and reports on - the whole
 // soundfield for every layout except 1+1 dual mono, which is two of these
@@ -113,27 +113,27 @@ struct QcResult {
 // 5.8's acmods do (there is no "5.1.4" in the bitstream, only a bit mask), so
 // the locations are listed in coded order - the same naming run_levels_eac3
 // gives each of its channel rows.
-std::string rendered_layout_label(const ac3::eac3::chanmap::Layout& layout) {
+std::string rendered_layout_label(const iclforge::eac3::chanmap::Layout& layout) {
     std::string out;
     for (int ch = 0; ch < layout.count; ++ch) {
         if (!out.empty()) {
             out += ' ';
         }
-        out += ac3::eac3::chanmap::name(layout[ch]);
+        out += iclforge::eac3::chanmap::name(layout[ch]);
     }
     return out;
 }
 
 // AC-3 (bsid <= 8): straightforward per-frame decode, same loop shape as
-// run_decode above, feeding ac3::meta::LoudnessMeter instead of accumulating
+// run_decode above, feeding iclforge::meta::LoudnessMeter instead of accumulating
 // PCM - qc never writes audio out, so there is nothing to buffer.
 std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool rendered) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         fmt::println(stderr, "error: not a valid AC-3 stream");
         return std::nullopt;
     }
-    ac3::FrameDecoder decoder;
+    iclforge::FrameDecoder decoder;
     QcResult result;
     result.codec_label = "AC-3";
     result.unit_label = "frame(s)";
@@ -142,24 +142,24 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool r
 
     bool have_first = false;
     bool dual_mono = false;
-    std::optional<ac3::meta::LoudnessMeter> meter;      // whole programme
-    std::optional<ac3::meta::LoudnessMeter> meter_ch1;  // dual mono only
-    std::optional<ac3::meta::LoudnessMeter> meter_ch2;
+    std::optional<iclforge::meta::LoudnessMeter> meter;      // whole programme
+    std::optional<iclforge::meta::LoudnessMeter> meter_ch1;  // dual mono only
+    std::optional<iclforge::meta::LoudnessMeter> meter_ch2;
 
     for (const auto& frame : *frames) {
         const auto decoded = decoder.decode_frame(frame);
         if (!decoded) {
-            fmt::println(stderr, "error: {}", ac3::describe(decoded.error()));
+            fmt::println(stderr, "error: {}", iclforge::describe(decoded.error()));
             return std::nullopt;
         }
         if (!have_first) {
             have_first = true;
-            dual_mono = decoded->acmod == ac3::Acmod::kDualMono;
+            dual_mono = decoded->acmod == iclforge::Acmod::kDualMono;
             result.sample_rate_hz = sample_rate_hz(decoded->sample_rate);
             if (dual_mono) {
                 result.layout_label = "1+1 dual mono";
-                meter_ch1.emplace(decoded->sample_rate, ac3::Acmod::k1_0, false);
-                meter_ch2.emplace(decoded->sample_rate, ac3::Acmod::k1_0, false);
+                meter_ch1.emplace(decoded->sample_rate, iclforge::Acmod::k1_0, false);
+                meter_ch2.emplace(decoded->sample_rate, iclforge::Acmod::k1_0, false);
                 result.programmes.push_back(
                     QcProgrammeResult{.label = "Ch1", .dialnorm = decoded->dialnorm,
                                       .compr = decoded->compr});
@@ -176,15 +176,15 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool r
                 // it as the surround field (+1.5 dB), Annex 3 as Table E2.5's
                 // Cs at 180 degrees (unity). See LoudnessMeter's own
                 // constructor comments.
-                const auto layout = ac3::eac3::chanmap::expand(
-                    ac3::eac3::chanmap::acmod_map(decoded->acmod, decoded->lfe));
+                const auto layout = iclforge::eac3::chanmap::expand(
+                    iclforge::eac3::chanmap::acmod_map(decoded->acmod, decoded->lfe));
                 result.layout_label = rendered_layout_label(layout);
                 meter.emplace(decoded->sample_rate, layout);
                 result.programmes.push_back(
                     QcProgrammeResult{.dialnorm = decoded->dialnorm, .compr = decoded->compr});
             } else {
                 result.layout_label =
-                    std::string{ac3::analysis::layout_name(decoded->acmod, decoded->lfe)};
+                    std::string{iclforge::analysis::layout_name(decoded->acmod, decoded->lfe)};
                 meter.emplace(decoded->sample_rate, decoded->acmod, decoded->lfe);
                 result.programmes.push_back(
                     QcProgrammeResult{.dialnorm = decoded->dialnorm, .compr = decoded->compr});
@@ -229,7 +229,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool r
         result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
     }
     result.seconds = static_cast<double>(result.unit_count) *
-                     static_cast<double>(ac3::kSamplesPerFrame) /
+                     static_cast<double>(iclforge::kSamplesPerFrame) /
                      static_cast<double>(result.sample_rate_hz);
     return result;
 }
@@ -247,7 +247,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool r
 // DecodedAccessUnit), so the same independent-substream-only filtering
 // naturally covers it too, exactly like the AC-3 path above.
 //
-// Walked at the raw-syncframe level (ac3::split_frames, NOT split_access_units
+// Walked at the raw-syncframe level (iclforge::split_frames, NOT split_access_units
 // - decoder.hpp's own doc comment on split_frames says it "handles both
 // generations"), calling Eac3Decoder::decode_substream directly on every
 // frame so dependent-substream frames are still decoded (consuming their own
@@ -263,7 +263,7 @@ std::optional<QcResult> measure_qc_ac3(std::span<const std::byte> stream, bool r
 // adjacency to the independent substream it follows is the only thing that
 // does.
 std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, int programme) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
         return std::nullopt;
@@ -271,16 +271,16 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
     // Heap-allocated (PREfast's C6262, alert #93): Eac3Decoder's per-block
     // scratch members pushed this stack declaration over the threshold -
     // same pattern as examples/atmos_objects.cpp (PR #295).
-    auto decoder = std::make_unique<ac3::Eac3Decoder>();
+    auto decoder = std::make_unique<iclforge::Eac3Decoder>();
     QcResult result;
     result.codec_label = "E-AC-3";
     result.unit_label = "access unit(s)";
 
     bool have_first = false;
     bool dual_mono = false;
-    std::optional<ac3::meta::LoudnessMeter> meter;
-    std::optional<ac3::meta::LoudnessMeter> meter_ch1;
-    std::optional<ac3::meta::LoudnessMeter> meter_ch2;
+    std::optional<iclforge::meta::LoudnessMeter> meter;
+    std::optional<iclforge::meta::LoudnessMeter> meter_ch1;
+    std::optional<iclforge::meta::LoudnessMeter> meter_ch2;
     // The programme the substream CURRENTLY being ingested belongs to - the
     // last independent substream's own id, which a following dependent
     // inherits by adjacency (its own substreamid numbers in its parent's
@@ -293,8 +293,8 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
     // both hand this a released, independent-or-dependent DecodedSubstream;
     // only an independent one of the SELECTED programme is ever measured (see
     // this function's own comment above).
-    auto ingest = [&](const ac3::DecodedSubstream& sub) {
-        if (sub.strmtyp != ac3::eac3::StreamType::kDependent) {
+    auto ingest = [&](const iclforge::DecodedSubstream& sub) {
+        if (sub.strmtyp != iclforge::eac3::StreamType::kDependent) {
             current_programme = sub.substreamid;
         }
         if (current_programme != programme) {
@@ -303,7 +303,7 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
             // "this programme's bed hiding something".
             return;
         }
-        if (sub.strmtyp == ac3::eac3::StreamType::kDependent) {
+        if (sub.strmtyp == iclforge::eac3::StreamType::kDependent) {
             // Decoded (above) so its overlap-add state advances and its parse
             // errors still surface, but never measured here - and remembered,
             // so the report can say that layout=rendered would have more to
@@ -313,18 +313,18 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
         }
         if (!have_first) {
             have_first = true;
-            dual_mono = sub.acmod == ac3::Acmod::kDualMono;
+            dual_mono = sub.acmod == iclforge::Acmod::kDualMono;
             result.sample_rate_hz = sample_rate_hz(sub.sample_rate);
             if (dual_mono) {
                 result.layout_label = "1+1 dual mono";
-                meter_ch1.emplace(sub.sample_rate, ac3::Acmod::k1_0, false);
-                meter_ch2.emplace(sub.sample_rate, ac3::Acmod::k1_0, false);
+                meter_ch1.emplace(sub.sample_rate, iclforge::Acmod::k1_0, false);
+                meter_ch2.emplace(sub.sample_rate, iclforge::Acmod::k1_0, false);
                 result.programmes.push_back(QcProgrammeResult{
                     .label = "Ch1", .dialnorm = sub.dialnorm, .compr = sub.compr});
                 result.programmes.push_back(QcProgrammeResult{
                     .label = "Ch2", .dialnorm = sub.dialnorm2.value_or(31), .compr = sub.compr2});
             } else {
-                result.layout_label = std::string{ac3::analysis::layout_name(sub.acmod, sub.lfe)};
+                result.layout_label = std::string{iclforge::analysis::layout_name(sub.acmod, sub.lfe)};
                 meter.emplace(sub.sample_rate, sub.acmod, sub.lfe);
                 result.programmes.push_back(
                     QcProgrammeResult{.dialnorm = sub.dialnorm, .compr = sub.compr});
@@ -350,7 +350,7 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
         const auto decoded = decoder->decode_substream(frame);
         if (!decoded) {
             fmt::println(stderr, "error: decode failed: {}",
-                         ac3::describe(decoded.error()));
+                         iclforge::describe(decoded.error()));
             return std::nullopt;
         }
         // §3.7: this substream's frame is being held back pending transient
@@ -396,7 +396,7 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
         result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
     }
     result.seconds = static_cast<double>(result.unit_count) *
-                     static_cast<double>(ac3::kSamplesPerFrame) /
+                     static_cast<double>(iclforge::kSamplesPerFrame) /
                      static_cast<double>(result.sample_rate_hz);
     return result;
 }
@@ -410,7 +410,7 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
 // members of Table 5.8, so the bed pass above has no weight to give them and
 // simply never sees them.
 //
-// Walked with ac3::split_access_units and Eac3Decoder::decode_access_unit
+// Walked with iclforge::split_access_units and Eac3Decoder::decode_access_unit
 // (NOT split_frames/decode_substream, which is exactly the difference from
 // measure_qc_eac3_bed above) - the assembled unit is the only place a
 // dependent's channels exist as speaker feeds rather than as a substream.
@@ -428,27 +428,27 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
 // needs - one DecoderConfig::programme setting is the whole of it.
 std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stream,
                                                  int programme) {
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     if (!units || units->empty()) {
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
         return std::nullopt;
     }
     // Heap-allocated for the same PREfast C6262 reason measure_qc_eac3_bed
     // gives above.
-    auto decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{.programme = programme});
+    auto decoder = std::make_unique<iclforge::Eac3Decoder>(iclforge::DecoderConfig{.programme = programme});
     QcResult result;
     result.codec_label = "E-AC-3";
     result.unit_label = "access unit(s)";
     result.rendered = true;
 
     bool have_first = false;
-    std::optional<ac3::meta::LoudnessMeter> meter;
+    std::optional<iclforge::meta::LoudnessMeter> meter;
 
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
             fmt::println(stderr, "error: decode failed: {}",
-                         ac3::describe(decoded.error()));
+                         iclforge::describe(decoded.error()));
             return std::nullopt;
         }
         if (!decoded->has_value()) {
@@ -457,7 +457,7 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
         const auto& out = **decoded;
         if (!have_first) {
             have_first = true;
-            if (out.acmod == ac3::Acmod::kDualMono) {
+            if (out.acmod == iclforge::Acmod::kDualMono) {
                 // §E1.3: 1+1 is two unrelated programmes sharing a syncframe,
                 // not one soundfield - it has no Table E2.5 layout at all
                 // (decode_access_unit leaves `layout` empty for exactly this
@@ -520,34 +520,34 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
     result.seconds = static_cast<double>(result.unit_count) *
-                     static_cast<double>(ac3::kSamplesPerFrame) /
+                     static_cast<double>(iclforge::kSamplesPerFrame) /
                      static_cast<double>(result.sample_rate_hz);
     return result;
 }
 
 // The Table E2.5 locations `id` renders, LFE included and last (the order
-// ac3::meta::LoudnessMeter's Annex 3 constructor and push() both expect).
+// iclforge::meta::LoudnessMeter's Annex 3 constructor and push() both expect).
 // Restricted to the layouts that add something beyond plain 5.1: an object
 // panned onto a target with no upper layer or wide pair could not measure any
 // differently from the flat bed pan_room already gives it (spatial.hpp's own
 // "a raised object folds onto the ring... at full level"), so mono/stereo/1+1
-// are not offered here at all - see ac3::plan::LayoutId for the full set
+// are not offered here at all - see iclforge::plan::LayoutId for the full set
 // objects= validates against before this is reached.
-std::optional<ac3::eac3::chanmap::Layout> object_render_target(ac3::plan::LayoutId id) {
-    using ac3::eac3::chanmap::acmod_map;
-    using ac3::eac3::chanmap::expand;
-    using ac3::eac3::chanmap::k512Height;
-    using ac3::eac3::chanmap::k71Rear;
-    using ac3::eac3::chanmap::kTopQuad;
-    constexpr auto base = acmod_map(ac3::Acmod::k3_2, /*lfe=*/true);
+std::optional<iclforge::eac3::chanmap::Layout> object_render_target(iclforge::plan::LayoutId id) {
+    using iclforge::eac3::chanmap::acmod_map;
+    using iclforge::eac3::chanmap::expand;
+    using iclforge::eac3::chanmap::k512Height;
+    using iclforge::eac3::chanmap::k71Rear;
+    using iclforge::eac3::chanmap::kTopQuad;
+    constexpr auto base = acmod_map(iclforge::Acmod::k3_2, /*lfe=*/true);
     switch (id) {
-        case ac3::plan::LayoutId::k71:
+        case iclforge::plan::LayoutId::k71:
             return expand(static_cast<std::uint16_t>(base | k71Rear));
-        case ac3::plan::LayoutId::k512:
+        case iclforge::plan::LayoutId::k512:
             return expand(static_cast<std::uint16_t>(base | k512Height));
-        case ac3::plan::LayoutId::k514:
+        case iclforge::plan::LayoutId::k514:
             return expand(static_cast<std::uint16_t>(base | kTopQuad));
-        case ac3::plan::LayoutId::k714:
+        case iclforge::plan::LayoutId::k714:
             return expand(static_cast<std::uint16_t>(base | k71Rear | kTopQuad));
         default:
             return std::nullopt;
@@ -570,16 +570,16 @@ std::optional<ac3::eac3::chanmap::Layout> object_render_target(ac3::plan::Layout
 // too would render every object twice - so this starts every full-bandwidth
 // target channel at silence and sums each object's own recovered audio
 // (DecodedAccessUnit::object_audio) into it by the object's own OAMD
-// position, via ac3::spatial::pan_direction: the same height-aware geometry
-// ac3::plan's layout-to-layout renderer uses, so an object pans identically
+// position, via iclforge::spatial::pan_direction: the same height-aware geometry
+// iclforge::plan's layout-to-layout renderer uses, so an object pans identically
 // here as it would if the encoder had targeted this layout directly. A
 // bed-and-objects programme (third-party content whose bed may carry
 // independent, non-object material this decoder cannot separate back out) is
 // refused rather than risk silently doubling or dropping content.
 std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::byte> stream,
                                                           int programme,
-                                                          ac3::plan::LayoutId target_id) {
-    using ac3::eac3::chanmap::Location;
+                                                          iclforge::plan::LayoutId target_id) {
+    using iclforge::eac3::chanmap::Location;
 
     const auto target = object_render_target(target_id);
     if (!target) {
@@ -588,9 +588,9 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
         return std::nullopt;
     }
     const std::span<const Location> target_locations(target->begin(), target->end());
-    const auto pan_tgts = ac3::spatial::pan_targets(target_locations);
+    const auto pan_tgts = iclforge::spatial::pan_targets(target_locations);
 
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     if (!units || units->empty()) {
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
         return std::nullopt;
@@ -598,9 +598,9 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
     // Named rather than a temporary passed straight to the decoder: lfe_delay
     // below reads .joc_domain back off it, so the two can never disagree on
     // which domain the reconstruction this measurement actually decodes with.
-    const ac3::DecoderConfig decoder_config{.programme = programme};
-    auto decoder = std::make_unique<ac3::Eac3Decoder>(decoder_config);
-    std::optional<ac3::meta::LoudnessMeter> meter;
+    const iclforge::DecoderConfig decoder_config{.programme = programme};
+    auto decoder = std::make_unique<iclforge::Eac3Decoder>(decoder_config);
+    std::optional<iclforge::meta::LoudnessMeter> meter;
     QcProgrammeResult result;
     result.label = "objects";
     bool have_first = false;
@@ -609,13 +609,13 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
     // (LfeDelayLine's own comment, apps/cli/support.hpp) - held back to match
     // before either reaches the meter.
     LfeDelayLine lfe_delay{
-        static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(decoder_config.joc_domain))};
+        static_cast<std::size_t>(iclforge::oba::joc::reconstruction_delay(decoder_config.joc_domain))};
 
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
             fmt::println(stderr, "error: decode failed: {}",
-                         ac3::describe(decoded.error()));
+                         iclforge::describe(decoded.error()));
             return std::nullopt;
         }
         if (!decoded->has_value()) {
@@ -662,18 +662,18 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
         // sample count always matches how much bed audio has actually gone by.
         lfe_buffer = lfe_delay.process(lfe_buffer);
         const auto objects = out.object_metadata
-                                 ? ac3::oba::describe_objects(*out.object_metadata)
-                                 : std::vector<ac3::oba::DisplayObject>{};
+                                 ? iclforge::oba::describe_objects(*out.object_metadata)
+                                 : std::vector<iclforge::oba::DisplayObject>{};
         const auto object_count = std::min(objects.size(), out.object_audio.size());
         for (std::size_t i = 0; i < object_count; ++i) {
             if (!objects[i].active) {
                 continue;
             }
             const auto& audio = out.object_audio[i];
-            const auto direction = ac3::spatial::position_direction(
+            const auto direction = iclforge::spatial::position_direction(
                 objects[i].position.x, objects[i].position.y, objects[i].position.z);
             std::vector<double> gains(pan_tgts.directions.size());
-            ac3::spatial::pan_direction(direction, pan_tgts.directions, gains);
+            iclforge::spatial::pan_direction(direction, pan_tgts.directions, gains);
             const double linear_gain = std::pow(10.0, objects[i].gain_db / 20.0);
             for (std::size_t ch = 0; ch < gains.size(); ++ch) {
                 if (gains[ch] <= 0.0) {
@@ -718,9 +718,9 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
 // decoded, with `decoder` holding the metadata the stream sent; nothing, the
 // reason printed, where a frame does not decode or none does.
 std::optional<std::size_t> decode_ac4_as_coded(
-    std::span<const std::byte> stream, std::string_view in_path, ac4::Decoder& decoder,
-    const std::function<void(const ac4::DecodedFrame&)>& on_frame) {
-    const ac4::ScanResult scan = ac4::scan(stream);
+    std::span<const std::byte> stream, std::string_view in_path, iclforge::ac4::Decoder& decoder,
+    const std::function<void(const iclforge::ac4::DecodedFrame&)>& on_frame) {
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     if (scan.frames.empty()) {
         fmt::println(stderr, "error: {} holds no AC-4 sync frame", in_path);
         return std::nullopt;
@@ -728,13 +728,13 @@ std::optional<std::size_t> decode_ac4_as_coded(
     if (scan.stopped_at.has_value()) {
         fmt::println(
             stderr, "warning: {}: the sync frames stop at byte {} ({}); measuring the {} before it",
-            in_path, scan.stopped_at_offset, ac4::describe(*scan.stopped_at), scan.frames.size());
+            in_path, scan.stopped_at_offset, iclforge::ac4::describe(*scan.stopped_at), scan.frames.size());
     }
     std::size_t decoded_frames = 0;
-    std::vector<ac4::Speaker> layout;
+    std::vector<iclforge::ac4::Speaker> layout;
     int rate = 0;
     std::size_t number = 0;
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         ++number;
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         if (!decoded.has_value()) {
@@ -745,7 +745,7 @@ std::optional<std::size_t> decode_ac4_as_coded(
         if (!decoded->has_value()) {
             continue;  // waiting for an I-frame
         }
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         if (decoded_frames == 0) {
             layout = pcm.speakers;
             rate = pcm.sample_rate_hz;
@@ -771,24 +771,24 @@ std::optional<std::size_t> decode_ac4_as_coded(
 // 1/0, 2/0, 3/0 or 3/2 bed, a 7.X element's last pair left out of it, or
 // layout=rendered's Annex 3 over every channel by where it is (ac4_location()).
 struct Ac4Meter {
-    ac3::meta::LoudnessMeter meter;
+    iclforge::meta::LoudnessMeter meter;
     std::vector<std::size_t> order;
     std::string label;
     bool pair_left_out = false;
 };
 
-Ac4Meter ac4_loudness_meter(const ac4::DecodedFrame& pcm, bool rendered) {
-    const ac3::SampleRate rate =
-        pcm.sample_rate_hz == 44100 ? ac3::SampleRate::k44100 : ac3::SampleRate::k48000;
-    const std::span<const ac4::Speaker> speakers{pcm.speakers};
+Ac4Meter ac4_loudness_meter(const iclforge::ac4::DecodedFrame& pcm, bool rendered) {
+    const iclforge::SampleRate rate =
+        pcm.sample_rate_hz == 44100 ? iclforge::SampleRate::k44100 : iclforge::SampleRate::k48000;
+    const std::span<const iclforge::ac4::Speaker> speakers{pcm.speakers};
     if (rendered) {
         std::vector<std::size_t> order =
-            ac4_order(speakers, [](ac4::Speaker s) { return static_cast<int>(ac4_location(s)); });
-        ac3::eac3::chanmap::Layout layout{};
+            ac4_order(speakers, [](iclforge::ac4::Speaker s) { return static_cast<int>(ac4_location(s)); });
+        iclforge::eac3::chanmap::Layout layout{};
         for (const std::size_t c : order) {
             layout.items[static_cast<std::size_t>(layout.count++)] = ac4_location(speakers[c]);
         }
-        return Ac4Meter{.meter = ac3::meta::LoudnessMeter{rate, layout},
+        return Ac4Meter{.meter = iclforge::meta::LoudnessMeter{rate, layout},
                         .order = std::move(order),
                         .label = rendered_layout_label(layout),
                         .pair_left_out = false};
@@ -798,11 +798,11 @@ Ac4Meter ac4_loudness_meter(const ac4::DecodedFrame& pcm, bool rendered) {
         order, [&](std::size_t c) { return ac4_meter_rank(speakers[c]) >= 99; });
     const bool left_out = bed_end != order.end();
     order.erase(bed_end, order.end());
-    const bool lfe = std::ranges::find(speakers, ac4::Speaker::kLfe) != speakers.end();
-    const ac3::Acmod acmod = ac4_bed_acmod(speakers);
-    return Ac4Meter{.meter = ac3::meta::LoudnessMeter{rate, acmod, lfe},
+    const bool lfe = std::ranges::find(speakers, iclforge::ac4::Speaker::kLfe) != speakers.end();
+    const iclforge::Acmod acmod = ac4_bed_acmod(speakers);
+    return Ac4Meter{.meter = iclforge::meta::LoudnessMeter{rate, acmod, lfe},
                     .order = std::move(order),
-                    .label = std::string{ac3::analysis::layout_name(acmod, lfe)},
+                    .label = std::string{iclforge::analysis::layout_name(acmod, lfe)},
                     .pair_left_out = left_out};
 }
 
@@ -812,7 +812,7 @@ Ac4Meter ac4_loudness_meter(const ac4::DecodedFrame& pcm, bool rendered) {
 // stream states where it sends one.
 std::optional<QcResult> measure_qc_ac4(std::span<const std::byte> stream, std::string_view in_path,
                                        const Options& meta, bool rendered) {
-    ac4::Decoder decoder(ac4_coded_config(meta));
+    iclforge::ac4::Decoder decoder(ac4_coded_config(meta));
     QcResult result;
     result.codec_label = "AC-4";
     result.unit_label = "frame(s)";
@@ -821,7 +821,7 @@ std::optional<QcResult> measure_qc_ac4(std::span<const std::byte> stream, std::s
     std::uint64_t samples = 0;
     std::vector<std::span<const float>> views;
     const auto frames =
-        decode_ac4_as_coded(stream, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+        decode_ac4_as_coded(stream, in_path, decoder, [&](const iclforge::ac4::DecodedFrame& pcm) {
             if (!meter.has_value()) {
                 meter.emplace(ac4_loudness_meter(pcm, rendered));
                 result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
@@ -838,7 +838,7 @@ std::optional<QcResult> measure_qc_ac4(std::span<const std::byte> stream, std::s
     if (!frames.has_value() || !meter.has_value()) {
         return std::nullopt;
     }
-    const ac4::PresentationMetadata& metadata = decoder.metadata();
+    const iclforge::ac4::PresentationMetadata& metadata = decoder.metadata();
     QcProgrammeResult programme{.integrated_lkfs = meter->meter.integrated_lkfs(),
                                 .lra_lu = meter->meter.loudness_range(),
                                 .true_peak_dbtp = meter->meter.true_peak_dbtp(),
@@ -896,7 +896,7 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
                      -static_cast<double>(p.dialnorm));
         if (p.compr.has_value()) {
             fmt::println("  compr                present, {:+.2f} dB",
-                         ac3::meta::to_db(ac3::meta::compr_gain(*p.compr)));
+                         iclforge::meta::to_db(iclforge::meta::compr_gain(*p.compr)));
         } else {
             fmt::println("  compr                absent");
         }
@@ -924,7 +924,7 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
         // the real programme is louder than dialnorm says.
         const double claimed_lkfs = -static_cast<double>(p.dialnorm);
         const double delta = *p.integrated_lkfs - claimed_lkfs;
-        const int implied = ac3::meta::dialnorm_from_lkfs(*p.integrated_lkfs);
+        const int implied = iclforge::meta::dialnorm_from_lkfs(*p.integrated_lkfs);
         fmt::println("{}dialnorm check:", heading);
         fmt::println("  claimed              {:>+8.2f} LKFS  (from dialnorm {})", claimed_lkfs,
                      p.dialnorm);
@@ -940,16 +940,16 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
     }
     bool all_pass = true;
     fmt::println("{}gates:", heading);
-    const auto check_one = [&](ac3::meta::QcPresetId id) {
-        const auto preset = ac3::meta::qc_preset(id);
-        const auto name = ac3::meta::qc_preset_name(id);
-        const auto verdict = ac3::meta::evaluate_qc_gate(preset, p.integrated_lkfs, p.true_peak_dbtp);
+    const auto check_one = [&](iclforge::meta::QcPresetId id) {
+        const auto preset = iclforge::meta::qc_preset(id);
+        const auto name = iclforge::meta::qc_preset_name(id);
+        const auto verdict = iclforge::meta::evaluate_qc_gate(preset, p.integrated_lkfs, p.true_peak_dbtp);
         fmt::println("  {}:  [{}]", name, preset.source);
         // A band preset prints its tolerance; a ceiling preset has none to
         // print, and showing "+/-0.0" would read as an impossibly tight band
         // rather than as the one-sided limit the source actually states.
         const std::string loudness_limit =
-            preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling
+            preset.loudness_limit == iclforge::meta::QcLoudnessLimit::kCeiling
                 ? fmt::format("limit  <= {:+.1f} LKFS", preset.target_lkfs)
                 : fmt::format("target {:+.1f} +/-{:.1f} LKFS", preset.target_lkfs,
                               preset.tolerance_lu);
@@ -975,12 +975,12 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
         }
     };
     if (*preset_arg == "all") {
-        for (const auto id : ac3::meta::kQcPresetIds) {
+        for (const auto id : iclforge::meta::kQcPresetIds) {
             check_one(id);
         }
     } else {
-        ac3::meta::QcPresetId id{};
-        if (ac3::meta::parse_qc_preset(*preset_arg, id)) {
+        iclforge::meta::QcPresetId id{};
+        if (iclforge::meta::parse_qc_preset(*preset_arg, id)) {
             check_one(id);
         } else {
             // parse_options already validates preset= against
@@ -997,10 +997,10 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
 
 // E-AC-3's own level report. The rendered layout is a chanmap rather than an
 // acmod, so it cannot go through LevelMeter's Table 5.8 naming; the figures
-// still come from ac3::analysis, so a level reads the same here as anywhere.
+// still come from iclforge::analysis, so a level reads the same here as anywhere.
 int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
                     std::optional<int> want_programme) {
-    const auto ids = ac3::programme_ids(stream);
+    const auto ids = iclforge::programme_ids(stream);
     if (!ids || ids->empty()) {
         fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
         return kExitInput;
@@ -1012,7 +1012,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     if (!programme.has_value()) {
         return 1;
     }
-    const auto units = ac3::split_access_units(stream, *programme);
+    const auto units = iclforge::split_access_units(stream, *programme);
     if (!units || units->empty()) {
         fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
         return kExitInput;
@@ -1021,14 +1021,14 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
         fmt::println("{}: programme {} of {} ({})", in_path, *programme, ids->size(),
                      ac3cli::format_programme_ids(*ids));
     }
-    ac3::Eac3Decoder decoder{{.programme = programme}};
-    std::vector<ac3::analysis::ChannelSummary> totals;
-    ac3::DecodedAccessUnit first{};
+    iclforge::Eac3Decoder decoder{{.programme = programme}};
+    std::vector<iclforge::analysis::ChannelSummary> totals;
+    iclforge::DecodedAccessUnit first{};
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
         if (!decoded) {
             fmt::println(stderr, "error: {}: decode failed: {}", in_path,
-                         ac3::describe(decoded.error()));
+                         iclforge::describe(decoded.error()));
             return kExitInput;
         }
         if (!decoded->has_value()) {
@@ -1053,7 +1053,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
                 stats.peak = std::max(stats.peak, magnitude);
                 stats.sum_squares += magnitude * magnitude;
                 ++stats.samples;
-                if (magnitude >= static_cast<double>(ac3::analysis::kFullScale)) {
+                if (magnitude >= static_cast<double>(iclforge::analysis::kFullScale)) {
                     ++stats.clipped_samples;
                 }
             }
@@ -1066,11 +1066,11 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     // Dual mono has no Table E2.5 location - `layout` is left empty for
     // exactly that case (see decode_access_unit) - so Ch1/Ch2 name themselves
     // by coded position instead of a speaker name that would not apply.
-    const bool dual_mono = first.acmod == ac3::Acmod::kDualMono;
+    const bool dual_mono = first.acmod == iclforge::Acmod::kDualMono;
     for (std::size_t ch = 0; ch < totals.size(); ++ch) {
         const auto& stats = totals[ch];
         const std::string name = dual_mono ? fmt::format("Ch{}", ch + 1)
-                                           : std::string{ac3::eac3::chanmap::name(
+                                           : std::string{iclforge::eac3::chanmap::name(
                                                  first.layout[static_cast<int>(ch)])};
         fmt::println("  {:<6} {:>8.2f} {:>8.2f}  [{}] {}", name, stats.peak_db(),
                      stats.rms_db(), meter_bar(stats.peak_db(), 18),
@@ -1093,15 +1093,15 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
 // caller can tell apart because it was its own push that failed.
 template <typename Push>
 bool wrap_ac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out, Push&& push) {
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames || frames->empty()) {
         return false;
     }
     const auto fscod = std::to_integer<std::uint32_t>((*frames)[0][4]) >> 6;
-    rate_out = sample_rate_hz(static_cast<ac3::SampleRate>(fscod));
+    rate_out = sample_rate_hz(static_cast<iclforge::SampleRate>(fscod));
 
     for (const auto& frame : *frames) {
-        const auto burst = ac3::iec61937::wrap_frame(frame);
+        const auto burst = iclforge::iec61937::wrap_frame(frame);
         if (!burst) {
             return false;
         }
@@ -1114,14 +1114,14 @@ bool wrap_ac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out,
 
 template <typename Push>
 bool wrap_eac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out, Push&& push) {
-    const auto units = ac3::split_access_units(stream);
+    const auto units = iclforge::split_access_units(stream);
     if (!units || units->empty()) {
         return false;
     }
     const auto byte4 = std::to_integer<std::uint32_t>((*units)[0][4]);
-    rate_out = sample_rate_hz(static_cast<ac3::SampleRate>(byte4 >> 6));
+    rate_out = sample_rate_hz(static_cast<iclforge::SampleRate>(byte4 >> 6));
 
-    ac3::iec61937::Eac3BurstPacker packer;
+    iclforge::iec61937::Eac3BurstPacker packer;
     for (const auto& unit : *units) {
         const auto burst = packer.push(unit);
         if (!burst) {
@@ -1137,7 +1137,7 @@ bool wrap_eac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out
 }  // namespace
 
 std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte> stream) {
-    const auto bsid = ac3::stream_bsid(stream);
+    const auto bsid = iclforge::stream_bsid(stream);
     if (!bsid.has_value()) {
         fmt::println(stderr, "error: too short to hold a syncframe");
         return std::nullopt;
@@ -1151,7 +1151,7 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
         // same default `run_qc`'s own want_programme=std::nullopt case picks
         // via choose_programme - a caller of this function has no programme
         // to name, so there is no "which one did you mean" to ask.
-        const auto ids = ac3::programme_ids(stream);
+        const auto ids = iclforge::programme_ids(stream);
         if (!ids || ids->empty()) {
             return std::nullopt;
         }
@@ -1183,11 +1183,11 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
 
 std::optional<StreamLoudness> measure_ac4_loudness(std::span<const std::byte> stream,
                                                    std::string_view in_path, const Options& meta) {
-    ac4::Decoder decoder(ac4_coded_config(meta));
+    iclforge::ac4::Decoder decoder(ac4_coded_config(meta));
     std::optional<Ac4Meter> meter;
     std::vector<std::span<const float>> views;
     const auto frames =
-        decode_ac4_as_coded(stream, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+        decode_ac4_as_coded(stream, in_path, decoder, [&](const iclforge::ac4::DecodedFrame& pcm) {
             if (!meter.has_value()) {
                 meter.emplace(ac4_loudness_meter(pcm, false));
             }
@@ -1207,7 +1207,7 @@ int run_qc(std::string_view in_path, const Options& meta) {
     const std::optional<std::string>& preset_arg = meta.qc_preset;
     const bool rendered_layout = meta.qc_rendered_layout;
     const std::optional<int> want_programme = meta.programme;
-    const std::optional<ac3::plan::LayoutId> objects_layout = meta.qc_objects_layout;
+    const std::optional<iclforge::plan::LayoutId> objects_layout = meta.qc_objects_layout;
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
         return kExitInput;
@@ -1231,14 +1231,14 @@ int run_qc(std::string_view in_path, const Options& meta) {
             return kExitUsage;
         }
         result = measure_qc_ac4(stream, in_path, meta, rendered_layout);
-    } else if (const auto bsid = ac3::stream_bsid(stream); !bsid.has_value()) {
+    } else if (const auto bsid = iclforge::stream_bsid(stream); !bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     } else if (*bsid > 8) {
         // §E2.3.1.2: one programme is measured - see measure_qc_eac3_bed's own
         // ingest() for why folding two into one meter reports a loudness
         // neither of them has.
-        const auto ids = ac3::programme_ids(stream);
+        const auto ids = iclforge::programme_ids(stream);
         if (!ids || ids->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return kExitInput;
@@ -1304,9 +1304,9 @@ int run_qc(std::string_view in_path, const Options& meta) {
         // objects_layout is engaged here too - the checker cannot see the
         // correlation across the two separate optionals.
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-        const auto objects_layout_label = ac3::plan::layout(*objects_layout).label;
+        const auto objects_layout_label = iclforge::plan::layout(*objects_layout).label;
         fmt::println("  objects={}  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD "
-                     "position, via ac3::spatial's direction panner, then Annex 3)",
+                     "position, via iclforge::spatial's direction panner, then Annex 3)",
                      objects_layout_label);
         if (!report_qc_programme(*object_result, preset_arg)) {
             all_pass = false;
@@ -1340,19 +1340,19 @@ int run_levels(std::string_view in_path, const Options& meta) {
                          in_path);
             return kExitUsage;
         }
-        ac4::Decoder decoder(ac4_coded_config(meta));
-        std::optional<ac3::analysis::LevelMeter> meter;
+        iclforge::ac4::Decoder decoder(ac4_coded_config(meta));
+        std::optional<iclforge::analysis::LevelMeter> meter;
         std::vector<std::size_t> order;
         std::vector<std::span<const float>> views;
         std::size_t presentation = 0;
         std::uint64_t samples = 0;
         int rate = 0;
         const auto frames =
-            decode_ac4_as_coded(bytes, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+            decode_ac4_as_coded(bytes, in_path, decoder, [&](const iclforge::ac4::DecodedFrame& pcm) {
                 if (!meter.has_value()) {
                     order = ac4_order(pcm.speakers, ac4_meter_rank);
                     const bool lfe =
-                        std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
+                        std::ranges::find(pcm.speakers, iclforge::ac4::Speaker::kLfe) != pcm.speakers.end();
                     meter.emplace(ac4_bed_acmod(pcm.speakers), lfe,
                                   static_cast<std::uint32_t>(pcm.sample_rate_hz),
                                   static_cast<int>(pcm.channels.size()));
@@ -1383,26 +1383,26 @@ int run_levels(std::string_view in_path, const Options& meta) {
     if (syncword) {
         // E-AC-3 has its own decoder here now, so this is no longer a wall to
         // turn a wider syntax away at - bsid only decides which reader runs.
-        const auto bsid = ac3::stream_bsid(bytes);
+        const auto bsid = iclforge::stream_bsid(bytes);
         if (bsid.has_value() && *bsid > 8) {
             return run_levels_eac3(bytes, in_path, want_programme);
         }
-        const auto frames = ac3::split_frames(bytes);
+        const auto frames = iclforge::split_frames(bytes);
         if (!frames || frames->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return kExitInput;        }
-        ac3::FrameDecoder decoder;
-        std::optional<ac3::analysis::LevelMeter> meter;
+        iclforge::FrameDecoder decoder;
+        std::optional<iclforge::analysis::LevelMeter> meter;
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
             if (!decoded) {
-                fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
+                fmt::println(stderr, "error: {}: {}", in_path, iclforge::describe(decoded.error()));
                 return kExitInput;            }
             if (!meter) {
                 meter.emplace(decoded->acmod, decoded->lfe,
                               sample_rate_hz(decoded->sample_rate));
                 fmt::println("{}: {} frames, {}, {} kbps, {} Hz", in_path, frames->size(),
-                             ac3::analysis::layout_name(decoded->acmod, decoded->lfe),
+                             iclforge::analysis::layout_name(decoded->acmod, decoded->lfe),
                              decoded->bitrate_kbps, sample_rate_hz(decoded->sample_rate));
             }
             std::vector<std::span<const float>> views;
@@ -1430,12 +1430,12 @@ int run_levels(std::string_view in_path, const Options& meta) {
         return kExitOk;
     }
 
-    const auto wav = ac3::io::read_wav(std::string{in_path});
+    const auto wav = iclforge::io::read_wav(std::string{in_path});
     if (!wav) {
-        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, iclforge::io::describe(wav.error()));
         return kExitInput;
     }
-    const auto layout = ac3::io::ac3_layout_for(wav->channels.size());
+    const auto layout = iclforge::io::ac3_layout_for(wav->channels.size());
     if (!layout) {
         fmt::println(stderr, "error: levels handles 1 to 6 channels ({} given)",
                      wav->channels.size());
@@ -1445,9 +1445,9 @@ int run_levels(std::string_view in_path, const Options& meta) {
                                ? static_cast<double>(wav->frame_count()) / wav->sample_rate
                                : 0.0;
     fmt::println("{}: {} Hz, {:.2f} s, shown in A/52 order as {}", in_path, wav->sample_rate,
-                 seconds, ac3::analysis::layout_name(layout->acmod, layout->lfe));
+                 seconds, iclforge::analysis::layout_name(layout->acmod, layout->lfe));
 
-    ac3::analysis::LevelMeter meter{layout->acmod, layout->lfe, wav->sample_rate};
+    iclforge::analysis::LevelMeter meter{layout->acmod, layout->lfe, wav->sample_rate};
     std::vector<std::span<const float>> views(layout->wav_index.size());
     for (std::size_t ch = 0; ch < layout->wav_index.size(); ++ch) {
         views[ch] = wav->channels[layout->wav_index[ch]];
@@ -1470,13 +1470,13 @@ int run_loudness(std::string_view in_path, const Options& meta) {
         return kExitInput;
     }
     if (is_ac4_stream(bytes)) {
-        ac4::Decoder decoder(ac4_coded_config(meta));
+        iclforge::ac4::Decoder decoder(ac4_coded_config(meta));
         std::optional<Ac4Meter> meter;
         std::vector<std::span<const float>> views;
         std::size_t presentation = 0;
         int rate = 0;
         const auto frames =
-            decode_ac4_as_coded(bytes, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+            decode_ac4_as_coded(bytes, in_path, decoder, [&](const iclforge::ac4::DecodedFrame& pcm) {
                 if (!meter.has_value()) {
                     meter.emplace(ac4_loudness_meter(pcm, false));
                     presentation = pcm.presentation;
@@ -1507,7 +1507,7 @@ int run_loudness(std::string_view in_path, const Options& meta) {
     }
     if (bytes.size() >= 6 && std::to_integer<int>(bytes[0]) == 0x0B &&
         std::to_integer<int>(bytes[1]) == 0x77) {
-        const auto bsid = ac3::stream_bsid(bytes);
+        const auto bsid = iclforge::stream_bsid(bytes);
         const auto measured = measure_stream_loudness(bytes);
         if (!bsid.has_value() || !measured.has_value()) {
             return kExitInput;
@@ -1518,22 +1518,22 @@ int run_loudness(std::string_view in_path, const Options& meta) {
             return kExitRuntime;
         }
         fmt::println("  dialogue level {:.2f} LKFS -> dialnorm {}", *measured->integrated_lkfs,
-                     ac3::meta::dialnorm_from_lkfs(*measured->integrated_lkfs));
-        if (const auto carried = ac3::io::read_frame_metadata(bytes); carried.has_value()) {
+                     iclforge::meta::dialnorm_from_lkfs(*measured->integrated_lkfs));
+        if (const auto carried = iclforge::io::read_frame_metadata(bytes); carried.has_value()) {
             fmt::println("  the stream's dialnorm {}", carried->dialnorm);
         }
         return kExitOk;
     }
-    const auto wav = ac3::io::read_wav(std::string{in_path});
+    const auto wav = iclforge::io::read_wav(std::string{in_path});
     if (!wav) {
-        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+        fmt::println(stderr, "error: {}: {}", in_path, iclforge::io::describe(wav.error()));
         return kExitInput;
     }
-    ac3::SampleRate sr{};
+    iclforge::SampleRate sr{};
     switch (wav->sample_rate) {
-        case 48000: sr = ac3::SampleRate::k48000; break;
-        case 44100: sr = ac3::SampleRate::k44100; break;
-        case 32000: sr = ac3::SampleRate::k32000; break;
+        case 48000: sr = iclforge::SampleRate::k48000; break;
+        case 44100: sr = iclforge::SampleRate::k44100; break;
+        case 32000: sr = iclforge::SampleRate::k32000; break;
         default:
             fmt::println(stderr, "error: sample rate {} is not legal for AC-3", wav->sample_rate);
             return kExitInput;
@@ -1541,7 +1541,7 @@ int run_loudness(std::string_view in_path, const Options& meta) {
     // The BS.1770 channel weighting depends on which coded positions are
     // surrounds, so the layout has to be inferred from the channel count
     // (Table 5.8) rather than assumed.
-    const auto layout = ac3::io::ac3_layout_for(wav->channels.size());
+    const auto layout = iclforge::io::ac3_layout_for(wav->channels.size());
     if (!layout) {
         fmt::println(stderr, "error: {} channels is not an AC-3 layout",
                      wav->channels.size());
@@ -1555,7 +1555,7 @@ int run_loudness(std::string_view in_path, const Options& meta) {
     // Reporting the answer was missing where this came from, so the command
     // measured the programme and then said nothing about it.
     fmt::println("{}: {} Hz, {}", in_path, wav->sample_rate,
-                 ac3::analysis::layout_name(layout->acmod, layout->lfe));
+                 iclforge::analysis::layout_name(layout->acmod, layout->lfe));
     fmt::println("  dialogue level -{} LKFS -> dialnorm {}", *dialnorm, *dialnorm);
     return kExitOk;
 }
@@ -1570,7 +1570,7 @@ namespace {
 // high-bit-rate link carries it.
 int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
                   std::string_view out_path) {
-    const ac4::ScanResult scan = ac4::scan(stream);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     if (scan.frames.empty()) {
         fmt::println(stderr, "error: {} holds no AC-4 sync frame", in_path);
         return kExitInput;
@@ -1588,15 +1588,15 @@ int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
         frames.push_back(stream.subspan(scan.frames[i].offset, end - scan.frames[i].offset));
         largest = std::max(largest, frames.back().size());
     }
-    const auto head = ac3::iec61937::read_ac4_sync_frame(frames.front());
+    const auto head = iclforge::iec61937::read_ac4_sync_frame(frames.front());
     if (!head.has_value()) {
         fmt::println(stderr, "error: {}: the first sync frame's table of contents does not read",
                      in_path);
         return kExitInput;
     }
     const auto type =
-        ac3::iec61937::ac4_burst_type_for(largest, head->fs_index, head->frame_rate_index);
-    const auto timing = type.has_value() ? ac3::iec61937::ac4_burst_timing(*type, head->fs_index,
+        iclforge::iec61937::ac4_burst_type_for(largest, head->fs_index, head->frame_rate_index);
+    const auto timing = type.has_value() ? iclforge::iec61937::ac4_burst_timing(*type, head->fs_index,
                                                                            head->frame_rate_index)
                                          : std::nullopt;
     if (!type.has_value() || !timing.has_value()) {
@@ -1606,20 +1606,20 @@ int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
                      in_path, largest, head->frame_rate_index);
         return kExitInput;
     }
-    const bool hbr16 = *type == ac3::iec61937::BurstDataType::kAc4Hbr16;
+    const bool hbr16 = *type == iclforge::iec61937::BurstDataType::kAc4Hbr16;
     const std::uint32_t carrier_rate = hbr16 ? timing->link_rate_hz / 4 : timing->link_rate_hz;
     const std::uint16_t carrier_channels = hbr16 ? 8 : 2;
     Pcm16RawWavSink sink;
     if (!sink.open(out_path, carrier_rate, carrier_channels)) {
         return kExitOutput;
     }
-    ac3::iec61937::Ac4BurstPacker packer{*type};
+    iclforge::iec61937::Ac4BurstPacker packer{*type};
     for (const std::span<const std::byte> frame : frames) {
         const auto burst = packer.push(frame);
         if (!burst.has_value()) {
             sink.abort();
             fmt::println(stderr, "error: {}: a sync frame will not pack into {} bursts", in_path,
-                         ac3::iec61937::data_type_name(*type));
+                         iclforge::iec61937::data_type_name(*type));
             return kExitInput;
         }
         if (!sink.push(*burst)) {
@@ -1633,7 +1633,7 @@ int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
     const auto status = status_stream();
     status_println(status,
                    "wrapped {} AC-4 sync frames into IEC 61937-14 {} bursts -> {} ({} Hz{})",
-                   frames.size(), ac3::iec61937::data_type_name(*type), out_path, carrier_rate,
+                   frames.size(), iclforge::iec61937::data_type_name(*type), out_path, carrier_rate,
                    hbr16 ? ", eight channels" : " carrier");
     status_println(status,
                    "no receiver found takes AC-4 over IEC 61937 yet; 'unspdif' reads the frames "
@@ -1652,7 +1652,7 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
     if (is_ac4_stream(stream)) {
         return run_spdif_ac4(stream, in_path, out_path);
     }
-    const auto bsid = ac3::stream_bsid(stream);
+    const auto bsid = iclforge::stream_bsid(stream);
     if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
@@ -1803,7 +1803,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
     const bool stdio = is_stdio_path(in_path);
     std::ifstream file;
     if (stdio) {
-        ac3::cli::platform::set_stdio_binary();
+        iclforge::cli::platform::set_stdio_binary();
     } else {
         file.open(std::string{in_path}, std::ios::binary);
         if (!file) {
@@ -1844,7 +1844,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
     if (!sink.open(out_path, keep_partial)) {
         return kExitOutput;
     }
-    ac3::iec61937::BurstReader reader;
+    iclforge::iec61937::BurstReader reader;
     std::vector<std::byte> carrier(kCarrierChunkBytes);
     std::vector<std::byte> payload;
     std::uint64_t elementary_bytes = 0;
@@ -1863,7 +1863,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
         if (!pushed.has_value()) {
             sink.abort();
             fmt::println(stderr, "error: {}: {}", in_path,
-                         ac3::iec61937::describe(pushed.error()));
+                         iclforge::iec61937::describe(pushed.error()));
             return kExitInput;
         }
         if (!payload.empty()) {
@@ -1895,8 +1895,8 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
     // than something visible here. An AC-4 carrier names its own link (IEC
     // 61937-14's four burst types); its bursts hold AC-4 sync frames, the
     // .ac4 form.
-    const std::string_view kind = ac3::iec61937::data_type_name(
-        reader.data_type().value_or(ac3::iec61937::BurstDataType::kAc3));
+    const std::string_view kind = iclforge::iec61937::data_type_name(
+        reader.data_type().value_or(iclforge::iec61937::BurstDataType::kAc3));
     // stderr when the elementary stream itself is going to stdout, the same
     // convention encode/decode follow (see status_stream's own comment):
     // this report must never land in the middle of the bytes a pipeline is
@@ -1909,7 +1909,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
         // 4x, so 192000 here means a 48 kHz programme.
         status_println(status, "carrier: {} Hz, {} ch, {} words", chunk->sample_rate,
                        chunk->channels,
-                       reader.word_order() == ac3::iec61937::WordOrder::kBigEndian
+                       reader.word_order() == iclforge::iec61937::WordOrder::kBigEndian
                            ? "big-endian"
                            : "little-endian");
     }
@@ -1927,7 +1927,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
         // something, but the reader's own contract (a whole final burst) was
         // not met, which the exit code alone does not distinguish from a
         // clean stop.
-        fmt::println(stderr, "warning: {}", ac3::iec61937::describe(finished.error()));
+        fmt::println(stderr, "warning: {}", iclforge::iec61937::describe(finished.error()));
     }
     return kExitOk;
 }

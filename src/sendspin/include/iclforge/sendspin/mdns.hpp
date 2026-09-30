@@ -22,7 +22,7 @@
 // Each advertiser and browser runs a thread of its own. A browser calls its listener on that
 // thread.
 
-namespace ac3::sendspin::discovery::mdns {
+namespace iclforge::sendspin::discovery::mdns {
 
 // Every member has a default, {} included, so a designated initializer can name only what it
 // changes - NetworkSinks names request_firewall_exception alone. GCC's
@@ -53,4 +53,4 @@ struct Options {
 // could be opened.
 [[nodiscard]] std::unique_ptr<Browser> browse(std::string service, BrowseListener& listener, Options options = {});
 
-}  // namespace ac3::sendspin::discovery::mdns
+}  // namespace iclforge::sendspin::discovery::mdns

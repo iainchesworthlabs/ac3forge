@@ -24,7 +24,7 @@
 // Close frames, pings and pongs are the backend's business and never reach a
 // session.
 
-namespace ac3::sendspin::transport {
+namespace iclforge::sendspin::transport {
 
 enum class FrameKind : std::uint8_t {
     kText,
@@ -67,4 +67,4 @@ class Connection {
 [[nodiscard]] std::pair<std::unique_ptr<Connection>, std::unique_ptr<Connection>> memory_pair(
     std::string first_name = "memory:a", std::string second_name = "memory:b");
 
-}  // namespace ac3::sendspin::transport
+}  // namespace iclforge::sendspin::transport

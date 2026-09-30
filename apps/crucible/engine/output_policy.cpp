@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 std::string_view describe(OutputMode mode) {
     switch (mode) {
@@ -262,4 +262,4 @@ OutputChoice choose_output(const OutputPolicyInput& input) {
     return none;
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

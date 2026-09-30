@@ -39,7 +39,7 @@ namespace ac3cli::commands {
 
 namespace {
 
-namespace io = ac3::io;
+namespace io = iclforge::io;
 
 // How much per-frame detail was asked for. The stream summary always comes
 // out; these add to it.
@@ -55,19 +55,19 @@ enum class Detail : std::uint8_t {
 // two tools here name one stream two ways (apps/common/probe_json.hpp). The
 // table uses the same names.
 
-using ac3::apps::probe_json::Ac4Summary;
-using ac3::apps::probe_json::bed_label;
-using ac3::apps::probe_json::bsmod_label;
-using ac3::apps::probe_json::codec_label;
-using ac3::apps::probe_json::describe_group_substream;
-using ac3::apps::probe_json::dialnorm_db;
-using ac3::apps::probe_json::emdf_payload_label;
-using ac3::apps::probe_json::exp_strategy_token;
-using ac3::apps::probe_json::strmtyp_token;
-using ac3::apps::probe_json::summarize_ac4;
-using ac3::apps::probe_json::write_ac4_stream;
-using ac3::apps::probe_json::write_container;
-using ac3::apps::probe_json::write_stream;
+using iclforge::apps::probe_json::Ac4Summary;
+using iclforge::apps::probe_json::bed_label;
+using iclforge::apps::probe_json::bsmod_label;
+using iclforge::apps::probe_json::codec_label;
+using iclforge::apps::probe_json::describe_group_substream;
+using iclforge::apps::probe_json::dialnorm_db;
+using iclforge::apps::probe_json::emdf_payload_label;
+using iclforge::apps::probe_json::exp_strategy_token;
+using iclforge::apps::probe_json::strmtyp_token;
+using iclforge::apps::probe_json::summarize_ac4;
+using iclforge::apps::probe_json::write_ac4_stream;
+using iclforge::apps::probe_json::write_container;
+using iclforge::apps::probe_json::write_stream;
 
 // --- human-readable table --------------------------------------------------
 
@@ -83,25 +83,25 @@ void print_range(std::string_view label, const io::MinMax& range, std::string_vi
     fmt::println("{:<16}{}{} .. {}{}", label, range.min, unit, range.max, unit);
 }
 
-void print_container(const ac3::apps::ContainerFacts& facts);
+void print_container(const iclforge::apps::ContainerFacts& facts);
 
 void print_table(std::string_view path, const io::ProbeReport& report,
-                 const ac3::apps::ContainerFacts& container) {
+                 const iclforge::apps::ContainerFacts& container) {
     fmt::println("{:<16}{}", "file", path);
     print_container(container);
     fmt::println("{:<16}{} (bsid {})", "codec", codec_label(report.kind), report.bsid);
-    fmt::println("{:<16}{} Hz{}", "sample rate", ac3::sample_rate_hz(report.sample_rate),
+    fmt::println("{:<16}{} Hz{}", "sample rate", iclforge::sample_rate_hz(report.sample_rate),
                  report.reduced_rate ? " (fscod2 reduced rate)" : "");
     fmt::println("{:<16}{} ({})", "bsmod", report.bsmod,
                  bsmod_label(report.bsmod, report.acmod));
     fmt::println("{:<16}{} (acmod {}, lfeon {})", "layout",
-                 ac3::analysis::layout_name(report.acmod, report.lfe),
+                 iclforge::analysis::layout_name(report.acmod, report.lfe),
                  static_cast<int>(report.acmod), report.lfe ? 1 : 0);
     if (report.layout.count > 0) {
         std::string locations;
         for (const auto location : report.layout) {
             locations += locations.empty() ? "" : " ";
-            locations += ac3::eac3::chanmap::name(location);
+            locations += iclforge::eac3::chanmap::name(location);
         }
         fmt::println("{:<16}{} channel(s): {}", "renders", report.rendered_channels, locations);
     } else {
@@ -110,8 +110,8 @@ void print_table(std::string_view path, const io::ProbeReport& report,
     }
     fmt::println("{:<16}{} per syncframe (numblkscod {})", "blocks",
                  report.kind == io::StreamKind::kAc3
-                     ? ac3::kBlocksPerFrame
-                     : ac3::eac3::blocks_per_syncframe(report.numblkscod),
+                     ? iclforge::kBlocksPerFrame
+                     : iclforge::eac3::blocks_per_syncframe(report.numblkscod),
                  report.numblkscod);
 
     fmt::println("{:<16}{} per access unit", "substreams", report.substreams_per_unit);
@@ -122,7 +122,7 @@ void print_table(std::string_view path, const io::ProbeReport& report,
         }
         fmt::println("  {:<14}{} id {}, {}, {} syncframe(s), {}", "",
                      strmtyp_token(sub.strmtyp), sub.substreamid,
-                     ac3::analysis::layout_name(sub.acmod, sub.lfe), sub.syncframes, chanmap);
+                     iclforge::analysis::layout_name(sub.acmod, sub.lfe), sub.syncframes, chanmap);
     }
 
     fmt::println("{:<16}{} ({} syncframe(s)), {} bytes", "access units", report.access_units,
@@ -166,7 +166,7 @@ void print_table(std::string_view path, const io::ProbeReport& report,
     // Table D2.2's code and its name, in the same "code (name)" shape as bsmod.
     if (report.dmixmod.has_value()) {
         fmt::println("{:<16}{} ({})", "dmixmod", static_cast<int>(*report.dmixmod),
-                     ac3::meta::describe(*report.dmixmod));
+                     iclforge::meta::describe(*report.dmixmod));
     } else {
         fmt::println("{:<16}absent", "dmixmod");
     }
@@ -184,7 +184,7 @@ void print_table(std::string_view path, const io::ProbeReport& report,
     }
     if (report.program.has_value()) {
         fmt::println("{:<16}{} object(s): bed {}, {} dynamic, in {} frame(s)", "object audio",
-                     ac3::oba::object_count(*report.program), bed_label(*report.program),
+                     iclforge::oba::object_count(*report.program), bed_label(*report.program),
                      report.program->dynamic_objects, report.object_frames);
     } else if (report.oba_complexity_index.has_value()) {
         fmt::println("{:<16}addbsi marker only, no OAMD payload parsed", "object audio");
@@ -207,7 +207,7 @@ void print_table(std::string_view path, const io::ProbeReport& report,
         fmt::println("{:<16}{} syncframe(s) refused by the parser{}", "parse errors",
                      report.parse_failures,
                      report.first_parse_error
-                         ? fmt::format(" (first: {})", ac3::describe(*report.first_parse_error))
+                         ? fmt::format(" (first: {})", iclforge::describe(*report.first_parse_error))
                          : std::string{});
     }
 
@@ -252,18 +252,18 @@ void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
         fmt::println("  {} id {} @ {}: {} bytes, {}, {}, dialnorm {} dB{}{}",
                      strmtyp_token(frame.header.strmtyp), frame.header.substreamid,
                      frame.byte_offset, frame.header.bytes,
-                     ac3::analysis::layout_name(frame.header.acmod, frame.header.lfe),
+                     iclforge::analysis::layout_name(frame.header.acmod, frame.header.lfe),
                      frame.crc_valid ? "crc ok" : "CRC BAD",
                      dialnorm_db(frame.header.dialnorm),
                      frame.header.compr ? fmt::format(", compr {}", *frame.header.compr)
                                         : std::string{},
                      frame.authenticity_tag ? ", signed" : "");
         if (frame.parse_error.has_value()) {
-            fmt::println("    parse error: {}", ac3::describe(*frame.parse_error));
+            fmt::println("    parse error: {}", iclforge::describe(*frame.parse_error));
         }
         if (frame.objects.has_value()) {
             fmt::println("    objects: {} total, {} dynamic, bed {}",
-                         ac3::oba::object_count(frame.objects->program),
+                         iclforge::oba::object_count(frame.objects->program),
                          frame.objects->program.dynamic_objects,
                          bed_label(frame.objects->program));
         }
@@ -301,7 +301,7 @@ void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
             }
             if (block.coupling) {
                 strategies += fmt::format(
-                    " cpl:{}", exp_strategy_token(block.exp_strategy[ac3::kCouplingSyntaxStream]));
+                    " cpl:{}", exp_strategy_token(block.exp_strategy[iclforge::kCouplingSyntaxStream]));
             }
             fmt::println("    blk {}: {:<28} exp [{}]", index,
                          tools.empty() ? "-" : tools, strategies);
@@ -342,7 +342,7 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
     json.member("crc_valid", frame.crc_valid);
     json.member("authenticity_tag", frame.authenticity_tag);
     if (frame.parse_error.has_value()) {
-        json.member("parse_error", ac3::describe(*frame.parse_error));
+        json.member("parse_error", iclforge::describe(*frame.parse_error));
     } else {
         json.member_null("parse_error");
     }
@@ -350,7 +350,7 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
         json.key("objects");
         json.begin_object();
         json.member("total", static_cast<std::int64_t>(
-                                 ac3::oba::object_count(frame.objects->program)));
+                                 iclforge::oba::object_count(frame.objects->program)));
         json.member("dynamic",
                     static_cast<std::int64_t>(frame.objects->program.dynamic_objects));
         json.member("bed", bed_label(frame.objects->program));
@@ -377,7 +377,7 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
     json.member("snroffststr", static_cast<std::int64_t>(syntax.snroffststr));
     json.key("aht_streams");
     json.begin_array();
-    for (int stream = 0; stream < ac3::kMaxSyntaxStreams; ++stream) {
+    for (int stream = 0; stream < iclforge::kMaxSyntaxStreams; ++stream) {
         if (syntax.aht_stream[static_cast<std::size_t>(stream)]) {
             json.value(static_cast<std::int64_t>(stream));
         }
@@ -410,7 +410,7 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
         json.end_array();
         if (block.coupling) {
             json.member("coupling_exponent_strategy",
-                        exp_strategy_token(block.exp_strategy[ac3::kCouplingSyntaxStream]));
+                        exp_strategy_token(block.exp_strategy[iclforge::kCouplingSyntaxStream]));
         } else {
             json.member_null("coupling_exponent_strategy");
         }
@@ -437,8 +437,8 @@ void write_access_unit(JsonWriter& json, const io::ProbeAccessUnit& unit, Detail
 
 // --- AC-4 ---------------------------------------------------------------
 //
-// A separate walk from everything above, over ac4::scan()/parse_raw_frame()
-// rather than ac3::io::Prober: probe_json's summarize_ac4() and
+// A separate walk from everything above, over iclforge::ac4::scan()/parse_raw_frame()
+// rather than iclforge::io::Prober: probe_json's summarize_ac4() and
 // write_ac4_stream(), whose comments say why the document's AC-4 stream has
 // its own shape.
 //
@@ -447,8 +447,8 @@ void write_access_unit(JsonWriter& json, const io::ProbeAccessUnit& unit, Detail
 
 // What a Matroska, MP4 or MPEG-TS file said of the track the table describes,
 // on the line after the file's name; nothing for a bare stream.
-void print_container(const ac3::apps::ContainerFacts& facts) {
-    using ac3::apps::ContainerKind;
+void print_container(const iclforge::apps::ContainerFacts& facts) {
+    using iclforge::apps::ContainerKind;
     switch (facts.kind) {
         case ContainerKind::kUnknown:
             return;
@@ -478,7 +478,7 @@ void print_container(const ac3::apps::ContainerFacts& facts) {
 }
 
 void print_ac4_table(std::string_view path, const Ac4Summary& summary,
-                     const ac3::apps::ContainerFacts& container) {
+                     const iclforge::apps::ContainerFacts& container) {
     fmt::println("{:<16}{}", "file", path);
     print_container(container);
     fmt::println("{:<16}AC-4", "codec");
@@ -487,7 +487,7 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary,
     fmt::println("{:<16}{} of {} valid", "CRC", summary.sync_frames - summary.crc_failures,
                  summary.sync_frames);
     if (summary.parse_error.has_value()) {
-        fmt::println("{:<16}{}", "parse error", ac4::describe(*summary.parse_error));
+        fmt::println("{:<16}{}", "parse error", iclforge::ac4::describe(*summary.parse_error));
     }
     if (!summary.first_frame.has_value()) {
         return;
@@ -527,16 +527,16 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary,
     // What the decoder read: each presentation, and the one it selects.
     const std::optional<std::size_t> selected =
         summary.metadata ? summary.metadata->presentation : std::optional<std::size_t>{};
-    for (const ac4::PresentationInfo& p : summary.presentations) {
+    for (const iclforge::ac4::PresentationInfo& p : summary.presentations) {
         std::string channels;
-        for (const ac4::Speaker s : p.speakers) {
+        for (const iclforge::ac4::Speaker s : p.speakers) {
             channels += channels.empty() ? "" : " ";
-            channels += ac4::describe(s);
+            channels += iclforge::ac4::describe(s);
         }
         std::string roles;
-        for (const ac4::PresentationMember& m : p.members) {
+        for (const iclforge::ac4::PresentationMember& m : p.members) {
             roles += roles.empty() ? "" : ", ";
-            roles += ac4::describe(m.role);
+            roles += iclforge::ac4::describe(m.role);
             if (!m.language.empty()) {
                 roles += " (" + m.language + ")";
             }
@@ -553,7 +553,7 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary,
     if (!summary.metadata) {
         return;
     }
-    const ac4::PresentationMetadata& m = *summary.metadata;
+    const iclforge::ac4::PresentationMetadata& m = *summary.metadata;
     if (m.loudness.dialnorm_dbfs) {
         fmt::println("{:<16}{:g} dBFS", "dialnorm", *m.loudness.dialnorm_dbfs);
     }
@@ -565,25 +565,25 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary,
     }
     if (m.drc) {
         std::string modes;
-        for (const ac4::DrcModeInfo& mode : m.drc->modes) {
+        for (const iclforge::ac4::DrcModeInfo& mode : m.drc->modes) {
             modes += modes.empty() ? "" : ", ";
             modes += fmt::format(
                 "{} {}", mode.id,
                 mode.repeat_of ? fmt::format("as {}", *mode.repeat_of)
-                : mode.compression == ac4::DrcModeInfo::Compression::kCurve ? "curve"
-                : mode.compression == ac4::DrcModeInfo::Compression::kGains ? "gains"
+                : mode.compression == iclforge::ac4::DrcModeInfo::Compression::kCurve ? "curve"
+                : mode.compression == iclforge::ac4::DrcModeInfo::Compression::kGains ? "gains"
                                                                             : "default profile");
         }
         fmt::println("{:<16}profile {}, modes {}", "DRC", m.drc->eac3_profile, modes);
     }
     if (m.dialogue_enhancement) {
-        const ac4::DialogueEnhancementInfo& de = *m.dialogue_enhancement;
+        const iclforge::ac4::DialogueEnhancementInfo& de = *m.dialogue_enhancement;
         fmt::println("{:<16}method {}, {}{}{}up to {:g} dB", "dialogue enh.", de.method,
                      de.left ? "L " : "", de.right ? "R " : "", de.centre ? "C " : "",
                      de.max_gain_db);
     }
     if (m.downmix) {
-        const ac4::DownmixInfo& d = *m.downmix;
+        const iclforge::ac4::DownmixInfo& d = *m.downmix;
         fmt::println(
             "{:<16}Lo/Ro centre {:g} dB, surround {:g} dB; Lt/Rt centre {:g} dB, surround {:g} "
             "dB{}",
@@ -593,11 +593,11 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary,
 }
 
 int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& meta,
-                  const ac3::apps::ContainerFacts& container) {
+                  const iclforge::apps::ContainerFacts& container) {
     // Reads the whole input into memory - unlike the AC-3/E-AC-3 path above,
     // which pulls forward through a fixed window (see docs/forge/cli/commands.md's
     // "Memory is flat" claim, which is specific to that path and not
-    // extended here). ac4::scan()/parse_raw_frame() operate on a
+    // extended here). iclforge::ac4::scan()/parse_raw_frame() operate on a
     // std::span - a deliberate parse-and-inspect design, not a streaming
     // decoder - and this command's own scope never walks per-block audio
     // detail the way detail=frames/blocks does for AC-3/E-AC-3, so an AC-4
@@ -610,7 +610,7 @@ int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& met
     const auto summary = summarize_ac4(data);
     if (summary.sync_frames == 0) {
         fmt::println(stderr, "error: {}",
-                     summary.parse_error ? ac4::describe(*summary.parse_error)
+                     summary.parse_error ? iclforge::ac4::describe(*summary.parse_error)
                                           : "no AC-4 sync frame found");
         return 1;
     }
@@ -618,7 +618,7 @@ int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& met
         JsonWriter json{stdout};
         json.begin_object();
         json.member("schema", "ac3forge.probe/1");
-        json.member("generator", ac3::version_full);
+        json.member("generator", iclforge::version_full);
         json.member("file", in_path);
         // null for a bare stream: the schema's members are never omitted.
         write_container(json, container);
@@ -645,7 +645,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     // window, which is exactly what a pipe can give it.
     std::ifstream file;
     if (is_stdio_path(in_path)) {
-        ac3::cli::platform::set_stdio_binary();
+        iclforge::cli::platform::set_stdio_binary();
     } else {
         file.open(std::string{in_path}, std::ios::binary);
         if (!file) {
@@ -658,7 +658,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     // track beside it: the demux decode and the other commands read a
     // container through (container_input.hpp). A bare stream, from a file or
     // from stdin, is read as it arrives, as before.
-    ac3::apps::ContainerFacts container;
+    iclforge::apps::ContainerFacts container;
     std::istringstream demuxed;
     std::istream* source = is_stdio_path(in_path) ? static_cast<std::istream*>(&std::cin) : &file;
     if (!is_stdio_path(in_path)) {
@@ -668,10 +668,10 @@ int run_probe(std::string_view in_path, const Options& meta) {
         const auto got = static_cast<std::size_t>(file.gcount());
         file.clear();
         file.seekg(0, std::ios::beg);
-        const auto kind = ac3::apps::sniff_container(std::as_bytes(std::span{head}).first(got));
-        if (kind != ac3::apps::ContainerKind::kUnknown) {
+        const auto kind = iclforge::apps::sniff_container(std::as_bytes(std::span{head}).first(got));
+        if (kind != iclforge::apps::ContainerKind::kUnknown) {
             const auto bytes = read_all(in_path);
-            auto result = ac3::apps::elementary_stream_from_bytes(bytes);
+            auto result = iclforge::apps::elementary_stream_from_bytes(bytes);
             if (!result.error.empty()) {
                 fmt::println(stderr, "error: {} is a {}", in_path, result.error);
                 return 1;
@@ -691,14 +691,14 @@ int run_probe(std::string_view in_path, const Options& meta) {
     // emits would otherwise arrive as 0x0D 0x0A. Idempotent alongside the
     // is_stdio_path() call above when both apply to the same run.
     if (meta.json) {
-        ac3::cli::platform::set_stdio_binary();
+        iclforge::cli::platform::set_stdio_binary();
     }
 
     // A single peek() disambiguates without disturbing the stream position
     // for either downstream reader: AC-3/E-AC-3's syncword starts 0x0B77,
     // AC-4's Annex G sync_word starts 0xAC40/0xAC41 - the first byte alone
     // (0x0B vs 0xAC) already decides it, and peek() works the same way on a
-    // real file and on a pipe (std::cin), unlike a seek. ac3::io::
+    // real file and on a pipe (std::cin), unlike a seek. iclforge::io::
     // AccessUnitReader below is unaffected either way - this dispatch has
     // to happen before it, since it is hardwired to AC-3/E-AC-3 framing.
     if (in.peek() == 0xAC) {
@@ -716,7 +716,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     if (meta.json) {
         json.begin_object();
         json.member("schema", "ac3forge.probe/1");
-        json.member("generator", ac3::version_full);
+        json.member("generator", iclforge::version_full);
         json.member("file", in_path);
         // null for a bare stream: the schema's members are never omitted.
         write_container(json, container);
@@ -728,13 +728,13 @@ int run_probe(std::string_view in_path, const Options& meta) {
 
     io::ProbeOptions options;
     options.detail = detail != Detail::kNone;
-    // ac3::signing lives in its own library and ac3::forge neither links nor
+    // iclforge::signing lives in its own library and iclforge::ac3 neither links nor
     // should link it, so the question is passed in rather than asked there -
     // see ProbeOptions::authenticity. No key is involved: whether a frame
     // carries a tag is answerable without one, and only whether that tag is
     // VALID is not (that is 'decode verify-objects').
     options.authenticity = [](std::span<const std::byte> frame) {
-        return ac3::signing::has_authenticity_tag(frame);
+        return iclforge::signing::has_authenticity_tag(frame);
     };
     if (detail != Detail::kNone) {
         options.on_access_unit = [&meta, &json, &detail](const io::ProbeAccessUnit& unit) {
@@ -751,7 +751,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     while (true) {
         const auto unit = reader.next();
         if (!unit) {
-            fmt::println(stderr, "error: {} at byte {}", ac3::io::describe(unit.error()),
+            fmt::println(stderr, "error: {} at byte {}", iclforge::io::describe(unit.error()),
                          reader.byte_offset());
             return 1;
         }
@@ -759,7 +759,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
             break;
         }
         if (const auto pushed = prober.push(*unit); !pushed) {
-            fmt::println(stderr, "error: {} at byte {}", ac3::io::describe(pushed.error()),
+            fmt::println(stderr, "error: {} at byte {}", iclforge::io::describe(pushed.error()),
                          reader.byte_offset());
             return 1;
         }
@@ -767,7 +767,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
 
     const auto report = prober.report();
     if (report.access_units == 0) {
-        fmt::println(stderr, "error: {}", ac3::io::describe(io::ScanError::kEmpty));
+        fmt::println(stderr, "error: {}", iclforge::io::describe(io::ScanError::kEmpty));
         return 1;
     }
     if (meta.json) {

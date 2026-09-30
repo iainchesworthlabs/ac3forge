@@ -40,20 +40,20 @@
 // E-AC-3 object tests use", per the exit criterion's own wording, rather than a new one.
 //
 // The round trip: atmos-adm codec=ac4 (A-JOC, this project's own writer) -> decode's objects_dir
-// (each object's raw PCM) and adm_out (a fresh ADM BWF master, ac4::ObjectProperties bridged onto
-// ac3::oba::DynamicObject - apps/cli/commands/decode.cpp's to_oba_dynamic_object). "Match the
+// (each object's raw PCM) and adm_out (a fresh ADM BWF master, iclforge::ac4::ObjectProperties bridged onto
+// iclforge::oba::DynamicObject - apps/cli/commands/decode.cpp's to_oba_dynamic_object). "Match the
 // master" is checked by parsing BOTH the original fixture and the round-tripped adm_out back
-// through the same ac3adm::parse_bw64/ac3::admbridge::build the read side already uses, evaluating
+// through the same iclforge::adm::parse_bw64/iclforge::admbridge::build the read side already uses, evaluating
 // each channel's ObjectPath at the same two times (well inside each hold, clear of the encode's own
 // frame-boundary quantization around the 0.096s jump - see kBeforeJumpS/kAfterJumpS below) and
 // comparing position/gain - not by asserting a specific numeric azimuth-to-room-cube mapping, which
-// belongs to ac3::admbridge's own tests.
+// belongs to iclforge::admbridge's own tests.
 
 namespace fs = std::filesystem;
 
 namespace {
 
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_adm_ac4_" + scratch_pid_suffix());
@@ -64,7 +64,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -103,7 +103,7 @@ void append_chunk(Bytes& out, std::string_view id, const Bytes& content) {
     }
 }
 
-constexpr int kFrame = ac3::kSamplesPerFrame;
+constexpr int kFrame = iclforge::kSamplesPerFrame;
 constexpr int kTotalFrames = 6;  // 3 frames holding SR, 3 frames holding centre
 // Well inside each hold - test_cli_decode_adm.cpp's own kPulseAt comment gives the same reasoning
 // for staying clear of a boundary rather than landing on one.
@@ -389,7 +389,7 @@ TEST_CASE(
     for (const auto& entry : fs::directory_iterator(objects_dir)) {
         if (entry.path().extension() == ".wav") {
             ++object_files;
-            const auto wav = ac3::io::read_wav(entry.path().string());
+            const auto wav = iclforge::io::read_wav(entry.path().string());
             REQUIRE(wav.has_value());
             REQUIRE(wav->channels.size() == 1);
             const auto tone = tone_index_of(wav->channels.front(), wav->sample_rate);
@@ -400,18 +400,18 @@ TEST_CASE(
     CHECK(object_files == 3);
 
     // "Match the master": the original fixture and the round-tripped adm_out, both read back
-    // through ac3adm::parse_bw64/ac3::admbridge::build (the same pipeline load_adm_atmos_source
+    // through iclforge::adm::parse_bw64/iclforge::admbridge::build (the same pipeline load_adm_atmos_source
     // itself uses), evaluated at the same two times and compared object for object (matched by
     // tone, not by index - this function's own top comment).
-    const auto before_doc = ac3adm::parse_bw64(fixture_path.string());
+    const auto before_doc = iclforge::adm::parse_bw64(fixture_path.string());
     REQUIRE(before_doc.has_value());
-    const auto before = ac3::admbridge::build(*before_doc);
+    const auto before = iclforge::admbridge::build(*before_doc);
     REQUIRE(before.has_value());
     REQUIRE(before->channel_count() == 3);
 
-    const auto after_doc = ac3adm::parse_bw64(adm_out.string());
+    const auto after_doc = iclforge::adm::parse_bw64(adm_out.string());
     REQUIRE(after_doc.has_value());
-    const auto after = ac3::admbridge::build(*after_doc);
+    const auto after = iclforge::admbridge::build(*after_doc);
     REQUIRE(after.has_value());
     REQUIRE(after->channel_count() == 3);
 

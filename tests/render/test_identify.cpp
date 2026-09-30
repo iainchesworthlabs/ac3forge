@@ -20,8 +20,8 @@
 
 namespace {
 
-using ac3::render::FloatBiquad;
-using ac3::render::IdentifyTone;
+using iclforge::render::FloatBiquad;
+using iclforge::render::IdentifyTone;
 using Band = IdentifyTone::Band;
 using Catch::Approx;
 

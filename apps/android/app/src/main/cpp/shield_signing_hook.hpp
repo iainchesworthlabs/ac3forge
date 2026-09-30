@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <vector>
 
-// The Shield app's per-frame object-signing seam over ac3::signing.
+// The Shield app's per-frame object-signing seam over iclforge::signing.
 //
 // Unlike the desktop CLI (which resolves a key from a path or env var), this
 // app signs on-device, so it reads the key from a bundled asset - `signing.key`

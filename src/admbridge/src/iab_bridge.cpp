@@ -15,7 +15,7 @@
 // See iab_bridge.hpp's own top comment for the overall two-pass design and what is and is not
 // mapped. This file is the implementation of that design.
 
-namespace ac3::admbridge {
+namespace iclforge::admbridge {
 
 namespace {
 
@@ -39,7 +39,7 @@ struct IabChannelKeyHash {
     }
 };
 
-// §10.3.5 Table 19's ChannelID/DestinationChannelID codes with a clean ac3::oba::BedLabel
+// §10.3.5 Table 19's ChannelID/DestinationChannelID codes with a clean iclforge::oba::BedLabel
 // equivalent - see iab_bridge.hpp's own top comment for the full reasoning on the surround-zone
 // collapse (0x6/0xA -> Ls/Rs, 0x7/0x8 -> Lb/Rb, 0x5/0x9 refused) and why several other codes are
 // deliberately left unmapped rather than guessed at. 0x80-0x89 are Table 19's own BS.2051-2-named
@@ -48,51 +48,51 @@ struct IabChannelKeyHash {
 // front row, versus the explicitly-qualified "Surround Height"/"Side Surround Height"/"Rear
 // Surround Height" variants below 0x11) are the front-height pair, matching 0x80/0x81's own "Top
 // Front" naming for the identical position.
-[[nodiscard]] std::optional<ac3::oba::BedLabel> bed_label_for_channel_id(std::uint32_t channel_id) {
+[[nodiscard]] std::optional<iclforge::oba::BedLabel> bed_label_for_channel_id(std::uint32_t channel_id) {
     switch (channel_id) {
-        case 0x0: return ac3::oba::BedLabel::kL;               // Left
-        case 0x2: return ac3::oba::BedLabel::kC;               // Center
-        case 0x4: return ac3::oba::BedLabel::kR;               // Right
-        case 0x6: return ac3::oba::BedLabel::kLs;              // Left Surround
-        case 0xA: return ac3::oba::BedLabel::kRs;              // Right Surround
-        case 0x7: return ac3::oba::BedLabel::kLb;              // Left Rear Surround
-        case 0x8: return ac3::oba::BedLabel::kRb;              // Right Rear Surround
-        case 0xD: return ac3::oba::BedLabel::kLfe;             // LFE
-        case 0xE: return ac3::oba::BedLabel::kTfl;             // Left Height
-        case 0xF: return ac3::oba::BedLabel::kTfr;             // Right Height
-        case 0x80: return ac3::oba::BedLabel::kTfl;            // Left Top Front / J
-        case 0x81: return ac3::oba::BedLabel::kTfr;            // Right Top Front / J
-        case 0x82: return ac3::oba::BedLabel::kTbl;            // Left Top Back / J
-        case 0x83: return ac3::oba::BedLabel::kTbr;            // Right Top Back / J
-        case 0x84: return ac3::oba::BedLabel::kTsl;            // Top side left / H
-        case 0x85: return ac3::oba::BedLabel::kTsr;            // Top side right / H
-        case 0x86: return ac3::oba::BedLabel::kLfe;            // LFE1 / H
-        case 0x87: return ac3::oba::BedLabel::kLfe2;           // LFE2 / H
-        case 0x88: return ac3::oba::BedLabel::kLw;             // Front Left (Wide) / H
-        case 0x89: return ac3::oba::BedLabel::kRw;             // Front Right (Wide) / H
+        case 0x0: return iclforge::oba::BedLabel::kL;               // Left
+        case 0x2: return iclforge::oba::BedLabel::kC;               // Center
+        case 0x4: return iclforge::oba::BedLabel::kR;               // Right
+        case 0x6: return iclforge::oba::BedLabel::kLs;              // Left Surround
+        case 0xA: return iclforge::oba::BedLabel::kRs;              // Right Surround
+        case 0x7: return iclforge::oba::BedLabel::kLb;              // Left Rear Surround
+        case 0x8: return iclforge::oba::BedLabel::kRb;              // Right Rear Surround
+        case 0xD: return iclforge::oba::BedLabel::kLfe;             // LFE
+        case 0xE: return iclforge::oba::BedLabel::kTfl;             // Left Height
+        case 0xF: return iclforge::oba::BedLabel::kTfr;             // Right Height
+        case 0x80: return iclforge::oba::BedLabel::kTfl;            // Left Top Front / J
+        case 0x81: return iclforge::oba::BedLabel::kTfr;            // Right Top Front / J
+        case 0x82: return iclforge::oba::BedLabel::kTbl;            // Left Top Back / J
+        case 0x83: return iclforge::oba::BedLabel::kTbr;            // Right Top Back / J
+        case 0x84: return iclforge::oba::BedLabel::kTsl;            // Top side left / H
+        case 0x85: return iclforge::oba::BedLabel::kTsr;            // Top side right / H
+        case 0x86: return iclforge::oba::BedLabel::kLfe;            // LFE1 / H
+        case 0x87: return iclforge::oba::BedLabel::kLfe2;           // LFE2 / H
+        case 0x88: return iclforge::oba::BedLabel::kLw;             // Front Left (Wide) / H
+        case 0x89: return iclforge::oba::BedLabel::kRw;             // Front Right (Wide) / H
         default: return std::nullopt;
     }
 }
 
-[[nodiscard]] bool is_lfe_label(ac3::oba::BedLabel label) {
-    return label == ac3::oba::BedLabel::kLfe || label == ac3::oba::BedLabel::kLfe2;
+[[nodiscard]] bool is_lfe_label(iclforge::oba::BedLabel label) {
+    return label == iclforge::oba::BedLabel::kLfe || label == iclforge::oba::BedLabel::kLfe2;
 }
 
 struct ChannelIdentity {
     IabChannelKey key;
-    std::optional<ac3::oba::BedLabel> bed_label;  // set exactly when key.is_bed
+    std::optional<iclforge::oba::BedLabel> bed_label;  // set exactly when key.is_bed
 };
 
 // Pass 1: unions every unconditionally-Activated top-level Bed channel / Object across the whole
 // sequence, in first-seen order - see iab_bridge.hpp's own top comment for why this is a union
 // over the WHOLE sequence (MetaID identity) rather than per-frame, and why conditional elements are
-// excluded rather than represented. Only top-level ac3iab::IaFrame::beds/objects are walked -
+// excluded rather than represented. Only top-level iclforge::iab::IaFrame::beds/objects are walked -
 // nested BedDefinition/BedRemap/ObjectDefinition/ObjectZoneDefinition19 children (§9 Table 4) are
 // deliberately not recursed into: Annex C.1 items 3a/3b's own nesting allowance exists for
 // alternate/derived submixes, not the primary content this bridge selects one of (the same "pick
 // the primary set" scoping this function's Activation handling already applies).
 [[nodiscard]] std::expected<std::vector<ChannelIdentity>, BridgeError> collect_channel_identities(
-    std::span<const ac3iab::IABitstreamFrame> frames) {
+    std::span<const iclforge::iab::IABitstreamFrame> frames) {
     std::vector<ChannelIdentity> order;
     std::unordered_set<IabChannelKey, IabChannelKeyHash> seen;
 
@@ -134,7 +134,7 @@ struct ChannelIdentity {
 // BridgeError::kNoIabEssenceForChannel (an AudioDataDLC-only reference is exactly this case, since
 // phase 1 does not decode that element - see model.hpp's own AudioDataDlc comment).
 [[nodiscard]] std::expected<std::vector<float>, BridgeError> resolve_essence(
-    const ac3iab::IaFrame& frame, std::uint32_t audio_data_id, std::uint32_t samples_per_frame) {
+    const iclforge::iab::IaFrame& frame, std::uint32_t audio_data_id, std::uint32_t samples_per_frame) {
     if (audio_data_id == 0) {
         return std::vector<float>(samples_per_frame, 0.0f);
     }
@@ -153,7 +153,7 @@ constexpr std::size_t kMaxChannels = 15;
 
 }  // namespace
 
-std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const ac3iab::IABitstreamFrame> frames) {
+std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const iclforge::iab::IABitstreamFrame> frames) {
     if (frames.empty()) {
         return std::unexpected(BridgeError::kEmptyIabStream);
     }
@@ -169,7 +169,7 @@ std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const ac3iab::IA
     IabBridgeResult out;
     out.sample_rate = frames.front().frame.sample_rate;
     out.pcm.resize(identities->size());
-    std::vector<std::vector<ac3::oba::Keyframe>> keyframes(identities->size());
+    std::vector<std::vector<iclforge::oba::Keyframe>> keyframes(identities->size());
 
     // Pass 2: walks every frame once, in order, building each channel's timeline and PCM together
     // - see iab_bridge.hpp's own top comment for why a Bed channel contributes at most one
@@ -181,8 +181,8 @@ std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const ac3iab::IA
     double time_s = 0.0;
     for (const auto& entry : frames) {
         const auto& frame = entry.frame;
-        const auto sub_block_count = ac3iab::num_pan_sub_blocks(frame.frame_rate_code);
-        const auto samples_per_frame = ac3iab::sample_count(frame.frame_rate_code, frame.sample_rate == 96000);
+        const auto sub_block_count = iclforge::iab::num_pan_sub_blocks(frame.frame_rate_code);
+        const auto samples_per_frame = iclforge::iab::sample_count(frame.frame_rate_code, frame.sample_rate == 96000);
         // Unreachable through either public parser (parse_iaframe rejects a Reserved FrameRate
         // code before ever returning an IaFrame - see ac3iab.hpp's own IabError::kReservedFrameRate)
         // - kept as a real assert, not silently trusted, since IaFrame's plain-aggregate shape lets
@@ -195,14 +195,14 @@ std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const ac3iab::IA
             const auto& identity = (*identities)[ch];
 
             if (identity.key.is_bed) {
-                const ac3iab::BedDefinition* bed = nullptr;
+                const iclforge::iab::BedDefinition* bed = nullptr;
                 for (const auto& candidate : frame.beds) {
                     if (!candidate.activation.conditional && candidate.meta_id == identity.key.meta_id) {
                         bed = &candidate;
                         break;
                     }
                 }
-                const ac3iab::BedChannel* channel = nullptr;
+                const iclforge::iab::BedChannel* channel = nullptr;
                 if (bed != nullptr) {
                     for (const auto& candidate : bed->channels) {
                         if (candidate.channel_id == identity.key.sub_channel_id) {
@@ -216,7 +216,7 @@ std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const ac3iab::IA
                 if (channel != nullptr) {
                     keyframes[ch].push_back({
                         .time_s = time_s,
-                        .position = ac3::oba::bed_label_position(*identity.bed_label),
+                        .position = iclforge::oba::bed_label_position(*identity.bed_label),
                         .gain = is_lfe ? 0.0 : channel->gain,
                         .lfe_send = is_lfe ? 1.0 : 0.0,
                     });
@@ -229,7 +229,7 @@ std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const ac3iab::IA
                     out.pcm[ch].insert(out.pcm[ch].end(), *samples_per_frame, 0.0f);
                 }
             } else {
-                const ac3iab::ObjectDefinition* object = nullptr;
+                const iclforge::iab::ObjectDefinition* object = nullptr;
                 for (const auto& candidate : frame.objects) {
                     if (!candidate.activation.conditional && candidate.meta_id == identity.key.meta_id) {
                         object = &candidate;
@@ -272,7 +272,7 @@ std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const ac3iab::IA
         // was actually, unconditionally present in, and that same occurrence always contributes at
         // least one keyframe above (a Bed channel unconditionally; an Object unconditionally too,
         // since sub_block 0's own has_pan_info is always true per §10.5.4).
-        auto path = ac3::oba::KeyframePath::create(std::move(keyframes[ch]));
+        auto path = iclforge::oba::KeyframePath::create(std::move(keyframes[ch]));
         if (!path) {
             return std::unexpected(BridgeError::kUnsupportedIabChannel);
         }
@@ -284,10 +284,10 @@ std::expected<IabBridgeResult, BridgeError> build_iab(std::span<const ac3iab::IA
                                        : "object:" + std::to_string(identity.key.meta_id));
         out.is_bed.push_back(identity.key.is_bed);
         out.is_lfe.push_back(is_lfe);
-        out.paths.push_back(ac3::oba::ObjectPath(std::move(*path)));
+        out.paths.push_back(iclforge::oba::ObjectPath(std::move(*path)));
     }
 
     return out;
 }
 
-}  // namespace ac3::admbridge
+}  // namespace iclforge::admbridge

@@ -48,18 +48,18 @@ TEST_CASE("spatial live: an endpoint that goes away stops the sink, which can st
           "[.][spatial-unplug]") {
     using namespace std::chrono_literals;
 
-    ac3::audio::SpatialObjectSink sink;
+    iclforge::audio::SpatialObjectSink sink;
     const auto started = sink.start(/*device_id=*/"", kRate, /*static_channels=*/0,
                                      /*max_dynamic_objects=*/1);
     if (!started) {
-        WARN("no spatial-capable default output: " << ac3::audio::describe(started.error()));
+        WARN("no spatial-capable default output: " << iclforge::audio::describe(started.error()));
         return;
     }
     REQUIRE(sink.running());
 
     const std::vector<float> block(kChunkFrames, 0.0F);
-    const std::array<ac3::audio::DynamicObjectUpdate, 1> updates{
-        ac3::audio::DynamicObjectUpdate{.pcm = block}};
+    const std::array<iclforge::audio::DynamicObjectUpdate, 1> updates{
+        iclforge::audio::DynamicObjectUpdate{.pcm = block}};
 
     WARN("Take the default output away now: unplug it or disable it (30 s).");
     const auto deadline = std::chrono::steady_clock::now() + 30s;
@@ -84,7 +84,7 @@ TEST_CASE("spatial live: an endpoint that goes away stops the sink, which can st
                                    /*max_dynamic_objects=*/1);
     if (!again) {
         WARN("no spatial-capable default output to start again on: "
-             << ac3::audio::describe(again.error()));
+             << iclforge::audio::describe(again.error()));
         return;
     }
     REQUIRE(sink.running());

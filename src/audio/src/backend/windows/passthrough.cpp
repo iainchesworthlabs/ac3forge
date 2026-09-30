@@ -31,7 +31,7 @@
 #include "iclforge/iec61937/iec61937.hpp"
 #include "windows_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -189,7 +189,7 @@ std::string endpoint_display_name(IMMDevice* device, const std::string& id) {
 // The endpoint's configured speaker arrangement, which the mix format does not
 // always carry: a stereo mix on a 5.1 endpoint has dwChannelMask 0x3, while
 // PKEY_AudioEndpoint_PhysicalSpeakers holds what the user set under Sound >
-// Configure. Same SPEAKER_* bits either way (ac3::audio::speakers.hpp).
+// Configure. Same SPEAKER_* bits either way (iclforge::audio::speakers.hpp).
 constexpr PROPERTYKEY kPkeyAudioEndpointPhysicalSpeakers = {
     {0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}}, 3};
 
@@ -849,4 +849,4 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

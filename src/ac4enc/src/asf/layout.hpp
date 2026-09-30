@@ -20,7 +20,7 @@
 // and 384 index 2 the whole frame and 0 a quarter. A frame of one block is a
 // long frame there too.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 struct FrameLayout {
     bool long_frame = true;
@@ -81,4 +81,4 @@ struct FrameLayout {
 // split_layout() is around `attack`.
 [[nodiscard]] FrameLayout short_layout(int frame_length, int index, int attack);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

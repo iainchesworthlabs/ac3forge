@@ -29,7 +29,7 @@
 //
 // `substream` is always 0 for AC-3 (FrameTrace has no substream layer) and
 // the E-AC-3 access unit's substream POSITION for Eac3AccessUnitTrace -
-// ac3::verify::Eac3Mismatch::substream's own convention, not the wire
+// iclforge::verify::Eac3Mismatch::substream's own convention, not the wire
 // strmtyp/substreamid identity. `stream` is the internal numbering
 // StreamTrace/Eac3StreamTrace already document: full-bandwidth channels
 // first, then the LFE, then the coupling channel, when in use.
@@ -52,7 +52,7 @@
 // frame, without holding the file in memory - the same incremental spirit
 // DecoderConfig::trace/syntax already follow.
 
-namespace ac3::verify {
+namespace iclforge::verify {
 
 // "frame,substream,block,stream,kind,index,value\n" - write this once, before
 // the first append_trace_csv call, for a self-describing file.
@@ -71,4 +71,4 @@ ICLFORGE_AC3_EXPORT void append_trace_json_lines(const FrameTrace& trace, std::u
 ICLFORGE_AC3_EXPORT void append_trace_json_lines(const Eac3AccessUnitTrace& trace,
                                              std::uint64_t frame_index, std::string& out);
 
-}  // namespace ac3::verify
+}  // namespace iclforge::verify

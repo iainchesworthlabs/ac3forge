@@ -7,7 +7,7 @@
 
 // Coordinate conversion between the two position systems Recommendation ITU-R BS.2076-2 (10/2019)
 // Annex 1 defines for audioBlockFormat (Tables 15-17, and Clause 8 "Coordinate system" for the
-// sign conventions those tables' column headings alone don't spell out) and ac3::oba::Position's
+// sign conventions those tables' column headings alone don't spell out) and iclforge::oba::Position's
 // own room-anchored convention (ac3/oba/oamd.hpp, ETSI TS 103 420 clause 4.2.1).
 //
 // Clause 8, verified directly against the published Recommendation text (not transcribed from
@@ -25,7 +25,7 @@
 //
 // (Table 16 adds the range: "the values 1.0 and -1.0 are on the surface of the cube.")
 //
-// ac3::oba::Position (oamd.hpp): x runs 0 (left wall) to 1 (right wall), y runs 0 (front wall) to
+// iclforge::oba::Position (oamd.hpp): x runs 0 (left wall) to 1 (right wall), y runs 0 (front wall) to
 // 1 (back wall), z runs -1 (floor) to +1 (ceiling) - left-handed, normalized to the room cuboid,
 // with (0.5, 0, 0) the centre of the front wall.
 //
@@ -43,7 +43,7 @@
 // those exact room coordinates.
 //
 // adm_cartesian_to_room() then rescales that point from BS.2076-2's [-1, 1] unit cube (both axes
-// signed, origin at the room's centre) onto ac3::oba::Position's own [0, 1] (x, y) / [-1, 1] (z)
+// signed, origin at the room's centre) onto iclforge::oba::Position's own [0, 1] (x, y) / [-1, 1] (z)
 // convention (origin off-centre on x/y, centred on z) - a pure affine remap, not a design choice:
 // x_room = (x_adm + 1) / 2, y_room = (1 - y_adm) / 2 (BS.2076-2's Y is front-positive, oba's y is
 // front-zero/back-one, hence the sign flip), z_room = z_adm (both top-positive, both already
@@ -60,24 +60,24 @@
 // on-axis azimuths, which is the case that matters for real DirectSpeakers content (every
 // standard loudspeaker position BS.2076-2's own Annex A common definitions use is on-axis: pure
 // left/right, pure front/back, or pure up/down combinations).
-namespace ac3::admbridge {
+namespace iclforge::admbridge {
 
 // BS.2076-2 Clause 8's polar convention to the same right/front/top-positive point its own
 // Cartesian axes describe. See this header's own top comment for the full derivation and the
 // three independent checks performed against it.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT ac3adm::CartesianPosition polar_to_adm_cartesian(
-    const ac3adm::PolarPosition& polar);
+[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::adm::CartesianPosition polar_to_adm_cartesian(
+    const iclforge::adm::PolarPosition& polar);
 
-// BS.2076-2's [-1, 1] unit-cube Cartesian convention to ac3::oba::Position's [0, 1]/[0, 1]/
+// BS.2076-2's [-1, 1] unit-cube Cartesian convention to iclforge::oba::Position's [0, 1]/[0, 1]/
 // [-1, 1] room-anchored one. Pure affine remap - see this header's own top comment.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT ac3::oba::Position adm_cartesian_to_room(
-    const ac3adm::CartesianPosition& cartesian);
+[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::oba::Position adm_cartesian_to_room(
+    const iclforge::adm::CartesianPosition& cartesian);
 
-// Dispatches on ac3adm::Position's own variant (ac3adm/model.hpp: PolarPosition or
+// Dispatches on iclforge::adm::Position's own variant (ac3adm/model.hpp: PolarPosition or
 // CartesianPosition, selected by AudioBlockFormat::cartesian) and converts whichever alternative
 // is actually present straight to room coordinates.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT ac3::oba::Position adm_position_to_room(
-    const ac3adm::Position& position);
+[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::oba::Position adm_position_to_room(
+    const iclforge::adm::Position& position);
 
 // The write-direction inverse of adm_cartesian_to_room() above, for roadmap item IM2 (the JOC ->
 // ADM BWF writer): x_adm = 2*x_room - 1, y_adm = 1 - 2*y_room, z_adm = z_room - the algebraic
@@ -85,10 +85,10 @@ namespace ac3::admbridge {
 // checked formula. This writer only ever emits cartesian ADM (the Dolby Atmos Master ADM Profile's
 // own shape), so unlike the read side there is no matching room_to_adm_polar()/room_position_to_adm()
 // pair - a caller wanting a polar master would need one, and none of this project's own writers do.
-[[nodiscard]] AC3ADMBRIDGE_EXPORT ac3adm::CartesianPosition room_to_adm_cartesian(
-    const ac3::oba::Position& room);
+[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::adm::CartesianPosition room_to_adm_cartesian(
+    const iclforge::oba::Position& room);
 
-// SMPTE ST 2098-2:2022 §11.1's unit cube to ac3::oba::Position's own room-anchored convention -
+// SMPTE ST 2098-2:2022 §11.1's unit cube to iclforge::oba::Position's own room-anchored convention -
 // for IAB reader bridge, phase 3 ("atmos-iab", mapping the IAB bed/object graph onto this same
 // ObjectPath layer). Unlike BS.2076-2's Cartesian convention above, this needs no formula at all:
 // §11.1 defines IAB's x ("0 corresponds to left wall... 1 corresponds to right wall") and y ("0
@@ -105,7 +105,7 @@ namespace ac3::admbridge {
 // plainly rather than asserted as spec fact. See iab_bridge.cpp's own top comment for where this
 // is used and what is deliberately not carried across (ObjectSpread, the 9-zone
 // ObjectZoneControl).
-[[nodiscard]] AC3ADMBRIDGE_EXPORT ac3::oba::Position iab_position_to_room(
-    const ac3iab::Position& position);
+[[nodiscard]] AC3ADMBRIDGE_EXPORT iclforge::oba::Position iab_position_to_room(
+    const iclforge::iab::Position& position);
 
-}  // namespace ac3::admbridge
+}  // namespace iclforge::admbridge

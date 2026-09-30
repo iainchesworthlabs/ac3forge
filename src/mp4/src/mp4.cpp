@@ -13,7 +13,7 @@
 
 #include "isobmff_detail.hpp"
 
-namespace mp4 {
+namespace iclforge::mp4 {
 
 namespace {
 
@@ -165,7 +165,7 @@ std::expected<std::vector<std::byte>, MuxError> mux(
     // VALUES turn out to be. So this builds moov once with placeholder
     // (zero) offsets purely to measure it, then builds it again with the
     // real ones now that mdat's start is known. Simpler than patching
-    // already-serialized bytes in place (matroska::mux() has no equivalent
+    // already-serialized bytes in place (iclforge::matroska::mux() has no equivalent
     // problem: EBML elements are self-contained, nothing in one needs to
     // know another's absolute file offset).
     const std::vector<std::uint32_t> placeholder_offsets(frames.size(), 0);
@@ -215,4 +215,4 @@ std::expected<std::vector<std::byte>, MuxError> mux(
     return mux(track, views, options);
 }
 
-}  // namespace mp4
+}  // namespace iclforge::mp4

@@ -46,7 +46,7 @@
 namespace player {
 namespace {
 
-namespace ss = ac3::sendspin;
+namespace ss = iclforge::sendspin;
 namespace ac = ss::ac3forge;
 namespace m = ss::messages;
 
@@ -69,16 +69,16 @@ constexpr bool kOfferPcm = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_PCM != 0;
 constexpr int kSuite = CONFIG_AC3FORGE_SENDSPIN_SUITE;
 constexpr BaseType_t kDecodeCore = CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE < 0 ? tskNO_AFFINITY
                                                                            : CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE;
-constexpr ac3::OperatingMode kMode = CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 1   ? ac3::OperatingMode::kRf
-                                     : CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 2 ? ac3::OperatingMode::kCustom
-                                                                             : ac3::OperatingMode::kLine;
-constexpr ac3::DownmixTarget kStereoFold =
-    CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD != 0 ? ac3::DownmixTarget::kLtRt : ac3::DownmixTarget::kLoRo;
-constexpr ac3::render::ObjectsPolicy kObjects = CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 1   ? ac3::render::ObjectsPolicy::kNever
-                                                : CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 2 ? ac3::render::ObjectsPolicy::kAlways
-                                                                                       : ac3::render::ObjectsPolicy::kAuto;
-constexpr ac3::oba::joc::Domain kJocDomain =
-    CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN != 0 ? ac3::oba::joc::Domain::kMdctBand : ac3::oba::joc::Domain::kQmf;
+constexpr iclforge::OperatingMode kMode = CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 1   ? iclforge::OperatingMode::kRf
+                                     : CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 2 ? iclforge::OperatingMode::kCustom
+                                                                             : iclforge::OperatingMode::kLine;
+constexpr iclforge::DownmixTarget kStereoFold =
+    CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD != 0 ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
+constexpr iclforge::render::ObjectsPolicy kObjects = CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 1   ? iclforge::render::ObjectsPolicy::kNever
+                                                : CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 2 ? iclforge::render::ObjectsPolicy::kAlways
+                                                                                       : iclforge::render::ObjectsPolicy::kAuto;
+constexpr iclforge::oba::joc::Domain kJocDomain =
+    CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN != 0 ? iclforge::oba::joc::Domain::kMdctBand : iclforge::oba::joc::Domain::kQmf;
 
 // The decoder settings this board takes from a server: every one the
 // extension page names that the library has a setting for. drc_cut and
@@ -136,7 +136,7 @@ std::int64_t g_last_role_report_us = 0;
 // layout is some 600 bytes, which internal RAM would otherwise hold for
 // good); and a change to the board, which a hello made before it would not
 // show.
-std::unique_ptr<ac3::render::OutputLayout> g_pending_layout;
+std::unique_ptr<iclforge::render::OutputLayout> g_pending_layout;
 bool g_board_changed = false;
 
 // The player and its host, or nothing until both have started.
@@ -169,10 +169,10 @@ bool g_board_changed = false;
     }
     s.layout_grammar = 1;
     s.management.routing = true;
-    s.management.trim_db = {ac3::render::TrimDelay::kMinTrimDb, ac3::render::TrimDelay::kMaxTrimDb};
+    s.management.trim_db = {iclforge::render::TrimDelay::kMinTrimDb, iclforge::render::TrimDelay::kMaxTrimDb};
     s.management.max_delay_ms = static_cast<double>(kMaxDelayMs);
-    s.management.crossover_hz = {ac3::render::LayoutRenderer::kMinCrossoverHz,
-                                 ac3::render::LayoutRenderer::kMaxCrossoverHz};
+    s.management.crossover_hz = {iclforge::render::LayoutRenderer::kMinCrossoverHz,
+                                 iclforge::render::LayoutRenderer::kMaxCrossoverHz};
     s.management.identify = true;
     s.decoder_settings = kDecoderSettings;
     s.buffer_capacity = player.buffer_capacity();
@@ -445,13 +445,13 @@ bool on_key_stack(const char* what, std::function<void()> work) {
     return true;
 }
 
-void start_player(const ac3::render::OutputLayout& layout);
+void start_player(const iclforge::render::OutputLayout& layout);
 
 }  // namespace
 
 bool sendspin_built() { return true; }
 
-void sendspin_start(const ac3::render::OutputLayout& layout) {
+void sendspin_start(const iclforge::render::OutputLayout& layout) {
     if (running() != nullptr || !network_ready()) {
         if (!network_ready()) {
             std::printf("sendspin: no network, so no player\n");
@@ -463,7 +463,7 @@ void sendspin_start(const ac3::render::OutputLayout& layout) {
 
 namespace {
 
-void start_player(const ac3::render::OutputLayout& layout) {
+void start_player(const iclforge::render::OutputLayout& layout) {
     // The player starts first, and the host after it. The player's task
     // stack (kDecodeStackBytes, 32 KB on an ESP32-S3) is the largest block
     // anything here asks internal RAM for. By now the network, mDNS, the
@@ -600,7 +600,7 @@ void sendspin_set_external(bool external) {
     }
 }
 
-bool sendspin_set_layout(const ac3::render::OutputLayout& layout) {
+bool sendspin_set_layout(const iclforge::render::OutputLayout& layout) {
     const std::lock_guard lock(g_mutex);
     if (const Running* const r = running()) {
         return r->player->set_layout(layout);
@@ -609,7 +609,7 @@ bool sendspin_set_layout(const ac3::render::OutputLayout& layout) {
     if (g_pending_layout) {
         *g_pending_layout = layout;
     } else {
-        g_pending_layout = std::make_unique<ac3::render::OutputLayout>(layout);
+        g_pending_layout = std::make_unique<iclforge::render::OutputLayout>(layout);
     }
     return true;
 }

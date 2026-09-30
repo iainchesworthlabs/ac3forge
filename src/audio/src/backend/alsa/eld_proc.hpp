@@ -25,7 +25,7 @@
 // tests/audio/backend/alsa/test_alsa_eld_parsing.cpp. sink_capabilities.cpp is the
 // (untestable-here) other half: finding which file to read.
 
-namespace ac3::alsa {
+namespace iclforge::alsa {
 
 namespace detail {
 
@@ -152,10 +152,10 @@ enum class CodingType : std::uint8_t { kLpcm, kAc3, kEac3, kOther };
     return {line.substr(0, key_end), line.substr(value_start)};
 }
 
-[[nodiscard]] inline std::expected<ac3::audio::SinkAudioCapabilities, ac3::audio::EdidError>
+[[nodiscard]] inline std::expected<iclforge::audio::SinkAudioCapabilities, iclforge::audio::EdidError>
 parse_eld_proc_text(std::string_view contents) {
-    using ac3::audio::EdidError;
-    using ac3::audio::SinkAudioCapabilities;
+    using iclforge::audio::EdidError;
+    using iclforge::audio::SinkAudioCapabilities;
 
     bool saw_monitor_present = false;
     bool saw_eld_valid = false;
@@ -250,4 +250,4 @@ parse_eld_proc_text(std::string_view contents) {
     return caps;
 }
 
-}  // namespace ac3::alsa
+}  // namespace iclforge::alsa

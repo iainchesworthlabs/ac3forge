@@ -13,7 +13,7 @@
 #include "iclforge/ac3/core/eac3_tools.hpp"
 #include "iclforge/dsp/fft.hpp"
 
-using namespace ac3::eac3;
+using namespace iclforge::eac3;
 
 TEST_CASE("ecpl_begin_subbnd matches every row of Table E3.8", "[enhanced_coupling]") {
     // {sub-band #, ecplbegf} - every row of the table that carries a begf code.
@@ -396,8 +396,8 @@ TEST_CASE("dft512's float form agrees with the double one to float precision",
     }
     std::array<double, 512> out_re{}, out_im{};
     std::array<float, 512> out_ref{}, out_imf{};
-    ac3::dft512(re, im, out_re, out_im);
-    ac3::dft512(ref, imf, out_ref, out_imf);
+    iclforge::dft512(re, im, out_re, out_im);
+    iclforge::dft512(ref, imf, out_ref, out_imf);
     const double peak = peak_magnitude(out_re, out_im);
     REQUIRE(peak > 0.0);
     for (std::size_t k = 0; k < 512; ++k) {

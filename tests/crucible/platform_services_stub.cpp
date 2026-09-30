@@ -14,7 +14,7 @@
 // above never test for a null. The same rule holds here, where the
 // "platform" is a Linux CI leg with no audio hardware and no window manager.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -86,4 +86,4 @@ std::shared_ptr<Foreground> platform_foreground() { return std::make_shared<NoFo
 std::shared_ptr<DefaultDevice> platform_default_device() { return std::make_shared<NoDefaultDevice>(); }
 std::shared_ptr<VirtualDevice> platform_virtual_device() { return std::make_shared<NoVirtualDevice>(); }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

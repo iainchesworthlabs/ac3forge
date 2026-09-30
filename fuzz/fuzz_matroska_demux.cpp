@@ -5,7 +5,7 @@
 
 #include "iclforge/matroska/reader.hpp"
 
-// matroska::demux and matroska::Reader are the first thing to touch a
+// iclforge::matroska::demux and iclforge::matroska::Reader are the first thing to touch a
 // container nobody has vetted: a disc rip, a broadcast capture, an HTTP
 // download. Every length in an EBML file is self-declared, so this is the
 // entry point where a hostile input gets to ask for an out-of-bounds read
@@ -24,7 +24,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
 
     // Batch, zero-copy: frames come back as views into `bytes`.
-    if (const auto out = matroska::demux(bytes)) {
+    if (const auto out = iclforge::matroska::demux(bytes)) {
         for (const auto& frame : out->frames) {
             // Touch every frame: a span that escaped its buffer is only a
             // bug if something reads it, and ASan only reports it then.
@@ -38,7 +38,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
 
     // Incremental, over chunk boundaries the input itself picks.
     const std::size_t chunk = size == 0 ? 1 : (static_cast<std::size_t>(data[0]) % 64) + 1;
-    matroska::Reader reader{};
+    iclforge::matroska::Reader reader{};
     const auto sink = [](std::span<const std::byte> frame) {
         volatile std::byte last{};
         for (const auto b : frame) {

@@ -40,7 +40,7 @@
 // §7.2.2.1.1 defines as an all-zero bit allocation, so no mantissa data
 // exists and the frame is pure syntax.
 
-namespace ac3::eac3 {
+namespace iclforge::eac3 {
 
 // kBsid, StreamType and the Table E2.5 chanmap live in
 // ac3/core/eac3_tables.hpp: the decoder reads the same fields this writes, and
@@ -198,7 +198,7 @@ struct FrameConfig {
     // which opens the element in every block.
     //
     // Not defaulted to AC-3's rate-adaptive curve, though
-    // ac3::rate_adaptive_fgaincod() is the same measured line and is right
+    // iclforge::rate_adaptive_fgaincod() is the same measured line and is right
     // here for the same reasons — because E-AC-3 charges for it and AC-3
     // does not. AC-3 hangs fgaincod off the snroffst element it already
     // sends every block (§5.4.3.x), so moving the code is free; E-AC-3's
@@ -246,7 +246,7 @@ struct FrameConfig {
     // (the Dolby Reference Player does, in RF mode). With dependents present,
     // AccessUnitEncoder writes that word itself, measured from the COMPLETE
     // rendered program - every dependent's channels folded in the same way
-    // ac3::OutputStage's rendered-layout overload seats a wide layout - so a
+    // iclforge::OutputStage's rendered-layout overload seats a wide layout - so a
     // decoder reproducing all of it meets the same ceiling this field
     // promises. This substream's own word, from its own channels alone,
     // still goes out too: it is what a receiver decoding only the 5.1 bed
@@ -261,7 +261,7 @@ struct FrameConfig {
     // placement is checked bit by bit (tests/ac3/meta/test_drc.cpp, tools/references/eac3_parse.py).
     std::optional<meta::HeavyConfig> heavy = std::nullopt;
     // Ch2's own drc/heavy, meaningful only under kDualMono - no fallback to
-    // drc/heavy when unset. See ac3::EncoderConfig::drc2 (the AC-3 sibling of
+    // drc/heavy when unset. See iclforge::EncoderConfig::drc2 (the AC-3 sibling of
     // this field) for why: dialnorm2 is already independent of dialnorm the
     // same way, so this follows the same all-or-nothing precedent.
     std::optional<meta::Profile> drc2 = std::nullopt;
@@ -398,12 +398,12 @@ struct FrameConfig {
     // error a decoder will produce, instead of the fixed dbpbcod == 3 EQ3
     // measured its way to on average (per-frame bit-allocation search; AC-3's own
     // EncoderConfig::search, encoder.cpp's step 9a, is the model this
-    // mirrors). search=distortion minimises ac3::quality::accumulate_block's
+    // mirrors). search=distortion minimises iclforge::quality::accumulate_block's
     // decoded-domain noise, per stream, over the frame's six blocks.
     //
     // search=perceptual is accepted but has no effect here: AC-3's own
     // measurements found that criterion uncompetitive at every rate tried
-    // (docs/library/quality.md), so wiring ac3::quality::PerceptualModel a
+    // (docs/library/quality.md), so wiring iclforge::quality::PerceptualModel a
     // second time to chase a criterion already known not to win was scoped
     // out rather than rushed.
     //
@@ -419,7 +419,7 @@ struct FrameConfig {
     // Two axes, since E-AC-3 fast-gain control's E-AC-3 half landed. dbpbcod varies
     // between kAllocCodes' 3 and Table E1.4's 2 - the only two values baie
     // can carry that this encoder chooses between - and fgaincod varies
-    // between §8.2.12's implied 0x4 and ac3::rate_adaptive_fgaincod()'s
+    // between §8.2.12's implied 0x4 and iclforge::rate_adaptive_fgaincod()'s
     // measured value for this frame's rate, the AC-3 search's other axis.
     //
     // The two are not symmetric in cost and the search is what settles that.
@@ -505,7 +505,7 @@ struct FrameConfig {
 // word count this format can ever signal, whatever bitrate produced it.
 inline constexpr std::uint32_t kMaxFrameWords = 2048;
 
-// An EMDF container (ac3::emdf::build_container) to carry in this frame's aux
+// An EMDF container (iclforge::emdf::build_container) to carry in this frame's aux
 // data, or an empty span for none.
 //
 // It travels in block 0's skip field (Annex E audblk's skiple/skipl/skipfld), not in
@@ -619,8 +619,8 @@ class ICLFORGE_AC3_EXPORT FrameEncoder {
     // Every private data member - config, MDCT history/scratch, the enhanced-
     // coupling scratch, the per-frame plan, the DRC controllers, EQ13's
     // codes-search incumbent, all of it - lives behind this one pimpl,
-    // following the same pattern as ac3::io::WavStreamReader/Writer and
-    // ac3::FrameEncoder. Impl is defined in eac3_frame.cpp, so a dllexport
+    // following the same pattern as iclforge::io::WavStreamReader/Writer and
+    // iclforge::FrameEncoder. Impl is defined in eac3_frame.cpp, so a dllexport
     // class instantiating every implicit special member is why the
     // destructor and moves above are declared (not defaulted inline) here:
     // move-assignment's implicit reset() needs Impl complete.
@@ -758,10 +758,10 @@ class ICLFORGE_AC3_EXPORT AccessUnitEncoder {
    private:
     // Every private data member - config and the per-programme encoders/
     // metadata state - lives behind this one pimpl, following the same
-    // pattern as ac3::io::WavStreamReader/Writer and ac3::FrameEncoder. Impl
+    // pattern as iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder. Impl
     // is defined in eac3_frame.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::eac3
+}  // namespace iclforge::eac3

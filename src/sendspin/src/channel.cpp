@@ -12,7 +12,7 @@
 #include "iclforge/sendspin/frames.hpp"
 #include "iclforge/sendspin/noise.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 Channel::Channel(noise::Handshake::Transport keys, Dialect dialect, std::size_t max_message_bytes)
     : send_(std::move(keys.send)),
@@ -80,4 +80,4 @@ void Channel::rekey(noise::Handshake::Transport keys) {
     handshake_hash_ = keys.handshake_hash;
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

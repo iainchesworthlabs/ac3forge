@@ -30,9 +30,9 @@ TEST_CASE("base64: RFC 4648 section 10 vectors", "[sendspin][base64]") {
         {"foobar", "Zm9vYmFy"},
     };
     for (const auto& [plain, encoded] : vectors) {
-        CHECK(ac3::sendspin::base64::encode(bytes_of(plain)) == encoded);
-        CHECK(ac3::sendspin::base64::encoded_size(plain.size()) == encoded.size());
-        const auto decoded = ac3::sendspin::base64::decode(encoded);
+        CHECK(iclforge::sendspin::base64::encode(bytes_of(plain)) == encoded);
+        CHECK(iclforge::sendspin::base64::encoded_size(plain.size()) == encoded.size());
+        const auto decoded = iclforge::sendspin::base64::decode(encoded);
         REQUIRE(decoded.has_value());
         CHECK(*decoded == bytes_of(plain));
     }
@@ -40,14 +40,14 @@ TEST_CASE("base64: RFC 4648 section 10 vectors", "[sendspin][base64]") {
 
 TEST_CASE("base64: the standard alphabet's last two characters", "[sendspin][base64]") {
     const std::vector<std::uint8_t> high{0xFB, 0xFF, 0xBF};
-    CHECK(ac3::sendspin::base64::encode(high) == "+/+/");
-    CHECK(ac3::sendspin::base64::decode("+/+/") == high);
+    CHECK(iclforge::sendspin::base64::encode(high) == "+/+/");
+    CHECK(iclforge::sendspin::base64::decode("+/+/") == high);
     // base64url's characters are not in this alphabet.
-    CHECK_FALSE(ac3::sendspin::base64::decode("-_-_").has_value());
+    CHECK_FALSE(iclforge::sendspin::base64::decode("-_-_").has_value());
 }
 
 TEST_CASE("base64: decoding is strict", "[sendspin][base64]") {
-    using ac3::sendspin::base64::decode;
+    using iclforge::sendspin::base64::decode;
     CHECK_FALSE(decode("Zg").has_value());      // no padding
     CHECK_FALSE(decode("Zg=").has_value());     // length not a multiple of four
     CHECK_FALSE(decode("Zg===").has_value());

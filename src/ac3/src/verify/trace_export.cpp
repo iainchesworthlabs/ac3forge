@@ -9,7 +9,7 @@
 #include "iclforge/ac3/verify/eac3_mirror.hpp"
 #include "iclforge/ac3/verify/mirror.hpp"
 
-namespace ac3::verify {
+namespace iclforge::verify {
 
 namespace {
 
@@ -151,4 +151,4 @@ void append_trace_json_lines(const Eac3AccessUnitTrace& trace, std::uint64_t fra
         [&out](auto&&... args) { append_json_row(out, args...); }, trace, frame_index);
 }
 
-}  // namespace ac3::verify
+}  // namespace iclforge::verify

@@ -12,7 +12,7 @@
 #include "iclforge/ac4enc/encoder.hpp"
 
 // The AC-4 page's choices, Qt-free so that ac3tests can hold them to the two
-// things they must agree on: the ac4::EncoderConfig the page encodes with and
+// things they must agree on: the iclforge::ac4::EncoderConfig the page encodes with and
 // the `ac3cli ac4-encode` tokens it echoes, each spelled as ac3cli's parser
 // reads it (apps/cli/support.cpp). A choice at the command's own default
 // echoes nothing, so a plain encode's command line stays plain.
@@ -46,7 +46,7 @@ inline constexpr std::size_t kAc4NativeFrameRate = 13;
 inline constexpr std::array<Ac4Choice, 3> kAc4RateModes{{
     {"constant", "Constant"}, {"average", "Average"}, {"variable", "Variable"}}};
 
-// Index 0 lets the encoder choose by the rate (ac4::CodecMode::kAuto).
+// Index 0 lets the encoder choose by the rate (iclforge::ac4::CodecMode::kAuto).
 inline constexpr std::array<Ac4Choice, 6> kAc4CodecModes{{
     {"auto", "Automatic (by bit rate)"},
     {"simple", "SIMPLE"},
@@ -94,7 +94,7 @@ inline constexpr std::array<Ac4Choice, 4> kAc4PreferredDownmixes{{
 
 inline constexpr std::array<int, 4> kAc4DialogueMaxGains{3, 6, 9, 12};
 
-// How an object stream is coded (ac4::ObjectCoding), as atmos-encode's coding=
+// How an object stream is coded (iclforge::ac4::ObjectCoding), as atmos-encode's coding=
 // names it: index 0, A-JOC, is the default.
 inline constexpr std::array<Ac4Choice, 2> kAc4ObjectCodings{{
     {"ajoc", "A-JOC (a downmix and the matrices that rebuild the objects)"},
@@ -136,7 +136,7 @@ struct Ac4EncodeSettings {
 
 // Why ac4-encode refuses these settings for a source of `channels` channels at
 // `sample_rate_hz` before it reads the audio, in its words; nothing where it
-// does not. The encoder's own refusals (ac4::Encoder::refusal_reason) come
+// does not. The encoder's own refusals (iclforge::ac4::Encoder::refusal_reason) come
 // after this.
 [[nodiscard]] std::optional<std::string> ac4_settings_refusal(const Ac4EncodeSettings& settings,
                                                               std::size_t channels,
@@ -145,13 +145,13 @@ struct Ac4EncodeSettings {
 // The configuration ac4-encode builds from the same tokens, for a source of
 // `channels` channels, before it measures anything: dialnorm is the page's
 // value, and the loudness values dialnorm=auto and loudness= measure are the
-// caller's to add (ac3::apps::measure_ac4_programme).
-[[nodiscard]] ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& settings,
+// caller's to add (iclforge::apps::measure_ac4_programme).
+[[nodiscard]] iclforge::ac4::EncoderConfig ac4_encoder_config(const Ac4EncodeSettings& settings,
                                                     int channels, int sample_rate_hz,
                                                     int bitrate_kbps);
 
 // The practice loudness= names, where it names one.
-[[nodiscard]] std::optional<ac4::LoudnessPractice> ac4_loudness_practice(
+[[nodiscard]] std::optional<iclforge::ac4::LoudnessPractice> ac4_loudness_practice(
     const Ac4EncodeSettings& settings);
 
 // --- Object mode ---------------------------------------------------------------
@@ -182,7 +182,7 @@ struct Ac4EncodeSettings {
 
 // What E9's writer is given for these settings at `sample_rate_hz` and
 // `bitrate_kbps`: the coding and the dialnorm, and the rest at the writer's own.
-[[nodiscard]] ac3::apps::Ac4ObjectsParams ac4_objects_params(const Ac4EncodeSettings& settings,
+[[nodiscard]] iclforge::apps::Ac4ObjectsParams ac4_objects_params(const Ac4EncodeSettings& settings,
                                                              std::uint32_t sample_rate_hz,
                                                              int bitrate_kbps);
 

@@ -8,29 +8,29 @@
 #include <string_view>
 #include <vector>
 
-// Turning a container file into the elementary stream ac3::forge actually
+// Turning a container file into the elementary stream iclforge::ac3 actually
 // decodes (container readers (mkv/mp4/ts)) - shared by ac3cli (decode/qc/levels/play/monitor)
 // and ac3gui (the QC/Inspect pickers), compiled straight into both the same
 // way RecordingSink/Fmp4FolderWriter beside this file are: apps/common has no
 // library target of its own (see recording_sink.hpp's own comment), and this
 // is smaller than either.
 //
-// Lives here rather than in ac3::forge itself: matroska::matroska/mp4::mp4/
-// mpegts::mpegts each say plainly they have no dependency on ac3::forge (see
+// Lives here rather than in iclforge::ac3 itself: iclforge::matroska/iclforge::mp4/
+// iclforge::mpegts each say plainly they have no dependency on iclforge::ac3 (see
 // e.g. matroska/reader.hpp's own header comment) - the containers are
 // deliberately independent of the codec, and giving the codec library a
 // dependency back on them would invert that for every third party that links
-// ac3::forge to decode bare elementary streams and wants nothing else. This
+// iclforge::ac3 to decode bare elementary streams and wants nothing else. This
 // file depends on both instead, which is fine at this layer - apps/common
 // already does for RecordingSink (ac3/io/wav.hpp, ac3/iec61937/iec61937.hpp) -
 // since disambiguating a container from a bare elementary stream is exactly
 // where knowing both sides earns its keep (see ContainerKind's own comment).
 
-namespace mp4 {
+namespace iclforge::mp4 {
 struct ReadTrack;
-}  // namespace mp4
+}  // namespace iclforge::mp4
 
-namespace ac3::apps {
+namespace iclforge::apps {
 
 // Which container a file actually is, decided by its first bytes rather than
 // its name - a rip is as likely to be called "title00.mkv" when it is not
@@ -119,14 +119,14 @@ struct ContainerFacts {
     std::string signalling{};
     std::size_t packet_size = 0;
     // MPEG-TS: the PMT's own AC-3/E-AC-3 audio descriptor, decoded (see
-    // mpegts::parse_service_descriptor) rather than pulled in as
-    // mpegts::ServiceInfo directly - plain values here, matching CodecBox
+    // iclforge::mpegts::parse_service_descriptor) rather than pulled in as
+    // iclforge::mpegts::ServiceInfo directly - plain values here, matching CodecBox
     // above, so this header stays free of every container library's own
     // types. service_present false (the default, every other service_*
     // field also left at its own default) means the PMT had no such
     // descriptor at all - registration-descriptor and AC-4 signalling, or a
     // malformed one - not that it said "nothing". mainid/asvc/full_service
-    // stay std::nullopt for the same reason mpegts::ServiceInfo's own fields
+    // stay std::nullopt for the same reason iclforge::mpegts::ServiceInfo's own fields
     // do: nothing here is guessed.
     bool service_present = false;
     int service_bsmod = 0;
@@ -184,6 +184,6 @@ struct ElementaryStreamResult {
 // empty edits; the one edit with media in it, counted in samples at the
 // track's rate, when it plays at normal speed; and whole, with `note` saying
 // why, for any other shape.
-[[nodiscard]] StreamTrim trim_from_edit_list(const mp4::ReadTrack& track, std::string& note);
+[[nodiscard]] StreamTrim trim_from_edit_list(const iclforge::mp4::ReadTrack& track, std::string& note);
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

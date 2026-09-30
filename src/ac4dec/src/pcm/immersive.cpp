@@ -8,7 +8,7 @@
 #include "iclforge/ac4core/dsp/qmf.hpp"
 #include "syntax/channel_elements.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 using S = Speaker;
@@ -128,4 +128,4 @@ void apply_band_gains(std::span<QmfValue> matrix, int num_ts, int sbx, BandGains
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

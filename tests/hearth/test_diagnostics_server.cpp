@@ -12,7 +12,7 @@
 // configured as src/sendspin configures it (tests/CMakeLists.txt's own
 // comment on ac3tests_sink_firmware_board says why).
 
-using ac3::hearth::DiagnosticsHttpServer;
+using iclforge::hearth::DiagnosticsHttpServer;
 
 TEST_CASE("diagnostics server: GET /diagnostics returns exactly what the report callback gives, fresh each time",
           "[hearth][diagnostics]") {

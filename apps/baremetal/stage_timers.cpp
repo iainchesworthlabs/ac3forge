@@ -28,10 +28,10 @@
 // its private header: src/forge/src/internal/ is not on the probe's include
 // path, deliberately, and two declarations of the same two functions are the
 // whole interface.
-namespace ac3::internal::profiling {
+namespace iclforge::internal::profiling {
 void zone_enter(const char* name);
 void zone_leave();
-}  // namespace ac3::internal::profiling
+}  // namespace iclforge::internal::profiling
 
 namespace {
 
@@ -114,7 +114,7 @@ std::size_t resolve(const char* name) {
 
 }  // namespace
 
-namespace ac3::internal::profiling {
+namespace iclforge::internal::profiling {
 
 void zone_enter(const char* name) {
     ++g_enters;
@@ -160,7 +160,7 @@ void zone_leave() {
     }
 }
 
-}  // namespace ac3::internal::profiling
+}  // namespace iclforge::internal::profiling
 
 namespace ac3probe {
 
@@ -225,8 +225,8 @@ std::uint64_t stage_pair_cost_ns() {
     static constexpr char kProbeZone[] = "stage_timer_self_test";
     const std::uint64_t before = now_us();
     for (std::uint32_t i = 0; i < kPairs; ++i) {
-        ac3::internal::profiling::zone_enter(kProbeZone);
-        ac3::internal::profiling::zone_leave();
+        iclforge::internal::profiling::zone_enter(kProbeZone);
+        iclforge::internal::profiling::zone_leave();
     }
     const std::uint64_t elapsed_us = now_us() - before;
     // The self test's own zone must not appear in a fixture's report, and its

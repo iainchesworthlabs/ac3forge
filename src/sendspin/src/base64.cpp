@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace ac3::sendspin::base64 {
+namespace iclforge::sendspin::base64 {
 
 namespace {
 
@@ -89,4 +89,4 @@ std::optional<std::vector<std::uint8_t>> decode(std::string_view text) {
     return out;
 }
 
-}  // namespace ac3::sendspin::base64
+}  // namespace iclforge::sendspin::base64

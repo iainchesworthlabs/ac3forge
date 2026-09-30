@@ -48,7 +48,7 @@
 // accumulated. AccessUnitReader below extends that to the input side, so a
 // caller need not hold the file either.
 
-namespace ac3::io {
+namespace iclforge::io {
 
 // A field's observed extent over a whole stream. `seen` distinguishes "never
 // carried" from "carried, and happened to be zero" - the same distinction
@@ -247,8 +247,8 @@ struct ProbeOptions {
     ProbeAccessUnitSink on_access_unit;
     // Whether a syncframe carries an authenticity tag. Supplied by the caller
     // rather than called directly because signing lives in its own library
-    // (ac3::signing, which this one does not and should not link) - pass
-    // ac3::signing::has_authenticity_tag here. Unset means the question is
+    // (iclforge::signing, which this one does not and should not link) - pass
+    // iclforge::signing::has_authenticity_tag here. Unset means the question is
     // not asked and every frame reports untagged.
     std::function<bool(std::span<const std::byte>)> authenticity;
 };
@@ -325,4 +325,4 @@ class ICLFORGE_AC3_EXPORT AccessUnitReader {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

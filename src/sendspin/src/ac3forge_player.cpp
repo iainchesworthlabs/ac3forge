@@ -15,7 +15,7 @@
 #include "iclforge/sendspin/chunks.hpp"
 #include "iclforge/sendspin/json.hpp"
 
-namespace ac3::sendspin::ac3forge {
+namespace iclforge::sendspin::ac3forge {
 
 namespace {
 
@@ -799,4 +799,4 @@ std::optional<std::string> check_settings(const Settings& settings, const Suppor
     return std::nullopt;
 }
 
-}  // namespace ac3::sendspin::ac3forge
+}  // namespace iclforge::sendspin::ac3forge

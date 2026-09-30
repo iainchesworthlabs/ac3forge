@@ -19,7 +19,7 @@
 // ungroup(), so that a scale factor band of a group is one contiguous run,
 // as the stereo processing of clause 5.3 wants it.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // scaled_spec for one track, in bitstream order: sign(q) |q|^(4/3) times
 // 2^((sf - 100) / 4), then the noise fill when b_snf_data_exists. `noise` is
@@ -41,4 +41,4 @@ namespace ac4::detail {
 void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data, std::span<const int> lengths,
              std::span<const Real> scaled, std::vector<Real>& spec_reord);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

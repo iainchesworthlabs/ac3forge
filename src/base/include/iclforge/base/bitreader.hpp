@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <span>
 
-namespace ac3 {
+namespace iclforge {
 
 // MSB-first bit reader, the mirror of BitWriter (A/52 §5.1). Reading past
 // the end sets a sticky overflow flag and yields zeros — callers check
@@ -105,4 +105,4 @@ private:
     bool overflowed_ = false;
 };
 
-}  // namespace ac3
+}  // namespace iclforge

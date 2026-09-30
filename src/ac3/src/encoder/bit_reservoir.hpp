@@ -25,7 +25,7 @@
 // Internal to src/ac3/src/encoder/ for the same reason snr_search.hpp is:
 // plumbing between the encoder's own translation units, not library surface.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 class BitReservoir {
    public:
@@ -199,4 +199,4 @@ class AbrController {
     std::optional<double> operating_;
 };
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

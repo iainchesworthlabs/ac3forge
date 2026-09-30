@@ -17,8 +17,8 @@
 namespace ac4dec_test {
 namespace {
 
-using ac4::SyntaxRecord;
-using ac4::detail::BitWriter;
+using iclforge::ac4::SyntaxRecord;
+using iclforge::ac4::detail::BitWriter;
 
 // One frame of a source, taken apart: each substream's bytes and the records
 // the decoder read from it, and what the table of contents says of them.
@@ -85,14 +85,14 @@ void write_sized(BitWriter& w, const BitWriter& element, unsigned bits) {
 // with the layout's dialogue fields, and the tools with the layout's dialogue
 // enhancement where it has one (Part 2 clause 6.2.7.1, sus_ver 1).
 [[nodiscard]] std::vector<std::byte> audio_substream(const SourceFrame& f, const MuxGroup& group,
-                                                     const ac4::detail::DeFrameParameters* previous) {
+                                                     const iclforge::ac4::detail::DeFrameParameters* previous) {
     const std::span<const SyntaxRecord> records = f.audio_records;
     const std::size_t extended = offset_of(records, "b_dialog");
     const std::size_t tools = offset_of(records, "tools_metadata_size_value");
     const std::size_t end = end_of(records);
     BitWriter w;
     copy_bits(w, f.audio, 0, extended);
-    ac4::detail::write_extended_metadata(w, f.ch_mode, group.dialogue ? &*group.dialogue : nullptr);
+    iclforge::ac4::detail::write_extended_metadata(w, f.ch_mode, group.dialogue ? &*group.dialogue : nullptr);
     if (group.de) {
         const std::size_t de = offset_of(records, "b_de_data_present");
         const std::size_t emdf = offset_of(records, "b_emdf_payloads_substream");
@@ -101,7 +101,7 @@ void write_sized(BitWriter& w, const BitWriter& element, unsigned bits) {
         }
         BitWriter element = BitWriter::buffered();
         // At sus_ver 1 the tools are dialog_enhancement() alone.
-        ac4::detail::write_dialog_enhancement(element, &group.de->config, &group.de->parameters, previous,
+        iclforge::ac4::detail::write_dialog_enhancement(element, &group.de->config, &group.de->parameters, previous,
                                               f.audio_iframe);
         write_sized(w, element, 7);
         copy_bits(w, f.audio, emdf, end);
@@ -118,7 +118,7 @@ void write_sized(BitWriter& w, const BitWriter& element, unsigned bits) {
 // 6.2.2.3). The source's presentation has one group and no associated audio,
 // so its b_associated is one bit, 0.
 [[nodiscard]] std::vector<std::byte> presentation_substream(const SourceFrame& f,
-                                                            const ac4::detail::PresentationMixCodes& mix) {
+                                                            const iclforge::ac4::detail::PresentationMixCodes& mix) {
     const std::span<const SyntaxRecord> records = f.presentation_records;
     const auto associated = std::ranges::find(records, std::string_view{"b_associated"}, &SyntaxRecord::name);
     if (associated == records.end() || associated->value != 0) {
@@ -126,7 +126,7 @@ void write_sized(BitWriter& w, const BitWriter& element, unsigned bits) {
     }
     BitWriter w;
     copy_bits(w, f.presentation, 0, associated->bit_offset);
-    ac4::detail::write_presentation_mix(w, mix);
+    iclforge::ac4::detail::write_presentation_mix(w, mix);
     copy_bits(w, f.presentation, std::size_t{associated->bit_offset} + 1, end_of(records));
     w.align();
     return w.bytes();
@@ -195,7 +195,7 @@ struct RolesV0 {
     };
     const bool mono = f.ch_mode == 0;
     if (roles.associated) {
-        const ac4::detail::AssociatedMixCodes codes = sub.associated.value_or(ac4::detail::AssociatedMixCodes{});
+        const iclforge::ac4::detail::AssociatedMixCodes codes = sub.associated.value_or(iclforge::ac4::detail::AssociatedMixCodes{});
         optional_code(codes.scale_main, "b_scale_main", "scale_main");
         optional_code(codes.scale_main_centre, "b_scale_main_centre", "scale_main_centre");
         optional_code(codes.scale_main_front, "b_scale_main_front", "scale_main_front");
@@ -206,7 +206,7 @@ struct RolesV0 {
         refuse("associated audio's fields for a substream that is not associated audio");
     }
     if (roles.dialog) {
-        const ac4::detail::DialogueMixCodes codes = sub.dialogue.value_or(ac4::detail::DialogueMixCodes{});
+        const iclforge::ac4::detail::DialogueMixCodes codes = sub.dialogue.value_or(iclforge::ac4::detail::DialogueMixCodes{});
         w.write(1, codes.dialog_max_gain ? 1U : 0U, "b_dialog_max_gain");
         if (codes.dialog_max_gain) {
             w.write(2, static_cast<std::uint64_t>(*codes.dialog_max_gain), "dialog_max_gain");
@@ -259,7 +259,7 @@ class SourceReader {
 public:
     explicit SourceReader(std::span<const MuxSource> sources) : sources_(sources), taken_(sources.size()) {
         for (std::size_t s = 0; s < sources.size(); ++s) {
-            ac4::DecoderConfig config;
+            iclforge::ac4::DecoderConfig config;
             config.syntax = keep_;  // a reference: keep_ outlives the decoders
             decoders_.emplace_back(config);
         }
@@ -281,15 +281,15 @@ private:
             refuse("source " + std::to_string(s) + " has fewer frames than asked for");
         }
         const std::span<const std::byte> raw = sources_[s].frames[f];
-        const auto parsed = ac4::parse_raw_frame(raw);
+        const auto parsed = iclforge::ac4::parse_raw_frame(raw);
         if (!parsed || parsed->toc.presentations_v1.size() != 1 || parsed->toc.substream_groups.size() != 1 ||
             parsed->toc.substream_groups[0].substreams.size() != 1 ||
             !parsed->toc.substream_groups[0].substreams[0].chan) {
             refuse("source " + std::to_string(s) + " is not one presentation of one substream");
         }
-        const ac4::Toc& toc = parsed->toc;
-        const ac4::PresentationInfoV1& p = toc.presentations_v1[0];
-        const ac4::ChannelSubstreamInfo& chan = *toc.substream_groups[0].substreams[0].chan;
+        const iclforge::ac4::Toc& toc = parsed->toc;
+        const iclforge::ac4::PresentationInfoV1& p = toc.presentations_v1[0];
+        const iclforge::ac4::ChannelSubstreamInfo& chan = *toc.substream_groups[0].substreams[0].chan;
         if (!p.presentation_substream_index || !chan.substream_index || !chan.ch_mode) {
             refuse("source " + std::to_string(s) + " has no presentation or audio substream");
         }
@@ -300,8 +300,8 @@ private:
         SourceFrame& frame = taken_[s];
         const int presentation = *p.presentation_substream_index;
         const int audio = *chan.substream_index;
-        const ac4::Substream& located_presentation = parsed->substreams[static_cast<std::size_t>(presentation)];
-        const ac4::Substream& located_audio = parsed->substreams[static_cast<std::size_t>(audio)];
+        const iclforge::ac4::Substream& located_presentation = parsed->substreams[static_cast<std::size_t>(presentation)];
+        const iclforge::ac4::Substream& located_audio = parsed->substreams[static_cast<std::size_t>(audio)];
         frame.presentation = raw.subspan(located_presentation.offset, located_presentation.size);
         frame.audio = raw.subspan(located_audio.offset, located_audio.size);
         frame.presentation_records.clear();
@@ -330,7 +330,7 @@ private:
     std::span<const MuxSource> sources_;
     std::vector<SyntaxRecord> records_;
     Keep keep_{&records_};
-    std::vector<ac4::Decoder> decoders_;
+    std::vector<iclforge::ac4::Decoder> decoders_;
     std::vector<SourceFrame> taken_;
 };
 
@@ -338,8 +338,8 @@ private:
 
 MuxSource mux_source(std::span<const std::byte> file) {
     MuxSource source;
-    const ac4::ScanResult scan = ac4::scan(file);
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(file);
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         source.frames.emplace_back(frame.raw_ac4_frame.begin(), frame.raw_ac4_frame.end());
     }
     return source;
@@ -350,11 +350,11 @@ std::vector<std::vector<std::byte>> multiplex(std::span<const MuxSource> sources
     SourceReader reader(sources);
     // Each group's last parameters, which a hybrid method's frames code
     // against.
-    std::vector<std::optional<ac4::detail::DeFrameParameters>> previous(layout.groups.size());
+    std::vector<std::optional<iclforge::ac4::detail::DeFrameParameters>> previous(layout.groups.size());
     std::vector<std::vector<std::byte>> out;
     for (std::size_t f = 0; f < frames; ++f) {
         const std::vector<SourceFrame>& taken = reader.read(f);
-        ac4::detail::TocLayout toc;
+        iclforge::ac4::detail::TocLayout toc;
         toc.sequence_counter = taken.front().sequence_counter;
         // The frames are as long as their substreams make them: a variable
         // rate (Part 1 Table 81).
@@ -367,10 +367,10 @@ std::vector<std::vector<std::byte>> multiplex(std::span<const MuxSource> sources
         for (std::size_t i = 0; i < layout.presentations.size(); ++i) {
             const MuxPresentation& p = layout.presentations[i];
             const SourceFrame& from = taken.at(p.source);
-            ac4::detail::PresentationMixCodes mix = p.mix;
+            iclforge::ac4::detail::PresentationMixCodes mix = p.mix;
             mix.n_substream_groups = substream_groups(p);
             substreams.push_back(presentation_substream(from, mix));
-            toc.presentations.push_back(ac4::detail::TocPresentation{.presentation_config = p.presentation_config,
+            toc.presentations.push_back(iclforge::ac4::detail::TocPresentation{.presentation_config = p.presentation_config,
                                                                      .groups = p.groups,
                                                                      .presentation_version = 1,
                                                                      .md_compat = p.md_compat,
@@ -388,8 +388,8 @@ std::vector<std::vector<std::byte>> multiplex(std::span<const MuxSource> sources
             if (group.de) {
                 previous[g] = group.de->parameters;
             }
-            ac4::detail::TocGroup written;
-            written.substreams.push_back(ac4::detail::TocSubstream{
+            iclforge::ac4::detail::TocGroup written;
+            written.substreams.push_back(iclforge::ac4::detail::TocSubstream{
                 .ch_mode = from.ch_mode,
                 .add_ch_base = false,
                 .iframe = from.audio_iframe,
@@ -400,7 +400,7 @@ std::vector<std::vector<std::byte>> multiplex(std::span<const MuxSource> sources
             iframe = iframe && from.audio_iframe;
         }
         toc.iframe_global = iframe;
-        std::optional<std::vector<std::byte>> frame = ac4::detail::assemble_frame(toc, substreams);
+        std::optional<std::vector<std::byte>> frame = iclforge::ac4::detail::assemble_frame(toc, substreams);
         if (!frame) {
             refuse("the layout's table of contents cannot be written");
         }
@@ -463,7 +463,7 @@ std::vector<std::vector<std::byte>> multiplex_v0(std::span<const MuxSource> sour
 std::vector<std::byte> mux_sync_framed(std::span<const std::vector<std::byte>> frames) {
     std::vector<std::byte> out;
     for (const std::vector<std::byte>& frame : frames) {
-        const std::vector<std::byte> framed = ac4::sync_frame(frame, true);
+        const std::vector<std::byte> framed = iclforge::ac4::sync_frame(frame, true);
         out.insert(out.end(), framed.begin(), framed.end());
     }
     return out;

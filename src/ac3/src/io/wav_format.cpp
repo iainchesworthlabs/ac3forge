@@ -10,7 +10,7 @@
 
 #include "iclforge/ac3/io/wav.hpp"
 
-namespace ac3::io::detail {
+namespace iclforge::io::detail {
 
 namespace {
 
@@ -190,4 +190,4 @@ float convert_sample(std::span<const char> raw, std::size_t at, SampleFormat for
     return 0.0f;
 }
 
-}  // namespace ac3::io::detail
+}  // namespace iclforge::io::detail

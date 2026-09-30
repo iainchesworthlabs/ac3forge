@@ -14,7 +14,7 @@
 #include "iclforge/mp4/reader.hpp"
 #include "iclforge/mpegts/reader.hpp"
 
-namespace ac3::apps {
+namespace iclforge::apps {
 
 namespace {
 
@@ -113,7 +113,7 @@ constexpr int kTsSyncRuns = 5;
 constexpr std::size_t kContainerSniffBytes = 64 * 1024;
 
 // One demuxed track/programme's frames, concatenated into a single owned
-// buffer - ac3::split_frames/split_access_units need one contiguous stream,
+// buffer - iclforge::split_frames/split_access_units need one contiguous stream,
 // but a container's frames are views scattered across the source file (or,
 // for mpegts, across its own reassembly buffer), never contiguous with each
 // other.
@@ -144,8 +144,8 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     return (whole * to) + part;
 }
 
-[[nodiscard]] ContainerFacts facts_of(const mp4::Demuxed& demuxed) {
-    const mp4::ReadTrack& track = demuxed.track;
+[[nodiscard]] ContainerFacts facts_of(const iclforge::mp4::Demuxed& demuxed) {
+    const iclforge::mp4::ReadTrack& track = demuxed.track;
     ContainerFacts facts;
     facts.kind = ContainerKind::kMp4;
     facts.codec_id = track.codec_id;
@@ -157,7 +157,7 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     facts.timescale = track.timescale;
     facts.movie_timescale = track.movie_timescale;
     facts.edits = track.edits.size();
-    const mp4::CodecConfig& config = track.codec_config;
+    const iclforge::mp4::CodecConfig& config = track.codec_config;
     if (!config.payload.empty()) {
         CodecBox box;
         box.bytes = config.payload.size();
@@ -183,7 +183,7 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     return facts;
 }
 
-[[nodiscard]] ContainerFacts facts_of(const matroska::Demuxed& demuxed) {
+[[nodiscard]] ContainerFacts facts_of(const iclforge::matroska::Demuxed& demuxed) {
     ContainerFacts facts;
     facts.kind = ContainerKind::kMatroska;
     facts.codec_id = demuxed.track.codec_id;
@@ -195,18 +195,18 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     return facts;
 }
 
-[[nodiscard]] std::string_view signalling_token(mpegts::CodecSignalling signalling) {
+[[nodiscard]] std::string_view signalling_token(iclforge::mpegts::CodecSignalling signalling) {
     switch (signalling) {
-        case mpegts::CodecSignalling::kAtscStreamType: return "atsc_stream_type";
-        case mpegts::CodecSignalling::kDvbDescriptor: return "dvb_descriptor";
-        case mpegts::CodecSignalling::kRegistrationDescriptor: return "registration_descriptor";
-        case mpegts::CodecSignalling::kDvbExtensionDescriptor: return "dvb_extension_descriptor";
+        case iclforge::mpegts::CodecSignalling::kAtscStreamType: return "atsc_stream_type";
+        case iclforge::mpegts::CodecSignalling::kDvbDescriptor: return "dvb_descriptor";
+        case iclforge::mpegts::CodecSignalling::kRegistrationDescriptor: return "registration_descriptor";
+        case iclforge::mpegts::CodecSignalling::kDvbExtensionDescriptor: return "dvb_extension_descriptor";
     }
     return "";
 }
 
-[[nodiscard]] ContainerFacts facts_of(const mpegts::Demuxed& demuxed) {
-    const mpegts::ReadStream& stream = demuxed.stream;
+[[nodiscard]] ContainerFacts facts_of(const iclforge::mpegts::Demuxed& demuxed) {
+    const iclforge::mpegts::ReadStream& stream = demuxed.stream;
     ContainerFacts facts;
     facts.kind = ContainerKind::kMpegTs;
     facts.track = stream.elementary_pid;
@@ -217,7 +217,7 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     facts.signalling = std::string{signalling_token(stream.signalling)};
     facts.packet_size = stream.packet_size;
     if (stream.service.has_value()) {
-        const mpegts::ServiceInfo& service = *stream.service;
+        const iclforge::mpegts::ServiceInfo& service = *stream.service;
         facts.service_present = true;
         facts.service_bsmod = service.bsmod;
         facts.service_bsmod_present = service.bsmod_present;
@@ -244,12 +244,12 @@ std::string_view container_token(ContainerKind kind) {
     return "";
 }
 
-StreamTrim trim_from_edit_list(const mp4::ReadTrack& track, std::string& note) {
+StreamTrim trim_from_edit_list(const iclforge::mp4::ReadTrack& track, std::string& note) {
     StreamTrim trim;
     note.clear();
-    const mp4::EditListEntry* media = nullptr;
+    const iclforge::mp4::EditListEntry* media = nullptr;
     std::size_t with_media = 0;
-    for (const mp4::EditListEntry& edit : track.edits) {
+    for (const iclforge::mp4::EditListEntry& edit : track.edits) {
         if (edit.media_time < 0) {
             continue;  // an empty edit
         }
@@ -307,10 +307,10 @@ ContainerKind sniff_container(std::span<const std::byte> head) {
     // steady or otherwise low-entropy signal encodes near-identical frames,
     // so "0x47 recurs every 192 bytes" is something a perfectly ordinary
     // elementary stream can produce on its own, not just an MPEG-TS capture.
-    // ac3::io::read_frame_header validates the sync word and the whole of
+    // iclforge::io::read_frame_header validates the sync word and the whole of
     // bsi, which no accidental byte pattern satisfies by chance the way a
     // single recurring byte can.
-    if (ac3::io::read_frame_header(sniffed).has_value()) {
+    if (iclforge::io::read_frame_header(sniffed).has_value()) {
         return ContainerKind::kUnknown;
     }
     // A WAV likewise, by its magic - see has_riff_wave_magic.
@@ -328,24 +328,24 @@ ElementaryStreamResult elementary_stream_from_bytes(std::span<const std::byte> f
         case ContainerKind::kUnknown:
             return {.bytes = std::vector<std::byte>(file.begin(), file.end()), .error = {}};
         case ContainerKind::kMatroska: {
-            const auto demuxed = matroska::demux(file);
+            const auto demuxed = iclforge::matroska::demux(file);
             if (!demuxed) {
                 return {.bytes = {},
                        .error = std::string{"Matroska/WebM file this build cannot demux ("} +
-                                std::string{matroska::describe(demuxed.error())} + ")"};
+                                std::string{iclforge::matroska::describe(demuxed.error())} + ")"};
             }
             return {.bytes = concat_frames(demuxed->frames),
                     .error = {},
                     .container = facts_of(*demuxed)};
         }
         case ContainerKind::kMp4: {
-            const auto demuxed = mp4::demux(file);
+            const auto demuxed = iclforge::mp4::demux(file);
             if (!demuxed) {
                 return {.bytes = {},
                        .error = std::string{"MP4 file this build cannot demux ("} +
-                                std::string{mp4::describe(demuxed.error())} + ")"};
+                                std::string{iclforge::mp4::describe(demuxed.error())} + ")"};
             }
-            if (demuxed->track.codec_id == mp4::kCodecAc4) {
+            if (demuxed->track.codec_id == iclforge::mp4::kCodecAc4) {
                 // An 'ac-4' sample is the raw_ac4_frame ALONE (TS 103 190-2
                 // Annex E.4) - no sync word, no frame_size, no CRC - so a
                 // plain concatenation is not an elementary stream anything
@@ -380,11 +380,11 @@ ElementaryStreamResult elementary_stream_from_bytes(std::span<const std::byte> f
                     .container = facts_of(*demuxed)};
         }
         case ContainerKind::kMpegTs: {
-            const auto demuxed = mpegts::demux(file);
+            const auto demuxed = iclforge::mpegts::demux(file);
             if (!demuxed) {
                 return {.bytes = {},
                        .error = std::string{"Transport Stream this build cannot demux ("} +
-                                std::string{mpegts::describe(demuxed.error())} + ")"};
+                                std::string{iclforge::mpegts::describe(demuxed.error())} + ")"};
             }
             return {.bytes = concat_frames(demuxed->payloads),
                     .error = {},
@@ -394,4 +394,4 @@ ElementaryStreamResult elementary_stream_from_bytes(std::span<const std::byte> f
     return {.bytes = {}, .error = "unrecognised container"};
 }
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

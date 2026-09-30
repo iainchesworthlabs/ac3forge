@@ -44,18 +44,18 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace codec = ac3::sendspin::codec;
-namespace m = ac3::sendspin::messages;
-namespace hs = ac3::sendspin::handshake;
-namespace testsink = ac3::hearth::testsink;
-namespace websocket = ac3::sendspin::transport::websocket;
-using ac3::sendspin::crypto::Key32;
+namespace codec = iclforge::sendspin::codec;
+namespace m = iclforge::sendspin::messages;
+namespace hs = iclforge::sendspin::handshake;
+namespace testsink = iclforge::hearth::testsink;
+namespace websocket = iclforge::sendspin::transport::websocket;
+using iclforge::sendspin::crypto::Key32;
 using namespace std::chrono_literals;
 
 // See tests/cli/test_cli.cpp's own scratch_dir comment for why the TEST_CASE
 // below folds this into its scratch leaf, on top of
 // AC3FORGE_TEST_SCRATCH_DIR's build-tree rooting.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
    public:
@@ -76,7 +76,7 @@ class Keys final : public hs::ServerKeyring {
 };
 
 // The server's events, which the test waits on.
-class Server final : public ac3::sendspin::ServerListener {
+class Server final : public iclforge::sendspin::ServerListener {
    public:
     void on_hello(const m::ClientHello& /*hello*/) override { update([&] { ++hellos; }); }
     void on_state(const m::ClientState& client_state) override { update([&] { available = client_state.available; }); }
@@ -88,7 +88,7 @@ class Server final : public ac3::sendspin::ServerListener {
         update([&] { long_term_psk = psk; });
         return true;
     }
-    void on_pairing_ended(std::optional<ac3::sendspin::pairing_messages::AbortReason> /*reason*/) override {}
+    void on_pairing_ended(std::optional<iclforge::sendspin::pairing_messages::AbortReason> /*reason*/) override {}
 
     template <class Predicate>
     bool wait(Predicate&& predicate, std::chrono::milliseconds timeout) {
@@ -114,8 +114,8 @@ class Server final : public ac3::sendspin::ServerListener {
     std::condition_variable changed_;
 };
 
-ac3::sendspin::noise::KeyPair generated() {
-    std::optional<ac3::sendspin::noise::KeyPair> pair = ac3::sendspin::noise::KeyPair::generate();
+iclforge::sendspin::noise::KeyPair generated() {
+    std::optional<iclforge::sendspin::noise::KeyPair> pair = iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(pair.has_value());
     return *pair;
 }
@@ -158,8 +158,8 @@ TEST_CASE("test sink: paired by its token over loopback, it writes what it plays
     units->insert(units->end(), rest->begin(), rest->end());
 
     QuietLog log;
-    const ac3::sendspin::SteadyClock clock;
-    const ac3::sendspin::noise::KeyPair server_identity = generated();
+    const iclforge::sendspin::SteadyClock clock;
+    const iclforge::sendspin::noise::KeyPair server_identity = generated();
     std::optional<Key32> long_term_psk;
     std::string client_id;
 
@@ -167,19 +167,19 @@ TEST_CASE("test sink: paired by its token over loopback, it writes what it plays
         auto sink = testsink::Sink::start(options, log);
         REQUIRE(sink.has_value());
         client_id = (*sink)->client_id();
-        const std::optional<ac3::sendspin::pairing::PairingPskToken> token =
-            ac3::sendspin::pairing::decode_pairing_psk_token((*sink)->pairing_token());
+        const std::optional<iclforge::sendspin::pairing::PairingPskToken> token =
+            iclforge::sendspin::pairing::decode_pairing_psk_token((*sink)->pairing_token());
         REQUIRE(token.has_value());
 
         Keys keys;
         keys.choice = {.psk = token->pairing_psk, .category = hs::PskCategory::kPairing};
         Server events;
-        ac3::sendspin::ServerSession server(
+        iclforge::sendspin::ServerSession server(
             {.identity = server_identity, .name = "Test server", .languages = {}, .max_message_bytes = 1 << 22}, keys, events,
             clock);
         auto dialled = websocket::connect("ws://127.0.0.1:" + std::to_string((*sink)->port()) + "/sendspin");
         REQUIRE(dialled.has_value());
-        ac3::sendspin::SessionDriver driver(std::move(*dialled),
+        iclforge::sendspin::SessionDriver driver(std::move(*dialled),
                                             {.receive = [&](const auto& frame) { return server.receive(frame); },
                                              .tick = [&] { return server.tick(); },
                                              .next_tick_us = [&] { return server.next_tick_us(); },
@@ -188,7 +188,7 @@ TEST_CASE("test sink: paired by its token over loopback, it writes what it plays
 
         REQUIRE(events.wait([&] { return events.hellos == 1; }, 10s));
         // The server has the client's key from the token, and must check it against the connection.
-        CHECK(driver.inspect([&] { return ac3::sendspin::base64url::encode(server.client_key()); }) == client_id);
+        CHECK(driver.inspect([&] { return iclforge::sendspin::base64url::encode(server.client_key()); }) == client_id);
         REQUIRE(driver.call([&] {
                           return server.activate({.activities = {m::Activity::kPairing},
                                                   .active_roles = std::vector<std::string>{},
@@ -237,7 +237,7 @@ TEST_CASE("test sink: paired by its token over loopback, it writes what it plays
         REQUIRE(decoded.has_value());
         expected.insert(expected.end(), decoded->begin(), decoded->end());
     }
-    const auto wav = ac3::io::read_wav((options.output_directory / "stream-1-1.wav").string());
+    const auto wav = iclforge::io::read_wav((options.output_directory / "stream-1-1.wav").string());
     REQUIRE(wav.has_value());
     CHECK(wav->sample_rate == 48000);
     REQUIRE(wav->channels.size() == 2);
@@ -265,11 +265,11 @@ TEST_CASE("test sink: paired by its token over loopback, it writes what it plays
     Keys keys;
     keys.choice = {.psk = *long_term_psk, .category = hs::PskCategory::kLongTerm};
     Server events;
-    ac3::sendspin::ServerSession server({.identity = server_identity, .name = "Test server", .languages = {}, .max_message_bytes = 1 << 22},
+    iclforge::sendspin::ServerSession server({.identity = server_identity, .name = "Test server", .languages = {}, .max_message_bytes = 1 << 22},
                                         keys, events, clock);
     auto dialled = websocket::connect("ws://127.0.0.1:" + std::to_string((*again)->port()) + "/sendspin");
     REQUIRE(dialled.has_value());
-    ac3::sendspin::SessionDriver driver(std::move(*dialled),
+    iclforge::sendspin::SessionDriver driver(std::move(*dialled),
                                         {.receive = [&](const auto& frame) { return server.receive(frame); },
                                          .tick = [&] { return server.tick(); },
                                          .next_tick_us = [&] { return server.next_tick_us(); },

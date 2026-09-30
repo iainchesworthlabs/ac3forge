@@ -28,7 +28,7 @@
 
 namespace ac3cli {
 
-class JsonWriter final : public ac3::apps::JsonSink {
+class JsonWriter final : public iclforge::apps::JsonSink {
    public:
     explicit JsonWriter(std::FILE* out) : out_(out) {}
 

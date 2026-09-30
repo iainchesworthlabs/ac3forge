@@ -39,7 +39,7 @@
 // measured as the reconstruction gives it with a coefficient of 1, scaled to
 // the missing energy.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 struct AjocSetup {
     int num_dmx = 1;
@@ -137,4 +137,4 @@ class AjocEncoder {
     bool proposed_iframe_ = true;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

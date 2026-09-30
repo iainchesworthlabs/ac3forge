@@ -24,7 +24,7 @@
 // tested against a tree built by hand rather than against /proc
 // (tests/crucible/platform/linux/test_x11_foreground.cpp).
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 constexpr int kMaxAncestorHops = 16;
 
@@ -51,4 +51,4 @@ template <class PpidOf, class ExeOf>
     return out;
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

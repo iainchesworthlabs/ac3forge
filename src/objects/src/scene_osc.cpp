@@ -25,7 +25,7 @@
 // Message" and "OSC Bundle" define how they compose. What this file does
 // NOT implement is scene_osc.hpp's own header comment.
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 namespace {
 
@@ -375,4 +375,4 @@ std::optional<ObjectPlacement> apply(const SceneOscUpdate& update, const ObjectP
     return result;
 }
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

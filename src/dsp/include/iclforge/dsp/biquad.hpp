@@ -6,7 +6,7 @@
 #include "iclforge/dsp/export.hpp"
 
 // Small, real-time-safe IIR filtering for bundle C's explicit LFE routing:
-// when a caller uses the assignment table (ac3::plan::Assignment - see
+// when a caller uses the assignment table (iclforge::plan::Assignment - see
 // docs/forge/gui/source-assignment.md's LFE row) to send a full-bandwidth source
 // channel onto the LFE or LFE2 position by hand, that content is not a
 // file's own dedicated LFE channel - the automatic routing that carries one
@@ -26,12 +26,12 @@
 // low-pass - the standard way to build a stable higher-order Butterworth
 // filter out of second-order sections. Both are allocation-free and carry
 // only their own delay-line state between calls, matching this codebase's
-// other per-run, caller-driven DSP objects (e.g. ac3::audio::
-// DriftResampler, ac3::analysis::LevelMeter): construct once per run,
+// other per-run, caller-driven DSP objects (e.g. iclforge::audio::
+// DriftResampler, iclforge::analysis::LevelMeter): construct once per run,
 // process() once per frame in frame order for the run's whole life,
 // reset() only at a run boundary.
 
-namespace ac3::dsp {
+namespace iclforge::dsp {
 
 // A single second-order IIR section in Direct Form II Transposed (the
 // numerically well-behaved standard form - two state variables, no separate
@@ -57,7 +57,7 @@ public:
     // set_coefficients() are untouched. Call once per run start (or after a
     // discontinuity a caller wants to not smear into what follows) -
     // matching every other per-run reset in this codebase (e.g.
-    // ac3::analysis::LevelMeter::reset()).
+    // iclforge::analysis::LevelMeter::reset()).
     void reset();
 
 private:
@@ -102,7 +102,7 @@ public:
 
     // Zeroes both sections' delay-line state (not coefficients) - call once
     // at the start of a run, matching every other per-run reset in this
-    // codebase (e.g. ac3::analysis::LevelMeter::reset()).
+    // codebase (e.g. iclforge::analysis::LevelMeter::reset()).
     void reset();
 
 private:
@@ -110,4 +110,4 @@ private:
     Biquad stage2_;
 };
 
-}  // namespace ac3::dsp
+}  // namespace iclforge::dsp

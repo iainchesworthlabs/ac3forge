@@ -33,7 +33,7 @@
 #include "signing_hook.hpp"
 #include "tap_pool.hpp"
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -160,8 +160,8 @@ struct Engine::Impl {
     BedMix bed;
     SigningHook signing;
     std::unique_ptr<OutputStage> output;
-    std::unique_ptr<ac3::oba::AtmosEncoder> encoder;
-    ac3::audio::DeviceWatcher watcher;
+    std::unique_ptr<iclforge::oba::AtmosEncoder> encoder;
+    iclforge::audio::DeviceWatcher watcher;
     // The probe's thread, declared after everything its body touches:
     // `output`, whose `enumerate()` it calls, and the probe state above,
     // which it writes the facts into. Members are destroyed in reverse
@@ -171,14 +171,14 @@ struct Engine::Impl {
     // whole; this ordering is the backstop, and decides only what happens
     // if that join is ever lost.
     std::jthread probe_thread;
-    std::unordered_map<AppId, ac3::oba::Position> wanted_positions;
+    std::unordered_map<AppId, iclforge::oba::Position> wanted_positions;
     std::unordered_map<AppId, bool> split_choice;  // per-app override of split_by_default
     std::unordered_map<AppId, double> sizes;       // per-app object extent, default a point
     std::unordered_map<AppId, AppSession> known;
     std::unordered_map<AppId, float> levels;
     std::vector<std::vector<float>> objects;
     std::vector<std::span<const float>> views;
-    std::vector<ac3::oba::ObjectPlacement> placements;
+    std::vector<iclforge::oba::ObjectPlacement> placements;
     std::vector<std::span<const float>> bed_views;
     std::vector<std::byte> unit_bytes;
     std::size_t frames_per = 0;
@@ -235,13 +235,13 @@ struct Engine::Impl {
         }
         if (const auto failure = signing.failure()) {
             switch (*failure) {
-                case ac3::signing::KeyErrorKind::kUnreadable:
+                case iclforge::signing::KeyErrorKind::kUnreadable:
                     return "signing: key not loaded (unreadable), 5.1 bed only";
-                case ac3::signing::KeyErrorKind::kMalformed:
+                case iclforge::signing::KeyErrorKind::kMalformed:
                     return "signing: key not loaded (malformed), 5.1 bed only";
-                case ac3::signing::KeyErrorKind::kEmpty:
+                case iclforge::signing::KeyErrorKind::kEmpty:
                     return "signing: key not loaded (empty), 5.1 bed only";
-                case ac3::signing::KeyErrorKind::kAbsent: break;
+                case iclforge::signing::KeyErrorKind::kAbsent: break;
             }
         }
         return "signing: no key, 5.1 bed only";
@@ -253,13 +253,13 @@ struct Engine::Impl {
     }
 
     void build_encoder() {
-        ac3::oba::AtmosConfig atmos;
+        iclforge::oba::AtmosConfig atmos;
         atmos.numblkscod = config.low_latency ? 0 : 3;
         atmos.bitrate_kbps = bitrate_kbps();
         atmos.emit_object_metadata = signing.available();
-        encoder = std::make_unique<ac3::oba::AtmosEncoder>(atmos, kObjectSlots);
-        const int blocks = config.low_latency ? 1 : ac3::kBlocksPerFrame;
-        frames_per = static_cast<std::size_t>(blocks * ac3::kSamplesPerBlock);
+        encoder = std::make_unique<iclforge::oba::AtmosEncoder>(atmos, kObjectSlots);
+        const int blocks = config.low_latency ? 1 : iclforge::kBlocksPerFrame;
+        frames_per = static_cast<std::size_t>(blocks * iclforge::kSamplesPerBlock);
         objects.assign(kObjectSlots, std::vector<float>(frames_per, 0.0F));
         views.resize(kObjectSlots);
         placements.resize(kObjectSlots);
@@ -433,17 +433,17 @@ struct Engine::Impl {
     // in; a freed slot fades out where it is.
     std::unordered_map<int, AppId> slot_owner;
     // Custom pair positions: left and right, when a side has been placed.
-    std::unordered_map<AppId, std::array<ac3::oba::Position, 2>> pair_positions;
+    std::unordered_map<AppId, std::array<iclforge::oba::Position, 2>> pair_positions;
     // The pair's two positions as they stand: custom, or the spread.
-    std::array<ac3::oba::Position, 2> pair_of(AppId app) const {
+    std::array<iclforge::oba::Position, 2> pair_of(AppId app) const {
         if (const auto custom = pair_positions.find(app); custom != pair_positions.end()) {
             return custom->second;
         }
         const auto wanted = wanted_positions.find(app);
-        const ac3::oba::Position centre =
-            wanted == wanted_positions.end() ? ac3::oba::Position{0.5, 0.5, 0.0} : wanted->second;
-        ac3::oba::Position left = centre;
-        ac3::oba::Position right = centre;
+        const iclforge::oba::Position centre =
+            wanted == wanted_positions.end() ? iclforge::oba::Position{0.5, 0.5, 0.0} : wanted->second;
+        iclforge::oba::Position left = centre;
+        iclforge::oba::Position right = centre;
         left.x = std::clamp(centre.x - config.split_spread, 0.0, 1.0);
         right.x = std::clamp(centre.x + config.split_spread, 0.0, 1.0);
         return {left, right};
@@ -469,8 +469,8 @@ struct Engine::Impl {
                 continue;
             }
             const auto wanted = wanted_positions.find(after->second);
-            ac3::oba::Position where =
-                wanted == wanted_positions.end() ? ac3::oba::Position{0.5, 0.5, 0.0} : wanted->second;
+            iclforge::oba::Position where =
+                wanted == wanted_positions.end() ? iclforge::oba::Position{0.5, 0.5, 0.0} : wanted->second;
             // A split pair's objects sit where the pair puts them: at the
             // standard spread either side of the placed position, or where
             // each was dragged to.
@@ -576,16 +576,16 @@ struct Engine::Impl {
         want_reprobe.store(true, std::memory_order_release);
         signing_status = signing.load(config.signing_key_path);
         build_encoder();
-        note("engine started: " + std::to_string(config.low_latency ? 1 : ac3::kBlocksPerFrame) + "-block frames, " +
+        note("engine started: " + std::to_string(config.low_latency ? 1 : iclforge::kBlocksPerFrame) + "-block frames, " +
              std::to_string(bitrate_kbps()) + " kb/s, taps " + std::to_string(taps.channels()) + "ch");
         note(signing_note());
         // Without the watcher, endpoint changes reach the loop only through
         // reprobe(): worth knowing on a platform whose watcher is a flat no.
-        if (const auto watching = watcher.start([this](const ac3::audio::DeviceChangeEvent&) {
+        if (const auto watching = watcher.start([this](const iclforge::audio::DeviceChangeEvent&) {
                 want_reprobe.store(true, std::memory_order_release);
             });
             !watching) {
-            note(std::string("device watcher unavailable: ") + std::string(ac3::audio::describe(watching.error())));
+            note(std::string("device watcher unavailable: ") + std::string(iclforge::audio::describe(watching.error())));
         }
 
         // The session monitor, on its own thread, for as long as the loop
@@ -942,13 +942,13 @@ void Engine::stop() {
     impl_->snapshot.running = false;
 }
 
-void Engine::position(AppId app, ac3::oba::Position where) {
+void Engine::position(AppId app, iclforge::oba::Position where) {
     impl_->post([this, app, where] {
         // A custom pair moves as one: both objects by the same amount.
         if (const auto custom = impl_->pair_positions.find(app); custom != impl_->pair_positions.end()) {
             const auto old = impl_->wanted_positions.find(app);
-            const ac3::oba::Position from =
-                old == impl_->wanted_positions.end() ? ac3::oba::Position{0.5, 0.5, 0.0} : old->second;
+            const iclforge::oba::Position from =
+                old == impl_->wanted_positions.end() ? iclforge::oba::Position{0.5, 0.5, 0.0} : old->second;
             for (auto& p : custom->second) {
                 p.x = std::clamp(p.x + (where.x - from.x), 0.0, 1.0);
                 p.y = std::clamp(p.y + (where.y - from.y), 0.0, 1.0);
@@ -992,7 +992,7 @@ void Engine::set_split(AppId app, bool split) {
     });
 }
 
-void Engine::position_side(AppId app, int side, ac3::oba::Position where) {
+void Engine::position_side(AppId app, int side, iclforge::oba::Position where) {
     impl_->post([this, app, side, where] {
         if (side != 0 && side != 1) {
             return;
@@ -1057,4 +1057,4 @@ EngineStatus Engine::status() const {
     return impl_->snapshot;
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

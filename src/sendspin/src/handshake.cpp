@@ -15,7 +15,7 @@
 #include "iclforge/sendspin/json.hpp"
 #include "iclforge/sendspin/noise.hpp"
 
-namespace ac3::sendspin::handshake {
+namespace iclforge::sendspin::handshake {
 
 namespace {
 
@@ -254,4 +254,4 @@ bool parse_message_2_payload(std::span<const std::uint8_t> payload) {
     return doc.parse(text_of(payload), tokens, kLimits) && doc.root().is_object();
 }
 
-}  // namespace ac3::sendspin::handshake
+}  // namespace iclforge::sendspin::handshake

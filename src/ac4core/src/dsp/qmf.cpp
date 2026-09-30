@@ -6,7 +6,7 @@
 #include "iclforge/ac4core/dsp/qmf_kernels.hpp"
 #include "iclforge/ac4core/dsp/qmf_vector.hpp"
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 namespace {
 
 constexpr std::size_t kSubbands = kQmfSubbands;
@@ -91,4 +91,4 @@ template class QmfSynthesis<Real>;
 // CMakeLists.txt, AC4CORE_ALSO_AT_DOUBLE).
 AC4CORE_ALSO_AT_DOUBLE(template class QmfAnalysis<double>; template class QmfSynthesis<double>;)
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

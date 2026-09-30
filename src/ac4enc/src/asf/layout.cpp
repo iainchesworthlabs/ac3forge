@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // Windows in one half of a split frame at transform length index `index`.
@@ -192,4 +192,4 @@ FrameLayout short_layout(int frame_length, int index, int attack) {
     return layout;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

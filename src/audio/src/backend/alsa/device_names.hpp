@@ -31,7 +31,7 @@
 // "iec958:CARD=PCH,DEV=0,AES0=0x06,AES1=0x82,AES2=0x00,AES3=0x02" is that
 // device carrying a non-audio 48 kHz stream.
 
-namespace ac3::alsa {
+namespace iclforge::alsa {
 
 // The four consumer-format channel-status bytes alsa-lib takes as device-name
 // arguments. Named AES0..AES3 after the IEC 60958 / AES3 subframe bytes they
@@ -50,7 +50,7 @@ struct ChannelStatus {
 //
 // The same for AC-3 and different for E-AC-3, which is the detail that catches
 // people: a Dolby Digital Plus burst is four times the size of an AC-3 one
-// (ac3::iec61937::kEac3BurstBytes) and covers the same span of time, so the
+// (iclforge::iec61937::kEac3BurstBytes) and covers the same span of time, so the
 // link has to clock four times as fast to deliver it. Microsoft's
 // "Representing Formats for IEC 61937 Transmissions" states it as a
 // requirement; the Windows backend applies it by building a 4x
@@ -237,4 +237,4 @@ namespace detail {
     return fmt::format("plughw:CARD={},DEV={}", card_id, device);
 }
 
-}  // namespace ac3::alsa
+}  // namespace iclforge::alsa

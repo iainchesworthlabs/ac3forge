@@ -30,7 +30,7 @@
 //
 // The readings are taken once per sample rate, since the probe answers for
 // one. They are kept until refresh(), which the engine calls when a render
-// device comes, goes or changes (ac3::audio::RenderDeviceWatch). Each item
+// device comes, goes or changes (iclforge::audio::RenderDeviceWatch). Each item
 // after that is decided against the machine as it is then: the appliance
 // plan's gaps 3 and 5.
 //
@@ -45,7 +45,7 @@
 //
 // One thread's: the engine's.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // The Output screen's choices.
 struct OutputPreferences {
@@ -126,4 +126,4 @@ private:
     std::vector<EndpointFacts> rows_;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

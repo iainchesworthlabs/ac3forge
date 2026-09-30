@@ -25,7 +25,7 @@
 #include "engine_thread.hpp"
 #include "pcm_sink.hpp"
 
-// ac3::hearth::Engine (apps/hearth/engine/engine_thread.cpp): the player on a thread
+// iclforge::hearth::Engine (apps/hearth/engine/engine_thread.cpp): the player on a thread
 // of its own. The device here has a clock that a second thread runs, as a
 // real device's render thread would, so the engine, the device and the test's
 // own thread - posting commands and reading snapshots - all run at once.
@@ -35,19 +35,19 @@ using namespace std::chrono_literals;
 
 namespace {
 
-using ac3::hearth::Engine;
-using ac3::hearth::EngineStatus;
-using ac3::hearth::EngineTiming;
-using ac3::hearth::FailurePolicy;
-using ac3::hearth::ItemLoader;
-using ac3::hearth::LoadedItem;
-using ac3::hearth::OpenOutputFormat;
-using ac3::hearth::OutputMode;
-using ac3::hearth::PcmSink;
-using ac3::hearth::PlayPosition;
-using ac3::hearth::Player;
-using ac3::hearth::QueueItem;
-using ac3::hearth::TransportState;
+using iclforge::hearth::Engine;
+using iclforge::hearth::EngineStatus;
+using iclforge::hearth::EngineTiming;
+using iclforge::hearth::FailurePolicy;
+using iclforge::hearth::ItemLoader;
+using iclforge::hearth::LoadedItem;
+using iclforge::hearth::OpenOutputFormat;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::PcmSink;
+using iclforge::hearth::PlayPosition;
+using iclforge::hearth::Player;
+using iclforge::hearth::QueueItem;
+using iclforge::hearth::TransportState;
 
 // A device whose clock another thread runs. Everything is under one lock:
 // the engine thread submits and reads the position, the clock thread plays.
@@ -88,7 +88,7 @@ public:
         }
 
         // The device goes away under the next submit, which is refused: the
-        // sink stops itself without being closed, as ac3::audio's sinks do.
+        // sink stops itself without being closed, as iclforge::audio's sinks do.
         // Taken there rather than from this thread so that the engine is in
         // a pump when it happens, and has to pump again to find out.
         void lose_at_next_submit() {
@@ -139,12 +139,12 @@ public:
         return true;
     }
 
-    [[nodiscard]] std::optional<ac3::audio::MonitorPosition> position() const override {
+    [[nodiscard]] std::optional<iclforge::audio::MonitorPosition> position() const override {
         const std::scoped_lock lock(state_->mutex);
         if (!state_->open) {
             return std::nullopt;
         }
-        return ac3::audio::MonitorPosition{.frames_played = state_->clock,
+        return iclforge::audio::MonitorPosition{.frames_played = state_->clock,
                                            .frames_queued = state_->submitted - state_->heard,
                                            .latency_frames = 0};
     }
@@ -190,13 +190,13 @@ private:
 };
 
 std::vector<std::byte> eac3_stream(int frames) {
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = ac3::Acmod::k2_0;
-    ac3::eac3::FrameEncoder encoder{config};
+    config.acmod = iclforge::Acmod::k2_0;
+    iclforge::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        std::vector<float> samples(ac3::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
@@ -236,10 +236,10 @@ QueueItem item(const std::string& path) {
 
 std::unique_ptr<Engine> make_engine(const Library& library,
                                     const std::shared_ptr<ClockedDevice::State>& state) {
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     return std::make_unique<Engine>(std::make_unique<ClockedDevice>(state), library.loader(),
-                                    *layout, ac3::hearth::DecoderSettings{},
+                                    *layout, iclforge::hearth::DecoderSettings{},
                                     EngineTiming{.period = 1ms, .budget = 4800});
 }
 
@@ -326,7 +326,7 @@ TEST_CASE("engine: commands from several threads all take effect, each thread's 
             engine->pause();
             engine->play();
             if (n % 5 == 0) {
-                ac3::hearth::DecoderSettings settings;
+                iclforge::hearth::DecoderSettings settings;
                 settings.mix_levels.loro_clev = 0.5 + (0.01 * n);
                 engine->set_decoder_settings(settings);
             }
@@ -548,15 +548,15 @@ TEST_CASE("engine: the diagnostics ring hears each command, then what playback d
     library.files["a"] = eac3_stream(4);
     auto state = std::make_shared<ClockedDevice::State>();
     // Outlives the engine, which writes to it until it has stopped.
-    ac3::hearth::DiagnosticLog diagnostics;
-    ac3::hearth::DecoderSettings rf;
-    rf.mode = ac3::OperatingMode::kRf;
+    iclforge::hearth::DiagnosticLog diagnostics;
+    iclforge::hearth::DecoderSettings rf;
+    rf.mode = iclforge::OperatingMode::kRf;
     {
-        const auto layout = ac3::render::OutputLayout::parse("2.0");
+        const auto layout = iclforge::render::OutputLayout::parse("2.0");
         REQUIRE(layout.has_value());
         const auto engine = std::make_unique<Engine>(
             std::make_unique<ClockedDevice>(state), library.loader(), *layout,
-            ac3::hearth::DecoderSettings{}, EngineTiming{.period = 1ms, .budget = 4800},
+            iclforge::hearth::DecoderSettings{}, EngineTiming{.period = 1ms, .budget = 4800},
             &diagnostics);
         const ClockThread clock{state};
         // The window reads the ring whenever it likes.
@@ -593,12 +593,12 @@ TEST_CASE("engine: the diagnostics ring hears each command, then what playback d
     std::vector<std::string> notes;
     std::string all;
     for (const std::string& line : diagnostics.lines()) {
-        notes.push_back(line.substr(ac3::hearth::DiagnosticLog::kStampBytes));
+        notes.push_back(line.substr(iclforge::hearth::DiagnosticLog::kStampBytes));
         all += notes.back() + "\n";
     }
     INFO(all);
     const std::vector<std::string> expected{
-        "engine started: layout 2.0 (2 slots), " + describe(ac3::hearth::DecoderSettings{}),
+        "engine started: layout 2.0 (2 slots), " + describe(iclforge::hearth::DecoderSettings{}),
         "add 2 items to a queue of 0",
         "gapless off",
         "play",
@@ -706,12 +706,12 @@ TEST_CASE("engine: the speaker setup commands reach EngineStatus, and a refused 
     CHECK(identify_refused.identify_slot == 1);
     engine->identify_stop();
     engine->sync();
-    CHECK(engine->status().identify_slot == ac3::hearth::Queue::kNone);
+    CHECK(engine->status().identify_slot == iclforge::hearth::Queue::kNone);
 
     // No PCM sink here supports routing (ClockedDevice, like FakeDevice,
     // takes PcmSink's own inert defaults): refused, and EngineStatus's
     // routing/device facts stay at their own defaults.
-    engine->set_routing(ac3::render::Routing{});
+    engine->set_routing(iclforge::render::Routing{});
     engine->sync();
     const EngineStatus routing_status = engine->status();
     CHECK(routing_status.note.find("refused") != std::string::npos);
@@ -757,7 +757,7 @@ public:
     bool submit(std::span<const std::span<const float>> /*slots*/, std::size_t /*frames*/) override {
         return false;
     }
-    [[nodiscard]] std::optional<ac3::audio::MonitorPosition> position() const override {
+    [[nodiscard]] std::optional<iclforge::audio::MonitorPosition> position() const override {
         return std::nullopt;
     }
     void flush() override {}
@@ -771,7 +771,7 @@ public:
 
 TEST_CASE("engine: EngineStatus carries the open sink's device name and id",
           "[hearth][engine]") {
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     const Library library;
     auto engine = std::make_unique<Engine>(std::make_unique<NamedDevice>(), library.loader(), *layout);
@@ -798,7 +798,7 @@ TEST_CASE("engine: set_layout changes EngineStatus's layout and resets the speak
     engine->sync();
     REQUIRE(engine->status().trim_db[0] == -3.0);
 
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     engine->set_layout(*layout);
     engine->sync();
@@ -809,7 +809,7 @@ TEST_CASE("engine: set_layout changes EngineStatus's layout and resets the speak
     CHECK(after.note.find("refused") == std::string::npos);
 
     // No slots at all: refused, noted, and the layout stays "5.1".
-    engine->set_layout(ac3::render::OutputLayout{});
+    engine->set_layout(iclforge::render::OutputLayout{});
     engine->sync();
     const EngineStatus refused = engine->status();
     CHECK(refused.note.find("refused") != std::string::npos);
@@ -836,7 +836,7 @@ TEST_CASE("engine: set_layout while playing reopens the output at the new width,
     engine->play();
     REQUIRE(eventually([&] { return engine->position().heard > 50ms; }));
 
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     engine->set_layout(*layout);
     engine->sync();

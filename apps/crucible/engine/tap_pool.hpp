@@ -21,7 +21,7 @@
 // silence rather than holding the frame. The taps come from an
 // AudioDevices (audio_devices.hpp): WASAPI in the app, fakes in the tests.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 struct TapRead {
     AppId app = 0;
@@ -71,4 +71,4 @@ private:
     std::vector<TapRead> reads_;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

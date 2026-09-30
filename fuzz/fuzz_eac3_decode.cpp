@@ -13,11 +13,11 @@
 // exactly as a real caller drives it.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
-    const auto units = ac3::split_access_units(bytes);
+    const auto units = iclforge::split_access_units(bytes);
     if (!units) {
         return 0;
     }
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     for (const auto& unit : *units) {
         (void)decoder.decode_access_unit(unit);
     }

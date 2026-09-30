@@ -1,6 +1,6 @@
 // The OSC wire form of a live scene update, with no socket in sight.
 //
-// ac3::audio::LivePositionSource (src/audio, not part of this distributed
+// iclforge::audio::LivePositionSource (src/audio, not part of this distributed
 // library - see docs/library/index.md) owns the actual UDP listener behind
 // `ac3cli live mode=atmos positions=osc:<port>` and the GUI's live room.
 // Everything it does with a datagram once it has one, though, is these three
@@ -63,7 +63,7 @@ int main() {
     // Two objects, each with one static authored point - room centre and a
     // fixed gain, the sort of default a live session starts from before
     // anything on the network has addressed either object yet.
-    auto built = ac3::oba::ObjectScene::create({
+    auto built = iclforge::oba::ObjectScene::create({
         {.name = "left",
          .automation = {{.time_s = 0.0, .position = {.x = 0.2, .y = 0.5, .z = 0.0}, .gain = 0.7}}},
         {.name = "right",
@@ -73,7 +73,7 @@ int main() {
         fmt::printf("ObjectScene::create failed: %s\n", built.error().message.c_str());
         return 1;
     }
-    ac3::oba::SceneCursor cursor{std::move(*built)};
+    iclforge::oba::SceneCursor cursor{std::move(*built)};
 
     fmt::printf("before any OSC: object 0 at x=%.2f (authored)\n",
                 cursor.sample(0.0)[0].position.x);
@@ -83,8 +83,8 @@ int main() {
     // it (docs/library/spatial-and-atmos.md's "OSC wire form").
     const auto datagram = osc_xyz_message("/object/0/xyz", 0.9F, 0.1F, 0.5F);
 
-    ac3::oba::OscParseStats stats;
-    for (const auto& update : ac3::oba::parse_osc_packet(datagram, &stats)) {
+    iclforge::oba::OscParseStats stats;
+    for (const auto& update : iclforge::oba::parse_osc_packet(datagram, &stats)) {
         if (update.release) {
             cursor.release(update.object);
             continue;
@@ -94,7 +94,7 @@ int main() {
         // 1.0 - see apply()'s own header comment for why this step exists
         // and cannot be skipped in favour of pushing `update` directly.
         const auto base = cursor.scene().evaluate(update.object, 0.0);
-        if (const auto merged = ac3::oba::apply(update, base)) {
+        if (const auto merged = iclforge::oba::apply(update, base)) {
             cursor.push({.object = update.object, .placement = *merged});
         }
     }

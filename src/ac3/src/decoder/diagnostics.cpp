@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-namespace ac3 {
+namespace iclforge {
 
 std::string_view describe(DiagnosticEvent event) {
     switch (event) {
@@ -14,4 +14,4 @@ std::string_view describe(DiagnosticEvent event) {
     return "unknown diagnostic event";
 }
 
-}  // namespace ac3
+}  // namespace iclforge

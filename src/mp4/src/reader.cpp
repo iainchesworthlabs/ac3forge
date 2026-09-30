@@ -14,7 +14,7 @@
 #include "isobmff_detail.hpp"
 #include "iclforge/mp4/mp4.hpp"
 
-namespace mp4 {
+namespace iclforge::mp4 {
 
 namespace {
 
@@ -80,11 +80,11 @@ constexpr std::uint32_t kDac4 = fourcc("dac4");
 
 // --- the dac3/dec3 configuration box ---------------------------------------
 //
-// The read twin of ac3::io::build_codec_config_box (ac3/io/dec3.hpp), field
+// The read twin of iclforge::io::build_codec_config_box (ac3/io/dec3.hpp), field
 // for field: ETSI TS 102 366 Annex F §F.4 (AC3SpecificBox) and §F.6
 // (EC3SpecificBox), plus TS 103 420 §8.3.1/§8.3.2.2's Atmos extension. A
-// tiny MSB-first bit reader rather than ac3::BitReader, because this module
-// links nothing from ac3::forge - the same boundary that keeps
+// tiny MSB-first bit reader rather than iclforge::BitReader, because this module
+// links nothing from iclforge::ac3 - the same boundary that keeps
 // AudioTrack::codec_config opaque to the writer.
 class BitCursor {
    public:
@@ -126,7 +126,7 @@ CodecConfig parse_codec_config(std::uint32_t box_type, std::span<const std::byte
         // ac4_dsi_v1 (TS 103 190-2 Annex E.5) shares no field with the
         // dac3/dec3 layout below, and this module has no business
         // interpreting it - the bytes are kept verbatim (remux-ready, same
-        // contract as `payload` always had) and ac4::'s own parser is the
+        // contract as `payload` always had) and iclforge::ac4::'s own parser is the
         // one that understands the stream. The dac3/dec3-shaped fields stay
         // at their defaults.
         out.ac4 = true;
@@ -147,8 +147,8 @@ CodecConfig parse_codec_config(std::uint32_t box_type, std::span<const std::byte
     }
 
     // §F.6: data_rate(13) num_ind_sub(3), then one independent-substream
-    // record. Only the first is read: mp4::AudioTrack describes exactly one
-    // track, and ac3::io::scan groups an access unit as one independent
+    // record. Only the first is read: iclforge::mp4::AudioTrack describes exactly one
+    // track, and iclforge::io::scan groups an access unit as one independent
     // substream plus its dependents, so a second record has nowhere to go
     // in ReadTrack - and num_ind_sub is reported verbatim so a caller can
     // see that the file claimed more.
@@ -1098,4 +1098,4 @@ std::expected<void, DemuxError> Reader::finish() {
     return finish_verdict(s);
 }
 
-}  // namespace mp4
+}  // namespace iclforge::mp4

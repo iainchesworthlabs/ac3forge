@@ -12,7 +12,7 @@
 #include "iclforge/ac4core/aspx/frequency_tables.hpp"
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -662,4 +662,4 @@ ParseResult parse_aspx_data_2ch(BitReader& r, const SubstreamContext& ctx,
     return check(r);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -48,8 +48,8 @@
 namespace {
 
 namespace fs = std::filesystem;
-using ac4::ContentClassifier;
-using ac4::Speaker;
+using iclforge::ac4::ContentClassifier;
+using iclforge::ac4::Speaker;
 
 constexpr int kRate = 48000;
 constexpr std::size_t kFrameLength = 2048;
@@ -85,18 +85,18 @@ std::vector<float> tone(double hz, double amplitude = kAmplitude) {
 
 struct Encoded {
     std::vector<std::vector<std::byte>> frames;
-    std::vector<ac4::SyntaxRecord> trace;
+    std::vector<iclforge::ac4::SyntaxRecord> trace;
 };
 
 // Encodes planar input, with the dialogue in it where a substream takes a
 // stem, in pieces of 3000 samples, then flushes.
-Encoded encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input,
+Encoded encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input,
                const std::vector<std::vector<float>>* dialogue = nullptr) {
     Encoded out;
-    ac4::EncoderConfig config = base;
-    const auto sink = [&out](const ac4::SyntaxRecord& r) { out.trace.push_back(r); };
+    iclforge::ac4::EncoderConfig config = base;
+    const auto sink = [&out](const iclforge::ac4::SyntaxRecord& r) { out.trace.push_back(r); };
     config.trace = sink;
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
     const std::size_t total = input.front().size();
     constexpr std::size_t kPiece = 3000;
@@ -114,13 +114,13 @@ Encoded encode(const ac4::EncoderConfig& base, const std::vector<std::vector<flo
         }
         auto frames = dialogue != nullptr ? encoder->encode(views, stem) : encoder->encode(views);
         REQUIRE(frames.has_value());
-        for (ac4::EncodedFrame& frame : *frames) {
+        for (iclforge::ac4::EncodedFrame& frame : *frames) {
             out.frames.push_back(std::move(frame.raw_ac4_frame));
         }
     }
     auto rest = encoder->flush();
     REQUIRE(rest.has_value());
-    for (ac4::EncodedFrame& frame : *rest) {
+    for (iclforge::ac4::EncodedFrame& frame : *rest) {
         out.frames.push_back(std::move(frame.raw_ac4_frame));
     }
     return out;
@@ -129,15 +129,15 @@ Encoded encode(const ac4::EncoderConfig& base, const std::vector<std::vector<flo
 // Every substream of every frame reads to its end, and the decoder's trace is
 // the encoder's, record for record.
 void read_back(const Encoded& encoded) {
-    std::vector<ac4::SyntaxRecord> read;
-    const auto sink = [&read](const ac4::SyntaxRecord& r) { read.push_back(r); };
-    ac4::DecoderConfig config;
+    std::vector<iclforge::ac4::SyntaxRecord> read;
+    const auto sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+    iclforge::ac4::DecoderConfig config;
     config.syntax = sink;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     for (const std::vector<std::byte>& frame : encoded.frames) {
         const auto report = decoder.parse(frame);
         REQUIRE(report.has_value());
-        for (const ac4::SubstreamReport& substream : report->substreams) {
+        for (const iclforge::ac4::SubstreamReport& substream : report->substreams) {
             CAPTURE(substream.index, substream.refused_reason);
             REQUIRE_FALSE(substream.refused.has_value());
             CHECK(substream.bits_read == substream.size_bits);
@@ -167,20 +167,20 @@ struct Decoded {
 // level where one is given (the output level gain alone, no compression).
 Decoded decode_id(const Encoded& encoded, int id, double dialogue_gain_db = 0.0,
                   double associated_gain_db = 0.0, double dialogue_enhancement_db = 0.0) {
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.presentation.presentation_id = id;
     config.output.dialogue_gain_db = dialogue_gain_db;
     config.output.associated_gain_db = associated_gain_db;
     config.output.dialogue_enhancement_db = dialogue_enhancement_db;
-    config.output.drc = ac4::DrcMode::kOff;
-    ac4::Decoder decoder(config);
+    config.output.drc = iclforge::ac4::DrcMode::kOff;
+    iclforge::ac4::Decoder decoder(config);
     Decoded out;
     for (const std::vector<std::byte>& frame : encoded.frames) {
         const auto decoded = decoder.decode(frame);
         INFO(decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         REQUIRE(pcm.presentation_id == id);
         if (out.channels.empty()) {
             out.speakers = pcm.speakers;
@@ -234,7 +234,7 @@ void check_tone(const Decoded& mix, const Decoded& reference, Speaker from, doub
     const double own = amplitude(reference, from, hz);
     REQUIRE(own > 1e-3);
     for (const Speaker speaker : mix.speakers) {
-        CAPTURE(hz, ac4::describe(speaker));
+        CAPTURE(hz, iclforge::ac4::describe(speaker));
         const auto it = std::ranges::find(expected, speaker, &std::pair<Speaker, double>::first);
         const double got = amplitude(mix, speaker, hz);
         if (it != expected.end()) {
@@ -259,14 +259,14 @@ constexpr std::array<double, 2> kToneCommentary = {1699.0, 1847.0};
 constexpr std::array<double, 2> kToneFrench = {1931.0, 2083.0};
 
 struct Stream {
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     std::vector<std::vector<float>> input;
     std::vector<std::vector<float>> dialogue;  // empty without a stem
 };
 
-ac4::SubstreamConfig substream(int channels, int kbps, std::optional<ContentClassifier> content,
+iclforge::ac4::SubstreamConfig substream(int channels, int kbps, std::optional<ContentClassifier> content,
                                std::string language = {}) {
-    ac4::SubstreamConfig s;
+    iclforge::ac4::SubstreamConfig s;
     s.channels = channels;
     s.bitrate_kbps = kbps;
     s.content = content;
@@ -274,17 +274,17 @@ ac4::SubstreamConfig substream(int channels, int kbps, std::optional<ContentClas
     return s;
 }
 
-ac4::PresentationConfig presentation(std::optional<int> config, std::vector<int> substreams,
+iclforge::ac4::PresentationConfig presentation(std::optional<int> config, std::vector<int> substreams,
                                      int id) {
-    ac4::PresentationConfig p;
+    iclforge::ac4::PresentationConfig p;
     p.config = config;
     p.substreams = std::move(substreams);
     p.presentation_id = id;
     return p;
 }
 
-ac4::EmdfPayload payload(int id, std::vector<std::uint8_t> bytes) {
-    ac4::EmdfPayload p;
+iclforge::ac4::EmdfPayload payload(int id, std::vector<std::uint8_t> bytes) {
+    iclforge::ac4::EmdfPayload p;
     p.id = id;
     p.bytes = std::move(bytes);
     return p;
@@ -296,56 +296,56 @@ ac4::EmdfPayload payload(int id, std::vector<std::uint8_t> bytes) {
 // metadata().
 Stream broadcast() {
     Stream s;
-    ac4::EncoderConfig& c = s.config;
+    iclforge::ac4::EncoderConfig& c = s.config;
     c.bitrate_kbps = 640;
     c.dialnorm_db = -27.0;
-    ac4::SubstreamConfig me = substream(6, 256, ContentClassifier::kMusicAndEffects);
-    ac4::SubstreamConfig english = substream(1, 64, ContentClassifier::kDialogue, "en");
-    english.dialogue_mix = ac4::DialogueMix{.max_gain_db = 6, .pan_degrees = {330.0}};
+    iclforge::ac4::SubstreamConfig me = substream(6, 256, ContentClassifier::kMusicAndEffects);
+    iclforge::ac4::SubstreamConfig english = substream(1, 64, ContentClassifier::kDialogue, "en");
+    english.dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = 6, .pan_degrees = {330.0}};
     english.emdf = {payload(3, {9, 8, 7, 6})};
     english.emdf.front().discard_unknown = false;
     english.emdf.front().frame_aligned = true;
     english.emdf.front().priority = 5;
-    ac4::SubstreamConfig german = substream(1, 64, ContentClassifier::kDialogue, "de");
-    german.dialogue_mix = ac4::DialogueMix{.max_gain_db = 12, .pan_degrees = {}};
-    ac4::SubstreamConfig described = substream(1, 48, ContentClassifier::kVisuallyImpaired, "qad");
-    ac4::SubstreamConfig commentary = substream(2, 80, ContentClassifier::kCommentary, "en");
-    ac4::SubstreamConfig french = substream(2, 80, ContentClassifier::kDialogue, "fr");
-    french.dialogue_mix = ac4::DialogueMix{.max_gain_db = 3, .pan_degrees = {0.0, 30.0}};
+    iclforge::ac4::SubstreamConfig german = substream(1, 64, ContentClassifier::kDialogue, "de");
+    german.dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = 12, .pan_degrees = {}};
+    iclforge::ac4::SubstreamConfig described = substream(1, 48, ContentClassifier::kVisuallyImpaired, "qad");
+    iclforge::ac4::SubstreamConfig commentary = substream(2, 80, ContentClassifier::kCommentary, "en");
+    iclforge::ac4::SubstreamConfig french = substream(2, 80, ContentClassifier::kDialogue, "fr");
+    french.dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = 3, .pan_degrees = {0.0, 30.0}};
     c.substreams = {me, english, german, described, commentary, french};
 
-    ac4::PresentationConfig p1 = presentation(0, {0, 1}, 1);
+    iclforge::ac4::PresentationConfig p1 = presentation(0, {0, 1}, 1);
     p1.gains_db = {0.0, -2.0};
     p1.emdf = {payload(2, {1, 2, 3})};
-    p1.loudness = ac4::FurtherLoudness{};
-    p1.loudness->practice = ac4::LoudnessPractice::kEbuR128;
+    p1.loudness = iclforge::ac4::FurtherLoudness{};
+    p1.loudness->practice = iclforge::ac4::LoudnessPractice::kEbuR128;
     p1.loudness->integrated_lkfs = -23.0;
-    ac4::PresentationConfig p2 = presentation(0, {0, 2}, 2);
+    iclforge::ac4::PresentationConfig p2 = presentation(0, {0, 2}, 2);
     p2.dialnorm_db = -24.0;
-    ac4::PresentationConfig p3 = presentation(3, {0, 1, 3}, 3);
+    iclforge::ac4::PresentationConfig p3 = presentation(3, {0, 1, 3}, 3);
     p3.gains_db = {0.0, 0.0, -1.0};
-    p3.associated = ac4::AssociatedMix{
+    p3.associated = iclforge::ac4::AssociatedMix{
         .main_db = -6.0, .main_centre_db = -3.0, .main_front_db = -1.5, .pan_degrees = 30.0};
-    ac4::PresentationConfig p4 = presentation(2, {0, 3}, 4);
-    p4.associated = ac4::AssociatedMix{.main_db = std::nullopt,
+    iclforge::ac4::PresentationConfig p4 = presentation(2, {0, 3}, 4);
+    p4.associated = iclforge::ac4::AssociatedMix{.main_db = std::nullopt,
                                        .main_centre_db = std::nullopt,
                                        .main_front_db = std::nullopt,
                                        .pan_degrees = 330.0};
-    ac4::PresentationConfig p5 = presentation(2, {0, 4}, 5);
-    p5.associated = ac4::AssociatedMix{.main_db = std::nullopt,
+    iclforge::ac4::PresentationConfig p5 = presentation(2, {0, 4}, 5);
+    p5.associated = iclforge::ac4::AssociatedMix{.main_db = std::nullopt,
                                        .main_centre_db = std::nullopt,
                                        .main_front_db = -3.0,
                                        .pan_degrees = std::nullopt};
-    ac4::PresentationConfig p6 = presentation(0, {0, 5}, 6);
-    ac4::PresentationConfig p7 = presentation(5, {0, 1, 3}, 7);
+    iclforge::ac4::PresentationConfig p6 = presentation(0, {0, 5}, 6);
+    iclforge::ac4::PresentationConfig p7 = presentation(5, {0, 1, 3}, 7);
     p7.gains_db = {0.0, -0.5, -1.5};
-    p7.associated = ac4::AssociatedMix{.main_db = std::nullopt,
+    p7.associated = iclforge::ac4::AssociatedMix{.main_db = std::nullopt,
                                        .main_centre_db = std::nullopt,
                                        .main_front_db = std::nullopt,
                                        .pan_degrees = 30.0};
-    ac4::PresentationConfig p8 = presentation(0, {0, 2}, 8);
+    iclforge::ac4::PresentationConfig p8 = presentation(0, {0, 2}, 8);
     p8.name = "Deutsch";
-    ac4::PresentationConfig hidden = presentation(std::nullopt, {0}, 30);
+    iclforge::ac4::PresentationConfig hidden = presentation(std::nullopt, {0}, 30);
     hidden.enabled = false;
     hidden.pre_virtualized = true;
     c.presentations = {p1, p2, p3, p4, p5, p6, p7, p8};
@@ -381,40 +381,40 @@ constexpr int kShareMid = 8;
 
 Stream hybrid() {
     Stream s;
-    ac4::EncoderConfig& c = s.config;
+    iclforge::ac4::EncoderConfig& c = s.config;
     c.bitrate_kbps = 512;
-    ac4::SubstreamConfig main51 = substream(6, 256, ContentClassifier::kCompleteMain);
-    main51.dialogue = ac4::DialogueConfig{};
-    main51.dialogue->method = ac4::DialogueMethod::kChannelIndependent;
+    iclforge::ac4::SubstreamConfig main51 = substream(6, 256, ContentClassifier::kCompleteMain);
+    main51.dialogue = iclforge::ac4::DialogueConfig{};
+    main51.dialogue->method = iclforge::ac4::DialogueMethod::kChannelIndependent;
     main51.dialogue->centre = true;
     main51.dialogue->max_gain_db = 12;
     main51.dialogue->hybrid = true;
     main51.dialogue->waveform_share = kShareIndependent / 31.0;
-    ac4::SubstreamConfig waveform51;
+    iclforge::ac4::SubstreamConfig waveform51;
     waveform51.enhances = 0;
     waveform51.bitrate_kbps = 64;
-    ac4::SubstreamConfig main20 = substream(2, 96, ContentClassifier::kCompleteMain);
-    main20.dialogue = ac4::DialogueConfig{};
-    main20.dialogue->method = ac4::DialogueMethod::kMid;
+    iclforge::ac4::SubstreamConfig main20 = substream(2, 96, ContentClassifier::kCompleteMain);
+    main20.dialogue = iclforge::ac4::DialogueConfig{};
+    main20.dialogue->method = iclforge::ac4::DialogueMethod::kMid;
     main20.dialogue->left = true;
     main20.dialogue->right = true;
     main20.dialogue->centre = false;
     main20.dialogue->max_gain_db = 12;
     main20.dialogue->hybrid = true;
     main20.dialogue->waveform_share = kShareMid / 31.0;
-    ac4::SubstreamConfig waveform20;
+    iclforge::ac4::SubstreamConfig waveform20;
     waveform20.enhances = 2;
     waveform20.bitrate_kbps = 48;
-    ac4::SubstreamConfig described = substream(1, 48, ContentClassifier::kVisuallyImpaired, "qad");
+    iclforge::ac4::SubstreamConfig described = substream(1, 48, ContentClassifier::kVisuallyImpaired, "qad");
     c.substreams = {main51, waveform51, main20, waveform20, described};
-    ac4::PresentationConfig p1 = presentation(1, {0, 1}, 1);
-    ac4::PresentationConfig p2 = presentation(4, {0, 1, 4}, 2);
+    iclforge::ac4::PresentationConfig p1 = presentation(1, {0, 1}, 1);
+    iclforge::ac4::PresentationConfig p2 = presentation(4, {0, 1, 4}, 2);
     p2.gains_db = {0.0, 0.0, -1.0};
-    p2.associated = ac4::AssociatedMix{.main_db = std::nullopt,
+    p2.associated = iclforge::ac4::AssociatedMix{.main_db = std::nullopt,
                                        .main_centre_db = std::nullopt,
                                        .main_front_db = std::nullopt,
                                        .pan_degrees = 30.0};
-    ac4::PresentationConfig p3 = presentation(1, {2, 3}, 3);
+    iclforge::ac4::PresentationConfig p3 = presentation(1, {2, 3}, 3);
     c.presentations = {p1, p2, p3};
     for (int i = 0; i < 5; ++i) {
         c.presentations.push_back(presentation(std::nullopt, {i}, 10 + i));
@@ -444,7 +444,7 @@ Stream emdf() {
     Stream s;
     s.config.bitrate_kbps = 128;
     s.config.substreams = {substream(2, 96, ContentClassifier::kCompleteMain)};
-    ac4::PresentationConfig only;
+    iclforge::ac4::PresentationConfig only;
     only.config = 6;
     only.emdf = {payload(1, {0xE6, 0x06}), payload(40, {})};
     s.config.presentations = {presentation(std::nullopt, {0}, 1), only};
@@ -461,18 +461,18 @@ constexpr std::array<double, 3> kDialogue30 = {1117.0, 1373.0, 1531.0};
 
 Stream three_zero() {
     Stream s;
-    ac4::EncoderConfig& c = s.config;
+    iclforge::ac4::EncoderConfig& c = s.config;
     c.bitrate_kbps = 800;
     c.experimental.three_zero = true;
-    ac4::SubstreamConfig me = substream(6, 256, ContentClassifier::kMusicAndEffects);
-    ac4::SubstreamConfig dialogue = substream(3, 128, ContentClassifier::kDialogue, "en");
-    ac4::SubstreamConfig main = substream(6, 256, ContentClassifier::kCompleteMain);
-    main.dialogue = ac4::DialogueConfig{};
+    iclforge::ac4::SubstreamConfig me = substream(6, 256, ContentClassifier::kMusicAndEffects);
+    iclforge::ac4::SubstreamConfig dialogue = substream(3, 128, ContentClassifier::kDialogue, "en");
+    iclforge::ac4::SubstreamConfig main = substream(6, 256, ContentClassifier::kCompleteMain);
+    main.dialogue = iclforge::ac4::DialogueConfig{};
     main.dialogue->left = true;
     main.dialogue->right = true;
     main.dialogue->centre = true;
     main.dialogue->hybrid = true;
-    ac4::SubstreamConfig waveform;
+    iclforge::ac4::SubstreamConfig waveform;
     waveform.enhances = 2;
     waveform.bitrate_kbps = 128;
     c.substreams = {me, dialogue, main, waveform};
@@ -540,12 +540,12 @@ std::string json_string(std::string_view text) {
 // What tools/checks/check_ac4_encode_readers.py holds MediaInfo's reading to:
 // each presentation's configuration, id, level, name and dialnorm, and each
 // substream's channels, classifier and language.
-std::string configuration_json(const ac4::EncoderConfig& config, const ac4::Toc& toc) {
+std::string configuration_json(const iclforge::ac4::EncoderConfig& config, const iclforge::ac4::Toc& toc) {
     std::ostringstream out;
     out << "{\n  \"substreams\": [\n";
     for (std::size_t i = 0; i < toc.substream_groups.size(); ++i) {
-        const ac4::SubstreamGroupInfo& g = toc.substream_groups[i];
-        const ac4::SubstreamConfig& s = config.substreams[i];
+        const iclforge::ac4::SubstreamGroupInfo& g = toc.substream_groups[i];
+        const iclforge::ac4::SubstreamConfig& s = config.substreams[i];
         out << "    {\"ch_mode\": " << g.substreams.front().chan->ch_mode.value_or(-1)
             << ", \"content_classifier\": "
             << (s.content ? std::to_string(static_cast<int>(*s.content)) : std::string{"null"})
@@ -555,8 +555,8 @@ std::string configuration_json(const ac4::EncoderConfig& config, const ac4::Toc&
     }
     out << "  ],\n  \"presentations\": [\n";
     for (std::size_t i = 0; i < config.presentations.size(); ++i) {
-        const ac4::PresentationConfig& p = config.presentations[i];
-        const ac4::PresentationInfoV1& info = toc.presentations_v1[i];
+        const iclforge::ac4::PresentationConfig& p = config.presentations[i];
+        const iclforge::ac4::PresentationInfoV1& info = toc.presentations_v1[i];
         out << "    {\"presentation_config\": "
             << (p.config ? std::to_string(*p.config) : std::string{"null"})
             << ", \"substreams\": [";
@@ -596,7 +596,7 @@ void write_file(const fs::path& path, std::span<const std::byte> bytes) {
 std::vector<std::byte> sync_framed(const Encoded& encoded) {
     std::vector<std::byte> out;
     for (const std::vector<std::byte>& frame : encoded.frames) {
-        const std::vector<std::byte> framed = ac4::sync_frame(frame, true);
+        const std::vector<std::byte> framed = iclforge::ac4::sync_frame(frame, true);
         out.insert(out.end(), framed.begin(), framed.end());
     }
     return out;
@@ -606,16 +606,16 @@ fs::path committed(std::string_view name) {
     return fs::path{AC4DEC_GOLDEN_DIR} / "presentations" / (std::string{name} + ".ac4");
 }
 
-ac4::Toc toc_of(std::span<const std::byte> frame) {
-    const auto parsed = ac4::parse_raw_frame(frame);
+iclforge::ac4::Toc toc_of(std::span<const std::byte> frame) {
+    const auto parsed = iclforge::ac4::parse_raw_frame(frame);
     REQUIRE(parsed.has_value());
     return parsed->toc;
 }
 
 // The refusal of a configuration that breaks a rule, where the same
 // configuration keeping it encodes: create() alone decides both.
-bool accepted(const ac4::EncoderConfig& config) {
-    return ac4::Encoder::create(config).has_value();
+bool accepted(const iclforge::ac4::EncoderConfig& config) {
+    return iclforge::ac4::Encoder::create(config).has_value();
 }
 
 }  // namespace
@@ -625,12 +625,12 @@ TEST_CASE("the default stream has a presentation_id and the level its layout nee
     for (const auto& [channels, level] :
          {std::pair{1, 0}, std::pair{2, 0}, std::pair{5, 1}, std::pair{6, 1}}) {
         CAPTURE(channels);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = channels;
         config.bitrate_kbps = 64 * channels;
-        auto encoder = ac4::Encoder::create(config);
+        auto encoder = iclforge::ac4::Encoder::create(config);
         REQUIRE(encoder.has_value());
-        const ac4::Toc& toc = encoder->toc();
+        const iclforge::ac4::Toc& toc = encoder->toc();
         REQUIRE(toc.presentations_v1.size() == 1);
         // Part 2 Table 55: 2 tracks at md_compat 0, 6 at 1, the LFE not
         // counted; and a presentation_id, which CMAF asks every presentation
@@ -638,27 +638,27 @@ TEST_CASE("the default stream has a presentation_id and the level its layout nee
         CHECK(toc.presentations_v1[0].md_compat == level);
         CHECK(toc.presentations_v1[0].presentation_id == 0);
     }
-    ac4::EncoderConfig seven;
+    iclforge::ac4::EncoderConfig seven;
     seven.channels = 8;
     seven.bitrate_kbps = 512;
-    seven.experimental.seven_x = ac4::AdditionalPair::kBack;
-    auto encoder = ac4::Encoder::create(seven);
+    seven.experimental.seven_x = iclforge::ac4::AdditionalPair::kBack;
+    auto encoder = iclforge::ac4::Encoder::create(seven);
     REQUIRE(encoder.has_value());
     CHECK(encoder->toc().presentations_v1[0].md_compat == 2);
     // Unset, a presentation_id is the least no other presentation takes, and
     // configuration 6 has none.
-    ac4::EncoderConfig several;
+    iclforge::ac4::EncoderConfig several;
     several.bitrate_kbps = 128;
     several.substreams = {substream(2, 96, ContentClassifier::kCompleteMain)};
-    ac4::PresentationConfig only;
+    iclforge::ac4::PresentationConfig only;
     only.config = 6;
     only.emdf = {payload(1, {1})};
-    ac4::PresentationConfig single;
+    iclforge::ac4::PresentationConfig single;
     single.substreams = {0};
     several.presentations = {only, single, presentation(std::nullopt, {0}, 0), single};
-    auto with_ids = ac4::Encoder::create(several);
+    auto with_ids = iclforge::ac4::Encoder::create(several);
     REQUIRE(with_ids.has_value());
-    const std::vector<ac4::PresentationInfoV1>& got = with_ids->toc().presentations_v1;
+    const std::vector<iclforge::ac4::PresentationInfoV1>& got = with_ids->toc().presentations_v1;
     REQUIRE(got.size() == 4);
     CHECK_FALSE(got[0].presentation_id.has_value());
     CHECK(got[1].presentation_id == 1);
@@ -671,14 +671,14 @@ TEST_CASE("the table of contents holds the presentations and substreams as confi
     const Stream s = broadcast();
     const Encoded& encoded = encoded_broadcast();
     REQUIRE_FALSE(encoded.frames.empty());
-    const ac4::Toc toc = toc_of(encoded.frames.front());
+    const iclforge::ac4::Toc toc = toc_of(encoded.frames.front());
     CHECK(toc.bitstream_version == 2);
     REQUIRE(toc.presentations_v1.size() == s.config.presentations.size());
     REQUIRE(toc.substream_groups.size() == s.config.substreams.size());
     for (std::size_t i = 0; i < s.config.presentations.size(); ++i) {
         CAPTURE(i);
-        const ac4::PresentationConfig& p = s.config.presentations[i];
-        const ac4::PresentationInfoV1& got = toc.presentations_v1[i];
+        const iclforge::ac4::PresentationConfig& p = s.config.presentations[i];
+        const iclforge::ac4::PresentationInfoV1& got = toc.presentations_v1[i];
         CHECK(got.presentation_version == 1);
         CHECK(got.presentation_config == p.config);
         if (p.config == 6) {
@@ -707,8 +707,8 @@ TEST_CASE("the table of contents holds the presentations and substreams as confi
     CHECK(toc.presentations_v1[12].md_compat == 0);  // the stereo commentary alone
     for (std::size_t i = 0; i < s.config.substreams.size(); ++i) {
         CAPTURE(i);
-        const ac4::SubstreamConfig& sub = s.config.substreams[i];
-        const ac4::SubstreamGroupInfo& g = toc.substream_groups[i];
+        const iclforge::ac4::SubstreamConfig& sub = s.config.substreams[i];
+        const iclforge::ac4::SubstreamGroupInfo& g = toc.substream_groups[i];
         REQUIRE(g.substreams.size() == 1);
         REQUIRE(g.content_type.has_value());
         CHECK(g.content_type->content_classifier == static_cast<int>(*sub.content));
@@ -720,7 +720,7 @@ TEST_CASE("the table of contents holds the presentations and substreams as confi
     }
     // The same configuration in every frame (Part 2 Annex H.1.2.4).
     for (const std::vector<std::byte>& frame : encoded.frames) {
-        const ac4::Toc other = toc_of(frame);
+        const iclforge::ac4::Toc other = toc_of(frame);
         CHECK(other.presentations_v1.size() == toc.presentations_v1.size());
         CHECK(other.substream_groups.size() == toc.substream_groups.size());
         for (std::size_t i = 0; i < other.presentations_v1.size(); ++i) {
@@ -741,16 +741,16 @@ TEST_CASE("the encoder's presentations read back with its own trace", "[ac4enc][
 TEST_CASE("names and EMDF payloads read back as configured", "[ac4enc][presentations]") {
     const Encoded& encoded = encoded_broadcast();
     // The records of the first frame, an I-frame, by substream.
-    std::vector<ac4::SyntaxRecord> read;
-    const auto sink = [&read](const ac4::SyntaxRecord& r) { read.push_back(r); };
-    ac4::DecoderConfig config;
+    std::vector<iclforge::ac4::SyntaxRecord> read;
+    const auto sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+    iclforge::ac4::DecoderConfig config;
     config.syntax = sink;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     REQUIRE(decoder.parse(encoded.frames.front()).has_value());
-    const ac4::Toc toc = toc_of(encoded.frames.front());
+    const iclforge::ac4::Toc toc = toc_of(encoded.frames.front());
     const auto values = [&read](int substream, std::string_view name) {
         std::vector<std::uint64_t> out;
-        for (const ac4::SyntaxRecord& r : read) {
+        for (const iclforge::ac4::SyntaxRecord& r : read) {
             if (r.substream == substream && r.name == name) {
                 out.push_back(r.value);
             }
@@ -780,11 +780,11 @@ TEST_CASE("names and EMDF payloads read back as configured", "[ac4enc][presentat
     // The EMDF-only presentation: no substream groups, presentation_id or
     // presentation substream, and its payloads in a substream of their own.
     read.clear();
-    ac4::Decoder emdf_reader(config);
+    iclforge::ac4::Decoder emdf_reader(config);
     REQUIRE(emdf_reader.parse(encoded_emdf().frames.front()).has_value());
-    const ac4::Toc emdf_toc = toc_of(encoded_emdf().frames.front());
+    const iclforge::ac4::Toc emdf_toc = toc_of(encoded_emdf().frames.front());
     REQUIRE(emdf_toc.presentations_v1.size() == 2);
-    const ac4::PresentationInfoV1& only = emdf_toc.presentations_v1[1];
+    const iclforge::ac4::PresentationInfoV1& only = emdf_toc.presentations_v1[1];
     CHECK(only.presentation_config == 6);
     CHECK(only.group_refs.empty());
     CHECK_FALSE(only.presentation_id.has_value());
@@ -795,34 +795,34 @@ TEST_CASE("names and EMDF payloads read back as configured", "[ac4enc][presentat
     CHECK(values(payloads, "emdf_payload_id") == std::vector<std::uint64_t>{1, 31, 9, 0});
     CHECK(values(payloads, "emdf_payload_byte") == std::vector<std::uint64_t>{0xE6, 0x06});
     // A decoder plays the stream's one presentation of audio.
-    CHECK(ac4::select_presentation(emdf_toc, {}, 3) == 0);
+    CHECK(iclforge::ac4::select_presentation(emdf_toc, {}, 3) == 0);
 }
 
 TEST_CASE("the decoder selects the encoder's presentations as configured",
           "[ac4enc][presentations]") {
-    const ac4::Toc toc = toc_of(encoded_broadcast().frames.front());
-    const auto selected_id = [&toc](const ac4::PresentationChoice& choice,
+    const iclforge::ac4::Toc toc = toc_of(encoded_broadcast().frames.front());
+    const auto selected_id = [&toc](const iclforge::ac4::PresentationChoice& choice,
                                     int level = 3) -> std::optional<int> {
-        const std::optional<std::size_t> index = ac4::select_presentation(toc, choice, level);
+        const std::optional<std::size_t> index = iclforge::ac4::select_presentation(toc, choice, level);
         if (!index) {
             return std::nullopt;
         }
         return toc.presentations_v1[*index].presentation_id;
     };
     CHECK(selected_id({}) == 1);  // the first, with no associated audio
-    ac4::PresentationChoice german;
+    iclforge::ac4::PresentationChoice german;
     german.language = "de";
     CHECK(selected_id(german) == 2);
-    ac4::PresentationChoice french;
+    iclforge::ac4::PresentationChoice french;
     french.language = "fr";
     CHECK(selected_id(french) == 6);
-    ac4::PresentationChoice description;
+    iclforge::ac4::PresentationChoice description;
     description.associated = static_cast<int>(ContentClassifier::kVisuallyImpaired);
     CHECK(selected_id(description) == 3);
-    ac4::PresentationChoice commentary;
+    iclforge::ac4::PresentationChoice commentary;
     commentary.associated = static_cast<int>(ContentClassifier::kCommentary);
     CHECK(selected_id(commentary) == 5);
-    ac4::PresentationChoice by_id;
+    iclforge::ac4::PresentationChoice by_id;
     by_id.presentation_id = 8;
     CHECK(selected_id(by_id) == 8);
     // Disabled: never selected, not even by its id.
@@ -932,7 +932,7 @@ TEST_CASE("the hybrid methods add the dialogue enhancement substream's waveform"
             main_gain * component(main, at, kToneDialogue) +
             waveform_gain * component(waveform, waveform_at, kToneDialogue);
         const double got = amplitude(mix, at, kToneDialogue);
-        CAPTURE(ac4::describe(at), db(got), db(std::abs(expected)));
+        CAPTURE(iclforge::ac4::describe(at), db(got), db(std::abs(expected)));
         CHECK(std::abs(db(got) - db(std::abs(expected))) < kToleranceDb);
     };
     {
@@ -979,19 +979,19 @@ TEST_CASE("the cross-channel hybrid method renders its waveform by the dialogue'
     constexpr double kLeft = 0.448;
     const double right = std::sqrt(1.0 - kLeft * kLeft);
     constexpr int kShare = 31;
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.bitrate_kbps = 256;
-    ac4::SubstreamConfig main = substream(2, 160, ContentClassifier::kCompleteMain);
-    main.dialogue = ac4::DialogueConfig{};
-    main.dialogue->method = ac4::DialogueMethod::kCrossChannel;
-    main.dialogue->source = ac4::DialogueSource::kStem;
+    iclforge::ac4::SubstreamConfig main = substream(2, 160, ContentClassifier::kCompleteMain);
+    main.dialogue = iclforge::ac4::DialogueConfig{};
+    main.dialogue->method = iclforge::ac4::DialogueMethod::kCrossChannel;
+    main.dialogue->source = iclforge::ac4::DialogueSource::kStem;
     main.dialogue->left = true;
     main.dialogue->right = true;
     main.dialogue->centre = false;
     main.dialogue->max_gain_db = 12;
     main.dialogue->hybrid = true;
     main.dialogue->waveform_share = kShare / 31.0;
-    ac4::SubstreamConfig waveform;
+    iclforge::ac4::SubstreamConfig waveform;
     waveform.enhances = 0;
     waveform.bitrate_kbps = 64;
     config.substreams = {main, waveform};
@@ -1019,7 +1019,7 @@ TEST_CASE("3.0 carries the dialogue of a music and effects presentation and a wa
           "[ac4enc][presentations]") {
     const Encoded& e = encoded_three_zero();
     read_back(e);
-    const ac4::Toc toc = toc_of(e.frames.front());
+    const iclforge::ac4::Toc toc = toc_of(e.frames.front());
     CHECK(toc.substream_groups[1].substreams[0].chan->ch_mode == 2);
     CHECK(toc.substream_groups[3].substreams[0].chan->ch_mode == 2);
     // The dialogue's three channels go channel to channel into the music and
@@ -1046,7 +1046,7 @@ TEST_CASE("3.0 carries the dialogue of a music and effects presentation and a wa
         CHECK(amplitude(wave, wave.speakers[c], kDialogue30[c]) > 0.5 * kAmplitude);
     }
     // Without the experimental option, 3.0 is refused.
-    ac4::EncoderConfig config = three_zero().config;
+    iclforge::ac4::EncoderConfig config = three_zero().config;
     config.experimental.three_zero = false;
     CHECK_FALSE(accepted(config));
 }
@@ -1057,9 +1057,9 @@ TEST_CASE("the 7.X pair is the 7.X substream's beside mono dialogue", "[ac4enc][
     // and the dialogue codes as it would alone.
     constexpr std::array<double, 8> kTones71 = {331.0, 457.0, 613.0,  47.0,
                                                 787.0, 953.0, 1289.0, 1453.0};
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.bitrate_kbps = 576;
-    config.experimental.seven_x = ac4::AdditionalPair::kBack;
+    config.experimental.seven_x = iclforge::ac4::AdditionalPair::kBack;
     config.substreams = {substream(8, 512, ContentClassifier::kMusicAndEffects),
                          substream(1, 64, ContentClassifier::kDialogue, "en")};
     config.presentations = {presentation(0, {0, 1}, 1), presentation(std::nullopt, {0}, 2),
@@ -1071,7 +1071,7 @@ TEST_CASE("the 7.X pair is the 7.X substream's beside mono dialogue", "[ac4enc][
     input.push_back(tone(kToneEnglish));
     const Encoded e = encode(config, input);
     read_back(e);
-    const ac4::Toc toc = toc_of(e.frames.front());
+    const iclforge::ac4::Toc toc = toc_of(e.frames.front());
     REQUIRE(toc.substream_groups.size() == 2);
     CHECK(toc.substream_groups[0].substreams[0].chan->channel_mode_name == "7.1: 3/4/0.1");
     CHECK(toc.substream_groups[1].substreams[0].chan->ch_mode == 0);
@@ -1084,13 +1084,13 @@ TEST_CASE("the 7.X pair is the 7.X substream's beside mono dialogue", "[ac4enc][
     check_tone(mix, me, me.speakers.back(), kTones71.back(), {{me.speakers.back(), 0.0}});
     // A pair and no substream of seven or eight channels to take it is refused.
     config.substreams[0].channels = 6;
-    CHECK(ac4::Encoder::refusal_reason(config) ==
+    CHECK(iclforge::ac4::Encoder::refusal_reason(config) ==
           "experimental.seven_x's additional pair without seven or eight channels");
 }
 
 TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentations]") {
     const auto base = [] {
-        ac4::EncoderConfig c;
+        iclforge::ac4::EncoderConfig c;
         c.bitrate_kbps = 256;
         c.substreams = {substream(2, 128, ContentClassifier::kMusicAndEffects),
                         substream(1, 64, ContentClassifier::kDialogue, "en")};
@@ -1101,7 +1101,7 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     // Part 1 clause 6.2.16.0: dialogue adds no channel the music and effects
     // lack, but for a mono one.
     {
-        ac4::EncoderConfig c = base();
+        iclforge::ac4::EncoderConfig c = base();
         c.substreams[0].channels = 1;
         c.substreams[1].channels = 2;
         CHECK_FALSE(accepted(c));
@@ -1110,7 +1110,7 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     }
     // Associated audio likewise: 5.1 against a stereo main.
     {
-        ac4::EncoderConfig c = base();
+        iclforge::ac4::EncoderConfig c = base();
         c.substreams[1] = substream(6, 96, ContentClassifier::kVisuallyImpaired);
         c.presentations = {presentation(2, {0, 1}, 1)};
         CHECK_FALSE(accepted(c));
@@ -1118,7 +1118,7 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     // Part 1 clause 4.3.3.7.1: 3.0 codes a dialogue enhancement signal, or
     // the dialogue of a music and effects presentation, alone.
     {
-        ac4::EncoderConfig c = base();
+        iclforge::ac4::EncoderConfig c = base();
         c.experimental.three_zero = true;
         c.substreams[0].channels = 6;
         c.substreams[1].channels = 3;
@@ -1134,7 +1134,7 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     }
     // CMAF (Part 2 Annex H.1.2.1): 64 presentations at most, each id its own.
     {
-        ac4::EncoderConfig c = base();
+        iclforge::ac4::EncoderConfig c = base();
         c.presentations.clear();
         for (int i = 0; i < 64; ++i) {
             c.presentations.push_back(presentation(0, {0, 1}, i));
@@ -1149,7 +1149,7 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     // Table 53: the configuration's count of substreams, a dialogue
     // enhancement substream where it asks for one, and every substream played.
     {
-        ac4::EncoderConfig c = base();
+        iclforge::ac4::EncoderConfig c = base();
         c.presentations = {presentation(3, {0, 1}, 1)};
         CHECK_FALSE(accepted(c));
         c.presentations = {presentation(1, {0, 1}, 1)};
@@ -1161,7 +1161,7 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     }
     // Levels, names and gains.
     {
-        ac4::EncoderConfig c = base();
+        iclforge::ac4::EncoderConfig c = base();
         c.presentations[0].md_compat = 0;  // three tracks
         CHECK_FALSE(accepted(c));
         c.presentations[0].md_compat = 3;
@@ -1184,8 +1184,8 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     // The associated audio's values need associated audio, and a pan a mono
     // substream.
     {
-        ac4::EncoderConfig c = base();
-        c.presentations[0].associated = ac4::AssociatedMix{.main_db = -6.0,
+        iclforge::ac4::EncoderConfig c = base();
+        c.presentations[0].associated = iclforge::ac4::AssociatedMix{.main_db = -6.0,
                                                            .main_centre_db = std::nullopt,
                                                            .main_front_db = std::nullopt,
                                                            .pan_degrees = std::nullopt};
@@ -1193,7 +1193,7 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
         c = base();
         c.substreams[1] = substream(2, 64, ContentClassifier::kCommentary);
         c.presentations = {presentation(2, {0, 1}, 1)};
-        c.presentations[0].associated = ac4::AssociatedMix{.main_db = std::nullopt,
+        c.presentations[0].associated = iclforge::ac4::AssociatedMix{.main_db = std::nullopt,
                                                            .main_centre_db = std::nullopt,
                                                            .main_front_db = std::nullopt,
                                                            .pan_degrees = 30.0};
@@ -1203,12 +1203,12 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     // configuration payloads and nothing else; the substreams' rates within
     // the stream's.
     {
-        ac4::EncoderConfig c = base();
+        iclforge::ac4::EncoderConfig c = base();
         c.substreams[0].content.reset();
         c.substreams[0].language = "en";
         CHECK_FALSE(accepted(c));
         c = base();
-        ac4::PresentationConfig emdf;
+        iclforge::ac4::PresentationConfig emdf;
         emdf.config = 6;
         c.presentations.push_back(emdf);
         CHECK_FALSE(accepted(c));
@@ -1222,13 +1222,13 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
     }
     // A hybrid method's waveform: for a hybrid main, one at most.
     {
-        ac4::EncoderConfig c = base();
-        ac4::SubstreamConfig waveform;
+        iclforge::ac4::EncoderConfig c = base();
+        iclforge::ac4::SubstreamConfig waveform;
         waveform.enhances = 0;
         c.substreams.push_back(waveform);
         c.presentations.push_back(presentation(1, {0, 2}, 3));
         CHECK_FALSE(accepted(c));  // substream 0 has no hybrid method
-        c.substreams[0].dialogue = ac4::DialogueConfig{};
+        c.substreams[0].dialogue = iclforge::ac4::DialogueConfig{};
         c.substreams[0].dialogue->left = true;
         c.substreams[0].dialogue->right = true;
         c.substreams[0].dialogue->centre = false;
@@ -1251,7 +1251,7 @@ TEST_CASE("the committed encoder presentation streams are the configurations'",
                                  : name == "encoder-hybrid"  ? encoded_hybrid()
                                  : name == "encoder-emdf"    ? encoded_emdf()
                                                              : encoded_three_zero();
-        const ac4::Toc toc = toc_of(encoded.frames.front());
+        const iclforge::ac4::Toc toc = toc_of(encoded.frames.front());
         if (write_to != nullptr) {
             const fs::path out = fs::path{write_to} / "presentations";
             write_file(out / (std::string{name} + ".ac4"), sync_framed(encoded));
@@ -1263,9 +1263,9 @@ TEST_CASE("the committed encoder presentation streams are the configurations'",
         // committed stream is held to the configuration's table of contents,
         // and to what its readers read in it.
         const std::vector<std::byte> file = read_file(committed(name));
-        const ac4::ScanResult scan = ac4::scan(file);
+        const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(file);
         REQUIRE_FALSE(scan.frames.empty());
-        const ac4::Toc on_disk = toc_of(scan.frames.front().raw_ac4_frame);
+        const iclforge::ac4::Toc on_disk = toc_of(scan.frames.front().raw_ac4_frame);
         REQUIRE(on_disk.presentations_v1.size() == toc.presentations_v1.size());
         REQUIRE(on_disk.substream_groups.size() == toc.substream_groups.size());
         for (std::size_t i = 0; i < toc.presentations_v1.size(); ++i) {

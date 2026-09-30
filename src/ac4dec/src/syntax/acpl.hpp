@@ -15,7 +15,7 @@
 // Nothing is dequantised: parameter values stay Huffman codebook indices,
 // before cb_off, with the diff_type that says how clause 5.7.7.7 decodes them.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 inline constexpr int kAcplMaxParamBands = 15;  // Table 143
 inline constexpr int kAcplMaxParamSets = 2;    // Table 146
@@ -119,4 +119,4 @@ struct AcplData2ch {
 [[nodiscard]] const Codebook& acpl_codebook(AcplDataType data_type, int quant_mode,
                                             AcplHcbType hcb_type) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

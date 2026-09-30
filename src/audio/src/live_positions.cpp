@@ -11,7 +11,7 @@
 #include "iclforge/objects/scene_osc.hpp"
 #include "net/udp_socket.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(PositionSourceError error) {
     switch (error) {
@@ -72,8 +72,8 @@ struct LivePositionSource::Impl {
     // never allocates. A slot holds whatever fields have arrived and not
     // yet been applied: a gain/lfe-only update stays pending (not applied,
     // not dropped) until a position finally arrives for the same object,
-    // per ac3::oba::apply's own contract.
-    std::vector<std::optional<ac3::oba::SceneOscUpdate>> pending;
+    // per iclforge::oba::apply's own contract.
+    std::vector<std::optional<iclforge::oba::SceneOscUpdate>> pending;
     PositionSourceStats stats;
 
     // Reused every recv() call rather than allocated per datagram - this is
@@ -81,7 +81,7 @@ struct LivePositionSource::Impl {
     // allocate here either.
     std::vector<std::byte> recv_buffer;
 
-    void merge(const ac3::oba::SceneOscUpdate& update) {
+    void merge(const iclforge::oba::SceneOscUpdate& update) {
         // Not locked here - the caller (run()) already holds `mutex` for the
         // whole batch a single datagram produced, so one packet's messages
         // are merged atomically with respect to a concurrent drain_into.
@@ -90,12 +90,12 @@ struct LivePositionSource::Impl {
             return;
         }
         if (update.release) {
-            pending[update.object] = ac3::oba::SceneOscUpdate{.object = update.object, .release = true};
+            pending[update.object] = iclforge::oba::SceneOscUpdate{.object = update.object, .release = true};
             return;
         }
         auto& slot = pending[update.object];
         if (!slot || slot->release) {
-            slot = ac3::oba::SceneOscUpdate{.object = update.object};
+            slot = iclforge::oba::SceneOscUpdate{.object = update.object};
         }
         if (update.position) {
             slot->position = update.position;
@@ -117,9 +117,9 @@ struct LivePositionSource::Impl {
             // Allocates (parse_osc_packet's own vector) - fine here, this is
             // the receiver thread, never the audio/encode path drain_into
             // runs on.
-            ac3::oba::OscParseStats parse_stats;
+            iclforge::oba::OscParseStats parse_stats;
             const auto updates =
-                ac3::oba::parse_osc_packet(std::span{recv_buffer}.first(*got), &parse_stats);
+                iclforge::oba::parse_osc_packet(std::span{recv_buffer}.first(*got), &parse_stats);
 
             const std::lock_guard<std::mutex> lock(mutex);
             ++stats.datagrams;
@@ -176,7 +176,7 @@ PositionSourceStats LivePositionSource::stats() const {
     return impl_->stats;
 }
 
-void LivePositionSource::drain_into(ac3::oba::SceneCursor& cursor, double time_s) {
+void LivePositionSource::drain_into(iclforge::oba::SceneCursor& cursor, double time_s) {
     const std::lock_guard<std::mutex> lock(impl_->mutex);
     for (std::size_t i = 0; i < impl_->pending.size(); ++i) {
         auto& slot = impl_->pending[i];
@@ -194,7 +194,7 @@ void LivePositionSource::drain_into(ac3::oba::SceneCursor& cursor, double time_s
         // for why reusing it there would rotate the scene's orientation
         // onto a live object twice.
         const auto base = cursor.scene().evaluate(i, time_s);
-        if (const auto merged = ac3::oba::apply(*slot, base)) {
+        if (const auto merged = iclforge::oba::apply(*slot, base)) {
             cursor.push({.object = i, .placement = *merged});
             ++impl_->stats.updates_applied;
             // Consumed: the cursor now holds this value durably (it keeps
@@ -207,4 +207,4 @@ void LivePositionSource::drain_into(ac3::oba::SceneCursor& cursor, double time_s
     }
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

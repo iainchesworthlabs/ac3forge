@@ -42,7 +42,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_iab_" + scratch_pid_suffix());
@@ -53,7 +53,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -277,7 +277,7 @@ TEST_CASE("ac3cli atmos-iab parses, bridges and encodes a real IAB fixture end t
     CHECK(fs::file_size(out_path) > 0);
 
     // Decode what the CLI actually wrote - proves the real binary's argument parsing, the MXF/
-    // elementary sniff, ac3::admbridge::build_iab call and per-frame AtmosEncoder loop are all
+    // elementary sniff, iclforge::admbridge::build_iab call and per-frame AtmosEncoder loop are all
     // wired together correctly, not just that each piece works in isolation
     // (tests/admbridge/test_iab_bridge.cpp's own flagship test already covers that).
     std::ifstream stream_in{out_path, std::ios::binary};
@@ -288,11 +288,11 @@ TEST_CASE("ac3cli atmos-iab parses, bridges and encodes a real IAB fixture end t
         stream_bytes[i] = static_cast<std::byte>(raw[i]);
     }
 
-    const auto units = ac3::split_access_units(stream_bytes);
+    const auto units = iclforge::split_access_units(stream_bytes);
     REQUIRE(units.has_value());
     REQUIRE(units->size() >= 3);  // real content, more than one AC-3 frame
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     constexpr int kCCh = 1;  // AC-3 3/2 coded order (Table 5.8): L, C, R, Ls, Rs.
 
     bool saw_center_energy = false;
@@ -324,7 +324,7 @@ TEST_CASE("ac3cli atmos-iab reports a clear diagnosis for a file with no IAB ess
         run_cli("atmos-iab \"" + bad_path.string() + "\" \"" + out_path.string() + "\"", log_path);
     CHECK(rc != 0);
     const auto log = read_log(log_path);
-    // ac3iab::describe(IabError::...) - never a silent crash or an unlabeled non-zero exit.
+    // iclforge::iab::describe(IabError::...) - never a silent crash or an unlabeled non-zero exit.
     CHECK(log.find("error:") != std::string::npos);
     CHECK_FALSE(fs::exists(out_path));
 }

@@ -15,7 +15,7 @@
 #include "pcm/snf_random.hpp"
 #include "pcm/stereo.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // Table 188, d_pcm by frame_rate_index: 23.976 to 120 fps, then index 13,
@@ -1100,4 +1100,4 @@ ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
     return {};
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -16,7 +16,7 @@
 
 #include "platform.hpp"
 
-namespace ac3::sendspin::discovery::mdns_platform {
+namespace iclforge::sendspin::discovery::mdns_platform {
 
 namespace {
 
@@ -132,4 +132,4 @@ void close_socket(int socket) {
     closesocket(handle_of(socket));
 }
 
-}  // namespace ac3::sendspin::discovery::mdns_platform
+}  // namespace iclforge::sendspin::discovery::mdns_platform

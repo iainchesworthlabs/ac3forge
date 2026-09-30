@@ -9,7 +9,7 @@
 
 // See engine_thread.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -570,4 +570,4 @@ void Engine::run(const std::stop_token& stop) {
     player_.stop();
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

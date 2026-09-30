@@ -56,9 +56,9 @@ std::vector<std::byte> unswap_words(std::span<const std::byte> payload) {
 std::vector<std::vector<float>> tone_frame(int channels, std::uint64_t start) {
     std::vector<std::vector<float>> pcm(
         static_cast<std::size_t>(channels),
-        std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+        std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
     for (auto& channel : pcm) {
-        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
             const auto n = static_cast<double>(start + static_cast<std::uint64_t>(i));
             channel[static_cast<std::size_t>(i)] =
                 static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 1000.0 * n / 48000.0));
@@ -95,18 +95,18 @@ std::vector<std::byte> fake_syncframe(int bsid, int fscod, int numblkscod,
 // - it would just be comparing the bug to itself.
 TEST_CASE("burst sizes match IEC 61937 exactly: AC-3 6144, E-AC-3 24576 (4x)",
          "[iec61937]") {
-    CHECK(ac3::iec61937::kBurstBytes == 6144);
-    CHECK(ac3::iec61937::kEac3BurstBytes == 24576);
+    CHECK(iclforge::iec61937::kBurstBytes == 6144);
+    CHECK(iclforge::iec61937::kEac3BurstBytes == 24576);
 }
 
 // --- AC-3 (wrap_frame) ------------------------------------------------------
 
 TEST_CASE("wrap_frame: preamble and burst size", "[iec61937][ac3]") {
-    const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
-    const auto burst = ac3::iec61937::wrap_frame(*frame);
+    const auto burst = iclforge::iec61937::wrap_frame(*frame);
     REQUIRE(burst.has_value());
-    CHECK(burst->size() == ac3::iec61937::kBurstBytes);
+    CHECK(burst->size() == iclforge::iec61937::kBurstBytes);
 
     // Pa 0xF872, Pb 0x4E1F, little-endian.
     CHECK(le16(*burst, 0) == 0xF872);
@@ -119,9 +119,9 @@ TEST_CASE("wrap_frame: preamble and burst size", "[iec61937][ac3]") {
 }
 
 TEST_CASE("wrap_frame: payload is word-swapped and zero-padded", "[iec61937][ac3]") {
-    const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
-    const auto burst = ac3::iec61937::wrap_frame(*frame);
+    const auto burst = iclforge::iec61937::wrap_frame(*frame);
     REQUIRE(burst.has_value());
 
     const std::span<const std::byte> payload{*burst};
@@ -134,37 +134,37 @@ TEST_CASE("wrap_frame: payload is word-swapped and zero-padded", "[iec61937][ac3
 }
 
 TEST_CASE("wrap_frame: round-trips through split_frames", "[iec61937][ac3]") {
-    ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192}};
     std::uint64_t n = 0;
     std::vector<std::byte> last;
     for (int f = 0; f < 3; ++f) {
         auto pcm = tone_frame(2, n);
-        n += ac3::kSamplesPerFrame;
+        n += iclforge::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
         last = *frame;
     }
 
-    const auto burst = ac3::iec61937::wrap_frame(last);
+    const auto burst = iclforge::iec61937::wrap_frame(last);
     REQUIRE(burst.has_value());
     const auto recovered = unswap_words(std::span{*burst}.subspan(8, last.size()));
-    const auto frames = ac3::split_frames(recovered);
+    const auto frames = iclforge::split_frames(recovered);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 1);
     CHECK(std::equal((*frames)[0].begin(), (*frames)[0].end(), last.begin(), last.end()));
 }
 
 TEST_CASE("wrap_frame: rejects non-AC-3 input and oversized frames", "[iec61937][ac3]") {
-    CHECK(ac3::iec61937::wrap_frame(std::vector<std::byte>{std::byte{0}, std::byte{0}}).error() ==
-          ac3::iec61937::WrapError::kNotAFrame);
+    CHECK(iclforge::iec61937::wrap_frame(std::vector<std::byte>{std::byte{0}, std::byte{0}}).error() ==
+          iclforge::iec61937::WrapError::kNotAFrame);
 
     // A frame that carries a legal sync word but is too big for one burst.
-    std::vector<std::byte> oversized(ac3::iec61937::kBurstBytes, std::byte{0});
+    std::vector<std::byte> oversized(iclforge::iec61937::kBurstBytes, std::byte{0});
     oversized[0] = std::byte{0x0B};
     oversized[1] = std::byte{0x77};
-    CHECK(ac3::iec61937::wrap_frame(oversized).error() ==
-          ac3::iec61937::WrapError::kFrameTooLarge);
+    CHECK(iclforge::iec61937::wrap_frame(oversized).error() ==
+          iclforge::iec61937::WrapError::kFrameTooLarge);
 }
 
 // --- E-AC-3 (Eac3BurstPacker) -----------------------------------------------
@@ -174,12 +174,12 @@ TEST_CASE("Eac3BurstPacker: real audio, numblkscod 3 bursts every access unit",
     // This project's own encoder always writes numblkscod 3 (six blocks per
     // syncframe - see eac3_frame.cpp), so a real access unit already spans
     // one whole burst period and needs no accumulation.
-    ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
-    ac3::iec61937::Eac3BurstPacker packer;
+    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
+    iclforge::iec61937::Eac3BurstPacker packer;
     std::uint64_t n = 0;
     for (int f = 0; f < 3; ++f) {
         auto pcm = tone_frame(2, n);
-        n += ac3::kSamplesPerFrame;
+        n += iclforge::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         const auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
@@ -188,7 +188,7 @@ TEST_CASE("Eac3BurstPacker: real audio, numblkscod 3 bursts every access unit",
         REQUIRE(burst.has_value());
         REQUIRE(burst->has_value());
         const auto& b = **burst;
-        CHECK(b.size() == ac3::iec61937::kEac3BurstBytes);
+        CHECK(b.size() == iclforge::iec61937::kEac3BurstBytes);
         CHECK(le16(b, 0) == 0xF872);
         CHECK(le16(b, 2) == 0x4E1F);
         // Pc: IEC61937_EAC3 = 0x15, no data-type-dependent bits.
@@ -207,7 +207,7 @@ TEST_CASE("Eac3BurstPacker: real audio, numblkscod 3 bursts every access unit",
         // The payload is still a decodable access unit, not merely
         // byte-identical - confirms wrapping did not corrupt anything a
         // decoder actually reads.
-        ac3::Eac3Decoder decoder;
+        iclforge::Eac3Decoder decoder;
         const auto decoded = decoder.decode_access_unit(recovered);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
@@ -222,7 +222,7 @@ TEST_CASE("Eac3BurstPacker: accumulates sub-six-block access units", "[iec61937]
     };
     for (const auto& c : {Case{0, 6}, Case{1, 3}, Case{2, 2}}) {
         CAPTURE(c.numblkscod, c.repeat);
-        ac3::iec61937::Eac3BurstPacker packer;
+        iclforge::iec61937::Eac3BurstPacker packer;
         std::vector<std::byte> expected_payload;
         std::optional<std::vector<std::byte>> burst;
         for (int i = 0; i < c.repeat; ++i) {
@@ -238,7 +238,7 @@ TEST_CASE("Eac3BurstPacker: accumulates sub-six-block access units", "[iec61937]
             }
         }
         REQUIRE(burst.has_value());
-        CHECK(burst->size() == ac3::iec61937::kEac3BurstBytes);
+        CHECK(burst->size() == iclforge::iec61937::kEac3BurstBytes);
         CHECK(le16(*burst, 6) == static_cast<std::uint16_t>(expected_payload.size()));
         const auto recovered =
             unswap_words(std::span{*burst}.subspan(8, expected_payload.size()));
@@ -255,7 +255,7 @@ TEST_CASE("Eac3BurstPacker: fscod 3 and bsid <= 10 both mean six blocks regardle
     // numblkscod is set to 0 here (which would otherwise mean "wait for five
     // more") to prove it is genuinely ignored, not just usually consistent.
     {
-        ac3::iec61937::Eac3BurstPacker packer;
+        iclforge::iec61937::Eac3BurstPacker packer;
         const auto frame = fake_syncframe(/*bsid=*/16, /*fscod=*/3, /*numblkscod=*/0);
         const auto result = packer.push(frame);
         REQUIRE(result.has_value());
@@ -264,7 +264,7 @@ TEST_CASE("Eac3BurstPacker: fscod 3 and bsid <= 10 both mean six blocks regardle
     // bsid <= 10 (not genuine Annex E syntax) gets the same defensive
     // treatment FFmpeg's spdif_header_eac3 gives it.
     {
-        ac3::iec61937::Eac3BurstPacker packer;
+        iclforge::iec61937::Eac3BurstPacker packer;
         const auto frame = fake_syncframe(/*bsid=*/8, /*fscod=*/0, /*numblkscod=*/0);
         const auto result = packer.push(frame);
         REQUIRE(result.has_value());
@@ -274,16 +274,16 @@ TEST_CASE("Eac3BurstPacker: fscod 3 and bsid <= 10 both mean six blocks regardle
 
 TEST_CASE("Eac3BurstPacker: rejects non-syncframe input and resets on overflow",
          "[iec61937][eac3]") {
-    ac3::iec61937::Eac3BurstPacker packer;
+    iclforge::iec61937::Eac3BurstPacker packer;
     CHECK(packer.push(std::vector<std::byte>{std::byte{0}, std::byte{0}}).error() ==
-          ac3::iec61937::WrapError::kNotAFrame);
+          iclforge::iec61937::WrapError::kNotAFrame);
 
-    ac3::iec61937::Eac3BurstPacker overflow_packer;
-    std::vector<std::byte> oversized(ac3::iec61937::kEac3BurstBytes, std::byte{0});
+    iclforge::iec61937::Eac3BurstPacker overflow_packer;
+    std::vector<std::byte> oversized(iclforge::iec61937::kEac3BurstBytes, std::byte{0});
     oversized[0] = std::byte{0x0B};
     oversized[1] = std::byte{0x77};
     oversized[5] = static_cast<std::byte>(16 << 3);  // bsid 16
-    CHECK(overflow_packer.push(oversized).error() == ac3::iec61937::WrapError::kFrameTooLarge);
+    CHECK(overflow_packer.push(oversized).error() == iclforge::iec61937::WrapError::kFrameTooLarge);
 
     // The failed push must not leave stale bytes behind for the next one.
     const auto frame = fake_syncframe(/*bsid=*/16, /*fscod=*/0, /*numblkscod=*/3);
@@ -306,7 +306,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("iec61937_" + scratch_pid_suffix());
@@ -323,12 +323,12 @@ constexpr std::size_t kWavHeaderBytes = 44;
 
 TEST_CASE("wrap_stream: AC-3 frames become a byte-exact PCM16 WAV",
          "[iec61937][spdif]") {
-    ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};
+    iclforge::FrameEncoder encoder{{.bitrate_kbps = 192}};
     std::uint64_t n = 0;
     std::vector<std::vector<std::byte>> frames;
     for (int f = 0; f < 3; ++f) {
         auto pcm = tone_frame(2, n);
-        n += ac3::kSamplesPerFrame;
+        n += iclforge::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -339,14 +339,14 @@ TEST_CASE("wrap_stream: AC-3 frames become a byte-exact PCM16 WAV",
     for (const auto& frame : frames) {
         units.emplace_back(frame);
     }
-    const auto payload = ac3::iec61937::wrap_stream(units, /*eac3=*/false);
+    const auto payload = iclforge::iec61937::wrap_stream(units, /*eac3=*/false);
     REQUIRE(payload.has_value());
     // AC-3 frames never need to accumulate (unlike E-AC-3's sub-six-block
     // case) - one frame always fills exactly one burst.
-    CHECK(payload->size() == frames.size() * ac3::iec61937::kBurstBytes);
+    CHECK(payload->size() == frames.size() * iclforge::iec61937::kBurstBytes);
 
     const auto path = scratch_dir() / "spdif_ac3.wav";
-    const auto written = ac3::io::write_wav_pcm16_raw(path.string(), *payload, 48000, 2);
+    const auto written = iclforge::io::write_wav_pcm16_raw(path.string(), *payload, 48000, 2);
     REQUIRE(written.has_value());
 
     std::ifstream in{path, std::ios::binary};
@@ -362,7 +362,7 @@ TEST_CASE("wrap_stream: AC-3 frames become a byte-exact PCM16 WAV",
     // wrapping each frame alone, in order, would have produced.
     std::vector<std::byte> expected;
     for (const auto& frame : frames) {
-        const auto burst = ac3::iec61937::wrap_frame(frame);
+        const auto burst = iclforge::iec61937::wrap_frame(frame);
         REQUIRE(burst.has_value());
         expected.insert(expected.end(), burst->begin(), burst->end());
     }
@@ -371,12 +371,12 @@ TEST_CASE("wrap_stream: AC-3 frames become a byte-exact PCM16 WAV",
 
 TEST_CASE("wrap_stream: E-AC-3 access units become a decodable PCM16 WAV at 4x carrier rate",
          "[iec61937][spdif]") {
-    ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
+    iclforge::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 192}}};
     std::uint64_t n = 0;
     std::vector<std::vector<std::byte>> units_owned;
     for (int f = 0; f < 3; ++f) {
         auto pcm = tone_frame(2, n);
-        n += ac3::kSamplesPerFrame;
+        n += iclforge::kSamplesPerFrame;
         const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
         auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
@@ -387,17 +387,17 @@ TEST_CASE("wrap_stream: E-AC-3 access units become a decodable PCM16 WAV at 4x c
     for (const auto& u : units_owned) {
         units.emplace_back(u);
     }
-    const auto payload = ac3::iec61937::wrap_stream(units, /*eac3=*/true);
+    const auto payload = iclforge::iec61937::wrap_stream(units, /*eac3=*/true);
     REQUIRE(payload.has_value());
     // This project's own encoder always writes numblkscod 3 (six blocks), so
     // each access unit fills exactly one burst - see Eac3BurstPacker's own
     // accumulation tests above for the sub-six-block case.
-    CHECK(payload->size() == units_owned.size() * ac3::iec61937::kEac3BurstBytes);
+    CHECK(payload->size() == units_owned.size() * iclforge::iec61937::kEac3BurstBytes);
 
     constexpr std::uint32_t kContentRate = 48000;
     const auto path = scratch_dir() / "spdif_eac3.wav";
     const auto written =
-        ac3::io::write_wav_pcm16_raw(path.string(), *payload, kContentRate * 4, 2);
+        iclforge::io::write_wav_pcm16_raw(path.string(), *payload, kContentRate * 4, 2);
     REQUIRE(written.has_value());
 
     std::ifstream in{path, std::ios::binary};
@@ -429,9 +429,9 @@ TEST_CASE("wrap_stream: E-AC-3 access units become a decodable PCM16 WAV at 4x c
     // This is the assertion that fails if wrap_stream is reverted to
     // something that drops or reorders access units.
     const auto recovered =
-        unswap_words(std::span{data}.first(ac3::iec61937::kEac3BurstBytes)
+        unswap_words(std::span{data}.first(iclforge::iec61937::kEac3BurstBytes)
                          .subspan(8, units_owned[0].size()));
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(recovered);
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -442,8 +442,8 @@ TEST_CASE("wrap_stream: a bad unit fails the whole stream instead of silently sk
          "[iec61937][spdif]") {
     const std::vector<std::byte> bad{std::byte{0}, std::byte{0}};
     const std::vector<std::span<const std::byte>> units{bad};
-    CHECK(ac3::iec61937::wrap_stream(units, /*eac3=*/false).error() ==
-          ac3::iec61937::WrapError::kNotAFrame);
-    CHECK(ac3::iec61937::wrap_stream(units, /*eac3=*/true).error() ==
-          ac3::iec61937::WrapError::kNotAFrame);
+    CHECK(iclforge::iec61937::wrap_stream(units, /*eac3=*/false).error() ==
+          iclforge::iec61937::WrapError::kNotAFrame);
+    CHECK(iclforge::iec61937::wrap_stream(units, /*eac3=*/true).error() ==
+          iclforge::iec61937::WrapError::kNotAFrame);
 }

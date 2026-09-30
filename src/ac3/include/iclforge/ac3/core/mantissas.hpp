@@ -24,7 +24,7 @@
 // The SNR-search bit counter and the packer must agree exactly, so both are
 // built on the same machinery here.
 
-namespace ac3 {
+namespace iclforge {
 
 // Bits per directly-coded mantissa (0 for the grouped baps 1, 2, 4 and for
 // bap 0) — Table 7.18 qntztab.
@@ -45,7 +45,7 @@ inline constexpr std::array<int, 6> kSymmetricLevels = {0, 3, 5, 7, 11, 15};
 
 // The same reconstruction in the caller's own scalar. dequantize_mantissa()
 // above is this at double, and the decoders call this at whichever type
-// their coefficient store is (ac3::internal::decode_scalar_t - float on the
+// their coefficient store is (iclforge::internal::decode_scalar_t - float on the
 // minimum-footprint profile), because on a single-precision FPU every double
 // operation is a software routine: measured on an ESP32-S3, the dequantise
 // below and the exponent scale after it were costing more than the inverse
@@ -235,4 +235,4 @@ class ICLFORGE_AC3_EXPORT MantissaBlockReader {
     Cache bap4_;
 };
 
-}  // namespace ac3
+}  // namespace iclforge

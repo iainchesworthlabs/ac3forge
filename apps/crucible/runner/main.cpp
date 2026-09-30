@@ -41,7 +41,7 @@
 
 namespace {
 
-using ac3::crucible::OutputMode;
+using iclforge::crucible::OutputMode;
 
 std::optional<OutputMode> parse_mode(const std::string& word) {
     if (word == "atmos") return OutputMode::kAtmos;
@@ -53,9 +53,9 @@ std::optional<OutputMode> parse_mode(const std::string& word) {
     return std::nullopt;
 }
 
-void print_status(const ac3::crucible::EngineStatus& s) {
+void print_status(const iclforge::crucible::EngineStatus& s) {
     std::printf("[%s on \"%s\"] frames=%llu last=%.2fms worst=%.2fms starved=%llu underruns=%llu taps=%uch backlog=%.0fms sink=%.0fms catchups=%llu objects=%s bypass=%s\n",
-                std::string(ac3::crucible::describe(s.mode)).c_str(), s.endpoint_name.c_str(),
+                std::string(iclforge::crucible::describe(s.mode)).c_str(), s.endpoint_name.c_str(),
                 static_cast<unsigned long long>(s.frames_encoded), s.last_frame_ms, s.worst_frame_ms,
                 static_cast<unsigned long long>(s.starved_reads),
                 static_cast<unsigned long long>(s.underruns), static_cast<unsigned>(s.tap_channels), s.tap_backlog_ms, s.sink_queue_ms, static_cast<unsigned long long>(s.catchups), s.objects_enabled ? "on" : "off", s.codec_bypassed ? "on" : "off");
@@ -67,7 +67,7 @@ void print_status(const ac3::crucible::EngineStatus& s) {
     }
 }
 
-void print_apps(const ac3::crucible::EngineStatus& s) {
+void print_apps(const iclforge::crucible::EngineStatus& s) {
     if (s.apps.empty()) {
         std::puts("  (no applications with an audio session)");
         return;
@@ -89,7 +89,7 @@ void print_apps(const ac3::crucible::EngineStatus& s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    ac3::crucible::EngineConfig config;
+    iclforge::crucible::EngineConfig config;
     std::string set_default;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    const auto default_device = ac3::crucible::platform_default_device();
+    const auto default_device = iclforge::crucible::platform_default_device();
     const std::string previous_default = default_device->default_id();
     if (!set_default.empty()) {
         const auto id = default_device->find_endpoint(set_default);
@@ -128,7 +128,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    ac3::crucible::Engine engine(config);
+    iclforge::crucible::Engine engine(config);
     if (const auto started = engine.start(); !started) {
         std::fprintf(stderr, "engine: %s\n", started.error().c_str());
         return 1;

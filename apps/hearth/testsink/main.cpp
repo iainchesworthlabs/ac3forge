@@ -21,8 +21,8 @@
 
 namespace {
 
-namespace testsink = ac3::hearth::testsink;
-namespace controller = ac3::sendspin::controller;
+namespace testsink = iclforge::hearth::testsink;
+namespace controller = iclforge::sendspin::controller;
 using namespace std::chrono_literals;
 
 constexpr std::string_view kUsage = R"(usage: ac3hearth-testsink [options]
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     // Elevated relaunch for a Windows Firewall rule this sink's own listener or mDNS
     // advertisement is about to need (ac3/sendspin/firewall.hpp): std::exit()s before anything
     // below when argv says this is that relaunch, not an ordinary launch of the sink itself.
-    ac3::sendspin::firewall::maybe_run_as_firewall_helper_and_exit(argc, argv);
+    iclforge::sendspin::firewall::maybe_run_as_firewall_helper_and_exit(argc, argv);
 
     testsink::SinkOptions options;
     options.state_directory = "hearth-testsink-state";
@@ -194,11 +194,11 @@ int main(int argc, char** argv) {
                 const std::size_t comma = list.find(',');
                 const std::string_view name = list.substr(0, comma);
                 if (name == "pcm") {
-                    options.codecs.push_back(ac3::sendspin::messages::Codec::kPcm);
+                    options.codecs.push_back(iclforge::sendspin::messages::Codec::kPcm);
                 } else if (name == "flac") {
-                    options.codecs.push_back(ac3::sendspin::messages::Codec::kFlac);
+                    options.codecs.push_back(iclforge::sendspin::messages::Codec::kFlac);
                 } else if (name == "opus") {
-                    options.codecs.push_back(ac3::sendspin::messages::Codec::kOpus);
+                    options.codecs.push_back(iclforge::sendspin::messages::Codec::kOpus);
                 } else {
                     std::cerr << "--codecs takes pcm, flac and opus, separated by commas\n";
                     return EXIT_FAILURE;
@@ -224,13 +224,13 @@ int main(int argc, char** argv) {
                 }
                 options.other_roles.push_back(std::string(name) + "@v1");
                 if (name == "artwork") {
-                    options.artwork_channels.channels = {{.source = ac3::sendspin::artwork::Source::kAlbum,
-                                                          .format = ac3::sendspin::artwork::Format::kJpeg,
+                    options.artwork_channels.channels = {{.source = iclforge::sendspin::artwork::Source::kAlbum,
+                                                          .format = iclforge::sendspin::artwork::Format::kJpeg,
                                                           .width = 300,
                                                           .height = 300}};
                 } else if (name == "visualizer") {
                     options.visualizer_request = {
-                        .types = {ac3::sendspin::visualizer::Type::kLoudness, ac3::sendspin::visualizer::Type::kBeat},
+                        .types = {iclforge::sendspin::visualizer::Type::kLoudness, iclforge::sendspin::visualizer::Type::kBeat},
                         .rate_max = 30,
                         .spectrum = std::nullopt};
                 }

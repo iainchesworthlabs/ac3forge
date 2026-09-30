@@ -58,14 +58,14 @@ constexpr std::size_t kOutputChannels = 2;
 // meaningful afterwards - but the fold happens IN this storage, so it has to be
 // wide enough for the coded programme going in, not for the two coming out.
 constexpr std::size_t kCodedChannels = 6;
-std::array<std::array<float, ac3::kSamplesPerFrame>, kCodedChannels> g_pcm{};
+std::array<std::array<float, iclforge::kSamplesPerFrame>, kCodedChannels> g_pcm{};
 std::array<std::span<float>, kCodedChannels> g_pcm_spans{};
 
 // One frame of interleaved 16-bit stereo, which is what the I2S peripheral
 // consumes. At namespace scope rather than in a function's frame: 6,144 bytes
 // is more than a default FreeRTOS task stack has spare, and putting it on the
 // stack is how you get a crash somewhere unrelated a long way from the cause.
-std::array<std::int16_t, ac3::kSamplesPerFrame * kOutputChannels> g_interleaved{};
+std::array<std::int16_t, iclforge::kSamplesPerFrame * kOutputChannels> g_interleaved{};
 
 i2s_chan_handle_t g_tx = nullptr;
 
@@ -195,7 +195,7 @@ extern "C" void app_main() {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(ac3probe::kAc3Stream.data()),
         ac3probe::kAc3Stream.size()};
-    const auto frames = ac3::split_frames(stream);
+    const auto frames = iclforge::split_frames(stream);
     if (!frames) {
         std::printf("error: the fixture did not split into frames (%d)\n",
                     static_cast<int>(frames.error()));
@@ -210,7 +210,7 @@ extern "C" void app_main() {
         return;
     }
 
-    // The decoder does the fold itself. §7.8's Lo/Ro against ac3::OutputStage
+    // The decoder does the fold itself. §7.8's Lo/Ro against iclforge::OutputStage
     // in this file would be the same arithmetic written twice, and the copy
     // here would be the one without tests.
     //
@@ -220,8 +220,8 @@ extern "C" void app_main() {
     // happened to be and two different streams play back at two different
     // loudnesses, which on a DAC with a fixed analogue gain is the difference
     // between quiet and painful.
-    ac3::FrameDecoder decoder{{.output = {.target = ac3::DownmixTarget::kLoRo,
-                                          .mode = ac3::OperatingMode::kLine}}};
+    iclforge::FrameDecoder decoder{{.output = {.target = iclforge::DownmixTarget::kLoRo,
+                                          .mode = iclforge::OperatingMode::kLine}}};
 
     std::uint64_t decode_us = 0;
     std::uint64_t worst_frame_us = 0;
@@ -250,7 +250,7 @@ extern "C" void app_main() {
                 worst_frame_us = elapsed;
             }
 
-            for (std::size_t n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            for (std::size_t n = 0; n < iclforge::kSamplesPerFrame; ++n) {
                 g_interleaved[n * 2] = to_pcm16(g_pcm[0][n]);
                 g_interleaved[(n * 2) + 1] = to_pcm16(g_pcm[1][n]);
             }

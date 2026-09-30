@@ -10,7 +10,7 @@
 #include "iclforge/sendspin/codec.hpp"
 #include "iclforge/sendspin/messages.hpp"
 
-namespace ac3::sendspin::codec {
+namespace iclforge::sendspin::codec {
 
 namespace {
 
@@ -123,4 +123,4 @@ std::unique_ptr<Decoder> make_pcm_decoder(const messages::AudioFormat& format) {
     return std::make_unique<PcmDecoder>(format.channels, format.bit_depth);
 }
 
-}  // namespace ac3::sendspin::codec
+}  // namespace iclforge::sendspin::codec

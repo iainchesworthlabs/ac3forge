@@ -10,7 +10,7 @@
 // implementation" shape as cpu_features.hpp's own hardware_avx2.hpp probe,
 // so mdct.cpp's call sites never need a preprocessor conditional
 // (tools/checks/check_platform_macros.ps1 forbids one under src/ outright).
-// A caller only ever reaches these bodies if ac3::internal::cpu::has_avx2()
+// A caller only ever reaches these bodies if iclforge::internal::cpu::has_avx2()
 // answered true - which this configuration's cpu_features.cpp build can
 // never do (see src/ac3/CMakeLists.txt's AC3FORGE_CPU_PROBE_DIR
 // resolution: no AC3FORGE_AVX2/x86_64 means no forge_simd_avx2 target and
@@ -18,7 +18,7 @@
 // correct body, not merely a defensive placeholder.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::avx2 {
+namespace iclforge::internal::avx2 {
 
 void apply_analysis_window(std::span<const double, 512> /*x*/,
                            std::span<double, 512> /*windowed*/) {
@@ -69,7 +69,7 @@ void imdct512_windowed_batch4(std::span<const double> /*coeffs0*/,
                               std::span<const double> /*coeffs2*/,
                               std::span<const double> /*coeffs3*/,
                               std::span<const double> /*cos1*/, std::span<const double> /*sin1*/,
-                              const ac3::internal::FftTables<128>& /*fft*/,
+                              const iclforge::internal::FftTables<128>& /*fft*/,
                               std::span<double> /*x0*/, std::span<double> /*x1*/,
                               std::span<double> /*x2*/, std::span<double> /*x3*/) {
     std::unreachable();
@@ -80,10 +80,10 @@ void mdct512_forward_batch4(std::span<const double> /*w0*/, std::span<const doub
                             std::span<const double> /*pre_re*/, std::span<const double> /*pre_im*/,
                             std::span<const double> /*post_re*/,
                             std::span<const double> /*post_im*/,
-                            const ac3::internal::FftTables<128>& /*fft*/, double /*scale*/,
+                            const iclforge::internal::FftTables<128>& /*fft*/, double /*scale*/,
                             std::span<double> /*c0*/, std::span<double> /*c1*/,
                             std::span<double> /*c2*/, std::span<double> /*c3*/) {
     std::unreachable();
 }
 
-}  // namespace ac3::internal::avx2
+}  // namespace iclforge::internal::avx2

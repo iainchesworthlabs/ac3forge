@@ -17,7 +17,7 @@
 // variable is what makes a stop prompt anyway - a re-probe interval of
 // seconds must not be how long stop() takes.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 struct RenderDeviceWatch::Impl {
     Options options;
@@ -201,4 +201,4 @@ void RenderDeviceWatch::stop() {
     }
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

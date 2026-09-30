@@ -5,7 +5,7 @@
 
 #include "syntax/reset.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -218,4 +218,4 @@ ParseResult parse_audio_substream(BitReader& r, const SubstreamContext& ctx,
     return check(r);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

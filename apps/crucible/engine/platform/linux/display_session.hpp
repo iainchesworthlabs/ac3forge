@@ -31,7 +31,7 @@
 // Pure, so it is tested with facts built by hand rather than with a process
 // environment (tests/crucible/platform/linux/test_x11_foreground.cpp).
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 enum class DisplaySession { kWayland, kX11, kNone };
 
@@ -58,4 +58,4 @@ struct SessionFacts {
     return DisplaySession::kNone;
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

@@ -55,10 +55,10 @@ struct Decoded {
     std::vector<std::vector<float>> pcm;
     int held_calls = 0;  // calls that returned std::nullopt
     std::vector<int> latency;  // latency_samples() after each call
-    std::vector<ac3::DecodedSubstream> flushed;
+    std::vector<iclforge::DecodedSubstream> flushed;
 };
 
-Decoded decode_frames(ac3::Eac3Decoder& decoder, std::span<const std::vector<std::byte>> frames) {
+Decoded decode_frames(iclforge::Eac3Decoder& decoder, std::span<const std::vector<std::byte>> frames) {
     Decoded out;
     for (const auto& frame : frames) {
         const auto decoded = decoder.decode_substream(frame);
@@ -105,10 +105,10 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
     const std::string dir =
         std::string{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} + "/eac3-transient-stereo-128";
     const auto stream = read_bytes(dir + "/dee.ec3");
-    const auto source = ac3::io::read_wav(dir + "/source.wav");
+    const auto source = iclforge::io::read_wav(dir + "/source.wav");
     REQUIRE(source.has_value());
     REQUIRE(source->channels.size() == 2);
-    const auto split = ac3::split_frames(stream);
+    const auto split = iclforge::split_frames(stream);
     REQUIRE(split.has_value());
     REQUIRE(split->size() == 156);
     std::vector<std::vector<std::byte>> frames;
@@ -119,8 +119,8 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
     // What makes the fixture worth having, checked rather than assumed: nine
     // corrections, eight of them with their transient past the end of their
     // own frame.
-    ac3::verify::Eac3AccessUnitTrace trace;
-    ac3::Eac3Decoder tracing{{.eac3_trace = &trace}};
+    iclforge::verify::Eac3AccessUnitTrace trace;
+    iclforge::Eac3Decoder tracing{{.eac3_trace = &trace}};
     int corrections = 0;
     int in_a_later_frame = 0;
     for (const auto& frame : frames) {
@@ -129,7 +129,7 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
         for (std::size_t ch = 0; ch < syntax.chintransproc.size(); ++ch) {
             if (syntax.chintransproc[ch]) {
                 ++corrections;
-                if (ac3::kTransientPrenoiseOrigin + syntax.transprocloc[ch] > ac3::kSamplesPerFrame) {
+                if (iclforge::kTransientPrenoiseOrigin + syntax.transprocloc[ch] > iclforge::kSamplesPerFrame) {
                     ++in_a_later_frame;
                 }
             }
@@ -138,12 +138,12 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
     CHECK(corrections == 9);
     CHECK(in_a_later_frame == 8);
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decode_frames(decoder, frames);
     REQUIRE(decoded.pcm.size() == 2);
     // Every frame comes back, the last one by flush() - the final correction's
     // transient lies past the last syncframe.
-    constexpr std::size_t kSamples = 156 * static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kSamples = 156 * static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     REQUIRE(decoded.pcm[0].size() == kSamples);
     REQUIRE(decoded.pcm[1].size() == kSamples);
 
@@ -154,13 +154,13 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
     // here, Dolby's own much the same); measured 2.27 and 2.03 dB, floors 1 dB.
     for (std::size_t ch = 0; ch < 2; ++ch) {
         CAPTURE(ch);
-        const auto count = kSamples - static_cast<std::size_t>(ac3::kTransformDelaySamples);
+        const auto count = kSamples - static_cast<std::size_t>(iclforge::kTransformDelaySamples);
         std::vector<double> reference(count);
         for (std::size_t n = 0; n < count; ++n) {
             reference[n] = static_cast<double>(source->channels[ch][n]);
         }
         const auto actual = std::span<const float>{decoded.pcm[ch]}.subspan(
-            static_cast<std::size_t>(ac3::kTransformDelaySamples), count);
+            static_cast<std::size_t>(iclforge::kTransformDelaySamples), count);
         CHECK(snr_db(reference, actual) > 1.0);
     }
 
@@ -176,7 +176,7 @@ TEST_CASE("DEE's transient pre-noise streams decode, corrected where Dolby's dec
          {192000, 0}, {216000, 1}}};
     for (const auto& [onset, ch] : kOnsets) {
         CAPTURE(onset, ch);
-        const int decoded_onset = onset + ac3::kTransformDelaySamples;
+        const int decoded_onset = onset + iclforge::kTransformDelaySamples;
         double energy = 0.0;
         for (int n = decoded_onset - 512; n < decoded_onset - 64; ++n) {
             const auto v = static_cast<double>(
@@ -194,9 +194,9 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
     // frame 5, so the encoder signals it at transprocloc 0 and its correction
     // cross-fades the last block of frame 4's output - which the decoder has
     // decoded and is still holding - towards the tone 512 samples earlier.
-    ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = ac3::Acmod::k1_0};
+    iclforge::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k1_0};
     config.transient_prenoise = true;
-    ac3::eac3::FrameEncoder encoder{config};
+    iclforge::eac3::FrameEncoder encoder{config};
     constexpr int kFrames = 8;
     constexpr double kToneHz = 1000.0;
     constexpr double kToneLevel = 0.05;
@@ -205,13 +205,13 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
         return k >= 0 && k < 384 ? sine(5000.0, 0.8, n) * std::exp(-static_cast<double>(k) / 96.0)
                                  : 0.0;
     };
-    constexpr std::int64_t kFirstBurst = 1 * ac3::kSamplesPerFrame + 900;
-    constexpr std::int64_t kSecondBurst = 5 * ac3::kSamplesPerFrame + 16;
+    constexpr std::int64_t kFirstBurst = 1 * iclforge::kSamplesPerFrame + 900;
+    constexpr std::int64_t kSecondBurst = 5 * iclforge::kSamplesPerFrame + 16;
     std::vector<std::vector<std::byte>> frames;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<float> pcm(static_cast<std::size_t>(ac3::kSamplesPerFrame));
-        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
-            const std::int64_t n = std::int64_t{f} * ac3::kSamplesPerFrame + i;
+        std::vector<float> pcm(static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+            const std::int64_t n = std::int64_t{f} * iclforge::kSamplesPerFrame + i;
             pcm[static_cast<std::size_t>(i)] = static_cast<float>(
                 sine(kToneHz, kToneLevel, n) + burst(n, kFirstBurst) + burst(n, kSecondBurst));
         }
@@ -224,8 +224,8 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
     // The encoder's own heuristic signals a correction at the leading edge of
     // the first block it switches. What this case needs of it: frame 5's at 0,
     // and nothing else signalled between the two bursts.
-    ac3::verify::Eac3AccessUnitTrace trace;
-    ac3::Eac3Decoder tracing{{.eac3_trace = &trace}};
+    iclforge::verify::Eac3AccessUnitTrace trace;
+    iclforge::Eac3Decoder tracing{{.eac3_trace = &trace}};
     int engaged_at = -1;
     for (int f = 0; f < kFrames; ++f) {
         REQUIRE(tracing.decode_substream(frames[static_cast<std::size_t>(f)]).has_value());
@@ -246,10 +246,10 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
     REQUIRE(engaged_at >= 0);
     REQUIRE(engaged_at < 5);
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decode_frames(decoder, frames);
     REQUIRE(decoded.pcm.size() == 1);
-    REQUIRE(decoded.pcm[0].size() == static_cast<std::size_t>(kFrames * ac3::kSamplesPerFrame));
+    REQUIRE(decoded.pcm[0].size() == static_cast<std::size_t>(kFrames * iclforge::kSamplesPerFrame));
 
     // Frame 5's transient is kTransientPrenoiseOrigin into its output, pnlen a
     // block, translen 0: the correction writes [transient - 512, transient),
@@ -258,16 +258,16 @@ TEST_CASE("a correction reaching back into a held frame is applied to it before 
     // are the tone there, which the decode reproduces far closer than the
     // cross-fade moves it, so the output must be the cross-fade of the tone
     // with itself 512 samples back - and not the tone.
-    const int transient = 5 * ac3::kSamplesPerFrame + ac3::kTransientPrenoiseOrigin;
-    const int start = transient - 2 * ac3::kSamplesPerBlock;
+    const int transient = 5 * iclforge::kSamplesPerFrame + iclforge::kTransientPrenoiseOrigin;
+    const int start = transient - 2 * iclforge::kSamplesPerBlock;
     const auto tone_out = [&](int n) {
-        return sine(kToneHz, kToneLevel, n - ac3::kTransformDelaySamples);
+        return sine(kToneHz, kToneLevel, n - iclforge::kTransformDelaySamples);
     };
     std::vector<double> blended;
     std::vector<double> untouched;
-    for (int s = 64; s < ac3::kTransientPrenoiseTC1 - 16; ++s) {
+    for (int s = 64; s < iclforge::kTransientPrenoiseTC1 - 16; ++s) {
         const double fade_in =
-            0.5 * (1.0 - std::cos(std::numbers::pi * s / (ac3::kTransientPrenoiseTC1 - 1)));
+            0.5 * (1.0 - std::cos(std::numbers::pi * s / (iclforge::kTransientPrenoiseTC1 - 1)));
         const int n = start + s;
         blended.push_back(tone_out(n) * (1.0 - fade_in) + tone_out(n - 512) * fade_in);
         untouched.push_back(tone_out(n));
@@ -286,16 +286,16 @@ TEST_CASE("short syncframes hold 1536 samples back, and flush() hands them back 
     // using the tool made the decoder copy a six-block frame's worth of
     // samples into a one-block frame's buffers.
     constexpr int kSyncframes = 48;
-    constexpr int kImpulseAt = 20 * ac3::kSamplesPerBlock + 100;
-    ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = ac3::Acmod::k1_0, .numblkscod = 0};
+    constexpr int kImpulseAt = 20 * iclforge::kSamplesPerBlock + 100;
+    iclforge::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k1_0, .numblkscod = 0};
     config.transient_prenoise = true;
-    ac3::eac3::FrameEncoder encoder{config};
-    REQUIRE(encoder.samples_per_frame() == ac3::kSamplesPerBlock);
+    iclforge::eac3::FrameEncoder encoder{config};
+    REQUIRE(encoder.samples_per_frame() == iclforge::kSamplesPerBlock);
     std::vector<std::vector<std::byte>> frames;
     for (int f = 0; f < kSyncframes; ++f) {
-        std::vector<float> pcm(static_cast<std::size_t>(ac3::kSamplesPerBlock), 0.0F);
-        const int at = kImpulseAt - f * ac3::kSamplesPerBlock;
-        if (at >= 0 && at < ac3::kSamplesPerBlock) {
+        std::vector<float> pcm(static_cast<std::size_t>(iclforge::kSamplesPerBlock), 0.0F);
+        const int at = kImpulseAt - f * iclforge::kSamplesPerBlock;
+        if (at >= 0 && at < iclforge::kSamplesPerBlock) {
             pcm[static_cast<std::size_t>(at)] = 0.9F;
         }
         const std::array<std::span<const float>, 1> views{pcm};
@@ -304,38 +304,38 @@ TEST_CASE("short syncframes hold 1536 samples back, and flush() hands them back 
         frames.push_back(std::move(*frame));
     }
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decode_frames(decoder, frames);
     // Six calls return nothing while the first 1536 samples build up; every
     // one after returns a syncframe; flush() returns the last six as one.
     CHECK(decoded.held_calls == 6);
-    CHECK(decoded.latency.back() == ac3::kSamplesPerFrame);
+    CHECK(decoded.latency.back() == iclforge::kSamplesPerFrame);
     REQUIRE(decoded.flushed.size() == 1);
     CHECK(decoded.flushed.front().numblkscod == 3);
     CHECK(decoded.flushed.front().channels.front().size() ==
-          static_cast<std::size_t>(ac3::kSamplesPerFrame));
+          static_cast<std::size_t>(iclforge::kSamplesPerFrame));
     // A release delay, not a shift: the stream is its full length and the
     // impulse is where the transform overlap alone puts it.
     REQUIRE(decoded.pcm.size() == 1);
-    REQUIRE(decoded.pcm[0].size() == static_cast<std::size_t>(kSyncframes * ac3::kSamplesPerBlock));
+    REQUIRE(decoded.pcm[0].size() == static_cast<std::size_t>(kSyncframes * iclforge::kSamplesPerBlock));
     const auto peak = std::ranges::max_element(decoded.pcm[0], {}, [](float v) { return std::abs(v); });
-    CHECK(std::distance(decoded.pcm[0].begin(), peak) == kImpulseAt + ac3::kTransformDelaySamples);
+    CHECK(std::distance(decoded.pcm[0].begin(), peak) == kImpulseAt + iclforge::kTransformDelaySamples);
 }
 
 TEST_CASE("a concealed frame queues behind the frames transient pre-noise processing holds",
           "[eac3][decoder][transient_prenoise]") {
     // With the hold-back engaged a decoded frame comes back a call late, so a
     // concealed frame returned straight away would overtake it.
-    ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = ac3::Acmod::k1_0};
+    iclforge::eac3::FrameConfig config{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k1_0};
     config.transient_prenoise = true;
-    ac3::eac3::FrameEncoder encoder{config};
+    iclforge::eac3::FrameEncoder encoder{config};
     constexpr int kFrames = 8;
     constexpr int kDamaged = 5;
     std::vector<std::vector<std::byte>> frames;
     for (int f = 0; f < kFrames; ++f) {
-        std::vector<float> pcm(static_cast<std::size_t>(ac3::kSamplesPerFrame));
-        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
-            const std::int64_t n = std::int64_t{f} * ac3::kSamplesPerFrame + i;
+        std::vector<float> pcm(static_cast<std::size_t>(iclforge::kSamplesPerFrame));
+        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
+            const std::int64_t n = std::int64_t{f} * iclforge::kSamplesPerFrame + i;
             // A tone, and from frame 1 on a burst every frame so the tool is
             // in use throughout.
             const auto k = i - 700;
@@ -351,7 +351,7 @@ TEST_CASE("a concealed frame queues behind the frames transient pre-noise proces
     auto& damaged = frames[static_cast<std::size_t>(kDamaged)];
     damaged[damaged.size() / 2] ^= std::byte{0xFF};
 
-    ac3::Eac3Decoder decoder{{.concealment = ac3::ConcealmentPolicy::kMute}};
+    iclforge::Eac3Decoder decoder{{.concealment = iclforge::ConcealmentPolicy::kMute}};
     std::vector<bool> concealed;
     for (const auto& frame : frames) {
         const auto decoded = decoder.decode_substream(frame);

@@ -18,7 +18,7 @@
 // Syntax only, as in metadata.hpp: codes as sent, plus what the syntax itself
 // assigns (gain_t2b_code = 7 and the like) and carries between frames.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Everything ac4_presentation_substream() needs from the table of contents.
 // presentation_context_v1() below fills it; each field says how.
@@ -91,7 +91,7 @@ struct PresentationContext {
 };
 
 [[nodiscard]] PresentationContext presentation_context_v1(
-    const ac4::Toc& toc, const ac4::PresentationInfoV1& presentation);
+    const iclforge::ac4::Toc& toc, const iclforge::ac4::PresentationInfoV1& presentation);
 
 // Part 2 clause 6.3.3.1.27: the lowest ch_mode holding every channel of both
 // arguments; -1 is the identity, and superset(0, 1) is 1 as the clause says. -1
@@ -249,4 +249,4 @@ struct PresentationSubstreamState {
                                                        PresentationSubstreamState& state,
                                                        PresentationSubstream& out);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

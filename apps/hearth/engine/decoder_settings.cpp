@@ -10,7 +10,7 @@
 
 // See decoder_settings.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -32,43 +32,43 @@ constexpr int kVisuallyImpaired = 0b010;
 
 // AC-4's downmix for the fold the layout gets: the same target, or the
 // stream's preferred method for a stereo fold the listener has left to it.
-[[nodiscard]] ac4::DownmixTarget ac4_downmix(const std::optional<DownmixTarget>& fold,
+[[nodiscard]] iclforge::ac4::DownmixTarget ac4_downmix(const std::optional<DownmixTarget>& fold,
                                              bool preferred) {
     if (!fold) {
-        return ac4::DownmixTarget::kAsCoded;
+        return iclforge::ac4::DownmixTarget::kAsCoded;
     }
     switch (*fold) {
         case DownmixTarget::kMono:
-            return ac4::DownmixTarget::kMono;
+            return iclforge::ac4::DownmixTarget::kMono;
         case DownmixTarget::kLtRt:
-            return preferred ? ac4::DownmixTarget::kStereo : ac4::DownmixTarget::kLtRt;
+            return preferred ? iclforge::ac4::DownmixTarget::kStereo : iclforge::ac4::DownmixTarget::kLtRt;
         case DownmixTarget::kLoRo:
-            return preferred ? ac4::DownmixTarget::kStereo : ac4::DownmixTarget::kLoRo;
+            return preferred ? iclforge::ac4::DownmixTarget::kStereo : iclforge::ac4::DownmixTarget::kLoRo;
         case DownmixTarget::kAsCoded:
             break;
     }
-    return ac4::DownmixTarget::kAsCoded;
+    return iclforge::ac4::DownmixTarget::kAsCoded;
 }
 
 // The same policies under AC-4's names.
-[[nodiscard]] ac4::ConcealmentPolicy ac4_concealment(ConcealmentPolicy policy) {
+[[nodiscard]] iclforge::ac4::ConcealmentPolicy ac4_concealment(ConcealmentPolicy policy) {
     switch (policy) {
         case ConcealmentPolicy::kNone:
-            return ac4::ConcealmentPolicy::kNone;
+            return iclforge::ac4::ConcealmentPolicy::kNone;
         case ConcealmentPolicy::kRepeatFade:
-            return ac4::ConcealmentPolicy::kRepeatFade;
+            return iclforge::ac4::ConcealmentPolicy::kRepeatFade;
         case ConcealmentPolicy::kMute:
-            return ac4::ConcealmentPolicy::kMute;
+            return iclforge::ac4::ConcealmentPolicy::kMute;
     }
-    return ac4::ConcealmentPolicy::kNone;
+    return iclforge::ac4::ConcealmentPolicy::kNone;
 }
 
 // AC-4's configuration, for the fold `serving` asks of the decoder.
-[[nodiscard]] ac4::DecoderConfig ac4_setup(const DecoderSettings& settings,
+[[nodiscard]] iclforge::ac4::DecoderConfig ac4_setup(const DecoderSettings& settings,
                                            const render::Serving& serving) {
     const Ac4Settings& ac4 = settings.ac4;
-    ac4::DecoderConfig config;
-    const bool headphones = ac4.drc == ac4::DrcMode::kPortableHeadphones;
+    iclforge::ac4::DecoderConfig config;
+    const bool headphones = ac4.drc == iclforge::ac4::DrcMode::kPortableHeadphones;
     config.output.output_level_dbfs =
         ac4.normalise ? std::optional<double>{std::clamp(
                             ac4.output_level_dbfs, kAc4MinOutputLevelDbfs, kAc4MaxOutputLevelDbfs)}
@@ -83,7 +83,7 @@ constexpr int kVisuallyImpaired = 0b010;
     // "as coded" default exactly as before this control existed.
     config.output.downmix = serving.fold.has_value()
                                 ? ac4_downmix(serving.fold, ac4.preferred_downmix)
-                                : ac4.immersive_layout.value_or(ac4::DownmixTarget::kAsCoded);
+                                : ac4.immersive_layout.value_or(iclforge::ac4::DownmixTarget::kAsCoded);
     config.output.mix_lfe = settings.mix_lfe.value_or(true);
     config.output.dialogue_gain_db = ac4.dialogue_db;
     // Below -120 dB the decoder silences it, which is what "not mixed in" is.
@@ -92,19 +92,19 @@ constexpr int kVisuallyImpaired = 0b010;
                                            : -std::numeric_limits<double>::infinity();
     config.concealment = ac4_concealment(settings.concealment);
     config.presentation = presentation_choice(settings);
-    config.decoding = ac4.core_decoding ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
+    config.decoding = ac4.core_decoding ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull;
     return config;
 }
 
-[[nodiscard]] std::string_view drc_mode_words(ac4::DrcMode mode) {
+[[nodiscard]] std::string_view drc_mode_words(iclforge::ac4::DrcMode mode) {
     // clang-format off
     switch (mode) {
-        case ac4::DrcMode::kOff: return "no compression";
-        case ac4::DrcMode::kDefault: return "the DRC mode for the output level";
-        case ac4::DrcMode::kHomeTheatre: return "home theatre DRC";
-        case ac4::DrcMode::kFlatPanelTv: return "flat panel TV DRC";
-        case ac4::DrcMode::kPortableSpeakers: return "portable speakers DRC";
-        case ac4::DrcMode::kPortableHeadphones: return "portable headphones DRC";
+        case iclforge::ac4::DrcMode::kOff: return "no compression";
+        case iclforge::ac4::DrcMode::kDefault: return "the DRC mode for the output level";
+        case iclforge::ac4::DrcMode::kHomeTheatre: return "home theatre DRC";
+        case iclforge::ac4::DrcMode::kFlatPanelTv: return "flat panel TV DRC";
+        case iclforge::ac4::DrcMode::kPortableSpeakers: return "portable speakers DRC";
+        case iclforge::ac4::DrcMode::kPortableHeadphones: return "portable headphones DRC";
     }
     // clang-format on
     return "an unknown DRC mode";
@@ -132,7 +132,7 @@ constexpr int kVisuallyImpaired = 0b010;
     parts.emplace_back(ac4.preferred_downmix ? "the stream's preferred downmix"
                                              : "the stereo fold's downmix");
     parts.push_back(ac4.immersive_layout
-                        ? fmt::format("immersive layout {}", ac4::describe(*ac4.immersive_layout))
+                        ? fmt::format("immersive layout {}", iclforge::ac4::describe(*ac4.immersive_layout))
                         : std::string{"the source's own immersive layout"});
     parts.emplace_back(ac4.core_decoding ? "core decoding" : "full decoding");
     return fmt::format("AC-4: {}", joined(parts));
@@ -140,9 +140,9 @@ constexpr int kVisuallyImpaired = 0b010;
 
 }  // namespace
 
-ac4::PresentationChoice presentation_choice(const DecoderSettings& settings) {
+iclforge::ac4::PresentationChoice presentation_choice(const DecoderSettings& settings) {
     const Ac4Settings& ac4 = settings.ac4;
-    ac4::PresentationChoice choice;
+    iclforge::ac4::PresentationChoice choice;
     choice.presentation_id = ac4.presentation_id;
     if (ac4.presentation_index && *ac4.presentation_index >= 0) {
         choice.index = static_cast<std::size_t>(*ac4.presentation_index);
@@ -150,9 +150,9 @@ ac4::PresentationChoice presentation_choice(const DecoderSettings& settings) {
     choice.language = ac4.language;
     if (ac4.audio_description) {
         choice.associated = kVisuallyImpaired;
-        choice.associated_type = ac4::AssociatedType::kAudioDescription;
+        choice.associated_type = iclforge::ac4::AssociatedType::kAudioDescription;
     }
-    choice.headphones = ac4.drc == ac4::DrcMode::kPortableHeadphones;
+    choice.headphones = ac4.drc == iclforge::ac4::DrcMode::kPortableHeadphones;
     return choice;
 }
 
@@ -279,4 +279,4 @@ DecoderSettings transcode_settings(const DecoderSettings& listener) {
     return neutral;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

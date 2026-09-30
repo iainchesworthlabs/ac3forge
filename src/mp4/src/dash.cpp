@@ -12,7 +12,7 @@
 #include "manifest_detail.hpp"
 #include "iclforge/mp4/mp4.hpp"
 
-namespace mp4 {
+namespace iclforge::mp4 {
 
 namespace {
 
@@ -140,7 +140,7 @@ std::string build_dash_adaptation_set(const AudioTrack& track,
         segments.empty() ? 1 : segments.front().sequence_number;
 
     // mimeType "audio/mp4" (RFC 4337-family ISOBMFF audio media type) and
-    // codecs the same RFC 6381 sample-entry fourcc mp4::hls_codec_string
+    // codecs the same RFC 6381 sample-entry fourcc iclforge::mp4::hls_codec_string
     // documents (ISO/IEC 14496-15 §5.5's 'ac-3'/'ec-3' registration) - DASH
     // (ISO/IEC 23009-1 §5.3.7.2) uses the identical 'Codecs' parameter HLS
     // does, both deriving it from RFC 6381's general ISOBMFF-file-family
@@ -239,4 +239,4 @@ std::string build_dash_mpd(const AudioTrack& track, std::span<const MediaSegment
     return build_dash_mpd(track, segment_infos(segments), adaptation_set, options);
 }
 
-}  // namespace mp4
+}  // namespace iclforge::mp4

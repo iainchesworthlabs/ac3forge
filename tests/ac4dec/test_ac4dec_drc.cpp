@@ -3,7 +3,7 @@
 // transmitted curves against the curves the text defines, DEE's transmitted
 // curves against the profiles it named, Table 161's choice of a DRC decoder
 // mode, the stage's static curve measured with stepped tones at steady state,
-// its time constants and the transmitted gains; and through ac4::Decoder, the
+// its time constants and the transmitted gains; and through iclforge::ac4::Decoder, the
 // output level gain on the encoder's streams at dialnorms from -31 to -17 and
 // DEE's compression in the modes it configures.
 
@@ -34,9 +34,9 @@
 
 namespace {
 
-using ac3::test::kSanitized;
-namespace detail = ac4::detail;
-using QmfValue = ac4::detail::QmfValue;
+using iclforge::test::kSanitized;
+namespace detail = iclforge::ac4::detail;
+using QmfValue = iclforge::ac4::detail::QmfValue;
 
 constexpr int kSlots = 32;  // num_qmf_timeslots at frame_rate_index 13
 constexpr int kFrame = kSlots * 64;
@@ -74,7 +74,7 @@ double amplitude_for(double relative, double dialnorm) {
 
 // Runs one frame of a stereo pair, the tone in L and silence in R, through the
 // stage.
-void run_frame(detail::DrcStage& stage, const ac4::OutputConfig& output,
+void run_frame(detail::DrcStage& stage, const iclforge::ac4::OutputConfig& output,
                const detail::DrcFrameValues& values, std::vector<QmfValue> left) {
     std::vector<QmfValue> right(left.size());
     std::array<std::vector<QmfValue>*, 2> matrices = {&left, &right};
@@ -124,15 +124,15 @@ std::vector<std::byte> read_stream(const std::string& leg) {
 
 // Each channel of every frame of `frames`, decoded under `output` and joined.
 std::vector<std::vector<float>> decode_all(std::span<const std::span<const std::byte>> frames,
-                                           const ac4::OutputConfig& output) {
-    ac4::Decoder decoder(ac4::DecoderConfig{.syntax = {}, .output = output});
+                                           const iclforge::ac4::OutputConfig& output) {
+    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{.syntax = {}, .output = output});
     std::vector<std::vector<float>> out;
     for (const std::span<const std::byte> frame : frames) {
         const auto decoded = decoder.decode(frame);
         INFO(decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         out.resize(pcm.channels.size());
         for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
             out[c].insert(out[c].end(), pcm.channels[c].begin(), pcm.channels[c].end());
@@ -222,7 +222,7 @@ TEST_CASE("Table 161 chooses the DRC decoder mode for the output level", "[ac4de
         config.mode[id].configured = true;
     }
     const auto chosen = [&config](double level, bool headphones = false) {
-        return detail::drc_mode_for(config, ac4::DrcMode::kDefault, level, headphones);
+        return detail::drc_mode_for(config, iclforge::ac4::DrcMode::kDefault, level, headphones);
     };
     // The ranges' edges belong to them, and a fractional level goes to its
     // nearest whole dB.
@@ -239,13 +239,13 @@ TEST_CASE("Table 161 chooses the DRC decoder mode for the output level", "[ac4de
     CHECK_FALSE(chosen(1.0).has_value());
     // Asked for by name, whatever the level; off, or a mode the stream does
     // not configure, compresses nothing.
-    CHECK(detail::drc_mode_for(config, ac4::DrcMode::kHomeTheatre, -10.0, false) == 0);
-    CHECK(detail::drc_mode_for(config, ac4::DrcMode::kPortableHeadphones, -31.0, false) == 3);
-    CHECK_FALSE(detail::drc_mode_for(config, ac4::DrcMode::kOff, -31.0, false).has_value());
+    CHECK(detail::drc_mode_for(config, iclforge::ac4::DrcMode::kHomeTheatre, -10.0, false) == 0);
+    CHECK(detail::drc_mode_for(config, iclforge::ac4::DrcMode::kPortableHeadphones, -31.0, false) == 3);
+    CHECK_FALSE(detail::drc_mode_for(config, iclforge::ac4::DrcMode::kOff, -31.0, false).has_value());
     config.mode[3].configured = false;
     CHECK_FALSE(chosen(-10.0, true).has_value());
     CHECK_FALSE(
-        detail::drc_mode_for(config, ac4::DrcMode::kPortableHeadphones, -10.0, false).has_value());
+        detail::drc_mode_for(config, iclforge::ac4::DrcMode::kPortableHeadphones, -10.0, false).has_value());
     // A mode the stream adds, over its own range, and the largest id wins.
     config.mode[5].configured = true;
     config.mode[5].drc_output_level_from = 20;
@@ -259,11 +259,11 @@ TEST_CASE(
     "the DRC stage's static curve, measured with stepped tones at steady state, is each profile's "
     "within 0.5 dB",
     "[ac4dec][drc]") {
-    const std::array<ac4::Speaker, 2> speakers = {ac4::Speaker::kLeft, ac4::Speaker::kRight};
+    const std::array<iclforge::ac4::Speaker, 2> speakers = {iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight};
     constexpr double kDialnorm = -24.0;
     // Lout at dialnorm: the output level gain is 1, and the gain is the curve's.
-    const ac4::OutputConfig output{
-        .output_level_dbfs = kDialnorm, .drc = ac4::DrcMode::kDefault, .headphones = false};
+    const iclforge::ac4::OutputConfig output{
+        .output_level_dbfs = kDialnorm, .drc = iclforge::ac4::DrcMode::kDefault, .headphones = false};
     for (int profile = 1; profile <= 5; ++profile) {
         CAPTURE(profile);
         const detail::DrcCurve curve = *detail::drc_default_curve(profile);
@@ -287,10 +287,10 @@ TEST_CASE(
 
 TEST_CASE("the DRC stage moves to a new gain with the attack and release time constants",
           "[ac4dec][drc]") {
-    const std::array<ac4::Speaker, 2> speakers = {ac4::Speaker::kLeft, ac4::Speaker::kRight};
+    const std::array<iclforge::ac4::Speaker, 2> speakers = {iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight};
     constexpr double kDialnorm = -24.0;
-    const ac4::OutputConfig output{
-        .output_level_dbfs = kDialnorm, .drc = ac4::DrcMode::kDefault, .headphones = false};
+    const iclforge::ac4::OutputConfig output{
+        .output_level_dbfs = kDialnorm, .drc = iclforge::ac4::DrcMode::kDefault, .headphones = false};
     // Film standard, smoothing with its two time constants only.
     detail::DrcCurve curve = *detail::drc_default_curve(1);
     curve.adaptive = false;
@@ -337,9 +337,9 @@ TEST_CASE("the DRC stage moves to a new gain with the attack and release time co
 }
 
 TEST_CASE("transmitted DRC gains apply by channel group, band and subframe", "[ac4dec][drc]") {
-    const std::array<ac4::Speaker, 6> speakers = {
-        ac4::Speaker::kLeft, ac4::Speaker::kRight,        ac4::Speaker::kCentre,
-        ac4::Speaker::kLfe,  ac4::Speaker::kLeftSurround, ac4::Speaker::kRightSurround};
+    const std::array<iclforge::ac4::Speaker, 6> speakers = {
+        iclforge::ac4::Speaker::kLeft, iclforge::ac4::Speaker::kRight,        iclforge::ac4::Speaker::kCentre,
+        iclforge::ac4::Speaker::kLfe,  iclforge::ac4::Speaker::kLeftSurround, iclforge::ac4::Speaker::kRightSurround};
     detail::DrcGainset set;
     set.drc_gains_config = 3;  // four bands per group (Table 164)
     set.nr_drc_channels = 3;
@@ -358,8 +358,8 @@ TEST_CASE("transmitted DRC gains apply by channel group, band and subframe", "[a
     detail::DrcStage stage;
     stage.configure(48000.0, kSlots, speakers, false);
     // Dialnorm 6 dB2 under the output level: a gain of 2 besides the DRC's.
-    const ac4::OutputConfig output{
-        .output_level_dbfs = -24.0, .drc = ac4::DrcMode::kDefault, .headphones = false};
+    const iclforge::ac4::OutputConfig output{
+        .output_level_dbfs = -24.0, .drc = iclforge::ac4::DrcMode::kDefault, .headphones = false};
     std::vector<std::vector<QmfValue>> channels(
         speakers.size(), std::vector<QmfValue>(kSlots * 64, QmfValue{1.0, 0.0}));
     std::vector<std::vector<QmfValue>*> matrices;
@@ -379,7 +379,7 @@ TEST_CASE("transmitted DRC gains apply by channel group, band and subframe", "[a
                     2.0 * std::exp2(static_cast<double>(kGroup[c] * 10 + sf - band_of(k)) / 6.0);
                 const QmfValue got = channels[c][static_cast<std::size_t>(slot * 64 + k)];
                 if (std::abs(static_cast<double>(got.real()) - gain) >
-                    1e4 * static_cast<double>(std::numeric_limits<ac4::detail::Real>::epsilon()) *
+                    1e4 * static_cast<double>(std::numeric_limits<iclforge::ac4::detail::Real>::epsilon()) *
                         gain) {
                     FAIL("channel " << c << " slot " << slot << " subband " << k << ": "
                                     << got.real() << ", expected " << gain);
@@ -394,7 +394,7 @@ TEST_CASE("transmitted DRC gains apply by Part 2 Table 69's groups to the immers
     // Table 69 for 7.X.4: L, R and the LFE; C; Ls, Rs, Lb and Rb; the four
     // tops. Core decoding's Tsl and Tsr carry the tops and take their group
     // (src/ac4dec/ERRATA.md, "DRC's groups in core decoding").
-    using S = ac4::Speaker;
+    using S = iclforge::ac4::Speaker;
     const std::vector<S> full = {S::kLeft,          S::kRight,        S::kCentre,
                                  S::kLfe,           S::kLeftSurround, S::kRightSurround,
                                  S::kLeftBack,      S::kRightBack,    S::kTopFrontLeft,
@@ -420,8 +420,8 @@ TEST_CASE("transmitted DRC gains apply by Part 2 Table 69's groups to the immers
         CAPTURE(speakers.size());
         detail::DrcStage stage;
         stage.configure(48000.0, kSlots, speakers, false, true);
-        const ac4::OutputConfig output{
-            .output_level_dbfs = -30.0, .drc = ac4::DrcMode::kDefault, .headphones = false};
+        const iclforge::ac4::OutputConfig output{
+            .output_level_dbfs = -30.0, .drc = iclforge::ac4::DrcMode::kDefault, .headphones = false};
         std::vector<std::vector<QmfValue>> channels(
             speakers.size(), std::vector<QmfValue>(kSlots * 64, QmfValue{1.0, 0.0}));
         std::vector<std::vector<QmfValue>*> matrices;
@@ -458,11 +458,11 @@ TEST_CASE(
                    : std::vector<double>{-31.0, -27.0, -24.0, -20.0, -17.0};
     for (const double dialnorm : dialnorms) {
         CAPTURE(dialnorm);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.dialnorm_db = dialnorm;
-        auto encoder = ac4::Encoder::create(config);
+        auto encoder = iclforge::ac4::Encoder::create(config);
         REQUIRE(encoder.has_value());
-        std::vector<ac4::EncodedFrame> frames;
+        std::vector<iclforge::ac4::EncodedFrame> frames;
         std::vector<std::span<const float>> views = {input[0], input[1]};
         auto encoded = encoder->encode(views);
         REQUIRE(encoded.has_value());
@@ -471,14 +471,14 @@ TEST_CASE(
         REQUIRE(rest.has_value());
         frames.insert(frames.end(), rest->begin(), rest->end());
         std::vector<std::span<const std::byte>> raw;
-        for (const ac4::EncodedFrame& frame : frames) {
+        for (const iclforge::ac4::EncodedFrame& frame : frames) {
             raw.emplace_back(frame.raw_ac4_frame);
         }
-        const auto coded = decode_all(raw, ac4::OutputConfig{});
+        const auto coded = decode_all(raw, iclforge::ac4::OutputConfig{});
         for (const double lout : {-31.0, -17.0}) {
             CAPTURE(lout);
-            const auto levelled = decode_all(raw, ac4::OutputConfig{.output_level_dbfs = lout,
-                                                                    .drc = ac4::DrcMode::kOff,
+            const auto levelled = decode_all(raw, iclforge::ac4::OutputConfig{.output_level_dbfs = lout,
+                                                                    .drc = iclforge::ac4::DrcMode::kOff,
                                                                     .headphones = false});
             REQUIRE(levelled.size() == coded.size());
             // Past the first frames, which play before the first dialnorm's
@@ -498,10 +498,10 @@ TEST_CASE("DEE's 5.1 stream compresses in the modes it configures, within its cu
     // Made with the home theatre mode as Music light and portable headphones
     // as Speech (gen_ac4_baseline.py, ac4-51-drc-ltrt-192).
     const std::vector<std::byte> stream = read_stream("ac4-51-drc-ltrt-192");
-    const ac4::ScanResult scan = ac4::scan(stream);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     REQUIRE_FALSE(scan.frames.empty());
     std::vector<std::span<const std::byte>> raw;
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         raw.push_back(frame.raw_ac4_frame);
     }
     // Under the sanitizers the first 72 frames, three seconds, over which both
@@ -510,15 +510,15 @@ TEST_CASE("DEE's 5.1 stream compresses in the modes it configures, within its cu
         raw.resize(std::min<std::size_t>(raw.size(), 72));
     }
     const auto off = decode_all(
-        raw, {.output_level_dbfs = -31.0, .drc = ac4::DrcMode::kOff, .headphones = false});
+        raw, {.output_level_dbfs = -31.0, .drc = iclforge::ac4::DrcMode::kOff, .headphones = false});
     struct Mode {
-        ac4::DrcMode mode;
+        iclforge::ac4::DrcMode mode;
         double most_boost;  // dB2
         double most_cut;
     };
-    for (const Mode mode : {Mode{ac4::DrcMode::kHomeTheatre, 12.0, -15.0},
-                            Mode{ac4::DrcMode::kPortableHeadphones, 15.0, -24.0}}) {
-        CAPTURE(ac4::describe(mode.mode));
+    for (const Mode mode : {Mode{iclforge::ac4::DrcMode::kHomeTheatre, 12.0, -15.0},
+                            Mode{iclforge::ac4::DrcMode::kPortableHeadphones, 15.0, -24.0}}) {
+        CAPTURE(iclforge::ac4::describe(mode.mode));
         const auto compressed =
             decode_all(raw, {.output_level_dbfs = -31.0, .drc = mode.mode, .headphones = false});
         REQUIRE(compressed.size() == off.size());

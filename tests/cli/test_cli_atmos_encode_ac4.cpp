@@ -36,18 +36,18 @@
 
 namespace fs = std::filesystem;
 
-using ac3::apps::Ac4ObjectSlot;
-using ac3::plan::Assignment;
-using ac3::plan::Destination;
-using ac3::plan::DestinationKind;
-using ac3::plan::SourceShape;
-using Location = ac3::eac3::chanmap::Location;
+using iclforge::apps::Ac4ObjectSlot;
+using iclforge::plan::Assignment;
+using iclforge::plan::Destination;
+using iclforge::plan::DestinationKind;
+using iclforge::plan::SourceShape;
+using Location = iclforge::eac3::chanmap::Location;
 
 namespace {
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} /
-               ("cli_atmos_encode_ac4_" + ac3::test::platform::process_id());
+               ("cli_atmos_encode_ac4_" + iclforge::test::platform::process_id());
     fs::create_directories(dir);
     return dir;
 }
@@ -55,7 +55,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -77,7 +77,7 @@ std::vector<std::byte> file_bytes(const fs::path& path) {
     return out;
 }
 
-std::vector<std::byte> joined(const ac3::apps::Ac4Packaged& packaged) {
+std::vector<std::byte> joined(const iclforge::apps::Ac4Packaged& packaged) {
     std::vector<std::byte> out;
     for (const auto& chunk : packaged.chunks) {
         out.insert(out.end(), chunk.begin(), chunk.end());
@@ -97,12 +97,12 @@ fs::path tone_wav(const fs::path& path, std::size_t channels, std::size_t frames
                                static_cast<double>(n) / kRate));
         }
     }
-    REQUIRE(ac3::io::write_wav_f32(path.string(), data, kRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(path.string(), data, kRate).has_value());
     return path;
 }
 
-ac3::io::WavData read(const fs::path& path) {
-    auto wav = ac3::io::read_wav(path.string());
+iclforge::io::WavData read(const fs::path& path) {
+    auto wav = iclforge::io::read_wav(path.string());
     REQUIRE(wav.has_value());
     return std::move(*wav);
 }
@@ -119,48 +119,48 @@ Destination at(Location location) {
 
 // An authored scene: `count` objects, each held for the first 40 ms at one place and moving
 // to another by 90 ms, at unity.
-ac3::oba::ObjectScene moving_scene(std::size_t count) {
-    std::vector<ac3::oba::SceneObject> objects;
+iclforge::oba::ObjectScene moving_scene(std::size_t count) {
+    std::vector<iclforge::oba::SceneObject> objects;
     for (std::size_t i = 0; i < count; ++i) {
         const double x = 0.15 + 0.7 * static_cast<double>(i) / static_cast<double>(count);
-        ac3::oba::SceneObject o;
+        iclforge::oba::SceneObject o;
         o.name = "object " + std::to_string(i);
         o.automation = {
             {.time_s = 0.0, .position = {.x = x, .y = 0.2, .z = 0.0}, .gain = 0.5},
             {.time_s = 0.09, .position = {.x = 1.0 - x, .y = 0.8, .z = 0.5}, .gain = 0.5}};
         objects.push_back(std::move(o));
     }
-    auto scene = ac3::oba::ObjectScene::create(std::move(objects));
+    auto scene = iclforge::oba::ObjectScene::create(std::move(objects));
     REQUIRE(scene.has_value());
     return std::move(*scene);
 }
 
-fs::path write_scene(const fs::path& path, const ac3::oba::ObjectScene& scene) {
-    std::ofstream{path, std::ios::binary} << ac3::oba::to_json(scene);
+fs::path write_scene(const fs::path& path, const iclforge::oba::ObjectScene& scene) {
+    std::ofstream{path, std::ios::binary} << iclforge::oba::to_json(scene);
     return path;
 }
 
 // The bytes the shared steps write for one WAV file's channels as objects, given the scene.
-std::vector<std::byte> shared_bytes(const std::vector<const ac3::io::WavData*>& sources,
+std::vector<std::byte> shared_bytes(const std::vector<const iclforge::io::WavData*>& sources,
                                     const std::vector<std::size_t>& offsets,
                                     const Assignment& assignment,
-                                    const ac3::oba::ObjectScene& scene, int kbps,
-                                    ac4::ObjectCoding coding, bool mp4, bool crc) {
+                                    const iclforge::oba::ObjectScene& scene, int kbps,
+                                    iclforge::ac4::ObjectCoding coding, bool mp4, bool crc) {
     std::vector<SourceShape> shapes;
-    std::vector<ac3::apps::Ac4SourceView> views;
+    std::vector<iclforge::apps::Ac4SourceView> views;
     for (std::size_t i = 0; i < sources.size(); ++i) {
         shapes.push_back({.channels = sources[i]->channels.size(), .label = "s"});
         views.push_back({.channels = sources[i]->channels, .offset_samples = offsets[i]});
     }
-    const auto slots = ac3::apps::ac4_object_slots(assignment, shapes);
-    const auto flat = ac3::apps::ac4_flat_planes(views);
-    ac3::apps::Ac4ObjectsParams params;
+    const auto slots = iclforge::apps::ac4_object_slots(assignment, shapes);
+    const auto flat = iclforge::apps::ac4_flat_planes(views);
+    iclforge::apps::Ac4ObjectsParams params;
     params.sample_rate_hz = kRate;
     params.bitrate_kbps = kbps;
     params.coding = coding;
-    const auto encoded = ac3::apps::encode_ac4_scene(params, slots, flat, scene);
+    const auto encoded = iclforge::apps::encode_ac4_scene(params, slots, flat, scene);
     REQUIRE(encoded.has_value());
-    const auto packaged = ac3::apps::package_ac4(encoded->frames, encoded->toc, mp4, crc);
+    const auto packaged = iclforge::apps::package_ac4(encoded->frames, encoded->toc, mp4, crc);
     REQUIRE(packaged.has_value());
     return joined(*packaged);
 }
@@ -175,11 +175,11 @@ Assignment every_channel_an_object(std::size_t channels) {
 
 // The objects a stream's first decoded frame carries.
 std::size_t decoded_objects(const std::vector<std::byte>& stream) {
-    const ac4::ScanResult scan = ac4::scan(stream);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     REQUIRE_FALSE(scan.frames.empty());
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     std::size_t most = 0;
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         REQUIRE(decoded.has_value());
         if (decoded->has_value()) {
@@ -222,7 +222,7 @@ TEST_CASE("atmos-encode codec=ac4 writes a raw stream of the shared steps' bytes
 
         const auto want = shared_bytes(
             {&wav}, {0}, every_channel_an_object(3), scene, 256,
-            direct ? ac4::ObjectCoding::kDirect : ac4::ObjectCoding::kAjoc, false, true);
+            direct ? iclforge::ac4::ObjectCoding::kDirect : iclforge::ac4::ObjectCoding::kAjoc, false, true);
         const auto got = file_bytes(out);
         REQUIRE_FALSE(got.empty());
         CHECK(got == want);
@@ -248,7 +248,7 @@ TEST_CASE(
                         quoted(paths) + " codec=ac4 crc=off",
                     log) == 0);
     CHECK(file_bytes(no_crc) == shared_bytes({&wav}, {0}, every_channel_an_object(2), scene, 192,
-                                             ac4::ObjectCoding::kAjoc, false, false));
+                                             iclforge::ac4::ObjectCoding::kAjoc, false, false));
 
     const auto mp4 = dir / "objects.mp4";
     REQUIRE(run_cli("atmos-encode " + quoted(in) + " " + quoted(mp4) + " 192 2 " + quoted(paths) +
@@ -259,7 +259,7 @@ TEST_CASE(
     CHECK(text.find("MP4, codecs ac-4.") != std::string::npos);
     const auto got = file_bytes(mp4);
     CHECK(got == shared_bytes({&wav}, {0}, every_channel_an_object(2), scene, 192,
-                              ac4::ObjectCoding::kAjoc, true, true));
+                              iclforge::ac4::ObjectCoding::kAjoc, true, true));
     // 'ftyp' at byte 4.
     REQUIRE(got.size() > 8);
     CHECK(std::string(reinterpret_cast<const char*>(got.data()) + 4, 4) == "ftyp");
@@ -293,7 +293,7 @@ TEST_CASE("atmos-encode codec=ac4 takes src=, map= and offset= the way the page'
     INFO(text);
     const std::size_t offset = static_cast<std::size_t>(std::llround(0.02 * kRate));
     const auto want = shared_bytes({&wav_a, &wav_b}, {0, offset}, assignment, scene, 320,
-                                   ac4::ObjectCoding::kAjoc, false, true);
+                                   iclforge::ac4::ObjectCoding::kAjoc, false, true);
     const auto got = file_bytes(out);
     CHECK(got == want);
     // Two dynamic objects, one held at the speaker, and the LFE.

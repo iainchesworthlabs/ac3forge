@@ -46,7 +46,7 @@ class BitWriter {
         return *this;
     }
 
-    // The codeword of `index` in `codebook` (an ac4::detail::Codebook; a
+    // The codeword of `index` in `codebook` (an iclforge::ac4::detail::Codebook; a
     // template so that this header needs none of the decoder's own).
     template <typename Codebook>
     BitWriter& code(const Codebook& codebook, int index) {
@@ -90,9 +90,9 @@ class BitWriter {
 
 // Keeps every record; the element names are string literals that outlive it.
 struct Recorder {
-    std::vector<ac4::SyntaxRecord> records;
+    std::vector<iclforge::ac4::SyntaxRecord> records;
 
-    void operator()(const ac4::SyntaxRecord& record) { records.push_back(record); }
+    void operator()(const iclforge::ac4::SyntaxRecord& record) { records.push_back(record); }
 
     [[nodiscard]] int count(std::string_view name) const {
         int n = 0;

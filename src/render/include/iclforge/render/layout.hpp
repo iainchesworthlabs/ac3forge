@@ -48,7 +48,7 @@
 //     azimuth/elevation in degrees  "30/0", "-110/0", "45/45"; azimuth is
 //                                   counterclockwise from the front, so left
 //                                   is positive (ITU-R BS.775, and
-//                                   ac3::spatial's convention); elevation is
+//                                   iclforge::spatial's convention); elevation is
 //                                   above the listener's plane
 //     lfe                           a low-frequency feed
 //     -                             a slot the bus has and no speaker is on;
@@ -99,13 +99,13 @@
 // that needs the list form - but it is the one-token spelling for the
 // ordinary case of one installation, one realization.
 //
-// Where a named location sits is ac3::spatial::direction_of's answer, which
+// Where a named location sits is iclforge::spatial::direction_of's answer, which
 // depends on the company it keeps: Ls and Rs are at +-110 degrees on a 5.1
 // ring and move to +-90 when a layout also has rear surrounds (Lrs Rrs), the
 // way ITU-R BS.2051 lays 7.1 out. That is why the directions are resolved
 // once, over the whole layout, rather than per slot as the tokens arrive.
 
-namespace ac3::render {
+namespace iclforge::render {
 
 struct Speaker {
     enum class Kind : std::uint8_t {
@@ -141,16 +141,16 @@ struct Speaker {
     // none there. Growing Speaker is exactly what boot-looped the ESP32
     // example once already, kMaxSlots copies of it held by value on a tight
     // FreeRTOS stack - see kTextBytes's own comment for that incident.
-    ac3::spatial::Direction direction{};
+    iclforge::spatial::Direction direction{};
     // The Table E2.5 location this slot was named by, when it was. A coded
     // channel of the same location goes to this slot with unit gain; a slot
     // placed by angle alone has none and takes what the panner gives it.
-    std::optional<ac3::base::Location> location = std::nullopt;
+    std::optional<iclforge::base::Location> location = std::nullopt;
 };
 
 class OutputLayout {
    public:
-    using Location = ac3::base::Location;
+    using Location = iclforge::base::Location;
 
     // Sixteen is §E3.8.2's cap on a rendered programme, the most one TDM line
     // carries at 32 bits, and the panner's own ring limit.
@@ -339,7 +339,7 @@ class OutputLayout {
     [[nodiscard]] bool has_height() const {
         for (const Speaker& speaker : speakers()) {
             if (speaker.kind == Speaker::Kind::kSpeaker &&
-                speaker.direction.elevation_deg >= ac3::spatial::kHeightThresholdDeg) {
+                speaker.direction.elevation_deg >= iclforge::spatial::kHeightThresholdDeg) {
                 return true;
             }
         }
@@ -371,13 +371,13 @@ class OutputLayout {
     // the caller's choice), one is kMono. Anything wider, or anything with an
     // LFE or a height, is rendered as coded through ac3/render/render.hpp,
     // because §7.8 has no fold that keeps an LFE or places a height.
-    [[nodiscard]] std::optional<ac3::base::DownmixTarget> fold(
-        ac3::base::DownmixTarget stereo) const {
+    [[nodiscard]] std::optional<iclforge::base::DownmixTarget> fold(
+        iclforge::base::DownmixTarget stereo) const {
         if (lfe_count() != 0 || has_height()) {
             return std::nullopt;
         }
         switch (speaker_count()) {
-            case 1: return ac3::base::DownmixTarget::kMono;
+            case 1: return iclforge::base::DownmixTarget::kMono;
             case 2: return stereo;
             default: return std::nullopt;
         }
@@ -410,7 +410,7 @@ class OutputLayout {
         std::array<char, 32> angle{};
         std::string_view name = "-";
         if (speaker.location.has_value()) {
-            name = ac3::base::name(*speaker.location);
+            name = iclforge::base::name(*speaker.location);
         } else if (speaker.kind == Speaker::Kind::kLfe) {
             name = "lfe";
         } else if (speaker.kind == Speaker::Kind::kSpeaker) {
@@ -561,9 +561,9 @@ class OutputLayout {
     }
 
     static std::optional<Location> location_named(std::string_view token) {
-        for (int i = 0; i < ac3::base::kMaxChannels; ++i) {
+        for (int i = 0; i < iclforge::base::kMaxChannels; ++i) {
             const auto location = static_cast<Location>(i);
-            if (equals_ignoring_case(token, ac3::base::name(location))) {
+            if (equals_ignoring_case(token, iclforge::base::name(location))) {
                 return location;
             }
         }
@@ -694,7 +694,7 @@ class OutputLayout {
             Speaker& speaker = speakers_[i];
             if (speaker.location.has_value() && speaker.kind == Speaker::Kind::kSpeaker) {
                 speaker.direction =
-                    ac3::spatial::direction_of(*speaker.location, has_rears, has_side_discrete);
+                    iclforge::spatial::direction_of(*speaker.location, has_rears, has_side_discrete);
                 if (speaker.realization == Speaker::Realization::kTop) {
                     speaker.direction.elevation_deg = 90.0;
                 }
@@ -732,7 +732,7 @@ class OutputLayout {
             const Speaker& speaker = speakers_[i];
             std::string_view token = "-";
             if (speaker.location.has_value()) {
-                token = ac3::base::name(*speaker.location);
+                token = iclforge::base::name(*speaker.location);
             } else if (speaker.kind == Speaker::Kind::kLfe) {
                 token = "lfe";
             }
@@ -772,4 +772,4 @@ class OutputLayout {
     std::array<char, kTextBytes> text_{};
 };
 
-}  // namespace ac3::render
+}  // namespace iclforge::render

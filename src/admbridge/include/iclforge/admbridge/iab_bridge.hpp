@@ -12,12 +12,12 @@
 #include "iclforge/iab/ac3iab.hpp"
 
 // Roadmap item IM1 phase 3 of 3 ("IAB (SMPTE ST 2098-2) reader"): maps the parsed
-// IAB bed/object graph (ac3iab::ac3iab, phases 1-2) onto ac3::oba::AtmosEncoder's input shape - one
-// ac3::oba::ObjectPath plus one mono PCM buffer per bed speaker feed or dynamic object, the same
+// IAB bed/object graph (iclforge::iab, phases 1-2) onto iclforge::oba::AtmosEncoder's input shape - one
+// iclforge::oba::ObjectPath plus one mono PCM buffer per bed speaker feed or dynamic object, the same
 // destination shape build() (bridge.hpp) already produces for ADM. This is still the one place
-// ac3iab::ac3iab and ac3::forge/ac3::oba are allowed to meet - see bridge.hpp's own top comment on
+// iclforge::iab and iclforge::ac3/iclforge::oba are allowed to meet - see bridge.hpp's own top comment on
 // why that boundary exists - just a second source feeding it. Gated by the same AC3FORGE_BUILD_ADM
-// flag as the rest of ac3::admbridge (this module's own CMakeLists.txt has the full reasoning);
+// flag as the rest of iclforge::admbridge (this module's own CMakeLists.txt has the full reasoning);
 // AC3FORGE_BUILD_IAB (default ON) is a separate, always-satisfied prerequisite this module's own
 // CMakeLists.txt now enforces with a FATAL_ERROR guard.
 //
@@ -26,8 +26,8 @@
 //   - IAB has no whole-file object graph the way ADM's audioProgramme->audioContent->audioObject
 //     tree does - it is a flat SEQUENCE of self-contained IAFrames, each carrying its own
 //     Bed/Object metadata scoped to that frame alone (§9.2/§9.4). build_iab() therefore takes the
-//     WHOLE parsed frame sequence (std::span<const ac3iab::IABitstreamFrame>, exactly what
-//     ac3iab::parse_iabitstream()/parse_mxf_iab() already return) rather than one already-resolved
+//     WHOLE parsed frame sequence (std::span<const iclforge::iab::IABitstreamFrame>, exactly what
+//     iclforge::iab::parse_iabitstream()/parse_mxf_iab() already return) rather than one already-resolved
 //     document, and does its own two-pass walk: an identity pass unions every unconditionally-
 //     Activated top-level Bed channel / Object across every frame, keyed by §10.3.1's own MetaID
 //     ("the ID that allows the system to track metadata information between audio
@@ -35,7 +35,7 @@
 //     represent continuous audio" - for a Bed channel, combined with its own ChannelID per
 //     §10.3.5's note on ST 2098-1's Channel Identifier function) - fixing AtmosEncoder's channel
 //     count and order once, the same role collect_leaf_objects() plays for build()'s own ADM walk.
-//     A timeline pass then builds one ac3::oba::ObjectPath per identity spanning the WHOLE
+//     A timeline pass then builds one iclforge::oba::ObjectPath per identity spanning the WHOLE
 //     sequence: a frame where that identity is absent, or only conditionally Activated (an
 //     alternate-target-environment mix per §10.3.2/§10.5.1's own Activation/UseCase fields - the
 //     same "pick the one primary set" choice build() already makes among several audioProgrammes),
@@ -43,13 +43,13 @@
 //     through the gap) rather than shrinking the channel count.
 //   - Bed channels have no per-block position data at all (unlike ADM's audioBlockFormat
 //     sequence) - a Bed's own ChannelID (Table 19) is a closed, physical-position vocabulary
-//     resolved once via ac3::oba::bed_label_position(), the same "pinned, unmoving placement" bed
+//     resolved once via iclforge::oba::bed_label_position(), the same "pinned, unmoving placement" bed
 //     channels already get from ADM's speakerLabel; only BedChannel::gain (§10.3.8) can legitimately
 //     vary frame to frame, so a bed channel's timeline is one keyframe per frame it is present in.
 //     An LFE bed channel (ChannelID 0xD, or 0x86/0x87's BS.2051-2 LFE1/LFE2 aliases) is routed at
 //     gain 0 / lfe_send 1, the exact convention build_channel_path's own doc comment states for
 //     ADM ("Objects never reach the LFE by panning").
-//   - Table 19's cinema channel vocabulary is richer than ac3::oba::BedLabel's own consumer-layout
+//   - Table 19's cinema channel vocabulary is richer than iclforge::oba::BedLabel's own consumer-layout
 //     one in exactly one place: it names THREE distinct surround zones per side (Side Surround,
 //     Surround, Rear Surround) where BedLabel has only two slots (kLs/kRs, kLb/kRb). "Surround"
 //     (0x6/0xA) maps to kLs/kRs (the canonical 5.1 pair) and "Rear Surround" (0x7/0x8) to kLb/kRb
@@ -74,10 +74,10 @@
 //     single caller-owned AdmDocument - there is no equivalent single upstream object here to
 //     borrow spans from once this function returns. This is the one reason IabBridgeResult is a
 //     new struct rather than a reuse of BridgeResult, even though every other field lines up.
-namespace ac3::admbridge {
+namespace iclforge::admbridge {
 
 // The result of bridging a whole parsed IAB frame sequence - everything needed to construct and
-// drive an ac3::oba::AtmosEncoder, one entry per channel, all vectors indexed identically. See this
+// drive an iclforge::oba::AtmosEncoder, one entry per channel, all vectors indexed identically. See this
 // header's own top comment for exactly how each field differs from BridgeResult's own ADM shape.
 struct IabBridgeResult {
     std::vector<std::string> channel_ids;      // "bed:<MetaID>:<ChannelID>" / "object:<MetaID>",
@@ -85,7 +85,7 @@ struct IabBridgeResult {
                                                 // name the way ADM's audioChannelFormat::id is
     std::vector<bool> is_bed;
     std::vector<bool> is_lfe;
-    std::vector<ac3::oba::ObjectPath> paths;   // pass directly to ac3::oba::evaluate_placements
+    std::vector<iclforge::oba::ObjectPath> paths;   // pass directly to iclforge::oba::evaluate_placements
     std::vector<std::vector<float>> pcm;       // owned - see this header's own top comment
     std::uint32_t sample_rate = 0;             // the first frame's own IaFrame::sample_rate,
                                                 // unconverted - same convention build()'s own
@@ -94,11 +94,11 @@ struct IabBridgeResult {
     [[nodiscard]] std::size_t channel_count() const { return paths.size(); }
 };
 
-// Bridges a whole parsed IAB frame sequence - ac3iab::parse_iabitstream() or
-// ac3iab::parse_mxf_iab()'s own return value, unmodified - onto AtmosEncoder's input shape. Channel
+// Bridges a whole parsed IAB frame sequence - iclforge::iab::parse_iabitstream() or
+// iclforge::iab::parse_mxf_iab()'s own return value, unmodified - onto AtmosEncoder's input shape. Channel
 // count is capped at the same 15 build() itself enforces, for the identical reason (see bridge.cpp's
 // own kMaxChannels comment).
 [[nodiscard]] AC3ADMBRIDGE_EXPORT std::expected<IabBridgeResult, BridgeError> build_iab(
-    std::span<const ac3iab::IABitstreamFrame> frames);
+    std::span<const iclforge::iab::IABitstreamFrame> frames);
 
-}  // namespace ac3::admbridge
+}  // namespace iclforge::admbridge

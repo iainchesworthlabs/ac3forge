@@ -10,7 +10,7 @@
 #include "iclforge/ac3/detail/profile.hpp"
 
 // The §7.9.4 inverse pair, selected by the scalar type the decoder stores its
-// coefficients in (ac3::internal::decode_scalar_t, minimum-footprint decoder profile's float32 gap).
+// coefficients in (iclforge::internal::decode_scalar_t, minimum-footprint decoder profile's float32 gap).
 // Shared by both decoders - decoder.cpp's AC-3 and eac3_decoder.cpp's Annex E -
 // because both make exactly this choice at exactly this point.
 //
@@ -27,7 +27,7 @@
 // and a profile carrying float32 coefficients has already refused
 // fast_imdct=false with kNoReferenceTransform long before reaching here.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 template <typename Scalar>
 void inverse_transform_into(const std::array<Scalar, 256>& coeffs, std::array<Scalar, 512>& x,
@@ -60,4 +60,4 @@ void inverse_transform_into(const std::array<Scalar, 256>& coeffs, std::array<Sc
     }
 }
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

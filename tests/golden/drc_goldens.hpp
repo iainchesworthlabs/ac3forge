@@ -6,7 +6,7 @@
 #include <array>
 #include <cstdint>
 
-namespace ac3::golden {
+namespace iclforge::golden {
 
 // Linear gain of every dynrng word (A/52 section 7.7.1.2).
 inline constexpr std::array<double, 256> kDynrngGain = {{
@@ -479,4 +479,4 @@ inline constexpr std::array<DrcQuantCase, 323> kDrcQuantCases = {{
     {49.82000000000015, 0x7F, 0x7F},
 }};
 
-}  // namespace ac3::golden
+}  // namespace iclforge::golden

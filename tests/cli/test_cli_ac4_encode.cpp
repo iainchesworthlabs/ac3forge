@@ -32,7 +32,7 @@
 #include "iclforge/ac4/ac4.hpp"
 
 namespace fs = std::filesystem;
-using ac3::test::kSanitized;
+using iclforge::test::kSanitized;
 
 namespace {
 
@@ -40,7 +40,7 @@ namespace {
 // tests/cli/test_cli_containers.cpp, whose shapes these copy).
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} /
-               ("cli_ac4_encode_" + ac3::test::platform::process_id());
+               ("cli_ac4_encode_" + iclforge::test::platform::process_id());
     fs::create_directories(dir);
     return dir;
 }
@@ -48,7 +48,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -84,7 +84,7 @@ std::vector<float> tone(double hz, std::size_t count, double amplitude = 0.1) {
 // A WAV file of `channels`, written to `name` in the scratch directory.
 fs::path wav_of(const std::string& name, const std::vector<std::vector<float>>& channels) {
     const fs::path path = scratch_dir() / name;
-    REQUIRE(ac3::io::write_wav_f32(path.string(), channels, kRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(path.string(), channels, kRate).has_value());
     return path;
 }
 
@@ -174,10 +174,10 @@ std::size_t count_of(const std::vector<Record>& records, std::string_view name,
 
 // The table of contents of a raw stream's first frame. The frames are views of
 // `bytes`, which the caller keeps.
-ac4::Toc first_toc(const std::vector<std::byte>& bytes) {
-    const ac4::ScanResult scanned = ac4::scan(bytes);
+iclforge::ac4::Toc first_toc(const std::vector<std::byte>& bytes) {
+    const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(bytes);
     REQUIRE_FALSE(scanned.frames.empty());
-    const auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+    const auto frame = iclforge::ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
     REQUIRE(frame.has_value());
     return frame->toc;
 }
@@ -198,10 +198,10 @@ TEST_CASE("ac4-encode's crc= puts Annex G's CRC in each sync frame or leaves it 
         const bool crc = option != " crc=off";
         CHECK(read_log(log).find(crc ? "raw with CRC" : "raw without CRC") != std::string::npos);
         const std::vector<std::byte> bytes = read_bytes(out);
-        const ac4::ScanResult scanned = ac4::scan(bytes);
+        const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(bytes);
         REQUIRE_FALSE(scanned.frames.empty());
         CHECK_FALSE(scanned.stopped_at.has_value());
-        for (const ac4::SyncFrame& frame : scanned.frames) {
+        for (const iclforge::ac4::SyncFrame& frame : scanned.frames) {
             CHECK(frame.sync_word == (crc ? 0xAC41 : 0xAC40));
             CHECK(frame.crc_ok == (crc ? std::optional<bool>{true} : std::nullopt));
             CHECK(frame.raw_ac4_frame.size() == 1024U);  // 192 kbps at 2 048 samples a frame
@@ -386,10 +386,10 @@ TEST_CASE("ac4-encode's I-frame options put I-frames where they say", "[cli][ac4
         REQUIRE(run_cli("ac4-encode " + quoted(in) + " " + quoted(out) + " 192" + options, log) ==
                 0);
         const std::vector<std::byte> bytes = read_bytes(out);
-        const ac4::ScanResult scanned = ac4::scan(bytes);
+        const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(bytes);
         std::vector<std::size_t> out_frames;
         for (std::size_t i = 0; i < scanned.frames.size(); ++i) {
-            const auto frame = ac4::parse_raw_frame(scanned.frames[i].raw_ac4_frame);
+            const auto frame = iclforge::ac4::parse_raw_frame(scanned.frames[i].raw_ac4_frame);
             REQUIRE(frame.has_value());
             if (frame->toc.b_iframe_global) {
                 out_frames.push_back(i);
@@ -486,7 +486,7 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
         const fs::path twelve = short_tones_wav("ac4_714.wav", 12);
         (void)run(twelve, "768 experimental=back-pair");
         const std::vector<std::byte> bytes = read_bytes(out);
-        const ac4::Toc toc = first_toc(bytes);
+        const iclforge::ac4::Toc toc = first_toc(bytes);
         const auto& chan = toc.substream_groups.at(0).substreams.at(0).chan;
         REQUIRE(chan.has_value());
         CHECK(chan->ch_mode == 12);
@@ -524,7 +524,7 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
             (void)run(first_frame_tones_wav("ac4_seven.wav", layout.channels, 1),
                       "512 experimental=" + std::string{layout.option});
             const std::vector<std::byte> bytes = read_bytes(out);
-            const ac4::Toc toc = first_toc(bytes);
+            const iclforge::ac4::Toc toc = first_toc(bytes);
             REQUIRE(toc.substream_groups.size() == 1);
             CHECK(toc.substream_groups[0].substreams.at(0).chan->channel_mode_name == layout.mode);
         }
@@ -576,7 +576,7 @@ TEST_CASE("ac4-encode's substream and presentation options each write what they 
     INFO(read_log(log));
     CHECK(read_log(log).find("3 substreams, 4 presentations") != std::string::npos);
     const std::vector<std::byte> bytes = read_bytes(out);
-    const ac4::Toc toc = first_toc(bytes);
+    const iclforge::ac4::Toc toc = first_toc(bytes);
     REQUIRE(toc.presentations_v1.size() == 4);
     const auto& p = toc.presentations_v1;
     CHECK(p[0].presentation_config == 0);
@@ -669,7 +669,7 @@ TEST_CASE("ac4-encode's dialogue enhancement substreams stems and EMDF-only pres
         INFO(read_log(log));
         CHECK(read_log(log).find("SIMPLE mode") != std::string::npos);
         const std::vector<std::byte> bytes = read_bytes(out);
-        const ac4::Toc toc = first_toc(bytes);
+        const iclforge::ac4::Toc toc = first_toc(bytes);
         REQUIRE(toc.presentations_v1.size() == 2);
         CHECK(toc.presentations_v1[0].presentation_config == 1);
         const std::vector<Record> records = read_trace(trace);
@@ -707,7 +707,7 @@ TEST_CASE("ac4-encode's dialogue enhancement substreams stems and EMDF-only pres
                             quoted(trace),
                         log) == 0);
         const std::vector<std::byte> bytes = read_bytes(out);
-        const ac4::Toc toc = first_toc(bytes);
+        const iclforge::ac4::Toc toc = first_toc(bytes);
         REQUIRE(toc.presentations_v1.size() == 2);
         CHECK(toc.presentations_v1[1].presentation_config == 6);
         const std::vector<std::uint64_t> ids = first_frame(read_trace(trace), "emdf_payload_id");
@@ -732,7 +732,7 @@ TEST_CASE("ac4-encode's dialogue enhancement substreams stems and EMDF-only pres
                             " substream2-content=dialogue presentation1=1,2 presentation1-config=0",
                         log) == 0);
         const std::vector<std::byte> bytes = read_bytes(out);
-        const ac4::Toc toc = first_toc(bytes);
+        const iclforge::ac4::Toc toc = first_toc(bytes);
         REQUIRE(toc.substream_groups.size() == 2);
         CHECK(toc.substream_groups[1].substreams.at(0).chan->ch_mode == 2);
         // Without the option, three channels are refused, naming it.
@@ -810,7 +810,7 @@ TEST_CASE("ac4-encode gives the 7.X pair to a 7.X substream beside a mono one", 
                 log) == 0);
     INFO(read_log(log));
     const std::vector<std::byte> bytes = read_bytes(out);
-    const ac4::Toc toc = first_toc(bytes);
+    const iclforge::ac4::Toc toc = first_toc(bytes);
     REQUIRE(toc.substream_groups.size() == 2);
     CHECK(toc.substream_groups[0].substreams.at(0).chan->channel_mode_name == "7.1: 3/4/0.1");
     CHECK(toc.substream_groups[1].substreams.at(0).chan->ch_mode == 0);

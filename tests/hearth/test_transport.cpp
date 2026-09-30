@@ -7,7 +7,7 @@
 #include "queue.hpp"
 #include "transport.hpp"
 
-// ac3::hearth::Transport (apps/hearth/engine/transport.cpp): play, pause,
+// iclforge::hearth::Transport (apps/hearth/engine/transport.cpp): play, pause,
 // stop, next, previous, seek, and what the engine has to do about each.
 //
 // Tagged [transport-state] rather than [transport]: tests/sendspin/ uses
@@ -23,15 +23,15 @@
 
 namespace {
 
-using ac3::hearth::FailurePolicy;
-using ac3::hearth::ItemFacts;
-using ac3::hearth::OpenOutputFormat;
-using ac3::hearth::OutputMode;
-using ac3::hearth::Queue;
-using ac3::hearth::QueueItem;
-using ac3::hearth::Transport;
-using ac3::hearth::TransportAction;
-using ac3::hearth::TransportState;
+using iclforge::hearth::FailurePolicy;
+using iclforge::hearth::ItemFacts;
+using iclforge::hearth::OpenOutputFormat;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::Queue;
+using iclforge::hearth::QueueItem;
+using iclforge::hearth::Transport;
+using iclforge::hearth::TransportAction;
+using iclforge::hearth::TransportState;
 
 QueueItem item(std::string title, std::uint32_t rate = 48000) {
     // Built field by field rather than in one braced initialiser that both
@@ -43,7 +43,7 @@ QueueItem item(std::string title, std::uint32_t rate = 48000) {
     QueueItem entry;
     entry.path = title + ".ec3";
     entry.title = std::move(title);
-    entry.facts.stream = ac3::audio::BitstreamFormat::kEac3;
+    entry.facts.stream = iclforge::audio::BitstreamFormat::kEac3;
     entry.facts.sample_rate = rate;
     entry.facts.channels = 6;
     return entry;
@@ -205,7 +205,7 @@ TEST_CASE("transport: a bitstream joins only the same stream, played the same wa
     queue.add(item("e1"));
     queue.add(item("e2"));
     QueueItem plain = item("a3");
-    plain.facts.stream = ac3::audio::BitstreamFormat::kAc3;
+    plain.facts.stream = iclforge::audio::BitstreamFormat::kAc3;
     queue.add(plain);
     queue.add(item("e4"));
     queue.add(item("e5"));
@@ -213,11 +213,11 @@ TEST_CASE("transport: a bitstream joins only the same stream, played the same wa
     Transport transport{queue};
 
     REQUIRE(transport.play().action == TransportAction::kStartItem);
-    const auto link = [](ac3::audio::BitstreamFormat stream, OutputMode mode) {
+    const auto link = [](iclforge::audio::BitstreamFormat stream, OutputMode mode) {
         return OpenOutputFormat{
             .sample_rate = 48000, .channels = 2, .mode = mode, .stream = stream};
     };
-    transport.set_open_format(link(ac3::audio::BitstreamFormat::kEac3, OutputMode::kBitstream));
+    transport.set_open_format(link(iclforge::audio::BitstreamFormat::kEac3, OutputMode::kBitstream));
 
     // E-AC-3 after E-AC-3, both bitstreamed: the link carries on.
     auto outcome = transport.item_finished(OutputMode::kBitstream);
@@ -233,7 +233,7 @@ TEST_CASE("transport: a bitstream joins only the same stream, played the same wa
     CHECK(outcome.note.find("carrying E-AC-3") != std::string::npos);
 
     // After the AC-3 link, an item to be decoded here: another mode.
-    transport.set_open_format(link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstream));
+    transport.set_open_format(link(iclforge::audio::BitstreamFormat::kAc3, OutputMode::kBitstream));
     outcome = transport.item_finished(OutputMode::kLocalPcm);
     CHECK(outcome.action == TransportAction::kReopenForItem);
     CHECK(outcome.item == 3);
@@ -251,7 +251,7 @@ TEST_CASE("transport: a bitstream joins only the same stream, played the same wa
     // E-AC-3 transcoded to AC-3 joins E-AC-3 transcoded to AC-3, though the
     // link carries AC-3. And a failed item passes the mode on under skip.
     transport.set_open_format(
-        link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
+        link(iclforge::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
     outcome = transport.item_failed(4, OutputMode::kBitstreamAsAc3);
     CHECK(outcome.action == TransportAction::kJoinItem);
     CHECK(outcome.item == 5);
@@ -262,7 +262,7 @@ TEST_CASE("transport: a bitstream joins only the same stream, played the same wa
     again.add(plain);
     Transport other{again};
     REQUIRE(other.play().action == TransportAction::kStartItem);
-    other.set_open_format(link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
+    other.set_open_format(link(iclforge::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
     CHECK(other.item_finished(OutputMode::kBitstreamAsAc3).action ==
           TransportAction::kReopenForItem);
 }
@@ -505,7 +505,7 @@ TEST_CASE("transport: an item that fails is passed over, or stops playback at it
 TEST_CASE("transport: every state and action describes itself", "[hearth][transport-state]") {
     for (const auto state :
          {TransportState::kStopped, TransportState::kPlaying, TransportState::kPaused}) {
-        const std::string_view text = ac3::hearth::describe(state);
+        const std::string_view text = iclforge::hearth::describe(state);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown transport state");
     }
@@ -514,10 +514,10 @@ TEST_CASE("transport: every state and action describes itself", "[hearth][transp
           TransportAction::kReopenForItem, TransportAction::kPauseOutput,
           TransportAction::kResumeOutput, TransportAction::kStopOutput,
           TransportAction::kSeekItem}) {
-        const std::string_view text = ac3::hearth::describe(action);
+        const std::string_view text = iclforge::hearth::describe(action);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown transport action");
     }
-    CHECK(ac3::hearth::describe(FailurePolicy::kSkip) == "skip to the next");
-    CHECK(ac3::hearth::describe(FailurePolicy::kStop) == "stop");
+    CHECK(iclforge::hearth::describe(FailurePolicy::kSkip) == "skip to the next");
+    CHECK(iclforge::hearth::describe(FailurePolicy::kStop) == "stop");
 }

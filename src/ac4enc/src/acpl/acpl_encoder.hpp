@@ -75,7 +75,7 @@
 //     (sqrt 2 g), g = 2 + 1 / sqrt 2 (Pseudocode 8's input gain), and their
 //     mirrors (ajcc_core()).
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // The QMF slots each estimate reads, and its DFT's bins (acpl_encoder.cpp).
 inline constexpr int kAcplWindowSlots = 48;
@@ -215,4 +215,4 @@ class AcplEncoder {
 // which gives the pair back as it was.
 [[nodiscard]] std::vector<double> acpl_residuals(AcplLayout layout, std::span<const double> input);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

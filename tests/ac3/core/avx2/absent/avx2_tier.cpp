@@ -6,7 +6,7 @@
 // nothing in the library itself calls the probe - it exists purely so
 // tests/ac3/core/test_simd_kernels.cpp can execute real AVX2 instructions.
 //
-// This body cannot run. ac3::test::avx2::kTierCompiled is false in this build
+// This body cannot run. iclforge::test::avx2::kTierCompiled is false in this build
 // and require_runnable_avx2() skips every AVX2 case on that before any of them
 // reaches a call. std::unreachable() rather than a returned `false` for the
 // same reason src/internal/avx2/none/mdct_avx2.cpp uses it: a caller can only
@@ -15,12 +15,12 @@
 
 #include <utility>
 
-namespace ac3::internal::avx2 {
+namespace iclforge::internal::avx2 {
 
 bool avx2_probe_matches_expected() noexcept { std::unreachable(); }
 
-}  // namespace ac3::internal::avx2
+}  // namespace iclforge::internal::avx2
 
-static_assert(!ac3::test::avx2::kTierCompiled,
+static_assert(!iclforge::test::avx2::kTierCompiled,
               "this translation unit is only for the build with no AVX2 tier; the present/ "
               "variant forwards to the real probe instead");

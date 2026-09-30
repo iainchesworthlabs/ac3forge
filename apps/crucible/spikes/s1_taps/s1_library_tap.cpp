@@ -35,17 +35,17 @@ int main(int argc, char** argv) {
     const double freq = argc > 1 ? std::atof(argv[1]) : 440.0;
     const int seconds = argc > 2 ? std::atoi(argv[2]) : 4;
 
-    const auto& backend = ac3::audio::audio_backend();
+    const auto& backend = iclforge::audio::audio_backend();
     std::printf("process_loopback: %s%s\n", backend.process_loopback.available ? "available" : "UNAVAILABLE: ",
                 backend.process_loopback.available ? "" : std::string(backend.process_loopback.reason).c_str());
     std::printf("device_watch:     %s\n", backend.device_watch.available ? "available" : "UNAVAILABLE");
 
     // A process that does not exist must be refused before anything is opened.
     {
-        ac3::audio::Capture probe;
+        iclforge::audio::Capture probe;
         const auto refused = probe.start_process_loopback(999999);
         std::printf("pid 999999 -> %s\n",
-                    refused ? "ACCEPTED (wrong)" : std::string(ac3::audio::describe(refused.error())).c_str());
+                    refused ? "ACCEPTED (wrong)" : std::string(iclforge::audio::describe(refused.error())).c_str());
     }
 
     std::wstring cmd = L"\"" + exe_dir() + L"\\tone_player.exe\" " + std::to_wstring(freq) + L" \"\" " +
@@ -59,11 +59,11 @@ int main(int argc, char** argv) {
     }
     Sleep(1000);
 
-    ac3::audio::Capture capture;
+    iclforge::audio::Capture capture;
     const auto started = capture.start_process_loopback(pi.dwProcessId);
     if (!started) {
         std::printf("start_process_loopback(pid %lu) -> %s\n", pi.dwProcessId,
-                    std::string(ac3::audio::describe(started.error())).c_str());
+                    std::string(iclforge::audio::describe(started.error())).c_str());
         TerminateProcess(pi.hProcess, 0);
         return 2;
     }
@@ -104,13 +104,13 @@ int main(int argc, char** argv) {
     CloseHandle(pi.hProcess);
 
     std::atomic<int> events{0};
-    ac3::audio::DeviceWatcher watcher;
-    const auto watching = watcher.start([&](const ac3::audio::DeviceChangeEvent& e) {
+    iclforge::audio::DeviceWatcher watcher;
+    const auto watching = watcher.start([&](const iclforge::audio::DeviceChangeEvent& e) {
         ++events;
         std::printf("  device event %d on \"%s\"\n", static_cast<int>(e.change), e.device_id.c_str());
     });
     std::printf("DeviceWatcher::start -> %s, running=%d\n",
-                watching ? "ok" : std::string(ac3::audio::describe(watching.error())).c_str(), watcher.running() ? 1 : 0);
+                watching ? "ok" : std::string(iclforge::audio::describe(watching.error())).c_str(), watcher.running() ? 1 : 0);
     if (watching) {
         std::puts("  (plug or unplug something in the next 3 s to see an event; none is expected otherwise)");
         Sleep(3000);

@@ -101,7 +101,7 @@ constexpr std::uint32_t kEbmlHeader = 0x1A45DFA3;
 constexpr std::uint32_t kDuration = 0x4489;
 constexpr std::uint32_t kSimpleBlock = 0xA3;
 
-// EBML's reserved "unknown size" value, at the 8-byte width matroska::Writer
+// EBML's reserved "unknown size" value, at the 8-byte width iclforge::matroska::Writer
 // always writes it at (see that class's own comment) - an independent
 // re-derivation of the same reserved pattern, the same "do not trust the
 // muxer's own idea of what it wrote" spirit as the rest of this walker.
@@ -118,7 +118,7 @@ void walk(Reader& r, std::size_t end, std::vector<Element>& out) {
         auto length = r.size();
         const auto payload = r.pos;
         if (length == kUnknownSize) {
-            // matroska::Writer's own Segment (see its class comment): an
+            // iclforge::matroska::Writer's own Segment (see its class comment): an
             // element with no length field to check, that instead runs until
             // whatever bounds it from the outside - here always the parent's
             // own end, since nothing this module ever writes follows an
@@ -172,7 +172,7 @@ TEST_CASE("Matroska file parses as well-formed EBML", "[matroska]") {
     // where its size said.
     const std::vector<Bytes> frames{frame_of(1792, 0x11), frame_of(1792, 0x22),
                                     frame_of(1792, 0x33)};
-    const auto file = matroska::mux({.channels = 6}, frames);
+    const auto file = iclforge::matroska::mux({.channels = 6}, frames);
     REQUIRE(file.has_value());
 
     const auto elements = parse(*file);
@@ -191,8 +191,8 @@ TEST_CASE("Matroska file parses as well-formed EBML", "[matroska]") {
 
 TEST_CASE("Matroska track and timing describe the audio", "[matroska]") {
     const std::vector<Bytes> frames(63, frame_of(896, 0xAB));
-    const auto file = matroska::mux(
-        {.codec_id = std::string{matroska::kCodecEac3}, .sample_rate = 48000,
+    const auto file = iclforge::matroska::mux(
+        {.codec_id = std::string{iclforge::matroska::kCodecEac3}, .sample_rate = 48000,
          .channels = 10, .samples_per_frame = 1536},
         frames);
     REQUIRE(file.has_value());
@@ -232,7 +232,7 @@ TEST_CASE("Matroska clusters keep block timestamps inside int16", "[matroska]") 
     // caller asks for. Demand a wildly oversized one and check it is ignored.
     const std::vector<Bytes> frames(2000, frame_of(64, 0x5A));  // 64 seconds
     const auto file =
-        matroska::mux({.channels = 2}, frames, {.cluster_ms = 10'000'000});
+        iclforge::matroska::mux({.channels = 2}, frames, {.cluster_ms = 10'000'000});
     REQUIRE(file.has_value());
     const auto elements = parse(*file);
 
@@ -257,17 +257,17 @@ TEST_CASE("Matroska muxer rejects what it cannot describe", "[matroska]") {
     const std::vector<Bytes> one{frame_of(16, 0)};
     // Explicit empty span: bare {} became ambiguous when the span-of-views
     // mux overload arrived alongside the owned-list one.
-    CHECK(matroska::mux({.channels = 2}, std::span<const Bytes>{}).error() ==
-          matroska::MuxError::kNoFrames);
-    CHECK(matroska::mux({.channels = 0}, one).error() ==
-          matroska::MuxError::kInvalidTrack);
-    CHECK(matroska::mux({.sample_rate = 0, .channels = 2}, one).error() ==
-          matroska::MuxError::kInvalidTrack);
-    CHECK(matroska::mux({.codec_id = "", .channels = 2}, one).error() ==
-          matroska::MuxError::kInvalidTrack);
+    CHECK(iclforge::matroska::mux({.channels = 2}, std::span<const Bytes>{}).error() ==
+          iclforge::matroska::MuxError::kNoFrames);
+    CHECK(iclforge::matroska::mux({.channels = 0}, one).error() ==
+          iclforge::matroska::MuxError::kInvalidTrack);
+    CHECK(iclforge::matroska::mux({.sample_rate = 0, .channels = 2}, one).error() ==
+          iclforge::matroska::MuxError::kInvalidTrack);
+    CHECK(iclforge::matroska::mux({.codec_id = "", .channels = 2}, one).error() ==
+          iclforge::matroska::MuxError::kInvalidTrack);
 }
 
-// --- matroska::Writer: the incremental API a live session pushes frames into
+// --- iclforge::matroska::Writer: the incremental API a live session pushes frames into
 // one at a time, with no total frame count known up front (see its own class
 // comment in matroska.hpp). Tested against the same independent EBML walker
 // as mux() above, plus a direct parity check against mux()'s own output for
@@ -292,17 +292,17 @@ TEST_CASE("Matroska Writer's assembled output matches mux()'s own track, framing
         frames.push_back(frame_of(kFrameSize, static_cast<std::uint8_t>(i + 1)));
     }
 
-    const matroska::AudioTrack track{.codec_id = std::string{matroska::kCodecEac3},
+    const iclforge::matroska::AudioTrack track{.codec_id = std::string{iclforge::matroska::kCodecEac3},
                                      .sample_rate = 48000,
                                      .channels = 6,
                                      .samples_per_frame = 1536};
 
-    const auto batch = matroska::mux(track, frames);
+    const auto batch = iclforge::matroska::mux(track, frames);
     REQUIRE(batch.has_value());
     const auto batch_elements = parse(*batch);
     REQUIRE(count(batch_elements, kCluster) > 1);  // confirms the boundary above is real
 
-    auto writer = matroska::Writer::create(track);
+    auto writer = iclforge::matroska::Writer::create(track);
     REQUIRE(writer.has_value());
 
     Bytes assembled = writer->header();
@@ -322,7 +322,7 @@ TEST_CASE("Matroska Writer's assembled output matches mux()'s own track, framing
     CHECK(count(elements, kTrackEntry) == 1);
     // Streamed on purpose: the session's length is not known up front, so -
     // unlike mux()'s own output above - there is nothing honest to put in
-    // Duration (see matroska::Writer's own class comment).
+    // Duration (see iclforge::matroska::Writer's own class comment).
     CHECK(find(elements, kDuration) == nullptr);
     CHECK(count(elements, kCluster) == count(batch_elements, kCluster));
     CHECK(count(elements, kSimpleBlock) == kFrameCount);
@@ -357,7 +357,7 @@ TEST_CASE("Matroska Writer's assembled output matches mux()'s own track, framing
 TEST_CASE("Matroska Writer buffers at most one cluster's worth of frames", "[matroska][writer]") {
     // 1536 samples at 48 kHz is 32 ms/frame; a 100 ms cluster budget closes
     // on the 5th frame (128 ms), keeping the first four (96 ms).
-    auto writer = matroska::Writer::create({.channels = 2}, {.cluster_ms = 100});
+    auto writer = iclforge::matroska::Writer::create({.channels = 2}, {.cluster_ms = 100});
     REQUIRE(writer.has_value());
 
     for (int i = 0; i < 4; ++i) {
@@ -382,21 +382,21 @@ TEST_CASE("Matroska Writer buffers at most one cluster's worth of frames", "[mat
 
 TEST_CASE("Matroska Writer::create() rejects an invalid track the same way mux() does",
           "[matroska][writer]") {
-    CHECK(matroska::Writer::create({.channels = 0}).error() == matroska::MuxError::kInvalidTrack);
-    CHECK(matroska::Writer::create({.sample_rate = 0, .channels = 2}).error() ==
-          matroska::MuxError::kInvalidTrack);
-    CHECK(matroska::Writer::create({.codec_id = "", .channels = 2}).error() ==
-          matroska::MuxError::kInvalidTrack);
+    CHECK(iclforge::matroska::Writer::create({.channels = 0}).error() == iclforge::matroska::MuxError::kInvalidTrack);
+    CHECK(iclforge::matroska::Writer::create({.sample_rate = 0, .channels = 2}).error() ==
+          iclforge::matroska::MuxError::kInvalidTrack);
+    CHECK(iclforge::matroska::Writer::create({.codec_id = "", .channels = 2}).error() ==
+          iclforge::matroska::MuxError::kInvalidTrack);
 }
 
 TEST_CASE("Matroska Writer's finalize() flushes a trailing partial cluster, and is a safe "
          "no-op with nothing left to give back", "[matroska][writer]") {
-    auto empty_writer = matroska::Writer::create({.channels = 2});
+    auto empty_writer = iclforge::matroska::Writer::create({.channels = 2});
     REQUIRE(empty_writer.has_value());
     CHECK(empty_writer->finalize().empty());
     CHECK(empty_writer->frames_written() == 0);
 
-    auto writer = matroska::Writer::create({.channels = 2});
+    auto writer = iclforge::matroska::Writer::create({.channels = 2});
     REQUIRE(writer.has_value());
     for (int i = 0; i < 3; ++i) {
         const auto pushed = writer->push(frame_of(48, static_cast<std::uint8_t>(i)));

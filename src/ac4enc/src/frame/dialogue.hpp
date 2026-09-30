@@ -13,7 +13,7 @@
 // scale; with de_ms_proc_flag, of L and R's Mid. The cross-channel method
 // (5.7.8.8) is de_cross_parameters()'s.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Table 209's channel-independent value nearest `p`, as its index: 0 to 1.5
 // in steps of 0.1, 1.75, 2, then 2.5 to 9 in steps of 0.5.
@@ -44,4 +44,4 @@ namespace ac4::detail {
                                                     std::span<const std::vector<double>> dialogue,
                                                     int frame_length);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

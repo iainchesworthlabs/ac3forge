@@ -2,7 +2,7 @@
 // test_capi.cpp do not reach: what a NULL argument, an index past the end, an enumerator outside its
 // enumeration, a stream that does not decode, a decoder setting, or a change of one while a stream
 // plays leaves the call to answer. Each answer is held against the C++ API the entry point wraps:
-// the same bytes go to ac4::Decoder, the same configuration to ac4::Encoder, and the two must
+// the same bytes go to iclforge::ac4::Decoder, the same configuration to iclforge::ac4::Encoder, and the two must
 // agree. The cases carry test_capi.cpp's [capi][ac4] tags.
 
 #include <catch2/catch_test_macros.hpp>
@@ -147,20 +147,20 @@ ac3forge_ac4_decoder_config_t default_decoder_config() {
 }
 
 // The status a C caller is meant to see for each of the C++ decoder's errors, from the header.
-ac3forge_status_t status_of(ac4::DecodeError error) {
+ac3forge_status_t status_of(iclforge::ac4::DecodeError error) {
     switch (error) {
-        case ac4::DecodeError::kTruncated: return AC3FORGE_ERROR_AC4_DECODE_TRUNCATED;
-        case ac4::DecodeError::kInvalidToc: return AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC;
-        case ac4::DecodeError::kInvalidStream: return AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM;
-        case ac4::DecodeError::kUnsupported: return AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED;
-        case ac4::DecodeError::kMissingIFrame: return AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME;
+        case iclforge::ac4::DecodeError::kTruncated: return AC3FORGE_ERROR_AC4_DECODE_TRUNCATED;
+        case iclforge::ac4::DecodeError::kInvalidToc: return AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC;
+        case iclforge::ac4::DecodeError::kInvalidStream: return AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM;
+        case iclforge::ac4::DecodeError::kUnsupported: return AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED;
+        case iclforge::ac4::DecodeError::kMissingIFrame: return AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME;
     }
     return AC3FORGE_ERROR_INTERNAL;
 }
 
 // Every accessor of a decoded frame against the C++ frame it wraps, and each one past the last
 // channel, object and update.
-void check_frame(const ac3forge_ac4_decoded_frame_t* frame, const ac4::DecodedFrame& want) {
+void check_frame(const ac3forge_ac4_decoded_frame_t* frame, const iclforge::ac4::DecodedFrame& want) {
     CHECK(ac3forge_ac4_decoded_frame_sample_rate_hz(frame) == want.sample_rate_hz);
     CHECK(ac3forge_ac4_decoded_frame_sequence_counter(frame) == want.sequence_counter);
     CHECK(ac3forge_ac4_decoded_frame_presentation_index(frame) == want.presentation);
@@ -196,14 +196,14 @@ void check_frame(const ac3forge_ac4_decoded_frame_t* frame, const ac4::DecodedFr
     const std::size_t objects = ac3forge_ac4_decoded_frame_object_count(frame);
     REQUIRE(objects == want.objects.size());
     for (std::size_t o = 0; o < objects; ++o) {
-        const ac4::DecodedObject& object = want.objects[o];
+        const iclforge::ac4::DecodedObject& object = want.objects[o];
         CHECK(static_cast<int>(ac3forge_ac4_decoded_frame_object_kind(frame, o)) ==
               static_cast<int>(object.kind));
         CHECK((ac3forge_ac4_decoded_frame_object_lfe(frame, o) != 0) == object.lfe);
         CHECK((ac3forge_ac4_decoded_frame_object_has_speaker(frame, o) != 0) ==
               object.speaker.has_value());
         CHECK(static_cast<int>(ac3forge_ac4_decoded_frame_object_speaker(frame, o)) ==
-              static_cast<int>(object.speaker.value_or(ac4::Speaker::kLeft)));
+              static_cast<int>(object.speaker.value_or(iclforge::ac4::Speaker::kLeft)));
         const float* pcm = ac3forge_ac4_decoded_frame_object_samples(frame, o);
         REQUIRE(pcm != nullptr);
         CHECK(std::equal(object.samples.begin(), object.samples.end(), pcm));
@@ -254,7 +254,7 @@ struct Outcome {
 
 // `frame` decoded by the C API's `decoder` and by `reference`: the two must answer alike, and the
 // frame, where there is one, reads alike through every accessor.
-Outcome decode_both(ac3forge_ac4_decoder_t* decoder, ac4::Decoder& reference,
+Outcome decode_both(ac3forge_ac4_decoder_t* decoder, iclforge::ac4::Decoder& reference,
                     std::span<const std::uint8_t> frame) {
     Outcome out;
     const auto want = reference.decode(bytes_of(frame));
@@ -282,11 +282,11 @@ Outcome decode_both(ac3forge_ac4_decoder_t* decoder, ac4::Decoder& reference,
 }
 
 // The decoder's presentations, one past the last included, against the C++ decoder's.
-void check_presentations(const ac3forge_ac4_decoder_t* decoder, const ac4::Decoder& reference) {
-    const std::span<const ac4::PresentationInfo> want = reference.presentations();
+void check_presentations(const ac3forge_ac4_decoder_t* decoder, const iclforge::ac4::Decoder& reference) {
+    const std::span<const iclforge::ac4::PresentationInfo> want = reference.presentations();
     REQUIRE(ac3forge_ac4_decoder_presentation_count(decoder) == want.size());
     for (std::size_t p = 0; p < want.size(); ++p) {
-        const ac4::PresentationInfo& info = want[p];
+        const iclforge::ac4::PresentationInfo& info = want[p];
         CHECK(ac3forge_ac4_decoder_presentation_toc_index(decoder, p) == info.index);
         CHECK((ac3forge_ac4_decoder_presentation_has_id(decoder, p) != 0) ==
               info.presentation_id.has_value());
@@ -333,9 +333,9 @@ void check_presentations(const ac3forge_ac4_decoder_t* decoder, const ac4::Decod
 }
 
 // The loudness metadata the last frames sent, against the C++ decoder's.
-void check_loudness(const ac3forge_ac4_decoder_t* decoder, const ac4::Decoder& reference) {
+void check_loudness(const ac3forge_ac4_decoder_t* decoder, const iclforge::ac4::Decoder& reference) {
     const ac3forge_ac4_loudness_info_t got = ac3forge_ac4_decoder_metadata_loudness(decoder);
-    const ac4::LoudnessInfo& want = reference.metadata().loudness;
+    const iclforge::ac4::LoudnessInfo& want = reference.metadata().loudness;
     CHECK((got.has_dialnorm_dbfs != 0) == want.dialnorm_dbfs.has_value());
     CHECK(got.dialnorm_dbfs == want.dialnorm_dbfs.value_or(0.0));
     CHECK((got.has_integrated_lkfs != 0) == want.integrated_lkfs.has_value());
@@ -348,11 +348,11 @@ void check_loudness(const ac3forge_ac4_decoder_t* decoder, const ac4::Decoder& r
 
 }  // namespace
 
-TEST_CASE("AC-4 decoded frame and presentation accessors report what ac4::Decoder decodes",
+TEST_CASE("AC-4 decoded frame and presentation accessors report what iclforge::ac4::Decoder decodes",
           "[capi][ac4]") {
     const Stream stream = stereo_stream();
     const CDecoder c(default_decoder_config());
-    ac4::Decoder reference;
+    iclforge::ac4::Decoder reference;
 
     // Before a frame: no delay, no presentation, no loudness, and nothing refused.
     CHECK(ac3forge_ac4_decoder_latency_samples(c.decoder) == 0);
@@ -378,7 +378,7 @@ TEST_CASE("AC-4 decoded object frames report their objects and the indices past 
     const Stream stream = object_stream();
     REQUIRE(stream.frames.size() >= 4);
     const CDecoder c(default_decoder_config());
-    ac4::Decoder reference;
+    iclforge::ac4::Decoder reference;
     std::size_t with_objects = 0;
     for (const std::vector<std::uint8_t>& frame : stream.frames) {
         ac3forge_ac4_decoded_frame_t* raw = nullptr;
@@ -417,13 +417,13 @@ ac3forge_ac4_output_config_t settled_output() {
     return output;
 }
 
-ac4::OutputConfig settled_output_cpp() {
-    ac4::OutputConfig output;
+iclforge::ac4::OutputConfig settled_output_cpp() {
+    iclforge::ac4::OutputConfig output;
     output.output_level_dbfs = -24.0;
-    output.drc = ac4::DrcMode::kPortableSpeakers;
+    output.drc = iclforge::ac4::DrcMode::kPortableSpeakers;
     output.headphones = true;
     output.dialogue_enhancement_db = 3.0;
-    output.downmix = ac4::DownmixTarget::kMono;
+    output.downmix = iclforge::ac4::DownmixTarget::kMono;
     output.mix_lfe = false;
     output.dialogue_gain_db = -3.0;
     output.associated_gain_db = -6.0;
@@ -447,13 +447,13 @@ ac3forge_ac4_presentation_choice_t settled_choice() {
     return choice;
 }
 
-ac4::PresentationChoice settled_choice_cpp() {
-    ac4::PresentationChoice choice;
+iclforge::ac4::PresentationChoice settled_choice_cpp() {
+    iclforge::ac4::PresentationChoice choice;
     choice.presentation_id = 7;
     choice.index = 0;
     choice.language = "eng";
     choice.associated = 2;
-    choice.associated_type = ac4::AssociatedType::kSpokenSubtitles;
+    choice.associated_type = iclforge::ac4::AssociatedType::kSpokenSubtitles;
     choice.headphones = true;
     return choice;
 }
@@ -462,7 +462,7 @@ ac4::PresentationChoice settled_choice_cpp() {
 
 TEST_CASE("the AC-4 decoder's configuration and live settings reach the decoder", "[capi][ac4]") {
     const Stream stream = stereo_stream();
-    const auto decode_all = [&stream](ac3forge_ac4_decoder_t* decoder, ac4::Decoder& reference,
+    const auto decode_all = [&stream](ac3forge_ac4_decoder_t* decoder, iclforge::ac4::Decoder& reference,
                                       std::size_t from, std::size_t to) {
         std::vector<std::vector<float>> last;
         for (std::size_t k = from; k < to; ++k) {
@@ -475,7 +475,7 @@ TEST_CASE("the AC-4 decoder's configuration and live settings reach the decoder"
     };
     // What the default decoder puts out for the last frame the sections decode.
     const CDecoder plain(default_decoder_config());
-    ac4::Decoder plain_reference;
+    iclforge::ac4::Decoder plain_reference;
     const std::vector<std::vector<float>> plain_pcm =
         decode_all(plain.decoder, plain_reference, 0, 6);
     REQUIRE(plain_pcm.size() == 2);
@@ -487,14 +487,14 @@ TEST_CASE("the AC-4 decoder's configuration and live settings reach the decoder"
         config.concealment = AC3FORGE_AC4_CONCEALMENT_REPEAT_FADE;
         config.level = 2;
         config.decoding = AC3FORGE_AC4_DECODING_CORE;
-        ac4::DecoderConfig reference_config;
+        iclforge::ac4::DecoderConfig reference_config;
         reference_config.output = settled_output_cpp();
         reference_config.presentation = settled_choice_cpp();
-        reference_config.concealment = ac4::ConcealmentPolicy::kRepeatFade;
+        reference_config.concealment = iclforge::ac4::ConcealmentPolicy::kRepeatFade;
         reference_config.level = 2;
-        reference_config.decoding = ac4::DecodingMode::kCore;
+        reference_config.decoding = iclforge::ac4::DecodingMode::kCore;
         const CDecoder c(config);
-        ac4::Decoder reference(reference_config);
+        iclforge::ac4::Decoder reference(reference_config);
         const std::vector<std::vector<float>> pcm = decode_all(c.decoder, reference, 0, 6);
         // The mono downmix and the output level are in the decoded audio.
         REQUIRE(pcm.size() == 1);
@@ -502,7 +502,7 @@ TEST_CASE("the AC-4 decoder's configuration and live settings reach the decoder"
     }
     SECTION("settings changed while a stream plays") {
         const CDecoder c(default_decoder_config());
-        ac4::Decoder reference;
+        iclforge::ac4::Decoder reference;
         decode_all(c.decoder, reference, 0, 2);
 
         ac3forge_ac4_output_config_t output = settled_output();
@@ -528,7 +528,7 @@ TEST_CASE("the AC-4 decoder's configuration and live settings reach the decoder"
     }
     SECTION("reset forgets the stream") {
         const CDecoder c(default_decoder_config());
-        ac4::Decoder reference;
+        iclforge::ac4::Decoder reference;
         const std::vector<std::vector<float>> first = decode_all(c.decoder, reference, 0, 1);
         decode_all(c.decoder, reference, 1, 4);
         REQUIRE(ac3forge_ac4_decoder_latency_samples(c.decoder) > 0);
@@ -568,7 +568,7 @@ std::vector<std::vector<std::uint8_t>> damaged(const std::vector<std::uint8_t>& 
 
 }  // namespace
 
-TEST_CASE("AC-4 decode refuses NULL arguments and answers a damaged frame as ac4::Decoder does",
+TEST_CASE("AC-4 decode refuses NULL arguments and answers a damaged frame as iclforge::ac4::Decoder does",
           "[capi][ac4]") {
     const Stream stream = stereo_stream();
     const ac3forge_ac4_decoder_config_t config = default_decoder_config();
@@ -598,14 +598,14 @@ TEST_CASE("AC-4 decode refuses NULL arguments and answers a damaged frame as ac4
     }
     SECTION("a P-frame with no I-frame before it is held back and not refused") {
         const CDecoder c(config);
-        ac4::Decoder reference;
+        iclforge::ac4::Decoder reference;
         const Outcome outcome = decode_both(c.decoder, reference, stream.frames[3]);
         CHECK(outcome.status == AC3FORGE_OK);
         CHECK_FALSE(outcome.produced);
     }
     SECTION("a frame of no bytes") {
         const CDecoder c(config);
-        ac4::Decoder reference;
+        iclforge::ac4::Decoder reference;
         const Outcome outcome = decode_both(
             c.decoder, reference, std::span<const std::uint8_t>(stream.frames[0].data(), 0));
         CHECK(outcome.status == AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC);
@@ -616,7 +616,7 @@ TEST_CASE("AC-4 decode refuses NULL arguments and answers a damaged frame as ac4
         for (const std::size_t position : {std::size_t{0}, std::size_t{3}}) {
             for (const std::vector<std::uint8_t>& bad : damaged(stream.frames[position])) {
                 const CDecoder c(config);
-                ac4::Decoder reference;
+                iclforge::ac4::Decoder reference;
                 for (std::size_t k = 0; k < position; ++k) {
                     decode_both(c.decoder, reference, stream.frames[k]);
                 }
@@ -642,14 +642,14 @@ TEST_CASE("AC-4 decode conceals a frame that does not decode as the configured p
     const std::vector<std::uint8_t> garbage(stream.frames[3].size(), 0xFF);
 
     const auto run = [&](ac3forge_ac4_concealment_policy_t policy,
-                         ac4::ConcealmentPolicy reference_policy,
+                         iclforge::ac4::ConcealmentPolicy reference_policy,
                          ac3forge_ac4_concealment_action_t action) {
         ac3forge_ac4_decoder_config_t config = default_decoder_config();
         config.concealment = policy;
-        ac4::DecoderConfig reference_config;
+        iclforge::ac4::DecoderConfig reference_config;
         reference_config.concealment = reference_policy;
         const CDecoder c(config);
-        ac4::Decoder reference(reference_config);
+        iclforge::ac4::Decoder reference(reference_config);
         for (std::size_t k = 0; k < 3; ++k) {
             const Outcome good = decode_both(c.decoder, reference, stream.frames[k]);
             CHECK(good.produced);
@@ -670,11 +670,11 @@ TEST_CASE("AC-4 decode conceals a frame that does not decode as the configured p
         CHECK(switched.concealment_error == AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME);
     };
     SECTION("mute") {
-        run(AC3FORGE_AC4_CONCEALMENT_MUTE, ac4::ConcealmentPolicy::kMute,
+        run(AC3FORGE_AC4_CONCEALMENT_MUTE, iclforge::ac4::ConcealmentPolicy::kMute,
             AC3FORGE_AC4_CONCEALMENT_ACTION_MUTE);
     }
     SECTION("repeat and fade") {
-        run(AC3FORGE_AC4_CONCEALMENT_REPEAT_FADE, ac4::ConcealmentPolicy::kRepeatFade,
+        run(AC3FORGE_AC4_CONCEALMENT_REPEAT_FADE, iclforge::ac4::ConcealmentPolicy::kRepeatFade,
             AC3FORGE_AC4_CONCEALMENT_ACTION_REPEAT_FADE);
     }
 }
@@ -722,9 +722,9 @@ TEST_CASE("AC-4 encoder entry points refuse NULL arguments and report their fram
     CHECK(frames == nullptr);
 
     // The codec mode the encoder settled on is the C++ encoder's.
-    ac4::EncoderConfig reference_config;
+    iclforge::ac4::EncoderConfig reference_config;
     reference_config.bitrate_kbps = 96;
-    const auto reference = ac4::Encoder::create(reference_config);
+    const auto reference = iclforge::ac4::Encoder::create(reference_config);
     REQUIRE(reference.has_value());
     CHECK(static_cast<int>(ac3forge_ac4_encoder_codec_mode(encoder)) ==
           static_cast<int>(reference->codec_mode()));
@@ -829,10 +829,10 @@ void set_raw(E& target, int value) {
     std::memcpy(&target, &value, sizeof value);
 }
 
-Stream encode_with_cpp(const ac4::EncoderConfig& config,
+Stream encode_with_cpp(const iclforge::ac4::EncoderConfig& config,
                        const std::vector<std::vector<float>>& input) {
     Stream out;
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
     const std::vector<std::span<const float>> views(input.begin(), input.end());
     auto frames = encoder->encode(views);
@@ -840,7 +840,7 @@ Stream encode_with_cpp(const ac4::EncoderConfig& config,
     auto rest = encoder->flush();
     REQUIRE(rest.has_value());
     for (const auto* list : {&*frames, &*rest}) {
-        for (const ac4::EncodedFrame& frame : *list) {
+        for (const iclforge::ac4::EncodedFrame& frame : *list) {
             const auto* bytes = reinterpret_cast<const std::uint8_t*>(frame.raw_ac4_frame.data());
             out.frames.emplace_back(bytes, bytes + frame.raw_ac4_frame.size());
         }
@@ -941,20 +941,20 @@ TEST_CASE("the AC-4 encoder configuration's optional object fields reach the enc
     config.experimental.objects = 1;
     config.objects = &scene;
 
-    ac4::ObjectsConfig reference_objects;
+    iclforge::ac4::ObjectsConfig reference_objects;
     reference_objects.objects.resize(3);
     reference_objects.downmix_signals = 2;
     reference_objects.parameter_bands = 15;
     reference_objects.coarse = true;
     reference_objects.screen_size_ratio_code = 10;
-    ac4::SubstreamConfig substream;
+    iclforge::ac4::SubstreamConfig substream;
     substream.objects = reference_objects;
-    ac4::EncoderConfig reference;
+    iclforge::ac4::EncoderConfig reference;
     reference.bitrate_kbps = 256;
     reference.experimental.objects = true;
     reference.substreams = {substream};
     CHECK(ac3forge_ac4_encoder_refusal_reason(&config) ==
-          std::string(ac4::Encoder::refusal_reason(reference)));
+          std::string(iclforge::ac4::Encoder::refusal_reason(reference)));
 
     const std::vector<std::vector<float>> input = tones({562.5, 1312.5, 2062.5}, 6 * kFrameSamples);
     const Stream stream = encode_with_c_api(config, input);

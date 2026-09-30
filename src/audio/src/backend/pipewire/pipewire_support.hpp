@@ -30,7 +30,7 @@
 // say that once, here, rather than at every call site in the three files
 // that use them.
 
-namespace ac3::pipewire {
+namespace iclforge::pipewire {
 
 struct ThreadLoopDeleter {
     void operator()(pw_thread_loop* loop) const { pw_thread_loop_destroy(loop); }
@@ -78,7 +78,7 @@ inline void ensure_initialized() {
 }
 
 // The link rate a carrier runs at to carry `content_rate` of `format` - the
-// PipeWire-side twin of ac3::alsa::carrier_rate(). Not shared with it: three
+// PipeWire-side twin of iclforge::alsa::carrier_rate(). Not shared with it: three
 // lines duplicated beside their own backend read more clearly than a cross-
 // backend helper would, and the two backends have no other reason to share
 // code at all.
@@ -106,7 +106,7 @@ inline void ensure_initialized() {
 }
 
 // The carrier is a 2-channel 16-bit stream whatever rides inside it (see
-// ac3::alsa's identical constant and the comment on it), so a burst's length
+// iclforge::alsa's identical constant and the comment on it), so a burst's length
 // in bytes and in sample-frames differ by a constant 4 here too.
 inline constexpr std::size_t kCarrierFrameBytes = 4;
 
@@ -120,7 +120,7 @@ inline constexpr std::size_t kCarrierFrameBytes = 4;
 // added mid-walk cannot be mistaken for the boundary), and return once that
 // confirmation arrives. The same shape PipeWire's own listing tools use
 // (`pw-cli ls`, the `list-inputs.c` example) as a synchronous call, which is
-// what ac3::audio::enumerate_devices() and ac3::audio::enumerate_render_
+// what iclforge::audio::enumerate_devices() and iclforge::audio::enumerate_render_
 // devices() both need to stay synchronous themselves.
 //
 // A machine with no PipeWire session running - a container, a CI runner, a
@@ -862,4 +862,4 @@ struct SinkInfo {
     return out;
 }
 
-}  // namespace ac3::pipewire
+}  // namespace iclforge::pipewire

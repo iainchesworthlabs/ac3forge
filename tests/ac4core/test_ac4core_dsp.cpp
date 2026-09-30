@@ -38,7 +38,7 @@
 
 namespace {
 
-namespace dsp = ac4::detail::dsp;
+namespace dsp = iclforge::ac4::detail::dsp;
 // ac4core's own complex type (dsp/complex.hpp), not std::complex: every
 // function under test takes this type since D14a (planning/ac4.md).
 using Complex = dsp::Complex<double>;
@@ -565,7 +565,7 @@ std::vector<Complex> qmf_analysis_as_printed(std::span<const double> pcm) {
         }
         std::array<double, 640> z{};
         for (std::size_t n = 0; n < 640; ++n) {
-            z[n] = qmf_filt[n] * static_cast<double>(ac4::detail::tables::kQwin[n]);
+            z[n] = qmf_filt[n] * static_cast<double>(iclforge::ac4::detail::tables::kQwin[n]);
         }
         std::array<double, 128> u{};
         for (std::size_t n = 0; n < 128; ++n) {
@@ -613,7 +613,7 @@ std::vector<double> qmf_synthesis_as_printed(std::span<const Complex> q) {
         }
         std::array<double, 640> w{};
         for (std::size_t n = 0; n < 640; ++n) {
-            w[n] = g[n] * static_cast<double>(ac4::detail::tables::kQwin[n]);
+            w[n] = g[n] * static_cast<double>(iclforge::ac4::detail::tables::kQwin[n]);
         }
         for (std::size_t sb = 0; sb < 64; ++sb) {
             double temp = w[sb];
@@ -782,7 +782,7 @@ TEST_CASE("the QMF banks give the same output however the slots are split across
 
 TEST_CASE("the QMF banks at the decoder's scalar agree with the banks at double",
           "[ac4core][dsp][qmf]") {
-    using Scalar = ac4::detail::Real;
+    using Scalar = iclforge::ac4::detail::Real;
     using ScalarComplex = dsp::Complex<Scalar>;
     // Where the decoder's scalar is double these are one type and the difference
     // is exactly 0; at float it is float's rounding through the window and the
@@ -1076,7 +1076,7 @@ TEST_CASE("the QMF banks give the bits of the scalar kernels run one after anoth
     // The banks are instantiated at the decoder's scalar and at double, whichever
     // that is (AC4CORE_ALSO_AT_DOUBLE), and at nothing else.
     run(double{}, 8100);
-    run(ac4::detail::Real{}, 8200);
+    run(iclforge::ac4::detail::Real{}, 8200);
 }
 
 TEST_CASE("the transforms take a scratch of the caller's and give the same values",

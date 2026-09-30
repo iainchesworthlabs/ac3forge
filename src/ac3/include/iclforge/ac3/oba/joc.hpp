@@ -30,7 +30,7 @@
 // separation, and its quality depends entirely on how well-separated the
 // objects were in the downmix.
 
-namespace ac3::oba::joc {
+namespace iclforge::oba::joc {
 
 // Table 47 / Table 48. This encoder only ever writes 5.X - 7.X needs Lb/Rb in
 // the downmix, which costs a dependent substream - but a decoder meets all
@@ -276,7 +276,7 @@ struct FrameParameters {
 // Domain and reconstruction_delay() live in ac3/oba/joc_domain.hpp.
 
 // §6.6.6's reconstruction runs in the 64-band complex QMF of §7.1, and
-// ac3::dsp::QmfAnalysis/QmfSynthesis is that filterbank. Domain::kQmf runs
+// iclforge::dsp::QmfAnalysis/QmfSynthesis is that filterbank. Domain::kQmf runs
 // it there, which is what every licensed decoder does and therefore the
 // only domain in which a matrix this encoder estimates means the same thing
 // on the other side.
@@ -354,14 +354,14 @@ struct ReconstructionState {
     std::array<recon_scalar_t, 512> time_scratch{};
     // Four windowed blocks, not one (batched MDCT (four blocks)): the bed
     // analysis batches four CHANNELS' forward transforms into one
-    // ac3::mdct512_forward_batch4 call, which needs all four windowed
+    // iclforge::mdct512_forward_batch4 call, which needs all four windowed
     // blocks to coexist. kNumChannels5X is 5, so a block runs one batch of
     // four plus one ordinary call; lane 0 doubles as the scalar path's own
     // buffer, so this costs 3 x 512 scalars over the previous single one.
     std::array<std::array<recon_scalar_t, 512>, 4> windowed_scratch{};
     // Per-object (batched SIMD kernels): every present
     // object's spectrum/synthesis output now coexists, so the imdct pass
-    // can batch four objects at a time (ac3::imdct512_windowed_batch4)
+    // can batch four objects at a time (iclforge::imdct512_windowed_batch4)
     // instead of running strictly one object at a time - see
     // reconstruct_mdct_band's own object loop (joc.cpp).
     //
@@ -496,4 +496,4 @@ struct ReconstructionState {
     ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
     Domain domain = Domain::kQmf);
 
-}  // namespace ac3::oba::joc
+}  // namespace iclforge::oba::joc

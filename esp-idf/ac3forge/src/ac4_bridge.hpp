@@ -5,11 +5,11 @@
 // this only when CONFIG_AC3FORGE_AC4 is on, and with it off none of this is in
 // the build.
 //
-// The decoder itself is src/ac4dec's ac4::Decoder, in the float scalar, built as
+// The decoder itself is src/ac4dec's iclforge::ac4::Decoder, in the float scalar, built as
 // a static archive with the minimum-footprint profile's compile options
 // (AC3FORGE_MINIMAL_AC4, root CMakeLists.txt). It is asked for what a player
 // asks of the AC-3 and E-AC-3 decoders: blocks of 256 samples a channel, handed
-// to a callback as the decoder completes them (ac4::Decoder::decode_by_block),
+// to a callback as the decoder completes them (iclforge::ac4::Decoder::decode_by_block),
 // so the player holds one block of the audio and not a frame's worth.
 
 #include <bit>
@@ -43,40 +43,40 @@ namespace ac3forge::ac4bridge {
 // surrounds, Lw and Rw the wides, the top front pair the vertical heights, the
 // top back and top side pairs the top surrounds (Table E2.5 has one pair for
 // both), and the second LFE LFE2.
-[[nodiscard]] inline ac3::eac3::chanmap::Location location(ac4::Speaker speaker) {
-    using L = ac3::eac3::chanmap::Location;
+[[nodiscard]] inline iclforge::eac3::chanmap::Location location(iclforge::ac4::Speaker speaker) {
+    using L = iclforge::eac3::chanmap::Location;
     switch (speaker) {
-        case ac4::Speaker::kLeft:
+        case iclforge::ac4::Speaker::kLeft:
             return L::kLeft;
-        case ac4::Speaker::kRight:
+        case iclforge::ac4::Speaker::kRight:
             return L::kRight;
-        case ac4::Speaker::kCentre:
+        case iclforge::ac4::Speaker::kCentre:
             return L::kCentre;
-        case ac4::Speaker::kLfe:
+        case iclforge::ac4::Speaker::kLfe:
             return L::kLfe;
-        case ac4::Speaker::kLeftSurround:
+        case iclforge::ac4::Speaker::kLeftSurround:
             return L::kLeftSurround;
-        case ac4::Speaker::kRightSurround:
+        case iclforge::ac4::Speaker::kRightSurround:
             return L::kRightSurround;
-        case ac4::Speaker::kLeftBack:
+        case iclforge::ac4::Speaker::kLeftBack:
             return L::kLrs;
-        case ac4::Speaker::kRightBack:
+        case iclforge::ac4::Speaker::kRightBack:
             return L::kRrs;
-        case ac4::Speaker::kLeftWide:
+        case iclforge::ac4::Speaker::kLeftWide:
             return L::kLw;
-        case ac4::Speaker::kRightWide:
+        case iclforge::ac4::Speaker::kRightWide:
             return L::kRw;
-        case ac4::Speaker::kTopFrontLeft:
+        case iclforge::ac4::Speaker::kTopFrontLeft:
             return L::kVhl;
-        case ac4::Speaker::kTopFrontRight:
+        case iclforge::ac4::Speaker::kTopFrontRight:
             return L::kVhr;
-        case ac4::Speaker::kTopBackLeft:
-        case ac4::Speaker::kTopSideLeft:
+        case iclforge::ac4::Speaker::kTopBackLeft:
+        case iclforge::ac4::Speaker::kTopSideLeft:
             return L::kLts;
-        case ac4::Speaker::kTopBackRight:
-        case ac4::Speaker::kTopSideRight:
+        case iclforge::ac4::Speaker::kTopBackRight:
+        case iclforge::ac4::Speaker::kTopSideRight:
             return L::kRts;
-        case ac4::Speaker::kLfe2:
+        case iclforge::ac4::Speaker::kLfe2:
             return L::kLfe2;
     }
     return L::kCentre;
@@ -85,10 +85,10 @@ namespace ac3forge::ac4bridge {
 // The coded layout a decoded block's channels are in, as the renderer takes it:
 // each channel's location, in the decoder's order. Channels past what a
 // renderer's bed holds are left out.
-[[nodiscard]] inline ac3::eac3::chanmap::Layout bed(std::span<const ac4::Speaker> speakers) {
-    ac3::eac3::chanmap::Layout layout{};
-    for (const ac4::Speaker speaker : speakers) {
-        if (layout.count >= ac3::eac3::chanmap::kMaxChannels) {
+[[nodiscard]] inline iclforge::eac3::chanmap::Layout bed(std::span<const iclforge::ac4::Speaker> speakers) {
+    iclforge::eac3::chanmap::Layout layout{};
+    for (const iclforge::ac4::Speaker speaker : speakers) {
+        if (layout.count >= iclforge::eac3::chanmap::kMaxChannels) {
             break;
         }
         layout.items[static_cast<std::size_t>(layout.count)] = location(speaker);
@@ -98,23 +98,23 @@ namespace ac3forge::ac4bridge {
 }
 
 // The decoder's own fold for the player's serving of a stereo or mono layout
-// (ac3::render::serve): the decoder folds where the player would fold, and
+// (iclforge::render::serve): the decoder folds where the player would fold, and
 // hands the renderer what it hands it for AC-3, two channels or one.
-[[nodiscard]] inline ac4::DownmixTarget target(std::optional<ac3::DownmixTarget> fold) noexcept {
+[[nodiscard]] inline iclforge::ac4::DownmixTarget target(std::optional<iclforge::DownmixTarget> fold) noexcept {
     if (!fold.has_value()) {
-        return ac4::DownmixTarget::kAsCoded;
+        return iclforge::ac4::DownmixTarget::kAsCoded;
     }
     switch (*fold) {
-        case ac3::DownmixTarget::kLoRo:
-            return ac4::DownmixTarget::kLoRo;
-        case ac3::DownmixTarget::kLtRt:
-            return ac4::DownmixTarget::kLtRt;
-        case ac3::DownmixTarget::kMono:
-            return ac4::DownmixTarget::kMono;
-        case ac3::DownmixTarget::kAsCoded:
+        case iclforge::DownmixTarget::kLoRo:
+            return iclforge::ac4::DownmixTarget::kLoRo;
+        case iclforge::DownmixTarget::kLtRt:
+            return iclforge::ac4::DownmixTarget::kLtRt;
+        case iclforge::DownmixTarget::kMono:
+            return iclforge::ac4::DownmixTarget::kMono;
+        case iclforge::DownmixTarget::kAsCoded:
             break;
     }
-    return ac4::DownmixTarget::kAsCoded;
+    return iclforge::ac4::DownmixTarget::kAsCoded;
 }
 
 // Every delivered sample's bit pattern, in delivery order, through FNV-1a: the

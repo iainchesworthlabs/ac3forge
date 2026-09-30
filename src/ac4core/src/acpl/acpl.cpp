@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 
-namespace ac4::detail::acpl {
+namespace iclforge::ac4::detail::acpl {
 namespace {
 
 [[nodiscard]] std::size_t at(int index) noexcept {
@@ -379,4 +379,4 @@ template class TransientDucker<Real>;
 // both directly (see this target's CMakeLists.txt, AC4CORE_ALSO_AT_DOUBLE).
 AC4CORE_ALSO_AT_DOUBLE(template class Decorrelator<double>; template class TransientDucker<double>;)
 
-}  // namespace ac4::detail::acpl
+}  // namespace iclforge::ac4::detail::acpl

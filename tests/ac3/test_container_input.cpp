@@ -24,9 +24,9 @@ namespace {
 using Bytes = std::vector<std::byte>;
 
 // A 48 kHz track as the MP4 reader reports one, with `edits`.
-mp4::ReadTrack track_with(std::vector<mp4::EditListEntry> edits, std::uint32_t timescale = 48000,
+iclforge::mp4::ReadTrack track_with(std::vector<iclforge::mp4::EditListEntry> edits, std::uint32_t timescale = 48000,
                           std::uint32_t movie_timescale = 48000) {
-    mp4::ReadTrack track;
+    iclforge::mp4::ReadTrack track;
     track.sample_rate = 48000;
     track.timescale = timescale;
     track.movie_timescale = movie_timescale;
@@ -49,12 +49,12 @@ mp4::ReadTrack track_with(std::vector<mp4::EditListEntry> edits, std::uint32_t t
 TEST_CASE("sniff_container does not mistake a repetitive elementary stream for MPEG-TS",
           "[containers][io2]") {
     // The smallest legal AC-3 frame at 48 kHz (Table 5.18's lowest rung,
-    // 32 kbit/s) is 64 words = 128 bytes - ac3::io::read_frame_header only
+    // 32 kbit/s) is 64 words = 128 bytes - iclforge::io::read_frame_header only
     // ever reads the syncinfo/bsi header (well under 128 bytes for a plain
     // 2/0 layout), so everything past it is free to overwrite.
-    const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = 32});
+    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 32});
     REQUIRE(frame.has_value());
-    REQUIRE(ac3::io::read_frame_header(*frame).has_value());
+    REQUIRE(iclforge::io::read_frame_header(*frame).has_value());
 
     constexpr std::size_t kStride = 192;    // one of the three grid strides
     constexpr int kRepeats = 8;             // past kTsSyncRuns's own 5
@@ -69,7 +69,7 @@ TEST_CASE("sniff_container does not mistake a repetitive elementary stream for M
         stream[static_cast<std::size_t>(i) * kStride] = std::byte{0x47};
     }
 
-    CHECK(ac3::apps::sniff_container(stream) == ac3::apps::ContainerKind::kUnknown);
+    CHECK(iclforge::apps::sniff_container(stream) == iclforge::apps::ContainerKind::kUnknown);
 }
 
 TEST_CASE("sniff_container still finds a real MPEG-TS packet grid", "[containers][io2]") {
@@ -85,7 +85,7 @@ TEST_CASE("sniff_container still finds a real MPEG-TS packet grid", "[containers
         stream[static_cast<std::size_t>(i) * kStride] = std::byte{0x47};
     }
 
-    CHECK(ac3::apps::sniff_container(stream) == ac3::apps::ContainerKind::kMpegTs);
+    CHECK(iclforge::apps::sniff_container(stream) == iclforge::apps::ContainerKind::kMpegTs);
 }
 
 // The same false positive from a WAV: steady PCM repeats bytes at a fixed
@@ -108,7 +108,7 @@ TEST_CASE("sniff_container does not mistake a WAV with a 0x47 grid for MPEG-TS",
             wav[44 + (188 * static_cast<std::size_t>(i))] = std::byte{0x47};
             wav[52 + (192 * static_cast<std::size_t>(i))] = std::byte{0x47};
         }
-        CHECK(ac3::apps::sniff_container(wav) == ac3::apps::ContainerKind::kUnknown);
+        CHECK(iclforge::apps::sniff_container(wav) == iclforge::apps::ContainerKind::kUnknown);
     }
 }
 
@@ -126,24 +126,24 @@ TEST_CASE("sniff_container wants the packet grid to start within its first strid
         for (int i = 0; i < kRepeats; ++i) {
             stream[start + (static_cast<std::size_t>(i) * kStride)] = std::byte{0x47};
         }
-        CHECK(ac3::apps::sniff_container(stream) == (start < kStride
-                                                         ? ac3::apps::ContainerKind::kMpegTs
-                                                         : ac3::apps::ContainerKind::kUnknown));
+        CHECK(iclforge::apps::sniff_container(stream) == (start < kStride
+                                                         ? iclforge::apps::ContainerKind::kMpegTs
+                                                         : iclforge::apps::ContainerKind::kUnknown));
     }
 }
 
 TEST_CASE("elementary_stream_from_bytes leaves a bare elementary stream untouched",
           "[containers][io2]") {
-    const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
 
-    const auto result = ac3::apps::elementary_stream_from_bytes(*frame);
+    const auto result = iclforge::apps::elementary_stream_from_bytes(*frame);
     CHECK(result.error.empty());
     CHECK(result.bytes == *frame);
     CHECK(result.trim.start == 0);
     CHECK_FALSE(result.trim.length.has_value());
     CHECK(result.trim_note.empty());
-    CHECK(result.container.kind == ac3::apps::ContainerKind::kUnknown);
+    CHECK(result.container.kind == iclforge::apps::ContainerKind::kUnknown);
     CHECK(result.container.codec_id.empty());
     CHECK(result.container.samples == 0);
     CHECK_FALSE(result.container.codec_box.has_value());
@@ -151,30 +151,30 @@ TEST_CASE("elementary_stream_from_bytes leaves a bare elementary stream untouche
 
 TEST_CASE("elementary_stream_from_bytes reports what each container says about its track",
           "[containers][io2]") {
-    using ac3::apps::ContainerKind;
-    const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
+    using iclforge::apps::ContainerKind;
+    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
     Bytes stream;
     for (int i = 0; i < 4; ++i) {
         stream.insert(stream.end(), frame->begin(), frame->end());
     }
-    const auto scanned = ac3::io::scan(stream);
+    const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
     const std::span<const std::span<const std::byte>> units(scanned->access_units);
 
     SECTION("MP4, with its codec configuration box") {
-        mp4::AudioTrack track;
-        track.codec_id = std::string{mp4::kCodecAc3};
+        iclforge::mp4::AudioTrack track;
+        track.codec_id = std::string{iclforge::mp4::kCodecAc3};
         track.sample_rate = 48000;
         track.channels = 2;
-        track.codec_config = ac3::io::build_codec_config_box(*scanned);
-        const auto file = mp4::mux(track, units);
+        track.codec_config = iclforge::io::build_codec_config_box(*scanned);
+        const auto file = iclforge::mp4::mux(track, units);
         REQUIRE(file.has_value());
-        const auto result = ac3::apps::elementary_stream_from_bytes(*file);
+        const auto result = iclforge::apps::elementary_stream_from_bytes(*file);
         REQUIRE(result.error.empty());
         const auto& facts = result.container;
         CHECK(facts.kind == ContainerKind::kMp4);
-        CHECK(ac3::apps::container_token(facts.kind) == "mp4");
+        CHECK(iclforge::apps::container_token(facts.kind) == "mp4");
         CHECK(facts.codec_id == "ac-3");
         CHECK(facts.track == 1);
         CHECK(facts.language == "und");
@@ -194,17 +194,17 @@ TEST_CASE("elementary_stream_from_bytes reports what each container says about i
         CHECK(facts.codec_box->bytes > 0);
     }
     SECTION("Matroska") {
-        matroska::AudioTrack track;
-        track.codec_id = std::string{matroska::kCodecAc3};
+        iclforge::matroska::AudioTrack track;
+        track.codec_id = std::string{iclforge::matroska::kCodecAc3};
         track.sample_rate = 48000;
         track.channels = 2;
-        const auto file = matroska::mux(track, units);
+        const auto file = iclforge::matroska::mux(track, units);
         REQUIRE(file.has_value());
-        const auto result = ac3::apps::elementary_stream_from_bytes(*file);
+        const auto result = iclforge::apps::elementary_stream_from_bytes(*file);
         REQUIRE(result.error.empty());
         const auto& facts = result.container;
         CHECK(facts.kind == ContainerKind::kMatroska);
-        CHECK(ac3::apps::container_token(facts.kind) == "matroska");
+        CHECK(iclforge::apps::container_token(facts.kind) == "matroska");
         CHECK(facts.codec_id == "A_AC3");
         CHECK(facts.track == 1);
         CHECK(facts.samples == 4);
@@ -212,20 +212,20 @@ TEST_CASE("elementary_stream_from_bytes reports what each container says about i
         CHECK_FALSE(facts.codec_box.has_value());
     }
     SECTION("MPEG-TS") {
-        mpegts::AudioTrack track;
-        track.codec = mpegts::AudioCodec::kAc3;
-        mpegts::MuxOptions options;
-        options.profile = mpegts::BroadcastProfile::kAtsc;
+        iclforge::mpegts::AudioTrack track;
+        track.codec = iclforge::mpegts::AudioCodec::kAc3;
+        iclforge::mpegts::MuxOptions options;
+        options.profile = iclforge::mpegts::BroadcastProfile::kAtsc;
         options.program_number = 3;
         options.pmt_pid = 0x0200;
         options.audio_pid = 0x0210;
-        const auto file = mpegts::mux(track, units, options);
+        const auto file = iclforge::mpegts::mux(track, units, options);
         REQUIRE(file.has_value());
-        const auto result = ac3::apps::elementary_stream_from_bytes(*file);
+        const auto result = iclforge::apps::elementary_stream_from_bytes(*file);
         REQUIRE(result.error.empty());
         const auto& facts = result.container;
         CHECK(facts.kind == ContainerKind::kMpegTs);
-        CHECK(ac3::apps::container_token(facts.kind) == "mpegts");
+        CHECK(iclforge::apps::container_token(facts.kind) == "mpegts");
         CHECK(facts.codec_id.empty());
         CHECK(facts.track == 0x0210);
         CHECK(facts.language.empty());
@@ -236,14 +236,14 @@ TEST_CASE("elementary_stream_from_bytes reports what each container says about i
         CHECK(facts.signalling == "atsc_stream_type");
         CHECK(facts.packet_size == 188);
     }
-    CHECK(ac3::apps::container_token(ContainerKind::kUnknown).empty());
+    CHECK(iclforge::apps::container_token(ContainerKind::kUnknown).empty());
 }
 
 // An MP4 edit list, read as the part of the stream a player should play.
 
 TEST_CASE("trim_from_edit_list reads the edit list an audio encoder writes",
           "[containers][edit-list]") {
-    using ac3::apps::trim_from_edit_list;
+    using iclforge::apps::trim_from_edit_list;
     std::string note = "left over from before";
 
     SECTION("no edit list, or only empty edits: all of the track") {
@@ -349,28 +349,28 @@ TEST_CASE("trim_from_edit_list reads the edit list an audio encoder writes",
 
 TEST_CASE("elementary_stream_from_bytes reports an MP4's edit list as a trim",
           "[containers][edit-list]") {
-    const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
+    const auto frame = iclforge::build_silent_stereo_frame({.bitrate_kbps = 192});
     REQUIRE(frame.has_value());
     Bytes stream;
     for (int i = 0; i < 3; ++i) {
         stream.insert(stream.end(), frame->begin(), frame->end());
     }
-    const auto scanned = ac3::io::scan(stream);
+    const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->access_units.size() == 3);
 
-    mp4::AudioTrack track;
-    track.codec_id = std::string{mp4::kCodecAc3};
+    iclforge::mp4::AudioTrack track;
+    track.codec_id = std::string{iclforge::mp4::kCodecAc3};
     track.sample_rate = 48000;
     track.channels = 2;
-    track.codec_config = ac3::io::build_codec_config_box(*scanned);
+    track.codec_config = iclforge::io::build_codec_config_box(*scanned);
     const std::span<const std::span<const std::byte>> units(scanned->access_units);
 
-    mp4::MuxOptions edited;
-    edited.edit = mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = (3 * 1536) - 356};
-    const auto with_edit = mp4::mux(track, units, edited);
+    iclforge::mp4::MuxOptions edited;
+    edited.edit = iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = (3 * 1536) - 356};
+    const auto with_edit = iclforge::mp4::mux(track, units, edited);
     REQUIRE(with_edit.has_value());
-    const auto trimmed = ac3::apps::elementary_stream_from_bytes(*with_edit);
+    const auto trimmed = iclforge::apps::elementary_stream_from_bytes(*with_edit);
     CHECK(trimmed.error.empty());
     CHECK(trimmed.bytes == stream);
     CHECK(trimmed.trim.start == 256);
@@ -378,9 +378,9 @@ TEST_CASE("elementary_stream_from_bytes reports an MP4's edit list as a trim",
     CHECK(*trimmed.trim.length == (3 * 1536) - 356);
     CHECK(trimmed.trim_note.empty());
 
-    const auto without_edit = mp4::mux(track, units);
+    const auto without_edit = iclforge::mp4::mux(track, units);
     REQUIRE(without_edit.has_value());
-    const auto whole = ac3::apps::elementary_stream_from_bytes(*without_edit);
+    const auto whole = iclforge::apps::elementary_stream_from_bytes(*without_edit);
     CHECK(whole.bytes == stream);
     CHECK(whole.trim.start == 0);
     CHECK_FALSE(whole.trim.length.has_value());

@@ -4,7 +4,7 @@
 
 #include "iclforge/dsp/qmf.hpp"
 
-namespace ac3::oba::joc {
+namespace iclforge::oba::joc {
 
 // Which domain reconstruct() applies the matrix in.
 enum class Domain : std::uint8_t {
@@ -22,4 +22,4 @@ enum class Domain : std::uint8_t {
     return domain == Domain::kQmf ? dsp::kQmfDelay : 256;
 }
 
-}  // namespace ac3::oba::joc
+}  // namespace iclforge::oba::joc

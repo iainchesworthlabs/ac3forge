@@ -20,7 +20,7 @@
 // (planning/hearth-sendspin-extension.md, C36 and C37). Beside the objects, the arithmetic the
 // roles require of a server: the controller's group volume and mute, and the colours' contrast.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 // --- metadata@v1 -------------------------------------------------------------------------------
 
@@ -207,4 +207,4 @@ inline constexpr double kMinimumContrast = 4.5;
 
 }  // namespace color
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

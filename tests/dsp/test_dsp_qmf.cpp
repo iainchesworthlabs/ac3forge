@@ -10,12 +10,12 @@
 
 #include "iclforge/dsp/qmf.hpp"
 
-using ac3::dsp::kQmfDelay;
-using ac3::dsp::kQmfHop;
-using ac3::dsp::kQmfSubbands;
-using ac3::dsp::kQmfTaps;
-using ac3::dsp::QmfAnalysis;
-using ac3::dsp::QmfSynthesis;
+using iclforge::dsp::kQmfDelay;
+using iclforge::dsp::kQmfHop;
+using iclforge::dsp::kQmfSubbands;
+using iclforge::dsp::kQmfTaps;
+using iclforge::dsp::QmfAnalysis;
+using iclforge::dsp::QmfSynthesis;
 
 namespace {
 
@@ -85,7 +85,7 @@ TEST_CASE("the QMF prototype satisfies its perfect-reconstruction conditions", "
     // energy and vanishing EVEN-lag autocorrelation. Checking these here as
     // well as through a round trip separates a bad table from a bad
     // filterbank if this file ever goes red.
-    const auto taps = ac3::dsp::qmf_prototype();
+    const auto taps = iclforge::dsp::qmf_prototype();
     constexpr std::size_t kCosets = static_cast<std::size_t>(kQmfHop);
     constexpr std::size_t kPerCoset = static_cast<std::size_t>(kQmfTaps) / kCosets;
     for (std::size_t offset = 0; offset < kCosets; ++offset) {

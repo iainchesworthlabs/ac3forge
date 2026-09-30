@@ -39,7 +39,7 @@
 // 2 clause 4.8.5.3). The gains are in dB, their linear values 10^(dB/20)
 // (src/ac4dec/ERRATA.md, "The downmix gains").
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // What a frame's metadata gives the downmix, where it sends them.
 struct DownmixValues {
@@ -143,4 +143,4 @@ class DownmixStage {
     std::vector<std::vector<double>> matrix_;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

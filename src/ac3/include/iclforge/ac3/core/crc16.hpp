@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <span>
 
-namespace ac3 {
+namespace iclforge {
 
 // CRC-16 as used by AC-3 (A/52 §7.10.1): generator polynomial
 // x^16 + x^15 + x^2 + 1 (0x8005), MSB-first bit order, initial register 0,
@@ -100,4 +100,4 @@ static_assert(mul_mod(2, kInverseX) == 1);
     return gf2::mul_mod(crc16(body), inverse);
 }
 
-}  // namespace ac3
+}  // namespace iclforge

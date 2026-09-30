@@ -35,7 +35,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
                bool couple, std::string_view layout, const ac3cli::Options& meta,
                std::string_view in2_path = {});
 
-// ac4-encode, in ac4_encode.cpp: mono or stereo to AC-4 through ac4::Encoder.
+// ac4-encode, in ac4_encode.cpp: mono or stereo to AC-4 through iclforge::ac4::Encoder.
 // Writes raw sync frames, or an MP4 when out_path is .mp4/.m4a/.mov.
 // ac4-encode with objects=: the WAV file's channels as objects, and the scene
 // file's configuration and metadata (commands/ac4_encode_objects.cpp).

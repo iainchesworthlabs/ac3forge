@@ -2,7 +2,7 @@
 
 #include <array>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 // Part 1 clause 4.2.2: a decoder reads a group, and while the continuation
@@ -142,4 +142,4 @@ void BitWriter::align() {
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

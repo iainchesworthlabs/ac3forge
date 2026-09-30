@@ -14,7 +14,7 @@
 // and select() take their branches on a mask rather than a comparison, so the
 // map from a pairing code to a CPace generator leaks nothing through timing.
 
-namespace ac3::sendspin::field25519 {
+namespace iclforge::sendspin::field25519 {
 
 using Element = std::array<std::int64_t, 16>;
 using Bytes32 = std::array<std::uint8_t, 32>;
@@ -144,4 +144,4 @@ constexpr Bytes32 encode(const Element& in) {
     return out;
 }
 
-}  // namespace ac3::sendspin::field25519
+}  // namespace iclforge::sendspin::field25519

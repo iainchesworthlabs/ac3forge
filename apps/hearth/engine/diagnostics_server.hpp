@@ -19,7 +19,7 @@
 // already keeps, so a caller needs nothing more than this file -
 // ac3sendspin_httplib is linked PRIVATE on ac3hearth_engine.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 class DiagnosticsHttpServer {
 public:
@@ -47,4 +47,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

@@ -7,7 +7,7 @@
 
 #include "iclforge/iec61937/iec61937.hpp"
 
-// ac3::iec61937::BurstReader, driven the way ac3cli's 'unspdif' drives it
+// iclforge::iec61937::BurstReader, driven the way ac3cli's 'unspdif' drives it
 // (src/iec61937/src/iec61937.cpp).
 //
 // This is the one entry point in the project whose input is, by definition,
@@ -37,7 +37,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const std::size_t split = body == 0 ? 0 : (static_cast<std::size_t>(data[0]) * body) / 256;
     const std::span<const std::byte> carrier{reinterpret_cast<const std::byte*>(data + 1), body};
 
-    ac3::iec61937::BurstReader reader;
+    iclforge::iec61937::BurstReader reader;
     std::vector<std::byte> out;
     if (reader.push(carrier.first(split), out)) {
         // Drained between pushes, exactly as the CLI drains it into its sink:
@@ -52,16 +52,16 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // The batch form too: same parser, but it accumulates the whole
     // elementary stream, so a payload length that escaped its bound would
     // show up here as the allocation it is.
-    (void)ac3::iec61937::unwrap_stream(carrier);
+    (void)iclforge::iec61937::unwrap_stream(carrier);
 
     // The AC-4 packer (IEC 61937-14) reads a sync frame's head and the first
     // fields of its table of contents from bytes as untrusted as these, one
     // of its four burst types picked by the first byte. Whatever it packs has
     // to be as long as the period it chose and read back as the frame itself.
-    const auto type = static_cast<ac3::iec61937::BurstDataType>(24U | ((data[0] & 3U) << 5U));
-    ac3::iec61937::Ac4BurstPacker packer(type);
+    const auto type = static_cast<iclforge::iec61937::BurstDataType>(24U | ((data[0] & 3U) << 5U));
+    iclforge::iec61937::Ac4BurstPacker packer(type);
     if (const auto burst = packer.push(carrier)) {
-        const auto back = ac3::iec61937::unwrap_stream(*burst);
+        const auto back = iclforge::iec61937::unwrap_stream(*burst);
         if (!packer.last() || burst->size() != std::size_t{packer.last()->period} * 4 || !back ||
             !std::equal(back->begin(), back->end(), carrier.begin(), carrier.end())) {
             std::abort();

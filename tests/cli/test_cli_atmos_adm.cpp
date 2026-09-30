@@ -26,7 +26,7 @@
 // comment).
 //
 // A separate file rather than folded into test_cli.cpp: this file's own tests only make sense
-// when AC3FORGE_BUILD_ADM turned on ac3adm::ac3adm/ac3::admbridge AND ac3cli was actually built
+// when AC3FORGE_BUILD_ADM turned on iclforge::adm/iclforge::admbridge AND ac3cli was actually built
 // (so its own binary has the 'atmos-adm' command at all) - a narrower, two-part condition
 // test_cli.cpp's single TARGET-ac3cli gate does not express. See tests/CMakeLists.txt's own
 // gating comment for exactly how both conditions are checked before this file is even compiled.
@@ -50,7 +50,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_adm_" + scratch_pid_suffix());
@@ -64,7 +64,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -103,7 +103,7 @@ void append_chunk(Bytes& out, std::string_view id, const Bytes& content) {
     }
 }
 
-constexpr int kFrame = ac3::kSamplesPerFrame;
+constexpr int kFrame = iclforge::kSamplesPerFrame;
 constexpr int kTotalFrames = 6;  // 3 frames holding SR, 3 frames holding centre
 
 Bytes build_fmt_chunk_3ch() {
@@ -311,7 +311,7 @@ TEST_CASE("ac3cli atmos-adm parses, bridges and encodes a real ADM BWF master en
     CHECK(fs::file_size(out_path) > 0);
 
     // Decode what the CLI actually wrote - not a re-run through the library API - so this test
-    // proves the real binary's argument parsing, ac3adm::parse_bw64 call, ac3::admbridge::build
+    // proves the real binary's argument parsing, iclforge::adm::parse_bw64 call, iclforge::admbridge::build
     // call and per-frame AtmosEncoder loop are all wired together correctly, not just that each
     // piece works in isolation (tests/admbridge/test_adm_bridge.cpp's own flagship test already covers that).
     std::ifstream stream_in{out_path, std::ios::binary};
@@ -322,11 +322,11 @@ TEST_CASE("ac3cli atmos-adm parses, bridges and encodes a real ADM BWF master en
         stream_bytes[i] = static_cast<std::byte>(raw[i]);
     }
 
-    const auto units = ac3::split_access_units(stream_bytes);
+    const auto units = iclforge::split_access_units(stream_bytes);
     REQUIRE(units.has_value());
     REQUIRE(units->size() == static_cast<std::size_t>(kTotalFrames));
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
 
     // AC-3 3/2 coded order (Table 5.8): L, C, R, Ls, Rs.
     constexpr int kCCh = 1;
@@ -373,7 +373,7 @@ TEST_CASE("ac3cli atmos-adm reports a clear diagnosis for a file with no ADM pro
          "[cli][atmos-adm]") {
     const auto dir = scratch_dir();
     // Same container, empty <axml> chunk: parse_bw64 succeeds (a document with no ADM metadata
-    // is valid per BS.2088-1 - see ac3adm::AdmDocument's own comment on this), but
+    // is valid per BS.2088-1 - see iclforge::adm::AdmDocument's own comment on this), but
     // admbridge::build then has no audioProgramme to resolve at all - BridgeError::kNoProgramme,
     // the error path this test exercises.
     const auto fixture_path = dir / "atmos_adm_no_programme.wav";
@@ -425,7 +425,7 @@ TEST_CASE("ac3cli atmos-adm reports a clear diagnosis for a file that is not a v
                 log_path);
     CHECK(rc != 0);
     const auto log = read_log(log_path);
-    // ac3adm::describe(AdmError::...) - never a silent crash or an unlabeled non-zero exit.
+    // iclforge::adm::describe(AdmError::...) - never a silent crash or an unlabeled non-zero exit.
     CHECK(log.find("error:") != std::string::npos);
     CHECK_FALSE(fs::exists(out_path));
 }

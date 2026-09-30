@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-namespace ac3 {
+namespace iclforge {
 
 std::string_view describe(FrameError error) {
     switch (error) {
@@ -25,4 +25,4 @@ std::string_view describe(FrameError error) {
     return "unknown frame error";
 }
 
-}  // namespace ac3
+}  // namespace iclforge

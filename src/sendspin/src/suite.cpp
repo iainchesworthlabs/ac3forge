@@ -6,7 +6,7 @@
 // The Noise suite names, apart from noise.cpp so the handshake-message parsers
 // build without a crypto backend (the fuzz build has none).
 
-namespace ac3::sendspin::noise {
+namespace iclforge::sendspin::noise {
 
 std::string_view suite_name(Suite suite) {
     return suite == Suite::kChaChaPolySha256 ? "25519_ChaChaPoly_SHA256" : "25519_AESGCM_SHA256";
@@ -27,4 +27,4 @@ std::string_view protocol_name(Suite suite) {
                                              : "Noise_KKpsk2_25519_AESGCM_SHA256";
 }
 
-}  // namespace ac3::sendspin::noise
+}  // namespace iclforge::sendspin::noise

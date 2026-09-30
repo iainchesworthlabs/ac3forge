@@ -25,7 +25,7 @@
 
 namespace {
 
-using ac3::test::kSanitized;
+using iclforge::test::kSanitized;
 
 constexpr double kRate = 48000.0;
 
@@ -61,7 +61,7 @@ double tone_power(std::span<const float> samples, double hz, std::size_t from, s
 struct Leg {
     int channels;
     int kbps;
-    ac4::CodecMode expected;
+    iclforge::ac4::CodecMode expected;
     double tolerance_db;  // of each tone's level
 };
 
@@ -75,10 +75,10 @@ TEST_CASE(
     // data take much of a low rate: mono at 32 kbps, 33 bytes a frame there,
     // leaves the tone 9 dB down, and at 48 kbps 0.5 dB.
     const std::vector<Leg> legs = {
-        {.channels = 2, .kbps = 192, .expected = ac4::CodecMode::kSimple, .tolerance_db = 0.1},
-        {.channels = 1, .kbps = 56, .expected = ac4::CodecMode::kAspx, .tolerance_db = 0.5},
-        {.channels = 2, .kbps = 128, .expected = ac4::CodecMode::kAspx, .tolerance_db = 0.3},
-        {.channels = 6, .kbps = 128, .expected = ac4::CodecMode::kAspxAcpl2, .tolerance_db = 1.0},
+        {.channels = 2, .kbps = 192, .expected = iclforge::ac4::CodecMode::kSimple, .tolerance_db = 0.1},
+        {.channels = 1, .kbps = 56, .expected = iclforge::ac4::CodecMode::kAspx, .tolerance_db = 0.5},
+        {.channels = 2, .kbps = 128, .expected = iclforge::ac4::CodecMode::kAspx, .tolerance_db = 0.3},
+        {.channels = 6, .kbps = 128, .expected = iclforge::ac4::CodecMode::kAspxAcpl2, .tolerance_db = 1.0},
     };
     // A second, or under the sanitizers three quarters of one: each level is
     // measured from 12 000 samples in to 12 000 from the end.
@@ -99,22 +99,22 @@ TEST_CASE(
                 hz.push_back(leg.channels == 6 && c == 3 ? 60.0 : 330.0 + 190.0 * c);
                 input.push_back(tone(hz.back(), 0.1, count));
             }
-            ac4::EncoderConfig config;
+            iclforge::ac4::EncoderConfig config;
             config.channels = leg.channels;
             config.bitrate_kbps = leg.kbps;
             config.frame_rate_index = index;
             // The sinks are callable references: the lambdas outlive the
             // encoder and the decoder.
-            std::vector<ac4::SyntaxRecord> written;
-            const auto write_sink = [&written](const ac4::SyntaxRecord& r) {
+            std::vector<iclforge::ac4::SyntaxRecord> written;
+            const auto write_sink = [&written](const iclforge::ac4::SyntaxRecord& r) {
                 written.push_back(r);
             };
             config.trace = write_sink;
-            auto encoder = ac4::Encoder::create(config);
+            auto encoder = iclforge::ac4::Encoder::create(config);
             REQUIRE(encoder.has_value());
             CHECK(encoder->codec_mode() == leg.expected);
             CHECK(encoder->toc().frame_rate_index == index);
-            std::vector<ac4::EncodedFrame> frames;
+            std::vector<iclforge::ac4::EncodedFrame> frames;
             // In pieces that no frame's length divides.
             for (std::size_t at = 0; at < count; at += 1000) {
                 std::vector<std::span<const float>> views;
@@ -132,18 +132,18 @@ TEST_CASE(
 
             // The decoder reads what was written, record for record, and
             // gives each frame the samples the encoder counted for it.
-            std::vector<ac4::SyntaxRecord> read;
-            const auto read_sink = [&read](const ac4::SyntaxRecord& r) { read.push_back(r); };
-            ac4::Decoder decoder(
-                ac4::DecoderConfig{.syntax = read_sink, .output = {}, .concealment = {}});
+            std::vector<iclforge::ac4::SyntaxRecord> read;
+            const auto read_sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+            iclforge::ac4::Decoder decoder(
+                iclforge::ac4::DecoderConfig{.syntax = read_sink, .output = {}, .concealment = {}});
             std::vector<std::vector<float>> decoded(static_cast<std::size_t>(leg.channels));
             std::size_t mismatched_counts = 0;
-            for (const ac4::EncodedFrame& frame : frames) {
+            for (const iclforge::ac4::EncodedFrame& frame : frames) {
                 const auto result = decoder.decode(frame.raw_ac4_frame);
                 INFO(decoder.refusal_reason());
                 REQUIRE(result.has_value());
                 REQUIRE(result->has_value());
-                const ac4::DecodedFrame& pcm = **result;
+                const iclforge::ac4::DecodedFrame& pcm = **result;
                 REQUIRE(pcm.channels.size() == decoded.size());
                 if (pcm.channels.front().size() != static_cast<std::size_t>(frame.samples)) {
                     ++mismatched_counts;
@@ -187,13 +187,13 @@ TEST_CASE("every frame rate frames attacks within its block and A-SPX limits",
     struct Burst {
         int channels;
         int kbps;
-        ac4::CodecMode expected;
+        iclforge::ac4::CodecMode expected;
     };
     const std::vector<Burst> legs = {
-        {.channels = 2, .kbps = 64, .expected = ac4::CodecMode::kAspx},
-        {.channels = 2, .kbps = 192, .expected = ac4::CodecMode::kSimple},
-        {.channels = 6, .kbps = 96, .expected = ac4::CodecMode::kAspxAcpl3},
-        {.channels = 6, .kbps = 256, .expected = ac4::CodecMode::kAspx},
+        {.channels = 2, .kbps = 64, .expected = iclforge::ac4::CodecMode::kAspx},
+        {.channels = 2, .kbps = 192, .expected = iclforge::ac4::CodecMode::kSimple},
+        {.channels = 6, .kbps = 96, .expected = iclforge::ac4::CodecMode::kAspxAcpl3},
+        {.channels = 6, .kbps = 256, .expected = iclforge::ac4::CodecMode::kAspx},
     };
     // Under the sanitizers a quarter of a second, which still holds two
     // bursts or three in each channel.
@@ -225,16 +225,16 @@ TEST_CASE("every frame rate frames attacks within its block and A-SPX limits",
                         0.002F * static_cast<float>(std::sin(0.05 * static_cast<double>(n)));
                 }
             }
-            ac4::EncoderConfig config;
+            iclforge::ac4::EncoderConfig config;
             config.channels = leg.channels;
             config.bitrate_kbps = leg.kbps;
             config.frame_rate_index = index;
-            std::vector<ac4::SyntaxRecord> written;
-            const auto write_sink = [&written](const ac4::SyntaxRecord& r) {
+            std::vector<iclforge::ac4::SyntaxRecord> written;
+            const auto write_sink = [&written](const iclforge::ac4::SyntaxRecord& r) {
                 written.push_back(r);
             };
             config.trace = write_sink;
-            auto encoder = ac4::Encoder::create(config);
+            auto encoder = iclforge::ac4::Encoder::create(config);
             REQUIRE(encoder.has_value());
             CHECK(encoder->codec_mode() == leg.expected);
             std::vector<std::span<const float>> views(input.begin(), input.end());
@@ -244,13 +244,13 @@ TEST_CASE("every frame rate frames attacks within its block and A-SPX limits",
             REQUIRE(rest.has_value());
             frames->insert(frames->end(), rest->begin(), rest->end());
 
-            std::vector<ac4::SyntaxRecord> read;
-            const auto read_sink = [&read](const ac4::SyntaxRecord& r) { read.push_back(r); };
-            ac4::Decoder decoder(
-                ac4::DecoderConfig{.syntax = read_sink, .output = {}, .concealment = {}});
+            std::vector<iclforge::ac4::SyntaxRecord> read;
+            const auto read_sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+            iclforge::ac4::Decoder decoder(
+                iclforge::ac4::DecoderConfig{.syntax = read_sink, .output = {}, .concealment = {}});
             std::size_t total = 0;
             std::size_t expected = 0;
-            for (const ac4::EncodedFrame& frame : *frames) {
+            for (const iclforge::ac4::EncodedFrame& frame : *frames) {
                 const auto result = decoder.decode(frame.raw_ac4_frame);
                 INFO(decoder.refusal_reason());
                 REQUIRE(result.has_value());
@@ -270,7 +270,7 @@ TEST_CASE("every frame rate frames attacks within its block and A-SPX limits",
             }
             CHECK(differing == 0);
             // The bursts split some frames' transforms.
-            const auto split = std::ranges::count_if(written, [](const ac4::SyntaxRecord& r) {
+            const auto split = std::ranges::count_if(written, [](const iclforge::ac4::SyntaxRecord& r) {
                 return (r.name == "b_long_frame" && r.value == 0) ||
                        (r.name == "transf_length" && r.value == 0);
             });
@@ -284,14 +284,14 @@ TEST_CASE("I-frames fall where the caller names them and a decoder can start at 
     // At 29.97 fps, whose frames decode to 1 601 or 1 602 samples: frames 5
     // and 7 named, and fragments from output samples 16 016 (frame 10's first)
     // and 20 000 (inside frame 12, so frame 13).
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 2;
     config.bitrate_kbps = 128;
     config.frame_rate_index = 3;
     config.iframe_interval = 1000;
     config.iframes = {7, 5};
     config.fragment_starts = {16016, 20000};
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
     const std::vector<float> left = tone(440.0, 0.1, 48000);
     const std::vector<float> right = tone(550.0, 0.1, 48000);
@@ -319,19 +319,19 @@ TEST_CASE("I-frames fall where the caller names them and a decoder can start at 
     // starts after it has nothing, the stream being ASPX, until the next.
     for (const std::size_t start : {std::size_t{5}, std::size_t{13}, std::size_t{6}}) {
         CAPTURE(start);
-        ac4::Decoder decoder(ac4::DecoderConfig{});
+        iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{});
         const auto first = decoder.decode((*frames)[start].raw_ac4_frame);
         REQUIRE(first.has_value());
         CHECK(first->has_value() == (*frames)[start].iframe);
     }
-    CHECK(encoder->codec_mode() == ac4::CodecMode::kAspx);
+    CHECK(encoder->codec_mode() == iclforge::ac4::CodecMode::kAspx);
 
     // No frame or fragment starts before the stream.
     config.iframes = {-1};
-    CHECK_FALSE(ac4::Encoder::create(config).has_value());
+    CHECK_FALSE(iclforge::ac4::Encoder::create(config).has_value());
     config.iframes = {};
     config.fragment_starts = {-2048};
-    CHECK_FALSE(ac4::Encoder::create(config).has_value());
+    CHECK_FALSE(iclforge::ac4::Encoder::create(config).has_value());
 }
 
 TEST_CASE("the decoded output lags the input by the encoder's and the decoder's delays",
@@ -348,12 +348,12 @@ TEST_CASE("the decoded output lags the input by the encoder's and the decoder's 
     }
     for (const int index : {13, 0, 2, 3, 5, 10, 12}) {
         CAPTURE(index);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = 1;
         config.bitrate_kbps = 160;
-        config.codec_mode = ac4::CodecMode::kSimple;
+        config.codec_mode = iclforge::ac4::CodecMode::kSimple;
         config.frame_rate_index = index;
-        auto encoder = ac4::Encoder::create(config);
+        auto encoder = iclforge::ac4::Encoder::create(config);
         REQUIRE(encoder.has_value());
         const std::vector<std::span<const float>> views = {input};
         auto frames = encoder->encode(views);
@@ -361,9 +361,9 @@ TEST_CASE("the decoded output lags the input by the encoder's and the decoder's 
         auto rest = encoder->flush();
         REQUIRE(rest.has_value());
         frames->insert(frames->end(), rest->begin(), rest->end());
-        ac4::Decoder decoder(ac4::DecoderConfig{});
+        iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{});
         std::vector<float> decoded;
-        for (const ac4::EncodedFrame& frame : *frames) {
+        for (const iclforge::ac4::EncodedFrame& frame : *frames) {
             const auto result = decoder.decode(frame.raw_ac4_frame);
             REQUIRE(result.has_value());
             REQUIRE(result->has_value());
@@ -394,17 +394,17 @@ TEST_CASE("the decoded output lags the input by the encoder's and the decoder's 
 }
 
 TEST_CASE("frame rates the sample rate does not have are refused", "[ac4enc][frame-rate]") {
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.sample_rate_hz = 44100;
     for (int index = 0; index <= 15; ++index) {
         CAPTURE(index);
         config.frame_rate_index = index;
-        CHECK(ac4::Encoder::create(config).has_value() == (index == 13));
+        CHECK(iclforge::ac4::Encoder::create(config).has_value() == (index == 13));
     }
     config.sample_rate_hz = 48000;
     for (const int reserved : {-1, 14, 15}) {
         config.frame_rate_index = reserved;
-        CHECK_FALSE(ac4::Encoder::create(config).has_value());
+        CHECK_FALSE(iclforge::ac4::Encoder::create(config).has_value());
     }
 }
 
@@ -431,16 +431,16 @@ TEST_CASE(
     };
     const auto run = [](int index) {
         Count out;
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = 1;
         config.bitrate_kbps = 96;
         config.frame_rate_index = index;
-        auto encoder = ac4::Encoder::create(config);
+        auto encoder = iclforge::ac4::Encoder::create(config);
         if (!encoder) {
             out.failed = true;
             return out;
         }
-        ac4::Decoder decoder(ac4::DecoderConfig{});
+        iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{});
         const std::vector<float> silence(48000, 0.0F);
         const std::vector<std::span<const float>> views = {silence};
         while (out.frames < kFrames && !out.failed) {
@@ -449,7 +449,7 @@ TEST_CASE(
                 out.failed = true;
                 break;
             }
-            for (const ac4::EncodedFrame& frame : *frames) {
+            for (const iclforge::ac4::EncodedFrame& frame : *frames) {
                 if (out.frames == kFrames) {
                     break;
                 }

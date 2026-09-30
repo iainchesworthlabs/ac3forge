@@ -1,11 +1,11 @@
 // Opens an ADM BWF (BW64/RF64 + Audio Definition Model) file and prints
-// what ac3adm::parse_bw64 found: programme/content/object/pack/channel/track
+// what iclforge::adm::parse_bw64 found: programme/content/object/pack/channel/track
 // counts, the <chna> join table, and the decoded PCM's own shape.
 //
 // This demonstrates ADM BWF reader, phase 1's own API working end to end -
 // it is NOT the "end-to-end example" phase 3 refers to, which will show a
-// full ADM -> ac3::oba::AtmosEncoder -> E-AC-3 pipeline once phase 2 (the
-// object/bed mapping layer) exists. ac3adm::ac3adm has no idea what AC-3,
+// full ADM -> iclforge::oba::AtmosEncoder -> E-AC-3 pipeline once phase 2 (the
+// object/bed mapping layer) exists. iclforge::adm has no idea what AC-3,
 // E-AC-3 or Atmos are, so this program does not either - it only proves the
 // parsed graph is navigable. (It is also built on top of the vendored
 // libbw64/libadm - see src/adm/CMakeLists.txt - rather than a hand-rolled
@@ -161,10 +161,10 @@ int main() {
         return 1;
     }
 
-    const auto document = ac3adm::parse_bw64(fixture_path);
+    const auto document = iclforge::adm::parse_bw64(fixture_path);
     if (!document) {
-        fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
-                    ac3adm::describe(document.error()).data());
+        fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(iclforge::adm::describe(document.error()).size()),
+                    iclforge::adm::describe(document.error()).data());
         return 1;
     }
 

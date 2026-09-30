@@ -86,7 +86,7 @@
 // _ac3forge_player@v1 - network_group_sink.hpp's own comment has the shape.
 // An AC-4 item (planning/ac4.md, I2) is decoded for every output and reaches
 // a member as a bitstream only this way: a sync frame to a burst, packed by
-// ac3::iec61937::Ac4BurstPacker in the burst type the item's largest frame
+// iclforge::iec61937::Ac4BurstPacker in the burst type the item's largest frame
 // needs, each burst placed at its frame's own start on the item's timeline.
 // A member decodes the presentation it would choose with no preferences, so
 // an item whose listener has chosen another is sent as PCM alone, as another
@@ -100,7 +100,7 @@
 // device's is: NetworkGroupSink::flush() cannot recall bytes already sent
 // over the wire, only reset what this player itself still holds.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // Each item's output, from its facts and the output the player holds open
 // while asking (OutputSelector::choose()).
@@ -248,7 +248,7 @@ public:
     // The speaker setup (planning/hearth-reference-player.md, A5's Speakers
     // page): the per-slot trim and delay applied to the renderer's slots
     // before they reach the open sink, local or not. Routing itself lives on
-    // the sink (PcmSink::set_routing()/routing()): ac3::audio::PcmOutput
+    // the sink (PcmSink::set_routing()/routing()): iclforge::audio::PcmOutput
     // already carries a patch and builds a sensible default from the
     // device's own speaker mask, so there is nothing for the player to add
     // there. Trim and delay are the player's own instead, so one TrimDelay
@@ -359,7 +359,7 @@ public:
     // submits, so a caller on a real-time thread keeps its own cadence.
     //
     // An output whose device has gone away - the sink closed itself, as
-    // ac3::audio's sinks do when their device is unplugged - stops playback
+    // iclforge::audio's sinks do when their device is unplugged - stops playback
     // here, with the output closed, the report marked stopped, and the reason
     // in last_error(). Nothing submitted to it will be heard, so nothing
     // waits for it: neither the item, nor a reopen or stop waiting for the
@@ -743,4 +743,4 @@ private:
     std::uint64_t unit_errors_more_ = 0;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

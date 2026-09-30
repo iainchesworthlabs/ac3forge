@@ -34,7 +34,7 @@
 // project's Qt targets do not - CrucibleController and EncoderController
 // both rely on the bare `signals:` keyword this class also uses). Hearth's
 // engine is Qt-free by design and apps/hearth/ui is the first place in the
-// tree to include both Qt and ac3::render::OutputLayout in one translation
+// tree to include both Qt and iclforge::render::OutputLayout in one translation
 // unit, so this is the first place the collision can happen:
 // OutputLayout::slots() is a real method name, and left alone the macro
 // rewrites its declaration into nonsense. Undefined here, before anything
@@ -69,7 +69,7 @@
 #include "settings_model.hpp"
 #include "transport.hpp"
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
 namespace {
 
@@ -78,19 +78,19 @@ namespace {
 // second costs nothing worth measuring.
 constexpr int kPollMs = 60;
 
-[[nodiscard]] QString transport_state_name(ac3::hearth::TransportState state) {
+[[nodiscard]] QString transport_state_name(iclforge::hearth::TransportState state) {
     switch (state) {
-        case ac3::hearth::TransportState::kPlaying:
+        case iclforge::hearth::TransportState::kPlaying:
             return QStringLiteral("playing");
-        case ac3::hearth::TransportState::kPaused:
+        case iclforge::hearth::TransportState::kPaused:
             return QStringLiteral("paused");
-        case ac3::hearth::TransportState::kStopped:
+        case iclforge::hearth::TransportState::kStopped:
         default:
             return QStringLiteral("stopped");
     }
 }
 
-[[nodiscard]] QString stream_kind_name(const ac3::hearth::ItemFacts& facts) {
+[[nodiscard]] QString stream_kind_name(const iclforge::hearth::ItemFacts& facts) {
     if (!facts.stream.has_value()) {
         return QString();
     }
@@ -107,7 +107,7 @@ constexpr int kPollMs = 60;
 // from what a probe already found (ItemFacts.stream), or "" before that;
 // PlayPage.qml falls back to the file's own extension until then, a
 // presentation question this controller does not need to answer twice.
-[[nodiscard]] QString codec_badge(const ac3::hearth::ItemFacts& facts) {
+[[nodiscard]] QString codec_badge(const iclforge::hearth::ItemFacts& facts) {
     if (!facts.stream.has_value()) {
         return QString();
     }
@@ -133,7 +133,7 @@ constexpr int kPollMs = 60;
 
 // Forward-declared: defined below, in the play-monitor section, but the
 // Media page's own OAMD table (media_objects_to_list()) needs it too.
-[[nodiscard]] QVariantMap display_object_to_map(const ac3::oba::DisplayObject& object);
+[[nodiscard]] QVariantMap display_object_to_map(const iclforge::oba::DisplayObject& object);
 
 [[nodiscard]] QVariantMap media_container_to_map(const apps::ContainerFacts& facts) {
     QVariantMap map;
@@ -181,9 +181,9 @@ constexpr int kPollMs = 60;
 }
 
 [[nodiscard]] QVariantList media_programmes_to_list(
-    const std::vector<ac3::hearth::MediaProgramme>& programmes) {
+    const std::vector<iclforge::hearth::MediaProgramme>& programmes) {
     QVariantList list;
-    for (const ac3::hearth::MediaProgramme& programme : programmes) {
+    for (const iclforge::hearth::MediaProgramme& programme : programmes) {
         QVariantMap row;
         row[QStringLiteral("substreamId")] = programme.substreamid;
         row[QStringLiteral("layoutLabel")] =
@@ -207,12 +207,12 @@ constexpr int kPollMs = 60;
 // same map shape the Play page's own monitor already uses for a playing
 // unit's objects (see this file's own poll()).
 [[nodiscard]] QVariantList media_objects_to_list(
-    const std::optional<ac3::oba::DecodedProgram>& objects) {
+    const std::optional<iclforge::oba::DecodedProgram>& objects) {
     QVariantList list;
     if (!objects) {
         return list;
     }
-    const std::vector<ac3::oba::DisplayObject> described = ac3::oba::describe_objects(*objects);
+    const std::vector<iclforge::oba::DisplayObject> described = iclforge::oba::describe_objects(*objects);
     list.reserve(static_cast<qsizetype>(described.size()));
     for (const auto& object : described) {
         list.push_back(display_object_to_map(object));
@@ -220,7 +220,7 @@ constexpr int kPollMs = 60;
     return list;
 }
 
-[[nodiscard]] QVariantMap media_bitstream_to_map(const ac3::hearth::MediaBitstream& bits) {
+[[nodiscard]] QVariantMap media_bitstream_to_map(const iclforge::hearth::MediaBitstream& bits) {
     QVariantMap map;
     if (bits.info) {
         const meta::BsiInfo& info = *bits.info;
@@ -337,15 +337,15 @@ constexpr int kPollMs = 60;
 
 // The channels a presentation puts out as a layout label: "5.1", "2.0",
 // "5.1.2" - the full-range speakers, the LFE, and the heights.
-[[nodiscard]] QString ac4_channels_label(std::span<const ac4::Speaker> speakers) {
+[[nodiscard]] QString ac4_channels_label(std::span<const iclforge::ac4::Speaker> speakers) {
     int main = 0;
     int lfe = 0;
     int heights = 0;
-    for (const ac4::Speaker speaker : speakers) {
-        if (speaker == ac4::Speaker::kLfe) {
+    for (const iclforge::ac4::Speaker speaker : speakers) {
+        if (speaker == iclforge::ac4::Speaker::kLfe) {
             ++lfe;
-        } else if (speaker == ac4::Speaker::kTopFrontLeft ||
-                   speaker == ac4::Speaker::kTopFrontRight) {
+        } else if (speaker == iclforge::ac4::Speaker::kTopFrontLeft ||
+                   speaker == iclforge::ac4::Speaker::kTopFrontRight) {
             ++heights;
         } else {
             ++main;
@@ -358,14 +358,14 @@ constexpr int kPollMs = 60;
 // What one member of a presentation is, for the Media and Decoder pages'
 // "Content" column: its role, and for associated audio the service Part 1
 // Table 91 classifies it as. Tokens; the pages turn them into words.
-[[nodiscard]] QString ac4_member_token(const ac4::PresentationMember& member) {
+[[nodiscard]] QString ac4_member_token(const iclforge::ac4::PresentationMember& member) {
     // clang-format off
     switch (member.role) {
-        case ac4::SubstreamRole::kMain: return QStringLiteral("main");
-        case ac4::SubstreamRole::kMusicAndEffects: return QStringLiteral("musicAndEffects");
-        case ac4::SubstreamRole::kDialogue: return QStringLiteral("dialogue");
-        case ac4::SubstreamRole::kDialogueEnhancement: return QStringLiteral("dialogueEnhancement");
-        case ac4::SubstreamRole::kAssociated:
+        case iclforge::ac4::SubstreamRole::kMain: return QStringLiteral("main");
+        case iclforge::ac4::SubstreamRole::kMusicAndEffects: return QStringLiteral("musicAndEffects");
+        case iclforge::ac4::SubstreamRole::kDialogue: return QStringLiteral("dialogue");
+        case iclforge::ac4::SubstreamRole::kDialogueEnhancement: return QStringLiteral("dialogueEnhancement");
+        case iclforge::ac4::SubstreamRole::kAssociated:
             switch (member.content_classifier.value_or(-1)) {
                 case 2: return QStringLiteral("audioDescription");
                 case 3: return QStringLiteral("hearingImpaired");
@@ -379,24 +379,24 @@ constexpr int kPollMs = 60;
     return QStringLiteral("associated");
 }
 
-[[nodiscard]] QString drc_compression_token(ac4::DrcModeInfo::Compression compression) {
+[[nodiscard]] QString drc_compression_token(iclforge::ac4::DrcModeInfo::Compression compression) {
     // clang-format off
     switch (compression) {
-        case ac4::DrcModeInfo::Compression::kDefaultProfile: return QStringLiteral("defaultProfile");
-        case ac4::DrcModeInfo::Compression::kCurve: return QStringLiteral("curve");
-        case ac4::DrcModeInfo::Compression::kGains: return QStringLiteral("gains");
+        case iclforge::ac4::DrcModeInfo::Compression::kDefaultProfile: return QStringLiteral("defaultProfile");
+        case iclforge::ac4::DrcModeInfo::Compression::kCurve: return QStringLiteral("curve");
+        case iclforge::ac4::DrcModeInfo::Compression::kGains: return QStringLiteral("gains");
     }
     // clang-format on
     return QStringLiteral("curve");
 }
 
-[[nodiscard]] QString preferred_downmix_token(ac4::DownmixInfo::Preferred preferred) {
+[[nodiscard]] QString preferred_downmix_token(iclforge::ac4::DownmixInfo::Preferred preferred) {
     // clang-format off
     switch (preferred) {
-        case ac4::DownmixInfo::Preferred::kNotIndicated: return QStringLiteral("none");
-        case ac4::DownmixInfo::Preferred::kLoRo: return QStringLiteral("loro");
-        case ac4::DownmixInfo::Preferred::kLtRt: return QStringLiteral("ltrt");
-        case ac4::DownmixInfo::Preferred::kLtRtProLogicII: return QStringLiteral("pl2");
+        case iclforge::ac4::DownmixInfo::Preferred::kNotIndicated: return QStringLiteral("none");
+        case iclforge::ac4::DownmixInfo::Preferred::kLoRo: return QStringLiteral("loro");
+        case iclforge::ac4::DownmixInfo::Preferred::kLtRt: return QStringLiteral("ltrt");
+        case iclforge::ac4::DownmixInfo::Preferred::kLtRtProLogicII: return QStringLiteral("pl2");
     }
     // clang-format on
     return QStringLiteral("none");
@@ -412,9 +412,9 @@ constexpr int kPollMs = 60;
 // information), for the Media page's table and the AC-4 decoder page's
 // picker.
 [[nodiscard]] QVariantList ac4_presentations_to_list(
-    std::span<const ac4::PresentationInfo> presentations) {
+    std::span<const iclforge::ac4::PresentationInfo> presentations) {
     QVariantList list;
-    for (const ac4::PresentationInfo& presentation : presentations) {
+    for (const iclforge::ac4::PresentationInfo& presentation : presentations) {
         QVariantMap row;
         row[QStringLiteral("index")] = static_cast<int>(presentation.index);
         if (presentation.presentation_id) {
@@ -434,13 +434,13 @@ constexpr int kPollMs = 60;
         row[QStringLiteral("language")] = QString::fromStdString(presentation.language);
         row[QStringLiteral("channels")] = ac4_channels_label(presentation.speakers);
         QStringList speakers;
-        for (const ac4::Speaker speaker : presentation.speakers) {
-            speakers.push_back(to_qstring(ac4::describe(speaker)));
+        for (const iclforge::ac4::Speaker speaker : presentation.speakers) {
+            speakers.push_back(to_qstring(iclforge::ac4::describe(speaker)));
         }
         row[QStringLiteral("speakers")] = speakers.join(QLatin1Char(' '));
         QStringList contents;
-        for (const ac4::PresentationMember& member : presentation.members) {
-            if (member.role != ac4::SubstreamRole::kDialogueEnhancement) {
+        for (const iclforge::ac4::PresentationMember& member : presentation.members) {
+            if (member.role != iclforge::ac4::SubstreamRole::kDialogueEnhancement) {
                 contents.push_back(ac4_member_token(member));
             }
         }
@@ -458,12 +458,12 @@ constexpr int kPollMs = 60;
 }
 
 // The selected presentation's metadata as the stream's frames sent it.
-[[nodiscard]] QVariantMap ac4_metadata_to_map(const ac4::PresentationMetadata& metadata) {
+[[nodiscard]] QVariantMap ac4_metadata_to_map(const iclforge::ac4::PresentationMetadata& metadata) {
     QVariantMap map;
     if (metadata.presentation) {
         map[QStringLiteral("presentation")] = static_cast<int>(*metadata.presentation);
     }
-    const ac4::LoudnessInfo& loudness = metadata.loudness;
+    const iclforge::ac4::LoudnessInfo& loudness = metadata.loudness;
     if (loudness.dialnorm_dbfs) {
         map[QStringLiteral("dialnormDbfs")] = *loudness.dialnorm_dbfs;
     }
@@ -479,7 +479,7 @@ constexpr int kPollMs = 60;
     }
     if (metadata.drc) {
         QVariantList modes;
-        for (const ac4::DrcModeInfo& mode : metadata.drc->modes) {
+        for (const iclforge::ac4::DrcModeInfo& mode : metadata.drc->modes) {
             QVariantMap row;
             row[QStringLiteral("id")] = mode.id;
             row[QStringLiteral("compression")] = drc_compression_token(mode.compression);
@@ -492,7 +492,7 @@ constexpr int kPollMs = 60;
         map[QStringLiteral("drcProfile")] = metadata.drc->eac3_profile;
     }
     if (metadata.dialogue_enhancement) {
-        const ac4::DialogueEnhancementInfo& de = *metadata.dialogue_enhancement;
+        const iclforge::ac4::DialogueEnhancementInfo& de = *metadata.dialogue_enhancement;
         QVariantMap row;
         row[QStringLiteral("method")] = de.method;
         row[QStringLiteral("left")] = de.left;
@@ -502,7 +502,7 @@ constexpr int kPollMs = 60;
         map[QStringLiteral("dialogueEnhancement")] = row;
     }
     if (metadata.downmix) {
-        const ac4::DownmixInfo& downmix = *metadata.downmix;
+        const iclforge::ac4::DownmixInfo& downmix = *metadata.downmix;
         QVariantMap row;
         row[QStringLiteral("loroCentreDb")] = db_or_null(downmix.loro_centre_db);
         row[QStringLiteral("loroSurroundDb")] = db_or_null(downmix.loro_surround_db);
@@ -543,7 +543,7 @@ constexpr int kPollMs = 60;
     if (!summary.first_frame) {
         return map;
     }
-    const ac4::Toc& toc = summary.first_frame->toc;
+    const iclforge::ac4::Toc& toc = summary.first_frame->toc;
     map[QStringLiteral("bitstreamVersion")] = toc.bitstream_version;
     map[QStringLiteral("sampleRate")] = toc.sample_rate_hz;
     map[QStringLiteral("presentationCount")] = toc.n_presentations;
@@ -558,14 +558,14 @@ constexpr int kPollMs = 60;
     QVariantList groups;
     int group_index = 0;
     bool has_ajoc = false;
-    for (const ac4::SubstreamGroupInfo& group : toc.substream_groups) {
+    for (const iclforge::ac4::SubstreamGroupInfo& group : toc.substream_groups) {
         QVariantMap row;
         row[QStringLiteral("index")] = group_index++;
         row[QStringLiteral("channelCoded")] = group.b_channel_coded;
         QVariantList substreams;
-        for (const ac4::GroupSubstream& sub : group.substreams) {
+        for (const iclforge::ac4::GroupSubstream& sub : group.substreams) {
             substreams.push_back(QString::fromStdString(apps::probe_json::describe_group_substream(sub)));
-            has_ajoc = has_ajoc || sub.kind == ac4::GroupSubstream::Kind::kAjoc;
+            has_ajoc = has_ajoc || sub.kind == iclforge::ac4::GroupSubstream::Kind::kAjoc;
         }
         row[QStringLiteral("substreams")] = substreams;
         groups.push_back(row);
@@ -581,11 +581,11 @@ constexpr int kPollMs = 60;
     return map;
 }
 
-[[nodiscard]] QVariantMap media_info_to_map(const ac3::hearth::MediaInfo& info) {
+[[nodiscard]] QVariantMap media_info_to_map(const iclforge::hearth::MediaInfo& info) {
     QVariantMap map;
     map[QStringLiteral("path")] = QString::fromStdString(info.path);
     if (info.codec) {
-        map[QStringLiteral("codec")] = to_qstring(ac3::hearth::codec_token(*info.codec));
+        map[QStringLiteral("codec")] = to_qstring(iclforge::hearth::codec_token(*info.codec));
     }
     if (!info.error.empty()) {
         map[QStringLiteral("error")] = QString::fromStdString(info.error);
@@ -623,142 +623,142 @@ constexpr int kPollMs = 60;
 // DecoderSettings at all). AC-4's presentation is set by its id or place,
 // which the page reads from the playing item's media information; -1 is none.
 
-[[nodiscard]] QString mode_name(ac3::OperatingMode mode) {
+[[nodiscard]] QString mode_name(iclforge::OperatingMode mode) {
     switch (mode) {
-        case ac3::OperatingMode::kLine:
+        case iclforge::OperatingMode::kLine:
             return QStringLiteral("line");
-        case ac3::OperatingMode::kRf:
+        case iclforge::OperatingMode::kRf:
             return QStringLiteral("rf");
-        case ac3::OperatingMode::kCustom:
+        case iclforge::OperatingMode::kCustom:
         default:
             return QStringLiteral("custom");
     }
 }
 
-[[nodiscard]] ac3::OperatingMode mode_from_name(const QString& name) {
+[[nodiscard]] iclforge::OperatingMode mode_from_name(const QString& name) {
     if (name == QLatin1String("line")) {
-        return ac3::OperatingMode::kLine;
+        return iclforge::OperatingMode::kLine;
     }
     if (name == QLatin1String("rf")) {
-        return ac3::OperatingMode::kRf;
+        return iclforge::OperatingMode::kRf;
     }
-    return ac3::OperatingMode::kCustom;
+    return iclforge::OperatingMode::kCustom;
 }
 
-[[nodiscard]] QString downmix_name(ac3::DownmixTarget target) {
-    return target == ac3::DownmixTarget::kLtRt ? QStringLiteral("ltrt") : QStringLiteral("loro");
+[[nodiscard]] QString downmix_name(iclforge::DownmixTarget target) {
+    return target == iclforge::DownmixTarget::kLtRt ? QStringLiteral("ltrt") : QStringLiteral("loro");
 }
 
-[[nodiscard]] ac3::DownmixTarget downmix_from_name(const QString& name) {
-    return name == QLatin1String("ltrt") ? ac3::DownmixTarget::kLtRt : ac3::DownmixTarget::kLoRo;
+[[nodiscard]] iclforge::DownmixTarget downmix_from_name(const QString& name) {
+    return name == QLatin1String("ltrt") ? iclforge::DownmixTarget::kLtRt : iclforge::DownmixTarget::kLoRo;
 }
 
-[[nodiscard]] QString dual_mono_name(ac3::hearth::DualMonoChoice choice) {
+[[nodiscard]] QString dual_mono_name(iclforge::hearth::DualMonoChoice choice) {
     switch (choice) {
-        case ac3::hearth::DualMonoChoice::kFirst:
+        case iclforge::hearth::DualMonoChoice::kFirst:
             return QStringLiteral("first");
-        case ac3::hearth::DualMonoChoice::kSecond:
+        case iclforge::hearth::DualMonoChoice::kSecond:
             return QStringLiteral("second");
-        case ac3::hearth::DualMonoChoice::kBoth:
+        case iclforge::hearth::DualMonoChoice::kBoth:
         default:
             return QStringLiteral("both");
     }
 }
 
-[[nodiscard]] ac3::hearth::DualMonoChoice dual_mono_from_name(const QString& name) {
+[[nodiscard]] iclforge::hearth::DualMonoChoice dual_mono_from_name(const QString& name) {
     if (name == QLatin1String("first")) {
-        return ac3::hearth::DualMonoChoice::kFirst;
+        return iclforge::hearth::DualMonoChoice::kFirst;
     }
     if (name == QLatin1String("second")) {
-        return ac3::hearth::DualMonoChoice::kSecond;
+        return iclforge::hearth::DualMonoChoice::kSecond;
     }
-    return ac3::hearth::DualMonoChoice::kBoth;
+    return iclforge::hearth::DualMonoChoice::kBoth;
 }
 
-[[nodiscard]] QString objects_policy_name(ac3::render::ObjectsPolicy policy) {
+[[nodiscard]] QString objects_policy_name(iclforge::render::ObjectsPolicy policy) {
     switch (policy) {
-        case ac3::render::ObjectsPolicy::kNever:
+        case iclforge::render::ObjectsPolicy::kNever:
             return QStringLiteral("never");
-        case ac3::render::ObjectsPolicy::kAlways:
+        case iclforge::render::ObjectsPolicy::kAlways:
             return QStringLiteral("always");
-        case ac3::render::ObjectsPolicy::kAuto:
+        case iclforge::render::ObjectsPolicy::kAuto:
         default:
             return QStringLiteral("auto");
     }
 }
 
-[[nodiscard]] ac3::render::ObjectsPolicy objects_policy_from_name(const QString& name) {
+[[nodiscard]] iclforge::render::ObjectsPolicy objects_policy_from_name(const QString& name) {
     if (name == QLatin1String("never")) {
-        return ac3::render::ObjectsPolicy::kNever;
+        return iclforge::render::ObjectsPolicy::kNever;
     }
     if (name == QLatin1String("always")) {
-        return ac3::render::ObjectsPolicy::kAlways;
+        return iclforge::render::ObjectsPolicy::kAlways;
     }
-    return ac3::render::ObjectsPolicy::kAuto;
+    return iclforge::render::ObjectsPolicy::kAuto;
 }
 
-[[nodiscard]] QString joc_domain_name(ac3::oba::joc::Domain domain) {
-    return domain == ac3::oba::joc::Domain::kMdctBand ? QStringLiteral("mdct") : QStringLiteral("qmf");
+[[nodiscard]] QString joc_domain_name(iclforge::oba::joc::Domain domain) {
+    return domain == iclforge::oba::joc::Domain::kMdctBand ? QStringLiteral("mdct") : QStringLiteral("qmf");
 }
 
-[[nodiscard]] ac3::oba::joc::Domain joc_domain_from_name(const QString& name) {
-    return name == QLatin1String("mdct") ? ac3::oba::joc::Domain::kMdctBand
-                                          : ac3::oba::joc::Domain::kQmf;
+[[nodiscard]] iclforge::oba::joc::Domain joc_domain_from_name(const QString& name) {
+    return name == QLatin1String("mdct") ? iclforge::oba::joc::Domain::kMdctBand
+                                          : iclforge::oba::joc::Domain::kQmf;
 }
 
-[[nodiscard]] QString concealment_name(ac3::ConcealmentPolicy policy) {
+[[nodiscard]] QString concealment_name(iclforge::ConcealmentPolicy policy) {
     switch (policy) {
-        case ac3::ConcealmentPolicy::kNone:
+        case iclforge::ConcealmentPolicy::kNone:
             return QStringLiteral("stop");
-        case ac3::ConcealmentPolicy::kMute:
+        case iclforge::ConcealmentPolicy::kMute:
             return QStringLiteral("mute");
-        case ac3::ConcealmentPolicy::kRepeatFade:
+        case iclforge::ConcealmentPolicy::kRepeatFade:
         default:
             return QStringLiteral("repeatFade");
     }
 }
 
-[[nodiscard]] ac3::ConcealmentPolicy concealment_from_name(const QString& name) {
+[[nodiscard]] iclforge::ConcealmentPolicy concealment_from_name(const QString& name) {
     if (name == QLatin1String("stop")) {
-        return ac3::ConcealmentPolicy::kNone;
+        return iclforge::ConcealmentPolicy::kNone;
     }
     if (name == QLatin1String("mute")) {
-        return ac3::ConcealmentPolicy::kMute;
+        return iclforge::ConcealmentPolicy::kMute;
     }
-    return ac3::ConcealmentPolicy::kRepeatFade;
+    return iclforge::ConcealmentPolicy::kRepeatFade;
 }
 
-[[nodiscard]] QString ac4_drc_name(ac4::DrcMode mode) {
+[[nodiscard]] QString ac4_drc_name(iclforge::ac4::DrcMode mode) {
     // clang-format off
     switch (mode) {
-        case ac4::DrcMode::kOff: return QStringLiteral("off");
-        case ac4::DrcMode::kHomeTheatre: return QStringLiteral("homeTheatre");
-        case ac4::DrcMode::kFlatPanelTv: return QStringLiteral("flatPanelTv");
-        case ac4::DrcMode::kPortableSpeakers: return QStringLiteral("portableSpeakers");
-        case ac4::DrcMode::kPortableHeadphones: return QStringLiteral("portableHeadphones");
-        case ac4::DrcMode::kDefault: return QStringLiteral("auto");
+        case iclforge::ac4::DrcMode::kOff: return QStringLiteral("off");
+        case iclforge::ac4::DrcMode::kHomeTheatre: return QStringLiteral("homeTheatre");
+        case iclforge::ac4::DrcMode::kFlatPanelTv: return QStringLiteral("flatPanelTv");
+        case iclforge::ac4::DrcMode::kPortableSpeakers: return QStringLiteral("portableSpeakers");
+        case iclforge::ac4::DrcMode::kPortableHeadphones: return QStringLiteral("portableHeadphones");
+        case iclforge::ac4::DrcMode::kDefault: return QStringLiteral("auto");
     }
     // clang-format on
     return QStringLiteral("auto");
 }
 
-[[nodiscard]] ac4::DrcMode ac4_drc_from_name(const QString& name) {
+[[nodiscard]] iclforge::ac4::DrcMode ac4_drc_from_name(const QString& name) {
     if (name == QLatin1String("off")) {
-        return ac4::DrcMode::kOff;
+        return iclforge::ac4::DrcMode::kOff;
     }
     if (name == QLatin1String("homeTheatre")) {
-        return ac4::DrcMode::kHomeTheatre;
+        return iclforge::ac4::DrcMode::kHomeTheatre;
     }
     if (name == QLatin1String("flatPanelTv")) {
-        return ac4::DrcMode::kFlatPanelTv;
+        return iclforge::ac4::DrcMode::kFlatPanelTv;
     }
     if (name == QLatin1String("portableSpeakers")) {
-        return ac4::DrcMode::kPortableSpeakers;
+        return iclforge::ac4::DrcMode::kPortableSpeakers;
     }
     if (name == QLatin1String("portableHeadphones")) {
-        return ac4::DrcMode::kPortableHeadphones;
+        return iclforge::ac4::DrcMode::kPortableHeadphones;
     }
-    return ac4::DrcMode::kDefault;
+    return iclforge::ac4::DrcMode::kDefault;
 }
 
 // Ac4Settings::immersive_layout (planning/ac4.md, I5): unset (the source's own
@@ -766,38 +766,38 @@ constexpr int kPollMs = 60;
 // immersive element to otherwise - the same names ac3cli decode's own
 // speakers= takes. The stereo/mono targets DownmixTarget also has are not
 // reachable here: those are DecoderSettings::stereo_fold's own job.
-[[nodiscard]] QString ac4_immersive_layout_name(const std::optional<ac4::DownmixTarget>& layout) {
+[[nodiscard]] QString ac4_immersive_layout_name(const std::optional<iclforge::ac4::DownmixTarget>& layout) {
     if (!layout) {
         return QStringLiteral("asCoded");
     }
     // clang-format off
     switch (*layout) {
-        case ac4::DownmixTarget::k7X4: return QStringLiteral("7.1.4");
-        case ac4::DownmixTarget::k7X2: return QStringLiteral("7.1.2");
-        case ac4::DownmixTarget::k7X0: return QStringLiteral("7.1");
-        case ac4::DownmixTarget::k5X4: return QStringLiteral("5.1.4");
-        case ac4::DownmixTarget::k5X2: return QStringLiteral("5.1.2");
+        case iclforge::ac4::DownmixTarget::k7X4: return QStringLiteral("7.1.4");
+        case iclforge::ac4::DownmixTarget::k7X2: return QStringLiteral("7.1.2");
+        case iclforge::ac4::DownmixTarget::k7X0: return QStringLiteral("7.1");
+        case iclforge::ac4::DownmixTarget::k5X4: return QStringLiteral("5.1.4");
+        case iclforge::ac4::DownmixTarget::k5X2: return QStringLiteral("5.1.2");
         default: break;
     }
     // clang-format on
     return QStringLiteral("asCoded");
 }
 
-[[nodiscard]] std::optional<ac4::DownmixTarget> ac4_immersive_layout_from_name(const QString& name) {
+[[nodiscard]] std::optional<iclforge::ac4::DownmixTarget> ac4_immersive_layout_from_name(const QString& name) {
     if (name == QLatin1String("7.1.4")) {
-        return ac4::DownmixTarget::k7X4;
+        return iclforge::ac4::DownmixTarget::k7X4;
     }
     if (name == QLatin1String("7.1.2")) {
-        return ac4::DownmixTarget::k7X2;
+        return iclforge::ac4::DownmixTarget::k7X2;
     }
     if (name == QLatin1String("7.1")) {
-        return ac4::DownmixTarget::k7X0;
+        return iclforge::ac4::DownmixTarget::k7X0;
     }
     if (name == QLatin1String("5.1.4")) {
-        return ac4::DownmixTarget::k5X4;
+        return iclforge::ac4::DownmixTarget::k5X4;
     }
     if (name == QLatin1String("5.1.2")) {
-        return ac4::DownmixTarget::k5X2;
+        return iclforge::ac4::DownmixTarget::k5X2;
     }
     return std::nullopt;
 }
@@ -811,7 +811,7 @@ constexpr int kPollMs = 60;
     return number >= 0 ? std::optional<int>{number} : std::nullopt;
 }
 
-[[nodiscard]] QVariantMap decoder_settings_to_map(const ac3::hearth::DecoderSettings& settings) {
+[[nodiscard]] QVariantMap decoder_settings_to_map(const iclforge::hearth::DecoderSettings& settings) {
     QVariantMap map;
     map[QStringLiteral("mode")] = mode_name(settings.mode);
     map[QStringLiteral("rfCeilingDb")] = settings.rf_ceiling_db;
@@ -832,7 +832,7 @@ constexpr int kPollMs = 60;
     map[QStringLiteral("concealment")] = concealment_name(settings.concealment);
     map[QStringLiteral("fastInverseTransform")] = settings.fast_inverse_transform;
     // AC-4's own (DecoderAc4.qml).
-    const ac3::hearth::Ac4Settings& ac4 = settings.ac4;
+    const iclforge::hearth::Ac4Settings& ac4 = settings.ac4;
     map[QStringLiteral("ac4PresentationId")] = ac4.presentation_id.value_or(-1);
     map[QStringLiteral("ac4PresentationIndex")] = ac4.presentation_index.value_or(-1);
     map[QStringLiteral("ac4Language")] = QString::fromStdString(ac4.language);
@@ -853,9 +853,9 @@ constexpr int kPollMs = 60;
 // does not carry - or a caller that reads decoderSettings(), changes one
 // key and writes the rest back unmodified - keeps its value rather than
 // resetting to DecoderSettings{}'s defaults.
-[[nodiscard]] ac3::hearth::DecoderSettings decoder_settings_from_map(
-    const QVariantMap& map, const ac3::hearth::DecoderSettings& base) {
-    ac3::hearth::DecoderSettings out = base;
+[[nodiscard]] iclforge::hearth::DecoderSettings decoder_settings_from_map(
+    const QVariantMap& map, const iclforge::hearth::DecoderSettings& base) {
+    iclforge::hearth::DecoderSettings out = base;
     if (map.contains(QStringLiteral("mode"))) {
         out.mode = mode_from_name(map[QStringLiteral("mode")].toString());
     }
@@ -898,7 +898,7 @@ constexpr int kPollMs = 60;
     if (map.contains(QStringLiteral("fastInverseTransform"))) {
         out.fast_inverse_transform = map[QStringLiteral("fastInverseTransform")].toBool();
     }
-    ac3::hearth::Ac4Settings& ac4 = out.ac4;
+    iclforge::hearth::Ac4Settings& ac4 = out.ac4;
     if (map.contains(QStringLiteral("ac4PresentationId"))) {
         ac4.presentation_id = presentation_from_variant(map[QStringLiteral("ac4PresentationId")]);
     }
@@ -946,7 +946,7 @@ constexpr int kPollMs = 60;
 // --- the play monitor: MeterSnapshot/UnitReport <-> QVariant, field by ----
 // field (play_meters.hpp, stream_decoder.hpp) --------------------------
 
-[[nodiscard]] QVariantMap channel_level_to_map(const ac3::analysis::ChannelLevel& level) {
+[[nodiscard]] QVariantMap channel_level_to_map(const iclforge::analysis::ChannelLevel& level) {
     QVariantMap map;
     map[QStringLiteral("peakDb")] = level.peak_db;
     map[QStringLiteral("holdDb")] = level.hold_db;
@@ -955,23 +955,23 @@ constexpr int kPollMs = 60;
     return map;
 }
 
-[[nodiscard]] QString output_mode_name(ac3::hearth::OutputMode mode) {
+[[nodiscard]] QString output_mode_name(iclforge::hearth::OutputMode mode) {
     switch (mode) {
-        case ac3::hearth::OutputMode::kBitstream:
+        case iclforge::hearth::OutputMode::kBitstream:
             return QStringLiteral("bitstream");
-        case ac3::hearth::OutputMode::kBitstreamAsAc3:
+        case iclforge::hearth::OutputMode::kBitstreamAsAc3:
             return QStringLiteral("bitstreamAsAc3");
-        case ac3::hearth::OutputMode::kLocalPcm:
+        case iclforge::hearth::OutputMode::kLocalPcm:
             return QStringLiteral("pcm");
-        case ac3::hearth::OutputMode::kNetworkGroup:
+        case iclforge::hearth::OutputMode::kNetworkGroup:
             return QStringLiteral("networkGroup");
-        case ac3::hearth::OutputMode::kNone:
+        case iclforge::hearth::OutputMode::kNone:
         default:
             return QStringLiteral("none");
     }
 }
 
-[[nodiscard]] QVariantMap output_format_to_map(const ac3::hearth::OpenOutputFormat& format) {
+[[nodiscard]] QVariantMap output_format_to_map(const iclforge::hearth::OpenOutputFormat& format) {
     QVariantMap map;
     map[QStringLiteral("sampleRate")] = format.sample_rate;
     map[QStringLiteral("channels")] = format.channels;
@@ -983,7 +983,7 @@ constexpr int kPollMs = 60;
 // apps/gui's ObjectDecodeController already settled on for its own room-plan
 // view (object_decode_controller.cpp), so the two applications' object
 // markers read the same fields the same way.
-[[nodiscard]] QVariantMap display_object_to_map(const ac3::oba::DisplayObject& object) {
+[[nodiscard]] QVariantMap display_object_to_map(const iclforge::oba::DisplayObject& object) {
     QVariantMap map;
     map[QStringLiteral("x")] = object.position.x;
     map[QStringLiteral("y")] = object.position.y;
@@ -1002,14 +1002,14 @@ constexpr int kPollMs = 60;
     return map;
 }
 
-[[nodiscard]] QString realization_name(ac3::render::Speaker::Realization realization) {
+[[nodiscard]] QString realization_name(iclforge::render::Speaker::Realization realization) {
     switch (realization) {
-        case ac3::render::Speaker::Realization::kTop:
+        case iclforge::render::Speaker::Realization::kTop:
             return QStringLiteral("ceiling");
-        case ac3::render::Speaker::Realization::kUpFiring:
+        case iclforge::render::Speaker::Realization::kUpFiring:
             return QStringLiteral("upfiring");
-        case ac3::render::Speaker::Realization::kDefault:
-        case ac3::render::Speaker::Realization::kHeight:
+        case iclforge::render::Speaker::Realization::kDefault:
+        case iclforge::render::Speaker::Realization::kHeight:
         default:
             // kHeight (a wall-mounted, angled speaker) reads the same as
             // kDefault: layout.hpp's own header comment says the two render
@@ -1020,24 +1020,24 @@ constexpr int kPollMs = 60;
     }
 }
 
-[[nodiscard]] ac3::render::Speaker::Realization realization_from_name(const QString& name) {
+[[nodiscard]] iclforge::render::Speaker::Realization realization_from_name(const QString& name) {
     if (name == QLatin1String("ceiling")) {
-        return ac3::render::Speaker::Realization::kTop;
+        return iclforge::render::Speaker::Realization::kTop;
     }
     if (name == QLatin1String("upfiring")) {
-        return ac3::render::Speaker::Realization::kUpFiring;
+        return iclforge::render::Speaker::Realization::kUpFiring;
     }
-    return ac3::render::Speaker::Realization::kDefault;
+    return iclforge::render::Speaker::Realization::kDefault;
 }
 
-[[nodiscard]] ac3::hearth::QueueItem queue_item_from_path(const QString& path) {
-    ac3::hearth::QueueItem item;
+[[nodiscard]] iclforge::hearth::QueueItem queue_item_from_path(const QString& path) {
+    iclforge::hearth::QueueItem item;
     item.path = path.toStdString();
     item.title = QFileInfo(path).fileName().toStdString();
     return item;
 }
 
-[[nodiscard]] QVariantMap queue_row(const ac3::hearth::QueueItem& item, bool current) {
+[[nodiscard]] QVariantMap queue_row(const iclforge::hearth::QueueItem& item, bool current) {
     QVariantMap row;
     row[QStringLiteral("path")] = QString::fromStdString(item.path);
     row[QStringLiteral("title")] = QString::fromStdString(item.title);
@@ -1064,7 +1064,7 @@ constexpr int kPollMs = 60;
 // enumeration both come from - a device that cannot bitstream simply has
 // both flags false, which is why the passthrough section shows only some of
 // these rows rather than needing a second list.
-[[nodiscard]] QVariantMap output_device_row(const ac3::audio::RenderDeviceInfo& device) {
+[[nodiscard]] QVariantMap output_device_row(const iclforge::audio::RenderDeviceInfo& device) {
     QVariantMap row;
     row[QStringLiteral("id")] = QString::fromStdString(device.id);
     row[QStringLiteral("name")] = QString::fromStdString(device.name);
@@ -1072,7 +1072,7 @@ constexpr int kPollMs = 60;
     // 0 is "not reported", not "no channels" (RenderDeviceInfo's own
     // comment) - QML reads a zero channel count that way too.
     row[QStringLiteral("channels")] = device.channels;
-    row[QStringLiteral("speakers")] = QString::fromStdString(ac3::audio::describe_speakers(device.speakers));
+    row[QStringLiteral("speakers")] = QString::fromStdString(iclforge::audio::describe_speakers(device.speakers));
     QVariantList rates;
     rates.reserve(static_cast<qsizetype>(device.sample_rates.size()));
     for (const std::uint32_t rate : device.sample_rates) {
@@ -1091,27 +1091,27 @@ constexpr int kPollMs = 60;
 // file's own anonymous namespace once a second translation unit had to name
 // it.
 
-[[nodiscard]] QString failure_policy_name(ac3::hearth::FailurePolicy policy) {
-    return policy == ac3::hearth::FailurePolicy::kStop ? QStringLiteral("stop") : QStringLiteral("skip");
+[[nodiscard]] QString failure_policy_name(iclforge::hearth::FailurePolicy policy) {
+    return policy == iclforge::hearth::FailurePolicy::kStop ? QStringLiteral("stop") : QStringLiteral("skip");
 }
 
-[[nodiscard]] ac3::hearth::FailurePolicy failure_policy_from_name(const QString& name) {
-    return name == QLatin1String("stop") ? ac3::hearth::FailurePolicy::kStop
-                                         : ac3::hearth::FailurePolicy::kSkip;
+[[nodiscard]] iclforge::hearth::FailurePolicy failure_policy_from_name(const QString& name) {
+    return name == QLatin1String("stop") ? iclforge::hearth::FailurePolicy::kStop
+                                         : iclforge::hearth::FailurePolicy::kSkip;
 }
 
 // Read fresh rather than cached, every time - hearth_controller.hpp's own
 // comment on why EngineSettings is never a member here applies the same way
 // to a local variable that would outlive one call.
-[[nodiscard]] ac3::hearth::EngineSettings current_settings(const ac3::hearth::SettingsStore& store) {
-    return ac3::hearth::load_settings(store, QSysInfo::machineHostName().toStdString());
+[[nodiscard]] iclforge::hearth::EngineSettings current_settings(const iclforge::hearth::SettingsStore& store) {
+    return iclforge::hearth::load_settings(store, QSysInfo::machineHostName().toStdString());
 }
 
 // sync() is [[nodiscard]] (settings_model.hpp: "False when that failed: what
 // was kept before is what a later start reads") - noted rather than silently
 // dropped, since a full disk or a read-only settings folder is exactly the
 // kind of thing a diagnostics export exists to have caught.
-void sync_store(ac3::hearth::SettingsStore& store, ac3::hearth::DiagnosticLog& log) {
+void sync_store(iclforge::hearth::SettingsStore& store, iclforge::hearth::DiagnosticLog& log) {
     if (!store.sync()) {
         log.note("settings: could not save to disk");
     }
@@ -1121,7 +1121,7 @@ void sync_store(ac3::hearth::SettingsStore& store, ac3::hearth::DiagnosticLog& l
 
 HearthController::HearthController(QObject* parent)
     : QObject(parent),
-      log_(ac3::hearth::process_diagnostics()),
+      log_(iclforge::hearth::process_diagnostics()),
       settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
                QStringLiteral("Hearth")),
       store_(std::make_unique<QSettingsStore>(settings_)),
@@ -1149,7 +1149,7 @@ HearthController::~HearthController() {
 }
 
 QString HearthController::versionDetails() const {
-    return QString::fromStdString(ac3::version_details());
+    return QString::fromStdString(iclforge::version_details());
 }
 
 QString HearthController::licenceNotices() const {
@@ -1179,9 +1179,9 @@ void HearthController::start() {
     // already returns std::nullopt for an empty string, which is what an
     // unset saved.layout reads as, so nothing extra is needed for "nothing
     // saved yet" versus "what was saved is damaged" - both fall back alike.
-    const ac3::hearth::SavedSpeakerSetup saved_speakers = ac3::hearth::load_speaker_setup(*store_);
-    const ac3::render::OutputLayout layout =
-        ac3::render::OutputLayout::parse(saved_speakers.layout).value_or(*ac3::render::OutputLayout::parse("2.0"));
+    const iclforge::hearth::SavedSpeakerSetup saved_speakers = iclforge::hearth::load_speaker_setup(*store_);
+    const iclforge::render::OutputLayout layout =
+        iclforge::render::OutputLayout::parse(saved_speakers.layout).value_or(*iclforge::render::OutputLayout::parse("2.0"));
     // EngineOutputs, not a bare PcmSink: given every render endpoint
     // (device_endpoints(), output_selector.hpp), the engine decides each
     // item's output itself and set_output_preferences() - the output
@@ -1197,34 +1197,34 @@ void HearthController::start() {
     // captured here - NetworkController may not even have start()ed yet at
     // this point, let alone made the group a person later pins
     // (network_output_status.hpp's own header comment).
-    ac3::hearth::EngineOutputs outputs{
-        .pcm = test_outputs_ ? test_outputs_->make_pcm() : ac3::hearth::make_device_sink(std::string()),
+    iclforge::hearth::EngineOutputs outputs{
+        .pcm = test_outputs_ ? test_outputs_->make_pcm() : iclforge::hearth::make_device_sink(std::string()),
         .bitstream = {},
-        .group = ac3::hearth::make_group_sink([](const std::string& group_id) {
-            return ac3::hearth::ui::NetworkOutputStatus::instance().group(group_id);
+        .group = iclforge::hearth::make_group_sink([](const std::string& group_id) {
+            return iclforge::hearth::ui::NetworkOutputStatus::instance().group(group_id);
         }),
-        .endpoints = test_outputs_ ? test_outputs_->endpoints : ac3::hearth::device_endpoints()};
-    const ac3::hearth::EngineSettings loaded = current_settings(*store_);
+        .endpoints = test_outputs_ ? test_outputs_->endpoints : iclforge::hearth::device_endpoints()};
+    const iclforge::hearth::EngineSettings loaded = current_settings(*store_);
     // An AC-4 stream's presentation in the listener's own language plays
     // first, where no other has been chosen (DecoderAc4.qml's "01
     // Presentation"): the language this window runs in.
-    ac3::hearth::DecoderSettings decoder_settings;
+    iclforge::hearth::DecoderSettings decoder_settings;
     decoder_settings.ac4.language = QLocale().bcp47Name().toStdString();
-    engine_ = std::make_unique<ac3::hearth::Engine>(
-        std::move(outputs), ac3::hearth::ui::make_file_item_loader(), layout, decoder_settings,
-        ac3::hearth::EngineTiming{}, &log_);
+    engine_ = std::make_unique<iclforge::hearth::Engine>(
+        std::move(outputs), iclforge::hearth::ui::make_file_item_loader(), layout, decoder_settings,
+        iclforge::hearth::EngineTiming{}, &log_);
     // Each reads with its own loader instance (make_file_item_loader()
     // builds a fresh std::function every call, same as the engine's own
     // above) so the Media page's own pick never blocks on whatever
     // currentMedia is mid-reading, and vice versa (media_inspector.hpp).
     now_playing_inspector_ =
-        std::make_unique<ac3::hearth::MediaInspector>(ac3::hearth::ui::make_file_item_loader());
+        std::make_unique<iclforge::hearth::MediaInspector>(iclforge::hearth::ui::make_file_item_loader());
     inspected_item_inspector_ =
-        std::make_unique<ac3::hearth::MediaInspector>(ac3::hearth::ui::make_file_item_loader());
+        std::make_unique<iclforge::hearth::MediaInspector>(iclforge::hearth::ui::make_file_item_loader());
     engine_->set_gapless(loaded.playback.gapless);
     engine_->set_on_failure(loaded.playback.on_failure);
     if (loaded.playback.resume_queue) {
-        const ac3::hearth::SavedQueue saved = ac3::hearth::load_queue(*store_);
+        const iclforge::hearth::SavedQueue saved = iclforge::hearth::load_queue(*store_);
         if (!saved.items.empty()) {
             engine_->restore(saved.items, saved.current, saved.position);
         }
@@ -1244,7 +1244,7 @@ void HearthController::start() {
     }
     engine_->set_crossover_hz(saved_speakers.crossover_hz);
     if (const auto routing =
-            ac3::render::Routing::parse(saved_speakers.routing, saved_speakers.routing_outputs)) {
+            iclforge::render::Routing::parse(saved_speakers.routing, saved_speakers.routing_outputs)) {
         engine_->set_routing(*routing);
     }
     poll_timer_.start();
@@ -1264,7 +1264,7 @@ void HearthController::start() {
     bool port_ok = false;
     const int port_value = qEnvironmentVariableIntValue("AC3FORGE_HEARTH_DIAGNOSTICS_PORT", &port_ok);
     if (port_ok && port_value > 0 && port_value <= std::numeric_limits<std::uint16_t>::max()) {
-        diagnostics_server_ = std::make_unique<ac3::hearth::DiagnosticsHttpServer>(
+        diagnostics_server_ = std::make_unique<iclforge::hearth::DiagnosticsHttpServer>(
             [this] { return diagnosticsReport().toStdString(); });
         if (!diagnostics_server_->start(static_cast<std::uint16_t>(port_value))) {
             diagnostics_server_.reset();
@@ -1280,9 +1280,9 @@ void HearthController::setGapless(bool on) {
     if (engine_) {
         engine_->set_gapless(on);
     }
-    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    iclforge::hearth::EngineSettings settings = current_settings(*store_);
     settings.playback.gapless = on;
-    ac3::hearth::save_settings(settings, *store_);
+    iclforge::hearth::save_settings(settings, *store_);
     sync_store(*store_, log_);
     emit stateChanged();
 }
@@ -1339,7 +1339,7 @@ void HearthController::addFiles(const QStringList& paths) {
     if (!engine_ || paths.isEmpty()) {
         return;
     }
-    std::vector<ac3::hearth::QueueItem> items;
+    std::vector<iclforge::hearth::QueueItem> items;
     items.reserve(static_cast<std::size_t>(paths.size()));
     for (const QString& path : paths) {
         items.push_back(queue_item_from_path(path));
@@ -1351,11 +1351,11 @@ void HearthController::addFolder(const QString& path) {
     if (!engine_ || path.isEmpty()) {
         return;
     }
-    const std::vector<std::string> found = ac3::hearth::ui::list_folder_items(path.toStdString());
+    const std::vector<std::string> found = iclforge::hearth::ui::list_folder_items(path.toStdString());
     if (found.empty()) {
         return;
     }
-    std::vector<ac3::hearth::QueueItem> items;
+    std::vector<iclforge::hearth::QueueItem> items;
     items.reserve(found.size());
     for (const std::string& item_path : found) {
         items.push_back(queue_item_from_path(QString::fromStdString(item_path)));
@@ -1413,11 +1413,11 @@ void HearthController::poll() {
     // engine thread's queue every tick when it would.
     if (!output_group_name_.isEmpty()) {
         const std::string id = output_group_name_.toStdString();
-        const bool ready = ac3::hearth::ui::NetworkOutputStatus::instance().ready(id);
+        const bool ready = iclforge::hearth::ui::NetworkOutputStatus::instance().ready(id);
         if (ready != output_group_ready_) {
             output_group_ready_ = ready;
-            engine_->set_output_preferences(ac3::hearth::OutputPreferences{
-                .pinned = ac3::hearth::OutputMode::kNetworkGroup,
+            engine_->set_output_preferences(iclforge::hearth::OutputPreferences{
+                .pinned = iclforge::hearth::OutputMode::kNetworkGroup,
                 .follow_sink = true,
                 .group_name = id,
                 .group_ready = ready});
@@ -1437,7 +1437,7 @@ void HearthController::poll() {
     // "Add folder" of several hundred, which is the shape a capture would
     // show here first.
     AC3_ZONE_BEGIN(poll_queue_zone, "poll: queue");
-    const ac3::hearth::EngineStatus status = engine_->status();
+    const iclforge::hearth::EngineStatus status = engine_->status();
 
     QVariantList rows;
     rows.reserve(static_cast<qsizetype>(status.queue.size()));
@@ -1447,7 +1447,7 @@ void HearthController::poll() {
     const bool queue_changed = rows != queue_;
     queue_ = std::move(rows);
     const int new_current =
-        status.current == ac3::hearth::Queue::kNone ? -1 : static_cast<int>(status.current);
+        status.current == iclforge::hearth::Queue::kNone ? -1 : static_cast<int>(status.current);
     if (queue_changed || new_current != current_index_) {
         current_index_ = new_current;
         emit queueChanged();
@@ -1479,7 +1479,7 @@ void HearthController::poll() {
     // currentMedia follows the item playing now.
     AC3_ZONE_BEGIN(poll_media_zone, "poll: media");
     QString new_now_playing_path;
-    if (status.current != ac3::hearth::Queue::kNone && status.current < status.queue.size()) {
+    if (status.current != iclforge::hearth::Queue::kNone && status.current < status.queue.size()) {
         new_now_playing_path = QString::fromStdString(status.queue[status.current].path);
     }
     if (new_now_playing_path != now_playing_path_) {
@@ -1490,7 +1490,7 @@ void HearthController::poll() {
             now_playing_inspector_->request(now_playing_path_.toStdString());
         }
     }
-    if (const std::optional<ac3::hearth::MediaInfo> latest = now_playing_inspector_->latest();
+    if (const std::optional<iclforge::hearth::MediaInfo> latest = now_playing_inspector_->latest();
         latest && QString::fromStdString(latest->path) == now_playing_path_ &&
         current_media_.value(QStringLiteral("path")).toString() != now_playing_path_) {
         current_media_ = media_info_to_map(*latest);
@@ -1519,7 +1519,7 @@ void HearthController::poll() {
             inspected_item_inspector_->request(inspected_path_.toStdString());
         }
     }
-    if (const std::optional<ac3::hearth::MediaInfo> latest = inspected_item_inspector_->latest();
+    if (const std::optional<iclforge::hearth::MediaInfo> latest = inspected_item_inspector_->latest();
         latest && QString::fromStdString(latest->path) == inspected_path_ &&
         inspected_media_.value(QStringLiteral("path")).toString() != inspected_path_) {
         inspected_media_ = media_info_to_map(*latest);
@@ -1531,7 +1531,7 @@ void HearthController::poll() {
     // Read apart from status() - Engine::position()'s own comment says why -
     // and on its own signal, so the scrubber does not have to sit through
     // queue-row rebuilding sixty times a second just to hear it move.
-    const ac3::hearth::PlayPosition position = engine_->position();
+    const iclforge::hearth::PlayPosition position = engine_->position();
     const qlonglong new_position_ms = static_cast<qlonglong>(position.heard.count());
     const qlonglong new_duration_ms = static_cast<qlonglong>(position.duration.count());
     if (new_position_ms != position_ms_ || new_duration_ms != duration_ms_) {
@@ -1572,16 +1572,16 @@ void HearthController::poll() {
         new_is_lfe.reserve(static_cast<qsizetype>(slots));
         bool has_height = false;
         bool heights_mixed = false;
-        std::optional<ac3::render::Speaker::Realization> shared_realization;
+        std::optional<iclforge::render::Speaker::Realization> shared_realization;
         for (std::size_t slot = 0; slot < slots; ++slot) {
             std::array<char, 32> name{};
             status.layout.slot_name(slot, name);
-            const ac3::render::Speaker& speaker = status.layout.slot(slot);
+            const iclforge::render::Speaker& speaker = status.layout.slot(slot);
             new_labels.push_back(QString::fromLatin1(name.data()));
             new_small.push_back(speaker.small);
-            new_is_lfe.push_back(speaker.kind == ac3::render::Speaker::Kind::kLfe);
+            new_is_lfe.push_back(speaker.kind == iclforge::render::Speaker::Kind::kLfe);
             if (speaker.location.has_value() &&
-                ac3::render::OutputLayout::is_realizable_height(*speaker.location)) {
+                iclforge::render::OutputLayout::is_realizable_height(*speaker.location)) {
                 has_height = true;
                 if (!shared_realization) {
                     shared_realization = speaker.realization;
@@ -1612,13 +1612,13 @@ void HearthController::poll() {
     }
     const auto new_routing_outputs = static_cast<std::uint16_t>(status.routing.outputs());
     QStringList new_output_names;
-    for (const std::string& name : ac3::audio::output_names(status.speaker_mask, new_routing_outputs)) {
+    for (const std::string& name : iclforge::audio::output_names(status.speaker_mask, new_routing_outputs)) {
         new_output_names.push_back(QString::fromStdString(name));
     }
     const QString new_device_name = QString::fromStdString(status.device_name);
     const QString new_device_id = QString::fromStdString(status.device_id);
     const bool new_has_lfe = status.layout.lfe_count() > 0;
-    const int new_identify_slot = status.identify_slot == ac3::hearth::Queue::kNone
+    const int new_identify_slot = status.identify_slot == iclforge::hearth::Queue::kNone
                                       ? -1
                                       : static_cast<int>(status.identify_slot);
     if (layout_changed || new_trim_db != trim_db_ || new_delay_ms != delay_ms_ ||
@@ -1660,7 +1660,7 @@ void HearthController::poll() {
 
     QVariantList new_levels;
     QVariantMap new_loudness;
-    if (const std::optional<ac3::hearth::MeterSnapshot> snapshot = engine_->meters()) {
+    if (const std::optional<iclforge::hearth::MeterSnapshot> snapshot = engine_->meters()) {
         new_levels.reserve(static_cast<qsizetype>(snapshot->levels.size()));
         for (const auto& level : snapshot->levels) {
             new_levels.push_back(channel_level_to_map(level));
@@ -1691,11 +1691,11 @@ void HearthController::poll() {
     QVariantList new_objects;
     int new_objects_placed = 0;
     bool new_has_object_metadata = false;
-    if (const std::optional<ac3::hearth::UnitReport> report = engine_->unit_report()) {
+    if (const std::optional<iclforge::hearth::UnitReport> report = engine_->unit_report()) {
         if (report->ac4) {
             // AC-4's dialnorm is in quarter dB, and down from full scale as
             // A/52's code is: the tile reads "−%1 dB" either way.
-            const ac3::hearth::Ac4UnitReport& ac4 = *report->ac4;
+            const iclforge::hearth::Ac4UnitReport& ac4 = *report->ac4;
             if (ac4.dialnorm_dbfs) {
                 new_this_frame[QStringLiteral("dialnorm")] = -*ac4.dialnorm_dbfs;
             }
@@ -1712,14 +1712,14 @@ void HearthController::poll() {
         }
         if (report->compr) {
             new_this_frame[QStringLiteral("comprDb")] =
-                20.0 * std::log10(ac3::meta::compr_gain(*report->compr));
+                20.0 * std::log10(iclforge::meta::compr_gain(*report->compr));
         }
         if (report->blocks > 0) {
             double dynrng_min_db = std::numeric_limits<double>::infinity();
             double dynrng_max_db = -std::numeric_limits<double>::infinity();
             for (int i = 0; i < report->blocks; ++i) {
                 const double db = 20.0 * std::log10(
-                    ac3::meta::dynrng_gain(report->dynrng[static_cast<std::size_t>(i)]));
+                    iclforge::meta::dynrng_gain(report->dynrng[static_cast<std::size_t>(i)]));
                 dynrng_min_db = std::min(dynrng_min_db, db);
                 dynrng_max_db = std::max(dynrng_max_db, db);
             }
@@ -1737,8 +1737,8 @@ void HearthController::poll() {
 
         if (report->objects) {
             new_has_object_metadata = true;
-            const std::vector<ac3::oba::DisplayObject> described =
-                ac3::oba::describe_objects(*report->objects);
+            const std::vector<iclforge::oba::DisplayObject> described =
+                iclforge::oba::describe_objects(*report->objects);
             new_objects.reserve(static_cast<qsizetype>(described.size()));
             for (const auto& object : described) {
                 new_objects.push_back(display_object_to_map(object));
@@ -1769,17 +1769,17 @@ void HearthController::setDecoderSettings(const QVariantMap& settings) {
     }
     // A fresh read rather than a cached struct: engine_->status() is already
     // a cheap, synchronous snapshot (poll() calls it every tick), and this
-    // avoids hearth_controller.hpp itself needing ac3::hearth::DecoderSettings
-    // by value, which would pull in ac3::render::OutputLayout (through
+    // avoids hearth_controller.hpp itself needing iclforge::hearth::DecoderSettings
+    // by value, which would pull in iclforge::render::OutputLayout (through
     // decoder_settings.hpp) ahead of this header's own Qt includes and
     // reintroduce the slots-macro collision hearth_controller.cpp's own
     // #undef only guards its own translation unit against.
-    const ac3::hearth::DecoderSettings applied = engine_->status().settings;
-    const ac3::hearth::DecoderSettings base =
+    const iclforge::hearth::DecoderSettings applied = engine_->status().settings;
+    const iclforge::hearth::DecoderSettings base =
         requested_decoder_settings_.isEmpty()
             ? applied
             : decoder_settings_from_map(requested_decoder_settings_, applied);
-    const ac3::hearth::DecoderSettings next = decoder_settings_from_map(settings, base);
+    const iclforge::hearth::DecoderSettings next = decoder_settings_from_map(settings, base);
     engine_->set_decoder_settings(next);
     requested_decoder_settings_ = decoder_settings_to_map(next);
     if (requested_decoder_settings_ != decoder_settings_) {
@@ -1810,10 +1810,10 @@ void HearthController::setRoutingAssignment(int slot, int output) {
     if (!engine_ || slot < 0) {
         return;
     }
-    ac3::render::Routing patch = ac3::render::Routing::identity(
+    iclforge::render::Routing patch = iclforge::render::Routing::identity(
                                      static_cast<std::size_t>(routing_.size()),
                                      static_cast<std::size_t>(routing_outputs_))
-                                     .value_or(ac3::render::Routing{});
+                                     .value_or(iclforge::render::Routing{});
     for (qsizetype i = 0; i < routing_.size(); ++i) {
         patch.assign(static_cast<std::size_t>(i), routing_[i].toInt());
     }
@@ -1827,20 +1827,20 @@ void HearthController::clearRouting() {
     }
     // Every slot unpatched, for the device's OWN output count: a patch is
     // refused whole by the sink unless its outputs() matches what is open
-    // (ac3::audio::PcmOutput::set_routing()), so the zero-output patch this
+    // (iclforge::audio::PcmOutput::set_routing()), so the zero-output patch this
     // used to post did nothing at all while a device was open. With nothing
     // open routing_outputs_ is 0, which is that case's width anyway.
-    const std::vector<int> unpatched(static_cast<std::size_t>(routing_.size()), ac3::render::Routing::kUnassigned);
+    const std::vector<int> unpatched(static_cast<std::size_t>(routing_.size()), iclforge::render::Routing::kUnassigned);
     const auto patch =
-        ac3::render::Routing::from_outputs(unpatched, static_cast<std::size_t>(routing_outputs_));
-    engine_->set_routing(patch.value_or(ac3::render::Routing{}));
+        iclforge::render::Routing::from_outputs(unpatched, static_cast<std::size_t>(routing_outputs_));
+    engine_->set_routing(patch.value_or(iclforge::render::Routing{}));
 }
 
 void HearthController::useDeviceOrder() {
     if (!engine_) {
         return;
     }
-    const auto patch = ac3::render::Routing::identity(static_cast<std::size_t>(routing_.size()),
+    const auto patch = iclforge::render::Routing::identity(static_cast<std::size_t>(routing_.size()),
                                                        static_cast<std::size_t>(routing_outputs_));
     if (patch) {
         engine_->set_routing(*patch);
@@ -1849,7 +1849,7 @@ void HearthController::useDeviceOrder() {
 
 void HearthController::refreshOutputDevices() {
     QVariantList rows;
-    const auto devices = test_outputs_ ? test_outputs_->enumerate() : ac3::audio::enumerate_render_devices();
+    const auto devices = test_outputs_ ? test_outputs_->enumerate() : iclforge::audio::enumerate_render_devices();
     if (devices.has_value()) {
         rows.reserve(static_cast<qsizetype>(devices->size()));
         for (const auto& device : *devices) {
@@ -1874,7 +1874,7 @@ void HearthController::selectOutputDevice(const QString& deviceId) {
         emit stateChanged();
     }
     engine_->set_output_preferences(
-        ac3::hearth::OutputPreferences{.pinned = ac3::hearth::OutputMode::kLocalPcm,
+        iclforge::hearth::OutputPreferences{.pinned = iclforge::hearth::OutputMode::kLocalPcm,
                                        .endpoint_id = deviceId.toStdString(),
                                        .follow_sink = true});
 }
@@ -1890,14 +1890,14 @@ void HearthController::selectOutputGroup(const QString& groupId) {
         // Falls back to whatever set_output_preferences's own default
         // (automatic) would otherwise choose - the same "pin nothing" state
         // selectOutputDevice() has no way to reach today.
-        engine_->set_output_preferences(ac3::hearth::OutputPreferences{});
+        engine_->set_output_preferences(iclforge::hearth::OutputPreferences{});
         return;
     }
     const std::string id = groupId.toStdString();
-    output_group_ready_ = ac3::hearth::ui::NetworkOutputStatus::instance().ready(id);
+    output_group_ready_ = iclforge::hearth::ui::NetworkOutputStatus::instance().ready(id);
     emit stateChanged();
-    engine_->set_output_preferences(ac3::hearth::OutputPreferences{
-        .pinned = ac3::hearth::OutputMode::kNetworkGroup,
+    engine_->set_output_preferences(iclforge::hearth::OutputPreferences{
+        .pinned = iclforge::hearth::OutputMode::kNetworkGroup,
         .follow_sink = true,
         .group_name = id,
         .group_ready = output_group_ready_});
@@ -1907,7 +1907,7 @@ void HearthController::setLayoutText(const QString& text) {
     if (!engine_) {
         return;
     }
-    const auto layout = ac3::render::OutputLayout::parse(text.toStdString());
+    const auto layout = iclforge::render::OutputLayout::parse(text.toStdString());
     if (layout) {
         engine_->set_layout(*layout);
     }
@@ -1919,7 +1919,7 @@ void HearthController::setHeights(const QString& realization) {
     }
     // A fresh read, not the (possibly one poll stale) layoutText property -
     // same reasoning as setDecoderSettings()'s own comment.
-    const ac3::render::OutputLayout layout = engine_->status().layout;
+    const iclforge::render::OutputLayout layout = engine_->status().layout;
     engine_->set_layout(layout.with_realization(realization_from_name(realization)));
 }
 
@@ -1927,7 +1927,7 @@ void HearthController::setSpeakerSmall(int slot, bool small) {
     if (!engine_ || slot < 0) {
         return;
     }
-    const ac3::render::OutputLayout layout = engine_->status().layout;
+    const iclforge::render::OutputLayout layout = engine_->status().layout;
     const auto changed = layout.with_small(static_cast<std::size_t>(slot), small);
     if (changed) {
         engine_->set_layout(*changed);
@@ -1978,12 +1978,12 @@ bool HearthController::resumeQueue() const {
 }
 
 void HearthController::setResumeQueue(bool on) {
-    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    iclforge::hearth::EngineSettings settings = current_settings(*store_);
     if (settings.playback.resume_queue == on) {
         return;
     }
     settings.playback.resume_queue = on;
-    ac3::hearth::save_settings(settings, *store_);
+    iclforge::hearth::save_settings(settings, *store_);
     sync_store(*store_, log_);
     emit settingsChanged();
 }
@@ -1993,13 +1993,13 @@ QString HearthController::onFailure() const {
 }
 
 void HearthController::setOnFailure(const QString& policy) {
-    const ac3::hearth::FailurePolicy wanted = failure_policy_from_name(policy);
-    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    const iclforge::hearth::FailurePolicy wanted = failure_policy_from_name(policy);
+    iclforge::hearth::EngineSettings settings = current_settings(*store_);
     if (settings.playback.on_failure == wanted) {
         return;
     }
     settings.playback.on_failure = wanted;
-    ac3::hearth::save_settings(settings, *store_);
+    iclforge::hearth::save_settings(settings, *store_);
     sync_store(*store_, log_);
     if (engine_) {
         engine_->set_on_failure(wanted);
@@ -2012,18 +2012,18 @@ QString HearthController::networkName() const {
 }
 
 void HearthController::setNetworkName(const QString& name) {
-    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    iclforge::hearth::EngineSettings settings = current_settings(*store_);
     const std::string wanted = name.toStdString();
     if (settings.network.name == wanted) {
         return;
     }
     settings.network.name = wanted;
     // settings_rows() (called from save_settings()) runs this through
-    // ac3::hearth::network_name() itself before it is written, so a name
+    // iclforge::hearth::network_name() itself before it is written, so a name
     // typed with leading/trailing spaces or past the 63-byte mDNS label
     // limit is stored trimmed either way; load_settings() re-derives the
     // same trim on every read, so the round trip agrees with what is shown.
-    ac3::hearth::save_settings(settings, *store_);
+    iclforge::hearth::save_settings(settings, *store_);
     sync_store(*store_, log_);
     emit settingsChanged();
 }
@@ -2033,12 +2033,12 @@ bool HearthController::networkDiscover() const {
 }
 
 void HearthController::setNetworkDiscover(bool on) {
-    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    iclforge::hearth::EngineSettings settings = current_settings(*store_);
     if (settings.network.discover == on) {
         return;
     }
     settings.network.discover = on;
-    ac3::hearth::save_settings(settings, *store_);
+    iclforge::hearth::save_settings(settings, *store_);
     sync_store(*store_, log_);
     emit settingsChanged();
 }
@@ -2048,7 +2048,7 @@ QVariantList HearthController::pairingRecords() const {
     if (!pairing_) {
         return rows;
     }
-    for (const ac3::hearth::PairingRecordView& record : pairing_->records()) {
+    for (const iclforge::hearth::PairingRecordView& record : pairing_->records()) {
         QVariantMap row;
         row[QStringLiteral("id")] =
             QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(record.client_key.data()),
@@ -2066,7 +2066,7 @@ void HearthController::forgetPairing(const QString& id) {
         return;
     }
     const QByteArray bytes = QByteArray::fromHex(id.toLatin1());
-    ac3::sendspin::crypto::Key32 key{};
+    iclforge::sendspin::crypto::Key32 key{};
     if (static_cast<std::size_t>(bytes.size()) != key.size()) {
         return;
     }
@@ -2124,16 +2124,16 @@ void HearthController::setTextScale(const QString& scale) {
 // --- diagnostics -------------------------------------------------------
 
 QString HearthController::diagnosticsReport() const {
-    const ac3::hearth::EngineStatus status = engine_ ? engine_->status() : ac3::hearth::EngineStatus{};
+    const iclforge::hearth::EngineStatus status = engine_ ? engine_->status() : iclforge::hearth::EngineStatus{};
 
-    ac3::hearth::ReportFacts facts;
+    iclforge::hearth::ReportFacts facts;
     facts.written_at = QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString();
     const auto started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                                  log_.started_at().time_since_epoch())
                                 .count();
     facts.log_started_at =
         QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(started_ms)).toString(Qt::ISODateWithMs).toStdString();
-    facts.version = ac3::version_details();
+    facts.version = iclforge::version_details();
 
     auto platform_row = [&facts](const char* name, const QString& value) {
         facts.platform.emplace_back(name, value.toStdString());
@@ -2147,13 +2147,13 @@ QString HearthController::diagnosticsReport() const {
 
     facts.output_name = status.device_name;
     facts.output_reason = status.output_reason;
-    facts.settings = ac3::hearth::settings_rows(current_settings(*store_));
+    facts.settings = iclforge::hearth::settings_rows(current_settings(*store_));
 
     // The caller's own secrets, beyond what render_report() already knows to
     // withhold from the engine snapshot (an item's path, kWithheldSettings):
     // where this computer's settings live, and the person's own home folder,
     // each in every spelling withhold_path()/scrub() might meet.
-    ac3::hearth::Secrets secrets;
+    iclforge::hearth::Secrets secrets;
     auto add_secret = [&secrets](const QString& path) {
         if (path.isEmpty()) {
             return;
@@ -2165,7 +2165,7 @@ QString HearthController::diagnosticsReport() const {
     add_secret(QFileInfo(settings_.fileName()).absolutePath());
     add_secret(QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
 
-    return QString::fromStdString(ac3::hearth::render_report(facts, status, log_, secrets));
+    return QString::fromStdString(iclforge::hearth::render_report(facts, status, log_, secrets));
 }
 
 QString HearthController::suggestedDiagnosticsFile() const {
@@ -2207,16 +2207,16 @@ void HearthController::save_on_quit() {
     if (!engine_) {
         return;
     }
-    const ac3::hearth::EngineStatus status = engine_->status();
-    const ac3::hearth::EngineSettings settings = current_settings(*store_);
+    const iclforge::hearth::EngineStatus status = engine_->status();
+    const iclforge::hearth::EngineSettings settings = current_settings(*store_);
     if (settings.playback.resume_queue) {
-        ac3::hearth::save_queue(ac3::hearth::saved_queue(status, engine_->position()), *store_);
+        iclforge::hearth::save_queue(iclforge::hearth::saved_queue(status, engine_->position()), *store_);
     }
     // Unconditional, unlike the queue above: there is no setting to gate it
     // on, the same way trim/delay/crossover/routing have never needed one to
     // take effect for the running engine's whole life (issue #885).
-    ac3::hearth::save_speaker_setup(ac3::hearth::saved_speaker_setup(status), *store_);
+    iclforge::hearth::save_speaker_setup(iclforge::hearth::saved_speaker_setup(status), *store_);
     sync_store(*store_, log_);
 }
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

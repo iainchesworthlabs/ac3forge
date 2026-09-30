@@ -21,7 +21,7 @@
 // keep the init texts exactly as they went over the wire: the prologue is those
 // bytes, never a re-encoding.
 
-namespace ac3::sendspin::handshake {
+namespace iclforge::sendspin::handshake {
 
 inline constexpr std::int64_t kCoreVersion = 1;
 
@@ -94,4 +94,4 @@ struct PskReference {
 inline constexpr std::string_view kMessage2Payload = "{}";
 [[nodiscard]] bool parse_message_2_payload(std::span<const std::uint8_t> payload);
 
-}  // namespace ac3::sendspin::handshake
+}  // namespace iclforge::sendspin::handshake

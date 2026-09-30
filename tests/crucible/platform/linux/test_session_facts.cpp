@@ -43,19 +43,19 @@
 
 namespace fs = std::filesystem;
 
-using ac3::crucible::AppSession;
-using ac3::crucible::fill_from_second_stream;
-using ac3::crucible::image_path_of;
-using ac3::crucible::kept_session;
-using ac3::crucible::parse_ppid;
-using ac3::crucible::process_alive;
-using ac3::crucible::process_exe;
-using ac3::crucible::process_name;
-using ac3::crucible::ProcessFacts;
-using ac3::crucible::ProcessFactsCache;
-using ac3::crucible::ppid_of;
-using ac3::crucible::sounding_session;
-using ac3::crucible::StreamFacts;
+using iclforge::crucible::AppSession;
+using iclforge::crucible::fill_from_second_stream;
+using iclforge::crucible::image_path_of;
+using iclforge::crucible::kept_session;
+using iclforge::crucible::parse_ppid;
+using iclforge::crucible::process_alive;
+using iclforge::crucible::process_exe;
+using iclforge::crucible::process_name;
+using iclforge::crucible::ProcessFacts;
+using iclforge::crucible::ProcessFactsCache;
+using iclforge::crucible::ppid_of;
+using iclforge::crucible::sounding_session;
+using iclforge::crucible::StreamFacts;
 
 namespace {
 
@@ -70,7 +70,7 @@ namespace {
 // the identical case (a concurrent re-run, or two sessions sharing a build
 // tree) would otherwise still share one directory, since `name` alone repeats
 // run to run.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path fake_proc(const std::string& name) {
     const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_proc_" + name + "_" + scratch_pid_suffix());

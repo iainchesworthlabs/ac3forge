@@ -1,5 +1,5 @@
-// ac4::SyncFrameSplitter: the sync frames of a stream that arrives in pieces,
-// held to what ac4::scan() finds in the whole stream at once.
+// iclforge::ac4::SyncFrameSplitter: the sync frames of a stream that arrives in pieces,
+// held to what iclforge::ac4::scan() finds in the whole stream at once.
 
 #include <algorithm>
 #include <cstddef>
@@ -61,22 +61,22 @@ struct Outcome {
 // Feeds `stream` to a splitter over `capacity` bytes of storage in pieces of
 // `piece`, then finishes it.
 Outcome split(std::span<const std::byte> stream, std::size_t piece,
-              std::size_t capacity = ac4::kSplitterRecommendedBuffer) {
+              std::size_t capacity = iclforge::ac4::kSplitterRecommendedBuffer) {
     std::vector<std::byte> storage(capacity);
-    ac4::SyncFrameSplitter splitter{storage};
+    iclforge::ac4::SyncFrameSplitter splitter{storage};
     Outcome out;
     std::size_t fed = 0;
     for (int guard = 0; guard < 10'000'000; ++guard) {
-        const ac4::SyncFrameSplitter::Result next = splitter.next();
+        const iclforge::ac4::SyncFrameSplitter::Result next = splitter.next();
         switch (next.status) {
-            case ac4::SyncFrameSplitter::Status::kFrame:
+            case iclforge::ac4::SyncFrameSplitter::Status::kFrame:
                 out.frames.push_back(
                     Split{.offset = next.frame.offset,
                           .sync_word = next.frame.sync_word,
                           .raw = {next.frame.raw_ac4_frame.begin(), next.frame.raw_ac4_frame.end()},
                           .crc_ok = next.frame.crc_ok});
                 continue;
-            case ac4::SyncFrameSplitter::Status::kNeedMoreInput: {
+            case iclforge::ac4::SyncFrameSplitter::Status::kNeedMoreInput: {
                 if (fed == stream.size()) {
                     splitter.finish();
                     continue;
@@ -89,13 +89,13 @@ Outcome split(std::span<const std::byte> stream, std::size_t piece,
                 fed += n;
                 continue;
             }
-            case ac4::SyncFrameSplitter::Status::kTruncated:
+            case iclforge::ac4::SyncFrameSplitter::Status::kTruncated:
                 out.truncated = true;
                 continue;
-            case ac4::SyncFrameSplitter::Status::kBufferTooSmall:
+            case iclforge::ac4::SyncFrameSplitter::Status::kBufferTooSmall:
                 out.too_small = true;
                 break;
-            case ac4::SyncFrameSplitter::Status::kEndOfStream:
+            case iclforge::ac4::SyncFrameSplitter::Status::kEndOfStream:
                 break;
         }
         break;
@@ -106,7 +106,7 @@ Outcome split(std::span<const std::byte> stream, std::size_t piece,
 
 std::vector<Split> scanned(std::span<const std::byte> stream, std::size_t shift = 0) {
     std::vector<Split> out;
-    for (const ac4::SyncFrame& frame : ac4::scan(stream).frames) {
+    for (const iclforge::ac4::SyncFrame& frame : iclforge::ac4::scan(stream).frames) {
         out.push_back(Split{.offset = frame.offset + shift,
                             .sync_word = frame.sync_word,
                             .raw = {frame.raw_ac4_frame.begin(), frame.raw_ac4_frame.end()},
@@ -152,7 +152,7 @@ TEST_CASE("SyncFrameSplitter skips what is not a frame and counts it", "[ac4][sp
         CHECK_FALSE(out.truncated);
     }
     // Between two frames.
-    const ac4::ScanResult frames = ac4::scan(stream);
+    const iclforge::ac4::ScanResult frames = iclforge::ac4::scan(stream);
     const std::size_t second = frames.frames[1].offset;
     std::vector<std::byte> interrupted(stream.begin(),
                                        stream.begin() + static_cast<std::ptrdiff_t>(second));
@@ -188,7 +188,7 @@ TEST_CASE("SyncFrameSplitter reads an escaped frame size and checks the CRC", "[
     std::vector<std::byte> stream = bytes_of({0xAC, 0x40, 0xFF, 0xFF, 0x01, 0x11, 0x70});
     stream.resize(stream.size() + 70'000, std::byte{0x5A});
     const std::vector<std::byte> good = read_leg("ac4-stereo-64");
-    const ac4::ScanResult first = ac4::scan(good);
+    const iclforge::ac4::ScanResult first = iclforge::ac4::scan(good);
     REQUIRE(first.frames.front().sync_word == 0xAC41);
     const std::size_t end = first.frames.size() > 1 ? first.frames[1].offset : good.size();
     std::vector<std::byte> crc_frame(good.begin(), good.begin() + static_cast<std::ptrdiff_t>(end));

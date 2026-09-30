@@ -32,7 +32,7 @@
 // Linux only, by tests/CMakeLists.txt, the way tests/audio/backend/pipewire rides
 // its backend: the files under test live in a platform directory.
 
-using namespace ac3::crucible;
+using namespace iclforge::crucible;
 
 namespace {
 

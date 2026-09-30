@@ -1,4 +1,4 @@
-// ac3forge_ac4_decoder_* - see ac3forge.h's AC-4 section and ac4::Decoder
+// ac3forge_ac4_decoder_* - see ac3forge.h's AC-4 section and iclforge::ac4::Decoder
 // (src/ac4dec/include/iclforge/ac4dec/decoder.hpp).
 
 #include <memory>
@@ -14,8 +14,8 @@ using ac3forge_c::to_cpp;
 
 namespace {
 
-ac4::OutputConfig output_config_to_cpp(const ac3forge_ac4_output_config_t& config) {
-    return ac4::OutputConfig{
+iclforge::ac4::OutputConfig output_config_to_cpp(const ac3forge_ac4_output_config_t& config) {
+    return iclforge::ac4::OutputConfig{
         .output_level_dbfs = config.has_output_level_dbfs
                                   ? std::optional<double>(config.output_level_dbfs)
                                   : std::nullopt,
@@ -28,8 +28,8 @@ ac4::OutputConfig output_config_to_cpp(const ac3forge_ac4_output_config_t& confi
         .associated_gain_db = config.associated_gain_db};
 }
 
-ac4::PresentationChoice presentation_choice_to_cpp(const ac3forge_ac4_presentation_choice_t& choice) {
-    return ac4::PresentationChoice{
+iclforge::ac4::PresentationChoice presentation_choice_to_cpp(const ac3forge_ac4_presentation_choice_t& choice) {
+    return iclforge::ac4::PresentationChoice{
         .presentation_id = choice.has_presentation_id ? std::optional<int>(choice.presentation_id)
                                                         : std::nullopt,
         .index = choice.has_index ? std::optional<std::size_t>(choice.index) : std::nullopt,
@@ -39,8 +39,8 @@ ac4::PresentationChoice presentation_choice_to_cpp(const ac3forge_ac4_presentati
         .headphones = choice.headphones != 0};
 }
 
-ac4::DecoderConfig decoder_config_to_cpp(const ac3forge_ac4_decoder_config_t& config) {
-    return ac4::DecoderConfig{.output = output_config_to_cpp(config.output),
+iclforge::ac4::DecoderConfig decoder_config_to_cpp(const ac3forge_ac4_decoder_config_t& config) {
+    return iclforge::ac4::DecoderConfig{.output = output_config_to_cpp(config.output),
                               .concealment = to_cpp(config.concealment),
                               .presentation = presentation_choice_to_cpp(config.presentation),
                               .level = config.level,
@@ -50,7 +50,7 @@ ac4::DecoderConfig decoder_config_to_cpp(const ac3forge_ac4_decoder_config_t& co
 // object_index bounds-checked against `objects`; nullptr-safe on every
 // out-parameter, matching ac3forge_decoded_substream_dynamic_object()'s own
 // convention above.
-const ac4::DecodedObject* find_object(const ac3forge_ac4_decoded_frame_t* frame,
+const iclforge::ac4::DecodedObject* find_object(const ac3forge_ac4_decoded_frame_t* frame,
                                        size_t object_index) {
     if (frame == nullptr || object_index >= frame->data.objects.size()) {
         return nullptr;
@@ -66,7 +66,7 @@ void ac3forge_ac4_output_config_init(ac3forge_ac4_output_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const ac4::OutputConfig defaults{};
+    const iclforge::ac4::OutputConfig defaults{};
     *config = ac3forge_ac4_output_config_t{
         .has_output_level_dbfs = defaults.output_level_dbfs.has_value() ? 1 : 0,
         .output_level_dbfs = defaults.output_level_dbfs.value_or(0.0),
@@ -98,7 +98,7 @@ void ac3forge_ac4_decoder_config_init(ac3forge_ac4_decoder_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const ac4::DecoderConfig defaults{};
+    const iclforge::ac4::DecoderConfig defaults{};
     ac3forge_ac4_output_config_init(&config->output);
     config->concealment = ac3forge_c::from_cpp(defaults.concealment);
     ac3forge_ac4_presentation_choice_init(&config->presentation);
@@ -147,8 +147,8 @@ int ac3forge_ac4_decoder_latency_samples(const ac3forge_ac4_decoder_t* decoder) 
 
 const char* ac3forge_ac4_decoder_refusal_reason(const ac3forge_ac4_decoder_t* decoder) {
     // string_view::data() is not guaranteed NUL-terminated in general, but
-    // ac4::Decoder::refusal_reason() is always backed by a string literal
-    // when non-empty (ac4::describe(DecodeError) or a literal `reason`
+    // iclforge::ac4::Decoder::refusal_reason() is always backed by a string literal
+    // when non-empty (iclforge::ac4::describe(DecodeError) or a literal `reason`
     // passed at the point a substream was refused - see ac4dec/src/decoder.cpp),
     // which is. The empty case (a decode() that decoded normally) is
     // std::string_view{} - data() is NULL by the standard there, not a
@@ -287,16 +287,16 @@ void ac3forge_ac4_object_properties_init(ac3forge_ac4_object_properties_t* prope
     if (properties == nullptr) {
         return;
     }
-    // ac4::ObjectProperties' own default member initializers - room centre,
+    // iclforge::ac4::ObjectProperties' own default member initializers - room centre,
     // unity gain, no width - the same "safe default" convention as
     // ac3forge_object_placement_init() above.
-    *properties = ac3forge_c::from_cpp(ac4::ObjectProperties{});
+    *properties = ac3forge_c::from_cpp(iclforge::ac4::ObjectProperties{});
 }
 
 ac3forge_ac4_object_properties_t ac3forge_ac4_decoded_frame_object_properties(
     const ac3forge_ac4_decoded_frame_t* frame, size_t object_index) {
     const auto* object = find_object(frame, object_index);
-    return ac3forge_c::from_cpp(object == nullptr ? ac4::ObjectProperties{} : object->properties);
+    return ac3forge_c::from_cpp(object == nullptr ? iclforge::ac4::ObjectProperties{} : object->properties);
 }
 
 size_t ac3forge_ac4_decoded_frame_object_update_count(const ac3forge_ac4_decoded_frame_t* frame,
@@ -310,10 +310,10 @@ ac3forge_ac4_object_update_t ac3forge_ac4_decoded_frame_object_update(
     ac3forge_ac4_object_update_t out{};
     const auto* object = find_object(frame, object_index);
     if (object == nullptr || update_index >= object->updates.size()) {
-        out.properties = ac3forge_c::from_cpp(ac4::ObjectProperties{});
+        out.properties = ac3forge_c::from_cpp(iclforge::ac4::ObjectProperties{});
         return out;
     }
-    const ac4::ObjectUpdate& update = object->updates[update_index];
+    const iclforge::ac4::ObjectUpdate& update = object->updates[update_index];
     out.sample = update.sample;
     out.ramp_samples = update.ramp_samples;
     out.properties = ac3forge_c::from_cpp(update.properties);
@@ -329,7 +329,7 @@ size_t ac3forge_ac4_decoder_presentation_count(const ac3forge_ac4_decoder_t* dec
 }
 
 namespace {
-const ac4::PresentationInfo* find_presentation(const ac3forge_ac4_decoder_t* decoder,
+const iclforge::ac4::PresentationInfo* find_presentation(const ac3forge_ac4_decoder_t* decoder,
                                                 size_t presentation_index) {
     if (decoder == nullptr) {
         return nullptr;

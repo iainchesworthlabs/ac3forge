@@ -14,7 +14,7 @@
 // judgement about WHAT should happen is transport.cpp's, and this file is
 // about doing it without losing or duplicating a frame.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -43,7 +43,7 @@ constexpr std::size_t kInitialPendingBlocks = 32;
     return "it could not be packed";
 }
 
-[[nodiscard]] bool same_choice(const ac4::PresentationChoice& a, const ac4::PresentationChoice& b) {
+[[nodiscard]] bool same_choice(const iclforge::ac4::PresentationChoice& a, const iclforge::ac4::PresentationChoice& b) {
     return a.presentation_id == b.presentation_id && a.index == b.index &&
            a.language == b.language && a.associated == b.associated &&
            a.associated_type == b.associated_type && a.headphones == b.headphones;
@@ -2070,4 +2070,4 @@ bool Player::stop_for_lost_output(PumpReport& report) {
     return true;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

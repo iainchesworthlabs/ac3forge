@@ -23,7 +23,7 @@
 // them differ (planning/hearth-sendspin-extension.md, C33 to C35), so only the specification's are
 // here.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 // --- artwork@v1 --------------------------------------------------------------------------------
 
@@ -260,4 +260,4 @@ struct Chunk {
 
 }  // namespace source
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

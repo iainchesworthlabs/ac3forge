@@ -39,7 +39,7 @@ namespace {
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
 std::string scratch_pid_suffix() {
-    return ac3::test::platform::process_id();
+    return iclforge::test::platform::process_id();
 }
 
 fs::path scratch_dir() {
@@ -51,7 +51,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -111,13 +111,13 @@ TEST_CASE("orbit writes a 5.1 AC-3 stream of the asked length and reports the or
     // 192 kbit/s at 48 kHz is 768 bytes per 1536-sample frame (Table 5.18).
     const auto bytes = read_bytes(out_path);
     CHECK(bytes.size() == 32u * 768u);
-    const auto frames = ac3::split_frames(bytes);
+    const auto frames = iclforge::split_frames(bytes);
     REQUIRE(frames.has_value());
     CHECK(frames->size() == 32u);
-    ac3::FrameDecoder decoder;
+    iclforge::FrameDecoder decoder;
     const auto first = decoder.decode_frame(frames->front());
     REQUIRE(first.has_value());
-    CHECK(first->acmod == ac3::Acmod::k3_2);
+    CHECK(first->acmod == iclforge::Acmod::k3_2);
     CHECK(first->lfe);
     CHECK(first->bitrate_kbps == 192u);
 }
@@ -149,7 +149,7 @@ TEST_CASE("eac3-silence writes one repeated access unit per frame of the asked d
                     out_path.string()) != std::string::npos);
     const auto bytes = read_bytes(out_path);
     CHECK(bytes.size() == 32u * 768u);
-    const auto frames = ac3::split_frames(bytes);
+    const auto frames = iclforge::split_frames(bytes);
     REQUIRE(frames.has_value());
     CHECK(frames->size() == 32u);
     // Every unit is the same unit - that is what "repeated" means here.

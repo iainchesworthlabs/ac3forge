@@ -15,7 +15,7 @@
 
 #include "iclforge/ac3/io/wav.hpp"
 
-// ac3::io::read_wav/parse_wav (src/ac3/src/io/wav.cpp) is the file every
+// iclforge::io::read_wav/parse_wav (src/ac3/src/io/wav.cpp) is the file every
 // codec-path test in this suite leans on to get real audio in and decoded
 // audio back out - but nothing exercises the parser itself: its RIFF/WAVE
 // validation, its integer decode paths (every other test only round-trips
@@ -36,7 +36,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("wav_reader_" + scratch_pid_suffix());
@@ -154,9 +154,9 @@ TEST_CASE("read_wav round-trips write_wav_f32 exactly, multi-channel", "[wav]") 
     const std::vector<std::vector<float>> channels = {
         {0.25f, -0.75f, 0.5f, -1.0f}, {0.1f, -0.2f, 0.3f, -0.4f}, {0.0f, 1.0f, -1.0f, 0.0f}};
     const auto path = scratch_dir() / "float_round_trip.wav";
-    REQUIRE(ac3::io::write_wav_f32(path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(path.string(), channels, 48000).has_value());
 
-    const auto data = ac3::io::read_wav(path.string());
+    const auto data = iclforge::io::read_wav(path.string());
     REQUIRE(data.has_value());
     CHECK(data->sample_rate == 48000);
     REQUIRE(data->channels.size() == 3);
@@ -182,7 +182,7 @@ TEST_CASE("read_wav decodes PCM16 samples with the documented int16/32768 scalin
     }
     const auto path = write_raw("pcm16.wav", canonical_wav(1, 2, 44100, 16, payload));
 
-    const auto data = ac3::io::read_wav(path.string());
+    const auto data = iclforge::io::read_wav(path.string());
     REQUIRE(data.has_value());
     CHECK(data->sample_rate == 44100);
     REQUIRE(data->channels.size() == 2);
@@ -210,9 +210,9 @@ TEST_CASE("read_wav via write_wav_pcm16_raw's own payload decodes back losslessl
                                        reinterpret_cast<const std::byte*>(payload.data()) +
                                            payload.size());
     const auto path = scratch_dir() / "pcm16_raw.wav";
-    REQUIRE(ac3::io::write_wav_pcm16_raw(path.string(), bytes, 48000, 2).has_value());
+    REQUIRE(iclforge::io::write_wav_pcm16_raw(path.string(), bytes, 48000, 2).has_value());
 
-    const auto data = ac3::io::read_wav(path.string());
+    const auto data = iclforge::io::read_wav(path.string());
     REQUIRE(data.has_value());
     REQUIRE(data->channels.size() == 2);
     REQUIRE(data->frame_count() == 2);
@@ -230,7 +230,7 @@ TEST_CASE("read_wav resolves WAVE_FORMAT_EXTENSIBLE via the SubFormat GUID's lea
         payload.append(reinterpret_cast<const char*>(&value), sizeof(value));
         const auto path =
             write_raw("extensible_float.wav", extensible_wav(3, 1, 48000, 32, payload));
-        const auto data = ac3::io::read_wav(path.string());
+        const auto data = iclforge::io::read_wav(path.string());
         REQUIRE(data.has_value());
         REQUIRE(data->frame_count() == 1);
         CHECK(data->channels[0][0] == -0.5f);
@@ -240,7 +240,7 @@ TEST_CASE("read_wav resolves WAVE_FORMAT_EXTENSIBLE via the SubFormat GUID's lea
         put_le16(payload, static_cast<std::uint16_t>(-16384));
         const auto path =
             write_raw("extensible_pcm16.wav", extensible_wav(1, 1, 48000, 16, payload));
-        const auto data = ac3::io::read_wav(path.string());
+        const auto data = iclforge::io::read_wav(path.string());
         REQUIRE(data.has_value());
         REQUIRE(data->frame_count() == 1);
         CHECK(data->channels[0][0] == Approx(-0.5).margin(1e-6));
@@ -262,7 +262,7 @@ TEST_CASE("read_wav clamps to the bytes actually present when the data chunk ove
     const auto path =
         write_raw("overstated_size.wav", canonical_wav(1, 2, 48000, 16, payload, 1000));
 
-    const auto data = ac3::io::read_wav(path.string());
+    const auto data = iclforge::io::read_wav(path.string());
     REQUIRE(data.has_value());
     REQUIRE(data->channels.size() == 2);
     CHECK(data->frame_count() == 2);  // 8 bytes / (2 ch * 2 bytes) = 2 frames, not the declared 1000
@@ -271,9 +271,9 @@ TEST_CASE("read_wav clamps to the bytes actually present when the data chunk ove
 }
 
 TEST_CASE("read_wav rejects a path that cannot be opened", "[wav]") {
-    const auto result = ac3::io::read_wav((scratch_dir() / "does_not_exist.wav").string());
+    const auto result = iclforge::io::read_wav((scratch_dir() / "does_not_exist.wav").string());
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac3::io::WavError::kCannotOpen);
+    CHECK(result.error() == iclforge::io::WavError::kCannotOpen);
 }
 
 TEST_CASE("read_wav rejects data that is not a RIFF/WAVE file", "[wav]") {
@@ -284,23 +284,23 @@ TEST_CASE("read_wav rejects data that is not a RIFF/WAVE file", "[wav]") {
         bytes.resize(8, '\0');
         bytes += "WAV";
         const auto path = write_raw("too_short.wav", bytes);
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+        CHECK(result.error() == iclforge::io::WavError::kNotRiffWave);
     }
     SECTION("empty file") {
         std::istringstream in;
-        const auto result = ac3::io::read_wav(in);
+        const auto result = iclforge::io::read_wav(in);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+        CHECK(result.error() == iclforge::io::WavError::kNotRiffWave);
     }
     SECTION("wrong magic entirely") {
         std::string bytes(64, '\0');
         bytes.replace(0, 4, "JUNK");
         const auto path = write_raw("wrong_magic.wav", bytes);
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+        CHECK(result.error() == iclforge::io::WavError::kNotRiffWave);
     }
     SECTION("RIFF/WAVE magic present but neither fmt nor data chunk exists") {
         std::string bytes = "RIFF";
@@ -308,9 +308,9 @@ TEST_CASE("read_wav rejects data that is not a RIFF/WAVE file", "[wav]") {
         bytes += "WAVE";
         bytes.append(40, '\0');  // padding, deliberately not "fmt " or "data"
         const auto path = write_raw("no_chunks.wav", bytes);
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+        CHECK(result.error() == iclforge::io::WavError::kNotRiffWave);
     }
 }
 
@@ -327,7 +327,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
         payload.push_back(static_cast<char>(0xFF));  // +127 -> +127/128
         payload.push_back(static_cast<char>(0xC0));  //  +64 -> +0.5
         const auto path = write_raw("depth_pcm8.wav", canonical_wav(1, 1, 48000, 8, payload));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels.size() == 1);
         REQUIRE(result->channels[0].size() == 4);
@@ -344,7 +344,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
         put_le24(payload, 4194304);  // +0.5
         put_le24(payload, -1);       // the sign-extension case a naive shift gets wrong
         const auto path = write_raw("depth_pcm24.wav", canonical_wav(1, 1, 48000, 24, payload));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels[0].size() == 5);
         CHECK(result->channels[0][0] == Approx(-1.0));
@@ -359,7 +359,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
         put_le32(payload, 0u);
         put_le32(payload, 0x40000000u);  // +0.5
         const auto path = write_raw("depth_pcm32.wav", canonical_wav(1, 1, 48000, 32, payload));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels[0].size() == 3);
         CHECK(result->channels[0][0] == Approx(-1.0));
@@ -375,7 +375,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
             put_le32(payload, static_cast<std::uint32_t>(bits >> 32));
         }
         const auto path = write_raw("depth_float64.wav", canonical_wav(3, 1, 48000, 64, payload));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels[0].size() == 4);
         CHECK(result->channels[0][0] == Approx(-1.0));
@@ -392,7 +392,7 @@ TEST_CASE("read_wav decodes every integer PCM depth with the documented scaling"
         put_le24(payload, 2097152);   // frame 1, L = +0.25
         put_le24(payload, -2097152);  // frame 1, R = -0.25
         const auto path = write_raw("pcm24_stereo.wav", canonical_wav(1, 2, 48000, 24, payload));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE(result.has_value());
         REQUIRE(result->channels.size() == 2);
         REQUIRE(result->channels[0].size() == 2);
@@ -411,7 +411,7 @@ TEST_CASE("read_wav unwraps WAVE_FORMAT_EXTENSIBLE around a 24-bit payload", "[w
     put_le24(payload, 4194304);
     put_le24(payload, -8388608);
     const auto path = write_raw("ext_pcm24.wav", extensible_wav(1, 1, 48000, 24, payload));
-    const auto result = ac3::io::read_wav(path.string());
+    const auto result = iclforge::io::read_wav(path.string());
     REQUIRE(result.has_value());
     REQUIRE(result->channels[0].size() == 2);
     CHECK(result->channels[0][0] == Approx(0.5));
@@ -465,7 +465,7 @@ TEST_CASE("read_wav reads an RF64/BW64 file's 64-bit ds64 sizes", "[wav]") {
 
     for (const char* magic : {"RF64", "BW64"}) {
         const auto path = write_raw(std::string{magic} + "_ds64.wav", assemble(magic));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE(result.has_value());
         CHECK(result->sample_rate == 48000);
         REQUIRE(result->channels.size() == 1);
@@ -510,7 +510,7 @@ TEST_CASE("read_wav walks the chunk list rather than searching for a tag anywher
     out += payload;
 
     const auto path = write_raw("decoy_data_chunk.wav", out);
-    const auto result = ac3::io::read_wav(path.string());
+    const auto result = iclforge::io::read_wav(path.string());
     REQUIRE(result.has_value());
     REQUIRE(result->channels.size() == 1);
     REQUIRE(result->channels[0].size() == 2);
@@ -534,9 +534,9 @@ TEST_CASE("read_wav refuses a chunk tag too close to the end to carry its own fi
         bytes += "fmt ";  // offset 48; the format tag would be read at 56
         REQUIRE(bytes.size() == 52);
         const auto path = write_raw("fmt_at_end.wav", bytes);
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+        CHECK(result.error() == iclforge::io::WavError::kNotRiffWave);
     }
     SECTION("\"data\" without its own size field") {
         // A complete, valid fmt chunk, then a "data" tag with only three of
@@ -555,9 +555,9 @@ TEST_CASE("read_wav refuses a chunk tag too close to the end to carry its own fi
         bytes += "data";
         bytes.append(3, char{0});  // one byte short of the declared-size field
         const auto path = write_raw("data_truncated_header.wav", bytes);
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+        CHECK(result.error() == iclforge::io::WavError::kNotRiffWave);
     }
     SECTION("WAVE_FORMAT_EXTENSIBLE tag without the extension it points into") {
         // fmt through `bits` is present (so the 24-byte guard passes) but the
@@ -578,9 +578,9 @@ TEST_CASE("read_wav refuses a chunk tag too close to the end to carry its own fi
         bytes += "data";
         put_le32(bytes, 0);
         const auto path = write_raw("extensible_no_extension.wav", bytes);
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kUnsupportedFormat);
+        CHECK(result.error() == iclforge::io::WavError::kUnsupportedFormat);
     }
 }
 
@@ -588,37 +588,37 @@ TEST_CASE("read_wav rejects sample formats it does not support", "[wav]") {
     SECTION("an unpacked integer width that is not a whole number of bytes") {
         const auto path =
             write_raw("pcm20.wav", canonical_wav(1, 1, 48000, 20, std::string(8, '\0')));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kUnsupportedFormat);
+        CHECK(result.error() == iclforge::io::WavError::kUnsupportedFormat);
     }
     SECTION("a non-PCM, non-float format tag (e.g. ADPCM)") {
         const auto path =
             write_raw("adpcm.wav", canonical_wav(2, 1, 48000, 4, std::string(4, '\0')));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kUnsupportedFormat);
+        CHECK(result.error() == iclforge::io::WavError::kUnsupportedFormat);
     }
     SECTION("PCM at a float-only width") {
         const auto path =
             write_raw("pcm64.wav", canonical_wav(1, 1, 48000, 64, std::string(16, '\0')));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kUnsupportedFormat);
+        CHECK(result.error() == iclforge::io::WavError::kUnsupportedFormat);
     }
     SECTION("IEEE float at an integer-only width") {
         const auto path =
             write_raw("float24.wav", canonical_wav(3, 1, 48000, 24, std::string(6, '\0')));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kUnsupportedFormat);
+        CHECK(result.error() == iclforge::io::WavError::kUnsupportedFormat);
     }
     SECTION("zero channels") {
         const auto path =
             write_raw("zero_channels.wav", canonical_wav(1, 0, 48000, 16, std::string(4, '\0')));
-        const auto result = ac3::io::read_wav(path.string());
+        const auto result = iclforge::io::read_wav(path.string());
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kUnsupportedFormat);
+        CHECK(result.error() == iclforge::io::WavError::kUnsupportedFormat);
     }
 }
 
@@ -629,7 +629,7 @@ TEST_CASE("read_wav(std::istream&) parses the same bytes the path overload does"
         return payload;
     }());
     std::istringstream in{bytes, std::ios::binary};
-    const auto data = ac3::io::read_wav(in);
+    const auto data = iclforge::io::read_wav(in);
     REQUIRE(data.has_value());
     CHECK(data->sample_rate == 22050);
     REQUIRE(data->frame_count() == 1);
@@ -640,23 +640,23 @@ TEST_CASE("write_wav_f32 refuses empty channel data and never touches the filesy
     const auto path = scratch_dir() / "must_not_exist.wav";
     fs::remove(path);
     const std::vector<std::vector<float>> empty;
-    const auto result = ac3::io::write_wav_f32(path.string(), empty, 48000);
+    const auto result = iclforge::io::write_wav_f32(path.string(), empty, 48000);
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac3::io::WavError::kTruncated);
+    CHECK(result.error() == iclforge::io::WavError::kTruncated);
     CHECK_FALSE(fs::exists(path));
 }
 
 TEST_CASE("describe() gives every WavError a distinct, non-empty message", "[wav]") {
-    const std::array errors = {ac3::io::WavError::kCannotOpen, ac3::io::WavError::kNotRiffWave,
-                               ac3::io::WavError::kUnsupportedFormat,
-                               ac3::io::WavError::kTruncated};
+    const std::array errors = {iclforge::io::WavError::kCannotOpen, iclforge::io::WavError::kNotRiffWave,
+                               iclforge::io::WavError::kUnsupportedFormat,
+                               iclforge::io::WavError::kTruncated};
     for (const auto e : errors) {
         CAPTURE(static_cast<int>(e));
-        CHECK_FALSE(ac3::io::describe(e).empty());
+        CHECK_FALSE(iclforge::io::describe(e).empty());
     }
     for (std::size_t i = 0; i < errors.size(); ++i) {
         for (std::size_t j = i + 1; j < errors.size(); ++j) {
-            CHECK(ac3::io::describe(errors[i]) != ac3::io::describe(errors[j]));
+            CHECK(iclforge::io::describe(errors[i]) != iclforge::io::describe(errors[j]));
         }
     }
 }

@@ -16,7 +16,7 @@
 #include "iclforge/ac4dec/decoder.hpp"
 #include "iclforge/ac4enc/encoder.hpp"
 
-// ac4::Encoder (src/ac4enc) over the configurations and input it takes, read
+// iclforge::ac4::Encoder (src/ac4enc) over the configurations and input it takes, read
 // back by the decoder (planning/ac4.md, the encoder's ladder, items 1 and 8).
 //
 // The first bytes choose the configuration - the channel layout, mono to
@@ -67,23 +67,23 @@ constexpr std::size_t kMaxSamples = 2048 * 3;  // per channel: three frames keep
 
 struct Run {
     std::vector<std::vector<std::byte>> frames;
-    std::vector<ac4::SyntaxRecord> trace;
+    std::vector<iclforge::ac4::SyntaxRecord> trace;
     bool refused = false;
 };
 
-Run encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input,
+Run encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input,
            const std::vector<std::vector<float>>* dialogue, std::size_t piece, bool expect_invalid_input) {
     Run run;
-    ac4::EncoderConfig config = base;
-    const auto sink = [&run](const ac4::SyntaxRecord& r) { run.trace.push_back(r); };
+    iclforge::ac4::EncoderConfig config = base;
+    const auto sink = [&run](const iclforge::ac4::SyntaxRecord& r) { run.trace.push_back(r); };
     config.trace = sink;
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     // refusal_reason() names a rule exactly where create() refuses.
-    if (ac4::Encoder::refusal_reason(base).empty() != encoder.has_value()) {
+    if (iclforge::ac4::Encoder::refusal_reason(base).empty() != encoder.has_value()) {
         violated();
     }
     if (!encoder.has_value()) {
-        if (encoder.error() != ac4::EncodeError::kInvalidConfig) {
+        if (encoder.error() != iclforge::ac4::EncodeError::kInvalidConfig) {
             violated();
         }
         run.refused = true;
@@ -104,13 +104,13 @@ Run encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>
         }
         auto frames = dialogue != nullptr ? encoder->encode(views, stem) : encoder->encode(views);
         if (!frames.has_value()) {
-            if (frames.error() != ac4::EncodeError::kInvalidInput || !expect_invalid_input) {
+            if (frames.error() != iclforge::ac4::EncodeError::kInvalidInput || !expect_invalid_input) {
                 violated();
             }
             run.refused = true;
             return run;
         }
-        for (ac4::EncodedFrame& frame : *frames) {
+        for (iclforge::ac4::EncodedFrame& frame : *frames) {
             run.frames.push_back(std::move(frame.raw_ac4_frame));
         }
         if (total == 0) {
@@ -121,7 +121,7 @@ Run encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>
     if (!rest.has_value()) {
         violated();
     }
-    for (ac4::EncodedFrame& frame : *rest) {
+    for (iclforge::ac4::EncodedFrame& frame : *rest) {
         run.frames.push_back(std::move(frame.raw_ac4_frame));
     }
     return run;
@@ -131,7 +131,7 @@ Run encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     Take take{std::span<const std::uint8_t>(data, size)};
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     // The first byte's low bit chooses mono or stereo, as it always has; the
     // two bits over it can widen that to 5.0 or 5.1, or to 7.0 or 7.1 in the
     // 7.X layout the next two bits name (or in none, which is refused), or to
@@ -140,8 +140,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // experimental coding configurations (which the immersive layouts refuse),
     // the one over that for the experimental A-CPL modes, and the top bit for
     // A-JCC.
-    constexpr std::array<ac4::AdditionalPair, 4> kPairs = {ac4::AdditionalPair::kNone, ac4::AdditionalPair::kBack,
-                                                           ac4::AdditionalPair::kWide, ac4::AdditionalPair::kTopFront};
+    constexpr std::array<iclforge::ac4::AdditionalPair, 4> kPairs = {iclforge::ac4::AdditionalPair::kNone, iclforge::ac4::AdditionalPair::kBack,
+                                                           iclforge::ac4::AdditionalPair::kWide, iclforge::ac4::AdditionalPair::kTopFront};
     const std::uint8_t layout = take.byte();
     const bool lfe = (layout & 1) != 0;
     switch ((layout >> 1) & 3) {
@@ -178,15 +178,15 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // ASPX_AJCC), and the experimental A-SPX tools.
     const std::uint8_t interval = take.byte();
     config.iframe_interval = 1 + (interval % 32);
-    constexpr std::array<ac4::CodecMode, 3> kModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kSimple,
-                                                      ac4::CodecMode::kAspx};
-    constexpr std::array<ac4::CodecMode, 4> kAcplModes = {ac4::CodecMode::kAspxAcpl1, ac4::CodecMode::kAspxAcpl2,
-                                                          ac4::CodecMode::kAspxAcpl3, ac4::CodecMode::kAspxAcpl2};
-    constexpr std::array<ac4::CodecMode, 3> kImmersiveModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kScpl,
-                                                               ac4::CodecMode::kAspxScpl};
-    constexpr std::array<ac4::CodecMode, 4> kImmersiveParametric = {
-        ac4::CodecMode::kAspxAcpl1, ac4::CodecMode::kAspxAcpl2, ac4::CodecMode::kAspxAcpl3,
-        ac4::CodecMode::kAspxAjcc};
+    constexpr std::array<iclforge::ac4::CodecMode, 3> kModes = {iclforge::ac4::CodecMode::kAuto, iclforge::ac4::CodecMode::kSimple,
+                                                      iclforge::ac4::CodecMode::kAspx};
+    constexpr std::array<iclforge::ac4::CodecMode, 4> kAcplModes = {iclforge::ac4::CodecMode::kAspxAcpl1, iclforge::ac4::CodecMode::kAspxAcpl2,
+                                                          iclforge::ac4::CodecMode::kAspxAcpl3, iclforge::ac4::CodecMode::kAspxAcpl2};
+    constexpr std::array<iclforge::ac4::CodecMode, 3> kImmersiveModes = {iclforge::ac4::CodecMode::kAuto, iclforge::ac4::CodecMode::kScpl,
+                                                               iclforge::ac4::CodecMode::kAspxScpl};
+    constexpr std::array<iclforge::ac4::CodecMode, 4> kImmersiveParametric = {
+        iclforge::ac4::CodecMode::kAspxAcpl1, iclforge::ac4::CodecMode::kAspxAcpl2, iclforge::ac4::CodecMode::kAspxAcpl3,
+        iclforge::ac4::CodecMode::kAspxAjcc};
     const bool immersive = config.channels > 8;
     const auto mode = static_cast<std::size_t>((interval >> 5) & 3);
     const auto parametric = static_cast<std::size_t>((rate >> 1) & 3);
@@ -205,8 +205,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // top two.
     const std::uint8_t timing = take.byte();
     config.frame_rate_index = timing & 15;
-    constexpr std::array<ac4::RateMode, 4> kRateModes = {ac4::RateMode::kConstant, ac4::RateMode::kAverage,
-                                                         ac4::RateMode::kVariable, ac4::RateMode::kConstant};
+    constexpr std::array<iclforge::ac4::RateMode, 4> kRateModes = {iclforge::ac4::RateMode::kConstant, iclforge::ac4::RateMode::kAverage,
+                                                         iclforge::ac4::RateMode::kVariable, iclforge::ac4::RateMode::kConstant};
     config.rate_mode = kRateModes[static_cast<std::size_t>((timing >> 4) & 3)];
     if ((timing & 0x40) != 0) {
         config.iframes = {3, 1};
@@ -220,9 +220,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const std::uint8_t metadata = take.byte();
     const std::uint8_t values = take.byte();
     if ((metadata & 1) != 0) {
-        ac4::FurtherLoudness loudness;
+        iclforge::ac4::FurtherLoudness loudness;
         loudness.practice =
-            (values & 1) != 0 ? ac4::LoudnessPractice::kEbuR128 : ac4::LoudnessPractice::kNotIndicated;
+            (values & 1) != 0 ? iclforge::ac4::LoudnessPractice::kEbuR128 : iclforge::ac4::LoudnessPractice::kNotIndicated;
         loudness.integrated_lkfs = -static_cast<double>(values % 64) / 2.0;
         loudness.loudness_range_lu = static_cast<double>(values % 32);
         loudness.max_true_peak_dbtp = -static_cast<double>(values % 16);
@@ -231,16 +231,16 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         config.loudness = loudness;
     }
     if ((metadata & 2) != 0) {
-        constexpr std::array<ac4::DrcProfile, 6> kProfiles = {
-            ac4::DrcProfile::kNone,         ac4::DrcProfile::kFilmStandard, ac4::DrcProfile::kFilmLight,
-            ac4::DrcProfile::kMusicStandard, ac4::DrcProfile::kMusicLight,  ac4::DrcProfile::kSpeech};
-        ac4::DrcConfig drc;
+        constexpr std::array<iclforge::ac4::DrcProfile, 6> kProfiles = {
+            iclforge::ac4::DrcProfile::kNone,         iclforge::ac4::DrcProfile::kFilmStandard, iclforge::ac4::DrcProfile::kFilmLight,
+            iclforge::ac4::DrcProfile::kMusicStandard, iclforge::ac4::DrcProfile::kMusicLight,  iclforge::ac4::DrcProfile::kSpeech};
+        iclforge::ac4::DrcConfig drc;
         drc.profile = kProfiles[values % kProfiles.size()];
         if ((metadata & 4) != 0) {
             // Table 161's modes, the third on a profile of its own and the
             // fourth repeating it, and with the next bit gains in each.
             for (int id = 0; id < 4; ++id) {
-                ac4::DrcModeConfig drc_mode;
+                iclforge::ac4::DrcModeConfig drc_mode;
                 drc_mode.id = id;
                 if (id == 2) {
                     drc_mode.profile = kProfiles[static_cast<std::size_t>(values >> 3) % kProfiles.size()];
@@ -260,7 +260,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     if ((metadata & 16) != 0) {
         constexpr std::array<double, 7> kCentre = {3.0, 1.5, 0.0, -1.5, -3.0, -4.5, -6.0};
         constexpr std::array<double, 5> kSurround = {0.0, -1.5, -3.0, -4.5, -6.0};
-        ac4::DownmixConfig downmix;
+        iclforge::ac4::DownmixConfig downmix;
         downmix.loro_centre_db = kCentre[values % kCentre.size()];
         downmix.loro_surround_db = kSurround[values % kSurround.size()];
         if ((values & 0x20) != 0) {
@@ -275,26 +275,26 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         if ((values & 0x40) != 0) {
             constexpr std::array<double, 9> kGains = {0.0, -1.5, -3.0, -4.5, -6.0,
                                                       -9.0, -12.0, -std::numeric_limits<double>::infinity(), -2.0};
-            downmix.height = static_cast<ac4::HeightDownmix>(values % 3);
+            downmix.height = static_cast<iclforge::ac4::HeightDownmix>(values % 3);
             downmix.height_db = kGains[static_cast<std::size_t>(values >> 3) % kGains.size()];
             downmix.back_db = kGains[static_cast<std::size_t>(values) % kGains.size()];
         }
-        downmix.preferred = static_cast<ac4::PreferredDownmix>(values % 4);
+        downmix.preferred = static_cast<iclforge::ac4::PreferredDownmix>(values % 4);
         downmix.loro_correction_db2 = (static_cast<double>(values % 31) - 15.0) / 2.0;
         config.downmix = downmix;
     }
     bool stem = false;
     if ((metadata & 32) != 0) {
-        constexpr std::array<ac4::DialogueMethod, 4> kMethods = {
-            ac4::DialogueMethod::kChannelIndependent, ac4::DialogueMethod::kMid,
-            ac4::DialogueMethod::kCrossChannel, ac4::DialogueMethod::kChannelIndependent};
-        ac4::DialogueConfig dialogue;
+        constexpr std::array<iclforge::ac4::DialogueMethod, 4> kMethods = {
+            iclforge::ac4::DialogueMethod::kChannelIndependent, iclforge::ac4::DialogueMethod::kMid,
+            iclforge::ac4::DialogueMethod::kCrossChannel, iclforge::ac4::DialogueMethod::kChannelIndependent};
+        iclforge::ac4::DialogueConfig dialogue;
         dialogue.method = kMethods[static_cast<std::size_t>((metadata >> 6) & 3)];
-        stem = dialogue.method == ac4::DialogueMethod::kCrossChannel || (values & 0x80) != 0;
-        dialogue.source = stem ? ac4::DialogueSource::kStem : ac4::DialogueSource::kMarkedChannels;
+        stem = dialogue.method == iclforge::ac4::DialogueMethod::kCrossChannel || (values & 0x80) != 0;
+        dialogue.source = stem ? iclforge::ac4::DialogueSource::kStem : iclforge::ac4::DialogueSource::kMarkedChannels;
         dialogue.left = config.channels > 1;
         dialogue.right = config.channels > 1;
-        dialogue.centre = config.channels != 2 && dialogue.method != ac4::DialogueMethod::kMid;
+        dialogue.centre = config.channels != 2 && dialogue.method != iclforge::ac4::DialogueMethod::kMid;
         dialogue.max_gain_db = 3 * (1 + (values & 3));
         config.dialogue = dialogue;
     }
@@ -322,12 +322,12 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     std::size_t presentation_count = 1;
     bool selectable = true;
     if (const int kind = shape & 7; kind != 0) {
-        using Content = ac4::ContentClassifier;
+        using Content = iclforge::ac4::ContentClassifier;
         const bool named = (shape & 0x40) != 0;
         const int side = (shape & 0x10) != 0 ? 3 : ((shape & 8) != 0 ? 2 : 1);
         config.experimental.three_zero = side == 3;
         const auto payload = [detail, shape](int id) {
-            ac4::EmdfPayload p;
+            iclforge::ac4::EmdfPayload p;
             p.id = id;
             // A size past variable_bits(8)'s first 255 where both top bits are set.
             p.bytes.assign(static_cast<std::size_t>(detail % 5) + ((detail & 0xC0) == 0xC0 ? 300U : 0U), shape);
@@ -352,7 +352,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             return p;
         };
         const auto other = [named](Content content, int channels) {
-            ac4::SubstreamConfig s;
+            iclforge::ac4::SubstreamConfig s;
             s.channels = channels;
             s.content = content;
             if (named) {
@@ -360,12 +360,12 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             }
             return s;
         };
-        std::vector<ac4::SubstreamConfig> subs(1);
+        std::vector<iclforge::ac4::SubstreamConfig> subs(1);
         subs[0].channels = config.channels;
         subs[0].codec_mode = config.codec_mode;
         subs[0].content = Content::kCompleteMain;
         subs[0].dialogue = config.dialogue;
-        ac4::SubstreamConfig enhancement;
+        iclforge::ac4::SubstreamConfig enhancement;
         enhancement.enhances = 0;
         switch (kind) {
             case 1:
@@ -398,9 +398,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             subs[0].dialogue->hybrid = true;
             subs[0].dialogue->waveform_share = static_cast<double>(detail & 15) / 15.0;
         }
-        for (ac4::SubstreamConfig& s : subs) {
+        for (iclforge::ac4::SubstreamConfig& s : subs) {
             if (s.content == Content::kDialogue) {
-                ac4::DialogueMix mix;
+                iclforge::ac4::DialogueMix mix;
                 mix.max_gain_db = 3 * (1 + ((detail >> 4) & 3));
                 if ((detail & 0x40) != 0 && s.channels <= 2) {
                     const double degrees = 1.5 * static_cast<double>(detail >> 1);
@@ -409,7 +409,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
                 s.dialogue_mix = mix;
             }
         }
-        ac4::PresentationConfig all;
+        iclforge::ac4::PresentationConfig all;
         if (kind != 7) {
             all.config = kind - 1;
         }
@@ -426,7 +426,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             }
         }
         if ((kind == 3 || kind == 4 || kind == 5) && (detail & 0x20) != 0) {
-            ac4::AssociatedMix mix;
+            iclforge::ac4::AssociatedMix mix;
             mix.main_db = -0.3 * static_cast<double>(detail >> 4);
             if ((detail & 1) != 0) {
                 mix.main_centre_db = -0.3 * static_cast<double>(detail & 15);
@@ -453,21 +453,21 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         if ((flags & 64) != 0) {
             all.enabled = (detail & 1) == 0;
         }
-        std::vector<ac4::PresentationConfig> presentations{all};
+        std::vector<iclforge::ac4::PresentationConfig> presentations{all};
         if ((shape & 0x20) != 0) {
             for (std::size_t i = 0; i < subs.size(); ++i) {
-                ac4::PresentationConfig one;
+                iclforge::ac4::PresentationConfig one;
                 one.substreams = {static_cast<int>(i)};
                 presentations.push_back(one);
             }
         }
         if (kind == 7) {
-            ac4::PresentationConfig emdf;
+            iclforge::ac4::PresentationConfig emdf;
             emdf.config = 6;
             emdf.emdf.push_back(payload(1 + detail % 63));
             presentations.push_back(emdf);
         }
-        selectable = std::ranges::any_of(presentations, [](const ac4::PresentationConfig& p) {
+        selectable = std::ranges::any_of(presentations, [](const iclforge::ac4::PresentationConfig& p) {
             return p.config != 6 && p.enabled.value_or(true);
         });
         presentation_count = presentations.size();
@@ -479,7 +479,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     int inputs = config.channels;
     if (!config.substreams.empty()) {
         inputs = 0;
-        for (const ac4::SubstreamConfig& s : config.substreams) {
+        for (const iclforge::ac4::SubstreamConfig& s : config.substreams) {
             inputs += s.enhances ? 0 : s.channels;
         }
     }
@@ -516,32 +516,32 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
 
     // Every frame reads to the end of every substream, with the encoder's trace.
-    std::vector<ac4::SyntaxRecord> read;
-    const auto sink = [&read](const ac4::SyntaxRecord& r) { read.push_back(r); };
-    ac4::DecoderConfig decoder_config;
+    std::vector<iclforge::ac4::SyntaxRecord> read;
+    const auto sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+    iclforge::ac4::DecoderConfig decoder_config;
     decoder_config.syntax = sink;
-    ac4::Decoder reader(decoder_config);
+    iclforge::ac4::Decoder reader(decoder_config);
     // Every presentation the stream enables can be selected, whatever its
     // md_compat; the flags byte's top bit asks for the last.
-    ac4::DecoderConfig decode_config;
+    iclforge::ac4::DecoderConfig decode_config;
     decode_config.level = 7;
     if ((flags & 0x80) != 0) {
         decode_config.presentation.index = presentation_count - 1;
     }
-    ac4::Decoder decoder(decode_config);
+    iclforge::ac4::Decoder decoder(decode_config);
     for (const std::vector<std::byte>& frame : first.frames) {
         const auto report = reader.parse(frame);
         if (!report.has_value()) {
             violated();
         }
-        for (const ac4::SubstreamReport& substream : report->substreams) {
+        for (const iclforge::ac4::SubstreamReport& substream : report->substreams) {
             if (substream.refused.has_value() || substream.bits_read != substream.size_bits) {
                 violated();
             }
         }
         const auto decoded = decoder.decode(frame);
         if (!selectable) {
-            if (decoded.has_value() || decoded.error() != ac4::DecodeError::kUnsupported) {
+            if (decoded.has_value() || decoded.error() != iclforge::ac4::DecodeError::kUnsupported) {
                 violated();
             }
             continue;

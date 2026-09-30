@@ -31,8 +31,8 @@
 #include "network_group_sink.hpp"
 #include "sink.hpp"
 
-// ac3::hearth::NetworkGroupSink (apps/hearth/engine/network_group_sink.cpp)
-// against a real ac3::sendspin::Group and two real in-process test sinks
+// iclforge::hearth::NetworkGroupSink (apps/hearth/engine/network_group_sink.cpp)
+// against a real iclforge::sendspin::Group and two real in-process test sinks
 // (apps/hearth/testsink), proving what Player itself does not re-prove: that
 // this sink's own translation is correct - planar float to Group::push()'s
 // interleaved int32 (checked sample for sample against the sink's WAV, the
@@ -47,20 +47,20 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace m = ac3::sendspin::messages;
-namespace testsink = ac3::hearth::testsink;
+namespace m = iclforge::sendspin::messages;
+namespace testsink = iclforge::hearth::testsink;
 using namespace std::chrono_literals;
 
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
    public:
     void line(std::string_view /*text*/) override {}
 };
 
-class HostEvents final : public ac3::sendspin::ServerHostEvents {
+class HostEvents final : public iclforge::sendspin::ServerHostEvents {
    public:
-    void on_client(const ac3::sendspin::ClientView& client) override {
+    void on_client(const iclforge::sendspin::ClientView& client) override {
         {
             const std::lock_guard lock(mutex_);
             clients_[client.client_id] = client;
@@ -71,7 +71,7 @@ class HostEvents final : public ac3::sendspin::ServerHostEvents {
     void on_pairing_code_wanted(const std::string& /*client_id*/) override {}
     void on_paired(const std::string& /*client_id*/) override {}
     void on_pairing_ended(const std::string& /*client_id*/,
-                          std::optional<ac3::sendspin::pairing_messages::AbortReason> /*reason*/) override {}
+                          std::optional<iclforge::sendspin::pairing_messages::AbortReason> /*reason*/) override {}
     void on_log(std::string_view /*line*/) override {}
 
     template <class Predicate>
@@ -83,7 +83,7 @@ class HostEvents final : public ac3::sendspin::ServerHostEvents {
    private:
     std::mutex mutex_;
     std::condition_variable changed_;
-    std::map<std::string, ac3::sendspin::ClientView> clients_;
+    std::map<std::string, iclforge::sendspin::ClientView> clients_;
 };
 
 // `unpaired_access` matches test_group.cpp's own two flows: a plain
@@ -112,12 +112,12 @@ std::unique_ptr<testsink::Sink> start_sink(const fs::path& directory, std::strin
 
 // One real, valid AC-3 access unit: a quiet stereo tone, 48 kHz.
 std::vector<std::byte> ac3_unit() {
-    ac3::EncoderConfig config;
-    config.sample_rate = ac3::SampleRate::k48000;
+    iclforge::EncoderConfig config;
+    config.sample_rate = iclforge::SampleRate::k48000;
     config.bitrate_kbps = 192;
-    config.acmod = ac3::Acmod::k2_0;
-    ac3::FrameEncoder encoder{config};
-    std::vector<float> samples(ac3::kSamplesPerFrame);
+    config.acmod = iclforge::Acmod::k2_0;
+    iclforge::FrameEncoder encoder{config};
+    std::vector<float> samples(iclforge::kSamplesPerFrame);
     for (std::size_t n = 0; n < samples.size(); ++n) {
         samples[n] = 0.1F * std::sin(static_cast<float>(n) * 0.1F);
     }
@@ -140,11 +140,11 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     const std::unique_ptr<testsink::Sink> burst_sink =
         start_sink(scratch / "burst", "Burst sink", /*extension_role=*/true, /*unpaired_access=*/false, log);
 
-    std::optional<ac3::sendspin::noise::KeyPair> identity = ac3::sendspin::noise::KeyPair::generate();
+    std::optional<iclforge::sendspin::noise::KeyPair> identity = iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    ac3::sendspin::MemoryServerStore store;
+    iclforge::sendspin::MemoryServerStore store;
     HostEvents events;
-    auto host = ac3::sendspin::ServerHost::start(
+    auto host = iclforge::sendspin::ServerHost::start(
         {.identity = *identity, .name = "Test host", .languages = {"en"}, .address = "127.0.0.1",
          .port = std::nullopt, .advertise = false, .browse = false, .mdns_interfaces = {}},
         store, events);
@@ -172,7 +172,7 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     // negotiated _ac3forge_player@v1 (bursts=true) - if it did not, no
     // burst this test sends can ever reach it, whatever Group does.
     std::size_t clients_with_bursts = 0;
-    for (const ac3::sendspin::ClientView& client : (*host)->clients()) {
+    for (const iclforge::sendspin::ClientView& client : (*host)->clients()) {
         INFO("client " << client.name << " playing=" << client.playing << " bursts=" << client.bursts
                        << " available=" << client.available);
         clients_with_bursts += client.bursts ? 1U : 0U;
@@ -181,20 +181,20 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
 
     // The resolver a real HearthController<->NetworkController coupling
     // would supply - here, just the one group this test made.
-    std::shared_ptr<ac3::sendspin::Group> group = (*host)->make_group("Test group");
-    for (const ac3::sendspin::ClientView& client : (*host)->clients()) {
+    std::shared_ptr<iclforge::sendspin::Group> group = (*host)->make_group("Test group");
+    for (const iclforge::sendspin::ClientView& client : (*host)->clients()) {
         group->add(client.client_id);
     }
-    const std::unique_ptr<ac3::hearth::NetworkGroupSink> sink =
-        ac3::hearth::make_group_sink([&](const std::string&) { return group; });
+    const std::unique_ptr<iclforge::hearth::NetworkGroupSink> sink =
+        iclforge::hearth::make_group_sink([&](const std::string&) { return group; });
 
-    const ac3::render::OutputLayout layout = ac3::render::OutputLayout::named("2.0").value();
+    const iclforge::render::OutputLayout layout = iclforge::render::OutputLayout::named("2.0").value();
     const auto opened = sink->open(
         "Test group",
-        ac3::hearth::NetworkGroupSink::Format{
-            .sample_rate = 48000, .layout = layout, .stream = ac3::audio::BitstreamFormat::kAc3});
+        iclforge::hearth::NetworkGroupSink::Format{
+            .sample_rate = 48000, .layout = layout, .stream = iclforge::audio::BitstreamFormat::kAc3});
     REQUIRE(opened.has_value());
-    CHECK(opened->mode == ac3::hearth::OutputMode::kNetworkGroup);
+    CHECK(opened->mode == iclforge::hearth::OutputMode::kNetworkGroup);
 
     // PCM: a known tone, pushed until every frame is taken, planar - the
     // shape Player::drain_group() itself offers.
@@ -233,7 +233,7 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     // (player.cpp's own comment on iec61937's stable, documented preamble
     // layout explains why that read-back is safe rather than a guess).
     const std::vector<std::byte> unit = ac3_unit();
-    const auto wrapped = ac3::iec61937::wrap_frame(unit);
+    const auto wrapped = iclforge::iec61937::wrap_frame(unit);
     REQUIRE(wrapped.has_value());
     REQUIRE(wrapped->size() >= 8);
     const auto byte_at = [&](std::size_t i) { return std::to_integer<unsigned>((*wrapped)[i]); };
@@ -254,8 +254,8 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     std::int64_t next_frame = 0;
     const auto burst_deadline = std::chrono::steady_clock::now() + 30s;
     while (played_burst() < 1 && std::chrono::steady_clock::now() < burst_deadline) {
-        if (sink->submit_burst(pc, pd, unit, next_frame, ac3::kSamplesPerFrame)) {
-            next_frame += ac3::kSamplesPerFrame;
+        if (sink->submit_burst(pc, pd, unit, next_frame, iclforge::kSamplesPerFrame)) {
+            next_frame += iclforge::kSamplesPerFrame;
         }
         std::this_thread::sleep_for(32ms);
     }
@@ -266,7 +266,7 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     }
     CHECK(played_pcm() == kFrames);
     CHECK(played_burst() >= 1);
-    CHECK(burst_sink->totals().burst_frames >= static_cast<std::uint64_t>(ac3::kSamplesPerFrame));
+    CHECK(burst_sink->totals().burst_frames >= static_cast<std::uint64_t>(iclforge::kSamplesPerFrame));
     // The group's timeline runs through it within its lead (a sink may count
     // a chunk as it arrives, before its time).
     {
@@ -291,11 +291,11 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     // stream/end and the host's going only set off: a read straight after can
     // find the header still saying no frames (Linux GCC in CI, 2026-09-25).
     const std::string wav_path = (scratch / "pcm" / "out" / "stream-1-1.wav").string();
-    auto wav = ac3::io::read_wav(wav_path);
+    auto wav = iclforge::io::read_wav(wav_path);
     const auto wav_deadline = std::chrono::steady_clock::now() + 10s;
     while ((!wav || wav->frame_count() != kFrames) && std::chrono::steady_clock::now() < wav_deadline) {
         std::this_thread::sleep_for(20ms);
-        wav = ac3::io::read_wav(wav_path);
+        wav = iclforge::io::read_wav(wav_path);
     }
     REQUIRE(wav.has_value());
     REQUIRE(wav->frame_count() == kFrames);

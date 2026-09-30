@@ -15,8 +15,8 @@
 // rather than claim a capability nothing can act on.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::cpu {
+namespace iclforge::internal::cpu {
 
 [[nodiscard]] inline bool cpuid_reports_avx2() noexcept { return false; }
 
-}  // namespace ac3::internal::cpu
+}  // namespace iclforge::internal::cpu

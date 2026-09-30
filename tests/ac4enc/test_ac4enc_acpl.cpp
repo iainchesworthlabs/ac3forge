@@ -23,23 +23,23 @@
 
 namespace {
 
-using ac4::SyntaxRecord;
-using ac4::detail::AcplConfig1chFields;
-using ac4::detail::AcplConfig2chFields;
-using ac4::detail::AcplFramingFields;
-using ac4::detail::AcplKind;
-using ac4::detail::AcplParamFields;
-using ac4::detail::BitReader;
-using ac4::detail::BitWriter;
+using iclforge::ac4::SyntaxRecord;
+using iclforge::ac4::detail::AcplConfig1chFields;
+using iclforge::ac4::detail::AcplConfig2chFields;
+using iclforge::ac4::detail::AcplFramingFields;
+using iclforge::ac4::detail::AcplKind;
+using iclforge::ac4::detail::AcplParamFields;
+using iclforge::ac4::detail::BitReader;
+using iclforge::ac4::detail::BitWriter;
 
-// A trace kept here; ac4::SyntaxSink refers to its callable without owning it.
+// A trace kept here; iclforge::ac4::SyntaxSink refers to its callable without owning it.
 struct Recording {
     std::vector<SyntaxRecord> records;
     std::function<void(const SyntaxRecord&)> push = [this](const SyntaxRecord& r) { records.push_back(r); };
     Recording() = default;
     Recording(const Recording&) = delete;
     Recording& operator=(const Recording&) = delete;
-    [[nodiscard]] ac4::SyntaxSink sink() { return ac4::SyntaxSink(push); }
+    [[nodiscard]] iclforge::ac4::SyntaxSink sink() { return iclforge::ac4::SyntaxSink(push); }
 };
 
 void require_same(std::span<const SyntaxRecord> written, std::span<const SyntaxRecord> read) {
@@ -67,13 +67,13 @@ AcplParamFields param(Lcg& rng, AcplKind kind, int quant_mode, const AcplFraming
                       int bands) {
     AcplParamFields out;
     for (int ps = 0; ps < framing.num_param_sets; ++ps) {
-        ac4::detail::AcplSetFields set;
+        iclforge::ac4::detail::AcplSetFields set;
         set.diff_type = rng.below(2);
         for (int i = first; i < bands; ++i) {
             int value = 0;
             do {
                 value = rng.below(81) - 40;
-            } while (!ac4::detail::acpl_codable(kind, quant_mode, set.diff_type, i == first, value));
+            } while (!iclforge::ac4::detail::acpl_codable(kind, quant_mode, set.diff_type, i == first, value));
             set.values.push_back(value);
         }
         out.push_back(set);
@@ -100,28 +100,28 @@ TEST_CASE("acpl_config_1ch() and acpl_data_1ch() read back as written", "[ac4enc
                     CAPTURE(id, partial, quant, qmf_band);
                     const AcplConfig1chFields config{
                         .partial = partial, .num_param_bands_id = id, .quant_mode = quant, .qmf_band = qmf_band};
-                    const int bands = ac4::detail::acpl_num_param_bands(id);
-                    const int first = ac4::detail::acpl_param_band(config);
-                    ac4::detail::AcplData1chFields data;
+                    const int bands = iclforge::ac4::detail::acpl_num_param_bands(id);
+                    const int first = iclforge::ac4::detail::acpl_param_band(config);
+                    iclforge::ac4::detail::AcplData1chFields data;
                     data.framing = framing(rng);
                     data.alpha1 = param(rng, AcplKind::kAlpha, quant, data.framing, first, bands);
                     data.beta1 = param(rng, AcplKind::kBeta, quant, data.framing, first, bands);
 
                     Recording written;
                     BitWriter w(0, written.sink());
-                    ac4::detail::write_acpl_config_1ch(w, config);
-                    ac4::detail::write_acpl_data_1ch(w, config, data);
+                    iclforge::ac4::detail::write_acpl_config_1ch(w, config);
+                    iclforge::ac4::detail::write_acpl_data_1ch(w, config, data);
                     Recording read;
                     BitReader r(w.bytes(), 0, read.sink());
-                    ac4::detail::AcplConfig1ch parsed;
+                    iclforge::ac4::detail::AcplConfig1ch parsed;
                     const auto kind =
-                        partial ? ac4::detail::AcplConfigKind::kPartial : ac4::detail::AcplConfigKind::kFull;
-                    REQUIRE(ac4::detail::parse_acpl_config_1ch(r, kind, parsed));
+                        partial ? iclforge::ac4::detail::AcplConfigKind::kPartial : iclforge::ac4::detail::AcplConfigKind::kFull;
+                    REQUIRE(iclforge::ac4::detail::parse_acpl_config_1ch(r, kind, parsed));
                     CHECK(parsed.num_param_bands == bands);
                     CHECK(parsed.param_band == first);
                     CHECK(parsed.qmf_band == (partial ? qmf_band : 0));
-                    ac4::detail::AcplData1ch out;
-                    REQUIRE(ac4::detail::parse_acpl_data_1ch(r, {}, parsed, out));
+                    iclforge::ac4::detail::AcplData1ch out;
+                    REQUIRE(iclforge::ac4::detail::parse_acpl_data_1ch(r, {}, parsed, out));
                     CHECK_FALSE(r.overflow());
                     CHECK(r.position() == w.bit_position());
                     require_same(written.records, read.records);
@@ -139,8 +139,8 @@ TEST_CASE("acpl_config_2ch() and acpl_data_2ch() read back as written", "[ac4enc
                 CAPTURE(id, quant_0, quant_1);
                 const AcplConfig2chFields config{
                     .num_param_bands_id = id, .quant_mode_0 = quant_0, .quant_mode_1 = quant_1};
-                const int bands = ac4::detail::acpl_num_param_bands(id);
-                ac4::detail::AcplData2chFields data;
+                const int bands = iclforge::ac4::detail::acpl_num_param_bands(id);
+                iclforge::ac4::detail::AcplData2chFields data;
                 data.framing = framing(rng);
                 for (auto& alpha : data.alpha) {
                     alpha = param(rng, AcplKind::kAlpha, quant_0, data.framing, 0, bands);
@@ -155,14 +155,14 @@ TEST_CASE("acpl_config_2ch() and acpl_data_2ch() read back as written", "[ac4enc
 
                 Recording written;
                 BitWriter w(0, written.sink());
-                ac4::detail::write_acpl_config_2ch(w, config);
-                ac4::detail::write_acpl_data_2ch(w, config, data);
+                iclforge::ac4::detail::write_acpl_config_2ch(w, config);
+                iclforge::ac4::detail::write_acpl_data_2ch(w, config, data);
                 Recording read;
                 BitReader r(w.bytes(), 0, read.sink());
-                ac4::detail::AcplConfig2ch parsed;
-                REQUIRE(ac4::detail::parse_acpl_config_2ch(r, parsed));
-                ac4::detail::AcplData2ch out;
-                REQUIRE(ac4::detail::parse_acpl_data_2ch(r, {}, parsed, out));
+                iclforge::ac4::detail::AcplConfig2ch parsed;
+                REQUIRE(iclforge::ac4::detail::parse_acpl_config_2ch(r, parsed));
+                iclforge::ac4::detail::AcplData2ch out;
+                REQUIRE(iclforge::ac4::detail::parse_acpl_data_2ch(r, {}, parsed, out));
                 CHECK_FALSE(r.overflow());
                 CHECK(r.position() == w.bit_position());
                 require_same(written.records, read.records);
@@ -181,7 +181,7 @@ TEST_CASE("the A-CPL writer takes the values each codebook holds and no others",
                     }
                     int count = 0;
                     for (int value = -80; value <= 80; ++value) {
-                        count += ac4::detail::acpl_codable(kind, quant, diff_type, first, value) ? 1 : 0;
+                        count += iclforge::ac4::detail::acpl_codable(kind, quant, diff_type, first, value) ? 1 : 0;
                     }
                     CAPTURE(static_cast<int>(kind), quant, diff_type, first);
                     // The codebook lengths of Annex A.3: alpha 17/33 (F0) and

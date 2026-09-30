@@ -52,7 +52,7 @@
 // client.id names, where the daemon records it from the socket credentials
 // as pipewire.sec.pid. Reading application.process.id off the node, which is
 // the obvious thing, matches nothing and yields an empty list for ever.
-// ac3::pipewire::output_stream_nodes() does the join.
+// iclforge::pipewire::output_stream_nodes() does the join.
 //
 // Those credentials name the application only where the application talks to
 // the daemon itself. An application using the PulseAudio API - which on a
@@ -89,7 +89,7 @@
 // a real application would be. The Behaviour setting that hides background
 // applications simply has nothing to hide here.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -111,8 +111,8 @@ public:
         // stream node - output_stream_nodes() does that join and says why.
         // With the identity: this is where an icon name comes from, and this
         // thread is its own, at twice a second.
-        const auto streams = ac3::pipewire::output_stream_nodes(
-            ac3::pipewire::StreamIdentityDepth::kWithInfo);
+        const auto streams = iclforge::pipewire::output_stream_nodes(
+            iclforge::pipewire::StreamIdentityDepth::kWithInfo);
         const auto self = static_cast<std::uint32_t>(::getpid());
         for (const auto& stream : streams) {
             if (stream.pid == 0) {
@@ -183,4 +183,4 @@ std::shared_ptr<SessionMonitor> platform_session_monitor() {
     return std::make_shared<LinuxSessionMonitor>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

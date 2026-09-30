@@ -38,14 +38,14 @@ TEST_CASE("apply_transient_prenoise overwrites the middle region exactly with th
     const int block_start = (transloc / 256) * 256;
     const int aud_blk_samp_loc = block_start - 256;
     const int pnlen = transloc - aud_blk_samp_loc;
-    const int tot_corr_len = pnlen + translen + ac3::kTransientPrenoiseTC1;
+    const int tot_corr_len = pnlen + translen + iclforge::kTransientPrenoiseTC1;
     const int start_samp = transloc - tot_corr_len;
-    const int synth_start = transloc - 2 * ac3::kTransientPrenoiseTC1 - 2 * pnlen;
+    const int synth_start = transloc - 2 * iclforge::kTransientPrenoiseTC1 - 2 * pnlen;
 
-    ac3::apply_transient_prenoise(pcm, transloc, translen);
+    iclforge::apply_transient_prenoise(pcm, transloc, translen);
 
-    for (int samp = ac3::kTransientPrenoiseTC1;
-        samp < tot_corr_len - ac3::kTransientPrenoiseTC2; ++samp) {
+    for (int samp = iclforge::kTransientPrenoiseTC1;
+        samp < tot_corr_len - iclforge::kTransientPrenoiseTC2; ++samp) {
         CAPTURE(samp);
         const float expected = static_cast<float>(synth_start + samp);
         CHECK(pcm[static_cast<std::size_t>(start_samp + samp)] == expected);
@@ -66,13 +66,13 @@ TEST_CASE("apply_transient_prenoise's first sample is a pure crossfade-out of th
     const int block_start = (transloc / 256) * 256;
     const int aud_blk_samp_loc = block_start - 256;
     const int pnlen = transloc - aud_blk_samp_loc;
-    const int tot_corr_len = pnlen + translen + ac3::kTransientPrenoiseTC1;
+    const int tot_corr_len = pnlen + translen + iclforge::kTransientPrenoiseTC1;
     const int start_samp = transloc - tot_corr_len;
 
     // Make the synthesis-source region distinctly different (0.5) so the
     // blend at samp=0 is visibly close to the ORIGINAL (1), not synth.
-    const int synth_start = transloc - 2 * ac3::kTransientPrenoiseTC1 - 2 * pnlen;
-    for (int i = 0; i < 2 * ac3::kTransientPrenoiseTC1 + pnlen; ++i) {
+    const int synth_start = transloc - 2 * iclforge::kTransientPrenoiseTC1 - 2 * pnlen;
+    for (int i = 0; i < 2 * iclforge::kTransientPrenoiseTC1 + pnlen; ++i) {
         pcm[static_cast<std::size_t>(synth_start + i)] = 0.5f;
     }
     // Restore the original value at exactly start_samp (it was inside the
@@ -82,7 +82,7 @@ TEST_CASE("apply_transient_prenoise's first sample is a pure crossfade-out of th
     // synth_start + synth_len).
     pcm[static_cast<std::size_t>(start_samp)] = 1.0f;
 
-    ac3::apply_transient_prenoise(pcm, transloc, translen);
+    iclforge::apply_transient_prenoise(pcm, transloc, translen);
     // Should have moved only a little way from 1 toward 0.5.
     CHECK(pcm[static_cast<std::size_t>(start_samp)] > 0.9f);
 }
@@ -98,18 +98,18 @@ TEST_CASE("apply_transient_prenoise's last sample is a pure crossfade-in of the 
     const int block_start = (transloc / 256) * 256;
     const int aud_blk_samp_loc = block_start - 256;
     const int pnlen = transloc - aud_blk_samp_loc;
-    const int tot_corr_len = pnlen + translen + ac3::kTransientPrenoiseTC1;
+    const int tot_corr_len = pnlen + translen + iclforge::kTransientPrenoiseTC1;
     const int start_samp = transloc - tot_corr_len;
     const int last = start_samp + tot_corr_len - 1;
     const float original_last = pcm[static_cast<std::size_t>(last)];
 
-    const int synth_start = transloc - 2 * ac3::kTransientPrenoiseTC1 - 2 * pnlen;
-    for (int i = 0; i < 2 * ac3::kTransientPrenoiseTC1 + pnlen; ++i) {
+    const int synth_start = transloc - 2 * iclforge::kTransientPrenoiseTC1 - 2 * pnlen;
+    for (int i = 0; i < 2 * iclforge::kTransientPrenoiseTC1 + pnlen; ++i) {
         pcm[static_cast<std::size_t>(synth_start + i)] = 0.5f;
     }
     pcm[static_cast<std::size_t>(last)] = original_last;  // keep it distinguishable
 
-    ac3::apply_transient_prenoise(pcm, transloc, translen);
+    iclforge::apply_transient_prenoise(pcm, transloc, translen);
     CHECK(pcm[static_cast<std::size_t>(last)] > 0.9f);
 }
 
@@ -128,26 +128,26 @@ TEST_CASE("apply_transient_prenoise reduces energy where a transient's pre-noise
     const int block_start = (transloc / 256) * 256;
     const int aud_blk_samp_loc = block_start - 256;
     const int pnlen = transloc - aud_blk_samp_loc;
-    const int tot_corr_len = pnlen + translen + ac3::kTransientPrenoiseTC1;
+    const int tot_corr_len = pnlen + translen + iclforge::kTransientPrenoiseTC1;
     const int start_samp = transloc - tot_corr_len;
 
     // "Noise" (large alternating values) exactly in the region the
     // straight-overwrite pass will replace.
-    for (int samp = ac3::kTransientPrenoiseTC1; samp < tot_corr_len - ac3::kTransientPrenoiseTC2;
+    for (int samp = iclforge::kTransientPrenoiseTC1; samp < tot_corr_len - iclforge::kTransientPrenoiseTC2;
         ++samp) {
         pcm[static_cast<std::size_t>(start_samp + samp)] = (samp % 2 == 0) ? 1.0f : -1.0f;
     }
     double noisy_energy = 0.0;
-    for (int samp = ac3::kTransientPrenoiseTC1; samp < tot_corr_len - ac3::kTransientPrenoiseTC2;
+    for (int samp = iclforge::kTransientPrenoiseTC1; samp < tot_corr_len - iclforge::kTransientPrenoiseTC2;
         ++samp) {
         const double v = static_cast<double>(pcm[static_cast<std::size_t>(start_samp + samp)]);
         noisy_energy += v * v;
     }
 
-    ac3::apply_transient_prenoise(pcm, transloc, translen);
+    iclforge::apply_transient_prenoise(pcm, transloc, translen);
 
     double corrected_energy = 0.0;
-    for (int samp = ac3::kTransientPrenoiseTC1; samp < tot_corr_len - ac3::kTransientPrenoiseTC2;
+    for (int samp = iclforge::kTransientPrenoiseTC1; samp < tot_corr_len - iclforge::kTransientPrenoiseTC2;
         ++samp) {
         const double v = static_cast<double>(pcm[static_cast<std::size_t>(start_samp + samp)]);
         corrected_energy += v * v;
@@ -168,17 +168,17 @@ TEST_CASE("a correction reaches no further than the header's bounds say",
     int earliest_in_frame = 0;
     int latest_transient = 0;
     for (int transprocloc = 0; transprocloc < 1024; ++transprocloc) {
-        const int transient = ac3::kTransientPrenoiseOrigin + transprocloc * 4;
+        const int transient = iclforge::kTransientPrenoiseOrigin + transprocloc * 4;
         for (int translen = 0; translen < 256; ++translen) {
-            const auto range = ac3::transient_prenoise_range(transient, translen);
+            const auto range = iclforge::transient_prenoise_range(transient, translen);
             REQUIRE(range.last == transient);
             furthest_back = std::max(furthest_back, transient - range.first);
             earliest_in_frame = std::min(earliest_in_frame, range.first);
         }
         latest_transient = std::max(latest_transient, transient);
     }
-    CHECK(furthest_back == ac3::kTransientPrenoiseMaxReach);
+    CHECK(furthest_back == iclforge::kTransientPrenoiseMaxReach);
     CHECK(earliest_in_frame == -1020);
     CHECK(latest_transient == 4348);
-    CHECK(latest_transient > 2 * ac3::kSamplesPerFrame);
+    CHECK(latest_transient > 2 * iclforge::kSamplesPerFrame);
 }

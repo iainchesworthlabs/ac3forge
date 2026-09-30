@@ -30,7 +30,7 @@
 // WHY THIS FILE #include's hearth_controller.cpp INSTEAD OF LINKING IT
 //
 // Every function above is declared inside an ANONYMOUS namespace nested in
-// `namespace ac3::hearth::ui { namespace { ... } }` - internal linkage, so
+// `namespace iclforge::hearth::ui { namespace { ... } }` - internal linkage, so
 // no other translation unit can call them, and there is no header declaring
 // them to link against even if there were. Getting real coverage over the
 // REAL functions (not a second, hand-written copy this project's own QML
@@ -76,12 +76,12 @@
 
 namespace {
 
-using ac3::hearth::DecoderSettings;
-using ac3::hearth::ItemFacts;
-using ac3::hearth::MediaBitstream;
-using ac3::hearth::MediaInfo;
-using ac3::hearth::MediaProgramme;
-using ac3::hearth::QueueItem;
+using iclforge::hearth::DecoderSettings;
+using iclforge::hearth::ItemFacts;
+using iclforge::hearth::MediaBitstream;
+using iclforge::hearth::MediaInfo;
+using iclforge::hearth::MediaProgramme;
+using iclforge::hearth::QueueItem;
 
 // Matches tests/hearth/test_queue.cpp's own QueueItem factory shape (fields
 // set one at a time, not one braced initialiser that both reads and moves
@@ -102,7 +102,7 @@ QueueItem queue_item(std::string path, std::string title) {
 TEST_CASE("queue_row: a playable item carries its facts and the current flag",
           "[hearth][hearth-controller]") {
     QueueItem item = queue_item("C:/music/programme.ec3", "programme.ec3");
-    item.facts.stream = ac3::audio::BitstreamFormat::kEac3;
+    item.facts.stream = iclforge::audio::BitstreamFormat::kEac3;
     item.facts.sample_rate = 48000;
     item.facts.channels = 6;
     item.facts.has_objects = true;
@@ -110,7 +110,7 @@ TEST_CASE("queue_row: a playable item carries its facts and the current flag",
     item.facts.duration = std::chrono::milliseconds(12345);
     item.facts.note = "decoded fine";
 
-    const QVariantMap row = ac3::hearth::ui::queue_row(item, /*current=*/true);
+    const QVariantMap row = iclforge::hearth::ui::queue_row(item, /*current=*/true);
 
     CHECK(row.value(QStringLiteral("path")).toString().toStdString() == "C:/music/programme.ec3");
     CHECK(row.value(QStringLiteral("title")).toString().toStdString() == "programme.ec3");
@@ -133,7 +133,7 @@ TEST_CASE("queue_row: an unplayable item reports why, and bitrateKbps is absent,
     QueueItem item = queue_item("C:/music/unknown.mkv", "unknown.mkv");
     item.facts.unplayable_because = "no AC-3/E-AC-3 track found";
 
-    const QVariantMap row = ac3::hearth::ui::queue_row(item, /*current=*/false);
+    const QVariantMap row = iclforge::hearth::ui::queue_row(item, /*current=*/false);
 
     CHECK_FALSE(row.value(QStringLiteral("playable")).toBool());
     CHECK(row.value(QStringLiteral("note")).toString().toStdString() == "no AC-3/E-AC-3 track found");
@@ -148,9 +148,9 @@ TEST_CASE("queue_row: an unplayable item reports why, and bitrateKbps is absent,
 
 TEST_CASE("queue_row: a plain AC-3 item's badge is A3, not E3", "[hearth][hearth-controller]") {
     QueueItem item = queue_item("a.ac3", "a.ac3");
-    item.facts.stream = ac3::audio::BitstreamFormat::kAc3;
+    item.facts.stream = iclforge::audio::BitstreamFormat::kAc3;
 
-    const QVariantMap row = ac3::hearth::ui::queue_row(item, false);
+    const QVariantMap row = iclforge::hearth::ui::queue_row(item, false);
     CHECK(row.value(QStringLiteral("codecBadge")).toString().toStdString() == "A3");
     // stream_kind_name() names AC-3 and E-AC-3 apart (issue #922's
     // disambiguation), matching codecBadge's own A3/E3 split above - not the
@@ -162,13 +162,13 @@ TEST_CASE("queue_row: a plain AC-3 item's badge is A3, not E3", "[hearth][hearth
 TEST_CASE("queue_row: an AC-4 item's badge is A4 and its kind AC-4, whatever its IEC 61937 rate",
           "[hearth][hearth-controller]") {
     for (const auto format :
-         {ac3::audio::BitstreamFormat::kAc4, ac3::audio::BitstreamFormat::kAc4Hbr4,
-          ac3::audio::BitstreamFormat::kAc4Hbr16}) {
+         {iclforge::audio::BitstreamFormat::kAc4, iclforge::audio::BitstreamFormat::kAc4Hbr4,
+          iclforge::audio::BitstreamFormat::kAc4Hbr16}) {
         QueueItem item = queue_item("a.ac4", "a.ac4");
         item.facts.stream = format;
         // Objects never make an AC-4 item "E-AC-3 JOC".
         item.facts.has_objects = true;
-        const QVariantMap row = ac3::hearth::ui::queue_row(item, false);
+        const QVariantMap row = iclforge::hearth::ui::queue_row(item, false);
         CAPTURE(static_cast<int>(format));
         CHECK(row.value(QStringLiteral("codecBadge")).toString().toStdString() == "A4");
         CHECK(row.value(QStringLiteral("streamKind")).toString().toStdString() == "AC-4");
@@ -179,21 +179,21 @@ TEST_CASE("queue_row: an AC-4 item's badge is A4 and its kind AC-4, whatever its
 
 TEST_CASE("media_container_to_map: an unknown container reads as an elementary stream (empty map)",
           "[hearth][hearth-controller]") {
-    const ac3::apps::ContainerFacts facts{};  // kind defaults to kUnknown
-    const QVariantMap map = ac3::hearth::ui::media_container_to_map(facts);
+    const iclforge::apps::ContainerFacts facts{};  // kind defaults to kUnknown
+    const QVariantMap map = iclforge::hearth::ui::media_container_to_map(facts);
     CHECK(map.isEmpty());
 }
 
 TEST_CASE("media_container_to_map: an mp4 container carries its codec box",
           "[hearth][hearth-controller]") {
-    ac3::apps::ContainerFacts facts;
-    facts.kind = ac3::apps::ContainerKind::kMp4;
+    iclforge::apps::ContainerFacts facts;
+    facts.kind = iclforge::apps::ContainerKind::kMp4;
     facts.track = 2;
     facts.language = "eng";
     facts.sample_rate = 48000;
     facts.channels = 6;
     facts.edits = 3;
-    ac3::apps::CodecBox box;
+    iclforge::apps::CodecBox box;
     box.bsid = 16;
     box.bsmod = 0;
     box.acmod = 7;  // 3/2
@@ -204,7 +204,7 @@ TEST_CASE("media_container_to_map: an mp4 container carries its codec box",
     box.complexity_index = 5;
     facts.codec_box = box;
 
-    const QVariantMap map = ac3::hearth::ui::media_container_to_map(facts);
+    const QVariantMap map = iclforge::hearth::ui::media_container_to_map(facts);
 
     CHECK(map.value(QStringLiteral("track")).toInt() == 2);
     CHECK(map.value(QStringLiteral("language")).toString().toStdString() == "eng");
@@ -224,13 +224,13 @@ TEST_CASE("media_container_to_map: an mp4 container carries its codec box",
 
 TEST_CASE("media_container_to_map: an mpeg-ts container carries programme/PMT/stream-type, not a codec box",
           "[hearth][hearth-controller]") {
-    ac3::apps::ContainerFacts facts;
-    facts.kind = ac3::apps::ContainerKind::kMpegTs;
+    iclforge::apps::ContainerFacts facts;
+    facts.kind = iclforge::apps::ContainerKind::kMpegTs;
     facts.program_number = 1;
     facts.pmt_pid = 0x100;
     facts.stream_type = 0x81;
 
-    const QVariantMap map = ac3::hearth::ui::media_container_to_map(facts);
+    const QVariantMap map = iclforge::hearth::ui::media_container_to_map(facts);
 
     REQUIRE(map.contains(QStringLiteral("mpegts")));
     const QVariantMap ts = map.value(QStringLiteral("mpegts")).toMap();
@@ -249,7 +249,7 @@ TEST_CASE("media_bitstream_to_map: Lo/Ro mix levels and the preferred downmix la
     bits.levels.loro_slev = 1.0;   // 0 dB
     bits.levels.lfe_mix_level_db = 3.0;
 
-    const QVariantMap map = ac3::hearth::ui::media_bitstream_to_map(bits);
+    const QVariantMap map = iclforge::hearth::ui::media_bitstream_to_map(bits);
     REQUIRE(map.contains(QStringLiteral("mixLevels")));
     const QVariantMap mix = map.value(QStringLiteral("mixLevels")).toMap();
     CHECK(mix.value(QStringLiteral("centreDb")).toDouble() ==
@@ -261,7 +261,7 @@ TEST_CASE("media_bitstream_to_map: Lo/Ro mix levels and the preferred downmix la
 
 TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join the Lo/Ro pair",
           "[hearth][hearth-controller]") {
-    // ac3::MixLevels carries ltrt_clev/ltrt_slev (src/ac3/include/iclforge/ac3/decoder/output.hpp)
+    // iclforge::MixLevels carries ltrt_clev/ltrt_slev (src/ac3/include/iclforge/ac3/decoder/output.hpp)
     // alongside loro_clev/loro_slev; media_bitstream_to_map() reads both pairs
     // into mixLevels, the Lo/Ro one unlabelled (centreDb/surroundDb, kept as
     // DecoderEac3.qml's own "This stream" card already reads it) and the
@@ -275,7 +275,7 @@ TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join t
     bits.levels.ltrt_clev = 0.25;  // a clearly different value from loro_clev
     bits.levels.ltrt_slev = 0.25;
 
-    const QVariantMap map = ac3::hearth::ui::media_bitstream_to_map(bits);
+    const QVariantMap map = iclforge::hearth::ui::media_bitstream_to_map(bits);
     const QVariantMap mix = map.value(QStringLiteral("mixLevels")).toMap();
 
     CHECK(mix.value(QStringLiteral("centreDb")).toDouble() ==
@@ -294,17 +294,17 @@ TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join t
 
 TEST_CASE("media_probe_to_map: a constant dialnorm carries no dialnormMaxDb; a varying one does",
           "[hearth][hearth-controller]") {
-    ac3::io::ProbeReport report;
+    iclforge::io::ProbeReport report;
     report.dialnorm.seen = true;
     report.dialnorm.min = -27;
     report.dialnorm.max = -27;
 
-    QVariantMap map = ac3::hearth::ui::media_probe_to_map(report);
+    QVariantMap map = iclforge::hearth::ui::media_probe_to_map(report);
     CHECK(map.value(QStringLiteral("dialnormConstant")).toBool());
     CHECK_FALSE(map.contains(QStringLiteral("dialnormMaxDb")));
 
     report.dialnorm.max = -20;
-    map = ac3::hearth::ui::media_probe_to_map(report);
+    map = iclforge::hearth::ui::media_probe_to_map(report);
     CHECK_FALSE(map.value(QStringLiteral("dialnormConstant")).toBool());
     REQUIRE(map.contains(QStringLiteral("dialnormMaxDb")));
     // dialnorm_db() is a straightforward negation of the raw §-dB word -
@@ -315,13 +315,13 @@ TEST_CASE("media_probe_to_map: a constant dialnorm carries no dialnormMaxDb; a v
 
 TEST_CASE("media_probe_to_map: EMDF payload ids and the reconstructed object count are both exposed",
           "[hearth][hearth-controller]") {
-    ac3::io::ProbeReport report;
+    iclforge::io::ProbeReport report;
     report.emdf_payload_ids = {2, 6, 118};
-    ac3::oba::Program program{};
+    iclforge::oba::Program program{};
     program.dynamic_objects = 5;
     report.program = program;
 
-    const QVariantMap map = ac3::hearth::ui::media_probe_to_map(report);
+    const QVariantMap map = iclforge::hearth::ui::media_probe_to_map(report);
 
     REQUIRE(map.contains(QStringLiteral("emdfPayloadIds")));
     const QVariantList ids = map.value(QStringLiteral("emdfPayloadIds")).toList();
@@ -345,7 +345,7 @@ TEST_CASE("media_probe_to_map: compr/dynrng expose their real min/max range, not
     // reports with identical .seen but very different ranges producing
     // different Min/Max readings confirms the real range is carried
     // through, not collapsed to the bare boolean.
-    ac3::io::ProbeReport narrow;
+    iclforge::io::ProbeReport narrow;
     narrow.compr.seen = true;
     narrow.compr.min = 0;
     narrow.compr.max = 0;
@@ -353,7 +353,7 @@ TEST_CASE("media_probe_to_map: compr/dynrng expose their real min/max range, not
     narrow.dynrng.min = 0;
     narrow.dynrng.max = 0;
 
-    ac3::io::ProbeReport wide;
+    iclforge::io::ProbeReport wide;
     wide.compr.seen = true;
     wide.compr.min = -80;
     wide.compr.max = 80;
@@ -361,8 +361,8 @@ TEST_CASE("media_probe_to_map: compr/dynrng expose their real min/max range, not
     wide.dynrng.min = -128;
     wide.dynrng.max = 127;
 
-    const QVariantMap narrow_map = ac3::hearth::ui::media_probe_to_map(narrow);
-    const QVariantMap wide_map = ac3::hearth::ui::media_probe_to_map(wide);
+    const QVariantMap narrow_map = iclforge::hearth::ui::media_probe_to_map(narrow);
+    const QVariantMap wide_map = iclforge::hearth::ui::media_probe_to_map(wide);
 
     CHECK(narrow_map.value(QStringLiteral("comprSeen")).toBool());
     CHECK(wide_map.value(QStringLiteral("comprSeen")).toBool());
@@ -391,7 +391,7 @@ TEST_CASE("media_probe_to_map: compr/dynrng expose their real min/max range, not
 
 TEST_CASE("media_probe_to_map: tool-usage counters and crc/parse failures round trip",
           "[hearth][hearth-controller]") {
-    ac3::io::ProbeReport report;
+    iclforge::io::ProbeReport report;
     report.bitrate_kbps = 384.0;
     report.access_units = 900;
     report.syncframes = 900;
@@ -402,7 +402,7 @@ TEST_CASE("media_probe_to_map: tool-usage counters and crc/parse failures round 
     report.tools.coupling = 30;
     report.tools.aht_frames = 0;
 
-    const QVariantMap map = ac3::hearth::ui::media_probe_to_map(report);
+    const QVariantMap map = iclforge::hearth::ui::media_probe_to_map(report);
     CHECK(map.value(QStringLiteral("measuredBitrateKbps")).toDouble() == Catch::Approx(384.0));
     CHECK(map.value(QStringLiteral("accessUnits")).toLongLong() == 900);
     CHECK(map.value(QStringLiteral("crcFailures")).toLongLong() == 2);
@@ -416,13 +416,13 @@ TEST_CASE("media_probe_to_map: tool-usage counters and crc/parse failures round 
 
 TEST_CASE("channel_level_to_map: peak/hold/rms/clipped copy across unchanged",
           "[hearth][hearth-controller]") {
-    ac3::analysis::ChannelLevel level;
+    iclforge::analysis::ChannelLevel level;
     level.peak_db = -3.5;
     level.hold_db = -1.0;
     level.rms_db = -12.25;
     level.clipped = true;
 
-    const QVariantMap map = ac3::hearth::ui::channel_level_to_map(level);
+    const QVariantMap map = iclforge::hearth::ui::channel_level_to_map(level);
     CHECK(map.value(QStringLiteral("peakDb")).toDouble() == Catch::Approx(-3.5));
     CHECK(map.value(QStringLiteral("holdDb")).toDouble() == Catch::Approx(-1.0));
     CHECK(map.value(QStringLiteral("rmsDb")).toDouble() == Catch::Approx(-12.25));
@@ -433,14 +433,14 @@ TEST_CASE("channel_level_to_map: peak/hold/rms/clipped copy across unchanged",
 
 TEST_CASE("display_object_to_map: position/gain/flags copy across, and raised follows z > 0",
           "[hearth][hearth-controller]") {
-    ac3::oba::DisplayObject object;
+    iclforge::oba::DisplayObject object;
     object.position = {.x = 0.25, .y = 0.75, .z = 0.5};
     object.gain_db = -6.0;
     object.snap = true;
     object.active = true;
     object.label = "L";
 
-    const QVariantMap map = ac3::hearth::ui::display_object_to_map(object);
+    const QVariantMap map = iclforge::hearth::ui::display_object_to_map(object);
     CHECK(map.value(QStringLiteral("x")).toDouble() == Catch::Approx(0.25));
     CHECK(map.value(QStringLiteral("y")).toDouble() == Catch::Approx(0.75));
     CHECK(map.value(QStringLiteral("z")).toDouble() == Catch::Approx(0.5));
@@ -451,18 +451,18 @@ TEST_CASE("display_object_to_map: position/gain/flags copy across, and raised fo
     CHECK(map.value(QStringLiteral("raised")).toBool());
 
     object.position.z = 0.0;
-    const QVariantMap floor_map = ac3::hearth::ui::display_object_to_map(object);
+    const QVariantMap floor_map = iclforge::hearth::ui::display_object_to_map(object);
     CHECK_FALSE(floor_map.value(QStringLiteral("raised")).toBool());
 
     object.position.z = -0.8;
-    const QVariantMap below_map = ac3::hearth::ui::display_object_to_map(object);
+    const QVariantMap below_map = iclforge::hearth::ui::display_object_to_map(object);
     CHECK_FALSE(below_map.value(QStringLiteral("raised")).toBool());
 }
 
 TEST_CASE("display_object_to_map: a dynamic object's label is empty", "[hearth][hearth-controller]") {
-    ac3::oba::DisplayObject object;
+    iclforge::oba::DisplayObject object;
     object.label = "";  // dynamic (unlabelled) objects, per this function's own comment
-    const QVariantMap map = ac3::hearth::ui::display_object_to_map(object);
+    const QVariantMap map = iclforge::hearth::ui::display_object_to_map(object);
     CHECK(map.value(QStringLiteral("label")).toString().isEmpty());
 }
 
@@ -470,22 +470,22 @@ TEST_CASE("display_object_to_map: a dynamic object's label is empty", "[hearth][
 
 TEST_CASE("decoder settings: every control round-trips through the map", "[hearth][hearth-controller]") {
     DecoderSettings settings;
-    settings.mode = ac3::OperatingMode::kRf;
+    settings.mode = iclforge::OperatingMode::kRf;
     settings.rf_ceiling_db = -18.0;
     settings.drc_cut = 0.3;
     settings.drc_boost = 0.6;
     settings.heavy_compression = true;
     settings.normalise_dialogue = false;
-    settings.stereo_fold = ac3::DownmixTarget::kLtRt;
+    settings.stereo_fold = iclforge::DownmixTarget::kLtRt;
     settings.ltrt_phase_shift = false;
     settings.mix_lfe = true;
-    settings.dual_mono = ac3::hearth::DualMonoChoice::kSecond;
-    settings.objects = ac3::render::ObjectsPolicy::kAlways;
-    settings.joc_domain = ac3::oba::joc::Domain::kMdctBand;
-    settings.concealment = ac3::ConcealmentPolicy::kMute;
+    settings.dual_mono = iclforge::hearth::DualMonoChoice::kSecond;
+    settings.objects = iclforge::render::ObjectsPolicy::kAlways;
+    settings.joc_domain = iclforge::oba::joc::Domain::kMdctBand;
+    settings.concealment = iclforge::ConcealmentPolicy::kMute;
     settings.fast_inverse_transform = false;
 
-    const QVariantMap map = ac3::hearth::ui::decoder_settings_to_map(settings);
+    const QVariantMap map = iclforge::hearth::ui::decoder_settings_to_map(settings);
     CHECK(map.value(QStringLiteral("mode")).toString().toStdString() == "rf");
     CHECK(map.value(QStringLiteral("rfCeilingDb")).toDouble() == Catch::Approx(-18.0));
     CHECK(map.value(QStringLiteral("drcCut")).toDouble() == Catch::Approx(0.3));
@@ -501,31 +501,31 @@ TEST_CASE("decoder settings: every control round-trips through the map", "[heart
     CHECK(map.value(QStringLiteral("concealment")).toString().toStdString() == "mute");
     CHECK_FALSE(map.value(QStringLiteral("fastInverseTransform")).toBool());
 
-    const DecoderSettings round_tripped = ac3::hearth::ui::decoder_settings_from_map(map, DecoderSettings{});
+    const DecoderSettings round_tripped = iclforge::hearth::ui::decoder_settings_from_map(map, DecoderSettings{});
     CHECK(round_tripped == settings);
 }
 
 TEST_CASE("decoder_settings_from_map: a key the map does not carry keeps base's value",
           "[hearth][hearth-controller]") {
     DecoderSettings base;
-    base.mode = ac3::OperatingMode::kCustom;
+    base.mode = iclforge::OperatingMode::kCustom;
     base.rf_ceiling_db = -9.0;
-    base.dual_mono = ac3::hearth::DualMonoChoice::kFirst;
+    base.dual_mono = iclforge::hearth::DualMonoChoice::kFirst;
 
     // An empty map: every field of `base` survives untouched - the same
     // "unknown or missing keys keep the engine's last-known value" contract
     // decoder_settings_from_map()'s own header comment states, and what a
     // settings page's "apply what changed" always relies on.
-    const DecoderSettings unchanged = ac3::hearth::ui::decoder_settings_from_map(QVariantMap{}, base);
+    const DecoderSettings unchanged = iclforge::hearth::ui::decoder_settings_from_map(QVariantMap{}, base);
     CHECK(unchanged == base);
 
     // A map with exactly one key changes only that field.
     QVariantMap partial;
     partial[QStringLiteral("rfCeilingDb")] = -3.0;
-    const DecoderSettings one_field_changed = ac3::hearth::ui::decoder_settings_from_map(partial, base);
+    const DecoderSettings one_field_changed = iclforge::hearth::ui::decoder_settings_from_map(partial, base);
     CHECK(one_field_changed.rf_ceiling_db == Catch::Approx(-3.0));
-    CHECK(one_field_changed.mode == ac3::OperatingMode::kCustom);
-    CHECK(one_field_changed.dual_mono == ac3::hearth::DualMonoChoice::kFirst);
+    CHECK(one_field_changed.mode == iclforge::OperatingMode::kCustom);
+    CHECK(one_field_changed.dual_mono == iclforge::hearth::DualMonoChoice::kFirst);
 }
 
 TEST_CASE("decoder settings: mode/downmix/dual-mono/objects/joc-domain/concealment names are stable",
@@ -534,14 +534,14 @@ TEST_CASE("decoder settings: mode/downmix/dual-mono/objects/joc-domain/concealme
     // SegmentedControl models) - a rename here is a silent breakage there,
     // which is exactly the shape of bug this file exists to catch.
     DecoderSettings settings;
-    for (const auto mode : {ac3::OperatingMode::kLine, ac3::OperatingMode::kRf, ac3::OperatingMode::kCustom}) {
+    for (const auto mode : {iclforge::OperatingMode::kLine, iclforge::OperatingMode::kRf, iclforge::OperatingMode::kCustom}) {
         settings.mode = mode;
-        const QString name = ac3::hearth::ui::decoder_settings_to_map(settings).value(QStringLiteral("mode")).toString();
-        const DecoderSettings back = ac3::hearth::ui::decoder_settings_from_map(
+        const QString name = iclforge::hearth::ui::decoder_settings_to_map(settings).value(QStringLiteral("mode")).toString();
+        const DecoderSettings back = iclforge::hearth::ui::decoder_settings_from_map(
             QVariantMap{{QStringLiteral("mode"), name}}, DecoderSettings{});
         CHECK(back.mode == mode);
     }
-    CHECK(ac3::hearth::ui::decoder_settings_to_map(DecoderSettings{}).value(QStringLiteral("mode"))
+    CHECK(iclforge::hearth::ui::decoder_settings_to_map(DecoderSettings{}).value(QStringLiteral("mode"))
               .toString().toStdString() == "line");
 }
 
@@ -559,10 +559,10 @@ TEST_CASE("decoder settings: AC-4's own controls round-trip through the map",
     settings.ac4.dialogue_enhancement_db = 6.0;
     settings.ac4.normalise = false;
     settings.ac4.output_level_dbfs = -17.0;
-    settings.ac4.drc = ac4::DrcMode::kPortableSpeakers;
+    settings.ac4.drc = iclforge::ac4::DrcMode::kPortableSpeakers;
     settings.ac4.preferred_downmix = true;
 
-    const QVariantMap map = ac3::hearth::ui::decoder_settings_to_map(settings);
+    const QVariantMap map = iclforge::hearth::ui::decoder_settings_to_map(settings);
     CHECK(map.value(QStringLiteral("ac4PresentationId")).toInt() == 7);
     CHECK(map.value(QStringLiteral("ac4PresentationIndex")).toInt() == 2);
     CHECK(map.value(QStringLiteral("ac4Language")).toString().toStdString() == "de");
@@ -576,13 +576,13 @@ TEST_CASE("decoder settings: AC-4's own controls round-trip through the map",
     CHECK(map.value(QStringLiteral("ac4PreferredDownmix")).toBool());
 
     const DecoderSettings round_tripped =
-        ac3::hearth::ui::decoder_settings_from_map(map, DecoderSettings{});
+        iclforge::hearth::ui::decoder_settings_from_map(map, DecoderSettings{});
     CHECK(round_tripped == settings);
 }
 
 TEST_CASE("decoder settings: no presentation chosen reads -1, and -1 or null chooses none",
           "[hearth][hearth-controller]") {
-    const QVariantMap map = ac3::hearth::ui::decoder_settings_to_map(DecoderSettings{});
+    const QVariantMap map = iclforge::hearth::ui::decoder_settings_to_map(DecoderSettings{});
     CHECK(map.value(QStringLiteral("ac4PresentationId")).toInt() == -1);
     CHECK(map.value(QStringLiteral("ac4PresentationIndex")).toInt() == -1);
 
@@ -590,14 +590,14 @@ TEST_CASE("decoder settings: no presentation chosen reads -1, and -1 or null cho
     chosen.ac4.presentation_id = 3;
     chosen.ac4.presentation_index = 1;
     for (const QVariant& none : {QVariant(-1), QVariant(), QVariant::fromValue(nullptr)}) {
-        const DecoderSettings cleared = ac3::hearth::ui::decoder_settings_from_map(
+        const DecoderSettings cleared = iclforge::hearth::ui::decoder_settings_from_map(
             QVariantMap{{QStringLiteral("ac4PresentationId"), none},
                         {QStringLiteral("ac4PresentationIndex"), none}},
             chosen);
         CHECK_FALSE(cleared.ac4.presentation_id.has_value());
         CHECK_FALSE(cleared.ac4.presentation_index.has_value());
     }
-    const DecoderSettings index_zero = ac3::hearth::ui::decoder_settings_from_map(
+    const DecoderSettings index_zero = iclforge::hearth::ui::decoder_settings_from_map(
         QVariantMap{{QStringLiteral("ac4PresentationIndex"), 0}}, DecoderSettings{});
     REQUIRE(index_zero.ac4.presentation_index.has_value());
     CHECK(*index_zero.ac4.presentation_index == 0);
@@ -606,45 +606,45 @@ TEST_CASE("decoder settings: no presentation chosen reads -1, and -1 or null cho
 TEST_CASE("decoder settings: the LFE in a fold is absent from the map until it is set",
           "[hearth][hearth-controller]") {
     // Absent, each page shows its own format's default (DecoderSettings::mix_lfe).
-    CHECK_FALSE(ac3::hearth::ui::decoder_settings_to_map(DecoderSettings{})
+    CHECK_FALSE(iclforge::hearth::ui::decoder_settings_to_map(DecoderSettings{})
                     .contains(QStringLiteral("mixLfe")));
     const DecoderSettings unset =
-        ac3::hearth::ui::decoder_settings_from_map(QVariantMap{}, DecoderSettings{});
+        iclforge::hearth::ui::decoder_settings_from_map(QVariantMap{}, DecoderSettings{});
     CHECK_FALSE(unset.mix_lfe.has_value());
-    const DecoderSettings off = ac3::hearth::ui::decoder_settings_from_map(
+    const DecoderSettings off = iclforge::hearth::ui::decoder_settings_from_map(
         QVariantMap{{QStringLiteral("mixLfe"), false}}, DecoderSettings{});
     REQUIRE(off.mix_lfe.has_value());
     CHECK_FALSE(*off.mix_lfe);
-    CHECK(ac3::hearth::ui::decoder_settings_to_map(off).value(QStringLiteral("mixLfe")) ==
+    CHECK(iclforge::hearth::ui::decoder_settings_to_map(off).value(QStringLiteral("mixLfe")) ==
           QVariant(false));
 }
 
 TEST_CASE("decoder settings: the AC-4 device names are stable", "[hearth][hearth-controller]") {
     // DecoderAc4.qml's drcValues, in its list's order.
-    const std::vector<std::pair<std::string, ac4::DrcMode>> names = {
-        {"auto", ac4::DrcMode::kDefault},
-        {"homeTheatre", ac4::DrcMode::kHomeTheatre},
-        {"flatPanelTv", ac4::DrcMode::kFlatPanelTv},
-        {"portableSpeakers", ac4::DrcMode::kPortableSpeakers},
-        {"portableHeadphones", ac4::DrcMode::kPortableHeadphones},
-        {"off", ac4::DrcMode::kOff}};
+    const std::vector<std::pair<std::string, iclforge::ac4::DrcMode>> names = {
+        {"auto", iclforge::ac4::DrcMode::kDefault},
+        {"homeTheatre", iclforge::ac4::DrcMode::kHomeTheatre},
+        {"flatPanelTv", iclforge::ac4::DrcMode::kFlatPanelTv},
+        {"portableSpeakers", iclforge::ac4::DrcMode::kPortableSpeakers},
+        {"portableHeadphones", iclforge::ac4::DrcMode::kPortableHeadphones},
+        {"off", iclforge::ac4::DrcMode::kOff}};
     for (const auto& [name, mode] : names) {
         CAPTURE(name);
         DecoderSettings settings;
         settings.ac4.drc = mode;
-        CHECK(ac3::hearth::ui::decoder_settings_to_map(settings)
+        CHECK(iclforge::hearth::ui::decoder_settings_to_map(settings)
                   .value(QStringLiteral("ac4Drc"))
                   .toString()
                   .toStdString() == name);
-        const DecoderSettings back = ac3::hearth::ui::decoder_settings_from_map(
+        const DecoderSettings back = iclforge::hearth::ui::decoder_settings_from_map(
             QVariantMap{{QStringLiteral("ac4Drc"), QString::fromStdString(name)}},
             DecoderSettings{});
         CHECK(back.ac4.drc == mode);
     }
     // A name the page does not know is Automatic.
-    CHECK(ac3::hearth::ui::decoder_settings_from_map(
+    CHECK(iclforge::hearth::ui::decoder_settings_from_map(
               QVariantMap{{QStringLiteral("ac4Drc"), QStringLiteral("loud")}}, DecoderSettings{})
-              .ac4.drc == ac4::DrcMode::kDefault);
+              .ac4.drc == iclforge::ac4::DrcMode::kDefault);
 }
 
 // --- media_ac4_to_map(): what the decoder reads of an AC-4 stream -------------
@@ -672,8 +672,8 @@ TEST_CASE("media_ac4_to_map: a DEE stream's frame rate, I-frames, presentation a
     const std::vector<std::byte> bytes =
         read_bytes(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} /
                    "ac4-51-drc-ltrt-192" / "dee.ac4");
-    const ac3::apps::probe_json::Ac4Summary summary = ac3::apps::probe_json::summarize_ac4(bytes);
-    const QVariantMap map = ac3::hearth::ui::media_ac4_to_map(summary);
+    const iclforge::apps::probe_json::Ac4Summary summary = iclforge::apps::probe_json::summarize_ac4(bytes);
+    const QVariantMap map = iclforge::hearth::ui::media_ac4_to_map(summary);
 
     CHECK(map.value(QStringLiteral("syncFrames")).toLongLong() == 120);
     CHECK(map.value(QStringLiteral("frameLength")).toInt() == 2048);
@@ -711,18 +711,18 @@ TEST_CASE("media_ac4_to_map: a DEE stream's frame rate, I-frames, presentation a
 
 TEST_CASE("output_format_to_map: sample rate, channels and every OutputMode name",
           "[hearth][hearth-controller]") {
-    ac3::hearth::OpenOutputFormat format;
+    iclforge::hearth::OpenOutputFormat format;
     format.sample_rate = 48000;
     format.channels = 6;
-    format.mode = ac3::hearth::OutputMode::kBitstreamAsAc3;
+    format.mode = iclforge::hearth::OutputMode::kBitstreamAsAc3;
 
-    const QVariantMap map = ac3::hearth::ui::output_format_to_map(format);
+    const QVariantMap map = iclforge::hearth::ui::output_format_to_map(format);
     CHECK(map.value(QStringLiteral("sampleRate")).toUInt() == 48000u);
     CHECK(map.value(QStringLiteral("channels")).toUInt() == 6u);
     CHECK(map.value(QStringLiteral("mode")).toString().toStdString() == "bitstreamAsAc3");
 
-    format.mode = ac3::hearth::OutputMode::kNone;
-    CHECK(ac3::hearth::ui::output_format_to_map(format).value(QStringLiteral("mode"))
+    format.mode = iclforge::hearth::OutputMode::kNone;
+    CHECK(iclforge::hearth::ui::output_format_to_map(format).value(QStringLiteral("mode"))
               .toString().toStdString() == "none");
 }
 
@@ -730,7 +730,7 @@ TEST_CASE("output_format_to_map: sample rate, channels and every OutputMode name
 
 TEST_CASE("output_device_row: id/name/channels/speakers/rates/passthrough flags all copy across",
           "[hearth][hearth-controller]") {
-    ac3::audio::RenderDeviceInfo device;
+    iclforge::audio::RenderDeviceInfo device;
     device.id = "{device-guid}";
     device.name = "Realtek Digital Output";
     device.is_default = true;
@@ -740,7 +740,7 @@ TEST_CASE("output_device_row: id/name/channels/speakers/rates/passthrough flags 
     device.supports_ac3_passthrough = true;
     device.supports_eac3_passthrough = false;
 
-    const QVariantMap row = ac3::hearth::ui::output_device_row(device);
+    const QVariantMap row = iclforge::hearth::ui::output_device_row(device);
     CHECK(row.value(QStringLiteral("id")).toString().toStdString() == "{device-guid}");
     CHECK(row.value(QStringLiteral("name")).toString().toStdString() == "Realtek Digital Output");
     CHECK(row.value(QStringLiteral("isDefault")).toBool());
@@ -760,7 +760,7 @@ TEST_CASE("media_info_to_map: path/codec/duration/streamSamples/programmes/neste
           "[hearth][hearth-controller]") {
     MediaInfo info;
     info.path = "C:/music/programme.ec3";
-    info.codec = ac3::hearth::MediaCodec::kEac3;
+    info.codec = iclforge::hearth::MediaCodec::kEac3;
     info.sample_rate = 48000;
     info.stream_samples = 96000;  // 2 seconds at 48 kHz, no skip
 
@@ -774,11 +774,11 @@ TEST_CASE("media_info_to_map: path/codec/duration/streamSamples/programmes/neste
     bits.levels.loro_clev = 1.0;
     info.bitstream = bits;
 
-    ac3::io::ProbeReport probe;
+    iclforge::io::ProbeReport probe;
     probe.bitrate_kbps = 640.0;
     info.probe = probe;
 
-    const QVariantMap map = ac3::hearth::ui::media_info_to_map(info);
+    const QVariantMap map = iclforge::hearth::ui::media_info_to_map(info);
     CHECK(map.value(QStringLiteral("path")).toString().toStdString() == "C:/music/programme.ec3");
     REQUIRE(map.contains(QStringLiteral("codec")));
     CHECK(map.value(QStringLiteral("sampleRate")).toUInt() == 48000u);
@@ -807,7 +807,7 @@ TEST_CASE("media_info_to_map: no sample rate means no durationSeconds key at all
     MediaInfo info;
     info.path = "x.ec3";
     // sample_rate left at its default (0).
-    const QVariantMap map = ac3::hearth::ui::media_info_to_map(info);
+    const QVariantMap map = iclforge::hearth::ui::media_info_to_map(info);
     CHECK_FALSE(map.contains(QStringLiteral("sampleRate")));
     CHECK_FALSE(map.contains(QStringLiteral("durationSeconds")));
 }
@@ -817,7 +817,7 @@ TEST_CASE("media_info_to_map: error and note strings only appear when non-empty"
     MediaInfo info;
     info.path = "x.ec3";
     info.error = "could not open file";
-    const QVariantMap map = ac3::hearth::ui::media_info_to_map(info);
+    const QVariantMap map = iclforge::hearth::ui::media_info_to_map(info);
     REQUIRE(map.contains(QStringLiteral("error")));
     CHECK(map.value(QStringLiteral("error")).toString().toStdString() == "could not open file");
     CHECK_FALSE(map.contains(QStringLiteral("note")));

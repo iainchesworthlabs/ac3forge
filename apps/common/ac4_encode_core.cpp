@@ -13,13 +13,13 @@
 #include "ac4_channels.hpp"
 #include "iclforge/mp4/mp4.hpp"
 
-namespace ac3::apps {
+namespace iclforge::apps {
 
-std::vector<ac4::Speaker> ac4_input_speakers(std::size_t count, ac4::AdditionalPair pair,
+std::vector<iclforge::ac4::Speaker> ac4_input_speakers(std::size_t count, iclforge::ac4::AdditionalPair pair,
                                              bool three_zero, bool back_pair) {
-    using S = ac4::Speaker;
+    using S = iclforge::ac4::Speaker;
     const bool seven = count == 7 || count == 8;
-    if (seven && pair == ac4::AdditionalPair::kNone) {
+    if (seven && pair == iclforge::ac4::AdditionalPair::kNone) {
         return {};
     }
     if ((count == 11 || count == 12) && !back_pair) {
@@ -64,17 +64,17 @@ std::vector<ac4::Speaker> ac4_input_speakers(std::size_t count, ac4::AdditionalP
     if (!seven) {
         return out;
     }
-    if (pair == ac4::AdditionalPair::kBack) {
+    if (pair == iclforge::ac4::AdditionalPair::kBack) {
         out.insert(out.end(), {S::kLeftBack, S::kRightBack});
-    } else if (pair == ac4::AdditionalPair::kWide) {
+    } else if (pair == iclforge::ac4::AdditionalPair::kWide) {
         out.insert(out.end(), {S::kLeftWide, S::kRightWide});
-    } else if (pair == ac4::AdditionalPair::kTopFront) {
+    } else if (pair == iclforge::ac4::AdditionalPair::kTopFront) {
         out.insert(out.end(), {S::kTopFrontLeft, S::kTopFrontRight});
     }
     return out;
 }
 
-std::string_view ac4_layout_name(std::size_t count, ac4::AdditionalPair pair) {
+std::string_view ac4_layout_name(std::size_t count, iclforge::ac4::AdditionalPair pair) {
     switch (count) {
         case 1:
             return "mono";
@@ -99,16 +99,16 @@ std::string_view ac4_layout_name(std::size_t count, ac4::AdditionalPair pair) {
     }
     const bool lfe = count == 8;
     switch (pair) {
-        case ac4::AdditionalPair::kBack:
+        case iclforge::ac4::AdditionalPair::kBack:
             return lfe ? "7.1, 3/4/0" : "7.0, 3/4/0";
-        case ac4::AdditionalPair::kWide:
+        case iclforge::ac4::AdditionalPair::kWide:
             return lfe ? "7.1, 5/2/0" : "7.0, 5/2/0";
         default:
             return lfe ? "7.1, 3/2/2" : "7.0, 3/2/2";
     }
 }
 
-std::vector<std::size_t> ac4_wav_index(std::span<const ac4::Speaker> speakers) {
+std::vector<std::size_t> ac4_wav_index(std::span<const iclforge::ac4::Speaker> speakers) {
     const std::vector<std::size_t> wav_order = ac4_order(speakers, ac4_wav_rank);
     std::vector<std::size_t> index(speakers.size());
     for (std::size_t w = 0; w < wav_order.size(); ++w) {
@@ -126,16 +126,16 @@ std::optional<Ac4Measured> measure_ac4_programme(std::span<const std::span<const
     const bool lfe_after_five = count == 8 || count == 10 || count == 12;
     const std::size_t bed = count <= 6 ? count : (lfe_after_five ? 6 : 5);
     const bool lfe = bed == 6;
-    const auto acmod = bed == 1   ? ac3::Acmod::k1_0
-                       : bed == 2 ? ac3::Acmod::k2_0
-                                  : (bed == 3 ? ac3::Acmod::k3_0 : ac3::Acmod::k3_2);
-    const auto rate = sample_rate == 48000 ? ac3::SampleRate::k48000 : ac3::SampleRate::k44100;
-    ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
+    const auto acmod = bed == 1   ? iclforge::Acmod::k1_0
+                       : bed == 2 ? iclforge::Acmod::k2_0
+                                  : (bed == 3 ? iclforge::Acmod::k3_0 : iclforge::Acmod::k3_2);
+    const auto rate = sample_rate == 48000 ? iclforge::SampleRate::k48000 : iclforge::SampleRate::k44100;
+    iclforge::meta::LoudnessMeter meter{rate, acmod, lfe};
     // The meter takes AC-3's coded order, L C R Ls Rs and the LFE last, and
     // the encoder's order for the bed is a 5.1 WAV file's, whose permutation
     // ac3_layout_for gives.
     std::vector<std::size_t> order(bed);
-    if (const auto layout = ac3::io::ac3_layout_for(bed);
+    if (const auto layout = iclforge::io::ac3_layout_for(bed);
         layout && layout->wav_index.size() == bed) {
         order.assign(layout->wav_index.begin(), layout->wav_index.end());
     } else {
@@ -144,9 +144,9 @@ std::optional<Ac4Measured> measure_ac4_programme(std::span<const std::span<const
         }
     }
     // Each pair's true peak after the bed, from a stereo meter of its own.
-    std::vector<ac3::meta::LoudnessMeter> pair_meters;
+    std::vector<iclforge::meta::LoudnessMeter> pair_meters;
     for (std::size_t k = bed; k + 1 < count; k += 2) {
-        pair_meters.emplace_back(rate, ac3::Acmod::k2_0, false);
+        pair_meters.emplace_back(rate, iclforge::Acmod::k2_0, false);
     }
     Ac4Measured out;
     const std::size_t length = channels.empty() ? 0 : channels.front().size();
@@ -179,7 +179,7 @@ std::optional<Ac4Measured> measure_ac4_programme(std::span<const std::span<const
     out.integrated = *integrated;
     out.range = meter.loudness_range();
     out.true_peak = meter.true_peak_dbtp();
-    for (const ac3::meta::LoudnessMeter& pair_meter : pair_meters) {
+    for (const iclforge::meta::LoudnessMeter& pair_meter : pair_meters) {
         if (const auto pair_peak = pair_meter.true_peak_dbtp();
             pair_peak && (!out.true_peak || *pair_peak > *out.true_peak)) {
             out.true_peak = pair_peak;
@@ -192,12 +192,12 @@ double ac4_dialnorm_for(double integrated_lkfs) {
     return std::clamp(std::round(-integrated_lkfs * 4.0) / 4.0, 0.0, 31.75);
 }
 
-ac4::FurtherLoudness ac4_further_loudness(ac4::LoudnessPractice practice,
+iclforge::ac4::FurtherLoudness ac4_further_loudness(iclforge::ac4::LoudnessPractice practice,
                                           const Ac4Measured& measured) {
     const auto held = [](std::optional<double> value, double low) {
         return value ? std::optional<double>{std::clamp(*value, low, 102.3)} : value;
     };
-    ac4::FurtherLoudness loudness;
+    iclforge::ac4::FurtherLoudness loudness;
     loudness.practice = practice;
     loudness.integrated_lkfs = held(measured.integrated, -102.4);
     loudness.loudness_range_lu = held(measured.range, 0.0);
@@ -214,20 +214,20 @@ bool ac4_output_names_mp4(std::string_view out_path) {
                                [&](std::string_view candidate) { return ext == candidate; });
 }
 
-std::expected<Ac4Packaged, Ac4PackageError> package_ac4(std::span<const ac4::EncodedFrame> frames,
-                                                        const ac4::Toc& toc, bool mp4, bool crc) {
+std::expected<Ac4Packaged, Ac4PackageError> package_ac4(std::span<const iclforge::ac4::EncodedFrame> frames,
+                                                        const iclforge::ac4::Toc& toc, bool mp4, bool crc) {
     Ac4Packaged out;
     if (!mp4) {
         out.chunks.reserve(frames.size());
-        for (const ac4::EncodedFrame& frame : frames) {
-            out.chunks.push_back(ac4::sync_frame(frame.raw_ac4_frame, crc));
+        for (const iclforge::ac4::EncodedFrame& frame : frames) {
+            out.chunks.push_back(iclforge::ac4::sync_frame(frame.raw_ac4_frame, crc));
         }
         return out;
     }
     // Part 2 Annex E: each frame a sample, the I-frames its sync samples,
     // timed as Table E.1 says.
     std::vector<std::span<const std::byte>> samples;
-    mp4::MuxOptions options;
+    iclforge::mp4::MuxOptions options;
     samples.reserve(frames.size());
     // Sized, not reserved: GCC 16's -Wnull-dereference flags vector<bool>::reserve on an
     // empty vector.
@@ -236,36 +236,36 @@ std::expected<Ac4Packaged, Ac4PackageError> package_ac4(std::span<const ac4::Enc
         samples.emplace_back(frames[i].raw_ac4_frame);
         options.sync_samples[i] = frames[i].iframe;
     }
-    const auto timing = ac4::media_timing(toc);
+    const auto timing = iclforge::ac4::media_timing(toc);
     if (!timing) {
         return std::unexpected(Ac4PackageError{
             .message = fmt::format("frame_rate_index {} has no MP4 timing (Part 2 Table E.1)",
                                    toc.frame_rate_index),
             .usage = false});
     }
-    std::vector<std::byte> dac4 = ac4::build_dac4(toc);
+    std::vector<std::byte> dac4 = iclforge::ac4::build_dac4(toc);
     if (dac4.empty()) {
         return std::unexpected(Ac4PackageError{
             .message = fmt::format(
                 "the MP4 sample entry's dac4 cannot describe {}; write a raw .ac4 instead",
-                ac4::dac4_refusal(toc)),
+                iclforge::ac4::dac4_refusal(toc)),
             .usage = true});
     }
-    const mp4::AudioTrack track{.codec_id = std::string{mp4::kCodecAc4},
+    const iclforge::mp4::AudioTrack track{.codec_id = std::string{iclforge::mp4::kCodecAc4},
                                 .sample_rate = static_cast<std::uint32_t>(toc.sample_rate_hz),
                                 .channels = 2,  // TS 103 190-2 E.4.5: "should be set to 2"
                                 .samples_per_frame = timing->sample_delta,
                                 .codec_config = std::move(dac4),
-                                .rfc6381 = ac4::rfc6381_codec_string(toc),
+                                .rfc6381 = iclforge::ac4::rfc6381_codec_string(toc),
                                 .timescale = timing->timescale};
     out.rfc6381 = track.rfc6381;
-    auto muxed = mp4::mux(track, samples, options);
+    auto muxed = iclforge::mp4::mux(track, samples, options);
     if (!muxed.has_value()) {
         return std::unexpected(
-            Ac4PackageError{.message = std::string{mp4::describe(muxed.error())}, .usage = false});
+            Ac4PackageError{.message = std::string{iclforge::mp4::describe(muxed.error())}, .usage = false});
     }
     out.chunks.push_back(std::move(*muxed));
     return out;
 }
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

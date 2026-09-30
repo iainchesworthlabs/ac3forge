@@ -94,17 +94,17 @@ std::string hex32(std::uint32_t value) {
     return out.str();
 }
 
-std::string_view kind_name(ac4::SubstreamReport::Kind kind) {
+std::string_view kind_name(iclforge::ac4::SubstreamReport::Kind kind) {
     switch (kind) {
-        case ac4::SubstreamReport::Kind::kAudio:
+        case iclforge::ac4::SubstreamReport::Kind::kAudio:
             return "audio";
-        case ac4::SubstreamReport::Kind::kPresentation:
+        case iclforge::ac4::SubstreamReport::Kind::kPresentation:
             return "presentation";
-        case ac4::SubstreamReport::Kind::kEmdfPayloads:
+        case iclforge::ac4::SubstreamReport::Kind::kEmdfPayloads:
             return "emdf_payloads";
-        case ac4::SubstreamReport::Kind::kHsfExt:
+        case iclforge::ac4::SubstreamReport::Kind::kHsfExt:
             return "hsf_ext";
-        case ac4::SubstreamReport::Kind::kOamd:
+        case iclforge::ac4::SubstreamReport::Kind::kOamd:
             return "oamd";
         default:
             return "other";
@@ -170,7 +170,7 @@ void check_stream(const Directories& dirs, const fs::path& golden_path, const ch
     const std::vector<std::byte> bytes = read_file(dirs.streams / golden.stream);
     REQUIRE_FALSE(bytes.empty());
 
-    const ac4::ScanResult scan = ac4::scan(bytes);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(bytes);
     REQUIRE_FALSE(scan.stopped_at.has_value());
 
     std::ofstream trace;
@@ -180,7 +180,7 @@ void check_stream(const Directories& dirs, const fs::path& golden_path, const ch
 
     int frame_index = 0;
     std::map<int, Digest> digests;
-    const auto sink = [&](const ac4::SyntaxRecord& record) {
+    const auto sink = [&](const iclforge::ac4::SyntaxRecord& record) {
         Digest& digest = digests[record.substream];
         ++digest.records;
         digest.end_bit = std::uint64_t{record.bit_offset} + record.bits;
@@ -201,9 +201,9 @@ void check_stream(const Directories& dirs, const fs::path& golden_path, const ch
                   << record.bits << '\t' << record.value << '\t' << record.name << '\n';
         }
     };
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.syntax = sink;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
 
     std::vector<std::string> produced;
     // Refusals other than kUnsupported, and substreams read to a place other
@@ -216,16 +216,16 @@ void check_stream(const Directories& dirs, const fs::path& golden_path, const ch
     // no digest lines, as the Python parser skips one it cannot read; the
     // digests then say whether the two refused the same frames.
     Problems toc_refusals;
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         digests.clear();
         const auto report = decoder.parse(frame.raw_ac4_frame);
         if (!report) {
             toc_refusals.add("frame " + std::to_string(frame_index) + ": " +
-                             std::string{ac4::describe(report.error())});
+                             std::string{iclforge::ac4::describe(report.error())});
             ++frame_index;
             continue;
         }
-        for (const ac4::SubstreamReport& substream : report->substreams) {
+        for (const iclforge::ac4::SubstreamReport& substream : report->substreams) {
             const std::string where =
                 "frame " + std::to_string(frame_index) + ", substream " + std::to_string(substream.index);
             if (!substream.refused) {
@@ -233,7 +233,7 @@ void check_stream(const Directories& dirs, const fs::path& golden_path, const ch
                     short_reads.add(where + ": read " + std::to_string(substream.bits_read) + " of " +
                                     std::to_string(substream.size_bits) + " bits");
                 }
-            } else if (*substream.refused == ac4::DecodeError::kUnsupported) {
+            } else if (*substream.refused == iclforge::ac4::DecodeError::kUnsupported) {
                 unsupported.add(where + ": " + std::string{substream.refused_reason});
             } else {
                 refusals.add(where + ": " + std::string{substream.refused_reason});

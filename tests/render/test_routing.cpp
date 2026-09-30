@@ -17,7 +17,7 @@
 
 namespace {
 
-using ac3::render::Routing;
+using iclforge::render::Routing;
 
 // Planar blocks of constant value, one per channel: channel c holds c + 1.
 struct Rendered {

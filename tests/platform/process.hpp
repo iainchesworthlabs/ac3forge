@@ -20,7 +20,7 @@
 // See this directory's WIN32/else split in tests/CMakeLists.txt for the
 // selection itself.
 
-namespace ac3::test::platform {
+namespace iclforge::test::platform {
 
 // This process's OS-assigned id, rendered as a string.
 //
@@ -73,4 +73,4 @@ int run_shell(std::string_view command);
 void set_environment(std::string_view name, std::string_view value);
 void unset_environment(std::string_view name);
 
-}  // namespace ac3::test::platform
+}  // namespace iclforge::test::platform

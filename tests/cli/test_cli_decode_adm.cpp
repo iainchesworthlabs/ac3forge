@@ -48,7 +48,7 @@ namespace {
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy shares (this project's
 // established per-file test-helper convention - test_cli_atmos_adm.cpp's own top comment), including
 // the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_decode_adm_" + scratch_pid_suffix());
@@ -62,7 +62,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -101,7 +101,7 @@ constexpr int kFrames = 8;
 // only renderer's own regression test for this same class of bug) both place their own marker: past
 // every encoder's/decoder's own priming, early enough that reconstruction_delay(kQmf)'s 576 samples
 // still leave it well inside an 8-frame stream.
-constexpr int kPulseAt = 3 * ac3::kSamplesPerFrame + 512;
+constexpr int kPulseAt = 3 * iclforge::kSamplesPerFrame + 512;
 
 // The object's whole-clip audio: a decaying tone burst riding a quiet noise floor. The floor is not
 // decoration - JOC's reconstruction matrix is solved per frame from the object's own energy that frame
@@ -175,8 +175,8 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
 
     const auto wav_path = dir / "decode_adm_in.wav";
     const std::vector<std::vector<float>> channels{
-        object_pulse_with_floor(kFrames * ac3::kSamplesPerFrame, kPulseAt)};
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+        object_pulse_with_floor(kFrames * iclforge::kSamplesPerFrame, kPulseAt)};
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     // One static keyframe (ac3/oba/scene.hpp: "a single keyframe holds its placement everywhere")
     // sending the object entirely to the LFE - run_atmos_encode's own default placement is
@@ -211,9 +211,9 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
     REQUIRE(decode_rc == 0);
     REQUIRE(fs::exists(adm_out));
 
-    const auto parsed = ac3adm::parse_bw64(adm_out.string());
+    const auto parsed = iclforge::adm::parse_bw64(adm_out.string());
     REQUIRE(parsed.has_value());
-    const auto bridged = ac3::admbridge::build(*parsed);
+    const auto bridged = iclforge::admbridge::build(*parsed);
     REQUIRE(bridged.has_value());
     REQUIRE(bridged->channel_count() == 2);
 
@@ -242,7 +242,7 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
     REQUIRE(peak(lfe_pcm) > 0.05F);
 
     const int lag =
-        best_lag(lfe_pcm, object_pcm, -2 * ac3::kSamplesPerFrame, 2 * ac3::kSamplesPerFrame);
+        best_lag(lfe_pcm, object_pcm, -2 * iclforge::kSamplesPerFrame, 2 * iclforge::kSamplesPerFrame);
     CAPTURE(lag);
     // Before this fix: the LFE channel was written straight from the decoded bed, undelayed, while
     // the object channel is JOC-reconstructed and so already reconstruction_delay(kQmf) samples (576)

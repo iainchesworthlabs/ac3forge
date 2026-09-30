@@ -28,13 +28,13 @@
 
 namespace {
 
-using ac3::sendspin::Dialect;
-using ac3::sendspin::crypto::Digest32;
-using ac3::sendspin::crypto::Key32;
-namespace flow = ac3::sendspin::pairing_flow;
-namespace m = ac3::sendspin::messages;
-namespace hs = ac3::sendspin::handshake;
-namespace json = ac3::sendspin::json;
+using iclforge::sendspin::Dialect;
+using iclforge::sendspin::crypto::Digest32;
+using iclforge::sendspin::crypto::Key32;
+namespace flow = iclforge::sendspin::pairing_flow;
+namespace m = iclforge::sendspin::messages;
+namespace hs = iclforge::sendspin::handshake;
+namespace json = iclforge::sendspin::json;
 
 // One message, parsed, with the storage its values point into.
 struct Message {
@@ -113,7 +113,7 @@ struct Duo {
     Duo(Dialect dialect, hs::PskCategory matched, std::vector<m::PairMethodDescriptor> offered,
         std::string code = "12345678") {
         client = std::make_unique<flow::ClientPairing>(
-            flow::ClientPairingConfig{.suite = ac3::sendspin::noise::Suite::kAesGcmSha256,
+            flow::ClientPairingConfig{.suite = iclforge::sendspin::noise::Suite::kAesGcmSha256,
                                       .dialect = dialect,
                                       .handshake_hash = hash_of(3),
                                       .matched = matched,
@@ -122,7 +122,7 @@ struct Duo {
                                       .connection = 1},
             state, events);
         server = std::make_unique<flow::ServerPairing>(flow::ServerPairingConfig{
-            .suite = ac3::sendspin::noise::Suite::kAesGcmSha256, .dialect = dialect, .handshake_hash = hash_of(3),
+            .suite = iclforge::sendspin::noise::Suite::kAesGcmSha256, .dialect = dialect, .handshake_hash = hash_of(3),
             .matched = matched});
     }
 
@@ -192,7 +192,7 @@ TEST_CASE("pairing flow errors: activations the client cannot take up end the at
         const auto step =
             duo.client->start({.method = std::nullopt, .format = std::nullopt, .pin_length = 0, .languages = {}}, 1, 0);
         CHECK(step.after == flow::After::kEnded);
-        CHECK(duo.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kMethodNotSupported);
+        CHECK(duo.client->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kMethodNotSupported);
     }
     SECTION("a code format the client does not offer, or none") {
         for (const std::optional<m::CodeFormat> format : {std::optional{m::CodeFormat::kQrCode}, std::optional<m::CodeFormat>{}}) {
@@ -200,7 +200,7 @@ TEST_CASE("pairing flow errors: activations the client cannot take up end the at
             const auto step = duo.client->start(
                 {.method = m::PairMethod::kDynamicCode, .format = format, .pin_length = 0, .languages = {}}, 1, 0);
             CHECK(step.after == flow::After::kEnded);
-            CHECK(duo.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kMethodNotSupported);
+            CHECK(duo.client->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kMethodNotSupported);
         }
     }
     SECTION("aiosendspin's pin length outside what the client allows") {
@@ -209,14 +209,14 @@ TEST_CASE("pairing flow errors: activations the client cannot take up end the at
             const auto step = duo.client->start(
                 {.method = m::PairMethod::kDynamicCode, .format = std::nullopt, .pin_length = length, .languages = {}}, 1, 0);
             CHECK(step.after == flow::After::kEnded);
-            CHECK(duo.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kPinLengthUnacceptable);
+            CHECK(duo.client->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kPinLengthUnacceptable);
         }
     }
     SECTION("a static code that is not eight digits") {
         Duo duo(Dialect::kSpecification, hs::PskCategory::kSentinel, {kStatic}, "1234");
         const auto step = duo.client->start(static_code(), 1, 0);
         CHECK(step.after == flow::After::kEnded);
-        CHECK(duo.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kMethodNotSupported);
+        CHECK(duo.client->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kMethodNotSupported);
     }
 }
 
@@ -273,7 +273,7 @@ TEST_CASE("pairing flow errors: the client refuses a message its stage does not 
         Duo duo(Dialect::kSpecification, hs::PskCategory::kSentinel, {kDigitsOnly});
         duo.start(dynamic_digits());
         CHECK(duo.client_gets(made("pair/abort", R"({"reason":"concurrent_attempt"})")).after == flow::After::kClose);
-        CHECK(duo.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kConcurrentAttempt);
+        CHECK(duo.client->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kConcurrentAttempt);
         // Cancelling what has already ended says nothing.
         CHECK(duo.client->cancel().messages.empty());
     }
@@ -376,7 +376,7 @@ TEST_CASE("pairing flow errors: the server refuses a message its stage does not 
         Duo duo(Dialect::kSpecification, hs::PskCategory::kSentinel, {kDigitsOnly});
         duo.server->activated(dynamic_digits(), 1);
         CHECK(duo.server_gets(made("pair/abort")).after == flow::After::kEnded);
-        CHECK(duo.server->aborted() == ac3::sendspin::pairing_messages::AbortReason::kUserCancelled);
+        CHECK(duo.server->aborted() == iclforge::sendspin::pairing_messages::AbortReason::kUserCancelled);
     }
 }
 

@@ -45,7 +45,7 @@ std::vector<float> tone_chunk(double& phase) {
 
 // Keeps the sink fed for `chunks` periods, which is what a caller playing in
 // real time does; submit() refusing means the queue is full, not an error.
-void feed(ac3::audio::MonitorSink& sink, double& phase, int chunks) {
+void feed(iclforge::audio::MonitorSink& sink, double& phase, int chunks) {
     for (int i = 0; i < chunks; ++i) {
         const auto chunk = tone_chunk(phase);
         for (int attempt = 0; attempt < 200 && !sink.submit(chunk); ++attempt) {
@@ -58,10 +58,10 @@ void feed(ac3::audio::MonitorSink& sink, double& phase, int chunks) {
 
 TEST_CASE("monitor live: the position follows the device, and pause and flush hold it",
           "[.][monitor-live]") {
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     const auto started = sink.start(/*device_id=*/"", kRate, kChannels);
     if (!started) {
-        WARN("no default output device: " << ac3::audio::describe(started.error()));
+        WARN("no default output device: " << iclforge::audio::describe(started.error()));
         return;
     }
     REQUIRE(sink.running());
@@ -146,13 +146,13 @@ TEST_CASE("monitor live: a rate the output is not running at still opens and pla
           "[.][monitor-live]") {
     for (const std::uint32_t rate : {44'100U, 48'000U, 96'000U}) {
         CAPTURE(rate);
-        ac3::audio::MonitorSink sink;
+        iclforge::audio::MonitorSink sink;
         const auto started = sink.start(/*device_id=*/"", rate, kChannels);
         if (!started) {
-            INFO("start() said: " << ac3::audio::describe(started.error()));
+            INFO("start() said: " << iclforge::audio::describe(started.error()));
             // A machine with no output says something else; this refusal is the bug.
-            REQUIRE(started.error() != ac3::audio::MonitorError::kFormatRejected);
-            WARN("no default output device: " << ac3::audio::describe(started.error()));
+            REQUIRE(started.error() != iclforge::audio::MonitorError::kFormatRejected);
+            WARN("no default output device: " << iclforge::audio::describe(started.error()));
             return;
         }
         REQUIRE(sink.running());
@@ -192,13 +192,13 @@ TEST_CASE("monitor live: a rate the output is not running at still opens and pla
 // the default output is now, with no stop() in between.
 TEST_CASE("monitor live: an output that goes away stops the sink, which can start again",
           "[.][monitor-unplug]") {
-    using ac3::audio::MonitorError;
+    using iclforge::audio::MonitorError;
     using namespace std::chrono_literals;
 
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     const auto started = sink.start(/*device_id=*/"", kRate, kChannels);
     if (!started) {
-        WARN("no default output device: " << ac3::audio::describe(started.error()));
+        WARN("no default output device: " << iclforge::audio::describe(started.error()));
         return;
     }
     double phase = 0.0;
@@ -235,7 +235,7 @@ TEST_CASE("monitor live: an output that goes away stops the sink, which can star
     // start() again, with no stop() first, on whatever the default is now.
     const auto again = sink.start(/*device_id=*/"", kRate, kChannels);
     if (!again) {
-        WARN("no default output to start again on: " << ac3::audio::describe(again.error()));
+        WARN("no default output to start again on: " << iclforge::audio::describe(again.error()));
         return;
     }
     REQUIRE(sink.running());

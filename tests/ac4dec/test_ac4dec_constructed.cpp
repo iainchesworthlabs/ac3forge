@@ -38,8 +38,8 @@
 namespace {
 
 namespace fs = std::filesystem;
-using ac3::test::kSanitized;
-using ac4::Speaker;
+using iclforge::test::kSanitized;
+using iclforge::ac4::Speaker;
 using ac4dec_test::BuiltStream;
 using ac4dec_test::ElementCase;
 
@@ -58,13 +58,13 @@ struct Decoded {
 // Every frame decoded, with the decoder's records the writer's: the same
 // substreams, offsets, widths and values, in the same order.
 Decoded decode_checked(const BuiltStream& stream,
-                       ac4::DecodingMode decoding = ac4::DecodingMode::kFull) {
-    std::vector<ac4::SyntaxRecord> read;
-    const auto keep = [&read](const ac4::SyntaxRecord& record) { read.push_back(record); };
-    ac4::DecoderConfig config;
+                       iclforge::ac4::DecodingMode decoding = iclforge::ac4::DecodingMode::kFull) {
+    std::vector<iclforge::ac4::SyntaxRecord> read;
+    const auto keep = [&read](const iclforge::ac4::SyntaxRecord& record) { read.push_back(record); };
+    iclforge::ac4::DecoderConfig config;
     config.syntax = keep;
     config.decoding = decoding;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     Decoded out;
     for (std::size_t f = 0; f < stream.frames.size(); ++f) {
         read.clear();
@@ -72,7 +72,7 @@ Decoded decode_checked(const BuiltStream& stream,
         INFO("frame " << f << ": " << decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const std::vector<ac4::SyntaxRecord>& written = stream.traces[f];
+        const std::vector<iclforge::ac4::SyntaxRecord>& written = stream.traces[f];
         REQUIRE(read.size() == written.size());
         for (std::size_t i = 0; i < read.size(); ++i) {
             const bool same = read[i].substream == written[i].substream &&
@@ -84,7 +84,7 @@ Decoded decode_checked(const BuiltStream& stream,
                 REQUIRE(same);
             }
         }
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         if (out.channels.empty()) {
             out.speakers = pcm.speakers;
             out.channels.resize(pcm.channels.size());
@@ -123,7 +123,7 @@ std::span<const float> steady(const Decoded& decoded, std::size_t c) {
 void check_routing(const BuiltStream& stream, const Decoded& decoded) {
     REQUIRE(decoded.speakers == stream.speakers);
     for (std::size_t c = 0; c < decoded.channels.size(); ++c) {
-        CAPTURE(c, ac4::describe(decoded.speakers[c]));
+        CAPTURE(c, iclforge::ac4::describe(decoded.speakers[c]));
         double own = kAmplitude;
         if (stream.tone_hz[c] > 0.0) {
             own = tone_amplitude(steady(decoded, c), stream.tone_hz[c]);
@@ -140,13 +140,13 @@ void check_routing(const BuiltStream& stream, const Decoded& decoded) {
 
 // Mean energy of QMF subbands [first, last) over the steady frames.
 double band_energy(std::span<const float> samples, std::size_t first, std::size_t last) {
-    ac4::detail::dsp::QmfAnalysis<double> analysis;
+    iclforge::ac4::detail::dsp::QmfAnalysis<double> analysis;
     const std::size_t slots = samples.size() / 64;
     std::vector<double> pcm(slots * 64);
     for (std::size_t n = 0; n < pcm.size(); ++n) {
         pcm[n] = static_cast<double>(samples[n]);
     }
-    std::vector<ac4::detail::dsp::Complex<double>> q(pcm.size());
+    std::vector<iclforge::ac4::detail::dsp::Complex<double>> q(pcm.size());
     analysis.process(pcm, q);
     double sum = 0.0;
     for (std::size_t ts = 0; ts < slots; ++ts) {
@@ -193,12 +193,12 @@ void check_core_routing(const BuiltStream& stream, const Decoded& decoded) {
     REQUIRE(decoded.speakers == core_speakers);
     const double down = std::sqrt(0.5);
     for (std::size_t c = 0; c < decoded.channels.size(); ++c) {
-        CAPTURE(c, ac4::describe(decoded.speakers[c]));
+        CAPTURE(c, iclforge::ac4::describe(decoded.speakers[c]));
         for (std::size_t s = 0; s < stream.speakers.size(); ++s) {
             if (stream.tone_hz[s] <= 0.0) {
                 continue;
             }
-            CAPTURE(ac4::describe(stream.speakers[s]));
+            CAPTURE(iclforge::ac4::describe(stream.speakers[s]));
             const double level = tone_amplitude(steady(decoded, c), stream.tone_hz[s]);
             if (core_of(stream.speakers[s]) != decoded.speakers[c]) {
                 CHECK(level < kAmplitude * 1e-3);
@@ -223,7 +223,7 @@ void check_case(const ElementCase& c) {
     const BuiltStream stream = ac4dec_test::build_stream(c, kFrames);
     check_routing(stream, decode_checked(stream));
     if (c.immersive >= 0) {
-        check_core_routing(stream, decode_checked(stream, ac4::DecodingMode::kCore));
+        check_core_routing(stream, decode_checked(stream, iclforge::ac4::DecodingMode::kCore));
     }
 }
 
@@ -525,9 +525,9 @@ TEST_CASE("A-SPX fills the immersive element's channels by Part 2 Table 8, full 
             c.sap_mode = 2;
             c.loud_unit = static_cast<int>(loud);
             const BuiltStream stream = ac4dec_test::build_stream(c, kFrames);
-            for (const ac4::DecodingMode decoding :
-                 {ac4::DecodingMode::kFull, ac4::DecodingMode::kCore}) {
-                const bool core = decoding == ac4::DecodingMode::kCore;
+            for (const iclforge::ac4::DecodingMode decoding :
+                 {iclforge::ac4::DecodingMode::kFull, iclforge::ac4::DecodingMode::kCore}) {
+                const bool core = decoding == iclforge::ac4::DecodingMode::kCore;
                 CAPTURE(core);
                 const Decoded decoded = decode_checked(stream, decoding);
                 std::vector<S> filled;
@@ -543,7 +543,7 @@ TEST_CASE("A-SPX fills the immersive element's channels by Part 2 Table 8, full 
                 std::string levels;
                 for (std::size_t ch = 0; ch < decoded.channels.size(); ++ch) {
                     const double high = band_energy(steady(decoded, ch), 32, 48);
-                    levels += std::string{ac4::describe(decoded.speakers[ch])} + " " +
+                    levels += std::string{iclforge::ac4::describe(decoded.speakers[ch])} + " " +
                               std::to_string(10.0 * std::log10(high)) + "; ";
                     if (std::ranges::find(filled, decoded.speakers[ch]) != filled.end()) {
                         quietest_loud = std::min(quietest_loud, high);
@@ -640,7 +640,7 @@ TEST_CASE("companding changes only the channel companding_control() names", "[ac
                 kFrames);
             const Decoded decoded = decode_checked(stream);
             for (std::size_t c = 0; c < decoded.channels.size(); ++c) {
-                CAPTURE(ac4::describe(decoded.speakers[c]));
+                CAPTURE(iclforge::ac4::describe(decoded.speakers[c]));
                 const double before = tone_amplitude(steady(plain, c), stream.tone_hz[c]);
                 const double after = tone_amplitude(steady(decoded, c), stream.tone_hz[c]);
                 const double change = std::abs(20.0 * std::log10(after / before));

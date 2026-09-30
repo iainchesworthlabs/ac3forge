@@ -15,7 +15,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/render/spatial.hpp"
 
-namespace ac3::analysis {
+namespace iclforge::analysis {
 
 namespace {
 
@@ -42,7 +42,7 @@ constexpr std::array<std::array<std::string_view, 5>, 8> kChannelNames = {{
 constexpr double kSurroundAzimuth = 180.0;
 
 [[nodiscard]] constexpr std::optional<double> ring_azimuth(Acmod acmod, int index) {
-    using ac3::spatial::kSpeakerAzimuthDeg;
+    using iclforge::spatial::kSpeakerAzimuthDeg;
     constexpr std::size_t kL = 0, kC = 1, kR = 2, kSL = 3, kSR = 4;
     const auto at = static_cast<std::size_t>(index);
     switch (acmod) {
@@ -120,7 +120,7 @@ double ChannelSummary::peak_db() const { return to_dbfs(peak); }
 double ChannelSummary::rms_db() const { return to_dbfs(rms()); }
 
 // Every private data member, following the same pimpl pattern as
-// ac3::io::WavStreamReader/Writer and ac3::FrameEncoder.
+// iclforge::io::WavStreamReader/Writer and iclforge::FrameEncoder.
 struct LevelMeter::Impl {
     Acmod acmod_;
     bool lfe_;
@@ -308,4 +308,4 @@ SoundfieldVector energy_vector(std::span<const ChannelLevel> levels, Acmod acmod
     return result;
 }
 
-}  // namespace ac3::analysis
+}  // namespace iclforge::analysis

@@ -38,7 +38,7 @@
 // be running on the machine, which is the one thing a test cannot choose. It
 // is the same reason process_tree.hpp injects its two readers.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 inline constexpr std::string_view kProcRoot = "/proc";
 
@@ -106,7 +106,7 @@ inline constexpr std::string_view kProcRoot = "/proc";
 // The three things a PipeWire stream says about the application behind it
 // that /proc cannot answer for. Its own type rather than the PipeWire one, so
 // that this header - and the tests over it - never see a PipeWire type;
-// session_monitor.cpp fills one from each ac3::pipewire::OutputStreamNode.
+// session_monitor.cpp fills one from each iclforge::pipewire::OutputStreamNode.
 struct StreamFacts {
     std::string binary;     // application.process.binary, or empty
     std::string icon_name;  // application.icon-name, or empty
@@ -262,4 +262,4 @@ inline void fill_from_second_stream(AppSession& app, const ProcessFacts& facts) 
     }
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

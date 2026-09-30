@@ -24,7 +24,7 @@
 // channel configuration"). The channels the configuration leaves out are
 // silenced, as 5.10.2.2 says.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // The immersive element's content and decoding, as the renderer takes them.
 struct ImmersiveLayout {
@@ -102,4 +102,4 @@ enum class LoudCorrOutput : std::uint8_t {
 [[nodiscard]] LoudCorrOutput loud_corr_output(const ImmersiveLayout& layout,
                                               const ChannelConfiguration& output) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

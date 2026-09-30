@@ -6,9 +6,9 @@
 #include <string>
 #include <utility>
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 class Group;
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin
 
 // What NetworkController knows about each group, shared with HearthController
 // without either holding a reference to the other's QObject
@@ -34,7 +34,7 @@ class Group;
 // the engine's own thread, whenever the player opens its output - while the
 // GUI thread may be replacing the table under it.
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
 class NetworkOutputStatus {
 public:
@@ -87,4 +87,4 @@ private:
     std::map<std::string, Entry> groups_;
 };
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

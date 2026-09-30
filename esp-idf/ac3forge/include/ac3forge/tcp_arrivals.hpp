@@ -9,7 +9,7 @@
 // them later.
 //
 // A Sendspin player dates a clock reply by when it reads it
-// (ac3::sendspin::ClockSync). Its server task reads the socket, and on a part
+// (iclforge::sendspin::ClockSync). Its server task reads the socket, and on a part
 // with one core that task waits behind the decode: on an ESP32-C6 on
 // 2026-09-17 every reply of a burst was read tens of milliseconds after it
 // came while a stream played, and the clock left out all of them. lwIP's IPv4

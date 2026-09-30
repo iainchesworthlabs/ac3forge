@@ -13,20 +13,20 @@
 // extension TS 103 420 §8.3.1/§8.3.2.2 defines for the bitstream's own addbsi
 // and this box is documented to echo verbatim.
 //
-// Built here, in ac3::io beside the scanner that already reads every one of
+// Built here, in iclforge::io beside the scanner that already reads every one of
 // these values off the bitstream, rather than by a container muxer: fscod,
 // bsid, bsmod, acmod, lfeon and the object-audio marker are all AC-3 syntax,
-// not container concepts, and a general-purpose ISOBMFF writer (mp4::mp4) has
+// not container concepts, and a general-purpose ISOBMFF writer (iclforge::mp4) has
 // no business re-deriving AC-3 semantics just to build one sample-entry
-// child box. mp4::mux() therefore treats the return value as opaque bytes,
+// child box. iclforge::mp4::mux() therefore treats the return value as opaque bytes,
 // the same way it treats every access unit as opaque bytes - see
-// mp4::AudioTrack::codec_config and examples/mux_mp4.cpp.
+// iclforge::mp4::AudioTrack::codec_config and examples/mux_mp4.cpp.
 
-namespace ac3::io {
+namespace iclforge::io {
 
 // Returns the box's PAYLOAD only - everything after its own 8-byte
 // size+FourCC header, which is the container muxer's job to write (it is the
-// one that knows the ISOBMFF box-nesting mechanics; see mp4::mux()). The
+// one that knows the ISOBMFF box-nesting mechanics; see iclforge::mp4::mux()). The
 // FourCC itself is implied by `stream.kind`: kAc3 -> 'dac3', kEac3 -> 'dec3'.
 //
 // Empty for kAc3CoreEac3Extension, which has no box defined for it - see the
@@ -46,10 +46,10 @@ namespace ac3::io {
 //
 // Beside build_codec_config_box for its own reason: which locations an AC-3
 // or E-AC-3 stream carries is acmod/lfeon/chanmap syntax, read by the scanner
-// and derived nowhere else. A container or manifest writer (mp4::, and
-// mp4::DashOptions::dolby_channel_configuration in particular) has no business
+// and derived nowhere else. A container or manifest writer (iclforge::mp4::, and
+// iclforge::mp4::DashOptions::dolby_channel_configuration in particular) has no business
 // re-deriving AC-3 semantics to fill in one attribute, the same boundary the
 // dac3/dec3 payload above already draws.
 [[nodiscard]] ICLFORGE_AC3_EXPORT std::string dash_channel_configuration(const ScannedStream& stream);
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

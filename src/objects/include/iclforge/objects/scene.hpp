@@ -40,7 +40,7 @@
 //     controller source is meant to land on that seam without the scene type
 //     itself changing shape.
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 // How the segment that STARTS at an automation point reaches the next one.
 // Stated per point rather than per object, so one object can hold a position,
@@ -84,7 +84,7 @@ struct SceneObject {
     // changes nothing about the stream.
     std::string name{};
     // 0 (the default) means a dynamic object: free to move, driven by the
-    // automation below. Otherwise a mask of ac3::oba::bed:: labels, meaning
+    // automation below. Otherwise a mask of iclforge::oba::bed:: labels, meaning
     // the object is speaker-anchored to those channels. A bed-assigned object
     // still carries automation - its gain is authorable like anything else -
     // but a renderer takes its position from the speaker label, not from here,
@@ -353,4 +353,4 @@ scene_objects_from_keyframe_text(std::string_view text);
 [[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::expected<ObjectScene, SceneError> scene_from_text(
     std::string_view text, const ObjectPlacement& fallback = {});
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

@@ -49,7 +49,7 @@
 // audio has passed through any of it, and no Mac has run the application
 // (ROADMAP.md DR9).
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 const AudioBackend& audio_backend() {
     static const AudioBackend kBackend = [] {
@@ -76,4 +76,4 @@ const AudioBackend& audio_backend() {
     return kBackend;
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

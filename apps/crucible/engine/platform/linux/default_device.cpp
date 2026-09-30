@@ -26,7 +26,7 @@
 // made - and there is no Settings app to fall back to, which is what
 // open_sound_settings() being a no-op reflects.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -62,22 +62,22 @@ constexpr const char* kDefaultSinkKey = "default.audio.sink";
 // given the bound proxy and may read or write; it returns true on success.
 template <typename Action>
 bool with_default_metadata(Action&& act) {
-    ac3::pipewire::ensure_initialized();
+    iclforge::pipewire::ensure_initialized();
 
-    ac3::pipewire::MainLoop loop{pw_main_loop_new(nullptr)};
+    iclforge::pipewire::MainLoop loop{pw_main_loop_new(nullptr)};
     if (!loop) {
         return false;
     }
-    ac3::pipewire::Context context{
+    iclforge::pipewire::Context context{
         pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
     if (!context) {
         return false;
     }
-    ac3::pipewire::Core core{pw_context_connect(context.get(), nullptr, 0)};
+    iclforge::pipewire::Core core{pw_context_connect(context.get(), nullptr, 0)};
     if (!core) {
         return false;  // no session
     }
-    ac3::pipewire::Registry registry{
+    iclforge::pipewire::Registry registry{
         pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
     if (!registry) {
         return false;
@@ -157,7 +157,7 @@ class LinuxDefaultDevice final : public DefaultDevice {
 public:
     std::vector<RenderEndpoint> endpoints() override {
         std::vector<RenderEndpoint> out;
-        const auto devices = ac3::audio::enumerate_render_devices();
+        const auto devices = iclforge::audio::enumerate_render_devices();
         if (!devices) {
             return out;
         }
@@ -240,4 +240,4 @@ std::shared_ptr<DefaultDevice> platform_default_device() {
     return std::make_shared<LinuxDefaultDevice>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

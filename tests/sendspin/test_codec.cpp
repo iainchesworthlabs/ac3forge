@@ -22,8 +22,8 @@
 
 namespace {
 
-namespace codec = ac3::sendspin::codec;
-namespace m = ac3::sendspin::messages;
+namespace codec = iclforge::sendspin::codec;
+namespace m = iclforge::sendspin::messages;
 
 // Two tones and a little noise at `bit_depth`, interleaved.
 std::vector<std::int32_t> signal(std::int32_t channels, std::int32_t sample_rate, std::int32_t bit_depth,

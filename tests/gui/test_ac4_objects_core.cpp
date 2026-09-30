@@ -27,12 +27,12 @@
 // tests/cli/test_cli_atmos_encode_ac4.cpp holds the command to these, and the
 // Qt Quick suite (tst_e2e_ac4_objects.qml) the page.
 
-using ac3::apps::Ac4ObjectSlot;
-using ac3::plan::Assignment;
-using ac3::plan::Destination;
-using ac3::plan::DestinationKind;
-using ac3::plan::SourceShape;
-using Location = ac3::eac3::chanmap::Location;
+using iclforge::apps::Ac4ObjectSlot;
+using iclforge::plan::Assignment;
+using iclforge::plan::Destination;
+using iclforge::plan::DestinationKind;
+using iclforge::plan::SourceShape;
+using Location = iclforge::eac3::chanmap::Location;
 
 namespace {
 
@@ -70,7 +70,7 @@ TEST_CASE("AC-4 object slots list the dynamic objects, then the speakers, then t
     assignment.set(0, 2, obj(-6.0));
     assignment.set(1, 0, at(Location::kLeft));
     assignment.set(1, 1, at(Location::kLfe, 3.0));
-    const auto slots = ac3::apps::ac4_object_slots(assignment, shapes);
+    const auto slots = iclforge::apps::ac4_object_slots(assignment, shapes);
     REQUIRE(slots.size() == 4);
 
     // atmos-encode's own order: every obj row, then each objm run folded to one.
@@ -94,16 +94,16 @@ TEST_CASE("AC-4 object slots list the dynamic objects, then the speakers, then t
 }
 
 TEST_CASE("a channel pinned to a speaker sits where ADM puts the speaker", "[gui][ac4]") {
-    // tests/ac3/oba/test_atmos_motion.cpp's ring constants, which ac3::admbridge's polar
+    // tests/ac3/oba/test_atmos_motion.cpp's ring constants, which iclforge::admbridge's polar
     // conversion is checked against: L at +30 degrees, SR at -110.
-    const auto left = ac3::apps::ac4_pin_position(30.0);
+    const auto left = iclforge::apps::ac4_pin_position(30.0);
     CHECK(left.x == Catch::Approx(0.25).margin(1e-6));
     CHECK(left.y == Catch::Approx(0.066987).margin(1e-6));
     CHECK(left.z == 0.0);
-    const auto rear = ac3::apps::ac4_pin_position(-110.0);
+    const auto rear = iclforge::apps::ac4_pin_position(-110.0);
     CHECK(rear.x == Catch::Approx(0.969846).margin(1e-6));
     CHECK(rear.y == Catch::Approx(0.671010).margin(1e-6));
-    const auto centre = ac3::apps::ac4_pin_position(0.0);
+    const auto centre = iclforge::apps::ac4_pin_position(0.0);
     CHECK(centre.x == Catch::Approx(0.5).margin(1e-9));
     CHECK(centre.y == Catch::Approx(0.0).margin(1e-9));
 }
@@ -112,15 +112,15 @@ TEST_CASE("AC-4 flat planes offset each source and pad every channel to the long
           "[gui][ac4]") {
     const std::vector<std::vector<float>> first{{1.0F, 2.0F, 3.0F}, {4.0F, 5.0F, 6.0F}};
     const std::vector<std::vector<float>> second{{7.0F, 8.0F}};
-    const std::vector<ac3::apps::Ac4SourceView> sources{{.channels = first, .offset_samples = 0},
+    const std::vector<iclforge::apps::Ac4SourceView> sources{{.channels = first, .offset_samples = 0},
                                                         {.channels = second, .offset_samples = 3}};
-    const auto planes = ac3::apps::ac4_flat_planes(sources);
+    const auto planes = iclforge::apps::ac4_flat_planes(sources);
     REQUIRE(planes.size() == 3);
     // The second source ends at 3 + 2, past the first's three samples: zeros, not a held value.
     CHECK(planes[0] == std::vector<float>{1.0F, 2.0F, 3.0F, 0.0F, 0.0F});
     CHECK(planes[1] == std::vector<float>{4.0F, 5.0F, 6.0F, 0.0F, 0.0F});
     CHECK(planes[2] == std::vector<float>{0.0F, 0.0F, 0.0F, 7.0F, 8.0F});
-    CHECK(ac3::apps::ac4_flat_planes({}).empty());
+    CHECK(iclforge::apps::ac4_flat_planes({}).empty());
 }
 
 TEST_CASE("AC-4 object planes sum each slot's taps at their gains", "[gui][ac4]") {
@@ -128,24 +128,24 @@ TEST_CASE("AC-4 object planes sum each slot's taps at their gains", "[gui][ac4]"
     std::vector<Ac4ObjectSlot> slots(2);
     slots[0].taps = {{0, 0.5}, {1, 0.5}};
     slots[1].taps = {{2, 2.0}, {7, 1.0}};  // a tap past the channels contributes nothing
-    const auto planes = ac3::apps::ac4_object_planes(slots, flat);
+    const auto planes = iclforge::apps::ac4_object_planes(slots, flat);
     REQUIRE(planes.size() == 2);
     CHECK(planes[0] == std::vector<float>{2.0F, 3.0F});
     CHECK(planes[1] == std::vector<float>{10.0F, 12.0F});
 }
 
 TEST_CASE("an AC-4 object keeps its position and turns its linear gain into dB", "[gui][ac4]") {
-    ac3::oba::ObjectPlacement placement;
+    iclforge::oba::ObjectPlacement placement;
     placement.position = {.x = 0.2, .y = 0.7, .z = -0.5};
     placement.gain = 0.5;
     placement.lfe_send = 1.0;
-    const auto properties = ac3::apps::ac4_object_properties(placement);
+    const auto properties = iclforge::apps::ac4_object_properties(placement);
     CHECK(properties.position[0] == 0.2);
     CHECK(properties.position[1] == 0.7);
     CHECK(properties.position[2] == -0.5);
     CHECK(properties.gain_db == Catch::Approx(20.0 * std::log10(0.5)));
     placement.gain = 0.0;
-    const auto silent = ac3::apps::ac4_object_properties(placement);
+    const auto silent = iclforge::apps::ac4_object_properties(placement);
     CHECK(std::isinf(silent.gain_db));
     CHECK(silent.gain_db < 0.0);
 }
@@ -155,10 +155,10 @@ TEST_CASE("an AC-4 object encode is refused by count, LFE and rate before it rea
     const auto dynamic = [](std::size_t n) {
         return std::vector<Ac4ObjectSlot>(n, Ac4ObjectSlot{});
     };
-    ac3::apps::Ac4ObjectsParams params;
-    CHECK_FALSE(ac3::apps::ac4_objects_refusal(dynamic(1), params).has_value());
-    CHECK_FALSE(ac3::apps::ac4_objects_refusal(dynamic(64), params).has_value());
-    const auto many = ac3::apps::ac4_objects_refusal(dynamic(65), params);
+    iclforge::apps::Ac4ObjectsParams params;
+    CHECK_FALSE(iclforge::apps::ac4_objects_refusal(dynamic(1), params).has_value());
+    CHECK_FALSE(iclforge::apps::ac4_objects_refusal(dynamic(64), params).has_value());
+    const auto many = iclforge::apps::ac4_objects_refusal(dynamic(65), params);
     REQUIRE(many.has_value());
     CHECK(many->find("64 at most") != std::string::npos);
 
@@ -169,40 +169,40 @@ TEST_CASE("an AC-4 object encode is refused by count, LFE and rate before it rea
     };
     auto with_lfes = dynamic(1);
     with_lfes.push_back(lfe_slot());
-    CHECK_FALSE(ac3::apps::ac4_objects_refusal(with_lfes, params).has_value());
+    CHECK_FALSE(iclforge::apps::ac4_objects_refusal(with_lfes, params).has_value());
     with_lfes.push_back(lfe_slot());
-    const auto lfes = ac3::apps::ac4_objects_refusal(with_lfes, params);
+    const auto lfes = iclforge::apps::ac4_objects_refusal(with_lfes, params);
     REQUIRE(lfes.has_value());
     CHECK(lfes->find("one LFE object") != std::string::npos);
 
     const std::vector<Ac4ObjectSlot> lfe_alone{lfe_slot()};
-    CHECK(ac3::apps::ac4_objects_refusal(lfe_alone, params).has_value());
-    CHECK(ac3::apps::ac4_objects_refusal({}, params).has_value());
+    CHECK(iclforge::apps::ac4_objects_refusal(lfe_alone, params).has_value());
+    CHECK(iclforge::apps::ac4_objects_refusal({}, params).has_value());
 
     params.sample_rate_hz = 32000;
-    const auto rate = ac3::apps::ac4_objects_refusal(dynamic(2), params);
+    const auto rate = iclforge::apps::ac4_objects_refusal(dynamic(2), params);
     REQUIRE(rate.has_value());
     CHECK(rate->find("48 or 44.1 kHz") != std::string::npos);
 }
 
 TEST_CASE("the encoder takes the 64 objects the page and the command allow, and no more",
           "[gui][ac4]") {
-    // The limit ac3::apps::kAc4MaxObjects states is the writer's own: if the writer moves it,
+    // The limit iclforge::apps::kAc4MaxObjects states is the writer's own: if the writer moves it,
     // this fails and the constant, the page's text and the command's help move with it.
     const auto config_of = [](std::size_t n) {
-        ac3::apps::Ac4ObjectsParams params;
+        iclforge::apps::Ac4ObjectsParams params;
         params.bitrate_kbps = 512;
-        const std::vector<ac3::oba::ObjectPlacement> placements(n);
-        return ac3::apps::ac4_objects_config(params, std::vector<bool>{}, placements);
+        const std::vector<iclforge::oba::ObjectPlacement> placements(n);
+        return iclforge::apps::ac4_objects_config(params, std::vector<bool>{}, placements);
     };
-    CHECK(ac3::apps::kAc4MaxObjects == 64);
-    CHECK(ac4::Encoder::refusal_reason(config_of(64)).empty());
-    CHECK_FALSE(ac4::Encoder::refusal_reason(config_of(65)).empty());
+    CHECK(iclforge::apps::kAc4MaxObjects == 64);
+    CHECK(iclforge::ac4::Encoder::refusal_reason(config_of(64)).empty());
+    CHECK_FALSE(iclforge::ac4::Encoder::refusal_reason(config_of(65)).empty());
     // The one frame rate an object stream is written at.
     auto config = config_of(2);
-    CHECK(config.frame_rate_index == ac3::apps::kAc4ObjectFrameRateIndex);
+    CHECK(config.frame_rate_index == iclforge::apps::kAc4ObjectFrameRateIndex);
     config.frame_rate_index = 2;
-    CHECK_FALSE(ac4::Encoder::refusal_reason(config).empty());
+    CHECK_FALSE(iclforge::ac4::Encoder::refusal_reason(config).empty());
 }
 
 TEST_CASE("a scene of slots encodes to a stream that decodes to its objects, one update a frame",
@@ -218,40 +218,40 @@ TEST_CASE("a scene of slots encodes to a stream that decodes to its objects, one
     assignment.set(0, 0, at(Location::kLeft));
     assignment.set(0, 1, at(Location::kRight));
     assignment.set(0, 2, obj());
-    const auto slots = ac3::apps::ac4_object_slots(assignment, shapes);
+    const auto slots = iclforge::apps::ac4_object_slots(assignment, shapes);
     REQUIRE(slots.size() == 3);  // the dynamic object first, then the two pins
 
-    const auto rear = ac3::apps::ac4_pin_position(-110.0);
-    const auto front = ac3::apps::ac4_pin_position(0.0);
-    const auto scene = ac3::oba::ObjectScene::create(
-        {ac3::oba::SceneObject{.name = "moving",
+    const auto rear = iclforge::apps::ac4_pin_position(-110.0);
+    const auto front = iclforge::apps::ac4_pin_position(0.0);
+    const auto scene = iclforge::oba::ObjectScene::create(
+        {iclforge::oba::SceneObject{.name = "moving",
                                .automation = {{.time_s = 0.0,
                                                .position = rear,
                                                .gain = 1.0,
-                                               .interp = ac3::oba::Interpolation::kHold},
+                                               .interp = iclforge::oba::Interpolation::kHold},
                                               {.time_s = 0.096,
                                                .position = front,
                                                .gain = 1.0,
-                                               .interp = ac3::oba::Interpolation::kHold}}}});
+                                               .interp = iclforge::oba::Interpolation::kHold}}}});
     REQUIRE(scene.has_value());
 
-    ac3::apps::Ac4ObjectsParams params;
+    iclforge::apps::Ac4ObjectsParams params;
     params.bitrate_kbps = 256;
-    const auto encoded = ac3::apps::encode_ac4_scene(params, slots, flat, *scene);
+    const auto encoded = iclforge::apps::encode_ac4_scene(params, slots, flat, *scene);
     REQUIRE(encoded.has_value());
     CHECK(encoded->lag_samples == 3072 + 1313);
     REQUIRE_FALSE(encoded->frames.empty());
 
-    ac4::Decoder decoder;
+    iclforge::ac4::Decoder decoder;
     std::vector<std::array<double, 3>> moving;  // the dynamic object's position, frame by frame
     std::size_t object_count = 0;
-    for (const ac4::EncodedFrame& frame : encoded->frames) {
+    for (const iclforge::ac4::EncodedFrame& frame : encoded->frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         REQUIRE(decoded.has_value());
         if (!decoded->has_value()) {
             continue;
         }
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         object_count = std::max(object_count, pcm.objects.size());
         if (!pcm.objects.empty()) {
             moving.push_back(pcm.objects.front().properties.position);

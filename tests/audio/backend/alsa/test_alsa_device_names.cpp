@@ -20,14 +20,14 @@
 // receiver believes it and reproduces a 6144-byte-per-frame bit pattern as
 // full-scale noise. Nothing downstream catches that, so it is caught here.
 
-using ac3::alsa::ChannelStatus;
-using ac3::alsa::classify_digital_output;
-using ac3::alsa::config_device_name;
-using ac3::alsa::DigitalOutput;
-using ac3::alsa::has_channel_status_args;
-using ac3::alsa::non_audio_channel_status;
-using ac3::alsa::passthrough_device_name;
-using ac3::alsa::takes_channel_status_args;
+using iclforge::alsa::ChannelStatus;
+using iclforge::alsa::classify_digital_output;
+using iclforge::alsa::config_device_name;
+using iclforge::alsa::DigitalOutput;
+using iclforge::alsa::has_channel_status_args;
+using iclforge::alsa::non_audio_channel_status;
+using iclforge::alsa::passthrough_device_name;
+using iclforge::alsa::takes_channel_status_args;
 
 TEST_CASE("non-audio channel status sets the bit that makes a receiver decode") {
     const auto status = non_audio_channel_status(48000);
@@ -66,8 +66,8 @@ TEST_CASE("channel status carries the rate the link is actually running at") {
 }
 
 TEST_CASE("E-AC-3 runs the link four times as fast as its content") {
-    using ac3::alsa::carrier_rate;
-    using ac3::audio::BitstreamFormat;
+    using iclforge::alsa::carrier_rate;
+    using iclforge::audio::BitstreamFormat;
 
     // AC-3 carries at the content rate...
     CHECK(carrier_rate(BitstreamFormat::kAc3, 48000) == 48000);
@@ -81,9 +81,9 @@ TEST_CASE("E-AC-3 runs the link four times as fast as its content") {
 }
 
 TEST_CASE("AC-4 runs its link at the content rate and its HBR4 bursts at four times it") {
-    using ac3::alsa::carrier_rate;
-    using ac3::alsa::non_audio_channel_status;
-    using ac3::audio::BitstreamFormat;
+    using iclforge::alsa::carrier_rate;
+    using iclforge::alsa::non_audio_channel_status;
+    using iclforge::audio::BitstreamFormat;
 
     // IEC 61937-14 5.3.1, 5.3.3 and 5.3.5.
     CHECK(carrier_rate(BitstreamFormat::kAc4, 48000) == 48000);
@@ -166,8 +166,8 @@ TEST_CASE("an unusable rate is refused rather than guessed at") {
 }
 
 TEST_CASE("E-AC-3 at 32 kHz has nowhere to go, and says so") {
-    using ac3::alsa::carrier_rate;
-    using ac3::audio::BitstreamFormat;
+    using iclforge::alsa::carrier_rate;
+    using iclforge::audio::BitstreamFormat;
 
     // The one combination this library can encode and this backend cannot
     // carry, followed all the way through as PassthroughSink::start() does it:
@@ -235,13 +235,13 @@ TEST_CASE("a configuration device name indexes the plugin, not the hardware") {
     CHECK(config_device_name(DigitalOutput::kHdmi, "HDMI", 0) == "hdmi:CARD=HDMI,DEV=0");
     CHECK(config_device_name(DigitalOutput::kHdmi, "HDMI", 3) == "hdmi:CARD=HDMI,DEV=3");
     CHECK(config_device_name(DigitalOutput::kSpdif, "PCH", 0) == "iec958:CARD=PCH,DEV=0");
-    CHECK(ac3::alsa::hw_device_name("PCH", 1) == "hw:CARD=PCH,DEV=1");
+    CHECK(iclforge::alsa::hw_device_name("PCH", 1) == "hw:CARD=PCH,DEV=1");
     // An output that is neither HDMI nor S/PDIF has no plugin with a logical
     // index, so it is named by its own hardware device - through plug, which
     // is what converts a decoded stream's rate and width for hardware that
     // will not take them. A bitstream never goes here: plug would resample it.
-    CHECK(ac3::alsa::plug_device_name("PCH", 0) == "plughw:CARD=PCH,DEV=0");
-    CHECK(ac3::alsa::plug_device_name("Headphones", 2) == "plughw:CARD=Headphones,DEV=2");
+    CHECK(iclforge::alsa::plug_device_name("PCH", 0) == "plughw:CARD=PCH,DEV=0");
+    CHECK(iclforge::alsa::plug_device_name("Headphones", 2) == "plughw:CARD=Headphones,DEV=2");
 }
 
 TEST_CASE("a candidate device name survives the round trip to an openable one") {

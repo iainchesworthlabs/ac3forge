@@ -58,7 +58,7 @@
 // command as its thread carries it out, and anything the transport said
 // about it; the player notes what playback did in between.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // A local output and a passthrough output, and where the endpoints each item
 // is decided against are read from: device_endpoints() for this machine's
@@ -223,7 +223,7 @@ public:
     // moves if the answer changed (Player::refollow()). Refused, with a
     // note, by an engine given no endpoints to decide from.
     void set_output_preferences(OutputPreferences preferences);
-    // The machine's outputs have changed - ac3::audio::RenderDeviceWatch's
+    // The machine's outputs have changed - iclforge::audio::RenderDeviceWatch's
     // callback calls this: the endpoints are read again, for the item
     // playing now and for every item after it.
     void refresh_outputs();
@@ -298,4 +298,4 @@ private:
     std::jthread thread_;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

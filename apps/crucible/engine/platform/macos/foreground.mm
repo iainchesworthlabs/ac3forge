@@ -109,7 +109,7 @@
 // which is main-thread-only; ui/platform/macos/app_icon_provider.mm is the
 // file in this application that has that constraint, and it says so.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -159,4 +159,4 @@ std::shared_ptr<Foreground> platform_foreground() {
     return std::make_shared<MacosForeground>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

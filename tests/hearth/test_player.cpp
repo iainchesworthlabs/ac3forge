@@ -32,7 +32,7 @@
 #include "pcm_sink.hpp"
 #include "player.hpp"
 
-// ac3::hearth::Player (apps/hearth/engine/player.cpp) against a fake device.
+// iclforge::hearth::Player (apps/hearth/engine/player.cpp) against a fake device.
 //
 // A3's exit: "a queue of mixed containers plays to a fake device gaplessly,
 // with the expected sample count at every join". The device here has a clock
@@ -43,15 +43,15 @@
 
 namespace {
 
-using ac3::hearth::DecoderSettings;
-using ac3::hearth::ItemLoader;
-using ac3::hearth::LoadedItem;
-using ac3::hearth::OpenOutputFormat;
-using ac3::hearth::OutputMode;
-using ac3::hearth::PcmSink;
-using ac3::hearth::Player;
-using ac3::hearth::QueueItem;
-using ac3::hearth::TransportState;
+using iclforge::hearth::DecoderSettings;
+using iclforge::hearth::ItemLoader;
+using iclforge::hearth::LoadedItem;
+using iclforge::hearth::OpenOutputFormat;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::PcmSink;
+using iclforge::hearth::Player;
+using iclforge::hearth::QueueItem;
+using iclforge::hearth::TransportState;
 
 // A device whose clock the test runs. Like the real backends
 // (src/audio/src/backend/*/monitor.cpp), the clock keeps running when there
@@ -156,11 +156,11 @@ public:
         return true;
     }
 
-    [[nodiscard]] std::optional<ac3::audio::MonitorPosition> position() const override {
+    [[nodiscard]] std::optional<iclforge::audio::MonitorPosition> position() const override {
         if (!log_->open) {
             return std::nullopt;
         }
-        return ac3::audio::MonitorPosition{.frames_played = log_->clock,
+        return iclforge::audio::MonitorPosition{.frames_played = log_->clock,
                                            .frames_queued = log_->submitted - log_->heard,
                                            .latency_frames = log_->latency};
     }
@@ -215,7 +215,7 @@ void advance(FakeDevice::Log& log, std::uint64_t frames) {
 }
 
 std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset, double level = 0.3) {
-    std::vector<float> out(ac3::kSamplesPerFrame);
+    std::vector<float> out(iclforge::kSamplesPerFrame);
     for (std::size_t n = 0; n < out.size(); ++n) {
         out[n] = static_cast<float>(
             level * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n + offset) / rate));
@@ -228,21 +228,21 @@ std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset, doubl
 // sample for sample. §7.3.4's dither generator runs on across frames, so a
 // decoder that starts late draws different values for the same bins; the
 // difference is some 95 dB down, but it is not zero.
-std::vector<std::byte> eac3_stream(int frames, ac3::SampleRate rate = ac3::SampleRate::k48000,
+std::vector<std::byte> eac3_stream(int frames, iclforge::SampleRate rate = iclforge::SampleRate::k48000,
                                    bool dither = true, double level = 0.3, int dialnorm = 31) {
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
-    config.acmod = ac3::Acmod::k3_2;
+    config.acmod = iclforge::Acmod::k3_2;
     config.lfe = true;
     config.dither = dither;
     config.dialnorm = dialnorm;
-    ac3::eac3::FrameEncoder encoder{config};
+    iclforge::eac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(440.0, ac3::sample_rate_hz(rate),
-                                  static_cast<std::size_t>(f) * ac3::kSamplesPerFrame, level);
+        const auto samples = tone(440.0, iclforge::sample_rate_hz(rate),
+                                  static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame, level);
         const std::vector<std::span<const float>> views(channels, samples);
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -251,18 +251,18 @@ std::vector<std::byte> eac3_stream(int frames, ac3::SampleRate rate = ac3::Sampl
     return out;
 }
 
-std::vector<std::byte> ac3_stream(int frames, ac3::SampleRate rate = ac3::SampleRate::k48000) {
-    ac3::EncoderConfig config;
+std::vector<std::byte> ac3_stream(int frames, iclforge::SampleRate rate = iclforge::SampleRate::k48000) {
+    iclforge::EncoderConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
-    config.acmod = ac3::Acmod::k3_2;
+    config.acmod = iclforge::Acmod::k3_2;
     config.lfe = true;
-    ac3::FrameEncoder encoder{config};
+    iclforge::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(660.0, ac3::sample_rate_hz(rate),
-                                  static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+        const auto samples = tone(660.0, iclforge::sample_rate_hz(rate),
+                                  static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(channels, samples);
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -274,33 +274,33 @@ std::vector<std::byte> ac3_stream(int frames, ac3::SampleRate rate = ac3::Sample
 // A stream wrapped the way the container writers wrap one, with an edit list
 // when `edit` is given.
 std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream,
-                              std::optional<mp4::MuxOptions::Edit> edit = std::nullopt) {
-    const auto scanned = ac3::io::scan(stream);
+                              std::optional<iclforge::mp4::MuxOptions::Edit> edit = std::nullopt) {
+    const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
-    mp4::AudioTrack track;
-    track.codec_id = std::string{scanned->kind == ac3::io::StreamKind::kAc3 ? mp4::kCodecAc3
-                                                                            : mp4::kCodecEac3};
-    track.sample_rate = ac3::sample_rate_hz(scanned->sample_rate);
+    iclforge::mp4::AudioTrack track;
+    track.codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::mp4::kCodecAc3
+                                                                            : iclforge::mp4::kCodecEac3};
+    track.sample_rate = iclforge::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
-    track.codec_config = ac3::io::build_codec_config_box(*scanned);
-    mp4::MuxOptions options;
+    track.codec_config = iclforge::io::build_codec_config_box(*scanned);
+    iclforge::mp4::MuxOptions options;
     options.edit = edit;
-    const auto muxed = mp4::mux(
+    const auto muxed = iclforge::mp4::mux(
         track, std::span<const std::span<const std::byte>>(scanned->access_units), options);
     REQUIRE(muxed.has_value());
     return *muxed;
 }
 
 std::vector<std::byte> in_mkv(const std::vector<std::byte>& stream) {
-    const auto scanned = ac3::io::scan(stream);
+    const auto scanned = iclforge::io::scan(stream);
     REQUIRE(scanned.has_value());
-    matroska::AudioTrack track;
-    track.codec_id = std::string{scanned->kind == ac3::io::StreamKind::kAc3 ? matroska::kCodecAc3
-                                                                            : matroska::kCodecEac3};
-    track.sample_rate = ac3::sample_rate_hz(scanned->sample_rate);
+    iclforge::matroska::AudioTrack track;
+    track.codec_id = std::string{scanned->kind == iclforge::io::StreamKind::kAc3 ? iclforge::matroska::kCodecAc3
+                                                                            : iclforge::matroska::kCodecEac3};
+    track.sample_rate = iclforge::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
     const auto muxed =
-        matroska::mux(track, std::span<const std::span<const std::byte>>(scanned->access_units));
+        iclforge::matroska::mux(track, std::span<const std::span<const std::byte>>(scanned->access_units));
     REQUIRE(muxed.has_value());
     return *muxed;
 }
@@ -316,7 +316,7 @@ struct Library {
             if (found == files.end()) {
                 return std::unexpected("no such file: " + path);
             }
-            auto stream = ac3::apps::elementary_stream_from_bytes(found->second);
+            auto stream = iclforge::apps::elementary_stream_from_bytes(found->second);
             if (!stream.error.empty()) {
                 return std::unexpected(stream.error);
             }
@@ -351,7 +351,7 @@ bool play_out(Player& player, FakeDevice::Log& log, std::size_t period = 480) {
 std::unique_ptr<Player> make_player(const Library& library, const std::shared_ptr<FakeDevice::Log>& log,
                                     std::size_t capacity = 8192, const char* layout_name = "5.1",
                                     const DecoderSettings& settings = {}) {
-    const auto layout = ac3::render::OutputLayout::parse(layout_name);
+    const auto layout = iclforge::render::OutputLayout::parse(layout_name);
     REQUIRE(layout.has_value());
     return std::make_unique<Player>(std::make_unique<FakeDevice>(log, capacity), library.loader(),
                                     *layout, settings);
@@ -374,15 +374,15 @@ Slots played_alone(const Library& library, const std::string& path, const char* 
 // A stereo E-AC-3 programme of `frames` frames of one tone, as independent
 // substream `substreamid`.
 std::vector<std::vector<std::byte>> programme_frames(int frames, double hz, int substreamid) {
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.bitrate_kbps = 192;
-    config.acmod = ac3::Acmod::k2_0;
+    config.acmod = iclforge::Acmod::k2_0;
     config.substreamid = substreamid;
     config.dither = false;  // see eac3_stream()
-    ac3::eac3::FrameEncoder encoder{config};
+    iclforge::eac3::FrameEncoder encoder{config};
     std::vector<std::vector<std::byte>> out;
     for (int f = 0; f < frames; ++f) {
-        const auto samples = tone(hz, 48000, static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+        const auto samples = tone(hz, 48000, static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame);
         const std::vector<std::span<const float>> views(2, samples);
         auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -532,8 +532,8 @@ TEST_CASE("player: a queue of mixed containers plays gaplessly, every join exact
 TEST_CASE("player: a rate change reopens the output, after the old item has been heard",
           "[hearth][player]") {
     Library library;
-    library.files["48k.ec3"] = eac3_stream(10, ac3::SampleRate::k48000);
-    library.files["44k1.ac3"] = ac3_stream(8, ac3::SampleRate::k44100);
+    library.files["48k.ec3"] = eac3_stream(10, iclforge::SampleRate::k48000);
+    library.files["44k1.ac3"] = ac3_stream(8, iclforge::SampleRate::k44100);
 
     auto log = std::make_shared<FakeDevice::Log>();
     // An output path that holds on to the audio for a while after the
@@ -570,8 +570,8 @@ TEST_CASE("player: a rate change reopens the output, after the old item has been
 TEST_CASE("player: an underrun before a reopen does not cut the old item short",
           "[hearth][player]") {
     Library library;
-    library.files["48k.ec3"] = eac3_stream(10, ac3::SampleRate::k48000);
-    library.files["44k1.ac3"] = ac3_stream(8, ac3::SampleRate::k44100);
+    library.files["48k.ec3"] = eac3_stream(10, iclforge::SampleRate::k48000);
+    library.files["44k1.ac3"] = ac3_stream(8, iclforge::SampleRate::k44100);
 
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
@@ -853,7 +853,7 @@ TEST_CASE("player: an MP4 edit list's priming and padding are decoded but not pl
     const std::uint64_t kept = (12 * 1536) - 256 - 1000;
     Library library;
     library.files["raw.ec3"] = stream;
-    library.files["edited.mp4"] = in_mp4(stream, mp4::MuxOptions::Edit{.start_samples = 256,
+    library.files["edited.mp4"] = in_mp4(stream, iclforge::mp4::MuxOptions::Edit{.start_samples = 256,
                                                                        .duration_samples = kept});
 
     const Slots whole = played_alone(library, "raw.ec3");
@@ -884,9 +884,9 @@ TEST_CASE("player: two edited items join with nothing of either encoder's betwee
     library.files["first.ec3"] = first;
     library.files["second.ac3"] = second;
     library.files["first.mp4"] = in_mp4(
-        first, mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = first_kept});
+        first, iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = first_kept});
     library.files["second.mp4"] = in_mp4(
-        second, mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = second_kept});
+        second, iclforge::mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = second_kept});
 
     const Slots expected =
         joined(part(played_alone(library, "first.ec3"), 256, first_kept),
@@ -910,11 +910,11 @@ TEST_CASE("player: two edited items join with nothing of either encoder's betwee
 }
 
 TEST_CASE("player: a seek in an edited item counts from what the item plays", "[hearth][player]") {
-    const std::vector<std::byte> stream = eac3_stream(40, ac3::SampleRate::k48000, /*dither=*/false);
+    const std::vector<std::byte> stream = eac3_stream(40, iclforge::SampleRate::k48000, /*dither=*/false);
     const std::uint64_t kept = (40 * 1536) - 256 - 512;
     Library library;
     library.files["raw.ec3"] = stream;
-    library.files["edited.mp4"] = in_mp4(stream, mp4::MuxOptions::Edit{.start_samples = 256,
+    library.files["edited.mp4"] = in_mp4(stream, iclforge::mp4::MuxOptions::Edit{.start_samples = 256,
                                                                        .duration_samples = kept});
     const Slots whole = played_alone(library, "raw.ec3");
 
@@ -952,7 +952,7 @@ TEST_CASE("player: what a loader says about an item is kept, and an item with no
           "[hearth][player]") {
     const std::vector<std::byte> stream = eac3_stream(4);
     auto log = std::make_shared<FakeDevice::Log>();
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     const ItemLoader loader = [&stream](const std::string& path) -> std::expected<LoadedItem, std::string> {
         if (path == "noted") {
@@ -1002,7 +1002,7 @@ TEST_CASE("player: a settings change reaches the playing item at a unit, losing 
           "nothing",
           "[hearth][player]") {
     Library library;
-    library.files["long.ec3"] = eac3_stream(30, ac3::SampleRate::k48000, /*dither=*/false);
+    library.files["long.ec3"] = eac3_stream(30, iclforge::SampleRate::k48000, /*dither=*/false);
     const std::size_t total = 30 * 1536;
     const DecoderSettings before;
     DecoderSettings after;
@@ -1218,7 +1218,7 @@ TEST_CASE("player: removing the playing item goes on to the next, and the histor
     REQUIRE(history.size() == 3);
     // The removed item played part of the way, and has no place in the list.
     CHECK(history[0].title == "a.ec3");
-    CHECK(history[0].queue_index == ac3::hearth::Queue::kNone);
+    CHECK(history[0].queue_index == iclforge::hearth::Queue::kNone);
     CHECK(history[0].frames < 10 * 1536);
     // The next one started on an output of its own, since the one playing
     // stopped part-way; the one after joined it.
@@ -1234,7 +1234,7 @@ TEST_CASE("player: removing the playing item goes on to the next, and the histor
 TEST_CASE("player: an edit while a reopen waits leaves the reopen on its item", "[hearth][player]") {
     Library library;
     library.files["48k.ec3"] = eac3_stream(6);
-    library.files["44k1.ac3"] = ac3_stream(4, ac3::SampleRate::k44100);
+    library.files["44k1.ac3"] = ac3_stream(4, iclforge::SampleRate::k44100);
     library.files["new.ec3"] = eac3_stream(2);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
@@ -1278,7 +1278,7 @@ TEST_CASE("player: the position follows the device's clock through a join and a 
     const auto player = make_player(library, log);
     player->add(item("one.ec3"));
     player->add(item("two.ec3"));
-    CHECK(player->position().item == ac3::hearth::Queue::kNone);
+    CHECK(player->position().item == iclforge::hearth::Queue::kNone);
 
     player->play();
     auto at = player->position();
@@ -1326,7 +1326,7 @@ TEST_CASE("player: the position follows the device's clock through a join and a 
 
     // Stopped, there is nothing playing.
     player->stop();
-    CHECK(player->position().item == ac3::hearth::Queue::kNone);
+    CHECK(player->position().item == iclforge::hearth::Queue::kNone);
 }
 
 TEST_CASE("player: choosing an item plays it from its start, and clearing the queue stops",
@@ -1355,10 +1355,10 @@ TEST_CASE("player: choosing an item plays it from its start, and clearing the qu
     player->clear();
     CHECK(player->transport().state() == TransportState::kStopped);
     CHECK_FALSE(log->open);
-    CHECK(player->position().item == ac3::hearth::Queue::kNone);
+    CHECK(player->position().item == iclforge::hearth::Queue::kNone);
     REQUIRE(player->history().size() == 2);
     CHECK(player->history()[1].title == "c.ec3");
-    CHECK(player->history()[1].queue_index == ac3::hearth::Queue::kNone);
+    CHECK(player->history()[1].queue_index == iclforge::hearth::Queue::kNone);
     CHECK(log->opens == 2);
 
     // Out of range is said, not done.
@@ -1374,7 +1374,7 @@ TEST_CASE("player: a meter reading waits until the device has played what it des
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "2.0");
     player->add(item("tone.ec3"));
-    ac3::hearth::MeterSnapshot latest;
+    iclforge::hearth::MeterSnapshot latest;
     CHECK_FALSE(player->meters(latest));
 
     player->play();
@@ -1404,12 +1404,12 @@ TEST_CASE("player: the report of the unit being heard waits for the device", "[h
     // Two items told apart by their dialnorm, joined.
     Library library;
     library.files["a.ec3"] = eac3_stream(20);
-    library.files["b.ec3"] = eac3_stream(20, ac3::SampleRate::k48000, true, 0.3, 20);
+    library.files["b.ec3"] = eac3_stream(20, iclforge::SampleRate::k48000, true, 0.3, 20);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "2.0");
     player->add(item("a.ec3"));
     player->add(item("b.ec3"));
-    ac3::hearth::UnitReport report;
+    iclforge::hearth::UnitReport report;
     CHECK_FALSE(player->unit_report(report));
 
     player->play();
@@ -1428,7 +1428,7 @@ TEST_CASE("player: the report of the unit being heard waits for the device", "[h
     CHECK(player->unit_report(report));
 
     // Up to the join, the first item's words; past it, the second's.
-    const std::uint64_t join = 20 * ac3::kSamplesPerFrame;
+    const std::uint64_t join = 20 * iclforge::kSamplesPerFrame;
     for (int step = 0; step < 100000 && log->clock < join; ++step) {
         player->pump();
         advance(*log, std::min<std::uint64_t>(480, join - log->clock));
@@ -1457,13 +1457,13 @@ TEST_CASE("player: a join starts the next item's loudness, and momentary loudnes
     // A tone, then silence, joined.
     Library library;
     library.files["tone.ec3"] = eac3_stream(60);
-    library.files["silence.ec3"] = eac3_stream(60, ac3::SampleRate::k48000, /*dither=*/false, 0.0);
+    library.files["silence.ec3"] = eac3_stream(60, iclforge::SampleRate::k48000, /*dither=*/false, 0.0);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "2.0");
     player->add(item("tone.ec3"));
     player->add(item("silence.ec3"));
     player->play();
-    const std::uint64_t join = 60 * ac3::kSamplesPerFrame;
+    const std::uint64_t join = 60 * iclforge::kSamplesPerFrame;
     const auto play_until = [&](std::uint64_t frame) {
         for (int step = 0; step < 100000 && log->clock < frame; ++step) {
             player->pump();
@@ -1473,7 +1473,7 @@ TEST_CASE("player: a join starts the next item's loudness, and momentary loudnes
     };
 
     // 200 ms into the silence, half the momentary window is still the tone.
-    ac3::hearth::MeterSnapshot latest;
+    iclforge::hearth::MeterSnapshot latest;
     play_until(join + 9600);
     REQUIRE(log->opens == 1);
     REQUIRE(player->meters(latest));
@@ -1494,10 +1494,10 @@ TEST_CASE("player: a join starts the next item's loudness, and momentary loudnes
 namespace {
 
 // What the ring holds, without the stamps.
-std::vector<std::string> notes_in(const ac3::hearth::DiagnosticLog& diagnostics) {
+std::vector<std::string> notes_in(const iclforge::hearth::DiagnosticLog& diagnostics) {
     std::vector<std::string> notes;
     for (const std::string& line : diagnostics.lines()) {
-        notes.push_back(line.substr(ac3::hearth::DiagnosticLog::kStampBytes));
+        notes.push_back(line.substr(iclforge::hearth::DiagnosticLog::kStampBytes));
     }
     return notes;
 }
@@ -1519,10 +1519,10 @@ TEST_CASE("player: the diagnostics ring hears what playback did, and not where a
     const std::string folder = "C:\\Users\\Someone\\Music\\";
     library.files[folder + "a.ec3"] = eac3_stream(4);
     library.files[folder + "b.ec3"] = eac3_stream(3);
-    library.files["/home/someone/c.ec3"] = eac3_stream(2, ac3::SampleRate::k44100);
+    library.files["/home/someone/c.ec3"] = eac3_stream(2, iclforge::SampleRate::k44100);
     auto log = std::make_shared<FakeDevice::Log>();
-    ac3::hearth::DiagnosticLog diagnostics;
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    iclforge::hearth::DiagnosticLog diagnostics;
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout,
                   DecoderSettings{}, &diagnostics};
@@ -1562,7 +1562,7 @@ TEST_CASE("player: units that will not decode are noted once, then counted",
     // The middle of six units damaged, where only their CRC notices.
     auto damaged = eac3_stream(12);
     {
-        const auto scanned = ac3::io::scan(damaged);
+        const auto scanned = iclforge::io::scan(damaged);
         REQUIRE(scanned.has_value());
         REQUIRE(scanned->access_units.size() == 12);
         for (std::size_t k = 3; k <= 8; ++k) {
@@ -1575,12 +1575,12 @@ TEST_CASE("player: units that will not decode are noted once, then counted",
     library.files["damaged.ec3"] = damaged;
     library.files["clean.ec3"] = eac3_stream(2);
     auto log = std::make_shared<FakeDevice::Log>();
-    ac3::hearth::DiagnosticLog diagnostics;
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    iclforge::hearth::DiagnosticLog diagnostics;
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
     // Concealment would hide the damage from the player.
     DecoderSettings settings;
-    settings.concealment = ac3::ConcealmentPolicy::kNone;
+    settings.concealment = iclforge::ConcealmentPolicy::kNone;
     Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout, settings,
                   &diagnostics};
     player.add(item("damaged.ec3"));
@@ -1604,8 +1604,8 @@ TEST_CASE("player: an output that will not open or pause is noted", "[hearth][pl
     Library library;
     library.files["a.ec3"] = eac3_stream(40);
     auto log = std::make_shared<FakeDevice::Log>();
-    ac3::hearth::DiagnosticLog diagnostics;
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    iclforge::hearth::DiagnosticLog diagnostics;
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout,
                   DecoderSettings{}, &diagnostics};
@@ -1638,15 +1638,15 @@ TEST_CASE("player: an item that fails can stop playback at it", "[hearth][player
     Library library;
     library.files["first.ec3"] = eac3_stream(4);
     library.files["third.ec3"] = eac3_stream(3);
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
 
     // The item before it plays to its end, and playback stops at it.
     auto log = std::make_shared<FakeDevice::Log>();
-    ac3::hearth::DiagnosticLog diagnostics;
+    iclforge::hearth::DiagnosticLog diagnostics;
     Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout,
                   DecoderSettings{}, &diagnostics};
-    player.set_on_failure(ac3::hearth::FailurePolicy::kStop);
+    player.set_on_failure(iclforge::hearth::FailurePolicy::kStop);
     player.add(item("first.ec3"));
     QueueItem missing = item("D:\\Private\\missing.ec3");
     missing.title = "missing.ec3";
@@ -1675,7 +1675,7 @@ TEST_CASE("player: an item that fails can stop playback at it", "[hearth][player
 
     // Playing again does not pass over it; moving on is the person's choice.
     const auto again = player.play();
-    CHECK(again.action == ac3::hearth::TransportAction::kNone);
+    CHECK(again.action == iclforge::hearth::TransportAction::kNone);
     CHECK(again.note.find("missing.ec3") != std::string::npos);
     CHECK(log->opens == 1);
     player.next();
@@ -1686,10 +1686,10 @@ TEST_CASE("player: an item that fails can stop playback at it", "[hearth][player
     // An item that will not open as playback starts stops it there and then,
     // where passing over it would have played the next.
     auto starting_log = std::make_shared<FakeDevice::Log>();
-    ac3::hearth::DiagnosticLog starting_notes;
+    iclforge::hearth::DiagnosticLog starting_notes;
     Player starting{std::make_unique<FakeDevice>(starting_log, 8192), library.loader(), *layout,
                     DecoderSettings{}, &starting_notes};
-    starting.set_on_failure(ac3::hearth::FailurePolicy::kStop);
+    starting.set_on_failure(iclforge::hearth::FailurePolicy::kStop);
     starting.add(item("gone.ec3"));
     starting.add(item("first.ec3"));
     starting.play();
@@ -1704,7 +1704,7 @@ TEST_CASE("player: an item that fails can stop playback at it", "[hearth][player
     };
     CHECK(notes_in(starting_notes) == stopped);
 
-    starting.set_on_failure(ac3::hearth::FailurePolicy::kSkip);
+    starting.set_on_failure(iclforge::hearth::FailurePolicy::kSkip);
     starting.play_item(0);
     CHECK(starting_log->opens == 0);
     starting.next();
@@ -1738,7 +1738,7 @@ TEST_CASE("player: the last item is still playing until its tail has been heard"
     Library library;
     library.files["last.ec3"] = eac3_stream(6);
     library.files["more.ec3"] = eac3_stream(4);
-    library.files["44k1.ac3"] = ac3_stream(4, ac3::SampleRate::k44100);
+    library.files["44k1.ac3"] = ac3_stream(4, iclforge::SampleRate::k44100);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
     player->queue().add(item("last.ec3"));
@@ -1869,7 +1869,7 @@ TEST_CASE("player: a next item that will not open still stops playback after the
     library.files["third.ec3"] = eac3_stream(3);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
-    player->set_on_failure(ac3::hearth::FailurePolicy::kStop);
+    player->set_on_failure(iclforge::hearth::FailurePolicy::kStop);
     player->add(item("first.ec3"));
     player->add(item("gone.ec3"));
     player->add(item("third.ec3"));
@@ -1908,7 +1908,7 @@ TEST_CASE("player: a next item that will not open still stops playback after the
     }
 
     SECTION("passing over is chosen meanwhile") {
-        player->set_on_failure(ac3::hearth::FailurePolicy::kSkip);
+        player->set_on_failure(iclforge::hearth::FailurePolicy::kSkip);
         REQUIRE(play_out(*player, *log));
         const auto& history = player->history();
         REQUIRE(history.size() == 2);
@@ -1988,8 +1988,8 @@ TEST_CASE("player: an item queued all along joins even if the device ran dry bef
     Library library;
     library.files["first.ec3"] = eac3_stream(4);
     library.files["second.ec3"] = eac3_stream(3);
-    library.files["44k1-a.ac3"] = ac3_stream(3, ac3::SampleRate::k44100);
-    library.files["44k1-b.ac3"] = ac3_stream(2, ac3::SampleRate::k44100);
+    library.files["44k1-a.ac3"] = ac3_stream(3, iclforge::SampleRate::k44100);
+    library.files["44k1-b.ac3"] = ac3_stream(2, iclforge::SampleRate::k44100);
     auto log = std::make_shared<FakeDevice::Log>();
     log->instant = true;
     log->latency = 480;
@@ -2047,7 +2047,7 @@ TEST_CASE("player: an item queued all along joins even if the device ran dry bef
 TEST_CASE("player: a reopen decided before a pause waits for the resume", "[hearth][player]") {
     Library library;
     library.files["48k.ec3"] = eac3_stream(4);
-    library.files["44k1.ac3"] = ac3_stream(4, ac3::SampleRate::k44100);
+    library.files["44k1.ac3"] = ac3_stream(4, iclforge::SampleRate::k44100);
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log);
     player->add(item("48k.ec3"));
@@ -2123,7 +2123,7 @@ TEST_CASE("player: an output whose device goes away stops playback, and says so"
     }
 
     REQUIRE(player->active());
-    // Unplugged: the sink stops itself without being closed, as ac3::audio's
+    // Unplugged: the sink stops itself without being closed, as iclforge::audio's
     // do. It takes nothing more, has no position, and its clock stands.
     log->open = false;
     const auto report = player->pump();
@@ -2205,7 +2205,7 @@ TEST_CASE("player: delay shifts a slot's rendered samples later by the configure
     plain->play();
     REQUIRE(play_out(*plain, *plain_log));
 
-    const std::size_t delay_samples = ac3::render::TrimDelay::samples_for_ms(kDelayMs, 48000);
+    const std::size_t delay_samples = iclforge::render::TrimDelay::samples_for_ms(kDelayMs, 48000);
     REQUIRE(delay_samples > 0);
     REQUIRE(delayed_log->kept[0].size() == plain_log->kept[0].size());
     for (std::size_t i = 0; i < delay_samples; ++i) {
@@ -2227,8 +2227,8 @@ TEST_CASE("player: set_trim_db and set_delay_ms refuse an out-of-range slot or v
     CHECK(player->set_trim_db(0, -3.0));
     CHECK(player->set_trim_db(1, 6.0));
     CHECK_FALSE(player->set_trim_db(2, 0.0));                                    // no slot 2 on 2.0
-    CHECK_FALSE(player->set_trim_db(0, ac3::render::TrimDelay::kMinTrimDb - 1.0));  // too quiet
-    CHECK_FALSE(player->set_trim_db(0, ac3::render::TrimDelay::kMaxTrimDb + 1.0));  // too loud
+    CHECK_FALSE(player->set_trim_db(0, iclforge::render::TrimDelay::kMinTrimDb - 1.0));  // too quiet
+    CHECK_FALSE(player->set_trim_db(0, iclforge::render::TrimDelay::kMaxTrimDb + 1.0));  // too loud
     CHECK(player->trim_db(0) == -3.0);  // the refused calls changed nothing
     CHECK(player->trim_db(1) == 6.0);
     CHECK(player->trim_db(2) == 0.0);  // out of range reads as the neutral default
@@ -2249,11 +2249,11 @@ TEST_CASE("player: set_crossover_hz refuses outside LayoutRenderer's own range, 
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "5.1");
 
-    CHECK(player->crossover_hz() == ac3::render::LayoutRenderer::kDefaultCrossoverHz);
+    CHECK(player->crossover_hz() == iclforge::render::LayoutRenderer::kDefaultCrossoverHz);
     CHECK(player->set_crossover_hz(100.0));
     CHECK(player->crossover_hz() == 100.0);
-    CHECK_FALSE(player->set_crossover_hz(ac3::render::LayoutRenderer::kMinCrossoverHz - 1.0));
-    CHECK_FALSE(player->set_crossover_hz(ac3::render::LayoutRenderer::kMaxCrossoverHz + 1.0));
+    CHECK_FALSE(player->set_crossover_hz(iclforge::render::LayoutRenderer::kMinCrossoverHz - 1.0));
+    CHECK_FALSE(player->set_crossover_hz(iclforge::render::LayoutRenderer::kMaxCrossoverHz + 1.0));
     CHECK(player->crossover_hz() == 100.0);  // unchanged by the refused calls
 
     player->queue().add(item("a.ec3"));
@@ -2268,11 +2268,11 @@ TEST_CASE("player: set_layout refuses an empty layout, and is a no-op for the sa
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "5.1");
 
-    CHECK_FALSE(player->set_layout(ac3::render::OutputLayout{}));  // no slots at all
+    CHECK_FALSE(player->set_layout(iclforge::render::OutputLayout{}));  // no slots at all
     CHECK(player->layout().text() == "5.1");
     CHECK(log->opens == 0);
 
-    const auto same = ac3::render::OutputLayout::parse("5.1");
+    const auto same = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(same.has_value());
     CHECK(player->set_layout(*same));  // accepted, but there is nothing to do
     CHECK(player->layout().text() == "5.1");
@@ -2288,7 +2288,7 @@ TEST_CASE("player: set_layout with nothing playing takes effect for the next ite
     REQUIRE(player->set_trim_db(0, -6.0));
     REQUIRE(player->set_delay_ms(1, 5.0));
 
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     CHECK(player->set_layout(*layout));
     CHECK(player->layout().text() == "2.0");
@@ -2324,7 +2324,7 @@ TEST_CASE("player: set_layout while playing reopens the output at the new width 
 
     REQUIRE(player->set_trim_db(0, -6.0));  // the old layout's own speaker setup
 
-    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    const auto layout = iclforge::render::OutputLayout::parse("2.0");
     REQUIRE(layout.has_value());
     CHECK(player->set_layout(*layout));
     CHECK(player->layout().slots() == 2);
@@ -2372,7 +2372,7 @@ TEST_CASE("player: routing and device facts are PcmSink's own, and default to it
     auto log = std::make_shared<FakeDevice::Log>();
     const auto player = make_player(library, log, 8192, "5.1");
 
-    CHECK_FALSE(player->set_routing(ac3::render::Routing{}));
+    CHECK_FALSE(player->set_routing(iclforge::render::Routing{}));
     CHECK(player->routing().channels() == 0);
     CHECK(player->device_name().empty());
     CHECK(player->speaker_mask() == 0);
@@ -2407,9 +2407,9 @@ TEST_CASE("player: the identify tone replaces a slot's output with pink noise an
     // same determinism identify_start() relies on (its own comment says
     // why), reset() the same way build_decoder()'s reconfigure_identify()
     // leaves it before the first block.
-    ac3::render::IdentifyTone reference(48000);
+    iclforge::render::IdentifyTone reference(48000);
     std::vector<float> expected(log->kept[0].size());
-    reference.generate(expected, ac3::render::IdentifyTone::Band::kFull);
+    reference.generate(expected, iclforge::render::IdentifyTone::Band::kFull);
     CHECK(log->kept[0] == expected);
 }
 
@@ -2426,9 +2426,9 @@ TEST_CASE("player: an LFE slot's identify tone is the low band, not the full ban
     player->play();
     REQUIRE(play_out(*player, *log));
 
-    ac3::render::IdentifyTone reference(48000);
+    iclforge::render::IdentifyTone reference(48000);
     std::vector<float> expected(log->kept[5].size());
-    reference.generate(expected, ac3::render::IdentifyTone::Band::kLow);
+    reference.generate(expected, iclforge::render::IdentifyTone::Band::kLow);
     CHECK(log->kept[5] == expected);
 }
 
@@ -2445,9 +2445,9 @@ TEST_CASE("player: the identify tone ignores that slot's own trim", "[hearth][pl
     player->play();
     REQUIRE(play_out(*player, *log));
 
-    ac3::render::IdentifyTone reference(48000);
+    iclforge::render::IdentifyTone reference(48000);
     std::vector<float> expected(log->kept[0].size());
-    reference.generate(expected, ac3::render::IdentifyTone::Band::kFull);
+    reference.generate(expected, iclforge::render::IdentifyTone::Band::kFull);
     CHECK(log->kept[0] == expected);  // the -6 dB trim never applied
 }
 
@@ -2462,13 +2462,13 @@ TEST_CASE("player: identify_start and set_identify_level_db refuse an out-of-ran
     CHECK_FALSE(player->identify_start(2));  // no slot 2 on 2.0
     CHECK(player->identify_slot() == 1);     // the refused call changed nothing
     player->identify_stop();
-    CHECK(player->identify_slot() == ac3::hearth::Queue::kNone);
+    CHECK(player->identify_slot() == iclforge::hearth::Queue::kNone);
 
-    CHECK(player->identify_level_db() == ac3::render::IdentifyTone::kDefaultLevelDb);
+    CHECK(player->identify_level_db() == iclforge::render::IdentifyTone::kDefaultLevelDb);
     CHECK(player->set_identify_level_db(-30.0));
     CHECK(player->identify_level_db() == -30.0);
-    CHECK_FALSE(player->set_identify_level_db(ac3::render::IdentifyTone::kMinLevelDb - 1.0));
-    CHECK_FALSE(player->set_identify_level_db(ac3::render::IdentifyTone::kMaxLevelDb + 1.0));
+    CHECK_FALSE(player->set_identify_level_db(iclforge::render::IdentifyTone::kMinLevelDb - 1.0));
+    CHECK_FALSE(player->set_identify_level_db(iclforge::render::IdentifyTone::kMaxLevelDb + 1.0));
     CHECK(player->identify_level_db() == -30.0);  // unchanged by the refused calls
 }
 

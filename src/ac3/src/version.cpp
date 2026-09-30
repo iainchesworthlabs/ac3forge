@@ -6,7 +6,7 @@
 
 #include "iclforge/arithmetic/detail/simd.hpp"
 
-namespace ac3 {
+namespace iclforge {
 
 std::string version_details() {
     // The headline: the tag's version, plus the commits past it as build
@@ -32,4 +32,4 @@ std::string version_details() {
     return out;
 }
 
-}  // namespace ac3
+}  // namespace iclforge

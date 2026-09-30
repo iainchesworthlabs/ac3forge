@@ -9,7 +9,7 @@
 #include "iclforge/ac4core/dsp/kbd.hpp"
 #include "iclforge/ac4core/dsp/mdct.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr double kSlopeUp = 15.0;            // dB per Bark, towards higher frequencies
@@ -151,4 +151,4 @@ std::vector<std::vector<int>> scale_factors_for(const Grouped& grouped,
     return sf;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

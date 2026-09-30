@@ -16,7 +16,7 @@
 // received packet, what one advertisement answers with, and what a browser learns from what it
 // receives. mdns.cpp carries the packets over the network; the tests run everything here.
 
-namespace ac3::sendspin::discovery::mdns_packets {
+namespace iclforge::sendspin::discovery::mdns_packets {
 
 inline constexpr std::uint16_t kTypeA = 1;
 inline constexpr std::uint16_t kTypePtr = 12;
@@ -153,4 +153,4 @@ class BrowseState {
     std::map<std::string, std::vector<Address>> hosts_;
 };
 
-}  // namespace ac3::sendspin::discovery::mdns_packets
+}  // namespace iclforge::sendspin::discovery::mdns_packets

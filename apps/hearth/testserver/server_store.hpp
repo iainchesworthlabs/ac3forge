@@ -18,7 +18,7 @@
 // Records). The pairing PSKs entered from tokens and the approvals of unpaired access last the run.
 // One text file of hex, written readable by its owner only.
 
-namespace ac3::hearth::testserver {
+namespace iclforge::hearth::testserver {
 
 using sendspin::crypto::Key32;
 
@@ -53,4 +53,4 @@ class FileServerStore final : public sendspin::ServerStore {
     std::map<Key32, Key32> records_;
 };
 
-}  // namespace ac3::hearth::testserver
+}  // namespace iclforge::hearth::testserver

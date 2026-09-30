@@ -8,7 +8,7 @@
 // tests/hearth/test_transport.cpp; the comments say what a person would
 // expect of the transport rather than restating the code.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -322,4 +322,4 @@ TransportOutcome Transport::current_item_removed() {
     return result;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

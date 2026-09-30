@@ -21,7 +21,7 @@
 
 #include "wav_format.hpp"
 
-namespace ac3::io {
+namespace iclforge::io {
 
 namespace {
 
@@ -242,7 +242,7 @@ std::expected<void, WavError> write_wav_f32(std::ostream& out,
     const std::uint32_t data_bytes = frames * count * 4;
 
     // data_bytes is computed above, from `channels` alone, before a single
-    // byte goes out - so unlike ac3::io::WavStreamWriter (built for a live
+    // byte goes out - so unlike iclforge::io::WavStreamWriter (built for a live
     // capture whose length isn't known until the session ends), this never
     // needs to seek back and patch the header once the truth is known. That
     // makes it exactly as safe on an unseekable stream (a pipe to `-`) as it
@@ -301,4 +301,4 @@ std::expected<void, WavError> write_wav_pcm16_raw(const std::string& path,
     return {};
 }
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

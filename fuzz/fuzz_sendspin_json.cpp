@@ -9,7 +9,7 @@
 
 #include "iclforge/sendspin/json.hpp"
 
-// ac3::sendspin::json::Document::parse (src/sendspin/src/json.cpp) - the first
+// iclforge::sendspin::json::Document::parse (src/sendspin/src/json.cpp) - the first
 // code a Sendspin peer's bytes reach: client/init and server/init before any
 // authentication, and every decrypted JSON message after it, on the server and on
 // a sink.
@@ -22,13 +22,13 @@
 
 namespace {
 
-using ac3::sendspin::json::Document;
-using ac3::sendspin::json::Error;
-using ac3::sendspin::json::Limits;
-using ac3::sendspin::json::Token;
-using ac3::sendspin::json::Type;
-using ac3::sendspin::json::Value;
-using ac3::sendspin::json::Writer;
+using iclforge::sendspin::json::Document;
+using iclforge::sendspin::json::Error;
+using iclforge::sendspin::json::Limits;
+using iclforge::sendspin::json::Token;
+using iclforge::sendspin::json::Type;
+using iclforge::sendspin::json::Value;
+using iclforge::sendspin::json::Writer;
 
 void write_value(Value value, Writer& out) {
     const std::optional<Type> type = value.type();

@@ -6,7 +6,7 @@
 // get told no instead of getting nothing. See platform/posix/passthrough.cpp
 // for the same convention.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(MonitorError error) {
     switch (error) {
@@ -46,4 +46,4 @@ std::expected<void, MonitorError> MonitorSink::resume() {
 }
 bool MonitorSink::paused() const { return false; }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

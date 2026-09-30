@@ -8,7 +8,7 @@
 
 #include "iclforge/ac4core/tables/qmf_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr int kSubbands = 64;
@@ -456,4 +456,4 @@ void DrcStage::process(const OutputConfig& output, const DrcFrameValues& values,
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

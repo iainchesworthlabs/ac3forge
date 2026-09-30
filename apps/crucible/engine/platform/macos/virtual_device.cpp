@@ -60,7 +60,7 @@
 // would print an empty pair of quotes; that is a UI gap on a platform nobody
 // has run, recorded here rather than papered over with a made-up name.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -121,4 +121,4 @@ std::shared_ptr<VirtualDevice> platform_virtual_device() {
     return std::make_shared<MacosVirtualDevice>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

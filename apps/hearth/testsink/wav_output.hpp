@@ -21,7 +21,7 @@
 //
 // Not thread-safe: the sink calls it from the session's callbacks, under the session's lock.
 
-namespace ac3::hearth::testsink {
+namespace iclforge::hearth::testsink {
 
 class WavOutput {
    public:
@@ -64,4 +64,4 @@ class WavOutput {
     std::uint32_t streams_ = 0;
 };
 
-}  // namespace ac3::hearth::testsink
+}  // namespace iclforge::hearth::testsink

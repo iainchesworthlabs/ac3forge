@@ -27,7 +27,7 @@
 // falls back to the search by length: at each length, look the leading bits up
 // among the entries of that length. Nothing is built at run time.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 struct HuffEntry {
     std::uint32_t code = 0;   // the codeword, right-aligned in `bits` bits, MSB first
@@ -89,4 +89,4 @@ struct Codebook {
     std::span<const std::uint16_t> fast{};
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

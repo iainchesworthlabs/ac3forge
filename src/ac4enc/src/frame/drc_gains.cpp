@@ -8,7 +8,7 @@
 #include "iclforge/ac4core/dsp/complex.hpp"
 #include "iclforge/ac4core/tables/qmf_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr std::size_t kSubbands = dsp::kQmfSubbands;
@@ -246,4 +246,4 @@ DrcModeGains DrcGainEncoder::gains(long long frame) {
     return out;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

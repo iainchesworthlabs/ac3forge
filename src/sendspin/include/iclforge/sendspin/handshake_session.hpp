@@ -30,7 +30,7 @@
 // Neither machine times anything: the driver closes a connection whose next handshake
 // message does not arrive in time (about 30 s).
 
-namespace ac3::sendspin::handshake {
+namespace iclforge::sendspin::handshake {
 
 // A PSK a client holds, tagged with its category.
 struct PskCandidate {
@@ -196,4 +196,4 @@ class Initiator {
     bool mismatch_ = false;
 };
 
-}  // namespace ac3::sendspin::handshake
+}  // namespace iclforge::sendspin::handshake

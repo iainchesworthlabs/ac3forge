@@ -5,7 +5,7 @@
 // See the double variant under src/internal/scalar/float64/ for what this seam
 // is and why it is separate from ac3/internal/profile.hpp.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 // float. The targets the minimum-footprint profile serves have
 // single-precision hardware at best - the ESP32-S3's LX7 FPU is
@@ -26,4 +26,4 @@ namespace ac3::internal {
 // CLI to diff with.
 using decode_scalar_t = float;
 
-} // namespace ac3::internal
+} // namespace iclforge::internal

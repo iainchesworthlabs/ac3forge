@@ -28,7 +28,7 @@
 // choice there, and honouring it here would mean widening the windowed block
 // to call a function that cannot answer.
 
-namespace ac3::encoder_detail {
+namespace iclforge::encoder_detail {
 
 // One long block: 512 windowed samples to 256 coefficients, in the scalar of
 // both - the store is the same scalar as the window (encode_scalar_t).
@@ -92,4 +92,4 @@ inline void ecpl_spectrum(std::span<const float, 256> prev, std::span<const floa
     eac3::ecpl_channel_spectrum(prev, curr, next, real_out, imag_out);
 }
 
-}  // namespace ac3::encoder_detail
+}  // namespace iclforge::encoder_detail

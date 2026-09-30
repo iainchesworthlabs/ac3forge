@@ -32,12 +32,12 @@
 #include "iclforge/audio/ring_buffer.hpp"
 #include "pipewire_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
-using ac3::pipewire::Stream;
-using ac3::pipewire::ThreadLoop;
+using iclforge::pipewire::Stream;
+using iclforge::pipewire::ThreadLoop;
 
 // See capture.cpp's identical constant for why this bound exists at all.
 constexpr int kConnectTimeoutSeconds = 5;
@@ -73,7 +73,7 @@ struct MonitorSink::Impl {
     std::uint32_t sample_rate = 0;
     // What the process callback last worked out, for position(): the frames
     // it has handed the stream since the last start or flush, against those
-    // still between the stream and the speaker (ac3::pipewire::
+    // still between the stream and the speaker (iclforge::pipewire::
     // unplayed_frames()). pw_time's ticks are not used: they are the graph
     // driver's clock, which runs on while this stream is paused, so a
     // position built on them jumps forward by the length of every pause.
@@ -204,7 +204,7 @@ struct MonitorSink::Impl {
         pw_time time{};
         if (pw_stream_get_time_n(impl.stream.get(), &time, sizeof(time)) == 0) {
             impl.counter.report(impl.handed_over,
-                                ac3::pipewire::unplayed_frames(time, impl.sample_rate));
+                                iclforge::pipewire::unplayed_frames(time, impl.sample_rate));
         }
     }
 
@@ -411,7 +411,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         return std::unexpected(MonitorError::kComFailure);
     }
 
-    ac3::pipewire::ensure_initialized();
+    iclforge::pipewire::ensure_initialized();
 
     impl_->loop = ThreadLoop{pw_thread_loop_new("ac3audio-monitor", nullptr)};
     if (!impl_->loop) {
@@ -502,4 +502,4 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

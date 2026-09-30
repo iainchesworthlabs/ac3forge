@@ -14,7 +14,7 @@
 
 // See diagnostic_log.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -203,4 +203,4 @@ std::string scrub(std::string text, const Secrets& secrets) {
     return text;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

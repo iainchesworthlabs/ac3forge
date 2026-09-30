@@ -23,7 +23,7 @@
 // position, a gain, when an update takes effect - is src/ac4dec/src/pcm/
 // objects.cpp's, by clause 6.3.9 and Annex F.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // The most object_info_block()s an object carries in one frame:
 // num_obj_info_blocks is 3 bits (6.2.8.2).
@@ -222,7 +222,7 @@ struct OamdDynData {
 // the budget add_data_bytes sets runs out, the elements it has no room for
 // are not read, as the syntax says.
 struct OamdCommonData {
-    ac4::OamdCommonData data{};
+    iclforge::ac4::OamdCommonData data{};
     std::uint64_t add_data_bits = 0;  // the width of add_data, read and not interpreted
 };
 
@@ -272,4 +272,4 @@ struct ObjectAudioContext {
     std::optional<int> group_blocks;
 };
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

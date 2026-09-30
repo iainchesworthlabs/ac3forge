@@ -58,7 +58,7 @@ void rule(const char* title) {
     std::printf("\n=== %s ===\n", title);
 }
 
-void show(const char* name, const ac3::audio::Capability& capability) {
+void show(const char* name, const iclforge::audio::Capability& capability) {
     std::printf("  %-18s %-3s %s\n", name, capability.available ? "yes" : "NO",
                 std::string(capability.reason).c_str());
 }
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     const int watch_seconds = argc > 1 ? std::atoi(argv[1]) : 5;
 
     rule("library capabilities");
-    const auto& backend = ac3::audio::audio_backend();
+    const auto& backend = iclforge::audio::audio_backend();
     show("capture", backend.capture);
     show("passthrough", backend.passthrough);
     show("monitor", backend.monitor);
@@ -77,10 +77,10 @@ int main(int argc, char** argv) {
     show("process_loopback", backend.process_loopback);
     show("device_watch", backend.device_watch);
     std::printf("  process_loopback_available() = %s\n",
-                ac3::audio::process_loopback_available() ? "true" : "false");
+                iclforge::audio::process_loopback_available() ? "true" : "false");
 
     rule("session monitor: who is playing");
-    const auto sessions = ac3::crucible::platform_session_monitor();
+    const auto sessions = iclforge::crucible::platform_session_monitor();
     const auto apps = sessions->refresh();
     if (apps.empty()) {
         std::printf("  (nothing is playing; start something and run again)\n");
@@ -99,12 +99,12 @@ int main(int argc, char** argv) {
             if (!app.has_session) {
                 continue;
             }
-            ac3::audio::Capture capture;
+            iclforge::audio::Capture capture;
             const auto started = capture.start_process_loopback(
-                app.app, ac3::audio::ProcessLoopbackMode::kIncludeProcessTree, {48000, 2});
+                app.app, iclforge::audio::ProcessLoopbackMode::kIncludeProcessTree, {48000, 2});
             if (!started) {
                 std::printf("  pid %-7u REFUSED: %s\n", app.app,
-                            std::string(ac3::audio::describe(started.error())).c_str());
+                            std::string(iclforge::audio::describe(started.error())).c_str());
                 continue;
             }
             // Long enough for the graph to link and a few packets to land.
@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
     }
 
     rule("default device");
-    const auto devices = ac3::crucible::platform_default_device();
+    const auto devices = iclforge::crucible::platform_default_device();
     std::printf("  moves_default: %s\n", devices->moves_default() ? "yes" : "no");
     std::printf("  default id:    '%s'\n", devices->default_id().c_str());
     for (const auto& endpoint : devices->endpoints()) {
@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
         const char* value = std::getenv(name);
         std::printf("  %-17s '%s'\n", name, value == nullptr ? "" : value);
     }
-    const auto foreground = ac3::crucible::platform_foreground();
+    const auto foreground = iclforge::crucible::platform_foreground();
     // The X11 Foreground connects on its first read, so read once before
     // asking support(); the engine does the same on its monitor thread.
     (void)foreground->fullscreen_pid();
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
     }
 
     rule("silent device: create and remove");
-    const auto silent = ac3::crucible::platform_virtual_device();
+    const auto silent = iclforge::crucible::platform_virtual_device();
     auto before = silent->state({});
     std::printf("  before: needed=%d present=%d can_install=%d %s\n", before.needed ? 1 : 0,
                 before.present ? 1 : 0, before.can_install ? 1 : 0, before.blocker.c_str());
@@ -200,23 +200,23 @@ int main(int argc, char** argv) {
     }
 
     rule("device watcher");
-    ac3::audio::DeviceWatcher watcher;
+    iclforge::audio::DeviceWatcher watcher;
     int events = 0;
-    const auto watch_started = watcher.start([&events](const ac3::audio::DeviceChangeEvent& event) {
+    const auto watch_started = watcher.start([&events](const iclforge::audio::DeviceChangeEvent& event) {
         const char* kind = "?";
         switch (event.change) {
-            case ac3::audio::DeviceChange::kAdded: kind = "added"; break;
-            case ac3::audio::DeviceChange::kRemoved: kind = "removed"; break;
-            case ac3::audio::DeviceChange::kDefaultRenderChanged: kind = "default-render"; break;
-            case ac3::audio::DeviceChange::kDefaultCaptureChanged: kind = "default-capture"; break;
-            case ac3::audio::DeviceChange::kStateChanged: kind = "state"; break;
+            case iclforge::audio::DeviceChange::kAdded: kind = "added"; break;
+            case iclforge::audio::DeviceChange::kRemoved: kind = "removed"; break;
+            case iclforge::audio::DeviceChange::kDefaultRenderChanged: kind = "default-render"; break;
+            case iclforge::audio::DeviceChange::kDefaultCaptureChanged: kind = "default-capture"; break;
+            case iclforge::audio::DeviceChange::kStateChanged: kind = "state"; break;
         }
         std::printf("  %-16s %s\n", kind, event.device_id.c_str());
         ++events;
     });
     if (!watch_started) {
         std::printf("  start REFUSED: %s\n",
-                    std::string(ac3::audio::describe(watch_started.error())).c_str());
+                    std::string(iclforge::audio::describe(watch_started.error())).c_str());
     } else {
         std::printf("  running; watching %d s (the silent device is removed during it, so a "
                     "'removed' should appear)\n",

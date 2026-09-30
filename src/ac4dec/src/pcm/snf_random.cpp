@@ -2,7 +2,7 @@
 
 #include "iclforge/ac4core/tables/noise_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 RandGenState reset_rand_gen_state_snf(int sequence_counter) noexcept {
     // Pseudocode 24, in int as it is written; sequence_counter is 10 bits, and
@@ -46,4 +46,4 @@ float get_random_noise_value(RandGenState& state) noexcept {
     return result;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -36,14 +36,14 @@
 //     decision that accounts for not knowing.
 //   * Gaps 3 and 5, a sink that changed and an EDID read once. A pure
 //     function has nothing to remember, so re-deciding on a device change is
-//     the whole mechanism: ac3::audio::RenderDeviceWatch reports the change,
+//     the whole mechanism: iclforge::audio::RenderDeviceWatch reports the change,
 //     the caller re-reads the facts and calls this again.
 //   * Gap 6, "no descriptor" and "no reader" collapsed into one note. They
 //     are separate CapabilitySource values, and the reason text says which,
 //     because "your receiver is off" and "this machine cannot read EDID" are
 //     different problems for whoever is holding the phone.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 enum class OutputMode : std::uint8_t {
     // IEC 61937 to a sink that takes the stream as it is: no decode, no
@@ -53,7 +53,7 @@ enum class OutputMode : std::uint8_t {
     // Lossy, and chosen only when the alternative is not bitstreaming at all.
     kBitstreamAsAc3,
     // Decoded and rendered here, to a local device at the device's own width
-    // (ac3::audio::PcmOutput).
+    // (iclforge::audio::PcmOutput).
     kLocalPcm,
     // Handed to Sendspin players as the group's source (src/sendspin).
     kNetworkGroup,
@@ -69,10 +69,10 @@ enum class OutputMode : std::uint8_t {
 // while a platform with no reader has not answered the question at all.
 enum class CapabilitySource : std::uint8_t {
     // The sink's own CEA-861 Short Audio Descriptors, over EDID or ALSA's
-    // ELD (ac3::audio::read_sink_capabilities).
+    // ELD (iclforge::audio::read_sink_capabilities).
     kDescriptor,
     // The platform was asked to open each format and said yes or no
-    // (ac3::audio::enumerate_render_devices).
+    // (iclforge::audio::enumerate_render_devices).
     kProbe,
     // The endpoint is there and reports no descriptor, so nothing is known
     // of what the sink behind it decodes.
@@ -100,7 +100,7 @@ struct EndpointFacts {
     bool accepts_eac3 = false;
     bool accepts_pcm = false;
     CapabilitySource source = CapabilitySource::kProbe;
-    // The device's own width and speaker mask (ac3::audio::RenderDeviceInfo);
+    // The device's own width and speaker mask (iclforge::audio::RenderDeviceInfo);
     // 0 means the backend cannot say, not none.
     std::uint16_t channels = 0;
     std::uint32_t speakers = 0;
@@ -167,4 +167,4 @@ struct HeldOutput {
 
 [[nodiscard]] OutputChoice choose_output(const OutputRequest& request);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

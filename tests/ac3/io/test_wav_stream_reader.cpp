@@ -31,7 +31,7 @@ namespace {
 // The directory is created in the constructor rather than by a scratch_dir()
 // helper of the shape the other files use because this file reaches its scratch
 // space only through this RAII type, which every test here already goes through.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 struct TempWav {
     std::string path;
@@ -75,12 +75,12 @@ TEST_CASE("WavStreamReader matches read_wav block by block on a float32 file", "
     // final short read is exercised too.
     const auto channels = tone_channels(3, 2500);
     TempWav wav{"ac3_wsr_f32.wav"};
-    REQUIRE(ac3::io::write_wav_f32(wav.path, channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav.path, channels, 48000).has_value());
 
-    const auto whole = ac3::io::read_wav(wav.path);
+    const auto whole = iclforge::io::read_wav(wav.path);
     REQUIRE(whole.has_value());
 
-    ac3::io::WavStreamReader reader;
+    iclforge::io::WavStreamReader reader;
     REQUIRE(reader.open(wav.path).has_value());
     REQUIRE(reader.is_open());
     CHECK(reader.sample_rate() == 48000);
@@ -121,13 +121,13 @@ TEST_CASE("WavStreamReader converts PCM16 exactly as read_wav does", "[wav]") {
         payload[i + 1] = static_cast<std::byte>(value >> 8);
     }
     TempWav wav{"ac3_wsr_pcm16.wav"};
-    REQUIRE(ac3::io::write_wav_pcm16_raw(wav.path, payload, 48000, 2).has_value());
+    REQUIRE(iclforge::io::write_wav_pcm16_raw(wav.path, payload, 48000, 2).has_value());
 
-    const auto whole = ac3::io::read_wav(wav.path);
+    const auto whole = iclforge::io::read_wav(wav.path);
     REQUIRE(whole.has_value());
     REQUIRE(whole->frame_count() == kFrames);
 
-    ac3::io::WavStreamReader reader;
+    iclforge::io::WavStreamReader reader;
     REQUIRE(reader.open(wav.path).has_value());
     CHECK(reader.channels() == 2);
     CHECK(reader.frame_count() == kFrames);
@@ -208,11 +208,11 @@ TEST_CASE("WavStreamReader matches read_wav on every widened sample format", "[w
             out.write(file.data(), static_cast<std::streamsize>(file.size()));
         }
 
-        const auto whole = ac3::io::read_wav(wav.path);
+        const auto whole = iclforge::io::read_wav(wav.path);
         REQUIRE(whole.has_value());
         REQUIRE(whole->frame_count() == kFrames);
 
-        ac3::io::WavStreamReader reader;
+        iclforge::io::WavStreamReader reader;
         REQUIRE(reader.open(wav.path).has_value());
         CHECK(reader.channels() == kChannels);
         CHECK(reader.frame_count() == kFrames);
@@ -238,12 +238,12 @@ TEST_CASE("WavStreamReader matches read_wav on every widened sample format", "[w
 }
 
 TEST_CASE("WavStreamReader refuses what read_wav refuses", "[wav]") {
-    ac3::io::WavStreamReader reader;
+    iclforge::io::WavStreamReader reader;
 
     SECTION("missing file") {
         const auto result = reader.open("ac3_wsr_does_not_exist.wav");
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kCannotOpen);
+        CHECK(result.error() == iclforge::io::WavError::kCannotOpen);
         CHECK_FALSE(reader.is_open());
     }
 
@@ -251,7 +251,7 @@ TEST_CASE("WavStreamReader refuses what read_wav refuses", "[wav]") {
         TempWav bogus{"ac3_wsr_bogus.wav"};
         {
             std::vector<std::vector<float>> one(1, std::vector<float>(4, 0.0f));
-            REQUIRE(ac3::io::write_wav_f32(bogus.path, one, 48000).has_value());
+            REQUIRE(iclforge::io::write_wav_f32(bogus.path, one, 48000).has_value());
         }
         // Overwrite the RIFF tag.
         {
@@ -260,7 +260,7 @@ TEST_CASE("WavStreamReader refuses what read_wav refuses", "[wav]") {
         }
         const auto result = reader.open(bogus.path);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+        CHECK(result.error() == iclforge::io::WavError::kNotRiffWave);
 
         // A rejected open() must not leave the OS file handle held: on
         // Windows a lingering handle turns this delete into a sharing
@@ -273,24 +273,24 @@ TEST_CASE("WavStreamReader refuses what read_wav refuses", "[wav]") {
         const std::array<std::span<float>, 1> views{std::span{buffer}};
         const auto result = reader.read_planar(views, 16);
         REQUIRE_FALSE(result.has_value());
-        CHECK(result.error() == ac3::io::WavError::kCannotOpen);
+        CHECK(result.error() == iclforge::io::WavError::kCannotOpen);
     }
 }
 
 TEST_CASE("WavStreamReader clamps a data chunk that claims more than the file holds", "[wav]") {
     const auto channels = tone_channels(2, 300);
     TempWav wav{"ac3_wsr_clamped.wav"};
-    REQUIRE(ac3::io::write_wav_f32(wav.path, channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav.path, channels, 48000).has_value());
     // Chop the last 100 frames' bytes off the file; the header still claims
     // 300 frames. read_wav yields the 200 real ones - so must this.
     std::filesystem::resize_file(wav.path,
                                  std::filesystem::file_size(wav.path) - 100 * 2 * 4);
 
-    const auto whole = ac3::io::read_wav(wav.path);
+    const auto whole = iclforge::io::read_wav(wav.path);
     REQUIRE(whole.has_value());
     REQUIRE(whole->frame_count() == 200);
 
-    ac3::io::WavStreamReader reader;
+    iclforge::io::WavStreamReader reader;
     REQUIRE(reader.open(wav.path).has_value());
     CHECK(reader.frame_count() == 200);
 

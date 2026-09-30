@@ -7,7 +7,7 @@
 
 #include "iclforge/dsp/detail/fft_kernel.hpp"
 
-namespace ac3 {
+namespace iclforge {
 
 namespace {
 
@@ -83,4 +83,4 @@ void dft512(std::span<const float, kDftLength> real_in, std::span<const float, k
     }
 }
 
-}  // namespace ac3
+}  // namespace iclforge

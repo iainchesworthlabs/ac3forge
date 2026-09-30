@@ -7,7 +7,7 @@
 // get told no instead of getting nothing. See
 // platform/posix/audio_backend.cpp for why there is no backend here.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(DeviceWatchError error) {
     switch (error) {
@@ -31,4 +31,4 @@ void DeviceWatcher::stop() {}
 bool DeviceWatcher::running() const { return false; }
 DeviceWatchStats DeviceWatcher::stats() const { return {}; }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

@@ -71,7 +71,7 @@
 // the encoder chose AND on the level change they cause, and those are two
 // different claims.
 
-namespace ac3 {
+namespace iclforge {
 
 enum class DecodeError : std::uint8_t {
     kTruncated,
@@ -219,7 +219,7 @@ struct DecoderConfig {
     bool fast_mdct = true;
     // Which domain JOC object reconstruction applies §6.6.6's matrix in.
     // oba::joc::Domain::kQmf is what the clause describes and what a licensed
-    // decoder runs: §7.1's 64-band complex QMF, ac3::dsp::QmfAnalysis.
+    // decoder runs: §7.1's 64-band complex QMF, iclforge::dsp::QmfAnalysis.
     // oba::joc::Domain::kMdctBand is the cheaper approximation over 256 MDCT
     // bins that predates this tree having a filterbank at all - correct
     // only for a stream whose matrix was estimated the same way, which in
@@ -352,14 +352,14 @@ struct DecodedFrame {
     // carries the time code in the same 28 bits instead, and reports it as
     // info.timecod1/timecod2 above. When xbsi1 is present its Lt/Rt and Lo/Ro
     // levels are the ones the §7.8 output stage folds with (§D3.1.2, through
-    // ac3::mix_levels()), and a surround level Tables D2.4/D2.6 reserve is
+    // iclforge::mix_levels()), and a surround level Tables D2.4/D2.6 reserve is
     // reported as the -1.5 dB a decoder uses in its place.
     std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     int dialnorm = 31;
     // §5.4.2.4/§5.4.2.5, the two downmix levels bsi carries: std::nullopt for
     // any acmod whose bsi does not carry that field at all (cmixlev needs
     // three front channels, surmixlev needs surrounds), which is a different
-    // statement from "carried, and says the default". ac3::mix_levels() turns
+    // statement from "carried, and says the default". iclforge::mix_levels() turns
     // the pair into the coefficients the §7.8 output stage needs, applying
     // §7.8's own defaults where a field is absent. An Annex D frame's xbsi1
     // levels take their place when it sends them (§D4.2.1); the pair is still
@@ -386,7 +386,7 @@ struct DecodedFrame {
     // nchans x kSamplesPerFrame, AC-3 channel order, LFE last when present -
     // unless DecoderConfig::output asked for a fold, in which case this holds
     // the folded output (Lo/Ro, Lt/Rt or mono) while acmod/lfe above still
-    // describe what was CODED. ac3::output_channel_count() says how many
+    // describe what was CODED. iclforge::output_channel_count() says how many
     // channels a given config leaves behind.
     std::vector<std::vector<float>> channels;
     // §7.10: set only when this frame was concealed rather than decoded -
@@ -400,7 +400,7 @@ struct DecodedFrame {
 class ICLFORGE_AC3_EXPORT FrameDecoder {
    public:
     // Real work, not =default, because Impl below is incomplete here - same
-    // reason ac3::io::WavStreamReader's default ctor gives. A default-
+    // reason iclforge::io::WavStreamReader's default ctor gives. A default-
     // constructed decoder is only ever a move-assignment target (see
     // io::Prober::Impl), never decoded through directly, but it still needs
     // a valid impl_ to be safely destructible and move-assignable.
@@ -491,8 +491,8 @@ class ICLFORGE_AC3_EXPORT FrameDecoder {
 
     // Every private data member - config, overlap-add state, dither, the
     // output stage, the §7.10 concealment buffers - lives behind this one
-    // pimpl, following the same pattern as ac3::io::WavStreamReader/Writer
-    // and ac3::FrameEncoder. Impl is defined in decoder.cpp.
+    // pimpl, following the same pattern as iclforge::io::WavStreamReader/Writer
+    // and iclforge::FrameEncoder. Impl is defined in decoder.cpp.
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
@@ -542,7 +542,7 @@ struct DecodedSubstream {
     // A DEPENDENT substream's copy stops after the levels - Table E1.2 gates
     // everything past lfemixlevcod on strmtyp == 0x0 - so those fields keep
     // their defaults there rather than reporting bits that were never sent.
-    // ac3::mix_levels() turns the downmix levels alone into the coefficients
+    // iclforge::mix_levels() turns the downmix levels alone into the coefficients
     // the §7.8 output stage needs.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
     // §E2.3.1.2's legacy core (bsid <= 8) has no mixmdate syntax to carry
@@ -629,7 +629,7 @@ struct DecodedSubstream {
 // Dual mono (acmod kDualMono) is the one exception: 1+1 is always a single
 // substream with no bed/dependent split, and its two channels are unrelated
 // programmes with no Table E2.5 location - Ch1 and Ch2, not L and R. `layout`
-// is left empty (count 0) in that case, matching ac3::meta::layout_of()'s own
+// is left empty (count 0) in that case, matching iclforge::meta::layout_of()'s own
 // "not a layout" stance, and `channels` holds Ch1 then Ch2 in coded order.
 struct DecodedAccessUnit {
     SampleRate sample_rate = SampleRate::k48000;
@@ -704,7 +704,7 @@ struct DecodedAccessUnit {
     // Parallel to `layout`, except for dual mono - unless DecoderConfig::
     // output asked for a fold, in which case this holds the folded output and
     // `layout` still describes what was rendered before it. See
-    // ac3::output_channel_count().
+    // iclforge::output_channel_count().
     std::vector<std::vector<float>> channels;
     // §7.10, same convention as DecodedFrame::concealed: std::nullopt on any
     // access unit that assembled normally. ConcealmentAction::kBedOnly is the
@@ -893,8 +893,8 @@ class ICLFORGE_AC3_EXPORT Eac3Decoder {
     // Every private data member - config, the output stage, the per-
     // substream-identity delay/JOC/pending state, the decode scratch, the
     // §7.10 concealment buffers, all of it - lives behind this one pimpl,
-    // following the same pattern as ac3::io::WavStreamReader/Writer and
-    // ac3::FrameEncoder. Impl is defined in eac3_decoder.cpp. The lazy
+    // following the same pattern as iclforge::io::WavStreamReader/Writer and
+    // iclforge::FrameEncoder. Impl is defined in eac3_decoder.cpp. The lazy
     // per-substream-slot unique_ptr arrays (delay/JOC/retained state) stay
     // exactly as they were - that is a laziness optimization independent of
     // this pimpl, not something the sweep should flatten.
@@ -967,4 +967,4 @@ split_access_units(std::span<const std::byte> stream, int programme);
 [[nodiscard]] ICLFORGE_AC3_EXPORT bool has_eac3_extension_substreams(
     std::span<const std::byte> stream);
 
-}  // namespace ac3
+}  // namespace iclforge

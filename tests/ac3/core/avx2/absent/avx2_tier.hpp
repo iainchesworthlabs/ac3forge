@@ -27,19 +27,19 @@
 
 #include "mdct_avx2.hpp"
 
-namespace ac3::internal::avx2 {
+namespace iclforge::internal::avx2 {
 
 // Declared but never callable here - see avx2_tier.cpp. The signature matches
 // src/internal/avx2/avx2_probe.hpp's exactly, so the present/ build and this
 // one agree on what the test is calling.
 [[nodiscard]] bool avx2_probe_matches_expected() noexcept;
 
-}  // namespace ac3::internal::avx2
+}  // namespace iclforge::internal::avx2
 
-namespace ac3::test::avx2 {
+namespace iclforge::test::avx2 {
 
 // False in this variant by construction - see the present/ copy for why the
 // test branches on this with a plain `if` rather than an #ifdef.
 inline constexpr bool kTierCompiled = false;
 
-}  // namespace ac3::test::avx2
+}  // namespace iclforge::test::avx2

@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 bool read_double(std::string_view token, double& out) {
     if (token.empty()) {
@@ -34,4 +34,4 @@ bool read_double(std::string_view token, double& out) {
     return true;
 }
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

@@ -35,12 +35,12 @@
 
 namespace {
 
-using ac3::Acmod;
-using ac3::DownmixTarget;
-namespace cm = ac3::eac3::chanmap;
+using iclforge::Acmod;
+using iclforge::DownmixTarget;
+namespace cm = iclforge::eac3::chanmap;
 
 constexpr int kUnits = 5;
-constexpr auto kFrame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+constexpr auto kFrame = static_cast<std::size_t>(iclforge::kSamplesPerFrame);
 // Late in the frame, where block switching - and with it transient pre-noise
 // processing - fires; the decoder tests' own onset.
 constexpr std::size_t kOnsetSample = 960;
@@ -94,10 +94,10 @@ void append(HeldAndReleased& streams, int unit, int units, std::span<const std::
 // §E2.3.1.2's legacy core: an AC-3 5.1 bed with a 7.1 rear dependent behind
 // it. Only the dependent can hold its unit back - AC-3 has no transproce.
 HeldAndReleased legacy_core_streams(int units, int onset_unit) {
-    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
-    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
                                   .acmod = Acmod::k2_2,
-                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .strmtyp = iclforge::eac3::StreamType::kDependent,
                                   .substreamid = 0,
                                   .chanmap = cm::k71Rear,
                                   .last_dependent = true,
@@ -119,7 +119,7 @@ HeldAndReleased legacy_core_streams(int units, int onset_unit) {
 // A genuine E-AC-3 5.1 bed that holds its units back, with the same rear
 // dependent beside it releasing every call.
 HeldAndReleased bed_and_dependent_streams() {
-    ac3::eac3::AccessUnitEncoder encoder{
+    iclforge::eac3::AccessUnitEncoder encoder{
         {.independent = {.bitrate_kbps = 448,
                          .acmod = Acmod::k3_2,
                          .lfe = true,
@@ -140,7 +140,7 @@ HeldAndReleased bed_and_dependent_streams() {
 // One E-AC-3 substream per unit, holding back. 1+1 has to say Ch2's own
 // dialnorm.
 HeldAndReleased single_substream_streams(Acmod acmod, bool lfe, std::span<const double> tones) {
-    ac3::eac3::FrameEncoder encoder{
+    iclforge::eac3::FrameEncoder encoder{
         {.bitrate_kbps = 448,
          .acmod = acmod,
          .lfe = lfe,
@@ -161,12 +161,12 @@ HeldAndReleased single_substream_streams(Acmod acmod, bool lfe, std::span<const 
 // decode_access_unit hands back, then - with `flush` - the unit
 // held_back_unit rebuilds from flush(), laid out against the first unit's
 // layout.
-std::vector<ac3::DecodedAccessUnit> play(std::span<const std::byte> stream,
-                                         const ac3::DecoderConfig& config, bool flush) {
-    const auto units = ac3::split_access_units(stream);
+std::vector<iclforge::DecodedAccessUnit> play(std::span<const std::byte> stream,
+                                         const iclforge::DecoderConfig& config, bool flush) {
+    const auto units = iclforge::split_access_units(stream);
     REQUIRE(units.has_value());
-    ac3::Eac3Decoder decoder{config};
-    std::vector<ac3::DecodedAccessUnit> played;
+    iclforge::Eac3Decoder decoder{config};
+    std::vector<iclforge::DecodedAccessUnit> played;
     std::optional<cm::Layout> programme;
     for (const auto& unit : *units) {
         auto decoded = decoder.decode_access_unit(unit);
@@ -180,7 +180,7 @@ std::vector<ac3::DecodedAccessUnit> play(std::span<const std::byte> stream,
         played.push_back(std::move(**decoded));
     }
     if (flush) {
-        auto held = ac3::apps::held_back_unit(decoder.flush(), programme,
+        auto held = iclforge::apps::held_back_unit(decoder.flush(), programme,
                                               config.output.target != DownmixTarget::kAsCoded);
         if (held.has_value()) {
             played.push_back(std::move(*held));
@@ -189,7 +189,7 @@ std::vector<ac3::DecodedAccessUnit> play(std::span<const std::byte> stream,
     return played;
 }
 
-std::size_t samples_played(const std::vector<ac3::DecodedAccessUnit>& played) {
+std::size_t samples_played(const std::vector<iclforge::DecodedAccessUnit>& played) {
     std::size_t total = 0;
     for (const auto& unit : played) {
         total += unit.channels.empty() ? 0 : unit.channels.front().size();
@@ -217,7 +217,7 @@ double tone_power(std::span<const float> x, double hz) {
 // without it: the same units, the last rebuilt by held_back_unit in one and
 // assembled by decode_access_unit in the other.
 void check_held_unit_matches_release(const HeldAndReleased& streams,
-                                     const ac3::DecoderConfig& config) {
+                                     const iclforge::DecoderConfig& config) {
     const auto played = play(streams.held, config, true);
     const auto reference = play(streams.released, config, false);
     REQUIRE(played.size() == static_cast<std::size_t>(kUnits));
@@ -239,7 +239,7 @@ void check_held_unit_matches_release(const HeldAndReleased& streams,
 
 TEST_CASE("reads_as_access_units sends a legacy core to the access-unit decoder",
           "[decoder][eac3][monitor]") {
-    ac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
+    iclforge::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
     std::vector<std::byte> plain;
     for (int unit = 0; unit < 3; ++unit) {
         const auto pcm = unit_pcm(kBedTones, unit, 0);
@@ -252,21 +252,21 @@ TEST_CASE("reads_as_access_units sends a legacy core to the access-unit decoder"
 
     // The first frame of a legacy-core stream says AC-3 exactly as a plain
     // AC-3 stream's does, which is what 'monitor' used to dispatch on.
-    REQUIRE(ac3::stream_bsid(legacy).value_or(-1) <= 8);
-    REQUIRE(ac3::stream_bsid(plain).value_or(-1) <= 8);
+    REQUIRE(iclforge::stream_bsid(legacy).value_or(-1) <= 8);
+    REQUIRE(iclforge::stream_bsid(plain).value_or(-1) <= 8);
 
-    CHECK_FALSE(ac3::apps::reads_as_access_units(plain));
-    CHECK(ac3::apps::reads_as_access_units(legacy));
-    CHECK(ac3::apps::reads_as_access_units(eac3));
-    CHECK_FALSE(ac3::apps::reads_as_access_units(std::span(plain).first(3)));
+    CHECK_FALSE(iclforge::apps::reads_as_access_units(plain));
+    CHECK(iclforge::apps::reads_as_access_units(legacy));
+    CHECK(iclforge::apps::reads_as_access_units(eac3));
+    CHECK_FALSE(iclforge::apps::reads_as_access_units(std::span(plain).first(3)));
 
     // FrameDecoder refuses the legacy-core stream at its first dependent -
     // the failure 'monitor' printed for one - and the access-unit path reads
     // every unit of it.
-    const auto frames = ac3::split_frames(legacy);
+    const auto frames = iclforge::split_frames(legacy);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == 6);
-    ac3::FrameDecoder frame_decoder;
+    iclforge::FrameDecoder frame_decoder;
     REQUIRE(frame_decoder.decode_frame((*frames)[0]).has_value());
     CHECK_FALSE(frame_decoder.decode_frame((*frames)[1]).has_value());
     const auto played = play(legacy, {}, true);
@@ -275,11 +275,11 @@ TEST_CASE("reads_as_access_units sends a legacy core to the access-unit decoder"
 }
 
 TEST_CASE("held_back_unit is empty when nothing was held back", "[decoder][eac3][monitor]") {
-    CHECK_FALSE(ac3::apps::held_back_unit({}, std::nullopt, false).has_value());
+    CHECK_FALSE(iclforge::apps::held_back_unit({}, std::nullopt, false).has_value());
 
     // A stream that never used the tool leaves flush() nothing to return.
-    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = Acmod::k2_0}};
-    ac3::Eac3Decoder decoder;
+    iclforge::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = Acmod::k2_0}};
+    iclforge::Eac3Decoder decoder;
     for (int unit = 0; unit < 3; ++unit) {
         const auto pcm = unit_pcm(std::array{1000.0, 1500.0}, unit, 0);
         const auto frame = encoder.encode_frame(views(pcm));
@@ -288,17 +288,17 @@ TEST_CASE("held_back_unit is empty when nothing was held back", "[decoder][eac3]
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
     }
-    CHECK_FALSE(ac3::apps::held_back_unit(decoder.flush(), std::nullopt, false).has_value());
+    CHECK_FALSE(iclforge::apps::held_back_unit(decoder.flush(), std::nullopt, false).has_value());
 
     // A dependent with no bed beside it has nothing to extend.
-    ac3::DecodedSubstream orphan;
-    orphan.strmtyp = ac3::eac3::StreamType::kDependent;
+    iclforge::DecodedSubstream orphan;
+    orphan.strmtyp = iclforge::eac3::StreamType::kDependent;
     orphan.acmod = Acmod::k2_2;
     orphan.chanmap = cm::k71Rear;
     orphan.channels.assign(4, std::vector<float>(kFrame, 0.25F));
-    std::vector<ac3::DecodedSubstream> flushed;
+    std::vector<iclforge::DecodedSubstream> flushed;
     flushed.push_back(std::move(orphan));
-    CHECK_FALSE(ac3::apps::held_back_unit(std::move(flushed), std::nullopt, false).has_value());
+    CHECK_FALSE(iclforge::apps::held_back_unit(std::move(flushed), std::nullopt, false).has_value());
 }
 
 TEST_CASE("a single substream's held-back last unit plays, folded or not",
@@ -323,15 +323,15 @@ TEST_CASE("a legacy core's held-back unit lays its dependent over the core",
     // The premise: the core is never held, so flush() returns the held
     // dependent first and the core that was waiting for it after.
     {
-        const auto units = ac3::split_access_units(streams.held);
+        const auto units = iclforge::split_access_units(streams.held);
         REQUIRE(units.has_value());
-        ac3::Eac3Decoder decoder;
+        iclforge::Eac3Decoder decoder;
         for (const auto& unit : *units) {
             REQUIRE(decoder.decode_access_unit(unit).has_value());
         }
         const auto flushed = decoder.flush();
         REQUIRE(flushed.size() == 2);
-        CHECK(flushed[0].strmtyp == ac3::eac3::StreamType::kDependent);
+        CHECK(flushed[0].strmtyp == iclforge::eac3::StreamType::kDependent);
         CHECK(flushed[1].bsid <= 8);
     }
 
@@ -356,12 +356,12 @@ TEST_CASE("a held-back bed takes the dependent that was waiting for it",
 TEST_CASE("under a fold, a legacy core's held-back unit is the core's own fold",
           "[decoder][eac3][monitor]") {
     const auto streams = legacy_core_streams(kUnits, 2);
-    const auto frames = ac3::split_frames(streams.held);
+    const auto frames = iclforge::split_frames(streams.held);
     REQUIRE(frames.has_value());
 
     for (const auto target : {DownmixTarget::kLoRo, DownmixTarget::kMono}) {
         INFO("target " << static_cast<int>(target));
-        const ac3::DecoderConfig config{.output = {.target = target}};
+        const iclforge::DecoderConfig config{.output = {.target = target}};
         const std::size_t width = target == DownmixTarget::kMono ? 1 : 2;
 
         // Every unit folds through Eac3Decoder, the core as much as the rest:
@@ -378,10 +378,10 @@ TEST_CASE("under a fold, a legacy core's held-back unit is the core's own fold",
         // flush() folded the core and the dependent each on its own, and the
         // unit is the core's fold: what FrameDecoder folds the same core
         // frames to.
-        ac3::FrameDecoder core_decoder{config};
+        iclforge::FrameDecoder core_decoder{config};
         std::vector<std::vector<float>> core_fold;
         for (const auto& frame : *frames) {
-            if (ac3::stream_bsid(frame).value_or(16) > 8) {
+            if (iclforge::stream_bsid(frame).value_or(16) > 8) {
                 continue;
             }
             auto decoded = core_decoder.decode_frame(frame);
@@ -399,14 +399,14 @@ TEST_CASE("a stream held back before any unit came out still plays that unit",
     // out of the loop, so the layout comes from the flushed substreams.
     const auto streams = legacy_core_streams(1, 0);
     CHECK(play(streams.held, {}, false).empty());
-    const auto units = ac3::split_access_units(streams.held);
+    const auto units = iclforge::split_access_units(streams.held);
     REQUIRE(units.has_value());
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     REQUIRE(units->size() == 1);
     const auto decoded = decoder.decode_access_unit(units->front());
     REQUIRE(decoded.has_value());
     REQUIRE_FALSE(decoded->has_value());
-    const auto held = ac3::apps::held_back_unit(decoder.flush(), std::nullopt, false);
+    const auto held = iclforge::apps::held_back_unit(decoder.flush(), std::nullopt, false);
     REQUIRE(held.has_value());
 
     const auto reference = play(streams.released, {}, false);

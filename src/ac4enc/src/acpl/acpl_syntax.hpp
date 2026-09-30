@@ -16,7 +16,7 @@
 // huff_decode_diff() returns for them (4.3.10.8.3), the codeword's index less
 // its codebook's cb_off, from acpl_param_band up.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // acpl_config_1ch(acpl_1ch_mode), Table 59: PARTIAL in ASPX_ACPL_1, FULL in
 // ASPX_ACPL_2.
@@ -87,4 +87,4 @@ void write_acpl_data_2ch(BitWriter& w, const AcplConfig2chFields& config, const 
 // value must be codable.
 [[nodiscard]] std::size_t acpl_set_bits(AcplKind kind, int quant_mode, const AcplSetFields& set) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -3,7 +3,7 @@
 // 5.X by Table 219, 5.X and 3.0 to Lo/Ro, Lt/Rt and its Pro Logic II form by
 // Tables 217 and 218, with the LFE and the loudness corrections, and to mono -
 // against its formula with the stream's gains; the gains persisting between
-// the frames that send them; and through ac4::Decoder, DEE's 5.1 tones, one
+// the frames that send them; and through iclforge::ac4::Decoder, DEE's 5.1 tones, one
 // per channel, measured in each channel of the downmix to 0.01 dB.
 
 #include <array>
@@ -29,8 +29,8 @@
 
 namespace {
 
-namespace detail = ac4::detail;
-using S = ac4::Speaker;
+namespace detail = iclforge::ac4::detail;
+using S = iclforge::ac4::Speaker;
 using Row = std::vector<double>;
 using QmfValue = detail::QmfValue;
 
@@ -62,7 +62,7 @@ detail::StereoDmxCoeff coefficients(int loro_c, int loro_s, int ltrt_c, int ltrt
 
 // The matrix a stage takes after one frame of `values`.
 std::vector<Row> matrix_for(std::span<const S> speakers, bool add_ch_base,
-                            ac4::DownmixTarget target, const detail::DownmixValues& values,
+                            iclforge::ac4::DownmixTarget target, const detail::DownmixValues& values,
                             bool mix_lfe = true) {
     detail::DownmixStage stage;
     stage.configure(speakers, add_ch_base, target, mix_lfe);
@@ -105,19 +105,19 @@ struct Decoded {
     std::vector<std::vector<float>> channels;
 };
 
-Decoded decode_all(std::span<const std::byte> stream, ac4::DownmixTarget target) {
-    const ac4::ScanResult scan = ac4::scan(stream);
+Decoded decode_all(std::span<const std::byte> stream, iclforge::ac4::DownmixTarget target) {
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     REQUIRE_FALSE(scan.frames.empty());
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.output.downmix = target;
-    ac4::Decoder decoder(config);
+    iclforge::ac4::Decoder decoder(config);
     Decoded out;
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         INFO(decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         out.speakers = pcm.speakers;
         out.channels.resize(pcm.channels.size());
         for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
@@ -182,38 +182,38 @@ TEST_CASE("5.1's downmixes are Table 218's with the stream's gains, LFE and loud
     // Columns L R C LFE Ls Rs.
     const Row lo = scaled({1, 0, db(0), lfe, db(-6), 0}, loro);
     const Row ro = scaled({0, 1, db(0), lfe, 0, db(-6)}, loro);
-    check_matrix(matrix_for(kFiveOne, false, ac4::DownmixTarget::kLoRo, values), {lo, ro});
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kLoRo, values), {lo, ro});
     // The stream prefers Lo/Ro, so stereo is Lo/Ro, and mono their sum.
-    check_matrix(matrix_for(kFiveOne, false, ac4::DownmixTarget::kStereo, values), {lo, ro});
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kStereo, values), {lo, ro});
     Row sum(6);
     for (std::size_t c = 0; c < 6; ++c) {
         sum[c] = lo[c] + ro[c];
     }
-    check_matrix(matrix_for(kFiveOne, false, ac4::DownmixTarget::kMono, values), {sum});
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kMono, values), {sum});
     // Lt/Rt: the surrounds' sum out of phase in Lt.
     const double s = db(-4.5);
     check_matrix(
-        matrix_for(kFiveOne, false, ac4::DownmixTarget::kLtRt, values),
+        matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kLtRt, values),
         {scaled({1, 0, db(-6), lfe, -s, -s}, ltrt), scaled({0, 1, db(-6), lfe, s, s}, ltrt)});
     // Where the stream prefers the Pro Logic II form: +1.8 dB near, -3.2 far.
     values.coeff->preferred_dmx_method = 3;
     const double near = s * db(1.8);
     const double far = s * db(-3.2);
-    check_matrix(matrix_for(kFiveOne, false, ac4::DownmixTarget::kLtRt, values),
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kLtRt, values),
                  {scaled({1, 0, db(-6), lfe, -near, -far}, ltrt),
                   scaled({0, 1, db(-6), lfe, far, near}, ltrt)});
-    check_matrix(matrix_for(kFiveOne, false, ac4::DownmixTarget::kStereo, values),
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kStereo, values),
                  {scaled({1, 0, db(-6), lfe, -near, -far}, ltrt),
                   scaled({0, 1, db(-6), lfe, far, near}, ltrt)});
     // Without the LFE, and without b_ltrt_mixinfo, which gives Lt/Rt the Lo/Ro
     // gains.
     values.coeff->preferred_dmx_method = 2;
     values.coeff->b_ltrt_mixinfo = false;
-    check_matrix(matrix_for(kFiveOne, false, ac4::DownmixTarget::kLtRt, values, false),
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kLtRt, values, false),
                  {scaled({1, 0, db(0), 0, -db(-6), -db(-6)}, ltrt),
                   scaled({0, 1, db(0), 0, db(-6), db(-6)}, ltrt)});
     // Nothing sent: -3 dB mix gains, no LFE, no correction.
-    check_matrix(matrix_for(kFiveOne, false, ac4::DownmixTarget::kLoRo, {}),
+    check_matrix(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::kLoRo, {}),
                  {{1, 0, db(-3), 0, db(-3), 0}, {0, 1, db(-3), 0, 0, db(-3)}});
 }
 
@@ -225,7 +225,7 @@ TEST_CASE("7.X folds to 5.X by Table 219 for each additional pair and add_ch_bas
     const std::array<S, 8> back = {S::kLeft,     S::kRight,        S::kCentre,
                                    S::kLfe,      S::kLeftSurround, S::kRightSurround,
                                    S::kLeftBack, S::kRightBack};
-    check_matrix(matrix_for(back, false, ac4::DownmixTarget::k5X, values),
+    check_matrix(matrix_for(back, false, iclforge::ac4::DownmixTarget::k5X, values),
                  {{1, 0, 0, 0, 0, 0, 0, 0},
                   {0, 1, 0, 0, 0, 0, 0, 0},
                   {0, 0, 1, 0, 0, 0, 0, 0},
@@ -237,14 +237,14 @@ TEST_CASE("7.X folds to 5.X by Table 219 for each additional pair and add_ch_bas
         const std::array<S, 8> seven = {S::kLeft,         S::kRight,         S::kCentre, S::kLfe,
                                         S::kLeftSurround, S::kRightSurround, left,       right};
         // add_ch_base 0: the pair into L and R; 1: into the surrounds.
-        check_matrix(matrix_for(seven, false, ac4::DownmixTarget::k5X, values),
+        check_matrix(matrix_for(seven, false, iclforge::ac4::DownmixTarget::k5X, values),
                      {{1, 0, 0, 0, 0, 0, k, 0},
                       {0, 1, 0, 0, 0, 0, 0, k},
                       {0, 0, 1, 0, 0, 0, 0, 0},
                       {0, 0, 0, 1, 0, 0, 0, 0},
                       {0, 0, 0, 0, 1, 0, 0, 0},
                       {0, 0, 0, 0, 0, 1, 0, 0}});
-        check_matrix(matrix_for(seven, true, ac4::DownmixTarget::k5X, values),
+        check_matrix(matrix_for(seven, true, iclforge::ac4::DownmixTarget::k5X, values),
                      {{1, 0, 0, 0, 0, 0, 0, 0},
                       {0, 1, 0, 0, 0, 0, 0, 0},
                       {0, 0, 1, 0, 0, 0, 0, 0},
@@ -254,30 +254,30 @@ TEST_CASE("7.X folds to 5.X by Table 219 for each additional pair and add_ch_bas
     }
     // And on to Lo/Ro through 5.X: the back pair at 0.707 x -3 dB.
     const double s = db(-3.0);
-    check_matrix(matrix_for(back, false, ac4::DownmixTarget::kLoRo, values),
+    check_matrix(matrix_for(back, false, iclforge::ac4::DownmixTarget::kLoRo, values),
                  {{1, 0, s, 0, k * s, 0, k * s, 0}, {0, 1, s, 0, 0, k * s, 0, k * s}});
     // 5.X is left as it is by a 5.X target.
-    CHECK(matrix_for(kFiveOne, false, ac4::DownmixTarget::k5X, values).size() == 6);
+    CHECK(matrix_for(kFiveOne, false, iclforge::ac4::DownmixTarget::k5X, values).size() == 6);
 }
 
 TEST_CASE("3.0, stereo and mono take Table 217, the sum and the 0.707 upmix", "[ac4dec][downmix]") {
     detail::DownmixValues values;
     values.coeff = coefficients(5, 4, 3, 4, std::nullopt, 1);
     const std::array<S, 3> three = {S::kLeft, S::kRight, S::kCentre};
-    check_matrix(matrix_for(three, false, ac4::DownmixTarget::kLoRo, values),
+    check_matrix(matrix_for(three, false, iclforge::ac4::DownmixTarget::kLoRo, values),
                  {{1, 0, db(-4.5)}, {0, 1, db(-4.5)}});
-    check_matrix(matrix_for(three, false, ac4::DownmixTarget::kLtRt, values),
+    check_matrix(matrix_for(three, false, iclforge::ac4::DownmixTarget::kLtRt, values),
                  {{1, 0, db(-1.5)}, {0, 1, db(-1.5)}});
     const std::array<S, 2> stereo = {S::kLeft, S::kRight};
-    check_matrix(matrix_for(stereo, false, ac4::DownmixTarget::kMono, values), {{1, 1}});
+    check_matrix(matrix_for(stereo, false, iclforge::ac4::DownmixTarget::kMono, values), {{1, 1}});
     const std::array<S, 1> mono = {S::kCentre};
-    check_matrix(matrix_for(mono, false, ac4::DownmixTarget::kStereo, values), {{0.707}, {0.707}});
+    check_matrix(matrix_for(mono, false, iclforge::ac4::DownmixTarget::kStereo, values), {{0.707}, {0.707}});
 }
 
 TEST_CASE("the downmix's gains hold from the frame that sends them until another does",
           "[ac4dec][downmix]") {
     detail::DownmixStage stage;
-    stage.configure(kFiveOne, false, ac4::DownmixTarget::kLoRo, true);
+    stage.configure(kFiveOne, false, iclforge::ac4::DownmixTarget::kLoRo, true);
     std::vector<std::vector<QmfValue>> channels(6, std::vector<QmfValue>(64, QmfValue{1.0, 0.0}));
     std::vector<std::vector<QmfValue>*> in;
     for (auto& channel : channels) {
@@ -304,7 +304,7 @@ TEST_CASE("DEE's 5.1 tones come out of each downmix at the stream's gains, to 0.
     // -3 dB centre and surround gains and no LFE mix gain.
     constexpr std::array<double, 6> kHz = {331.0, 457.0, 613.0, 47.0, 787.0, 953.0};
     const std::vector<std::byte> stream = read_stream("ac4-51-tones-384");
-    const Decoded coded = decode_all(stream, ac4::DownmixTarget::kAsCoded);
+    const Decoded coded = decode_all(stream, iclforge::ac4::DownmixTarget::kAsCoded);
     REQUIRE(coded.speakers == std::vector<S>(kFiveOne.begin(), kFiveOne.end()));
     std::array<double, 6> own{};
     for (std::size_t c = 0; c < 6; ++c) {
@@ -312,16 +312,16 @@ TEST_CASE("DEE's 5.1 tones come out of each downmix at the stream's gains, to 0.
     }
     const double m3 = db(-3.0);
     struct Expected {
-        ac4::DownmixTarget target;
+        iclforge::ac4::DownmixTarget target;
         std::vector<Row> matrix;
     };
     const std::array<Expected, 3> targets = {{
-        {ac4::DownmixTarget::kLoRo, {{1, 0, m3, 0, m3, 0}, {0, 1, m3, 0, 0, m3}}},
-        {ac4::DownmixTarget::kLtRt, {{1, 0, m3, 0, -m3, -m3}, {0, 1, m3, 0, m3, m3}}},
-        {ac4::DownmixTarget::kMono, {{1, 1, 2 * m3, 0, m3, m3}}},
+        {iclforge::ac4::DownmixTarget::kLoRo, {{1, 0, m3, 0, m3, 0}, {0, 1, m3, 0, 0, m3}}},
+        {iclforge::ac4::DownmixTarget::kLtRt, {{1, 0, m3, 0, -m3, -m3}, {0, 1, m3, 0, m3, m3}}},
+        {iclforge::ac4::DownmixTarget::kMono, {{1, 1, 2 * m3, 0, m3, m3}}},
     }};
     for (const Expected& expected : targets) {
-        CAPTURE(ac4::describe(expected.target));
+        CAPTURE(iclforge::ac4::describe(expected.target));
         const Decoded mixed = decode_all(stream, expected.target);
         REQUIRE(mixed.channels.size() == expected.matrix.size());
         for (std::size_t o = 0; o < mixed.channels.size(); ++o) {

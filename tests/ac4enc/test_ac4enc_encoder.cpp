@@ -1,4 +1,4 @@
-// ac4::Encoder end to end: what it writes, read back by the inspector, the
+// iclforge::ac4::Encoder end to end: what it writes, read back by the inspector, the
 // decoder's syntax walk and the decoder's PCM path. Each stream's frames are
 // the size the bit rate gives, every substream reads to its end with the trace
 // the encoder recorded, and the decoded output is the input, delayed by the
@@ -28,7 +28,7 @@
 
 namespace {
 
-using ac3::test::kSanitized;
+using iclforge::test::kSanitized;
 
 // Seconds of input: `normal`, or under the sanitizers `sanitized`.
 constexpr std::size_t seconds(double normal, double sanitized) {
@@ -40,17 +40,17 @@ constexpr std::size_t seconds(double normal, double sanitized) {
 constexpr int kDecoderDelay = 352 + 577 + 6 * 64;
 
 struct Encoded {
-    std::vector<ac4::EncodedFrame> frames;
-    std::vector<ac4::SyntaxRecord> trace;
+    std::vector<iclforge::ac4::EncodedFrame> frames;
+    std::vector<iclforge::ac4::SyntaxRecord> trace;
 };
 
 // Encodes planar input in pieces of `piece` samples, then flushes.
-Encoded encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input, std::size_t piece) {
+Encoded encode(const iclforge::ac4::EncoderConfig& base, const std::vector<std::vector<float>>& input, std::size_t piece) {
     Encoded out;
-    ac4::EncoderConfig config = base;
-    const auto sink = [&out](const ac4::SyntaxRecord& r) { out.trace.push_back(r); };
+    iclforge::ac4::EncoderConfig config = base;
+    const auto sink = [&out](const iclforge::ac4::SyntaxRecord& r) { out.trace.push_back(r); };
     config.trace = sink;
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
     const std::size_t total = input.front().size();
     for (std::size_t at = 0; at < total; at += piece) {
@@ -69,15 +69,15 @@ Encoded encode(const ac4::EncoderConfig& base, const std::vector<std::vector<flo
     return out;
 }
 
-std::vector<std::vector<float>> decode(const std::vector<ac4::EncodedFrame>& frames) {
-    ac4::Decoder decoder;
+std::vector<std::vector<float>> decode(const std::vector<iclforge::ac4::EncodedFrame>& frames) {
+    iclforge::ac4::Decoder decoder;
     std::vector<std::vector<float>> out;
-    for (const ac4::EncodedFrame& frame : frames) {
+    for (const iclforge::ac4::EncodedFrame& frame : frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         INFO(decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         out.resize(pcm.channels.size());
         for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
             out[c].insert(out[c].end(), pcm.channels[c].begin(), pcm.channels[c].end());
@@ -122,15 +122,15 @@ Score score(std::span<const float> source, std::span<const float> decoded, std::
 void check_frames_read_back(const Encoded& encoded) {
     // Every substream of every frame reads to its end, and the decoder's
     // trace of the substreams is the encoder's, frame by frame.
-    std::vector<ac4::SyntaxRecord> read;
-    const auto sink = [&read](const ac4::SyntaxRecord& r) { read.push_back(r); };
-    ac4::DecoderConfig config;
+    std::vector<iclforge::ac4::SyntaxRecord> read;
+    const auto sink = [&read](const iclforge::ac4::SyntaxRecord& r) { read.push_back(r); };
+    iclforge::ac4::DecoderConfig config;
     config.syntax = sink;
-    ac4::Decoder decoder(config);
-    for (const ac4::EncodedFrame& frame : encoded.frames) {
+    iclforge::ac4::Decoder decoder(config);
+    for (const iclforge::ac4::EncodedFrame& frame : encoded.frames) {
         const auto report = decoder.parse(frame.raw_ac4_frame);
         REQUIRE(report.has_value());
-        for (const ac4::SubstreamReport& substream : report->substreams) {
+        for (const iclforge::ac4::SubstreamReport& substream : report->substreams) {
             CAPTURE(substream.index, substream.refused_reason);
             REQUIRE_FALSE(substream.refused.has_value());
             CHECK(substream.bits_read == substream.size_bits);
@@ -154,49 +154,49 @@ void check_frames_read_back(const Encoded& encoded) {
 }  // namespace
 
 TEST_CASE("the encoder refuses what it does not write", "[ac4enc][encoder]") {
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     for (const int channels : {0, 3, 4, 7, 8, 11, 12, 13}) {
         CAPTURE(channels);
         config.channels = channels;
-        CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+        CHECK(iclforge::ac4::Encoder::create(config).error() == iclforge::ac4::EncodeError::kInvalidConfig);
     }
     // A 7.X pair wants seven or eight channels.
     config.channels = 6;
-    config.experimental.seven_x = ac4::AdditionalPair::kBack;
-    CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    config.experimental.seven_x = iclforge::ac4::AdditionalPair::kBack;
+    CHECK(iclforge::ac4::Encoder::create(config).error() == iclforge::ac4::EncodeError::kInvalidConfig);
     config = {};
     config.sample_rate_hz = 32000;
-    CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    CHECK(iclforge::ac4::Encoder::create(config).error() == iclforge::ac4::EncodeError::kInvalidConfig);
     config = {};
     config.dialnorm_db = -40.0;
-    CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    CHECK(iclforge::ac4::Encoder::create(config).error() == iclforge::ac4::EncodeError::kInvalidConfig);
     config = {};
     config.iframe_interval = 0;
-    CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    CHECK(iclforge::ac4::Encoder::create(config).error() == iclforge::ac4::EncodeError::kInvalidConfig);
 
-    auto encoder = ac4::Encoder::create(ac4::EncoderConfig{});
+    auto encoder = iclforge::ac4::Encoder::create(iclforge::ac4::EncoderConfig{});
     REQUIRE(encoder.has_value());
     const std::vector<float> one(10, 0.0F);
     const std::vector<float> other(11, 0.0F);
     const std::vector<std::span<const float>> uneven{one, other};
-    CHECK(encoder->encode(uneven).error() == ac4::EncodeError::kInvalidInput);
+    CHECK(encoder->encode(uneven).error() == iclforge::ac4::EncodeError::kInvalidInput);
     std::vector<float> bad(10, 0.0F);
     bad[3] = std::numeric_limits<float>::quiet_NaN();
     const std::vector<std::span<const float>> with_nan{bad, one};
-    CHECK(encoder->encode(with_nan).error() == ac4::EncodeError::kInvalidInput);
+    CHECK(encoder->encode(with_nan).error() == iclforge::ac4::EncodeError::kInvalidInput);
 }
 
 TEST_CASE("Encoder::refusal_reason names the rule a refused configuration breaks",
           "[ac4enc][encoder]") {
-    CHECK(ac4::Encoder::refusal_reason(ac4::EncoderConfig{}).empty());
+    CHECK(iclforge::ac4::Encoder::refusal_reason(iclforge::ac4::EncoderConfig{}).empty());
     const auto two = [](std::string_view language) {
-        return ac4::SubstreamConfig{.channels = 2,
-                                    .content = ac4::ContentClassifier::kCompleteMain,
+        return iclforge::ac4::SubstreamConfig{.channels = 2,
+                                    .content = iclforge::ac4::ContentClassifier::kCompleteMain,
                                     .language = std::string{language}};
     };
     struct Case {
         const char* name;
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         std::string_view says;
     };
     const std::vector<Case> cases = {
@@ -212,10 +212,10 @@ TEST_CASE("Encoder::refusal_reason names the rule a refused configuration breaks
          {.channels = 8, .bitrate_kbps = 640},
          "seven or eight channels"},
         {"3.0 alone", {.channels = 3, .experimental = {.three_zero = true}}, "3.0 audio"},
-        {"stereo A-CPL", {.codec_mode = ac4::CodecMode::kAspxAcpl2}, "A-CPL codec mode"},
-        {"stereo downmix values", {.downmix = ac4::DownmixConfig{}}, "downmix values"},
+        {"stereo A-CPL", {.codec_mode = iclforge::ac4::CodecMode::kAspxAcpl2}, "A-CPL codec mode"},
+        {"stereo downmix values", {.downmix = iclforge::ac4::DownmixConfig{}}, "downmix values"},
         {"dialogue enhancement on C in stereo",
-         {.dialogue = ac4::DialogueConfig{}},
+         {.dialogue = iclforge::ac4::DialogueConfig{}},
          "dialogue enhancement"},
         {"a long language tag", {.substreams = {two(std::string(64, 'a'))}}, "63 bytes"},
         {"several substreams and no presentation",
@@ -232,8 +232,8 @@ TEST_CASE("Encoder::refusal_reason names the rule a refused configuration breaks
     };
     for (const Case& c : cases) {
         CAPTURE(c.name);
-        CHECK_FALSE(ac4::Encoder::create(c.config).has_value());
-        const std::string_view reason = ac4::Encoder::refusal_reason(c.config);
+        CHECK_FALSE(iclforge::ac4::Encoder::create(c.config).has_value());
+        const std::string_view reason = iclforge::ac4::Encoder::refusal_reason(c.config);
         CAPTURE(reason);
         CHECK(reason.find(c.says) != std::string_view::npos);
     }
@@ -244,32 +244,32 @@ TEST_CASE("the configuration takes designated initializers naming some fields",
     // Every field of the configuration's structures has a default, so these
     // name only what they set, and GCC's and Clang's missing initializer
     // warnings, errors here, have nothing to say.
-    const ac4::EncoderConfig config{
+    const iclforge::ac4::EncoderConfig config{
         .channels = 2,
         .bitrate_kbps = 256,
         .dialnorm_db = -24.0,
-        .loudness = ac4::FurtherLoudness{.practice = ac4::LoudnessPractice::kEbuR128,
+        .loudness = iclforge::ac4::FurtherLoudness{.practice = iclforge::ac4::LoudnessPractice::kEbuR128,
                                          .integrated_lkfs = -23.0},
-        .drc = ac4::DrcConfig{.profile = ac4::DrcProfile::kMusicLight},
-        .substreams = {ac4::SubstreamConfig{.channels = 2,
-                                            .content = ac4::ContentClassifier::kMusicAndEffects},
-                       ac4::SubstreamConfig{.channels = 1,
+        .drc = iclforge::ac4::DrcConfig{.profile = iclforge::ac4::DrcProfile::kMusicLight},
+        .substreams = {iclforge::ac4::SubstreamConfig{.channels = 2,
+                                            .content = iclforge::ac4::ContentClassifier::kMusicAndEffects},
+                       iclforge::ac4::SubstreamConfig{.channels = 1,
                                             .bitrate_kbps = 64,
-                                            .content = ac4::ContentClassifier::kDialogue,
+                                            .content = iclforge::ac4::ContentClassifier::kDialogue,
                                             .language = "en",
-                                            .dialogue_mix = ac4::DialogueMix{.max_gain_db = 6}}},
-        .presentations = {ac4::PresentationConfig{
+                                            .dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = 6}}},
+        .presentations = {iclforge::ac4::PresentationConfig{
                               .config = 0, .substreams = {0, 1}, .gains_db = {0.0, -3.0}},
-                          ac4::PresentationConfig{.substreams = {0}, .name = "Music"}},
+                          iclforge::ac4::PresentationConfig{.substreams = {0}, .name = "Music"}},
     };
-    INFO(ac4::Encoder::refusal_reason(config));
-    auto encoder = ac4::Encoder::create(config);
+    INFO(iclforge::ac4::Encoder::refusal_reason(config));
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
-    const ac4::Toc& toc = encoder->toc();
+    const iclforge::ac4::Toc& toc = encoder->toc();
     REQUIRE(toc.presentations_v1.size() == 2);
     CHECK(toc.presentations_v1[0].presentation_config == 0);
     CHECK(toc.presentations_v1[1].b_alternative);
-    CHECK_FALSE(ac4::build_dac4(toc).empty());
+    CHECK_FALSE(iclforge::ac4::build_dac4(toc).empty());
 }
 
 TEST_CASE("samples far past full scale still encode, to frames that read back and decode", "[ac4enc][encoder]") {
@@ -283,7 +283,7 @@ TEST_CASE("samples far past full scale still encode, to frames that read back an
     }
     for (const int kbps : {9, 192}) {
         CAPTURE(kbps);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.bitrate_kbps = kbps;
         const Encoded encoded = encode(config, {huge, huge}, 4800);
         REQUIRE_FALSE(encoded.frames.empty());
@@ -296,9 +296,9 @@ TEST_CASE("samples far past full scale still encode, to frames that read back an
 }
 
 TEST_CASE("the encoder's table of contents describes one stereo substream at index 13", "[ac4enc][encoder]") {
-    auto encoder = ac4::Encoder::create(ac4::EncoderConfig{});
+    auto encoder = iclforge::ac4::Encoder::create(iclforge::ac4::EncoderConfig{});
     REQUIRE(encoder.has_value());
-    const ac4::Toc& toc = encoder->toc();
+    const iclforge::ac4::Toc& toc = encoder->toc();
     CHECK(toc.bitstream_version == 2);
     CHECK(toc.frame_rate_index == 13);
     CHECK(toc.sample_rate_hz == 48000);
@@ -315,10 +315,10 @@ TEST_CASE("stereo tones encode at 192 kbps and decode on their own channels at u
           "[ac4enc][encoder]") {
     const std::size_t count = seconds(3.0, 1.5);
     const std::vector<std::vector<float>> input{tone(331.0, 0.1, count, 48000), tone(457.0, 0.1, count, 48000)};
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.bitrate_kbps = 192;
     const Encoded encoded = encode(config, input, 1000);
-    for (const ac4::EncodedFrame& frame : encoded.frames) {
+    for (const iclforge::ac4::EncodedFrame& frame : encoded.frames) {
         CHECK(frame.raw_ac4_frame.size() == 1024);  // 192 kbps at 2 048 samples of 48 kHz
         CHECK(frame.samples == 2048);
     }
@@ -358,12 +358,12 @@ TEST_CASE("a panned source is predicted from M and keeps its balance", "[ac4enc]
         std::vector<float> right(count);
         std::transform(source.begin(), source.end(), right.begin(), [&](float x) { return right_gain * x; });
         const std::vector<std::vector<float>> input{source, right};
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.bitrate_kbps = 128;
         const Encoded encoded = encode(config, input, 3000);
         std::size_t predicted = 0;
         std::size_t frames = 0;
-        for (const ac4::SyntaxRecord& r : encoded.trace) {
+        for (const iclforge::ac4::SyntaxRecord& r : encoded.trace) {
             if (r.name == "sap_mode") {
                 ++frames;
                 predicted += r.value == 3 ? 1 : 0;
@@ -386,7 +386,7 @@ TEST_CASE("a panned source is predicted from M and keeps its balance", "[ac4enc]
 TEST_CASE("mono encodes and decodes at 64 kbps", "[ac4enc][encoder]") {
     const std::size_t count = 48000 * 2;
     const std::vector<std::vector<float>> input{tone(1000.0, 0.25, count, 48000)};
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 1;
     config.bitrate_kbps = 64;
     const Encoded encoded = encode(config, input, 4096);
@@ -408,11 +408,11 @@ TEST_CASE("transients split frames into short blocks, and still decode cleanly",
         }
     }
     const std::vector<std::vector<float>> input{clicks, clicks};
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.bitrate_kbps = 256;
     const Encoded encoded = encode(config, input, 2048);
     std::size_t short_frames = 0;
-    for (const ac4::SyntaxRecord& r : encoded.trace) {
+    for (const iclforge::ac4::SyntaxRecord& r : encoded.trace) {
         if (r.name == "b_long_frame" && r.value == 0) {
             ++short_frames;
         }
@@ -428,19 +428,19 @@ TEST_CASE("transients split frames into short blocks, and still decode cleanly",
 TEST_CASE("at 44.1 kHz frames alternate sizes to keep the bit rate", "[ac4enc][encoder]") {
     const std::size_t count = 44100;
     const std::vector<std::vector<float>> input{tone(440.0, 0.1, count, 44100), tone(660.0, 0.1, count, 44100)};
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.sample_rate_hz = 44100;
     config.bitrate_kbps = 192;
     const Encoded encoded = encode(config, input, 3000);
     std::size_t bytes = 0;
-    for (const ac4::EncodedFrame& frame : encoded.frames) {
+    for (const iclforge::ac4::EncodedFrame& frame : encoded.frames) {
         bytes += frame.raw_ac4_frame.size();
         CHECK((frame.raw_ac4_frame.size() == 1114 || frame.raw_ac4_frame.size() == 1115));
     }
     const double kbps = 8.0 * static_cast<double>(bytes) * 44100.0 / (2048.0 * static_cast<double>(encoded.frames.size())) / 1000.0;
     CHECK(std::abs(kbps - 192.0) < 0.5);
     check_frames_read_back(encoded);
-    const auto parsed = ac4::parse_raw_frame(encoded.frames.front().raw_ac4_frame);
+    const auto parsed = iclforge::ac4::parse_raw_frame(encoded.frames.front().raw_ac4_frame);
     REQUIRE(parsed.has_value());
     CHECK(parsed->toc.sample_rate_hz == 44100);
 }
@@ -475,7 +475,7 @@ double band_energy(std::span<const float> x, std::size_t first, std::size_t bloc
 
 std::size_t count_records(const Encoded& encoded, std::string_view name, std::uint64_t value) {
     return static_cast<std::size_t>(std::count_if(encoded.trace.begin(), encoded.trace.end(),
-                                                  [&](const ac4::SyntaxRecord& r) { return r.name == name && r.value == value; }));
+                                                  [&](const iclforge::ac4::SyntaxRecord& r) { return r.name == name && r.value == value; }));
 }
 
 // A logarithmic sweep from `from_hz` to `to_hz` over `count` samples, then `tail` samples of
@@ -569,7 +569,7 @@ TEST_CASE("ASPX streams read back with the encoder's trace at every rate, channe
         CAPTURE(c.channels, c.rate, c.kbps, c.balance, c.varvar, c.interleave);
         // Two seconds, or half of one under the sanitizers.
         const std::size_t count = static_cast<std::size_t>(c.rate) * (kSanitized ? 1 : 4) / 2;
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = c.channels;
         config.sample_rate_hz = c.rate;
         config.bitrate_kbps = c.kbps;
@@ -614,7 +614,7 @@ TEST_CASE("ASPX recreates the band above the crossover at its energy", "[ac4enc]
     }
     for (const int kbps : {48, 96}) {
         CAPTURE(kbps);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.bitrate_kbps = kbps;
         const Encoded encoded = encode(config, {x, x}, 4096);
         const auto decoded = decode(encoded.frames);
@@ -652,7 +652,7 @@ TEST_CASE("a sweep above the crossover keeps the source's energy in every band a
         std::vector<std::vector<float>> input(static_cast<std::size_t>(layout.channels),
                                               std::vector<float>(length + tail, 0.0F));
         input[0] = sweep(11000.0, 21000.0, length, tail, 0.1, 48000);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = layout.channels;
         config.bitrate_kbps = layout.kbps;
         const Encoded encoded = encode(config, input, 4096);
@@ -674,7 +674,7 @@ TEST_CASE("the experimental A-SPX tools do what they are for", "[ac4enc][encoder
     const std::size_t count = seconds(2.0, 1.0);
     SECTION("balance codes equal channels as a sum and a centred balance") {
         const std::vector<float> x = mixed(count, 48000, 1).front();
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.bitrate_kbps = 48;
         config.experimental.aspx_balance = true;
         const Encoded encoded = encode(config, {x, x}, 4096);
@@ -695,7 +695,7 @@ TEST_CASE("the experimental A-SPX tools do what they are for", "[ac4enc][encoder
                 clicks[n + k] = static_cast<float>(0.8 * std::exp(-static_cast<double>(k) / 150.0) * noise);
             }
         }
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.bitrate_kbps = 64;
         config.experimental.aspx_varvar = true;
         const Encoded encoded = encode(config, {clicks, clicks}, 4096);
@@ -714,7 +714,7 @@ TEST_CASE("the experimental A-SPX tools do what they are for", "[ac4enc][encoder
         }
         for (const bool interleave : {false, true}) {
             CAPTURE(interleave);
-            ac4::EncoderConfig config;
+            iclforge::ac4::EncoderConfig config;
             config.bitrate_kbps = 96;
             config.experimental.aspx_interleave = interleave;
             const Encoded encoded = encode(config, {x, x}, 4096);
@@ -735,12 +735,12 @@ TEST_CASE("the experimental A-SPX tools do what they are for", "[ac4enc][encoder
 
 TEST_CASE("sequence_counter starts at 0 and I-frames come at the configured interval", "[ac4enc][encoder]") {
     const std::vector<std::vector<float>> input{std::vector<float>(48000, 0.0F), std::vector<float>(48000, 0.0F)};
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.iframe_interval = 5;
     const Encoded encoded = encode(config, input, 48000);
     REQUIRE(encoded.frames.size() > 10);
     for (std::size_t f = 0; f < encoded.frames.size(); ++f) {
-        const auto parsed = ac4::parse_raw_frame(encoded.frames[f].raw_ac4_frame);
+        const auto parsed = iclforge::ac4::parse_raw_frame(encoded.frames[f].raw_ac4_frame);
         REQUIRE(parsed.has_value());
         CHECK(parsed->toc.sequence_counter == static_cast<int>(f));
         CHECK(parsed->toc.b_iframe_global == (f % 5 == 0));
@@ -849,7 +849,7 @@ TEST_CASE("5.0 and 5.1 put each channel's tone on its own channel in SIMPLE and 
             for (const double f : hz) {
                 input.push_back(tone(f, 0.1, count, 48000));
             }
-            ac4::EncoderConfig config;
+            iclforge::ac4::EncoderConfig config;
             config.channels = static_cast<int>(hz.size());
             config.bitrate_kbps = kbps;
             const Encoded encoded = encode(config, input, 3333);
@@ -864,16 +864,16 @@ TEST_CASE("5.0 and 5.1 put each channel's tone on its own channel in SIMPLE and 
 }
 
 TEST_CASE("the encoder's 5.1 table of contents and MP4 description", "[ac4enc][encoder][multichannel]") {
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 6;
     config.bitrate_kbps = 384;
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
     const auto& chan = encoder->toc().substream_groups.at(0).substreams.at(0).chan;
     REQUIRE(chan.has_value());
     CHECK(chan->ch_mode == 4);
-    CHECK(encoder->codec_mode() == ac4::CodecMode::kSimple);
-    CHECK_FALSE(ac4::build_dac4(encoder->toc()).empty());
+    CHECK(encoder->codec_mode() == iclforge::ac4::CodecMode::kSimple);
+    CHECK_FALSE(iclforge::ac4::build_dac4(encoder->toc()).empty());
 }
 
 TEST_CASE("each aspx_data element fills the high band of the channels Table 213 gives it",
@@ -884,17 +884,17 @@ TEST_CASE("each aspx_data element fills the high band of the channels Table 213 
     // which hold band_energy()'s blocks past the delays.
     const std::size_t count = kSanitized ? 24576 : 48000;
     struct Case {
-        ac4::AdditionalPair pair;
+        iclforge::ac4::AdditionalPair pair;
         int channels;
         int kbps;
         std::size_t noisy;
     };
-    const std::array<Case, 6> cases{{{ac4::AdditionalPair::kNone, 6, 192, 2},
-                                     {ac4::AdditionalPair::kNone, 6, 256, 4},
-                                     {ac4::AdditionalPair::kNone, 5, 192, 1},
-                                     {ac4::AdditionalPair::kWide, 8, 320, 6},
-                                     {ac4::AdditionalPair::kWide, 8, 320, 4},
-                                     {ac4::AdditionalPair::kBack, 7, 320, 5}}};
+    const std::array<Case, 6> cases{{{iclforge::ac4::AdditionalPair::kNone, 6, 192, 2},
+                                     {iclforge::ac4::AdditionalPair::kNone, 6, 256, 4},
+                                     {iclforge::ac4::AdditionalPair::kNone, 5, 192, 1},
+                                     {iclforge::ac4::AdditionalPair::kWide, 8, 320, 6},
+                                     {iclforge::ac4::AdditionalPair::kWide, 8, 320, 4},
+                                     {iclforge::ac4::AdditionalPair::kBack, 7, 320, 5}}};
     for (std::size_t i = 0; i < cases.size(); ++i) {
         // Under the sanitizers four: C in 5.1, R in 5.0, Ls in the wide
         // layout, whose surround pair is its last element, and Lb in the back
@@ -912,12 +912,12 @@ TEST_CASE("each aspx_data element fills the high band of the channels Table 213 
         for (std::size_t n = 0; n < count; ++n) {
             input[c.noisy][n] += noise[n];
         }
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = c.channels;
         config.bitrate_kbps = c.kbps;
         config.experimental.seven_x = c.pair;
         const Encoded encoded = encode(config, input, 4096);
-        const std::string_view mode = c.pair == ac4::AdditionalPair::kNone ? "5_X_codec_mode" : "7_X_codec_mode";
+        const std::string_view mode = c.pair == iclforge::ac4::AdditionalPair::kNone ? "5_X_codec_mode" : "7_X_codec_mode";
         REQUIRE(count_records(encoded, mode, 1) == encoded.frames.size());
         check_frames_read_back(encoded);
         const auto decoded = decode(encoded.frames);
@@ -941,8 +941,8 @@ TEST_CASE("the 7.X element's three layouts put each tone on its own channel", "[
     // Under the sanitizers every fifth run: each layout, with the LFE and
     // without, in ASPX and SIMPLE.
     std::size_t run = 0;
-    for (const ac4::AdditionalPair pair : {ac4::AdditionalPair::kBack, ac4::AdditionalPair::kWide,
-                                           ac4::AdditionalPair::kTopFront}) {
+    for (const iclforge::ac4::AdditionalPair pair : {iclforge::ac4::AdditionalPair::kBack, iclforge::ac4::AdditionalPair::kWide,
+                                           iclforge::ac4::AdditionalPair::kTopFront}) {
         for (const bool lfe : {true, false}) {
             // ASPX below 76.8 kbps a channel, SIMPLE from there.
             for (const int kbps : {448, 640}) {
@@ -955,7 +955,7 @@ TEST_CASE("the 7.X element's three layouts put each tone on its own channel", "[
                 for (const double f : hz) {
                     input.push_back(tone(f, 0.1, count, 48000));
                 }
-                ac4::EncoderConfig config;
+                iclforge::ac4::EncoderConfig config;
                 config.channels = static_cast<int>(hz.size());
                 config.bitrate_kbps = kbps;
                 config.experimental.seven_x = pair;
@@ -997,7 +997,7 @@ TEST_CASE("the experimental coding configurations choose frame by frame and deco
     }
     for (const int kbps : {256, 448}) {
         CAPTURE(kbps);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = 6;
         config.bitrate_kbps = kbps;
         config.experimental.coding_configs = true;
@@ -1092,8 +1092,8 @@ PairMeasure measure_pair(std::span<const float> a, std::span<const float> b, std
     return {10.0 * std::log10(aa / bb), ab / std::sqrt(aa * bb)};
 }
 
-ac4::CodecMode mode_of(const ac4::EncoderConfig& config) {
-    auto encoder = ac4::Encoder::create(config);
+iclforge::ac4::CodecMode mode_of(const iclforge::ac4::EncoderConfig& config) {
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
     return encoder->codec_mode();
 }
@@ -1105,62 +1105,62 @@ TEST_CASE("kAuto codes 5.X in ASPX_ACPL_3 and ASPX_ACPL_2 at the rates DEE does"
     struct Rate {
         int channels;
         int kbps;
-        ac4::CodecMode mode;
+        iclforge::ac4::CodecMode mode;
     };
-    for (const Rate rate : {Rate{6, 96, ac4::CodecMode::kAspxAcpl3}, Rate{6, 128, ac4::CodecMode::kAspxAcpl2},
-                            Rate{6, 144, ac4::CodecMode::kAspxAcpl2}, Rate{6, 192, ac4::CodecMode::kAspx},
-                            Rate{6, 384, ac4::CodecMode::kSimple}, Rate{5, 112, ac4::CodecMode::kAspxAcpl2},
-                            Rate{5, 80, ac4::CodecMode::kAspxAcpl3}, Rate{2, 32, ac4::CodecMode::kAspx}}) {
+    for (const Rate rate : {Rate{6, 96, iclforge::ac4::CodecMode::kAspxAcpl3}, Rate{6, 128, iclforge::ac4::CodecMode::kAspxAcpl2},
+                            Rate{6, 144, iclforge::ac4::CodecMode::kAspxAcpl2}, Rate{6, 192, iclforge::ac4::CodecMode::kAspx},
+                            Rate{6, 384, iclforge::ac4::CodecMode::kSimple}, Rate{5, 112, iclforge::ac4::CodecMode::kAspxAcpl2},
+                            Rate{5, 80, iclforge::ac4::CodecMode::kAspxAcpl3}, Rate{2, 32, iclforge::ac4::CodecMode::kAspx}}) {
         CAPTURE(rate.channels, rate.kbps);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = rate.channels;
         config.bitrate_kbps = rate.kbps;
         CHECK(mode_of(config) == rate.mode);
     }
     // The experimental coding configurations code all five channels.
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 6;
     config.bitrate_kbps = 128;
     config.experimental.coding_configs = true;
-    CHECK(mode_of(config) == ac4::CodecMode::kAspx);
+    CHECK(mode_of(config) == iclforge::ac4::CodecMode::kAspx);
 }
 
 TEST_CASE("the A-CPL modes the encoder does not write are refused", "[ac4enc][encoder][acpl]") {
     struct Refused {
         int channels;
-        ac4::CodecMode mode;
+        iclforge::ac4::CodecMode mode;
         bool acpl;
     };
     // Mono; stereo without experimental.acpl, and ASPX_ACPL_3 with it; 5.1's
     // ASPX_ACPL_1 without it.
-    for (const Refused r : {Refused{1, ac4::CodecMode::kAspxAcpl2, true}, Refused{2, ac4::CodecMode::kAspxAcpl2, false},
-                            Refused{2, ac4::CodecMode::kAspxAcpl1, false}, Refused{2, ac4::CodecMode::kAspxAcpl3, true},
-                            Refused{6, ac4::CodecMode::kAspxAcpl1, false}}) {
+    for (const Refused r : {Refused{1, iclforge::ac4::CodecMode::kAspxAcpl2, true}, Refused{2, iclforge::ac4::CodecMode::kAspxAcpl2, false},
+                            Refused{2, iclforge::ac4::CodecMode::kAspxAcpl1, false}, Refused{2, iclforge::ac4::CodecMode::kAspxAcpl3, true},
+                            Refused{6, iclforge::ac4::CodecMode::kAspxAcpl1, false}}) {
         CAPTURE(r.channels, static_cast<int>(r.mode), r.acpl);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = r.channels;
         config.codec_mode = r.mode;
         config.experimental.acpl = r.acpl;
-        CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+        CHECK(iclforge::ac4::Encoder::create(config).error() == iclforge::ac4::EncodeError::kInvalidConfig);
     }
     // The experimental coding configurations, and the 7.X element.
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 6;
-    config.codec_mode = ac4::CodecMode::kAspxAcpl2;
+    config.codec_mode = iclforge::ac4::CodecMode::kAspxAcpl2;
     config.experimental.coding_configs = true;
-    CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    CHECK(iclforge::ac4::Encoder::create(config).error() == iclforge::ac4::EncodeError::kInvalidConfig);
     config = {};
     config.channels = 8;
-    config.codec_mode = ac4::CodecMode::kAspxAcpl2;
-    config.experimental.seven_x = ac4::AdditionalPair::kBack;
+    config.codec_mode = iclforge::ac4::CodecMode::kAspxAcpl2;
+    config.experimental.seven_x = iclforge::ac4::AdditionalPair::kBack;
     config.experimental.acpl = true;
-    CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    CHECK(iclforge::ac4::Encoder::create(config).error() == iclforge::ac4::EncodeError::kInvalidConfig);
 }
 
 TEST_CASE("the 5.X element's A-CPL modes put each channel's tone on its own channel", "[ac4enc][encoder][acpl]") {
     struct Leg {
         int kbps;
-        ac4::CodecMode mode;
+        iclforge::ac4::CodecMode mode;
         std::uint64_t written;  // 5_X_codec_mode
     };
     // Under the sanitizers 0.6 s, which holds check_acpl_routing()'s span.
@@ -1168,8 +1168,8 @@ TEST_CASE("the 5.X element's A-CPL modes put each channel's tone on its own chan
     // Under the sanitizers every other run: each mode, 5.1 and 5.0.
     std::size_t run = 0;
     for (const bool lfe : {true, false}) {
-        for (const Leg leg : {Leg{128, ac4::CodecMode::kAuto, 3}, Leg{96, ac4::CodecMode::kAuto, 4},
-                              Leg{160, ac4::CodecMode::kAspxAcpl1, 2}}) {
+        for (const Leg leg : {Leg{128, iclforge::ac4::CodecMode::kAuto, 3}, Leg{96, iclforge::ac4::CodecMode::kAuto, 4},
+                              Leg{160, iclforge::ac4::CodecMode::kAspxAcpl1, 2}}) {
             if (run++ % 2 != 0 && kSanitized) {
                 continue;
             }
@@ -1179,11 +1179,11 @@ TEST_CASE("the 5.X element's A-CPL modes put each channel's tone on its own chan
             for (const double f : hz) {
                 input.push_back(tone(f, 0.1, count, 48000));
             }
-            ac4::EncoderConfig config;
+            iclforge::ac4::EncoderConfig config;
             config.channels = static_cast<int>(hz.size());
             config.bitrate_kbps = leg.kbps;
             config.codec_mode = leg.mode;
-            config.experimental.acpl = leg.mode == ac4::CodecMode::kAspxAcpl1;
+            config.experimental.acpl = leg.mode == iclforge::ac4::CodecMode::kAspxAcpl1;
             const Encoded encoded = encode(config, input, 3333);
             CHECK(count_records(encoded, "5_X_codec_mode", leg.written) == encoded.frames.size());
             check_frames_read_back(encoded);
@@ -1199,9 +1199,9 @@ TEST_CASE("A-CPL in stereo, experimental, puts each channel's tone on its own ch
     const std::size_t count = seconds(2.0, 1.0);
     const std::vector<std::vector<float>> input = {tone(hz[0], 0.1, count, 48000), tone(hz[1], 0.1, count, 48000)};
     for (const auto& [mode, written] :
-         {std::pair{ac4::CodecMode::kAspxAcpl1, 2U}, std::pair{ac4::CodecMode::kAspxAcpl2, 3U}}) {
+         {std::pair{iclforge::ac4::CodecMode::kAspxAcpl1, 2U}, std::pair{iclforge::ac4::CodecMode::kAspxAcpl2, 3U}}) {
         CAPTURE(written);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = 2;
         config.bitrate_kbps = 48;
         config.codec_mode = mode;
@@ -1233,10 +1233,10 @@ TEST_CASE("A-CPL keeps a pair's level difference and correlation", "[ac4enc][enc
         input[4][second + n] = surround[n];
     }
     for (const auto& [kbps, mode, residuals] :
-         {std::tuple{128, ac4::CodecMode::kAspxAcpl2, false}, std::tuple{96, ac4::CodecMode::kAspxAcpl3, false},
-          std::tuple{160, ac4::CodecMode::kAspxAcpl1, true}}) {
+         {std::tuple{128, iclforge::ac4::CodecMode::kAspxAcpl2, false}, std::tuple{96, iclforge::ac4::CodecMode::kAspxAcpl3, false},
+          std::tuple{160, iclforge::ac4::CodecMode::kAspxAcpl1, true}}) {
         CAPTURE(kbps);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = 6;
         config.bitrate_kbps = kbps;
         config.codec_mode = mode;
@@ -1273,19 +1273,19 @@ TEST_CASE("at the least rate a configuration takes every frame still goes out",
         int channels;
         int sample_rate_hz;
         int frame_rate_index;
-        ac4::RateMode rate_mode;
+        iclforge::ac4::RateMode rate_mode;
         bool drc_speech_mode;
         int drc_gains_config;  // -1: none
         bool stem;
     };
     const std::array<Case, 4> cases{{
-        {"5.0 at 30 fps, a DRC mode on its own profile", 5, 48000, 4, ac4::RateMode::kConstant,
+        {"5.0 at 30 fps, a DRC mode on its own profile", 5, 48000, 4, iclforge::ac4::RateMode::kConstant,
          true, -1, false},
-        {"5.1 at 44.1 kHz, a variable rate", 6, 44100, 13, ac4::RateMode::kVariable, false, -1,
+        {"5.1 at 44.1 kHz, a variable rate", 6, 44100, 13, iclforge::ac4::RateMode::kVariable, false, -1,
          false},
         {"stereo at 25 fps, DRC's gains and a stem cross-channel", 2, 48000, 2,
-         ac4::RateMode::kConstant, false, 3, true},
-        {"5.1 at 120 fps, an average rate", 6, 48000, 12, ac4::RateMode::kAverage, false, 1, false},
+         iclforge::ac4::RateMode::kConstant, false, 3, true},
+        {"5.1 at 120 fps, an average rate", 6, 48000, 12, iclforge::ac4::RateMode::kAverage, false, 1, false},
     }};
     std::uint32_t seed = 4242;
     const auto noise = [&seed] {
@@ -1313,20 +1313,20 @@ TEST_CASE("at the least rate a configuration takes every frame still goes out",
             dialogue[0][n] = 0.5F * input[0][n];
             dialogue[1][n] = 0.7F * input[1][n];
         }
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = c.channels;
         config.sample_rate_hz = c.sample_rate_hz;
         config.frame_rate_index = c.frame_rate_index;
         config.rate_mode = c.rate_mode;
         config.iframe_interval = 1;
         if (c.drc_speech_mode || c.drc_gains_config >= 0) {
-            ac4::DrcConfig drc;
-            drc.profile = ac4::DrcProfile::kFilmLight;
+            iclforge::ac4::DrcConfig drc;
+            drc.profile = iclforge::ac4::DrcProfile::kFilmLight;
             for (int id = 0; id < 4; ++id) {
-                ac4::DrcModeConfig mode;
+                iclforge::ac4::DrcModeConfig mode;
                 mode.id = id;
                 if (c.drc_speech_mode && id == 0) {
-                    mode.profile = ac4::DrcProfile::kSpeech;
+                    mode.profile = iclforge::ac4::DrcProfile::kSpeech;
                 }
                 if (c.drc_gains_config >= 0) {
                     mode.gains_config = c.drc_gains_config;
@@ -1337,9 +1337,9 @@ TEST_CASE("at the least rate a configuration takes every frame still goes out",
             config.experimental.drc_gains = c.drc_gains_config >= 0;
         }
         if (c.stem) {
-            ac4::DialogueConfig de;
-            de.method = ac4::DialogueMethod::kCrossChannel;
-            de.source = ac4::DialogueSource::kStem;
+            iclforge::ac4::DialogueConfig de;
+            de.method = iclforge::ac4::DialogueMethod::kCrossChannel;
+            de.source = iclforge::ac4::DialogueSource::kStem;
             de.left = true;
             de.right = true;
             de.centre = false;
@@ -1356,22 +1356,22 @@ TEST_CASE("at the least rate a configuration takes every frame still goes out",
             while (taken - refused > 1) {
                 const int middle = (refused + taken) / 2;
                 config.bitrate_kbps = middle;
-                if (ac4::Encoder::create(config).has_value()) {
+                if (iclforge::ac4::Encoder::create(config).has_value()) {
                     taken = middle;
                 } else {
                     refused = middle;
                 }
             }
             config.bitrate_kbps = taken - 1;
-            CHECK_FALSE(ac4::Encoder::create(config).has_value());
+            CHECK_FALSE(iclforge::ac4::Encoder::create(config).has_value());
             config.bitrate_kbps = taken;
         } else {
-            while (config.bitrate_kbps < 400 && !ac4::Encoder::create(config).has_value()) {
+            while (config.bitrate_kbps < 400 && !iclforge::ac4::Encoder::create(config).has_value()) {
                 ++config.bitrate_kbps;
             }
         }
         CAPTURE(config.bitrate_kbps);
-        auto encoder = ac4::Encoder::create(config);
+        auto encoder = iclforge::ac4::Encoder::create(config);
         REQUIRE(encoder.has_value());
         std::vector<std::span<const float>> views(input.begin(), input.end());
         std::vector<std::span<const float>> stem(dialogue.begin(), dialogue.end());
@@ -1410,21 +1410,21 @@ TEST_CASE("at the least rate a frame between I-frames keeps a stem's last parame
         input[0][n] = static_cast<float>(0.5 * noise());
         dialogue[0][n] = static_cast<float>(share) * input[0][n];
     }
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 1;
     config.frame_rate_index = 8;
-    config.codec_mode = ac4::CodecMode::kSimple;
+    config.codec_mode = iclforge::ac4::CodecMode::kSimple;
     config.iframes = {1, 10, 11};
-    ac4::DialogueConfig de;
-    de.source = ac4::DialogueSource::kStem;
+    iclforge::ac4::DialogueConfig de;
+    de.source = iclforge::ac4::DialogueSource::kStem;
     de.max_gain_db = 6;
     config.dialogue = de;
     config.bitrate_kbps = 8;
-    while (config.bitrate_kbps < 64 && !ac4::Encoder::create(config).has_value()) {
+    while (config.bitrate_kbps < 64 && !iclforge::ac4::Encoder::create(config).has_value()) {
         ++config.bitrate_kbps;
     }
     CAPTURE(config.bitrate_kbps);
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
     const std::vector<std::span<const float>> views(input.begin(), input.end());
     const std::vector<std::span<const float>> stem(dialogue.begin(), dialogue.end());

@@ -25,7 +25,7 @@
 // value from its defining expression, so there is one statement of each table
 // in the project and this is a narrowing of it.
 
-namespace ac3::eac3 {
+namespace iclforge::eac3 {
 
 namespace fixed_detail {
 
@@ -210,4 +210,4 @@ void ecpl_channel_coefficients_fixed(std::span<const internal::Fixed32, 256> rea
                                      int end_mant, int out_shift,
                                      std::span<internal::Fixed32, 256> mant_out);
 
-}  // namespace ac3::eac3
+}  // namespace iclforge::eac3

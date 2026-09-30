@@ -46,7 +46,7 @@
 // constants and a function. See capture.cpp's own "Loopback" section, and
 // process_tap.hpp, for what it is for.
 
-namespace ac3::coreaudio {
+namespace iclforge::coreaudio {
 
 // Mirrors platform/alsa/device_names.hpp's carrier_rate and
 // apps/android/android_support.hpp's copy of the same logic (the same
@@ -72,7 +72,7 @@ namespace ac3::coreaudio {
 // kAudioStreamPropertyAvailablePhysicalFormats). kAudioFormatEnhancedAC3
 // ('ec-3') has no comparably long history as a *physical* (IEC 60958-wrapped)
 // stream format the way kAudioFormat60958AC3 does - it is the same fourCC
-// ac3::io::build_codec_config_box uses for a raw E-AC-3 *elementary* stream
+// iclforge::io::build_codec_config_box uses for a raw E-AC-3 *elementary* stream
 // in an MP4 sample entry, not a documented S/PDIF/HDMI wire format. Apple's
 // own support documentation confirms Dolby Digital Plus/Atmos HDMI
 // passthrough exists on Apple Silicon Macs without documenting the HAL
@@ -80,7 +80,7 @@ namespace ac3::coreaudio {
 // exactly as it does kAudioFormat60958AC3; on hardware or macOS versions
 // where the driver does not publish it, supports_eac3_passthrough simply
 // comes back false, the honest answer under the same "a platform can gain
-// one and not the other" contract ac3::audio::RenderDeviceInfo already documents.
+// one and not the other" contract iclforge::audio::RenderDeviceInfo already documents.
 //
 // Nothing for AC-4: CoreAudioBaseTypes.h defines no AC-4 format ID at all, so
 // there is nothing to look for among a stream's physical formats or to retune
@@ -372,4 +372,4 @@ inline void float_to_samples(std::span<const float> in, SampleFormat format, std
     }
 }
 
-}  // namespace ac3::coreaudio
+}  // namespace iclforge::coreaudio

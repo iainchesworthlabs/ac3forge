@@ -9,7 +9,7 @@
 // frame_size, the raw frame and, after sync word 0xAC41, a CRC over frame_size
 // and the raw frame.
 
-namespace ac4 {
+namespace iclforge::ac4 {
 namespace {
 
 // G.4.2: generator x^16 + x^15 + x^2 + 1, register starting at 0, input bits
@@ -56,4 +56,4 @@ std::vector<std::byte> sync_frame(std::span<const std::byte> raw_ac4_frame, bool
     return out;
 }
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

@@ -14,7 +14,7 @@
 // (Annex F.5, -infinity for an inactive object) applies before the matrix
 // (src/ac4dec/ERRATA.md, "The intermediate spatial format").
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // One ISF object for the renderer: its format (isf_config, Table 61), its
 // place in the format's t = [M1..., U1..., L1..., Z] (clause 5.10.3.4), and its
@@ -57,4 +57,4 @@ class IsfGain {
                               std::size_t length, std::vector<std::vector<float>>& channels,
                               std::vector<Speaker>& speakers);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

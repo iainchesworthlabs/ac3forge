@@ -17,7 +17,7 @@
 // and refuses the live-audio commands before running them, without naming an
 // OS.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 struct Capability {
     bool available = false;
@@ -29,10 +29,10 @@ struct Capability {
 
 struct AudioBackend {
     // Enumerating capture endpoints and reading samples from one:
-    // ac3::audio, behind the CLI's 'devices' and 'record'.
+    // iclforge::audio, behind the CLI's 'devices' and 'record'.
     Capability capture;
     // Enumerating render endpoints and bitstreaming to one in exclusive
-    // mode: ac3::audio, behind the CLI's 'outputs' and 'play'.
+    // mode: iclforge::audio, behind the CLI's 'outputs' and 'play'.
     //
     // Kept separate from capture rather than folded into one "audio" flag
     // because the two are separately hard: capture is an ordinary PCM stream,
@@ -41,14 +41,14 @@ struct AudioBackend {
     // the expected order, not an edge case.
     Capability passthrough;
     // Enumerating render endpoints and playing ordinary shared-mode PCM to
-    // one: ac3::audio::MonitorSink, behind the CLI's 'monitor' and 'live
+    // one: iclforge::audio::MonitorSink, behind the CLI's 'monitor' and 'live
     // --monitor'. Closer in difficulty to capture than to passthrough (no
     // exclusive-mode format negotiation), but kept as its own flag for the
     // same reason capture and passthrough are separate: a platform can gain
     // this without gaining bitstreamed passthrough, or vice versa.
     Capability monitor;
     // Rendering decoded Atmos objects and bed through an OS object renderer
-    // (Windows' ISpatialAudioObjectRenderStream): ac3::audio::SpatialObjectSink,
+    // (Windows' ISpatialAudioObjectRenderStream): iclforge::audio::SpatialObjectSink,
     // behind the CLI's 'spatial'. "Available" here means the same thing it
     // does for the other three - this build has the code, not that any
     // particular endpoint on this machine currently has a spatial sound
@@ -65,11 +65,11 @@ struct AudioBackend {
     // answer, as a bool, is process_loopback_available().
     Capability process_loopback;
     // Being told when an endpoint arrives, leaves, changes state or becomes
-    // the default, rather than polling for it: ac3::audio::DeviceWatcher
+    // the default, rather than polling for it: iclforge::audio::DeviceWatcher
     // (WASAPI loopback tap).
     Capability device_watch;
 };
 
 [[nodiscard]] const AudioBackend& audio_backend();
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

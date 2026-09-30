@@ -16,7 +16,7 @@
 // huff_decode_diff() returns for them, the codeword's index less its
 // codebook's cb_off, for every band.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // ajcc_framing_data(), 6.2.6.2.
 struct AjccFramingFields {
@@ -63,4 +63,4 @@ void write_ajcc_data(BitWriter& w, const AjccDataFields& data);
 [[nodiscard]] std::size_t ajcc_set_bits(std::size_t param, int quant_mode, bool no_dt,
                                         const AjccSetFields& set) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

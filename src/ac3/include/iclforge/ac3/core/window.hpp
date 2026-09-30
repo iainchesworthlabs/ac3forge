@@ -15,7 +15,7 @@
 // Table 7.33 values and an independent numpy evaluation. The custom Bessel
 // and sqrt routines exist because constexpr <cmath> lands only in C++26.
 
-namespace ac3 {
+namespace iclforge {
 
 inline constexpr int kTransformLength = 512;  // long-transform N
 
@@ -86,4 +86,4 @@ consteval std::array<double, kTransformLength> make_analysis_window() {
 // back-to-back to form a 512-point symmetrical window).
 inline constexpr auto kAnalysisWindow = detail::make_analysis_window();
 
-}  // namespace ac3
+}  // namespace iclforge

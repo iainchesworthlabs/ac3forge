@@ -48,7 +48,7 @@ class SendspinTimeFilter;
 // local times reach it counted from just before the first exchange, and come back out of it
 // on the caller's scale: a clock that reads negative works like any other.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 class ClockSync {
    public:
@@ -134,4 +134,4 @@ class ClockSync {
     std::int64_t confirm_measurement_ = 0;
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

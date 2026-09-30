@@ -16,7 +16,7 @@
 // variants - see tools/checks/check_platform_macros.ps1 for why a feature-flag
 // #ifdef is no more welcome here than a platform one.
 
-namespace ac3::test::avx2 {
+namespace iclforge::test::avx2 {
 
 // True in this variant by construction. The test file branches on this with a
 // plain `if`, not a preprocessor conditional, which is what keeps BOTH arms
@@ -26,4 +26,4 @@ namespace ac3::test::avx2 {
 // an x86_64 leg ran.
 inline constexpr bool kTierCompiled = true;
 
-}  // namespace ac3::test::avx2
+}  // namespace iclforge::test::avx2

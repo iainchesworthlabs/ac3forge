@@ -13,7 +13,7 @@
 
 #include "iclforge/sendspin/crypto.hpp"
 
-namespace ac3::sendspin::noise {
+namespace iclforge::sendspin::noise {
 
 namespace {
 
@@ -394,4 +394,4 @@ std::optional<Handshake::Transport> Handshake::split() const {
     return transport;
 }
 
-}  // namespace ac3::sendspin::noise
+}  // namespace iclforge::sendspin::noise

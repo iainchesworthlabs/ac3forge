@@ -119,7 +119,7 @@ inline std::string named_devices(const fs::path& infile_float, const fs::path& i
 
 // A directory of this test process's own under the shared scratch root.
 inline fs::path scratch_dir(std::string_view leaf) {
-    const auto pid = ac3::test::platform::process_id();
+    const auto pid = iclforge::test::platform::process_id();
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / (std::string{leaf} + "_" + pid);
     fs::create_directories(dir);
     return dir;

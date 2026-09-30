@@ -24,8 +24,8 @@
 // AtmosEncoder/Eac3Decoder round trip, not a mocked one. Where that file starts from a
 // byte-level ADM fixture and ends at a decoded bitstream, this one starts from a decoded
 // bitstream (exactly what apps/cli/commands/decode.cpp's own accumulate_adm lambda consumes)
-// and ends at a real file on disk, read back through the identical ac3adm::parse_bw64 ->
-// ac3::admbridge::build -> AtmosEncoder/Eac3Decoder chain that file's own flagship test already
+// and ends at a real file on disk, read back through the identical iclforge::adm::parse_bw64 ->
+// iclforge::admbridge::build -> AtmosEncoder/Eac3Decoder chain that file's own flagship test already
 // proves correct - so if THIS test's second half passes, the whole write -> read round trip
 // really works, not just "write_bw64 didn't throw".
 
@@ -33,12 +33,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-using ac3::eac3::chanmap::Location;
+using iclforge::eac3::chanmap::Location;
 
 // See tests/cli/test_cli.cpp's own scratch_dir comment for why the scratch
 // path below folds this in, on top of AC3FORGE_TEST_SCRATCH_DIR's
 // build-tree rooting.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 double channel_energy(std::span<const float> samples) {
     double energy = 0.0;
@@ -56,10 +56,10 @@ double channel_energy(std::span<const float> samples) {
 struct AdmAccumulator {
     std::uint64_t samples_emitted = 0;
     std::vector<float> object_pcm;
-    std::vector<ac3::admbridge::WriteObjectUpdate> object_updates;
+    std::vector<iclforge::admbridge::WriteObjectUpdate> object_updates;
     std::vector<float> lfe_pcm;
 
-    void add(const ac3::DecodedAccessUnit& unit) {
+    void add(const iclforge::DecodedAccessUnit& unit) {
         REQUIRE(unit.object_metadata.has_value());
         REQUIRE(unit.object_audio.size() == 1);
         object_pcm.insert(object_pcm.end(), unit.object_audio[0].begin(), unit.object_audio[0].end());
@@ -85,7 +85,7 @@ struct AdmAccumulator {
 TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> build -> a fresh "
          "AtmosEncoder/Eac3Decoder round trip",
          "[admbridge][atmos][write]") {
-    constexpr int kFrame = ac3::kSamplesPerFrame;
+    constexpr int kFrame = iclforge::kSamplesPerFrame;
     constexpr int kTotalFrames = 6;  // 3 frames holding right, 3 frames holding left
     constexpr double kSampleRate = 48000.0;
     // The instant-jump nudge this project's own read-direction bridge uses
@@ -94,18 +94,18 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
     constexpr double kJumpEpsilon = 1.0e-6;
 
     const double hold_end = static_cast<double>(3 * kFrame) / kSampleRate;  // 0.096s
-    const auto path = ac3::oba::KeyframePath::create({
+    const auto path = iclforge::oba::KeyframePath::create({
         {.time_s = 0.0, .position = {.x = 0.9, .y = 0.5, .z = 0.0}},          // far right
         {.time_s = hold_end, .position = {.x = 0.9, .y = 0.5, .z = 0.0}},     // still right
         {.time_s = hold_end + kJumpEpsilon, .position = {.x = 0.1, .y = 0.5, .z = 0.0}},  // jumped left
     });
     REQUIRE(path.has_value());
-    const ac3::oba::ObjectPath object_path{*path};
+    const iclforge::oba::ObjectPath object_path{*path};
 
     // --- Phase 1: encode + decode a real Atmos stream, accumulating exactly what decode.cpp's
     // own --adm output does. ---
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
-    ac3::Eac3Decoder decoder;
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 1};
+    iclforge::Eac3Decoder decoder;
     AdmAccumulator accumulator;
 
     // A real, distinct, non-silent tone - never silence/frame-0 (this project's own standing
@@ -120,7 +120,7 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
         const auto frame_start = static_cast<std::size_t>(f) * static_cast<std::size_t>(kFrame);
         const std::span<const float> object_signal{tone.data() + frame_start, static_cast<std::size_t>(kFrame)};
         const double t = static_cast<double>((f + 1) * kFrame) / kSampleRate;
-        const auto placement = ac3::oba::evaluate_placements(std::span{&object_path, 1}, t);
+        const auto placement = iclforge::oba::evaluate_placements(std::span{&object_path, 1}, t);
         const std::array<std::span<const float>, 1> objects{object_signal};
         const auto unit = encoder.encode_frame(objects, placement);
         REQUIRE(unit.has_value());
@@ -132,7 +132,7 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
     }
 
     // --- Phase 2: write a real ADM BWF master from what was decoded. ---
-    ac3::admbridge::WriteInput write_input;
+    iclforge::admbridge::WriteInput write_input;
     write_input.sample_rate = 48000;
     write_input.channels.push_back({.name = "Object 1",
                                     .pcm = accumulator.object_pcm,
@@ -140,17 +140,17 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
                                     .updates = accumulator.object_updates});
     write_input.channels.push_back({.name = "LFE",
                                     .pcm = accumulator.lfe_pcm,
-                                    .bed_label = ac3::oba::BedLabel::kLfe,
+                                    .bed_label = iclforge::oba::BedLabel::kLfe,
                                     .updates = {}});
 
-    const auto built = ac3::admbridge::write(write_input);
+    const auto built = iclforge::admbridge::write(write_input);
     REQUIRE(built.has_value());
     CHECK(built->model.objects.size() == 2);
     CHECK(built->audio.channels.size() == 2);
     CHECK(built->audio.sample_rate == 48000);
     // Every audioTrackUID states the width write_bw64 stores the PCM at - the Dolby Atmos Master
     // ADM Profile expects it, and Dolby Encoding Engine refuses a master without it.
-    CHECK(built->audio.bits_per_sample == ac3adm::kWriteBitDepth);
+    CHECK(built->audio.bits_per_sample == iclforge::adm::kWriteBitDepth);
     REQUIRE(built->model.track_uids.size() == 2);
     for (const auto& track_uid : built->model.track_uids) {
         CAPTURE(track_uid.uid);
@@ -161,8 +161,8 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
     const auto scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("admbridge_write_" + scratch_pid_suffix());
     fs::create_directories(scratch);
     const auto master_path = (scratch / "write_roundtrip.wav").string();
-    const auto written = ac3adm::write_bw64(master_path, *built);
-    const std::string write_diag = written ? std::string{"ok"} : std::string(ac3adm::describe(written.error()));
+    const auto written = iclforge::adm::write_bw64(master_path, *built);
+    const std::string write_diag = written ? std::string{"ok"} : std::string(iclforge::adm::describe(written.error()));
     INFO("write_bw64: " << write_diag);
     REQUIRE(written.has_value());
     REQUIRE(fs::exists(master_path));
@@ -170,14 +170,14 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
 
     // --- Phase 3: read it back with the exact same reader/bridge test_adm_bridge.cpp's own
     // flagship test already proves correct against a hand-authored fixture. ---
-    const auto parsed = ac3adm::parse_bw64(master_path);
-    const std::string parse_diag = parsed ? std::string{"ok"} : std::string(ac3adm::describe(parsed.error()));
+    const auto parsed = iclforge::adm::parse_bw64(master_path);
+    const std::string parse_diag = parsed ? std::string{"ok"} : std::string(iclforge::adm::describe(parsed.error()));
     INFO("parse_bw64: " << parse_diag);
     REQUIRE(parsed.has_value());
     REQUIRE(parsed->audio.channels.size() == 2);
     REQUIRE(parsed->audio.frame_count() == accumulator.object_pcm.size());
     // The same on disk: each audioTrackUID's bitDepth matches the <fmt > chunk the PCM was read at.
-    CHECK(parsed->audio.bits_per_sample == ac3adm::kWriteBitDepth);
+    CHECK(parsed->audio.bits_per_sample == iclforge::adm::kWriteBitDepth);
     REQUIRE(parsed->model.track_uids.size() == 2);
     for (const auto& track_uid : parsed->model.track_uids) {
         CAPTURE(track_uid.uid);
@@ -185,7 +185,7 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
         CHECK(track_uid.bit_depth == parsed->audio.bits_per_sample);
     }
 
-    const auto bridged = ac3::admbridge::build(*parsed);
+    const auto bridged = iclforge::admbridge::build(*parsed);
     REQUIRE(bridged.has_value());
     REQUIRE(bridged->channel_count() == 2);
     // Order matches model.objects' own insertion order (write()'s own doc comment): object,
@@ -200,8 +200,8 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
     // test_adm_bridge.cpp's own flagship test holds itself to - proving the position/audio the
     // written file carries is not just structurally present but actually reproduces the
     // original motion once re-encoded and re-decoded.
-    ac3::oba::AtmosEncoder reencoder{{.bitrate_kbps = 448}, static_cast<int>(bridged->channel_count())};
-    ac3::Eac3Decoder redecoder;
+    iclforge::oba::AtmosEncoder reencoder{{.bitrate_kbps = 448}, static_cast<int>(bridged->channel_count())};
+    iclforge::Eac3Decoder redecoder;
     std::vector<std::span<const float>> views(bridged->channel_count());
 
     // AC-3 3/2 coded order (Table 5.8): L, C, R, Ls, Rs.
@@ -214,7 +214,7 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
             views[i] = bridged->pcm[i].subspan(start, static_cast<std::size_t>(kFrame));
         }
         const double t = static_cast<double>(start + static_cast<std::size_t>(kFrame)) / kSampleRate;
-        const auto placement = ac3::oba::evaluate_placements(bridged->paths, t);
+        const auto placement = iclforge::oba::evaluate_placements(bridged->paths, t);
         const auto unit = reencoder.encode_frame(views, placement);
         REQUIRE(unit.has_value());
 

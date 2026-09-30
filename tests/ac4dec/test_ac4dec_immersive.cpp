@@ -36,11 +36,11 @@
 
 namespace {
 
-using ac4::DecodingMode;
-using ac4::Speaker;
-using ac4::detail::QmfValue;
-using ac4::detail::Real;
-namespace immersive = ac4::detail::immersive_mode;
+using iclforge::ac4::DecodingMode;
+using iclforge::ac4::Speaker;
+using iclforge::ac4::detail::QmfValue;
+using iclforge::ac4::detail::Real;
+namespace immersive = iclforge::ac4::detail::immersive_mode;
 using S = Speaker;
 
 constexpr double kSqrt2 = std::numbers::sqrt2;
@@ -66,11 +66,11 @@ std::size_t index_of(std::span<const Speaker> speakers, Speaker speaker) {
 
 std::vector<QmfValue> matrix(double scale, double step) {
     std::vector<QmfValue> out(kValues);
-    const auto s = static_cast<ac4::detail::Real>(scale);
+    const auto s = static_cast<iclforge::ac4::detail::Real>(scale);
     for (std::size_t i = 0; i < kValues; ++i) {
         const double angle = step * static_cast<double>(i);
-        out[i] = s * QmfValue(static_cast<ac4::detail::Real>(std::cos(angle)),
-                              static_cast<ac4::detail::Real>(std::sin(angle)));
+        out[i] = s * QmfValue(static_cast<iclforge::ac4::detail::Real>(std::cos(angle)),
+                              static_cast<iclforge::ac4::detail::Real>(std::sin(angle)));
     }
     return out;
 }
@@ -79,10 +79,10 @@ std::vector<QmfValue> matrix(double scale, double step) {
 
 TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands and 0 elsewhere",
           "[ac4dec][immersive]") {
-    ac4::detail::SubstreamContext ctx;
-    ac4::detail::SfInfo info;
+    iclforge::ac4::detail::SubstreamContext ctx;
+    iclforge::ac4::detail::SfInfo info;
     info.psy.max_sfb = {8, 0};
-    ac4::detail::ChparamInfo chparam;
+    iclforge::ac4::detail::ChparamInfo chparam;
     chparam.sap_mode = 3;
     // Bands 0 and 1 alpha_q 5, 2 and 3 uncoded, 4 to 7 alpha_q -3 (band 4's
     // difference from band 2, whose alpha_q is 0, and band 6's 0 from band 4).
@@ -95,9 +95,9 @@ TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands an
     const auto gain = [](int alpha_q) {
         return static_cast<double>(static_cast<float>(alpha_q) * 0.1f);
     };
-    using ac4::detail::StereoUse;
-    ac4::detail::StereoParameters prediction;
-    ac4::detail::stereo_parameters(ctx, info, chparam, prediction, StereoUse::kPrediction);
+    using iclforge::ac4::detail::StereoUse;
+    iclforge::ac4::detail::StereoParameters prediction;
+    iclforge::ac4::detail::stereo_parameters(ctx, info, chparam, prediction, StereoUse::kPrediction);
     const std::array<double, 8> expected = {gain(5),  gain(5),  0.0,      0.0,
                                             gain(-3), gain(-3), gain(-3), gain(-3)};
     for (std::size_t sfb = 0; sfb < 8; ++sfb) {
@@ -109,9 +109,9 @@ TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands an
         CHECK(d == Real{1});
     }
     // The same chparam_info() as a 2 x 2 step: Pseudocode 59's (1 + g, 1, 1 - g, -1).
-    ac4::detail::StereoParameters pair;
-    ac4::detail::stereo_parameters(ctx, info, chparam, pair);
-    using ac4::detail::Real;
+    iclforge::ac4::detail::StereoParameters pair;
+    iclforge::ac4::detail::stereo_parameters(ctx, info, chparam, pair);
+    using iclforge::ac4::detail::Real;
     CHECK(pair.abcd[0][0] == std::array<Real, 4>{static_cast<Real>(1.0 + gain(5)), Real{1},
                                                  static_cast<Real>(1.0 - gain(5)), Real{-1}});
     CHECK(pair.abcd[0][2] == std::array<Real, 4>{Real{1}, Real{}, Real{}, Real{1}});
@@ -121,8 +121,8 @@ TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands an
         CAPTURE(mode);
         chparam.sap_mode = mode;
         chparam.ms_used[0].fill(true);
-        ac4::detail::StereoParameters none;
-        ac4::detail::stereo_parameters(ctx, info, chparam, none, StereoUse::kPrediction);
+        iclforge::ac4::detail::StereoParameters none;
+        iclforge::ac4::detail::stereo_parameters(ctx, info, chparam, none, StereoUse::kPrediction);
         for (std::size_t sfb = 0; sfb < 8; ++sfb) {
             CHECK(none.abcd[0][sfb] == std::array<Real, 4>{Real{1}, Real{}, Real{}, Real{1}});
         }
@@ -130,9 +130,9 @@ TEST_CASE("Table 20's prediction gains are sap_gain in full SAP's coded bands an
 }
 
 TEST_CASE("S-CPL makes the channels of Tables 23 and 24", "[ac4dec][immersive]") {
-    using ac4::detail::Real;
-    const auto full = ac4::detail::speakers_of(ac4::detail::ch_mode::k7_1_4);
-    const auto core = ac4::detail::speakers_of(ac4::detail::ch_mode::k7_1_4, DecodingMode::kCore);
+    using iclforge::ac4::detail::Real;
+    const auto full = iclforge::ac4::detail::speakers_of(iclforge::ac4::detail::ch_mode::k7_1_4);
+    const auto core = iclforge::ac4::detail::speakers_of(iclforge::ac4::detail::ch_mode::k7_1_4, DecodingMode::kCore);
     // The tolerance a coupled pair's sum or difference can differ from its
     // exact double value by - a few ulps of Real, the same margin
     // test_ac4dec_multichannel.cpp's check_printed() gives a matrix entry.
@@ -152,7 +152,7 @@ TEST_CASE("S-CPL makes the channels of Tables 23 and 24", "[ac4dec][immersive]")
         const Real m_gain = mode == immersive::kScpl ? static_cast<Real>(kSqrt2) : Real{1};
         std::vector<std::vector<Real>> time = signals(full.size());
         const std::vector<std::vector<Real>> in = time;
-        ac4::detail::apply_scpl(mode, DecodingMode::kFull, full, time);
+        iclforge::ac4::detail::apply_scpl(mode, DecodingMode::kFull, full, time);
         const auto at = [&](const std::vector<std::vector<Real>>& t, Speaker s) {
             return t[index_of(full, s)][7];
         };
@@ -175,7 +175,7 @@ TEST_CASE("S-CPL makes the channels of Tables 23 and 24", "[ac4dec][immersive]")
 
         // Core decoding: c_gain on the seven core channels, the LFE as it is.
         std::vector<std::vector<Real>> core_time = signals(core.size());
-        ac4::detail::apply_scpl(mode, DecodingMode::kCore, core, core_time);
+        iclforge::ac4::detail::apply_scpl(mode, DecodingMode::kCore, core, core_time);
         for (std::size_t c = 0; c < core.size(); ++c) {
             CAPTURE(c);
             const Real gain = core[c] == S::kLfe ? Real{1} : c_gain;
@@ -185,13 +185,13 @@ TEST_CASE("S-CPL makes the channels of Tables 23 and 24", "[ac4dec][immersive]")
     // Nothing in the modes without S-CPL.
     std::vector<std::vector<Real>> time = signals(full.size());
     const std::vector<std::vector<Real>> in = time;
-    ac4::detail::apply_scpl(immersive::kAspxAcpl2, DecodingMode::kFull, full, time);
+    iclforge::ac4::detail::apply_scpl(immersive::kAspxAcpl2, DecodingMode::kFull, full, time);
     CHECK(time == in);
 }
 
 TEST_CASE("the immersive element's gains after A-SPX follow Tables 9 and 10 and clause 4.8.3.14",
           "[ac4dec][immersive]") {
-    using ac4::detail::immersive_gains;
+    using iclforge::ac4::detail::immersive_gains;
     const auto gains = [](int mode, DecodingMode decoding, Speaker speaker) {
         const auto g = immersive_gains(mode, decoding, speaker);
         return std::array{g.low, g.high};
@@ -226,22 +226,22 @@ TEST_CASE("the immersive element's gains after A-SPX follow Tables 9 and 10 and 
 
     // apply_band_gains splits each slot at sbx.
     std::vector<QmfValue> m(kValues, QmfValue{1.0, -1.0});
-    ac4::detail::apply_band_gains(m, kSlots, 20, {.low = 2.0, .high = 3.0});
+    iclforge::ac4::detail::apply_band_gains(m, kSlots, 20, {.low = 2.0, .high = 3.0});
     CHECK(m[5 * 64 + 19] == QmfValue{2.0, -2.0});
     CHECK(m[5 * 64 + 20] == QmfValue{3.0, -3.0});
 }
 
 TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocode 2's gains",
           "[ac4dec][immersive]") {
-    const auto speakers = ac4::detail::speakers_of(ac4::detail::ch_mode::k7_0_4);
-    const auto run = [&](int mode, const ac4::detail::AcplFrameValues& values,
-                         ac4::detail::AcplStage& stage,
+    const auto speakers = iclforge::ac4::detail::speakers_of(iclforge::ac4::detail::ch_mode::k7_0_4);
+    const auto run = [&](int mode, const iclforge::ac4::detail::AcplFrameValues& values,
+                         iclforge::ac4::detail::AcplStage& stage,
                          std::vector<std::vector<QmfValue>>& channels) {
         std::vector<std::vector<QmfValue>*> matrices;
         for (auto& m : channels) {
             matrices.push_back(&m);
         }
-        stage.apply(ac4::detail::ch_mode::k7_0_4, false, ac4::detail::ElementKind::kImmersive, mode,
+        stage.apply(iclforge::ac4::detail::ch_mode::k7_0_4, false, iclforge::ac4::detail::ElementKind::kImmersive, mode,
                     values, kSlots, {.speakers = speakers, .matrices = matrices});
     };
     // Each channel its own signal.
@@ -262,7 +262,7 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
         // Modules 1 and 3 alpha 1 (all in the first channel), 2 and 4 alpha -1
         // (all in the second); the second frame, past the ramp from
         // acpl_param_prev.
-        ac4::detail::AcplFrameValues values;
+        iclforge::ac4::detail::AcplFrameValues values;
         values.module_count = 4;
         for (std::size_t m = 0; m < 4; ++m) {
             values.modules[m].num_bands = 15;
@@ -270,7 +270,7 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
                 band = m % 2 == 0 ? 1.0 : -1.0;
             }
         }
-        ac4::detail::AcplStage stage;
+        iclforge::ac4::detail::AcplStage stage;
         std::vector<std::vector<QmfValue>> channels = inputs();
         const std::vector<std::vector<QmfValue>> in = channels;
         run(immersive::kAspxAcpl2, values, stage, channels);
@@ -303,7 +303,7 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
         for (std::size_t m = 0; m < 4; ++m) {
             values.modules[m].qmf_band = 64;
         }
-        ac4::detail::AcplStage residual;
+        iclforge::ac4::detail::AcplStage residual;
         channels = in;
         run(immersive::kAspxAcpl1, values, residual, channels);
         for (std::size_t i = 0; i < kValues; i += 131) {
@@ -324,7 +324,7 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
         // z0 - z1 = y, the decorrelated and ducked x_in, times the square root
         // of 2. Ls and Rs carry the same signal, as do Tfl and Tfr: a shared
         // instance would filter the second from the first's history.
-        ac4::detail::AcplFrameValues values;
+        iclforge::ac4::detail::AcplFrameValues values;
         values.module_count = 4;
         for (auto& module : values.modules) {
             module.num_bands = 15;
@@ -332,10 +332,10 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
                 band = 1.0;
             }
         }
-        ac4::detail::AcplStage stage;
-        std::array<ac4::detail::acpl::Decorrelator<Real>, 2> reference = {
-            ac4::detail::acpl::Decorrelator<Real>(0), ac4::detail::acpl::Decorrelator<Real>(1)};
-        std::array<ac4::detail::acpl::TransientDucker<Real>, 2> duckers{};
+        iclforge::ac4::detail::AcplStage stage;
+        std::array<iclforge::ac4::detail::acpl::Decorrelator<Real>, 2> reference = {
+            iclforge::ac4::detail::acpl::Decorrelator<Real>(0), iclforge::ac4::detail::acpl::Decorrelator<Real>(1)};
+        std::array<iclforge::ac4::detail::acpl::TransientDucker<Real>, 2> duckers{};
         for (int frame = 0; frame < 3; ++frame) {
             CAPTURE(frame);
             std::vector<std::vector<QmfValue>> channels = inputs();
@@ -377,8 +377,8 @@ TEST_CASE("A-CPL's four immersive modules take Table 25's channels and Pseudocod
 
 namespace {
 
-namespace acpl = ac4::detail::acpl;
-namespace ajcc = ac4::detail::ajcc;
+namespace acpl = iclforge::ac4::detail::acpl;
+namespace ajcc = iclforge::ac4::detail::ajcc;
 
 // ajcc_data()'s fourteen parameters, quantised, in syntax order: alpha1,
 // alpha2, beta1, beta2, dry1 to dry4, wet1 to wet6. Fine quantisation: alpha
@@ -387,8 +387,8 @@ namespace ajcc = ac4::detail::ajcc;
 constexpr std::array<int, 14> kAjccQ = {20, 12, 3, 2, 9, 8, 10, 6, 25, 23, 22, 21, 24, 18};
 
 // A frame of one parameter set, smooth, every band at kAjccQ.
-ac4::detail::AjccFrameValues ajcc_frame(int core_mode) {
-    ac4::detail::AjccFrameValues v;
+iclforge::ac4::detail::AjccFrameValues ajcc_frame(int core_mode) {
+    iclforge::ac4::detail::AjccFrameValues v;
     v.core_mode = core_mode;
     v.num_bands = 15;
     for (std::size_t p = 0; p < kAjccQ.size(); ++p) {
@@ -459,11 +459,11 @@ using Expect = std::function<void(std::size_t side, const std::vector<QmfValue>&
 
 void check_ajcc(DecodingMode decoding, int core_mode, std::array<Decorrelated, 6>& reference,
                 const Expect& expected) {
-    const auto speakers = ac4::detail::speakers_of(ac4::detail::ch_mode::k7_0_4, decoding);
+    const auto speakers = iclforge::ac4::detail::speakers_of(iclforge::ac4::detail::ch_mode::k7_0_4, decoding);
     const bool full = decoding == DecodingMode::kFull;
     const double gain = 2.0 + 1.0 / std::numbers::sqrt2;
-    ac4::detail::AjccStage stage;
-    const ac4::detail::AjccFrameValues values = ajcc_frame(core_mode);
+    iclforge::ac4::detail::AjccStage stage;
+    const iclforge::ac4::detail::AjccFrameValues values = ajcc_frame(core_mode);
     for (int frame = 0; frame < 3; ++frame) {
         CAPTURE(frame);
         Channels channels(speakers.size(), std::vector<QmfValue>(kValues));
@@ -579,11 +579,11 @@ TEST_CASE("A-JCC's values decode and dequantise by Pseudocodes 3 to 5",
 
     // ajcc_values() over an ajcc_data() of codebook indices: F0 and DF along
     // frequency, then DT along time, with each parameter's cb_off.
-    ac4::detail::AjccData data;
+    iclforge::ac4::detail::AjccData data;
     data.num_param_bands_id = 3;  // 7 bands
     data.num_bands = 7;
     data.core_mode = 1;
-    auto params = [&](std::size_t p) -> ac4::detail::AjccParams& {
+    auto params = [&](std::size_t p) -> iclforge::ac4::detail::AjccParams& {
         if (p < 2) {
             return data.alpha[p];
         }
@@ -596,21 +596,21 @@ TEST_CASE("A-JCC's values decode and dequantise by Pseudocodes 3 to 5",
         return data.wet[p - 8];
     };
     const auto type_of = [](std::size_t p) {
-        using T = ac4::detail::AjccDataType;
+        using T = iclforge::ac4::detail::AjccDataType;
         return p < 2 ? T::kAlpha : p < 4 ? T::kBeta : p < 8 ? T::kDry : T::kWet;
     };
-    using ac4::detail::AjccHcbType;
+    using iclforge::ac4::detail::AjccHcbType;
     for (std::size_t p = 0; p < 14; ++p) {
-        ac4::detail::AjccParams& param = params(p);
+        iclforge::ac4::detail::AjccParams& param = params(p);
         param.data_type = type_of(p);
-        const int f0 = ac4::detail::ajcc_codebook(param.data_type, 0, AjccHcbType::kF0).cb_off;
-        const int df = ac4::detail::ajcc_codebook(param.data_type, 0, AjccHcbType::kDf).cb_off;
+        const int f0 = iclforge::ac4::detail::ajcc_codebook(param.data_type, 0, AjccHcbType::kF0).cb_off;
+        const int df = iclforge::ac4::detail::ajcc_codebook(param.data_type, 0, AjccHcbType::kDf).cb_off;
         param.sets[0].huff_index.fill(static_cast<std::uint16_t>(df));
         param.sets[0].huff_index[0] = static_cast<std::uint16_t>(kAjccQ[p] + f0);
     }
-    ac4::detail::AjccQuantHistory history;
-    ac4::detail::AjccFrameValues values;
-    REQUIRE(ac4::detail::ajcc_values(data, history, values));
+    iclforge::ac4::detail::AjccQuantHistory history;
+    iclforge::ac4::detail::AjccFrameValues values;
+    REQUIRE(iclforge::ac4::detail::ajcc_values(data, history, values));
     CHECK(values.core_mode == 1);
     CHECK(values.num_bands == 7);
     for (std::size_t p = 0; p < 14; ++p) {
@@ -620,15 +620,15 @@ TEST_CASE("A-JCC's values decode and dequantise by Pseudocodes 3 to 5",
     }
     // The next frame one step up along time, then out of range.
     for (std::size_t p = 0; p < 14; ++p) {
-        ac4::detail::AjccParams& param = params(p);
-        const int dt = ac4::detail::ajcc_codebook(param.data_type, 0, AjccHcbType::kDt).cb_off;
+        iclforge::ac4::detail::AjccParams& param = params(p);
+        const int dt = iclforge::ac4::detail::ajcc_codebook(param.data_type, 0, AjccHcbType::kDt).cb_off;
         param.sets[0].diff_type = 1;
         param.sets[0].huff_index.fill(static_cast<std::uint16_t>(dt + 1));
     }
-    REQUIRE(ac4::detail::ajcc_values(data, history, values));
+    REQUIRE(iclforge::ac4::detail::ajcc_values(data, history, values));
     CHECK(values.q[4][0][3] == kAjccQ[4] + 1);
     for (int step = 0; step < 40; ++step) {
-        if (!ac4::detail::ajcc_values(data, history, values)) {
+        if (!iclforge::ac4::detail::ajcc_values(data, history, values)) {
             SUCCEED("a value left its range");
             return;
         }

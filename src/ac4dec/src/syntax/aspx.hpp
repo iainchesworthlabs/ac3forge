@@ -24,7 +24,7 @@
 //     sets (Pseudocodes 76 and 77).
 // Nothing is dequantised: envelope values stay Huffman codebook indices.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 inline constexpr int kAspxMaxSignalEnvelopes = 5;  // Table 128
 inline constexpr int kAspxMaxNoiseEnvelopes = 2;   // Table 53: aspx_num_noise is 1 or 2
@@ -209,4 +209,4 @@ struct AspxElementState {
                                             AspxStereoMode stereo_mode,
                                             AspxHcbType hcb_type) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

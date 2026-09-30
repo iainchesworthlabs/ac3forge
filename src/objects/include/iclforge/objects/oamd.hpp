@@ -29,7 +29,7 @@
 // former, so the encoder permutes once on the way in and everything object-
 // facing stays in Table 12 order.
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 // §4.2.1's room-anchored system: left-handed and normalized to the room
 // cuboid. x runs 0 at the left wall to 1 at the right, y 0 at the front wall
@@ -496,4 +496,4 @@ struct DisplayObject {
 [[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::vector<DisplayObject> describe_objects(
     const DecodedProgram& program, std::size_t block = 0);
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

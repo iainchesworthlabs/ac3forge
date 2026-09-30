@@ -26,7 +26,7 @@
 // produce a scene that is wrong in a way nothing reports. Forward compatibility
 // rides on the "ac3forge_scene" version number instead, which is what it is for.
 
-namespace ac3::oba {
+namespace iclforge::oba {
 
 namespace {
 
@@ -655,4 +655,4 @@ std::expected<SceneContents, SceneError> read_scene_json(std::string_view text) 
     return SceneContents{.objects = std::move(objects), .orientation = orientation};
 }
 
-}  // namespace ac3::oba
+}  // namespace iclforge::oba

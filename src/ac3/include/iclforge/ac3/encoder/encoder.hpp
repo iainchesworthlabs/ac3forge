@@ -34,7 +34,7 @@
 // long-run rate is exact. At 32/48 kHz the same accumulator degenerates to
 // the constant frame size.
 
-namespace ac3 {
+namespace iclforge {
 
 struct EncoderConfig {
     SampleRate sample_rate = SampleRate::k48000;
@@ -139,7 +139,7 @@ struct EncoderConfig {
     // and that number is not comparable between two code sets because each
     // produces a different masking curve for the offset to sit on.
     //
-    // ac3::quality supplies the criterion that was missing - the error the
+    // iclforge::quality supplies the criterion that was missing - the error the
     // decoder will actually reconstruct - so with this set the encoder tries
     // a small set of candidate BitAllocCodes per frame, and decides the
     // delta-bit-allocation race on measured error rather than on the
@@ -222,7 +222,7 @@ class ICLFORGE_AC3_EXPORT FrameEncoder {
     // Every private data member - the MDCT history/scratch, the §8.2.8
     // exponent-strategy plan, the coupling work buffers, the DRC controllers,
     // all of it - lives behind this one pimpl, following the same pattern as
-    // ac3::io::WavStreamReader/Writer. Impl is defined in encoder.cpp, so a
+    // iclforge::io::WavStreamReader/Writer. Impl is defined in encoder.cpp, so a
     // dllexport class instantiating every implicit special member is why the
     // destructor and moves above are declared (not defaulted inline) here:
     // move-assignment's implicit reset() needs Impl complete.
@@ -230,4 +230,4 @@ class ICLFORGE_AC3_EXPORT FrameEncoder {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3
+}  // namespace iclforge

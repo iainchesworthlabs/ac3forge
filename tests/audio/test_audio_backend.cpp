@@ -16,7 +16,7 @@
 // One directory of src/audio/src/backend/ is compiled into the library and the
 // others are not, so this file cannot name a backend - and does not want to.
 // What it checks is the contract every backend has to keep, which is that
-// ac3::audio::audio_backend() and the implementations beside it agree:
+// iclforge::audio::audio_backend() and the implementations beside it agree:
 //
 //   * a capability reported unavailable must actually refuse, with kNoBackend
 //     and nothing else, because the CLI prints that report instead of calling
@@ -34,7 +34,7 @@
 
 TEST_CASE("audio_backend reports a reason exactly when a capability is missing",
           "[audio-backend][concurrency]") {
-    const auto& backend = ac3::audio::audio_backend();
+    const auto& backend = iclforge::audio::audio_backend();
 
     for (const auto& capability :
          {backend.capture, backend.passthrough, backend.monitor, backend.spatial,
@@ -53,40 +53,40 @@ TEST_CASE("audio_backend reports a reason exactly when a capability is missing",
 
 TEST_CASE("capture enumeration agrees with the reported capability",
           "[audio-backend][concurrency]") {
-    const auto& capture = ac3::audio::audio_backend().capture;
-    const auto devices = ac3::audio::enumerate_devices();
+    const auto& capture = iclforge::audio::audio_backend().capture;
+    const auto devices = iclforge::audio::enumerate_devices();
 
     if (capture.available) {
         // A machine with no capture hardware is entitled to an empty list;
         // what it is not entitled to is claiming there is no backend when the
         // report next door says there is one.
         if (!devices.has_value()) {
-            CHECK(devices.error() != ac3::audio::CaptureError::kNoBackend);
+            CHECK(devices.error() != iclforge::audio::CaptureError::kNoBackend);
         }
     } else {
         REQUIRE_FALSE(devices.has_value());
-        CHECK(devices.error() == ac3::audio::CaptureError::kNoBackend);
+        CHECK(devices.error() == iclforge::audio::CaptureError::kNoBackend);
     }
 }
 
 TEST_CASE("passthrough enumeration agrees with the reported capability",
           "[audio-backend][concurrency]") {
-    const auto& passthrough = ac3::audio::audio_backend().passthrough;
-    const auto devices = ac3::audio::enumerate_render_devices();
+    const auto& passthrough = iclforge::audio::audio_backend().passthrough;
+    const auto devices = iclforge::audio::enumerate_render_devices();
 
     if (passthrough.available) {
         if (!devices.has_value()) {
-            CHECK(devices.error() != ac3::audio::PassthroughError::kNoBackend);
+            CHECK(devices.error() != iclforge::audio::PassthroughError::kNoBackend);
         }
     } else {
         REQUIRE_FALSE(devices.has_value());
-        CHECK(devices.error() == ac3::audio::PassthroughError::kNoBackend);
+        CHECK(devices.error() == iclforge::audio::PassthroughError::kNoBackend);
     }
 }
 
 TEST_CASE("a device list is well formed whatever the machine has in it",
           "[audio-backend][concurrency]") {
-    const auto devices = ac3::audio::enumerate_devices();
+    const auto devices = iclforge::audio::enumerate_devices();
     if (!devices) {
         SUCCEED("no capture backend in this build");
         return;
@@ -101,7 +101,7 @@ TEST_CASE("a device list is well formed whatever the machine has in it",
 
 TEST_CASE("a render device list is well formed whatever the machine has in it",
           "[audio-backend][concurrency]") {
-    const auto devices = ac3::audio::enumerate_render_devices();
+    const auto devices = iclforge::audio::enumerate_render_devices();
     if (!devices) {
         SUCCEED("no passthrough backend in this build");
         return;
@@ -121,25 +121,25 @@ TEST_CASE("spatial capability probing agrees with the reported capability",
     // of anything about `spatial.available`. What has to agree is only the
     // one signal that DOES mean "this build has no backend at all":
     // kNoBackend.
-    const auto& spatial = ac3::audio::audio_backend().spatial;
-    const auto probed = ac3::audio::probe_spatial_capability("");
+    const auto& spatial = iclforge::audio::audio_backend().spatial;
+    const auto probed = iclforge::audio::probe_spatial_capability("");
     if (spatial.available) {
         if (!probed.has_value()) {
-            CHECK(probed.error() != ac3::audio::SpatialError::kNoBackend);
+            CHECK(probed.error() != iclforge::audio::SpatialError::kNoBackend);
         }
     } else {
         REQUIRE_FALSE(probed.has_value());
-        CHECK(probed.error() == ac3::audio::SpatialError::kNoBackend);
+        CHECK(probed.error() == iclforge::audio::SpatialError::kNoBackend);
     }
 }
 
 TEST_CASE("every spatial error describes itself", "[audio-backend][concurrency]") {
-    using ac3::audio::SpatialError;
+    using iclforge::audio::SpatialError;
     for (const auto error :
          {SpatialError::kNoBackend, SpatialError::kComFailure, SpatialError::kDeviceNotFound,
           SpatialError::kNoSpatialFormat, SpatialError::kFormatRejected,
           SpatialError::kAlreadyRunning, SpatialError::kNotRunning}) {
-        const std::string_view text = ac3::audio::describe(error);
+        const std::string_view text = iclforge::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown spatial error");
     }
@@ -151,7 +151,7 @@ TEST_CASE("a spatial sink that was never started refuses work", "[audio-backend]
     // running() first. A sink whose device has gone answers the same way,
     // which needs a device to lose, and is test_spatial_live.cpp's
     // [.][spatial-unplug] case.
-    ac3::audio::SpatialObjectSink sink;
+    iclforge::audio::SpatialObjectSink sink;
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.can_submit());
     CHECK_FALSE(sink.submit({}, {}));
@@ -164,13 +164,13 @@ TEST_CASE("a spatial sink that was never started refuses work", "[audio-backend]
 }
 
 TEST_CASE("every capture error describes itself", "[audio-backend][concurrency]") {
-    using ac3::audio::CaptureError;
+    using iclforge::audio::CaptureError;
     for (const auto error : {CaptureError::kNoBackend, CaptureError::kComFailure,
                              CaptureError::kDeviceNotFound, CaptureError::kFormatUnsupported,
                              CaptureError::kAlreadyRunning,
                              CaptureError::kProcessLoopbackUnavailable,
                              CaptureError::kProcessNotFound}) {
-        const std::string_view text = ac3::audio::describe(error);
+        const std::string_view text = iclforge::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown capture error");
     }
@@ -184,11 +184,11 @@ TEST_CASE("process loopback refusals agree with the reported capability",
     // is no such tap here" where there is none, "no such process" where
     // there is. A real process id is never tried: that would open a tap on
     // a developer's machine and start a capture thread.
-    using ac3::audio::CaptureError;
-    const auto& capability = ac3::audio::audio_backend().process_loopback;
-    CHECK(capability.available == ac3::audio::process_loopback_available());
+    using iclforge::audio::CaptureError;
+    const auto& capability = iclforge::audio::audio_backend().process_loopback;
+    CHECK(capability.available == iclforge::audio::process_loopback_available());
 
-    ac3::audio::Capture capture;
+    iclforge::audio::Capture capture;
     const auto result = capture.start_process_loopback(0);
     REQUIRE_FALSE(result.has_value());
     if (capability.available) {
@@ -209,17 +209,17 @@ TEST_CASE("process loopback refusals agree with the reported capability",
 }
 
 TEST_CASE("every device watch error describes itself", "[audio-backend][concurrency]") {
-    using ac3::audio::DeviceWatchError;
+    using iclforge::audio::DeviceWatchError;
     for (const auto error : {DeviceWatchError::kNoBackend, DeviceWatchError::kComFailure,
                              DeviceWatchError::kAlreadyRunning}) {
-        const std::string_view text = ac3::audio::describe(error);
+        const std::string_view text = iclforge::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown device watch error");
     }
 }
 
 TEST_CASE("a device watcher that was never started reports so", "[audio-backend][concurrency]") {
-    ac3::audio::DeviceWatcher watcher;
+    iclforge::audio::DeviceWatcher watcher;
     CHECK_FALSE(watcher.running());
     CHECK(watcher.stats().events_delivered == 0);
     watcher.stop();  // harmless when not running
@@ -234,21 +234,21 @@ TEST_CASE("device watching agrees with the reported capability",
     // above this one CAN be exercised for real wherever the backend exists:
     // start, confirm it is running, refuse a second start, stop, and be
     // stopped. Nothing here opens a device or makes a sound.
-    using ac3::audio::DeviceWatchError;
-    const auto& capability = ac3::audio::audio_backend().device_watch;
+    using iclforge::audio::DeviceWatchError;
+    const auto& capability = iclforge::audio::audio_backend().device_watch;
 
-    ac3::audio::DeviceWatcher watcher;
-    const auto started = watcher.start([](const ac3::audio::DeviceChangeEvent&) {});
+    iclforge::audio::DeviceWatcher watcher;
+    const auto started = watcher.start([](const iclforge::audio::DeviceChangeEvent&) {});
     if (capability.available) {
         REQUIRE(started.has_value());
         CHECK(watcher.running());
-        const auto again = watcher.start([](const ac3::audio::DeviceChangeEvent&) {});
+        const auto again = watcher.start([](const iclforge::audio::DeviceChangeEvent&) {});
         REQUIRE_FALSE(again.has_value());
         CHECK(again.error() == DeviceWatchError::kAlreadyRunning);
         watcher.stop();
         CHECK_FALSE(watcher.running());
         // And it can go round again: stop() left nothing behind.
-        REQUIRE(watcher.start([](const ac3::audio::DeviceChangeEvent&) {}).has_value());
+        REQUIRE(watcher.start([](const iclforge::audio::DeviceChangeEvent&) {}).has_value());
         watcher.stop();
         CHECK_FALSE(watcher.running());
     } else {
@@ -266,13 +266,13 @@ TEST_CASE("device watching agrees with the reported capability",
 }
 
 TEST_CASE("every passthrough error describes itself", "[audio-backend][concurrency]") {
-    using ac3::audio::PassthroughError;
+    using iclforge::audio::PassthroughError;
     for (const auto error :
          {PassthroughError::kNoBackend, PassthroughError::kComFailure,
           PassthroughError::kDeviceNotFound, PassthroughError::kFormatRejected,
           PassthroughError::kExclusiveUnavailable, PassthroughError::kAlreadyRunning,
           PassthroughError::kNotRunning, PassthroughError::kUnsupportedFormat}) {
-        const std::string_view text = ac3::audio::describe(error);
+        const std::string_view text = iclforge::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown passthrough error");
     }
@@ -280,33 +280,33 @@ TEST_CASE("every passthrough error describes itself", "[audio-backend][concurren
 
 TEST_CASE("passthrough formats: the rate and burst lengths and name of each link",
           "[audio-backend][concurrency]") {
-    using ac3::audio::BitstreamFormat;
+    using iclforge::audio::BitstreamFormat;
     // IEC 61937-14 5.3.1, 5.3.3 and 5.3.5: AC-4 at the content rate, HBR4 at
     // four times it as E-AC-3, HBR16 at sixteen times.
-    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kAc3) == 1);
-    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kEac3) == 4);
-    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kAc4) == 1);
-    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kAc4Hbr4) == 4);
-    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kAc4Hbr16) == 16);
-    CHECK(ac3::audio::format_name(BitstreamFormat::kAc4Hbr4) == "AC-4 HBR4");
-    CHECK(ac3::audio::is_ac4(BitstreamFormat::kAc4));
-    CHECK_FALSE(ac3::audio::is_ac4(BitstreamFormat::kEac3));
+    CHECK(iclforge::audio::carrier_ratio(BitstreamFormat::kAc3) == 1);
+    CHECK(iclforge::audio::carrier_ratio(BitstreamFormat::kEac3) == 4);
+    CHECK(iclforge::audio::carrier_ratio(BitstreamFormat::kAc4) == 1);
+    CHECK(iclforge::audio::carrier_ratio(BitstreamFormat::kAc4Hbr4) == 4);
+    CHECK(iclforge::audio::carrier_ratio(BitstreamFormat::kAc4Hbr16) == 16);
+    CHECK(iclforge::audio::format_name(BitstreamFormat::kAc4Hbr4) == "AC-4 HBR4");
+    CHECK(iclforge::audio::is_ac4(BitstreamFormat::kAc4));
+    CHECK_FALSE(iclforge::audio::is_ac4(BitstreamFormat::kEac3));
 
     // Every AC-3 and E-AC-3 burst is one length; an AC-4 burst is as long as
     // its repetition period, up to the longest (2 048 IEC 60958 frames of four
     // bytes at the content rate).
-    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kAc3) == 6144);
-    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kEac3) == 24576);
-    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kAc4) == 8192);
-    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kAc4Hbr4) == 32768);
-    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kAc4Hbr16) == 131072);
-    CHECK(ac3::audio::burst_size_fits(BitstreamFormat::kAc3, 6144));
-    CHECK_FALSE(ac3::audio::burst_size_fits(BitstreamFormat::kAc3, 6140));
-    CHECK(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 1601 * 4));
-    CHECK(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 8192));
-    CHECK_FALSE(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 8196));
-    CHECK_FALSE(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 1602 * 4 + 2));
-    CHECK_FALSE(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 0));
+    CHECK(iclforge::audio::max_burst_bytes(BitstreamFormat::kAc3) == 6144);
+    CHECK(iclforge::audio::max_burst_bytes(BitstreamFormat::kEac3) == 24576);
+    CHECK(iclforge::audio::max_burst_bytes(BitstreamFormat::kAc4) == 8192);
+    CHECK(iclforge::audio::max_burst_bytes(BitstreamFormat::kAc4Hbr4) == 32768);
+    CHECK(iclforge::audio::max_burst_bytes(BitstreamFormat::kAc4Hbr16) == 131072);
+    CHECK(iclforge::audio::burst_size_fits(BitstreamFormat::kAc3, 6144));
+    CHECK_FALSE(iclforge::audio::burst_size_fits(BitstreamFormat::kAc3, 6140));
+    CHECK(iclforge::audio::burst_size_fits(BitstreamFormat::kAc4, 1601 * 4));
+    CHECK(iclforge::audio::burst_size_fits(BitstreamFormat::kAc4, 8192));
+    CHECK_FALSE(iclforge::audio::burst_size_fits(BitstreamFormat::kAc4, 8196));
+    CHECK_FALSE(iclforge::audio::burst_size_fits(BitstreamFormat::kAc4, 1602 * 4 + 2));
+    CHECK_FALSE(iclforge::audio::burst_size_fits(BitstreamFormat::kAc4, 0));
 }
 
 TEST_CASE("passthrough: AC-4 HBR16 is refused everywhere before a device is touched",
@@ -315,20 +315,20 @@ TEST_CASE("passthrough: AC-4 HBR16 is refused everywhere before a device is touc
     // platforms have no AC-4 format refuse every AC-4 link - all before any
     // device is looked up, so this makes no noise anywhere. A build with no
     // backend at all says so instead.
-    ac3::audio::PassthroughSink sink;
-    const auto started = sink.start("", 48000, ac3::audio::BitstreamFormat::kAc4Hbr16);
+    iclforge::audio::PassthroughSink sink;
+    const auto started = sink.start("", 48000, iclforge::audio::BitstreamFormat::kAc4Hbr16);
     REQUIRE_FALSE(started.has_value());
-    CHECK((started.error() == ac3::audio::PassthroughError::kUnsupportedFormat ||
-           started.error() == ac3::audio::PassthroughError::kNoBackend));
+    CHECK((started.error() == iclforge::audio::PassthroughError::kUnsupportedFormat ||
+           started.error() == iclforge::audio::PassthroughError::kNoBackend));
     CHECK_FALSE(sink.running());
 }
 
 TEST_CASE("every monitor error describes itself", "[audio-backend][concurrency]") {
-    using ac3::audio::MonitorError;
+    using iclforge::audio::MonitorError;
     for (const auto error : {MonitorError::kNoBackend, MonitorError::kComFailure,
                              MonitorError::kDeviceNotFound, MonitorError::kFormatRejected,
                              MonitorError::kAlreadyRunning, MonitorError::kNotRunning}) {
-        const std::string_view text = ac3::audio::describe(error);
+        const std::string_view text = iclforge::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown monitor error");
     }
@@ -340,7 +340,7 @@ TEST_CASE("a monitor sink refuses a channel count it cannot interpret",
     // device is touched, so this reaches no hardware even where a backend
     // exists. A real start() is not attempted anywhere in this file - that
     // would open an output and make a noise on a developer's machine.
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     CHECK_FALSE(sink.start("", 48000, 0).has_value());
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.can_submit());
@@ -354,7 +354,7 @@ TEST_CASE("a sink that was never started refuses work", "[audio-backend][concurr
     // answers the same way, which is what a caller finding the loss relies on;
     // that half needs a device to lose, and is test_passthrough_live.cpp's
     // [.][passthrough-unplug] case.
-    ac3::audio::PassthroughSink sink;
+    iclforge::audio::PassthroughSink sink;
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.can_submit());
     CHECK_FALSE(sink.submit({}));
@@ -386,7 +386,7 @@ TEST_CASE("a monitor sink that was never started refuses work", "[audio-backend]
     // The same contract as PassthroughSink's case above, and the same reason:
     // a stopped sink, and one whose device has gone, answer every call at
     // once. The device half is test_monitor_live.cpp's [.][monitor-unplug].
-    ac3::audio::MonitorSink sink;
+    iclforge::audio::MonitorSink sink;
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.can_submit());
     const std::vector<float> frames(96, 0.0F);
@@ -410,7 +410,7 @@ TEST_CASE("a monitor sink that was never started refuses work", "[audio-backend]
 }
 
 TEST_CASE("a capture that was never started reports nothing", "[audio-backend][concurrency]") {
-    ac3::audio::Capture capture;
+    iclforge::audio::Capture capture;
     CHECK_FALSE(capture.running());
     CHECK(capture.sample_rate() == 0);
     CHECK(capture.channels() == 0);

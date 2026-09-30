@@ -54,7 +54,7 @@
 // Not synchronised: the engine serialises every call on one session, receive() and tick()
 // included.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 struct ServerConfig {
     noise::KeyPair identity;
@@ -157,7 +157,7 @@ class ServerSession {
     // _ac3forge_player@v1's stream, as player@v1's: a data type and sample rate the client listed.
     [[nodiscard]] std::expected<SessionOutput, Refusal> start_burst_stream(const ac3forge::StreamStart& stream);
     // One burst of the running stream, to be played from `timestamp_us` on the server clock: its
-    // Pc and Pd as ac3::iec61937 writes them, and the payload they describe. send_ahead is taken
+    // Pc and Pd as iclforge::iec61937 writes them, and the payload they describe. send_ahead is taken
     // just before the chunk is sealed.
     [[nodiscard]] std::expected<SessionOutput, Refusal> send_burst(std::int64_t timestamp_us, std::uint16_t pc,
                                                                    std::uint16_t pd,
@@ -333,4 +333,4 @@ class ServerSession {
     std::int64_t attempt_since_ = 0;
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

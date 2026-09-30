@@ -4,7 +4,7 @@
 
 #include "iclforge/mpegts/reader.hpp"
 
-// mpegts::demux and mpegts::Reader over bytes nobody has vetted.
+// iclforge::mpegts::demux and iclforge::mpegts::Reader over bytes nobody has vetted.
 //
 // A transport stream is the container most likely to arrive damaged - it is
 // designed to be tuned into mid-flight and to survive bit errors - so
@@ -25,7 +25,7 @@
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
 
-    if (const auto out = mpegts::demux(bytes)) {
+    if (const auto out = iclforge::mpegts::demux(bytes)) {
         for (const auto& payload : out->payloads) {
             volatile std::byte sink{};
             for (const auto b : payload) {
@@ -36,7 +36,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
 
     const std::size_t chunk = size == 0 ? 1 : (static_cast<std::size_t>(data[0]) % 64) + 1;
-    mpegts::Reader reader{};
+    iclforge::mpegts::Reader reader{};
     const auto sink = [](std::span<const std::byte> payload) {
         volatile std::byte last{};
         for (const auto b : payload) {

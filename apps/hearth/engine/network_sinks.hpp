@@ -59,8 +59,8 @@
 //
 // A group is membership and volume/mute only here - streaming a programme to
 // one is Player's job (network_group_sink.hpp): this class only ever calls
-// ac3::sendspin::Group::add()/remove()/set_group_volume()/set_member_volume()
-// and the like, never start()/push()/push_burst(). ac3::sendspin::Group keeps
+// iclforge::sendspin::Group::add()/remove()/set_group_volume()/set_member_volume()
+// and the like, never start()/push()/push_burst(). iclforge::sendspin::Group keeps
 // no member list of its own to read back, so groups_ (below) is this class's
 // own record of which of ITS sinks belong to which group, in sink-id terms
 // (this class's mDNS-instance ids). A member only needs this computer to have
@@ -82,7 +82,7 @@
 // the-fact half - held_elsewhere, from the goodbye reasons ServerHost passes on
 // (ServerHostEvents::on_client_goodbye()).
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 struct NetworkStatus {
     std::uint64_t generation = 0;
@@ -212,7 +212,7 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // Makes a new, empty group (ServerHost::make_group()) and selects it;
     // empty string if the host never started. Not persisted across a run.
     std::string create_group(const std::string& name);
-    // Bookkeeping only: ac3::sendspin::Group has no concept of its own
+    // Bookkeeping only: iclforge::sendspin::Group has no concept of its own
     // display name on the wire, so renaming never touches the library.
     void rename_group(const std::string& group_id, const std::string& name);
     // Ends the group's own programme if one was running and forgets it.
@@ -239,7 +239,7 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // does not know. By id, not by this class's own bookkeeping name
     // (GroupEntry::name): rename_group() is bookkeeping only, with no
     // uniqueness check, so a name cannot resolve one group unambiguously the
-    // way ac3::sendspin::Group::id() (unique per host) does.
+    // way iclforge::sendspin::Group::id() (unique per host) does.
     [[nodiscard]] std::shared_ptr<sendspin::Group> group(const std::string& group_id) const;
 
     // The host's own trail (ServerHostEvents::on_log()) since the last call,
@@ -373,10 +373,10 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     std::uint64_t generation_ = 0;
     std::vector<std::string> log_;
 
-    // Keyed by ac3::sendspin::Group::id() - already unique per host, so
+    // Keyed by iclforge::sendspin::Group::id() - already unique per host, so
     // there is no need for a second id scheme on top of it.
     std::map<std::string, GroupEntry> groups_;
     std::string selected_group_id_;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

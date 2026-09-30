@@ -7,7 +7,7 @@
 #include "iclforge/ac4/ac4.hpp"
 #include "iclforge/ac4dec/decoder.hpp"
 
-// ac4::Decoder::parse and ac4::Decoder::decode (src/ac4dec) - the AC-4
+// iclforge::ac4::Decoder::parse and iclforge::ac4::Decoder::decode (src/ac4dec) - the AC-4
 // decoder's syntax layer, and the reconstruction to PCM behind decode().
 //
 // Below the table of contents that fuzz_ac4_parse presses, every substream is
@@ -50,22 +50,22 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(data), size);
 
     std::uint64_t records = 0;
-    const auto count = [&records](const ac4::SyntaxRecord&) { ++records; };
-    ac4::DecoderConfig config;
+    const auto count = [&records](const iclforge::ac4::SyntaxRecord&) { ++records; };
+    iclforge::ac4::DecoderConfig config;
     config.syntax = count;
-    ac4::Decoder framed(config);
-    ac4::DecoderConfig processing;
+    iclforge::ac4::Decoder framed(config);
+    iclforge::ac4::DecoderConfig processing;
     if (size > 0) {
         const auto pick = static_cast<unsigned>(data[size - 1]);
         if ((pick & 1U) != 0) {
             processing.output.output_level_dbfs =
                 -31.0 + static_cast<double>((pick >> 1U) % 8U) * 4.0;
         }
-        processing.output.drc = static_cast<ac4::DrcMode>((pick >> 1U) % 6U);
+        processing.output.drc = static_cast<iclforge::ac4::DrcMode>((pick >> 1U) % 6U);
         processing.output.dialogue_enhancement_db = (pick & 8U) != 0 ? 12.0 : 0.0;
-        processing.output.downmix = static_cast<ac4::DownmixTarget>((pick >> 4U) % 6U);
+        processing.output.downmix = static_cast<iclforge::ac4::DownmixTarget>((pick >> 4U) % 6U);
         processing.output.mix_lfe = (pick & 16U) == 0;
-        processing.concealment = static_cast<ac4::ConcealmentPolicy>((pick >> 6U) % 3U);
+        processing.concealment = static_cast<iclforge::ac4::ConcealmentPolicy>((pick >> 6U) % 3U);
     }
     if (size > 1) {
         // Bits 0 and 1: no preference, a position, a presentation_id, or the
@@ -84,7 +84,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
                 processing.presentation.language = kLanguages[(choose >> 2U) % 4U];
                 if ((choose & 16U) != 0) {
                     processing.presentation.associated = 0b010;
-                    processing.presentation.associated_type = static_cast<ac4::AssociatedType>((choose >> 2U) % 5U);
+                    processing.presentation.associated_type = static_cast<iclforge::ac4::AssociatedType>((choose >> 2U) % 5U);
                 }
                 processing.presentation.headphones = (choose & 32U) != 0;
                 break;
@@ -111,33 +111,33 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         // Bit 0: core decoding; bit 1: a layout of DownmixTarget's eleven in
         // bits 2 to 7, in place of the one the last byte chose.
         const auto render = static_cast<unsigned>(data[size - 3]);
-        processing.decoding = (render & 1U) != 0 ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
+        processing.decoding = (render & 1U) != 0 ? iclforge::ac4::DecodingMode::kCore : iclforge::ac4::DecodingMode::kFull;
         if ((render & 2U) != 0) {
-            processing.output.downmix = static_cast<ac4::DownmixTarget>((render >> 2U) % 11U);
+            processing.output.downmix = static_cast<iclforge::ac4::DownmixTarget>((render >> 2U) % 11U);
         }
     }
-    ac4::Decoder decoding(processing);
-    ac4::OutputConfig later = processing.output;
+    iclforge::ac4::Decoder decoding(processing);
+    iclforge::ac4::OutputConfig later = processing.output;
     later.downmix =
-        static_cast<ac4::DownmixTarget>((static_cast<unsigned>(later.downmix) + 3U) % 6U);
+        static_cast<iclforge::ac4::DownmixTarget>((static_cast<unsigned>(later.downmix) + 3U) % 6U);
     later.output_level_dbfs = later.output_level_dbfs ? std::nullopt : std::optional<double>{-20.0};
     later.dialogue_enhancement_db = 6.0;
     std::uint64_t samples = 0;
-    const auto sink = [&samples](const ac4::PcmBlock& block) { samples += block.samples; };
-    const ac4::ScanResult scan = ac4::scan(bytes);
+    const auto sink = [&samples](const iclforge::ac4::PcmBlock& block) { samples += block.samples; };
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(bytes);
     for (std::size_t f = 0; f < scan.frames.size(); ++f) {
         const std::span<const std::byte> frame = scan.frames[f].raw_ac4_frame;
         (void)framed.parse(frame);
         if (f == scan.frames.size() / 2) {
             decoding.set_output(later);
-            decoding.set_presentation(ac4::PresentationChoice{});
+            decoding.set_presentation(iclforge::ac4::PresentationChoice{});
         }
         if (f % 2 == 0) {
             (void)decoding.decode(frame);
         } else {
             (void)decoding.decode_by_block(frame, sink);
         }
-        for (const ac4::PresentationInfo& info : decoding.presentations()) {
+        for (const iclforge::ac4::PresentationInfo& info : decoding.presentations()) {
             samples += info.name.size() + info.members.size();
         }
         samples += decoding.metadata().drc ? decoding.metadata().drc->modes.size() : 0U;
@@ -146,7 +146,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     (void)decoding.flush(sink);
     (void)samples;
 
-    ac4::Decoder raw;
+    iclforge::ac4::Decoder raw;
     (void)raw.decode(bytes);
     (void)records;
     return 0;

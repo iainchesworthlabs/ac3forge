@@ -63,7 +63,7 @@ namespace {
 // fs::remove_all/create_directories/file-open colliding with the other's
 // mid-test. Folding the PID on top keeps the build-tree rooting (still no
 // cross-worktree collision) while giving each process its own leaf under it.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_" + scratch_pid_suffix());
@@ -79,7 +79,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -98,7 +98,7 @@ int run_cli_stdio(const std::string& args, const fs::path& in_file, const fs::pa
     const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + " < \"" +
                                 in_file.string() + "\" > \"" + out_file.string() + "\" 2> \"" +
                                 log.string() + "\"";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 // Same idea as run_cli_stdio above, but only out_path is "-" - for src=/map=
@@ -110,7 +110,7 @@ int run_cli_stdio(const std::string& args, const fs::path& in_file, const fs::pa
 int run_cli_stdout(const std::string& args, const fs::path& out_file, const fs::path& log) {
     const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" +
                                 out_file.string() + "\" 2> \"" + log.string() + "\"";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 // A short, genuinely non-silent multichannel WAV - per this project's own
@@ -169,7 +169,7 @@ std::vector<float> make_tone(double amp, double hz, std::size_t frames, std::uin
 // can still write the channels inline as a brace list.
 bool write_wav(const fs::path& path, std::vector<std::vector<float>> channels,
                std::uint32_t sample_rate) {
-    return ac3::io::write_wav_f32(path.string(), channels, sample_rate).has_value();
+    return iclforge::io::write_wav_f32(path.string(), channels, sample_rate).has_value();
 }
 
 // The integer dialnorm/dialnorm2 value the CLI's own "-> dialnorm N" /
@@ -258,7 +258,7 @@ TEST_CASE("offset= rejects malformed tokens", "[cli][offset]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "offset_parse_in.wav";
     const auto channels = make_tone_channels(2, 4000, 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     SECTION("missing colon") {
         const auto out_path = dir / "offset_parse_colon.ac3";
@@ -327,7 +327,7 @@ TEST_CASE("eac3-encode verify runs the mirror self-check", "[cli][verify]") {
     // alone gives a false pass, and the tools this exercises (coupling,
     // spectral extension, AHT) say nothing at all on silence.
     const auto channels = make_tone_channels(6, 48000 / 4, 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     SECTION("a clean encode reports the check and still writes the stream") {
         const auto out_path = dir / "verify_ok.ec3";
@@ -377,7 +377,7 @@ TEST_CASE("fast-mdct is default-on with =off as the negation", "[cli][fast-mdct]
     const auto dir = scratch_dir();
     const auto wav_path = dir / "fastmdct_in.wav";
     const auto channels = make_tone_channels(2, 4000, 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     SECTION("fast-mdct=off encodes down the direct path") {
         const auto out_path = dir / "fastmdct_off.ac3";
@@ -545,7 +545,7 @@ TEST_CASE("fgaincod= pins section 7.2.2.4's fast gain on both codecs", "[cli][fg
     const auto dir = scratch_dir();
     const auto wav_path = dir / "fgaincod_in.wav";
     const auto channels = make_tone_channels(2, 4000, 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     const auto bytes_of = [](const fs::path& path) {
         std::ifstream in{path, std::ios::binary};
@@ -639,7 +639,7 @@ TEST_CASE("the bit stream information tokens reach the wire and round trip",
     const auto dir = scratch_dir();
     const auto wav_path = dir / "bsi_in.wav";
     const auto channels = make_tone_channels(6, 3000, 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     SECTION("AC-3: the informational fields and Annex D come back off the wire") {
         const auto out_path = dir / "bsi_annexd.ac3";
@@ -754,7 +754,7 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
     const auto dir = scratch_dir();
     const auto wav_path = dir / "auto_downmix_in.wav";
     const auto channels = make_tone_channels(6, 4800, 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     const auto read_bytes = [](const fs::path& path) {
         std::ifstream in{path, std::ios::binary};
@@ -793,11 +793,11 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
             merged[i] = static_cast<std::byte>(static_cast<unsigned char>(first[i]) |
                                                static_cast<unsigned char>(second[i]));
         }
-        const auto frames = ac3::split_frames(merged);
+        const auto frames = iclforge::split_frames(merged);
         REQUIRE(frames.has_value());
         for (const auto frame : *frames) {
             const auto at = static_cast<std::size_t>(frame.data() - merged.data());
-            REQUIRE(ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+            REQUIRE(iclforge::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
         }
         std::ofstream file{out, std::ios::binary};
         file.write(reinterpret_cast<const char*>(merged.data()),
@@ -827,7 +827,7 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
         // stream preferring Lt/Rt has no preference downmix=auto can act on.
         const auto stereo_wav = dir / "auto_stereo_in.wav";
         const auto stereo_channels = make_tone_channels(2, 4800, 48000);
-        REQUIRE(ac3::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000).has_value());
+        REQUIRE(iclforge::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000).has_value());
         const auto stream = dir / "auto_narrow.ac3";
         fs::remove(stream);
         REQUIRE(run_cli("encode \"" + stereo_wav.string() + "\" \"" + stream.string() +
@@ -901,7 +901,7 @@ TEST_CASE("capture2= rejects malformed tokens", "[cli][capture2]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "capture2_parse_in.wav";
     const auto channels = make_tone_channels(2, 4000, 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     SECTION("non-numeric value") {
         const auto out_path = dir / "capture2_parse_nonnumeric.ac3";
@@ -949,7 +949,7 @@ TEST_CASE("container= rejects malformed tokens and accepts the two real ones",
     const auto dir = scratch_dir();
     const auto wav_path = dir / "container_parse_in.wav";
     const auto channels = make_tone_channels(2, 4000, 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     SECTION("an unrecognised value is refused, not silently ignored") {
         const auto out_path = dir / "container_parse_bad.ac3";
@@ -995,7 +995,7 @@ TEST_CASE("offset= applies leading silence and grows the programme", "[cli][offs
     constexpr std::size_t kFrames = 4000;
     constexpr std::uint32_t kSampleRate = 48000;
     const auto channels = make_tone_channels(2, kFrames, kSampleRate);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     // Without offset=: the classic single-file path, untouched by this
     // feature - the programme is exactly as long as the source.
@@ -1006,7 +1006,7 @@ TEST_CASE("offset= applies leading silence and grows the programme", "[cli][offs
                     dir / "offset_apply_plain_encode.log") == 0);
     REQUIRE(run_cli("decode \"" + plain_ac3.string() + "\" \"" + plain_wav.string() + "\"",
                     dir / "offset_apply_plain_decode.log") == 0);
-    const auto plain_decoded = ac3::io::read_wav(plain_wav.string());
+    const auto plain_decoded = iclforge::io::read_wav(plain_wav.string());
     REQUIRE(plain_decoded.has_value());
 
     // With offset=0:0.5: 0.5 s (24000 samples at 48 kHz) of leading silence
@@ -1020,7 +1020,7 @@ TEST_CASE("offset= applies leading silence and grows the programme", "[cli][offs
                     dir / "offset_apply_offset_encode.log") == 0);
     REQUIRE(run_cli("decode \"" + offset_ac3.string() + "\" \"" + offset_wav.string() + "\"",
                     dir / "offset_apply_offset_decode.log") == 0);
-    const auto offset_decoded = ac3::io::read_wav(offset_wav.string());
+    const auto offset_decoded = iclforge::io::read_wav(offset_wav.string());
     REQUIRE(offset_decoded.has_value());
 
     // The programme is still as long as the longest source once the offset
@@ -1049,9 +1049,9 @@ TEST_CASE("atmos-encode with a keyframes file authors motion", "[cli][atmos-enco
     // (object index == WAV channel index), the same numbering the GUI's
     // exportObjectPaths keys its file by.
     constexpr std::uint32_t kSampleRate = 48000;
-    constexpr std::size_t kFrames = 4 * static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kFrames = 4 * static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     const auto channels = make_tone_channels(6, kFrames, kSampleRate);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     // Object 0 authored to sweep across the room over the clip; every other
     // object index is left unmentioned, so it should keep atmos-encode's own
@@ -1102,7 +1102,7 @@ TEST_CASE("atmos-encode with a keyframes file authors motion", "[cli][atmos-enco
 }
 
 // atmos-path's file argument used to be the keyframe grammar and only that.
-// It now reads an ac3::oba::ObjectScene in JSON as well, told apart by the
+// It now reads an iclforge::oba::ObjectScene in JSON as well, told apart by the
 // first character - so the two spellings of one scene have to encode to the
 // same stream, byte for byte, or "migrate your file" would silently be a
 // change to the mix.
@@ -1131,12 +1131,12 @@ TEST_CASE("atmos-path reads a keyframe file and its JSON form identically",
         std::ifstream in{keyframes_path, std::ios::binary};
         const std::string text{std::istreambuf_iterator<char>{in},
                                std::istreambuf_iterator<char>{}};
-        const auto scene = ac3::oba::scene_from_text(text);
+        const auto scene = iclforge::oba::scene_from_text(text);
         REQUIRE(scene.has_value());
         REQUIRE(scene->object_count() == 2);
         std::ofstream json{scene_path, std::ios::binary};
         REQUIRE(json.is_open());
-        json << ac3::oba::to_json(*scene);
+        json << iclforge::oba::to_json(*scene);
     }
 
     const auto from_keyframes = dir / "scene_from_keyframes.ec3";
@@ -1256,7 +1256,7 @@ TEST_CASE("sign-objects reaches atmos, atmos-path and atmos-encode alike",
     SECTION("atmos-encode") {
         const auto wav_path = dir / "sign_objects_in.wav";
         const auto channels = make_tone_channels(2, 4000, 48000);
-        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+        REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
         const auto out_path = dir / "sign_objects_atmos_encode.ec3";
         const auto log = dir / "sign_objects_atmos_encode.log";
         const auto rc = run_cli("atmos-encode \"" + wav_path.string() + "\" \"" +
@@ -1418,9 +1418,9 @@ TEST_CASE("verify-objects checks a decode against the signer's own tag",
 TEST_CASE("keep-partial", "[cli][keep-partial]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "keep_partial_in.wav";
-    const auto channels = make_tone_channels(6, 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame),
+    const auto channels = make_tone_channels(6, 3 * static_cast<std::size_t>(iclforge::kSamplesPerFrame),
                                              48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
     SECTION("is inert on a run that succeeds - no spurious partial file") {
         const auto out_path = dir / "keep_partial_ok.ec3";
@@ -1480,7 +1480,7 @@ TEST_CASE("keep-partial", "[cli][keep-partial]") {
 // A nominal Table 5.18 bitrate and an Annex E `fscod2` half rate are each
 // legal on their own everywhere else in the CLI, and nothing in its grammar
 // marks the pair. But §E2.3.1.3's frmsiz is an 11-bit word count, so a
-// syncframe can never exceed ac3::eac3::kMaxFrameWords words: above
+// syncframe can never exceed iclforge::eac3::kMaxFrameWords words: above
 // bitrate * kSamplesPerFrame / sample_rate / 16 words the combination is not
 // expressible at all. AccessUnitEncoder reports that by building NO
 // substreams rather than by failing construction, and run_eac3_encode used to
@@ -1514,10 +1514,10 @@ TEST_CASE("eac3-encode refuses a rate frmsiz cannot signal at this sample rate",
         INFO("sample rate " << tag);
         const auto wav_path = dir / ("frmsiz_in_" + tag + ".wav");
         const auto channels =
-            make_tone_channels(2, 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame),
+            make_tone_channels(2, 3 * static_cast<std::size_t>(iclforge::kSamplesPerFrame),
                                probe.sample_rate);
         REQUIRE(
-            ac3::io::write_wav_f32(wav_path.string(), channels, probe.sample_rate).has_value());
+            iclforge::io::write_wav_f32(wav_path.string(), channels, probe.sample_rate).has_value());
 
         // The highest rate that fits still encodes - so the check above is a
         // ceiling, not a blanket refusal of the half rates.
@@ -1589,14 +1589,14 @@ TEST_CASE("bare heavy2 token turns on Ch2 heavy compression on a 1+1 encode",
     const auto dir = scratch_dir();
     const auto wav_path = dir / "heavy2_token_in.wav";
     constexpr std::uint32_t kSampleRate = 48000;
-    constexpr std::size_t kFrames = 4 * static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kFrames = 4 * static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     // Two channels, one two-channel file: layout 1+1's "Ch1, Ch2 in one file"
     // shape (prepare_dual_mono_source), so no in2.wav positional is needed.
     // AC-3, not E-AC-3: run_decode's classic-AC3 path is the one that reports
     // compr2 presence (run_decode_eac3's dual-mono branch prints nothing about
     // metadata at all), so that is the path this test needs to observe through.
     const auto channels = make_tone_channels(2, kFrames, kSampleRate);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     const auto plain_ac3 = dir / "heavy2_token_plain.ac3";
     const auto plain_wav = dir / "heavy2_token_plain_decoded.wav";
@@ -1648,10 +1648,10 @@ TEST_CASE("bare heavy2 token turns on Ch2 heavy compression on a 1+1 encode",
 TEST_CASE("encode/decode round trip through '-' matches the file-based one", "[cli][stdio]") {
     const auto dir = scratch_dir();
     constexpr std::uint32_t kSampleRate = 48000;
-    constexpr std::size_t kFrames = 4 * static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kFrames = 4 * static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     const auto channels = make_tone_channels(6, kFrames, kSampleRate);
     const auto wav_path = dir / "stdio_roundtrip_in.wav";
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     // Reference: the classic, all-file round trip.
     const auto file_ac3 = dir / "stdio_roundtrip_file.ac3";
@@ -1661,7 +1661,7 @@ TEST_CASE("encode/decode round trip through '-' matches the file-based one", "[c
                     dir / "stdio_roundtrip_file_encode.log") == 0);
     REQUIRE(run_cli("decode \"" + file_ac3.string() + "\" \"" + file_wav.string() + "\"",
                     dir / "stdio_roundtrip_file_decode.log") == 0);
-    const auto file_decoded = ac3::io::read_wav(file_wav.string());
+    const auto file_decoded = iclforge::io::read_wav(file_wav.string());
     REQUIRE(file_decoded.has_value());
 
     // Same round trip, but '-' stands in for both paths at each step: the
@@ -1696,7 +1696,7 @@ TEST_CASE("encode/decode round trip through '-' matches the file-based one", "[c
     CHECK(ac3_matches);
 
     // And the decoded PCM must match too, sample for sample.
-    const auto stdio_decoded = ac3::io::read_wav(stdio_wav.string());
+    const auto stdio_decoded = iclforge::io::read_wav(stdio_wav.string());
     REQUIRE(stdio_decoded.has_value());
     REQUIRE(stdio_decoded->channels.size() == file_decoded->channels.size());
     CHECK(stdio_decoded->sample_rate == file_decoded->sample_rate);
@@ -1712,10 +1712,10 @@ TEST_CASE("encode/decode round trip through '-' matches the file-based one", "[c
 TEST_CASE("eac3-encode and atmos-encode accept '-' for input and output", "[cli][stdio]") {
     const auto dir = scratch_dir();
     constexpr std::uint32_t kSampleRate = 48000;
-    constexpr std::size_t kFrames = 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kFrames = 3 * static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     const auto channels = make_tone_channels(6, kFrames, kSampleRate);
     const auto wav_path = dir / "stdio_eac3_atmos_in.wav";
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     const auto eac3_out = dir / "stdio_eac3_out.ec3";
     const auto eac3_rc = run_cli_stdio("eac3-encode - - 384 cpl 51", wav_path, eac3_out,
@@ -2021,7 +2021,7 @@ TEST_CASE("map= to an object destination warns instead of silently discarding it
           "[cli][src][obj]") {
     const auto dir = scratch_dir();
     constexpr std::uint32_t kRate = 48000;
-    constexpr std::size_t kFrames = 4 * static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kFrames = 4 * static_cast<std::size_t>(iclforge::kSamplesPerFrame);
 
     const auto primary = dir / "obj_warn_primary.wav";
     const auto extra = dir / "obj_warn_extra.wav";
@@ -2150,8 +2150,8 @@ TEST_CASE("qc preset= rejects an unknown name and accepts every real one", "[cli
     const auto dir = scratch_dir();
     const auto wav_path = dir / "qc_preset_parse_in.wav";
     const auto channels =
-        make_tone_channels(6, 4 * static_cast<std::size_t>(ac3::kSamplesPerFrame), 48000);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+        make_tone_channels(6, 4 * static_cast<std::size_t>(iclforge::kSamplesPerFrame), 48000);
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
     const auto ac3_path = dir / "qc_preset_parse.ac3";
     REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + ac3_path.string() + "\" 192 51",
                     dir / "qc_preset_parse_encode.log") == 0);
@@ -2223,7 +2223,7 @@ TEST_CASE("qc reports the embedded dialnorm and a sane, self-consistent measured
     // reason the dialnorm=auto tests above all use this same duration.
     constexpr std::size_t kFrames = 96000;
     const auto channels = make_tone_channels(6, kFrames, kSampleRate);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
 
     const auto ac3_path = dir / "qc_measure.ac3";
     constexpr int kDialnorm = 17;
@@ -2369,7 +2369,7 @@ TEST_CASE(
     // reason the dialnorm=auto tests above all use this same duration.
     constexpr std::size_t kFrames = 96000;
     const auto channels = make_tone_channels(6, kFrames, kSampleRate);
-    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, kSampleRate).has_value());
     const auto ec3_path = dir / "qc_all.ec3";
     REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + ec3_path.string() +
                         "\" 256 cpl 51 dialnorm=auto",
@@ -2380,12 +2380,12 @@ TEST_CASE(
     const auto text = read_log(log);
     INFO(text);
 
-    // Every preset in ac3::meta::kQcPresetIds, not a hand-copied subset -
+    // Every preset in iclforge::meta::kQcPresetIds, not a hand-copied subset -
     // preset=all promising "every one" and then silently skipping a row
     // added later is exactly the failure this loop exists to catch.
     std::vector<bool> verdicts;
-    for (const auto id : ac3::meta::kQcPresetIds) {
-        const auto heading = std::string{ac3::meta::qc_preset_name(id)} + ":";
+    for (const auto id : iclforge::meta::kQcPresetIds) {
+        const auto heading = std::string{iclforge::meta::qc_preset_name(id)} + ":";
         INFO("preset " << heading);
         const auto at = text.find(heading);
         REQUIRE(at != std::string::npos);
@@ -2394,10 +2394,10 @@ TEST_CASE(
         verdicts.push_back(*verdict);
         // Each row also names the document edition it was judged against
         // (IO11) - a verdict against an unnamed spec is not auditable.
-        const auto source = ac3::meta::qc_preset(id).source;
+        const auto source = iclforge::meta::qc_preset(id).source;
         CHECK(text.find(std::string{source}) != std::string::npos);
     }
-    REQUIRE(verdicts.size() == ac3::meta::kQcPresetIds.size());
+    REQUIRE(verdicts.size() == iclforge::meta::kQcPresetIds.size());
 
     // The exit code (this project's own binary 0/1 convention - see this
     // file's own run_cli comment) must match "every requested gate passed",
@@ -2629,7 +2629,7 @@ TEST_CASE("silence writes the documented default duration/bitrate and decodes to
     // against the same frame_size_bytes() the encoder itself uses, not a
     // transcribed byte count.
     const std::uint64_t expect_count = (5ull * 48000 + 1535) / 1536;
-    const auto frame_bytes = ac3::frame_size_bytes(ac3::SampleRate::k48000, 192);
+    const auto frame_bytes = iclforge::frame_size_bytes(iclforge::SampleRate::k48000, 192);
     REQUIRE(frame_bytes.has_value());
     REQUIRE(fs::exists(out_path));
     CHECK(fs::file_size(out_path) == expect_count * *frame_bytes);
@@ -2637,7 +2637,7 @@ TEST_CASE("silence writes the documented default duration/bitrate and decodes to
     const auto wav_path = dir / "silence_default.wav";
     REQUIRE(run_cli("decode \"" + out_path.string() + "\" \"" + wav_path.string() + "\"",
                     dir / "silence_default_decode.log") == 0);
-    const auto decoded = ac3::io::read_wav(wav_path.string());
+    const auto decoded = iclforge::io::read_wav(wav_path.string());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->channels.size() == 2);
     REQUIRE(decoded->frame_count() > 0);
@@ -2659,7 +2659,7 @@ TEST_CASE("silence threads its seconds and bitrate arguments to the right parame
     REQUIRE(run_cli("silence \"" + out_path.string() + "\" 2 384", log) == 0);
 
     const std::uint64_t expect_count = (2ull * 48000 + 1535) / 1536;
-    const auto frame_bytes = ac3::frame_size_bytes(ac3::SampleRate::k48000, 384);
+    const auto frame_bytes = iclforge::frame_size_bytes(iclforge::SampleRate::k48000, 384);
     REQUIRE(frame_bytes.has_value());
     REQUIRE(fs::exists(out_path));
     CHECK(fs::file_size(out_path) == expect_count * *frame_bytes);
@@ -2683,7 +2683,7 @@ TEST_CASE("silence rejects an illegal bitrate and leaves no file behind", "[cli]
 // bitrate whose word count does not fit §E2.3.1.3's 11-bit frmsiz leaves
 // AccessUnitEncoder with no substreams. eac3-encode's own fix is a
 // post-construction check (encode.cpp's eac3_config_accepted()); this command
-// asks ac3::plan::validate() BEFORE construction instead, which is also the
+// asks iclforge::plan::validate() BEFORE construction instead, which is also the
 // one place precise enough to catch a layout with dependent substreams: each
 // dependent gets HALF the plan's bitrate (eac3_config()), so a rate that
 // looks framable at face value can still leave a dependent with a frame of no
@@ -2769,8 +2769,8 @@ TEST_CASE("eac3-sine rejects a rate frmsiz cannot express", "[cli][eac3-sine][fr
            "whole bitrate rather than each substream's own share of it") {
         const auto wav_path = dir / "sine_frmsiz_encode_compare_in.wav";
         const auto channels =
-            make_tone_channels(2, 3 * static_cast<std::size_t>(ac3::kSamplesPerFrame), 48000);
-        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+            make_tone_channels(2, 3 * static_cast<std::size_t>(iclforge::kSamplesPerFrame), 48000);
+        REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
 
         const auto out_path = dir / "sine_frmsiz_encode_compare.ec3";
         const auto log = dir / "sine_frmsiz_encode_compare.log";
@@ -2819,7 +2819,7 @@ TEST_CASE("eac3-silence threads its layout argument through to the reported labe
     const auto wav_path = dir / "eac3_silence_51.wav";
     REQUIRE(run_cli("decode \"" + surround_path.string() + "\" \"" + wav_path.string() + "\"",
                     dir / "eac3_silence_51_decode.log") == 0);
-    const auto decoded = ac3::io::read_wav(wav_path.string());
+    const auto decoded = iclforge::io::read_wav(wav_path.string());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->frame_count() > 0);
     for (const auto& channel : decoded->channels) {
@@ -2869,7 +2869,7 @@ TEST_CASE("decode reports the object layer of an Atmos stream and exports it wit
     for (int i = 0; i < 3; ++i) {
         const auto object_path = objects_dir / ("object_0" + std::to_string(i) + ".wav");
         REQUIRE(fs::exists(object_path));
-        const auto decoded = ac3::io::read_wav(object_path.string());
+        const auto decoded = iclforge::io::read_wav(object_path.string());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->channels.size() == 1);
         REQUIRE(decoded->frame_count() > 0);
@@ -2952,7 +2952,7 @@ TEST_CASE(
     const auto wav_path = dir / "flush_desync_in.wav";
 
     constexpr std::uint32_t kRate = 48000;
-    constexpr std::size_t kFrame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kFrame = static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     constexpr std::size_t kSilentFrames = 4;
     // Within the final frame - the same offset the library's own
     // transient_prenoise unit test uses to trigger block switching.
@@ -2989,7 +2989,7 @@ TEST_CASE(
     INFO(read_log(decode_log));
     REQUIRE(decode_rc == 0);
 
-    const auto decoded = ac3::io::read_wav(wav_out.string());
+    const auto decoded = iclforge::io::read_wav(wav_out.string());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->channels.size() == 4);
 
@@ -3025,7 +3025,7 @@ TEST_CASE(
 // left others once, corrupting the sink's per-slot carry rather than just
 // leaving a length mismatch. run_decode_eac3 (and decode_and_render in
 // stream_tools.cpp, tested separately below) now build the whole held-back
-// unit first via ac3::apps::held_back_unit - apps/common/stream_playback.hpp
+// unit first via iclforge::apps::held_back_unit - apps/common/stream_playback.hpp
 // - the same assembly decode_access_unit itself uses, and append it exactly
 // once per slot like any other unit. tests/ac3/decoder/test_stream_playback.cpp
 // proves held_back_unit's own placement is correct; this proves decode.cpp
@@ -3033,8 +3033,8 @@ TEST_CASE(
 TEST_CASE("decode plays a legacy core's held-back last unit without swapping the "
           "dependent's audio for the bed's",
           "[cli][decode][eac3][transient_prenoise]") {
-    namespace cm = ac3::eac3::chanmap;
-    constexpr auto kFrame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    namespace cm = iclforge::eac3::chanmap;
+    constexpr auto kFrame = static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     constexpr std::size_t kOnsetSample = 960;  // late in the frame - block switching's own onset
     constexpr int kUnits = 5;
     constexpr int kOnsetUnit = 2;  // well before the last unit, and steady after
@@ -3081,10 +3081,10 @@ TEST_CASE("decode plays a legacy core's held-back last unit without swapping the
     // (Eac3Decoder::decode_access_unit's own doc comment on the per-identity
     // cache), so flush() releases both together - the exact shape the bug
     // needed.
-    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
-    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
-                                  .acmod = ac3::Acmod::k2_2,
-                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = iclforge::Acmod::k2_2,
+                                  .strmtyp = iclforge::eac3::StreamType::kDependent,
                                   .substreamid = 0,
                                   .chanmap = cm::k71Rear,
                                   .last_dependent = true,
@@ -3112,12 +3112,12 @@ TEST_CASE("decode plays a legacy core's held-back last unit without swapping the
     REQUIRE(run_cli("decode \"" + in_path.string() + "\" \"" + wav_out.string() + "\"", log) == 0);
     INFO(read_log(log));
 
-    const auto decoded = ac3::io::read_wav(wav_out.string());
+    const auto decoded = iclforge::io::read_wav(wav_out.string());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->channels.size() == 8);
     // Every real unit made it out, including the one only flush() returns -
     // a pre-fix build either dropped it (short by one unit) or grew some
-    // channels past others (ac3::io::read_wav itself enforces equal channel
+    // channels past others (iclforge::io::read_wav itself enforces equal channel
     // lengths, so a length mismatch here would already have failed the read).
     CHECK(decoded->frame_count() == static_cast<std::size_t>(kUnits) * kFrame);
 
@@ -3126,9 +3126,9 @@ TEST_CASE("decode plays a legacy core's held-back last unit without swapping the
     // same ground-truth layout and wav_order permutation open_sink/
     // held_back_unit compute from, not re-derived from the decode under test.
     const auto layout =
-        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(ac3::Acmod::k3_2, true) | cm::k71Rear));
+        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(iclforge::Acmod::k3_2, true) | cm::k71Rear));
     const auto order =
-        ac3::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
+        iclforge::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
     const auto wav_index_of = [&](cm::Location location) {
         const auto slot = layout.index_of(location);
         REQUIRE(slot >= 0);
@@ -3435,7 +3435,7 @@ TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][
     SECTION("AC-3: Annex D, both xbsi words and the informational fields") {
         // The token set the bit stream information test above encodes with.
         const auto wav_path = dir / "quiet_annexd_in.wav";
-        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
+        REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
                                        48000)
                     .has_value());
         const auto stream = dir / "quiet_annexd.ac3";
@@ -3451,7 +3451,7 @@ TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][
         // pgmscl alone, so the mixing summary is the only line in the report
         // that a plain stream would not also print.
         const auto wav_path = dir / "quiet_mixmeta_in.wav";
-        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
+        REQUIRE(iclforge::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
                                        48000)
                     .has_value());
         const auto stream = dir / "quiet_mixmeta.ec3";
@@ -3486,10 +3486,10 @@ TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][
         // mkv test builds with.
         const auto primary = dir / "quiet_programme0.wav";
         const auto second = dir / "quiet_programme1.wav";
-        REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 48000, 48000),
+        REQUIRE(iclforge::io::write_wav_f32(primary.string(), make_tone_channels(6, 48000, 48000),
                                        48000)
                     .has_value());
-        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 48000, 48000),
+        REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(1, 48000, 48000),
                                        48000)
                     .has_value());
         const auto stream = dir / "quiet_programmes.ec3";
@@ -4004,7 +4004,7 @@ TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
 // are not re-tested here) all take a container in place of a raw .ac3/.ec3,
 // sniffed by content rather than by extension - exactly what demux already
 // does, reused via apps/common/container_input.hpp's
-// ac3::apps::elementary_stream_from_bytes rather than duplicated a third
+// iclforge::apps::elementary_stream_from_bytes rather than duplicated a third
 // time (support.cpp's own read_elementary_stream, and the GUI's
 // qc_controller.cpp/object_decode_controller.cpp).
 TEST_CASE("decode/qc/levels accept a container in place of a raw elementary stream",
@@ -4074,10 +4074,10 @@ TEST_CASE("remux converts one container straight to another", "[cli][remux]") {
 
     // Matroska carries no dec3 box at all, so remuxing it to MP4 exercises
     // exactly the claim run_mp4's own comment makes: codec_config is built
-    // from the re-scanned bitstream (ac3::io::build_codec_config_box), never
+    // from the re-scanned bitstream (iclforge::io::build_codec_config_box), never
     // from what the source container could or could not declare. If that
     // ever regressed to reading a source-side box instead, this MP4 would
-    // have nothing to build one from and mp4::mux would refuse it outright -
+    // have nothing to build one from and iclforge::mp4::mux would refuse it outright -
     // the round trip through demux below is what proves it wrote a coherent
     // one rather than merely that it wrote *something*.
     SECTION("Matroska to MP4 round-trips through demux") {
@@ -4458,7 +4458,7 @@ TEST_CASE("a channel count no standard layout covers is refused, not silently fo
     // 7 channels: legal audio, but plan::layout_for_source's own gap between
     // 6 (5.1) and 8 (7.1) - no A/52 or Annex E acmod maps that many.
     const auto odd = dir / "layout_gap_7ch.wav";
-    REQUIRE(ac3::io::write_wav_f32(odd.string(), make_tone_channels(7, 2000, 48000), 48000)
+    REQUIRE(iclforge::io::write_wav_f32(odd.string(), make_tone_channels(7, 2000, 48000), 48000)
                 .has_value());
 
     SECTION("eac3-encode, single file, no layout token") {
@@ -4477,10 +4477,10 @@ TEST_CASE("a channel count no standard layout covers is refused, not silently fo
 
     SECTION("eac3-encode, src= combines two files into the same gap") {
         const auto second = dir / "layout_gap_second.wav";
-        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
+        REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
                     .has_value());
         const auto six = dir / "layout_gap_6ch.wav";
-        REQUIRE(ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
+        REQUIRE(iclforge::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
                     .has_value());
         const auto out_path = dir / "layout_gap_eac3_multi.ec3";
         const auto log = dir / "layout_gap_eac3_multi.log";
@@ -4501,10 +4501,10 @@ TEST_CASE("a channel count no standard layout covers is refused, not silently fo
 
     SECTION("encode (AC-3), src= combines two files into the same gap") {
         const auto second = dir / "layout_gap_second_ac3.wav";
-        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
+        REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
                     .has_value());
         const auto six = dir / "layout_gap_6ch_ac3.wav";
-        REQUIRE(ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
+        REQUIRE(iclforge::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
                     .has_value());
         const auto out_path = dir / "layout_gap_ac3_multi.ac3";
         const auto log = dir / "layout_gap_ac3_multi.log";
@@ -4540,10 +4540,10 @@ TEST_CASE("multi-source AC-3 encode infers a layout from the combined channel co
     // same real duration tests/cli/test_cli.cpp's other dialnorm=auto cases
     // use rather than the handful of samples a layout check alone needs.
     constexpr std::size_t kDialnormFrames = 96000;
-    REQUIRE(ac3::io::write_wav_f32(first.string(), make_tone_channels(4, kDialnormFrames, 48000),
+    REQUIRE(iclforge::io::write_wav_f32(first.string(), make_tone_channels(4, kDialnormFrames, 48000),
                                    48000)
                 .has_value());
-    REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(2, kDialnormFrames, 48000),
+    REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(2, kDialnormFrames, 48000),
                                    48000)
                 .has_value());
 
@@ -4577,7 +4577,7 @@ TEST_CASE("multi-source AC-3 encode infers a layout from the combined channel co
 TEST_CASE("programme2= reports why its own source could not be used", "[cli][encode][programme2]") {
     const auto dir = scratch_dir();
     const auto primary = dir / "programme2_primary.wav";
-    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(2, 4000, 48000), 48000)
+    REQUIRE(iclforge::io::write_wav_f32(primary.string(), make_tone_channels(2, 4000, 48000), 48000)
                 .has_value());
 
     SECTION("a programme2= path that does not exist") {
@@ -4605,7 +4605,7 @@ TEST_CASE("programme2= reports why its own source could not be used", "[cli][enc
         const auto log = dir / "programme2_gap.log";
         fs::remove(out_path);
         const auto second = dir / "programme2_gap_7ch.wav";
-        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(7, 2000, 48000), 48000)
+        REQUIRE(iclforge::io::write_wav_f32(second.string(), make_tone_channels(7, 2000, 48000), 48000)
                     .has_value());
         const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
                                     out_path.string() + "\" 192 none stereo programme2=\"" +
@@ -4627,14 +4627,14 @@ TEST_CASE("programmeN= generalizes past two, each with its own metadata",
     const auto p2 = dir / "programmeN_p2.wav";
     const auto p3 = dir / "programmeN_p3.wav";
     const auto p4 = dir / "programmeN_p4.wav";
-    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4800, 48000), 48000)
+    REQUIRE(iclforge::io::write_wav_f32(primary.string(), make_tone_channels(6, 4800, 48000), 48000)
                 .has_value());
     REQUIRE(
-        ac3::io::write_wav_f32(p2.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+        iclforge::io::write_wav_f32(p2.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
     REQUIRE(
-        ac3::io::write_wav_f32(p3.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+        iclforge::io::write_wav_f32(p3.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
     REQUIRE(
-        ac3::io::write_wav_f32(p4.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+        iclforge::io::write_wav_f32(p4.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
 
     const auto out_path = dir / "programmeN_4pgm.ec3";
     const auto log = dir / "programmeN_4pgm.log";
@@ -4715,10 +4715,10 @@ TEST_CASE("a later programmeN= without an earlier one is refused, not silently r
     const auto dir = scratch_dir();
     const auto primary = dir / "programme_gap_primary.wav";
     const auto p4 = dir / "programme_gap_p4.wav";
-    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
+    REQUIRE(iclforge::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
                 .has_value());
     REQUIRE(
-        ac3::io::write_wav_f32(p4.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
+        iclforge::io::write_wav_f32(p4.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
 
     const auto out_path = dir / "programme_gap.ec3";
     const auto log = dir / "programme_gap.log";
@@ -4742,10 +4742,10 @@ TEST_CASE("a 1+1-only field on an extra programme is refused, not silently inert
     const auto dir = scratch_dir();
     const auto primary = dir / "programme_dead_primary.wav";
     const auto p2 = dir / "programme_dead_p2.wav";
-    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
+    REQUIRE(iclforge::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
                 .has_value());
     REQUIRE(
-        ac3::io::write_wav_f32(p2.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
+        iclforge::io::write_wav_f32(p2.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
 
     SECTION("a 1+1-only field") {
         const auto out_path = dir / "programme_dead_11.ec3";

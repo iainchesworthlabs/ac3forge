@@ -9,7 +9,7 @@
 // RFC 2104 HMAC over the backend's hashes, and the one wipe every secret-holding
 // type here uses.
 
-namespace ac3::sendspin::crypto {
+namespace iclforge::sendspin::crypto {
 
 namespace {
 
@@ -74,4 +74,4 @@ bool hmac_sha512(Bytes key, std::span<const Bytes> parts, Digest64& out) {
                      parts, out);
 }
 
-}  // namespace ac3::sendspin::crypto
+}  // namespace iclforge::sendspin::crypto

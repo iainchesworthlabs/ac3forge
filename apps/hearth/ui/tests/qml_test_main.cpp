@@ -88,12 +88,12 @@ public:
         if (room_) {
             return true;
         }
-        room_ = ac3::hearth::uitest::make_room({
+        room_ = iclforge::hearth::uitest::make_room({
             {.id = "fake-speakers", .name = "Test speakers", .is_default = true, .channels = 6},
             {.id = "fake-headphones", .name = "Test headphones", .is_default = false, .channels = 2},
             {.id = "fake-receiver", .name = "Test receiver", .is_default = false, .channels = 8, .passthrough = true},
         });
-        controller->set_test_outputs(ac3::hearth::uitest::outputs_for(room_));
+        controller->set_test_outputs(iclforge::hearth::uitest::outputs_for(room_));
         return true;
     }
 
@@ -101,7 +101,7 @@ public:
     // a suite that wants an item to play to its end without waiting it out.
     Q_INVOKABLE void setClockSpeed(double speed) {
         if (room_) {
-            ac3::hearth::uitest::set_speed(*room_, speed);
+            iclforge::hearth::uitest::set_speed(*room_, speed);
         }
     }
 
@@ -112,7 +112,7 @@ public:
         if (!room_) {
             return {};
         }
-        const ac3::hearth::uitest::RoomReading reading = ac3::hearth::uitest::read(*room_);
+        const iclforge::hearth::uitest::RoomReading reading = iclforge::hearth::uitest::read(*room_);
         return {{QStringLiteral("open"), reading.open},
                 {QStringLiteral("paused"), reading.paused},
                 {QStringLiteral("endpoint"), QString::fromStdString(reading.endpoint)},
@@ -125,7 +125,7 @@ public:
 
     Q_INVOKABLE void resetPeak() {
         if (room_) {
-            ac3::hearth::uitest::reset_peak(*room_);
+            iclforge::hearth::uitest::reset_peak(*room_);
         }
     }
 
@@ -136,7 +136,7 @@ public:
         if (!room_ || slot < 0) {
             return -std::numeric_limits<double>::infinity();
         }
-        return ac3::hearth::uitest::tone_level_db(*room_, static_cast<std::size_t>(slot), hz);
+        return iclforge::hearth::uitest::tone_level_db(*room_, static_cast<std::size_t>(slot), hz);
     }
 
     // Writes an AC-4 stream of tones of `kind` (test_room.hpp's
@@ -148,7 +148,7 @@ public:
         }
         const QString path = QDir(scratch_.path()).filePath(name);
         std::string error;
-        if (!ac3::hearth::uitest::write_ac4_stream(path.toStdString(), kind.toStdString(),
+        if (!iclforge::hearth::uitest::write_ac4_stream(path.toStdString(), kind.toStdString(),
                                                    &error)) {
             qWarning("writeAc4Stream: %s", error.c_str());
             return {};
@@ -232,14 +232,14 @@ public:
             return QStringLiteral("NetworkController did not start its Sendspin host");
         }
         std::string error;
-        auto sink = ac3::hearth::uitest::start_test_sink(
+        auto sink = iclforge::hearth::uitest::start_test_sink(
             name.toStdString(),
             QDir(scratch_.path()).filePath(QStringLiteral("sink-%1").arg(sinks_.size())).toStdString(),
             acceptSettings, &error);
         if (!sink) {
             return QString::fromStdString(error);
         }
-        ac3::hearth::uitest::announce(*network->sinks_for_test(), *sink);
+        iclforge::hearth::uitest::announce(*network->sinks_for_test(), *sink);
         sinks_.push_back(std::move(sink));
         return {};
     }
@@ -249,13 +249,13 @@ public:
     // Network page's code boxes. Empty until the sink has printed one.
     Q_INVOKABLE QString testSinkCode() const {
         return sinks_.empty() ? QString()
-                              : QString::fromStdString(ac3::hearth::uitest::pairing_code(*sinks_.back()));
+                              : QString::fromStdString(iclforge::hearth::uitest::pairing_code(*sinks_.back()));
     }
 
     Q_INVOKABLE QStringList testSinkLog() const {
         QStringList lines;
         if (!sinks_.empty()) {
-            for (const std::string& line : ac3::hearth::uitest::log_lines(*sinks_.back())) {
+            for (const std::string& line : iclforge::hearth::uitest::log_lines(*sinks_.back())) {
                 lines.push_back(QString::fromStdString(line));
             }
         }
@@ -336,19 +336,19 @@ private:
         return nullptr;
     }
 
-    [[nodiscard]] ac3::hearth::ui::HearthController* hearth() const {
-        return engine_->singletonInstance<ac3::hearth::ui::HearthController*>(QStringLiteral("Ac3ForgeHearth"),
+    [[nodiscard]] iclforge::hearth::ui::HearthController* hearth() const {
+        return engine_->singletonInstance<iclforge::hearth::ui::HearthController*>(QStringLiteral("Ac3ForgeHearth"),
                                                                               QStringLiteral("HearthController"));
     }
-    [[nodiscard]] ac3::hearth::ui::NetworkController* network() const {
-        return engine_->singletonInstance<ac3::hearth::ui::NetworkController*>(QStringLiteral("Ac3ForgeHearth"),
+    [[nodiscard]] iclforge::hearth::ui::NetworkController* network() const {
+        return engine_->singletonInstance<iclforge::hearth::ui::NetworkController*>(QStringLiteral("Ac3ForgeHearth"),
                                                                                QStringLiteral("NetworkController"));
     }
 
     QQmlEngine* engine_ = nullptr;
     QTemporaryDir scratch_;
-    std::shared_ptr<ac3::hearth::uitest::FakeRoom> room_;
-    std::vector<std::shared_ptr<ac3::hearth::uitest::TestSinkHost>> sinks_;
+    std::shared_ptr<iclforge::hearth::uitest::FakeRoom> room_;
+    std::vector<std::shared_ptr<iclforge::hearth::uitest::TestSinkHost>> sinks_;
 };
 
 // Mirrors DeskIsolation (apps/crucible/ui/tests/qml_test_main.cpp) and
@@ -385,7 +385,7 @@ public slots:
         // on someone's home network - and ask for a firewall exception this
         // binary cannot finish (NetworkController::set_network_discovery()'s
         // own comment).
-        ac3::hearth::ui::NetworkController::set_network_discovery(false);
+        iclforge::hearth::ui::NetworkController::set_network_discovery(false);
     }
 
     void qmlEngineAvailable(QQmlEngine* engine) {

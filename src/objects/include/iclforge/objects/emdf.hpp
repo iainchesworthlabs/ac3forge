@@ -25,7 +25,7 @@
 // identified payloads, so this module knows only how to pack bits, and the
 // OAMD and JOC payload writers know nothing about where they end up.
 
-namespace ac3::emdf {
+namespace iclforge::emdf {
 
 // §H.2.2.1.1. The container is found by scanning for this word rather than by
 // a fixed offset, because nauxbits is only known after the audio is decoded.
@@ -142,4 +142,4 @@ enum class ParseError : std::uint8_t {
 [[nodiscard]] ICLFORGE_OBJECTS_EXPORT std::expected<std::optional<std::vector<DecodedPayload>>, ParseError>
 parse_container(std::span<const std::byte> data);
 
-}  // namespace ac3::emdf
+}  // namespace iclforge::emdf

@@ -11,16 +11,16 @@
 #include "iclforge/iab/export.hpp"
 #include "iclforge/iab/model.hpp"
 
-// Top-level entry points for ac3iab::ac3iab: parses SMPTE ST 2098-2:2022's Immersive Audio
+// Top-level entry points for iclforge::iab::ac3iab: parses SMPTE ST 2098-2:2022's Immersive Audio
 // Bitstream into an IaFrame per frame (see model.hpp for the full element graph).
 //
 // Roadmap item IM1 phase 1 of 3 ('s "IAB (SMPTE ST 2098-2) reader" entry): a
-// standalone bitstream reader, the "codec-blind" shape matroska::matroska, mp4::mp4 and
-// mpegts::mpegts already use for their own containers (bare `include/ac3iab/` prefix, not
+// standalone bitstream reader, the "codec-blind" shape iclforge::matroska, iclforge::mp4 and
+// iclforge::mpegts already use for their own containers (bare `include/ac3iab/` prefix, not
 // `ac3/ac3iab/` - see CONTRIBUTING.md's repository-layout section on what that prefix means).
 // AudioDataDLC's lossless coder (Annex B) is read only by identity in this phase, not decoded
 // - see model.hpp's AudioDataDlc comment. Phase 2 (MXF/KLV extraction for IAB track files - see
-// mxf.hpp) is implemented alongside this header. Phase 3 (mapping onto ac3::admbridge's
+// mxf.hpp) is implemented alongside this header. Phase 3 (mapping onto iclforge::admbridge's
 // ObjectPath layer, the `atmos-iab` CLI command) is separate, later work.
 //
 // Every table and algorithm this module implements is transcribed directly from the published
@@ -30,7 +30,7 @@
 // reader's output against a second, independent implementation - never as a source to
 // transcribe from.
 
-namespace ac3iab {
+namespace iclforge::iab {
 
 enum class IabError : std::uint8_t {
     kCannotOpen,          // path could not be opened for reading
@@ -88,4 +88,4 @@ struct IABitstreamFrame {
 // synthetic test vector, or a future MXF track reader - actually has in hand.
 [[nodiscard]] AC3IAB_EXPORT std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payload);
 
-}  // namespace ac3iab
+}  // namespace iclforge::iab

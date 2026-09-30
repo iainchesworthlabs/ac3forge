@@ -25,7 +25,7 @@
 namespace ac3forge {
 namespace {
 
-namespace hs = ac3::sendspin::handshake;
+namespace hs = iclforge::sendspin::handshake;
 using Key32 = SendspinStore::Key32;
 using Names = SendspinStore::Names;
 using Records = PairingRecords<SendspinStore::kRecordCapacity>;
@@ -109,21 +109,21 @@ using NameBytes = std::unique_ptr<std::uint8_t[]>;
 // characters, as the host's own lines do.
 void print_evicted(const Key32& server_key) {
     std::printf("sendspin: every pairing record is taken; forgot server %s, the least recently used\n",
-                ac3::sendspin::base64url::encode(server_key).substr(0, 8).c_str());
+                iclforge::sendspin::base64url::encode(server_key).substr(0, 8).c_str());
 }
 
 }  // namespace
 
 bool SendspinStore::create_keys() {
     Key32 private_key{};
-    if (!ac3::sendspin::crypto::random_bytes(private_key) ||
-        !ac3::sendspin::crypto::random_bytes(pairing_psk_)) {
+    if (!iclforge::sendspin::crypto::random_bytes(private_key) ||
+        !iclforge::sendspin::crypto::random_bytes(pairing_psk_)) {
         std::printf("sendspin: no random bytes for the board's keys\n");
         return false;
     }
-    std::optional<ac3::sendspin::noise::KeyPair> identity =
-        ac3::sendspin::noise::KeyPair::from_private(private_key);
-    ac3::sendspin::crypto::wipe(private_key);
+    std::optional<iclforge::sendspin::noise::KeyPair> identity =
+        iclforge::sendspin::noise::KeyPair::from_private(private_key);
+    iclforge::sendspin::crypto::wipe(private_key);
     if (!identity) {
         std::printf("sendspin: the new identity is not a usable X25519 key\n");
         return false;
@@ -148,7 +148,7 @@ bool SendspinStore::load() {
         if (nvs_get_blob(handle, kKeyRecords, blob.data(), &length) == ESP_OK) {
             records_.decode(std::span<const std::uint8_t>(blob).first(length));
         }
-        ac3::sendspin::crypto::wipe(blob);
+        iclforge::sendspin::crypto::wipe(blob);
         Key32 last{};
         if (read_key(handle, kKeyLastPlayback, last)) {
             last_playback_ = last;
@@ -156,9 +156,9 @@ bool SendspinStore::load() {
         nvs_close(handle);
     }
     if (have_keys) {
-        std::optional<ac3::sendspin::noise::KeyPair> identity =
-            ac3::sendspin::noise::KeyPair::from_private(private_key);
-        ac3::sendspin::crypto::wipe(private_key);
+        std::optional<iclforge::sendspin::noise::KeyPair> identity =
+            iclforge::sendspin::noise::KeyPair::from_private(private_key);
+        iclforge::sendspin::crypto::wipe(private_key);
         if (identity) {
             identity_ = *identity;
             return true;
@@ -179,7 +179,7 @@ bool SendspinStore::load() {
     return true;
 }
 
-std::optional<hs::PskCandidate> SendspinStore::find(const ac3::sendspin::crypto::Digest32& id,
+std::optional<hs::PskCandidate> SendspinStore::find(const iclforge::sendspin::crypto::Digest32& id,
                                                     std::optional<hs::PskCategory> category) const {
     const std::lock_guard lock(mutex_);
     if (!category || *category == hs::PskCategory::kPairing) {
@@ -202,7 +202,7 @@ bool SendspinStore::save_records() const {
     std::array<std::uint8_t, Records::kBlobBytes> blob{};
     const std::size_t length = records_.encode(blob);
     const bool saved = write_blob(kKeyRecords, blob.data(), length);
-    ac3::sendspin::crypto::wipe(blob);
+    iclforge::sendspin::crypto::wipe(blob);
     return saved;
 }
 

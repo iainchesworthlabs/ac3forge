@@ -10,11 +10,11 @@
 // on top of the same CRT file descriptors _fileno() names here, so flipping
 // fd 0/1 to _O_BINARY changes what the C++ streams see too, not just <cstdio>.
 
-namespace ac3::cli::platform {
+namespace iclforge::cli::platform {
 
 void set_stdio_binary() {
     (void)_setmode(_fileno(stdin), _O_BINARY);
     (void)_setmode(_fileno(stdout), _O_BINARY);
 }
 
-}  // namespace ac3::cli::platform
+}  // namespace iclforge::cli::platform

@@ -22,14 +22,14 @@
 // top comment for step 1 and the overall plan.
 //
 // Deliberately NOT unified with the classic single-file/in2.wav path (which stays in main.cpp,
-// untouched): the two have genuinely different data shapes (one ac3::io::WavData vs several), and
+// untouched): the two have genuinely different data shapes (one iclforge::io::WavData vs several), and
 // duplicating the small amount that does overlap costs far less than a shared abstraction would
 // risk - see this header's own struct/function comments, carried over verbatim from main.cpp.
 namespace ac3cli {
 
 struct LoadedSources {
-    std::vector<ac3::io::WavData> wavs;
-    std::vector<ac3::plan::SourceShape> shapes;
+    std::vector<iclforge::io::WavData> wavs;
+    std::vector<iclforge::plan::SourceShape> shapes;
     std::uint32_t sample_rate = 0;
     // Per-source leading silence, in samples at sample_rate - parallel to
     // wavs/shapes (index 0 = in_path, 1..N = each src= in load order, the
@@ -68,8 +68,8 @@ std::optional<LoadedSources> load_sources(
 // dual_mono_routing rather than the general location-based route(): a 1+1
 // target has no soundstage for a location token to mean anything on, so
 // map= for it names programmes (p1/p2), not locations.
-std::optional<ac3::plan::Routing> routing_for_sources(
-    const ac3::plan::Plan& p, const LoadedSources& sources,
+std::optional<iclforge::plan::Routing> routing_for_sources(
+    const iclforge::plan::Plan& p, const LoadedSources& sources,
     const std::optional<std::string>& map_spec);
 
 // Fills `dest` (one entry per flattened source channel, source 0 first) with
@@ -80,13 +80,13 @@ std::optional<ac3::plan::Routing> routing_for_sources(
 // file, so a short source loaded alongside a long one goes silent-by-
 // holding at its own end rather than at whichever source happens to be
 // shortest overall.
-// samples_per_frame: usually ac3::kSamplesPerFrame; an E-AC-3 caller with a
+// samples_per_frame: usually iclforge::kSamplesPerFrame; an E-AC-3 caller with a
 // short numblkscod (see eac3::FrameConfig::numblkscod) passes its own real
 // frame length instead - `dest` must already be sized to match, the same
 // contract its own per-channel vectors carry everywhere else in this file.
 void gather_frame(const LoadedSources& sources, std::size_t start,
                   std::vector<std::vector<float>>& dest,
-                  int samples_per_frame = ac3::kSamplesPerFrame);
+                  int samples_per_frame = iclforge::kSamplesPerFrame);
 
 // Says what the routing did, so a run that quietly left half a layout silent
 // is visible rather than something to be discovered later on the meters.
@@ -94,7 +94,7 @@ void gather_frame(const LoadedSources& sources, std::size_t start,
 // layout's label, or the channel list a custom selection was parsed from.
 // `out` defaults to stdout; see print_channel_summary's comment just above -
 // the same reasoning applies here.
-void print_routing(const ac3::plan::Plan& p, const ac3::plan::Routing& routing,
+void print_routing(const iclforge::plan::Plan& p, const iclforge::plan::Routing& routing,
                    std::string_view label, FILE* out = stdout);
 
 }  // namespace ac3cli

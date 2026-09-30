@@ -40,7 +40,7 @@
 // the ring, the console runner can reuse the renderer, and ac3tests holds
 // the rule on every CI leg.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 // A bounded ring of recent one-line notes: what changed and what refused,
 // never anything per frame. Written from the frame thread, the probe thread,
@@ -98,7 +98,7 @@ struct SigningFacts {
 struct ReportFacts {
     std::string written_at;      // ISO 8601, formatted by the caller
     std::string log_started_at;  // likewise
-    std::string version;         // ac3::version_details()
+    std::string version;         // iclforge::version_details()
     std::vector<std::pair<std::string, std::string>> platform;  // name/value rows, in order
     SigningFacts signing;
     std::vector<RenderEndpoint> render_endpoints;  // DefaultDevice::endpoints()
@@ -138,4 +138,4 @@ struct Secrets {
 [[nodiscard]] std::string render_report(const ReportFacts& facts, const EngineStatus& engine,
                                         const DiagnosticLog& log, const Secrets& secrets);
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

@@ -12,7 +12,7 @@
 
 #include "iclforge/sendspin/messages.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 ClockSync::ClockSync() : filter_(std::make_unique<SendspinTimeFilter>()) {}
 ClockSync::~ClockSync() = default;
@@ -154,4 +154,4 @@ void ClockSync::reset() {
     confirm_measurement_ = 0;
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

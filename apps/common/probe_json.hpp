@@ -24,10 +24,10 @@
 // fixed names both of ac3cli probe's forms use, and the AC-4 walk.
 //
 // Compiled into each application that uses it, like the rest of apps/common:
-// it needs ac3::forge, ac4::ac4 and ac4::decoder, which both applications
+// it needs iclforge::ac3, iclforge::ac4 and iclforge::ac4dec, which both applications
 // link.
 
-namespace ac3::apps::probe_json {
+namespace iclforge::apps::probe_json {
 
 // The document's vocabulary: fixed text for transmitted values.
 [[nodiscard]] std::string_view codec_token(io::StreamKind kind);
@@ -61,11 +61,11 @@ struct Ac4Summary {
     std::size_t sync_frames = 0;
     std::size_t bytes = 0;
     std::size_t crc_failures = 0;
-    std::optional<ac4::Error> parse_error = std::nullopt;  // the first one seen
-    std::optional<ac4::RawFrame> first_frame = std::nullopt;
-    // The first frame's frame rate and rates (ac4::frame_rate()), and the bit
+    std::optional<iclforge::ac4::Error> parse_error = std::nullopt;  // the first one seen
+    std::optional<iclforge::ac4::RawFrame> first_frame = std::nullopt;
+    // The first frame's frame rate and rates (iclforge::ac4::frame_rate()), and the bit
     // rate over whole raw_ac4_frame()s at that rate.
-    std::optional<ac4::FrameRate> frame_rate = std::nullopt;
+    std::optional<iclforge::ac4::FrameRate> frame_rate = std::nullopt;
     std::optional<double> bitrate_kbps = std::nullopt;
     // Frames with b_iframe_global, and the fewest and most frames from one to
     // the next.
@@ -75,22 +75,22 @@ struct Ac4Summary {
     // Changes of source: frames whose sequence_counter does not continue the
     // stream (ETSI TS 103 190-1 clause 4.3.3.2.2), a splice among them.
     std::size_t splices = 0;
-    // What ac4::Decoder reads of every frame: the presentations of the last
+    // What iclforge::ac4::Decoder reads of every frame: the presentations of the last
     // frame whose table of contents reads, with their names, and the
     // metadata of the presentation it selects without preferences.
-    std::vector<ac4::PresentationInfo> presentations{};
-    std::optional<ac4::PresentationMetadata> metadata = std::nullopt;
+    std::vector<iclforge::ac4::PresentationInfo> presentations{};
+    std::optional<iclforge::ac4::PresentationMetadata> metadata = std::nullopt;
     // The oamd_common_data() of each OAMD substream (Part 2 clause 6.2.2.4) that
     // sent one, by the substream's index, from the first frame that did: what
-    // ac4::SubstreamReport reports of it.
-    std::map<int, ac4::OamdCommonData> oamd_common_data{};
+    // iclforge::ac4::SubstreamReport reports of it.
+    std::map<int, iclforge::ac4::OamdCommonData> oamd_common_data{};
 };
 
 [[nodiscard]] Ac4Summary summarize_ac4(std::span<const std::byte> data);
-[[nodiscard]] std::string_view ac4_error_token(ac4::Error error);
-[[nodiscard]] std::string_view object_kind_token(ac4::ObjectKind kind);
+[[nodiscard]] std::string_view ac4_error_token(iclforge::ac4::Error error);
+[[nodiscard]] std::string_view object_kind_token(iclforge::ac4::ObjectKind kind);
 // One line for a §6.2.1.6 substream, for a human-readable listing.
-[[nodiscard]] std::string describe_group_substream(const ac4::GroupSubstream& sub);
+[[nodiscard]] std::string describe_group_substream(const iclforge::ac4::GroupSubstream& sub);
 
 // The "stream" member for an AC-4 stream: codec "ac4", the counts, integrity,
 // and an "ac4" object in place of the AC-3/E-AC-3 fields.
@@ -101,4 +101,4 @@ void write_ac4_stream(JsonSink& json, const Ac4Summary& summary);
 // information writes; null for a bare elementary stream.
 void write_container(JsonSink& json, const ContainerFacts& facts);
 
-}  // namespace ac3::apps::probe_json
+}  // namespace iclforge::apps::probe_json

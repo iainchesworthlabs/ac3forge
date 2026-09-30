@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-namespace ac3::test::platform {
+namespace iclforge::test::platform {
 
 std::string process_id() { return std::to_string(::_getpid()); }
 
@@ -44,4 +44,4 @@ void unset_environment(std::string_view name) {
     ::_putenv_s(n.c_str(), "");
 }
 
-}  // namespace ac3::test::platform
+}  // namespace iclforge::test::platform

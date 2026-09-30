@@ -17,7 +17,7 @@
 // all, because an unsigned-but-present container is a hard refusal on a
 // validating decoder rather than a graceful fallback.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 class SigningHook {
 public:
@@ -29,7 +29,7 @@ public:
     enum class Source : std::uint8_t { kNone, kFile, kEnvironment };
 
     // Loads from `explicit_path` if non-empty, else $AC3FORGE_SIGNING_KEY_FILE,
-    // else $AC3FORGE_SIGNING_KEY (ac3::signing::load_signing_key's own order).
+    // else $AC3FORGE_SIGNING_KEY (iclforge::signing::load_signing_key's own order).
     // Returns a one-line status for the UI either way.
     std::string load(std::string_view explicit_path);
     void clear();
@@ -39,7 +39,7 @@ public:
     [[nodiscard]] Source source_kind() const { return kind_; }
     // Why the last load failed, when it did; nullopt after a success or a
     // clear.
-    [[nodiscard]] std::optional<ac3::signing::KeyErrorKind> failure() const { return failure_; }
+    [[nodiscard]] std::optional<iclforge::signing::KeyErrorKind> failure() const { return failure_; }
 
     // Signs one access unit in place. False when no key is loaded or the
     // unit carried no container (a bed-only frame), which is not an error.
@@ -55,7 +55,7 @@ private:
     std::unique_ptr<Impl> impl_;  // the key, zeroised on clear() and destruction
     std::string source_;
     Source kind_ = Source::kNone;
-    std::optional<ac3::signing::KeyErrorKind> failure_;
+    std::optional<iclforge::signing::KeyErrorKind> failure_;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

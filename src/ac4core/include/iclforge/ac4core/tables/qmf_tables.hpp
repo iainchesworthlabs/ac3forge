@@ -6,7 +6,7 @@
 // by tools/generators/gen_ac4_tables.py from the attachment ts_103190_tables.c;
 // do not edit by hand.
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 
 // The window of the QMF analysis and synthesis banks (clauses 5.7.3 and
 // 5.7.4), in the float the attachment declares. It carries its own signs.
@@ -17,4 +17,4 @@ extern const std::array<float, 640> kQwin;
 // attachment declares.
 extern const std::array<std::array<float, 2>, 512> kAspxNoise;
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

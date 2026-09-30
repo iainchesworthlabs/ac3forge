@@ -7,11 +7,11 @@
 
 #include "iclforge/sendspin/state_roles.hpp"
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
-namespace controller = ac3::sendspin::controller;
+namespace controller = iclforge::sendspin::controller;
 
 [[nodiscard]] std::string join(const std::vector<std::string>& items, std::string_view sep) {
     std::string out;
@@ -25,7 +25,7 @@ namespace controller = ac3::sendspin::controller;
 }
 
 // "AC-3", "E-AC-3" or "AC-3 and E-AC-3" - the extension spec's own data type
-// names, in the order the sink listed them (ac3::sendspin::ac3forge::DataType
+// names, in the order the sink listed them (iclforge::sendspin::ac3forge::DataType
 // has only two values, so "X, Y and Z" never arises here).
 [[nodiscard]] std::string data_types_text(const std::vector<std::string>& data_types) {
     std::vector<std::string> named;
@@ -352,4 +352,4 @@ GroupDetail to_group_detail(const GroupFacts& facts) {
     return detail;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

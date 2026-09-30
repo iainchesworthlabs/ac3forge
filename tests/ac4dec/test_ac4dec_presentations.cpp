@@ -55,8 +55,8 @@
 namespace {
 
 namespace fs = std::filesystem;
-using ac3::test::kSanitized;
-using ac4::Speaker;
+using iclforge::test::kSanitized;
+using iclforge::ac4::Speaker;
 using ac4dec_test::MuxGroup;
 using ac4dec_test::MuxLayout;
 using ac4dec_test::MuxPresentation;
@@ -122,7 +122,7 @@ constexpr int kPan0 = 0;
 constexpr int kPan30 = 20;
 
 MuxGroup group(std::size_t from, std::optional<int> classifier, std::string language = {},
-               std::optional<ac4::detail::DialogueMixCodes> dialogue = std::nullopt) {
+               std::optional<iclforge::ac4::detail::DialogueMixCodes> dialogue = std::nullopt) {
     MuxGroup g;
     g.source = from;
     g.content_classifier = classifier;
@@ -132,7 +132,7 @@ MuxGroup group(std::size_t from, std::optional<int> classifier, std::string lang
 }
 
 MuxPresentation presentation(std::optional<int> config, std::vector<int> groups, int id, int md_compat,
-                             std::size_t from, ac4::detail::PresentationMixCodes mix = {}) {
+                             std::size_t from, iclforge::ac4::detail::PresentationMixCodes mix = {}) {
     MuxPresentation p;
     p.presentation_config = config;
     p.groups = std::move(groups);
@@ -143,14 +143,14 @@ MuxPresentation presentation(std::optional<int> config, std::vector<int> groups,
     return p;
 }
 
-ac4::detail::PresentationMixCodes gains(std::vector<int> sg) {
-    ac4::detail::PresentationMixCodes mix;
+iclforge::ac4::detail::PresentationMixCodes gains(std::vector<int> sg) {
+    iclforge::ac4::detail::PresentationMixCodes mix;
     mix.sg_gain = std::move(sg);
     return mix;
 }
 
-ac4::detail::PresentationMixCodes associated(ac4::detail::AssociatedMixCodes codes, std::optional<std::vector<int>> sg = {}) {
-    ac4::detail::PresentationMixCodes mix;
+iclforge::ac4::detail::PresentationMixCodes associated(iclforge::ac4::detail::AssociatedMixCodes codes, std::optional<std::vector<int>> sg = {}) {
+    iclforge::ac4::detail::PresentationMixCodes mix;
     mix.sg_gain = std::move(sg);
     mix.associated = codes;
     return mix;
@@ -173,25 +173,25 @@ Built stream_5_1() {
                  encoded("dialogue-fr-stereo")};
     b.layout.groups = {
         group(0, 0b001),                                                                    // 0: music and effects
-        group(2, 0b100, "en", ac4::detail::DialogueMixCodes{1, std::array{kPan330, 0}, 0}),  // 1: dialogue, 6 dB, 330
-        group(3, 0b100, "de", ac4::detail::DialogueMixCodes{3, std::nullopt, 0}),            // 2: dialogue, 12 dB
+        group(2, 0b100, "en", iclforge::ac4::detail::DialogueMixCodes{1, std::array{kPan330, 0}, 0}),  // 1: dialogue, 6 dB, 330
+        group(3, 0b100, "de", iclforge::ac4::detail::DialogueMixCodes{3, std::nullopt, 0}),            // 2: dialogue, 12 dB
         group(4, 0b010, "qad"),                                                             // 3: audio description
         group(5, 0b101, "en"),                                                              // 4: commentary, stereo
-        group(6, 0b100, "fr", ac4::detail::DialogueMixCodes{0, std::array{kPan0, kPan30}, 0}),  // 5: dialogue, stereo
+        group(6, 0b100, "fr", iclforge::ac4::detail::DialogueMixCodes{0, std::array{kPan0, kPan30}, 0}),  // 5: dialogue, stereo
         group(1, 0b000),                                                                    // 6: 2.0 main
     };
-    ac4::detail::AssociatedMixCodes scaled;
+    iclforge::ac4::detail::AssociatedMixCodes scaled;
     scaled.scale_main = 20;         // -6 dB
     scaled.scale_main_centre = 10;  // -3 dB
     scaled.scale_main_front = 5;    // -1.5 dB
     scaled.pan_associated = kPan30;
-    ac4::detail::AssociatedMixCodes at330;
+    iclforge::ac4::detail::AssociatedMixCodes at330;
     at330.pan_associated = kPan330;
-    ac4::detail::AssociatedMixCodes at0;
+    iclforge::ac4::detail::AssociatedMixCodes at0;
     at0.pan_associated = kPan0;
-    ac4::detail::AssociatedMixCodes at30;
+    iclforge::ac4::detail::AssociatedMixCodes at30;
     at30.pan_associated = kPan30;
-    ac4::detail::AssociatedMixCodes front;
+    iclforge::ac4::detail::AssociatedMixCodes front;
     front.scale_main_front = 10;  // -3 dB; a stereo associated substream, not panned
     b.layout.presentations = {
         presentation(0, {0, 1}, 1, 2, 0, gains({0, 8})),                     // M&E + English, -2 dB
@@ -232,7 +232,7 @@ ac4dec_test::MuxDe hybrid(int method, int channel_config, bool mid, std::array<i
     de.config.max_gain = 3;  // 12 dB
     de.config.channel_config = channel_config;
     de.config.mid = mid;
-    for (std::size_t band = 0; band < ac4::detail::kDeBands; ++band) {
+    for (std::size_t band = 0; band < iclforge::ac4::detail::kDeBands; ++band) {
         de.parameters.par[0][band] = parameters[0];
         de.parameters.par[1][band] = parameters[1];
     }
@@ -250,7 +250,7 @@ Built stream_hybrid() {
     cross.de = hybrid(3, 0b110, false, {5, 3}, kAlphaCross);  // L and R, p 0.5 and 0.3
     MuxGroup mid = group(1, std::nullopt);
     mid.de = hybrid(2, 0b110, true, {5, 0}, kAlphaMid);  // the Mid of L and R, p 0.5
-    ac4::detail::AssociatedMixCodes at30;
+    iclforge::ac4::detail::AssociatedMixCodes at30;
     at30.pan_associated = kPan30;
     b.layout.groups = {independent, group(2, std::nullopt), cross, mid, group(3, 0b010, "qad")};
     b.layout.presentations = {
@@ -306,14 +306,14 @@ BuiltV0 stream_v0() {
     b.sources = {dee("ac4-51-tones-384"), dee("ac4-20-tones-192"), encoded("dialogue-en-mono"), encoded("ad-mono"),
                  encoded("dialogue-fr-stereo")};
     ac4dec_test::MuxSubstreamV0 english = substream_v0(2, kDialnormEn, 0b100, "en");
-    english.dialogue = ac4::detail::DialogueMixCodes{1, std::array{kPan330, 0}, 0};  // 6 dB, 330
+    english.dialogue = iclforge::ac4::detail::DialogueMixCodes{1, std::array{kPan330, 0}, 0};  // 6 dB, 330
     ac4dec_test::MuxSubstreamV0 ad = substream_v0(3, kDialnormAd, 0b010, "qad");
-    ad.associated = ac4::detail::AssociatedMixCodes{.scale_main = 20,         // -6 dB
+    ad.associated = iclforge::ac4::detail::AssociatedMixCodes{.scale_main = 20,         // -6 dB
                                                     .scale_main_centre = 10,  // -3 dB
                                                     .scale_main_front = 5,    // -1.5 dB
                                                     .pan_associated = kPan30};
     ac4dec_test::MuxSubstreamV0 french = substream_v0(4, kDialnormMe, 0b100, "fr");
-    french.dialogue = ac4::detail::DialogueMixCodes{0, std::array{kPan0, kPan30}, 0};  // 3 dB
+    french.dialogue = iclforge::ac4::detail::DialogueMixCodes{0, std::array{kPan0, kPan30}, 0};  // 3 dB
     b.layout.substreams = {substream_v0(0, kDialnormMe), english, ad, substream_v0(1, kDialnormStereoMain), french};
     b.layout.presentations = {
         presentation_v0(0, {0, 1}, 1),     // M&E + English
@@ -360,7 +360,7 @@ std::span<const std::byte> mixing(std::string_view name) {
     if (!kSanitized) {
         return file;
     }
-    const ac4::ScanResult scan = ac4::scan(file);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(file);
     REQUIRE(scan.frames.size() > 14);
     return std::span<const std::byte>(file).first(scan.frames[14].offset);
 }
@@ -373,17 +373,17 @@ struct Decoded {
     std::vector<std::optional<int>> presentation_ids;
 };
 
-Decoded decode(std::span<const std::byte> file, const ac4::DecoderConfig& config) {
-    ac4::Decoder decoder(config);
+Decoded decode(std::span<const std::byte> file, const iclforge::ac4::DecoderConfig& config) {
+    iclforge::ac4::Decoder decoder(config);
     Decoded out;
-    const ac4::ScanResult scan = ac4::scan(file);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(file);
     REQUIRE_FALSE(scan.stopped_at.has_value());
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         INFO(decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
-        const ac4::DecodedFrame& pcm = **decoded;
+        const iclforge::ac4::DecodedFrame& pcm = **decoded;
         if (out.channels.empty()) {
             out.speakers = pcm.speakers;
             out.channels.resize(pcm.channels.size());
@@ -400,13 +400,13 @@ Decoded decode(std::span<const std::byte> file, const ac4::DecoderConfig& config
 // With `output_level_dbfs`, the output level gain alone, no compression.
 Decoded decode_id(std::span<const std::byte> file, int id, double dialogue_gain_db = 0.0, double associated_gain_db = 0.0,
                   double dialogue_enhancement_db = 0.0, std::optional<double> output_level_dbfs = std::nullopt) {
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.presentation.presentation_id = id;
     config.output.dialogue_gain_db = dialogue_gain_db;
     config.output.associated_gain_db = associated_gain_db;
     config.output.dialogue_enhancement_db = dialogue_enhancement_db;
     config.output.output_level_dbfs = output_level_dbfs;
-    config.output.drc = ac4::DrcMode::kOff;
+    config.output.drc = iclforge::ac4::DrcMode::kOff;
     const Decoded decoded = decode(file, config);
     for (const std::optional<int>& got : decoded.presentation_ids) {
         REQUIRE(got == id);
@@ -445,7 +445,7 @@ void check_tone(const Decoded& mix, const Decoded& reference, Speaker from, doub
                 const std::vector<std::pair<Speaker, double>>& expected) {
     const double own = tone_amplitude(reference, from, hz);
     for (const Speaker speaker : mix.speakers) {
-        CAPTURE(hz, ac4::describe(speaker));
+        CAPTURE(hz, iclforge::ac4::describe(speaker));
         const auto it = std::ranges::find(expected, speaker, &std::pair<Speaker, double>::first);
         const double got = tone_amplitude(mix, speaker, hz);
         if (it != expected.end()) {
@@ -501,7 +501,7 @@ std::vector<std::vector<double>> diagonal(std::size_t n, double gain) {
 struct SelectionCase {
     std::string name;
     std::vector<std::byte> frame;
-    ac4::PresentationChoice choice{};
+    iclforge::ac4::PresentationChoice choice{};
     int level = 3;
     std::optional<std::size_t> expected;
 };
@@ -647,18 +647,18 @@ std::vector<std::byte> broadcast_v0() {
 
 std::vector<SelectionCase> selection_cases() {
     std::vector<SelectionCase> cases;
-    const auto add = [&cases](std::string name, const std::vector<std::byte>& frame, ac4::PresentationChoice choice,
+    const auto add = [&cases](std::string name, const std::vector<std::byte>& frame, iclforge::ac4::PresentationChoice choice,
                               int level, std::optional<std::size_t> expected) {
         cases.push_back({std::move(name), frame, std::move(choice), level, expected});
     };
     const std::vector<std::byte> v1 = broadcast_v1();
     const auto language = [](const char* tag) {
-        ac4::PresentationChoice c;
+        iclforge::ac4::PresentationChoice c;
         c.language = tag;
         return c;
     };
-    const auto wants = [](int classifier, ac4::AssociatedType type = ac4::AssociatedType::kAny) {
-        ac4::PresentationChoice c;
+    const auto wants = [](int classifier, iclforge::ac4::AssociatedType type = iclforge::ac4::AssociatedType::kAny) {
+        iclforge::ac4::PresentationChoice c;
         c.associated = classifier;
         c.associated_type = type;
         return c;
@@ -671,28 +671,28 @@ std::vector<SelectionCase> selection_cases() {
     add("v1 a primary subtag matches a longer tag", v1, language("de-AT"), 3, 1);
     add("v1 a language no presentation has leaves the rest to decide", v1, language("fr"), 3, 0);
     add("v1 audio description", v1, wants(0b010), 3, 2);
-    add("v1 audio description refined by Table 92", v1, wants(0b010, ac4::AssociatedType::kAudioDescription), 3, 2);
-    add("v1 a refinement no presentation carries", v1, wants(0b010, ac4::AssociatedType::kSpokenSubtitles), 3, 0);
+    add("v1 audio description refined by Table 92", v1, wants(0b010, iclforge::ac4::AssociatedType::kAudioDescription), 3, 2);
+    add("v1 a refinement no presentation carries", v1, wants(0b010, iclforge::ac4::AssociatedType::kSpokenSubtitles), 3, 0);
     add("v1 commentary", v1, wants(0b101), 3, 3);
     {
-        ac4::PresentationChoice c = language("de");
+        iclforge::ac4::PresentationChoice c = language("de");
         c.associated = 0b010;
         add("v1 language before associated audio", v1, c, 3, 1);
     }
     {
-        ac4::PresentationChoice c;
+        iclforge::ac4::PresentationChoice c;
         c.headphones = true;
         add("v1 headphones take the pre-virtualized presentation", v1, c, 3, 5);
     }
     {
-        ac4::PresentationChoice c;
+        iclforge::ac4::PresentationChoice c;
         c.presentation_id = 13;
         add("v1 a presentation_id", v1, c, 3, 3);
         c.presentation_id = 99;
         add("v1 an absent presentation_id leaves the rest to decide", v1, c, 3, 0);
     }
     {
-        ac4::PresentationChoice c;
+        iclforge::ac4::PresentationChoice c;
         c.index = 2;
         add("v1 a position", v1, c, 3, 2);
     }
@@ -702,7 +702,7 @@ std::vector<SelectionCase> selection_cases() {
     add("v1 disabled reserved and unknown versions are not selected", filters, {}, 3, 4);
     add("v1 level 7 takes md_compat 7", filters, {}, 7, 3);
     {
-        ac4::PresentationChoice c;
+        iclforge::ac4::PresentationChoice c;
         c.index = 0;
         add("v1 a disabled presentation asked for by position", filters, c, 3, 4);
     }
@@ -716,14 +716,14 @@ std::vector<SelectionCase> selection_cases() {
     add("v0 a language", v0, language("fr"), 3, 2);
     add("v0 audio description", v0, wants(0b010), 3, 1);
     {
-        ac4::PresentationChoice c;
+        iclforge::ac4::PresentationChoice c;
         c.headphones = true;
         add("v0 headphones", v0, c, 3, 2);
     }
     add("v0 level 3 leaves out md_compat 4", v0, language("de"), 3, 0);
     add("v0 level 4 takes md_compat 4", v0, language("de"), 4, 4);
     {
-        ac4::PresentationChoice c;
+        iclforge::ac4::PresentationChoice c;
         c.presentation_id = 2;
         add("v0 a presentation_id", v0, c, 3, 1);
     }
@@ -740,17 +740,17 @@ std::string hex(std::span<const std::byte> bytes) {
     return out;
 }
 
-std::string_view type_name(ac4::AssociatedType type) {
+std::string_view type_name(iclforge::ac4::AssociatedType type) {
     switch (type) {
-        case ac4::AssociatedType::kAny:
+        case iclforge::ac4::AssociatedType::kAny:
             return "any";
-        case ac4::AssociatedType::kAudioDescription:
+        case iclforge::ac4::AssociatedType::kAudioDescription:
             return "audio-description";
-        case ac4::AssociatedType::kAudioDescriptionSubtitles:
+        case iclforge::ac4::AssociatedType::kAudioDescriptionSubtitles:
             return "audio-description-subtitles";
-        case ac4::AssociatedType::kSpokenSubtitles:
+        case iclforge::ac4::AssociatedType::kSpokenSubtitles:
             return "spoken-subtitles";
-        case ac4::AssociatedType::kEmergencyInformation:
+        case iclforge::ac4::AssociatedType::kEmergencyInformation:
             return "emergency-information";
     }
     return "?";
@@ -779,9 +779,9 @@ std::string selection_table() {
 TEST_CASE("a table of tables of contents selects as Part 2 clause 4.8.2 requires", "[ac4dec][presentations]") {
     for (const SelectionCase& c : selection_cases()) {
         CAPTURE(c.name);
-        const auto parsed = ac4::parse_raw_frame(c.frame);
+        const auto parsed = iclforge::ac4::parse_raw_frame(c.frame);
         REQUIRE(parsed.has_value());
-        CHECK(ac4::select_presentation(parsed->toc, c.choice, c.level) == c.expected);
+        CHECK(iclforge::ac4::select_presentation(parsed->toc, c.choice, c.level) == c.expected);
     }
 }
 
@@ -812,14 +812,14 @@ TEST_CASE("the committed presentation streams and selection table are the builde
 TEST_CASE("every presentation of the multiplexed streams reads to its end", "[ac4dec][presentations]") {
     for (const char* name : {"5_1", "hybrid", "v0"}) {
         CAPTURE(name);
-        ac4::Decoder decoder;
-        const ac4::ScanResult scan = ac4::scan(committed(name));
+        iclforge::ac4::Decoder decoder;
+        const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(committed(name));
         REQUIRE(scan.frames.size() == kFrames);
-        for (const ac4::SyncFrame& frame : scan.frames) {
+        for (const iclforge::ac4::SyncFrame& frame : scan.frames) {
             REQUIRE(frame.crc_ok == true);
             const auto report = decoder.parse(frame.raw_ac4_frame);
             REQUIRE(report.has_value());
-            for (const ac4::SubstreamReport& s : report->substreams) {
+            for (const iclforge::ac4::SubstreamReport& s : report->substreams) {
                 CAPTURE(s.index, s.refused_reason);
                 CHECK_FALSE(s.refused.has_value());
                 CHECK(s.bits_read == s.size_bits);
@@ -833,29 +833,29 @@ TEST_CASE("the pan law meets Table 216 at its three angles", "[ac4dec][presentat
                                  Speaker::kLfe,  Speaker::kLeftSurround, Speaker::kRightSurround};
     const std::array stereo = {Speaker::kLeft, Speaker::kRight};
     std::array<double, 6> g{};
-    ac4::detail::pan_gains(330.0, five_one, g);
+    iclforge::ac4::detail::pan_gains(330.0, five_one, g);
     CHECK(g == std::array{1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-    ac4::detail::pan_gains(0.0, five_one, g);
+    iclforge::ac4::detail::pan_gains(0.0, five_one, g);
     CHECK(g == std::array{0.0, 0.0, 1.0, 0.0, 0.0, 0.0});
-    ac4::detail::pan_gains(30.0, five_one, g);
+    iclforge::ac4::detail::pan_gains(30.0, five_one, g);
     CHECK(g == std::array{0.0, 1.0, 0.0, 0.0, 0.0, 0.0});
     std::array<double, 2> s{};
-    ac4::detail::pan_gains(0.0, stereo, s);
+    iclforge::ac4::detail::pan_gains(0.0, stereo, s);
     CHECK(s == std::array{0.5, 0.5});
-    ac4::detail::pan_gains(330.0, stereo, s);
+    iclforge::ac4::detail::pan_gains(330.0, stereo, s);
     CHECK(s == std::array{1.0, 0.0});
     // Between the angles, the two channels either side share the signal
     // linearly; round the back of a 5.1 layout, the surrounds at 110 and 250.
-    ac4::detail::pan_gains(15.0, five_one, g);
+    iclforge::ac4::detail::pan_gains(15.0, five_one, g);
     CHECK(std::abs(g[2] - 0.5) < 1e-12);
     CHECK(std::abs(g[1] - 0.5) < 1e-12);
-    ac4::detail::pan_gains(180.0, five_one, g);
+    iclforge::ac4::detail::pan_gains(180.0, five_one, g);
     CHECK(std::abs(g[4] - 0.5) < 1e-12);
     CHECK(std::abs(g[5] - 0.5) < 1e-12);
-    ac4::detail::pan_gains(70.0, five_one, g);
+    iclforge::ac4::detail::pan_gains(70.0, five_one, g);
     CHECK(std::abs(g[1] - 0.5) < 1e-12);
     CHECK(std::abs(g[5] - 0.5) < 1e-12);
-    ac4::detail::pan_gains(-30.0, five_one, g);
+    iclforge::ac4::detail::pan_gains(-30.0, five_one, g);
     CHECK(g[0] == 1.0);
 }
 
@@ -1128,25 +1128,25 @@ TEST_CASE("a stream with no presentation the decoder decodes names the substream
     toc.align();
     const std::vector<std::byte> frame =
         ac4_toc_test::assemble(toc, {std::vector<std::byte>(4, std::byte{0}), {std::byte{0}}});
-    const auto parsed = ac4::parse_raw_frame(frame);
+    const auto parsed = iclforge::ac4::parse_raw_frame(frame);
     REQUIRE(parsed.has_value());
-    CHECK_FALSE(ac4::select_presentation(parsed->toc, {}, 3).has_value());
-    ac4::Decoder reader;
+    CHECK_FALSE(iclforge::ac4::select_presentation(parsed->toc, {}, 3).has_value());
+    iclforge::ac4::Decoder reader;
     const auto report = reader.parse(frame);
     REQUIRE(report.has_value());
-    const auto audio = std::ranges::find(report->substreams, 0, &ac4::SubstreamReport::index);
+    const auto audio = std::ranges::find(report->substreams, 0, &iclforge::ac4::SubstreamReport::index);
     REQUIRE(audio != report->substreams.end());
-    REQUIRE(audio->refused == ac4::DecodeError::kUnsupported);
-    ac4::Decoder decoder;
+    REQUIRE(audio->refused == iclforge::ac4::DecodeError::kUnsupported);
+    iclforge::ac4::Decoder decoder;
     const auto decoded = decoder.decode(frame);
     REQUIRE_FALSE(decoded.has_value());
-    CHECK(decoded.error() == ac4::DecodeError::kUnsupported);
+    CHECK(decoded.error() == iclforge::ac4::DecodeError::kUnsupported);
     CHECK(decoder.refusal_reason() == audio->refused_reason);
 }
 
 TEST_CASE("the decoder selects by its configuration and reports what it decoded", "[ac4dec][presentations]") {
     const std::span<const std::byte> file = mixing("5_1");
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.presentation.language = "de";
     const Decoded german = decode(file, config);
     CHECK(german.presentation_ids.front() == 2);
@@ -1154,16 +1154,16 @@ TEST_CASE("the decoder selects by its configuration and reports what it decoded"
     config.presentation.associated = 0b101;
     CHECK(decode(file, config).presentation_ids.front() == 7);
     // No preference: the first presentation, music and effects with English.
-    CHECK(decode(file, ac4::DecoderConfig{}).presentation_ids.front() == 1);
+    CHECK(decode(file, iclforge::ac4::DecoderConfig{}).presentation_ids.front() == 1);
 }
 
 TEST_CASE("a mixed presentation conceals a lost frame with all its substreams", "[ac4dec][presentations]") {
     const std::vector<std::byte>& file = committed("5_1");
-    ac4::DecoderConfig config;
+    iclforge::ac4::DecoderConfig config;
     config.presentation.presentation_id = 1;
-    config.concealment = ac4::ConcealmentPolicy::kRepeatFade;
-    ac4::Decoder decoder(config);
-    const ac4::ScanResult scan = ac4::scan(file);
+    config.concealment = iclforge::ac4::ConcealmentPolicy::kRepeatFade;
+    iclforge::ac4::Decoder decoder(config);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(file);
     std::size_t concealed = 0;
     // bitstream_version 3 and more: a table of contents that does not read.
     const std::vector<std::byte> unreadable{std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}};

@@ -19,13 +19,13 @@
 // file paths are left out". What the player and the engine write to the ring
 // is test_player.cpp's and test_engine.cpp's.
 
-using ac3::hearth::DecoderSettings;
-using ac3::hearth::DiagnosticLog;
-using ac3::hearth::EngineStatus;
-using ac3::hearth::PlayedItem;
-using ac3::hearth::QueueItem;
-using ac3::hearth::ReportFacts;
-using ac3::hearth::Secrets;
+using iclforge::hearth::DecoderSettings;
+using iclforge::hearth::DiagnosticLog;
+using iclforge::hearth::EngineStatus;
+using iclforge::hearth::PlayedItem;
+using iclforge::hearth::QueueItem;
+using iclforge::hearth::ReportFacts;
+using iclforge::hearth::Secrets;
 
 namespace {
 
@@ -50,7 +50,7 @@ bool stamped(const std::string& line) {
 Secrets withheld(std::initializer_list<const char*> paths) {
     Secrets secrets;
     for (const char* path : paths) {
-        ac3::hearth::withhold_path(secrets, path);
+        iclforge::hearth::withhold_path(secrets, path);
     }
     return secrets;
 }
@@ -190,7 +190,7 @@ TEST_CASE("diagnostics: scrub replaces the longest secret first and never its ow
 
 TEST_CASE("diagnostics: the file has every section, from an idle engine", "[hearth][diagnostics]") {
     const std::string report =
-        ac3::hearth::render_report(ReportFacts{}, EngineStatus{}, DiagnosticLog{}, Secrets{});
+        iclforge::hearth::render_report(ReportFacts{}, EngineStatus{}, DiagnosticLog{}, Secrets{});
     const std::vector<std::string> sections{"# version",  "# platform",
                                             "# output",   "# playback",
                                             "# items that cannot be played (0)",
@@ -223,7 +223,7 @@ TEST_CASE("diagnostics: the file has every section, from an idle engine", "[hear
 TEST_CASE("diagnostics: the file says what played and what could not, and never where it lives",
           "[hearth][diagnostics]") {
     EngineStatus status;
-    status.state = ac3::hearth::TransportState::kPlaying;
+    status.state = iclforge::hearth::TransportState::kPlaying;
     status.queue = {
         queued("D:\\Private\\Songs\\one.ec3", "One"),
         queued("D:\\Private\\Songs\\two.ac4", "Two",
@@ -232,14 +232,14 @@ TEST_CASE("diagnostics: the file says what played and what could not, and never 
     };
     status.current = 2;
     status.repeat = true;
-    status.output = ac3::hearth::OpenOutputFormat{.sample_rate = 48000,
+    status.output = iclforge::hearth::OpenOutputFormat{.sample_rate = 48000,
                                                   .channels = 8,
-                                                  .mode = ac3::hearth::OutputMode::kLocalPcm};
+                                                  .mode = iclforge::hearth::OutputMode::kLocalPcm};
     status.output_opens = 2;
     status.history = {
         PlayedItem{.queue_index = 0, .title = "One", .first_frame = 0, .frames = 9216,
                    .expected_frames = 9216, .output_opens = 1},
-        PlayedItem{.queue_index = ac3::hearth::Queue::kNone, .title = "Gone", .first_frame = 9216,
+        PlayedItem{.queue_index = iclforge::hearth::Queue::kNone, .title = "Gone", .first_frame = 9216,
                    .frames = 1536, .expected_frames = 4608, .output_opens = 1},
     };
     // Free text the report must not read: it names an item that has left
@@ -265,7 +265,7 @@ TEST_CASE("diagnostics: the file says what played and what could not, and never 
     facts.platform.emplace_back("settings", "C:\\Users\\Someone\\AppData\\Hearth\\hearth.ini");
     log.note("pairing code 123-456 shown");
 
-    const std::string report = ac3::hearth::render_report(facts, status, log, secrets);
+    const std::string report = iclforge::hearth::render_report(facts, status, log, secrets);
     INFO(report);
     CHECK_FALSE(has(report, "Private"));
     CHECK_FALSE(has(report, "private"));
@@ -303,14 +303,14 @@ TEST_CASE("diagnostics: the file says what played and what could not, and never 
 }
 
 TEST_CASE("diagnostics: the file's lists are cut to their limit", "[hearth][diagnostics]") {
-    const std::size_t limit = ac3::hearth::kReportListLimit;
+    const std::size_t limit = iclforge::hearth::kReportListLimit;
     EngineStatus status;
     for (std::size_t i = 0; i < limit + 7; ++i) {
         status.queue.push_back(queued("/m/" + std::to_string(i), "t" + std::to_string(i), "no"));
         status.history.push_back(PlayedItem{.queue_index = i, .title = "t" + std::to_string(i)});
     }
     const std::string report =
-        ac3::hearth::render_report(ReportFacts{}, status, DiagnosticLog{}, Secrets{});
+        iclforge::hearth::render_report(ReportFacts{}, status, DiagnosticLog{}, Secrets{});
     // The first items that cannot be played, and the last items played.
     CHECK(has(report, "# items that cannot be played (" + std::to_string(limit + 7) + ")\n"));
     CHECK(has(report, "item " + std::to_string(limit) + " \"t" + std::to_string(limit - 1) +
@@ -322,8 +322,8 @@ TEST_CASE("diagnostics: the file's lists are cut to their limit", "[hearth][diag
 }
 
 TEST_CASE("diagnostics: the process log is one log, and survives", "[hearth][diagnostics]") {
-    DiagnosticLog& one = ac3::hearth::process_diagnostics();
-    DiagnosticLog& two = ac3::hearth::process_diagnostics();
+    DiagnosticLog& one = iclforge::hearth::process_diagnostics();
+    DiagnosticLog& two = iclforge::hearth::process_diagnostics();
     CHECK(&one == &two);
     CHECK(one.capacity() == DiagnosticLog::kDefaultCapacity);
     one.note("shared note");
@@ -343,25 +343,25 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "no audio description, the stereo fold's downmix, the source's own immersive layout, "
           "full decoding");
     DecoderSettings custom;
-    custom.mode = ac3::OperatingMode::kCustom;
+    custom.mode = iclforge::OperatingMode::kCustom;
     custom.drc_cut = 0.5;
     custom.drc_boost = 0.25;
     custom.heavy_compression = true;
     custom.normalise_dialogue = false;
-    custom.stereo_fold = ac3::DownmixTarget::kLtRt;
+    custom.stereo_fold = iclforge::DownmixTarget::kLtRt;
     custom.ltrt_phase_shift = false;
     custom.mix_lfe = true;
     custom.mix_levels.loro_clev = 0.5;
     custom.mix_levels.ltrt_slev = 0.707;
     custom.mix_levels.lfe_mix_level_db = -3.0;
-    custom.dual_mono = ac3::hearth::DualMonoChoice::kSecond;
+    custom.dual_mono = iclforge::hearth::DualMonoChoice::kSecond;
     custom.programme = 2;
-    custom.objects = ac3::render::ObjectsPolicy::kNever;
-    custom.concealment = ac3::ConcealmentPolicy::kNone;
+    custom.objects = iclforge::render::ObjectsPolicy::kNever;
+    custom.concealment = iclforge::ConcealmentPolicy::kNone;
     custom.fast_inverse_transform = false;
     custom.ac4.presentation_id = 7;
     custom.ac4.output_level_dbfs = -20.0;
-    custom.ac4.drc = ac4::DrcMode::kPortableHeadphones;
+    custom.ac4.drc = iclforge::ac4::DrcMode::kPortableHeadphones;
     custom.ac4.dialogue_enhancement_db = 6.0;
     custom.ac4.dialogue_db = -3.0;
     custom.ac4.audio_description = true;
@@ -378,12 +378,12 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "audio description at -9.5 dB, the stream's preferred downmix, "
           "the source's own immersive layout, full decoding");
     DecoderSettings rf;
-    rf.mode = ac3::OperatingMode::kRf;
+    rf.mode = iclforge::OperatingMode::kRf;
     rf.mix_levels.loro_slev = 0.0;
     rf.mix_levels.ltrt_clev = 1.0;
-    rf.dual_mono = ac3::hearth::DualMonoChoice::kFirst;
-    rf.objects = ac3::render::ObjectsPolicy::kAlways;
-    rf.concealment = ac3::ConcealmentPolicy::kMute;
+    rf.dual_mono = iclforge::hearth::DualMonoChoice::kFirst;
+    rf.objects = iclforge::render::ObjectsPolicy::kAlways;
+    rf.concealment = iclforge::ConcealmentPolicy::kMute;
     rf.mix_lfe = false;
     rf.ac4.normalise = false;
     rf.ac4.language = "fr";
@@ -396,9 +396,9 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "dialogue enhancement 0 dB, dialogue +0.0 dB, no audio description, the stereo fold's "
           "downmix, the source's own immersive layout, full decoding");
 
-    CHECK(ac3::hearth::describe_item(0, "First") == "item 1 \"First\"");
-    CHECK(ac3::hearth::describe_item(ac3::hearth::Queue::kNone, "Gone") ==
+    CHECK(iclforge::hearth::describe_item(0, "First") == "item 1 \"First\"");
+    CHECK(iclforge::hearth::describe_item(iclforge::hearth::Queue::kNone, "Gone") ==
           "\"Gone\" (no longer in the queue)");
-    CHECK(ac3::hearth::describe_item(ac3::hearth::Queue::kNone, "") ==
+    CHECK(iclforge::hearth::describe_item(iclforge::hearth::Queue::kNone, "") ==
           "an item no longer in the queue");
 }

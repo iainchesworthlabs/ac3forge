@@ -57,7 +57,7 @@
 // the WIN32/else split, and tools/checks/check_platform_macros.ps1 for why an
 // #ifdef in main.cpp is not an option.
 
-namespace ac3::cli::platform {
+namespace iclforge::cli::platform {
 
 // Switches the attached console to UTF-8 for output, and returns the code
 // page that was in force so it can be put back. Returns 0 when there is
@@ -68,4 +68,4 @@ unsigned int set_console_utf8();
 // Undoes set_console_utf8(). Passing 0 is the documented no-op.
 void restore_console_encoding(unsigned int previous);
 
-}  // namespace ac3::cli::platform
+}  // namespace iclforge::cli::platform

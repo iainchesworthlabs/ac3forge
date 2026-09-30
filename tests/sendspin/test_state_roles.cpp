@@ -19,11 +19,11 @@
 
 namespace {
 
-using ac3::sendspin::Dialect;
-namespace json = ac3::sendspin::json;
-namespace metadata = ac3::sendspin::metadata;
-namespace controller = ac3::sendspin::controller;
-namespace color = ac3::sendspin::color;
+using iclforge::sendspin::Dialect;
+namespace json = iclforge::sendspin::json;
+namespace metadata = iclforge::sendspin::metadata;
+namespace controller = iclforge::sendspin::controller;
+namespace color = iclforge::sendspin::color;
 
 struct Parsed {
     std::string text;

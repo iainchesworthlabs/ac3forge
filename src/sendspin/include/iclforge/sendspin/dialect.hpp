@@ -11,11 +11,11 @@
 // learns it from Noise message 1, a server from client/hello. Every function whose bytes
 // differ between the two takes it.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 enum class Dialect : std::uint8_t {
     kSpecification,
     kAiosendspin911,
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

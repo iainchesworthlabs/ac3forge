@@ -19,7 +19,7 @@
 #include "iclforge/ac3/oba/joc.hpp"
 #include "iclforge/objects/oamd.hpp"
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -46,7 +46,7 @@ struct SpatialXyz {
     float x, y, z;
 };
 
-SpatialXyz to_windows_spatial(const ac3::oba::Position& p) {
+SpatialXyz to_windows_spatial(const iclforge::oba::Position& p) {
     constexpr float kHalfWidthM = 2.0F;
     constexpr float kHalfDepthM = 2.0F;
     constexpr float kHeightM = 1.0F;
@@ -57,7 +57,7 @@ SpatialXyz to_windows_spatial(const ac3::oba::Position& p) {
 
 // The bed's LFE is not an object, so it never goes through JOC reconstruction
 // - but the dynamic objects submit()'s kHeadphones branch places beside it
-// did, and that costs ac3::oba::joc::reconstruction_delay(domain) samples the
+// did, and that costs iclforge::oba::joc::reconstruction_delay(domain) samples the
 // LFE does not pay (docs/library/decoding.md, "Atmos objects lag the bed").
 // Submitted to the spatial sink as soon as each unit decodes, the LFE would
 // reach the room that far ahead of the objects beside it, so it goes through
@@ -112,8 +112,8 @@ struct OutputStage::Impl {
     std::unique_ptr<ObjectSink> spatial;
     bool spatial_started = false;
 
-    std::unique_ptr<ac3::iec61937::Eac3BurstPacker> packer;  // Atmos / DD+
-    std::unique_ptr<ac3::FrameEncoder> ac3_encoder;           // DD 5.1
+    std::unique_ptr<iclforge::iec61937::Eac3BurstPacker> packer;  // Atmos / DD+
+    std::unique_ptr<iclforge::FrameEncoder> ac3_encoder;           // DD 5.1
     // DD 5.1 only: the bed gathered until a whole AC-3 frame's worth is in
     // hand, one vector per coded channel. AC-3 has no short frames - every
     // syncframe is six blocks, kSamplesPerFrame samples a channel, and
@@ -127,11 +127,11 @@ struct OutputStage::Impl {
     // nothing waits here.
     std::vector<std::vector<float>> ac3_pending;
     std::vector<std::span<const float>> ac3_views;
-    std::unique_ptr<ac3::Eac3Decoder> decoder;                // the decoded modes
+    std::unique_ptr<iclforge::Eac3Decoder> decoder;                // the decoded modes
 
     std::vector<float> interleaved;
-    std::vector<ac3::audio::DynamicObjectUpdate> dynamic_updates;
-    std::vector<ac3::audio::StaticObjectUpdate> static_updates;
+    std::vector<iclforge::audio::DynamicObjectUpdate> dynamic_updates;
+    std::vector<iclforge::audio::StaticObjectUpdate> static_updates;
     // kHeadphones only - see LfeDelayLine's own comment. Re-armed alongside
     // `decoder` whenever that mode (re)starts (apply()), so a later mode
     // switch back to headphones never plays a stale tail left over from an
@@ -273,7 +273,7 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             if (!started.has_value()) {
                 return refuse(started.error());
             }
-            impl_->packer = std::make_unique<ac3::iec61937::Eac3BurstPacker>();
+            impl_->packer = std::make_unique<iclforge::iec61937::Eac3BurstPacker>();
             break;
         }
         case OutputMode::kDd51: {
@@ -282,11 +282,11 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             if (!started.has_value()) {
                 return refuse(started.error());
             }
-            impl_->ac3_encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
-                .sample_rate = ac3::SampleRate::k48000,
-                .bitrate_kbps = ac3::clamp_to_legal_ac3_bitrate(config_.ac3_bitrate_kbps),
+            impl_->ac3_encoder = std::make_unique<iclforge::FrameEncoder>(iclforge::EncoderConfig{
+                .sample_rate = iclforge::SampleRate::k48000,
+                .bitrate_kbps = iclforge::clamp_to_legal_ac3_bitrate(config_.ac3_bitrate_kbps),
                 .dialnorm = 31,
-                .acmod = ac3::Acmod::k3_2,
+                .acmod = iclforge::Acmod::k3_2,
                 .lfe = true});
             break;
         }
@@ -297,7 +297,7 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             if (!started.has_value()) {
                 return refuse(started.error());
             }
-            impl_->decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{});
+            impl_->decoder = std::make_unique<iclforge::Eac3Decoder>(iclforge::DecoderConfig{});
             break;
         }
         case OutputMode::kStereo: {
@@ -307,8 +307,8 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             if (!started.has_value()) {
                 return refuse(started.error());
             }
-            impl_->decoder = std::make_unique<ac3::Eac3Decoder>(
-                ac3::DecoderConfig{.output = {.target = ac3::DownmixTarget::kLoRo}});
+            impl_->decoder = std::make_unique<iclforge::Eac3Decoder>(
+                iclforge::DecoderConfig{.output = {.target = iclforge::DownmixTarget::kLoRo}});
             break;
         }
         case OutputMode::kHeadphones: {
@@ -319,10 +319,10 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             // lfe_delay below reads .joc_domain back off it, so the two can
             // never disagree on which domain this session actually decodes
             // with.
-            const ac3::DecoderConfig decoder_config{};
-            impl_->decoder = std::make_unique<ac3::Eac3Decoder>(decoder_config);
+            const iclforge::DecoderConfig decoder_config{};
+            impl_->decoder = std::make_unique<iclforge::Eac3Decoder>(decoder_config);
             impl_->lfe_delay.emplace(static_cast<std::size_t>(
-                ac3::oba::joc::reconstruction_delay(decoder_config.joc_domain)));
+                iclforge::oba::joc::reconstruction_delay(decoder_config.joc_domain)));
             break;
         }
         case OutputMode::kNone: return status_;
@@ -380,8 +380,8 @@ void OutputStage::submit_raw(const RawFrame& raw) {
             impl.static_updates.push_back({.pcm = raw.bed[5], .channel = kSpeakerLowFrequency});
         }
         submit_with_patience(*impl.spatial, status_.underruns,
-                             std::span<const ac3::audio::DynamicObjectUpdate>(impl.dynamic_updates),
-                             std::span<const ac3::audio::StaticObjectUpdate>(impl.static_updates));
+                             std::span<const iclforge::audio::DynamicObjectUpdate>(impl.dynamic_updates),
+                             std::span<const iclforge::audio::StaticObjectUpdate>(impl.static_updates));
         return;
     }
     if (raw.bed.size() < 6) {
@@ -435,7 +435,7 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
                 impl.ac3_pending[ch].insert(impl.ac3_pending[ch].end(), raw.bed[ch].begin(),
                                             raw.bed[ch].end());
             }
-            constexpr auto kAc3Frame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+            constexpr auto kAc3Frame = static_cast<std::size_t>(iclforge::kSamplesPerFrame);
             while (!impl.ac3_pending.empty() && impl.ac3_pending[0].size() >= kAc3Frame) {
                 impl.ac3_views.clear();
                 for (const auto& channel : impl.ac3_pending) {
@@ -448,7 +448,7 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
                 if (!frame.has_value()) {
                     continue;
                 }
-                if (const auto wrapped = ac3::iec61937::wrap_frame(*frame)) {
+                if (const auto wrapped = iclforge::iec61937::wrap_frame(*frame)) {
                     submit_with_patience(*impl.passthrough, status_.underruns,
                                          std::span<const std::byte>(*wrapped));
                 }
@@ -474,13 +474,13 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
     const auto& out = **decoded;
 
     if (status_.mode == OutputMode::kHeadphones) {
-        const bool has_lfe = out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program);
+        const bool has_lfe = out.object_metadata && iclforge::oba::has_lfe(out.object_metadata->program);
         if (!ensure_spatial(has_lfe, out.object_audio.size())) {
             return;
         }
         impl.dynamic_updates.clear();
         if (out.object_metadata.has_value()) {
-            const auto positions = ac3::oba::describe_objects(*out.object_metadata);
+            const auto positions = iclforge::oba::describe_objects(*out.object_metadata);
             for (std::size_t i = 0; i < out.object_audio.size() && i < positions.size(); ++i) {
                 const auto xyz = to_windows_spatial(positions[i].position);
                 impl.dynamic_updates.push_back(
@@ -492,7 +492,7 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
             }
         }
         impl.static_updates.clear();
-        if (out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program) &&
+        if (out.object_metadata && iclforge::oba::has_lfe(out.object_metadata->program) &&
             !out.channels.empty()) {
             // Delayed to arrive with the dynamic objects above, not ahead of
             // them - see LfeDelayLine's own comment.
@@ -501,8 +501,8 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
                 {.pcm = impl.delayed_lfe, .channel = kSpeakerLowFrequency});
         }
         submit_with_patience(*impl.spatial, status_.underruns,
-                             std::span<const ac3::audio::DynamicObjectUpdate>(impl.dynamic_updates),
-                             std::span<const ac3::audio::StaticObjectUpdate>(impl.static_updates));
+                             std::span<const iclforge::audio::DynamicObjectUpdate>(impl.dynamic_updates),
+                             std::span<const iclforge::audio::StaticObjectUpdate>(impl.static_updates));
         return;
     }
 
@@ -536,4 +536,4 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
     status_.sink_queue_frames = impl.monitor->queued_frames();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

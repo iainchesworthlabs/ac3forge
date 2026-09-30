@@ -28,7 +28,7 @@
 // after) keep psd below the masking curve in every bin under the full §7.2
 // integer model as well. Either way, no mantissa data exists to write.
 
-namespace ac3 {
+namespace iclforge {
 
 struct SilentFrameConfig {
     SampleRate sample_rate = SampleRate::k48000;
@@ -317,4 +317,4 @@ struct SkipPlan {
     return frame;
 }
 
-}  // namespace ac3
+}  // namespace iclforge

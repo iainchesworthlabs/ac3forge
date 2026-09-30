@@ -32,7 +32,7 @@
 //      have established it is safe to act on if it is set.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::cpu {
+namespace iclforge::internal::cpu {
 
 [[nodiscard]] inline bool cpuid_reports_avx2() noexcept {
     std::array<int, 4> leaf{};
@@ -61,4 +61,4 @@ namespace ac3::internal::cpu {
     return (leaf[1] & kAvx2Bit) != 0;
 }
 
-}  // namespace ac3::internal::cpu
+}  // namespace iclforge::internal::cpu

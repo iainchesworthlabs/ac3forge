@@ -50,7 +50,7 @@
 // Internal to src/ac3/src/core/ on purpose - transform plumbing between
 // translation units, not library surface.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 // One-time tables for a P-point transform: everything angle-dependent,
 // computed once - the same treatment Twiddles/InnerSumTable/ForwardCosTable
@@ -318,4 +318,4 @@ void fft_forward_bitrev(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
     }
 }
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

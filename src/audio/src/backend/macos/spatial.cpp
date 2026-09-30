@@ -6,7 +6,7 @@
 // posix's. Every entry point fails with kNoBackend rather than the API
 // disappearing. See posix/spatial.cpp for the same convention in full.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(SpatialError error) {
     switch (error) {
@@ -46,4 +46,4 @@ void SpatialObjectSink::stop() {}
 bool SpatialObjectSink::running() const { return false; }
 SpatialObjectStats SpatialObjectSink::stats() const { return {}; }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

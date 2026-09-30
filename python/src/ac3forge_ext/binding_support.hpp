@@ -37,7 +37,7 @@
 // optional_modules.hpp and python/CMakeLists.txt), which is what makes this a
 // header rather than a detail of one .cpp.
 
-namespace ac3::python::detail {
+namespace iclforge::python::detail {
 
 namespace py = pybind11;
 
@@ -113,4 +113,4 @@ inline std::vector<py::bytes> to_bytes_list(const std::vector<std::span<const st
     return out;
 }
 
-}  // namespace ac3::python::detail
+}  // namespace iclforge::python::detail

@@ -25,15 +25,15 @@
 // unelevated process carry on. Every run after the first finds the rule already there and never
 // needs any of this.
 
-namespace ac3::sendspin::firewall {
+namespace iclforge::sendspin::firewall {
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
 
-// COM lifetime for one thread, the same shape as ac3::windows_audio::ComScope
+// COM lifetime for one thread, the same shape as iclforge::windows_audio::ComScope
 // (src/audio/src/backend/windows/windows_support.hpp) but not shared with it: sendspin does not
-// otherwise depend on ac3::audio, and this is eight lines.
+// otherwise depend on iclforge::audio, and this is eight lines.
 class ComScope {
    public:
     ComScope() : hr_(::CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
@@ -162,7 +162,7 @@ class Bstr {
 
 [[nodiscard]] std::wstring_view protocol_word(Protocol protocol) { return protocol == Protocol::kTcp ? L"TCP" : L"UDP"; }
 
-// Distinguishes ac3hearth's rule from ac3hearth-testsink's: both link ac3::sendspin and may ask
+// Distinguishes ac3hearth's rule from ac3hearth-testsink's: both link iclforge::sendspin and may ask
 // for "the same" named rule (mdns.cpp's is literally identical text from both), but a rule is
 // only useful if it is scoped to the executable that is actually going to hold the socket open,
 // and INetFwRules::Item() looks a rule up by name alone. Folding the executable's own name in
@@ -340,4 +340,4 @@ void maybe_run_as_firewall_helper_and_exit(int argc, char** argv) {
     std::exit(add_rule_now(rules->Get(), spec, rule_name, *exe_path) ? EXIT_SUCCESS : EXIT_FAILURE);
 }
 
-}  // namespace ac3::sendspin::firewall
+}  // namespace iclforge::sendspin::firewall

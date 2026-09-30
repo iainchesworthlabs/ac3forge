@@ -7,7 +7,7 @@
 #include <initializer_list>
 #include <utility>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr double kMinus3Db = 0.70794578438413791;  // 10^(-3/20), no mix gain sent
@@ -436,4 +436,4 @@ void DownmixStage::process(const DownmixValues& values, std::span<std::vector<Qm
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

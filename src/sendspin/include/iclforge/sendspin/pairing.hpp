@@ -21,7 +21,7 @@
 // derivation label and length, the session id (no round) and what it wraps
 // (planning/hearth-sendspin-extension.md, C21 to C23).
 
-namespace ac3::sendspin::pairing {
+namespace iclforge::sendspin::pairing {
 
 using crypto::Bytes;
 using crypto::Digest32;
@@ -107,4 +107,4 @@ inline constexpr std::size_t kWrappedBytes = 48;
                                                                           const Key32& value);
 [[nodiscard]] std::optional<Key32> unwrap(noise::Suite suite, const Key32& key, Bytes wrapped);
 
-}  // namespace ac3::sendspin::pairing
+}  // namespace iclforge::sendspin::pairing

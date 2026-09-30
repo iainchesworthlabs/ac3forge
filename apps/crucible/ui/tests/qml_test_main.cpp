@@ -60,13 +60,13 @@
 // made through this one rewrites the other's is_default flags too. Without
 // it the Signal path table would say applications still play on the old
 // default after "Send applications here", which no machine does.
-class LinkedDefaultDevice final : public ac3::crucible::DefaultDevice {
+class LinkedDefaultDevice final : public iclforge::crucible::DefaultDevice {
 public:
-    LinkedDefaultDevice(std::shared_ptr<ac3::crucible::testing::FakeDefaultDevice> settings,
-                        std::shared_ptr<ac3::crucible::testing::FakeDevices> devices)
+    LinkedDefaultDevice(std::shared_ptr<iclforge::crucible::testing::FakeDefaultDevice> settings,
+                        std::shared_ptr<iclforge::crucible::testing::FakeDevices> devices)
         : settings_(std::move(settings)), devices_(std::move(devices)) {}
 
-    std::vector<ac3::crucible::RenderEndpoint> endpoints() override { return settings_->endpoints(); }
+    std::vector<iclforge::crucible::RenderEndpoint> endpoints() override { return settings_->endpoints(); }
     std::string default_id() override { return settings_->default_id(); }
     std::expected<void, std::string> set_default(std::string_view endpoint_id) override {
         auto moved = settings_->set_default(endpoint_id);
@@ -85,8 +85,8 @@ public:
     void open_sound_settings() override { settings_->open_sound_settings(); }
 
 private:
-    std::shared_ptr<ac3::crucible::testing::FakeDefaultDevice> settings_;
-    std::shared_ptr<ac3::crucible::testing::FakeDevices> devices_;
+    std::shared_ptr<iclforge::crucible::testing::FakeDefaultDevice> settings_;
+    std::shared_ptr<iclforge::crucible::testing::FakeDevices> devices_;
 };
 
 // A silent device this application makes itself, the way the Linux arm
@@ -95,15 +95,15 @@ private:
 // once with exit code 0, so the controller's action poll reports it on its
 // next tick. What the "Create device" and "Remove device" buttons, and a
 // Send that has to create the device first, are driven against.
-class ScriptedSilentDevice final : public ac3::crucible::VirtualDevice {
+class ScriptedSilentDevice final : public iclforge::crucible::VirtualDevice {
 public:
-    ScriptedSilentDevice(std::shared_ptr<ac3::crucible::testing::FakeDefaultDevice> settings,
-                         std::shared_ptr<ac3::crucible::testing::FakeDevices> devices)
+    ScriptedSilentDevice(std::shared_ptr<iclforge::crucible::testing::FakeDefaultDevice> settings,
+                         std::shared_ptr<iclforge::crucible::testing::FakeDevices> devices)
         : settings_(std::move(settings)), devices_(std::move(devices)) {}
 
     std::string device_name() const override { return "Desktop Atmos"; }
     std::string how_to_get_one() const override { return "this application creates it"; }
-    ac3::crucible::SilentDeviceState state(const ac3::crucible::SilentDeviceQuery& query) override {
+    iclforge::crucible::SilentDeviceState state(const iclforge::crucible::SilentDeviceQuery& query) override {
         return {.needed = true,
                 .present = query.endpoint_present,
                 .in_use = query.endpoint_is_default,
@@ -112,7 +112,7 @@ public:
                 .detail = {"scripted: the application makes its own silent device"}};
     }
     std::expected<void, std::string> install() override {
-        const auto facts = ac3::crucible::testing::null_sink();
+        const auto facts = iclforge::crucible::testing::null_sink();
         auto endpoints = settings_->endpoints();
         endpoints.push_back({.id = facts.id, .name = facts.name, .is_default = false});
         settings_->set_endpoints(std::move(endpoints));
@@ -124,7 +124,7 @@ public:
         return {};
     }
     std::expected<void, std::string> remove() override {
-        const auto id = ac3::crucible::testing::null_sink().id;
+        const auto id = iclforge::crucible::testing::null_sink().id;
         auto endpoints = settings_->endpoints();
         std::erase_if(endpoints, [&](const auto& e) { return e.id == id; });
         settings_->set_endpoints(std::move(endpoints));
@@ -135,12 +135,12 @@ public:
         last_ = {.running = false, .exit_code = 0, .log_tail = {"removed Desktop Atmos"}};
         return {};
     }
-    ac3::crucible::DeviceActionStatus action_status() override { return last_; }
+    iclforge::crucible::DeviceActionStatus action_status() override { return last_; }
 
 private:
-    std::shared_ptr<ac3::crucible::testing::FakeDefaultDevice> settings_;
-    std::shared_ptr<ac3::crucible::testing::FakeDevices> devices_;
-    ac3::crucible::DeviceActionStatus last_;
+    std::shared_ptr<iclforge::crucible::testing::FakeDefaultDevice> settings_;
+    std::shared_ptr<iclforge::crucible::testing::FakeDevices> devices_;
+    iclforge::crucible::DeviceActionStatus last_;
 };
 
 // The machine, scripted: the five platform seams replaced by the same fakes
@@ -167,8 +167,8 @@ public:
     Q_INVOKABLE bool scriptSessions(const QVariantList& apps) {
         // One real endpoint and one silent device, which is the least a
         // start() needs to choose an output and open a sink.
-        return script(apps, {ac3::crucible::testing::realtek_default(),
-                             ac3::crucible::testing::null_sink()});
+        return script(apps, {iclforge::crucible::testing::realtek_default(),
+                             iclforge::crucible::testing::null_sink()});
     }
 
     // The same, over a chosen set of endpoints by name: "avr" (an HDMI
@@ -177,16 +177,16 @@ public:
     // the Signal path suites need to see a pin change the mode the engine
     // settles on, which one stereo endpoint cannot show.
     Q_INVOKABLE bool scriptMachine(const QVariantList& apps, const QStringList& endpoints) {
-        std::vector<ac3::crucible::DeviceFacts> facts;
+        std::vector<iclforge::crucible::DeviceFacts> facts;
         for (const QString& name : endpoints) {
             if (name == QLatin1String("avr")) {
-                facts.push_back(ac3::crucible::testing::hdmi_avr());
+                facts.push_back(iclforge::crucible::testing::hdmi_avr());
             } else if (name == QLatin1String("realtek")) {
-                facts.push_back(ac3::crucible::testing::realtek_default());
+                facts.push_back(iclforge::crucible::testing::realtek_default());
             } else if (name == QLatin1String("null")) {
-                facts.push_back(ac3::crucible::testing::null_sink());
+                facts.push_back(iclforge::crucible::testing::null_sink());
             } else if (name == QLatin1String("headphones")) {
-                facts.push_back(ac3::crucible::testing::headphones_spatial());
+                facts.push_back(iclforge::crucible::testing::headphones_spatial());
             } else {
                 return false;
             }
@@ -203,7 +203,7 @@ public:
     // A receiver and a stereo default, and no silent device yet - one this
     // application can make itself (ScriptedSilentDevice above).
     Q_INVOKABLE bool scriptMachineThatMakesItsSilentDevice(const QVariantList& apps) {
-        return script(apps, {ac3::crucible::testing::hdmi_avr(), ac3::crucible::testing::realtek_default()},
+        return script(apps, {iclforge::crucible::testing::hdmi_avr(), iclforge::crucible::testing::realtek_default()},
                       /*makes_its_own=*/true);
     }
 
@@ -276,13 +276,13 @@ public:
     }
 
 private:
-    static std::vector<ac3::crucible::AppSession> to_sessions(const QVariantList& apps) {
-        std::vector<ac3::crucible::AppSession> listed;
+    static std::vector<iclforge::crucible::AppSession> to_sessions(const QVariantList& apps) {
+        std::vector<iclforge::crucible::AppSession> listed;
         listed.reserve(static_cast<std::size_t>(apps.size()));
         for (const QVariant& entry : apps) {
             const QVariantMap fields = entry.toMap();
-            ac3::crucible::AppSession session;
-            session.app = static_cast<ac3::crucible::AppId>(fields.value(QStringLiteral("app")).toUInt());
+            iclforge::crucible::AppSession session;
+            session.app = static_cast<iclforge::crucible::AppId>(fields.value(QStringLiteral("app")).toUInt());
             session.name = fields.value(QStringLiteral("name")).toString().toStdString();
             session.active = fields.value(QStringLiteral("active"), true).toBool();
             session.has_window = fields.value(QStringLiteral("window"), true).toBool();
@@ -293,35 +293,35 @@ private:
         return listed;
     }
 
-    bool script(const QVariantList& apps, const std::vector<ac3::crucible::DeviceFacts>& endpoints,
+    bool script(const QVariantList& apps, const std::vector<iclforge::crucible::DeviceFacts>& endpoints,
                 bool makes_its_own = false) {
         auto* controller = find_controller();
         if (controller == nullptr) {
             return false;
         }
-        auto sessions = std::make_shared<ac3::crucible::testing::FakeSessionMonitor>();
+        auto sessions = std::make_shared<iclforge::crucible::testing::FakeSessionMonitor>();
         sessions->set_apps(to_sessions(apps));
 
-        auto devices = std::make_shared<ac3::crucible::testing::FakeDevices>();
+        auto devices = std::make_shared<iclforge::crucible::testing::FakeDevices>();
         devices->devices = endpoints;
 
-        auto foreground = std::make_shared<ac3::crucible::testing::FakeForeground>();
+        auto foreground = std::make_shared<iclforge::crucible::testing::FakeForeground>();
 
         // The sound settings agree with what the engine can see, so a
         // machine with no output has an empty endpoint list there too.
-        auto default_device = std::make_shared<ac3::crucible::testing::FakeDefaultDevice>();
-        std::vector<ac3::crucible::RenderEndpoint> in_settings;
+        auto default_device = std::make_shared<iclforge::crucible::testing::FakeDefaultDevice>();
+        std::vector<iclforge::crucible::RenderEndpoint> in_settings;
         in_settings.reserve(endpoints.size());
         for (const auto& endpoint : endpoints) {
             in_settings.push_back({.id = endpoint.id, .name = endpoint.name, .is_default = endpoint.is_default});
         }
         default_device->set_endpoints(std::move(in_settings));
 
-        std::shared_ptr<ac3::crucible::VirtualDevice> virtual_device;
+        std::shared_ptr<iclforge::crucible::VirtualDevice> virtual_device;
         if (makes_its_own) {
             virtual_device = std::make_shared<ScriptedSilentDevice>(default_device, devices);
         } else {
-            auto fake = std::make_shared<ac3::crucible::testing::FakeVirtualDevice>();
+            auto fake = std::make_shared<iclforge::crucible::testing::FakeVirtualDevice>();
             fake->set_device_name("Desktop Atmos");
             fake->set_state({.needed = true,
                              .present = true,
@@ -351,9 +351,9 @@ private:
     bool scripted_ = false;
     // The scripted machine's seams, kept so a case can change them while
     // the engine runs over them.
-    std::shared_ptr<ac3::crucible::testing::FakeSessionMonitor> sessions_;
-    std::shared_ptr<ac3::crucible::testing::FakeForeground> foreground_;
-    std::shared_ptr<ac3::crucible::testing::FakeDefaultDevice> default_device_;
+    std::shared_ptr<iclforge::crucible::testing::FakeSessionMonitor> sessions_;
+    std::shared_ptr<iclforge::crucible::testing::FakeForeground> foreground_;
+    std::shared_ptr<iclforge::crucible::testing::FakeDefaultDevice> default_device_;
 };
 
 // The isolation described above: settings, style, language and the icon
@@ -384,7 +384,7 @@ public slots:
         // The same appicon image provider ui/main.cpp registers, so an
         // AppIcon under test reaches the platform's provider (tst_icons.qml)
         // rather than Image.Error for every id. The engine owns it.
-        engine->addImageProvider(QStringLiteral("appicon"), new ac3::crucible::ui::AppIconProvider);
+        engine->addImageProvider(QStringLiteral("appicon"), new iclforge::crucible::ui::AppIconProvider);
         // The scripted machine, under its own URI so nothing the window
         // itself imports can reach it.
         test_services_.emplace(*engine);

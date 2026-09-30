@@ -30,7 +30,7 @@
 // subtract them. Cost when not selected: none, since tracy_disabled/ is then
 // the directory on the path and every macro below expands to nothing there.
 
-namespace ac3::internal::profiling {
+namespace iclforge::internal::profiling {
 
 // Supplied by the application. `name` is the string literal the zone was
 // declared with, so its address identifies the zone as well as its text;
@@ -50,7 +50,7 @@ class ZoneScope {
     ZoneScope& operator=(ZoneScope&&) = delete;
 };
 
-}  // namespace ac3::internal::profiling
+}  // namespace iclforge::internal::profiling
 
 // Two-step expansion so __LINE__ is substituted before the paste, giving
 // each zone in a function its own local.
@@ -58,14 +58,14 @@ class ZoneScope {
 #define AC3_PROFILING_ZONE_NAME(prefix, line) AC3_PROFILING_ZONE_NAME_2(prefix, line)
 
 #define AC3_ZONE_SCOPED() \
-    ::ac3::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){__func__}
+    ::iclforge::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){__func__}
 #define AC3_ZONE_SCOPED_N(name) \
-    ::ac3::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){name}
+    ::iclforge::internal::profiling::ZoneScope AC3_PROFILING_ZONE_NAME(ac3_zone_, __LINE__){name}
 // The manual pair. `var` is Tracy's context handle and means nothing here:
 // the stack in the application pairs each leave with the innermost open
 // zone, which is what a correctly nested begin/end pair is.
-#define AC3_ZONE_BEGIN(var, name) ::ac3::internal::profiling::zone_enter(name)
-#define AC3_ZONE_END(var) ::ac3::internal::profiling::zone_leave()
+#define AC3_ZONE_BEGIN(var, name) ::iclforge::internal::profiling::zone_enter(name)
+#define AC3_ZONE_END(var) ::iclforge::internal::profiling::zone_leave()
 // Frame marks are for Tracy's frame view; the probe already knows where its
 // frames are, since it is the thing calling decode_frame_into.
 #define AC3_FRAME_MARK()

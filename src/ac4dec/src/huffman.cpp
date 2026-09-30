@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 int huff_decode(BitReader& reader, const Codebook& codebook, std::string_view element) {
     const std::size_t start = reader.position();
@@ -57,4 +57,4 @@ std::expected<int, SyntaxError> huff_codeword(BitReader& reader, const Codebook&
     return fail(DecodeError::kInvalidStream, reasons.invalid);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

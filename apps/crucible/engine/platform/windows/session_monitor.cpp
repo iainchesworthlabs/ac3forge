@@ -17,7 +17,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -473,4 +473,4 @@ std::shared_ptr<SessionMonitor> platform_session_monitor() {
     return std::make_shared<WindowsSessionMonitor>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

@@ -11,7 +11,7 @@
 #include "iclforge/audio/passthrough.hpp"
 #include "iclforge/audio/spatial.hpp"
 
-// The production AudioDevices: each interface forwards to the ac3::audio
+// The production AudioDevices: each interface forwards to the iclforge::audio
 // class of the same shape, and error enums become the library's own
 // one-line descriptions.
 //
@@ -26,7 +26,7 @@
 // output policy never chooses the headphone route (docs/crucible/design/promotion.md,
 // Phase 4).
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -35,10 +35,10 @@ public:
     std::expected<void, std::string> start(const std::string& device_id, std::uint32_t sample_rate,
                                            bool eac3) override {
         const auto started = sink_.start(device_id, sample_rate,
-                                         eac3 ? ac3::audio::BitstreamFormat::kEac3
-                                              : ac3::audio::BitstreamFormat::kAc3);
+                                         eac3 ? iclforge::audio::BitstreamFormat::kEac3
+                                              : iclforge::audio::BitstreamFormat::kAc3);
         if (!started) {
-            return std::unexpected(std::string(ac3::audio::describe(started.error())));
+            return std::unexpected(std::string(iclforge::audio::describe(started.error())));
         }
         return {};
     }
@@ -47,7 +47,7 @@ public:
     void stop() override { sink_.stop(); }
 
 private:
-    ac3::audio::PassthroughSink sink_;
+    iclforge::audio::PassthroughSink sink_;
 };
 
 class WasapiPcmSink final : public PcmSink {
@@ -57,7 +57,7 @@ public:
                                            bool low_latency) override {
         const auto started = sink_.start(device_id, sample_rate, channels, channel_mask, low_latency);
         if (!started) {
-            return std::unexpected(std::string(ac3::audio::describe(started.error())));
+            return std::unexpected(std::string(iclforge::audio::describe(started.error())));
         }
         return {};
     }
@@ -72,7 +72,7 @@ public:
     void stop() override { sink_.stop(); }
 
 private:
-    ac3::audio::MonitorSink sink_;
+    iclforge::audio::MonitorSink sink_;
 };
 
 class WasapiObjectSink final : public ObjectSink {
@@ -82,19 +82,19 @@ public:
                                            std::uint32_t max_dynamic_objects) override {
         const auto started = sink_.start(device_id, sample_rate, static_channels, max_dynamic_objects);
         if (!started) {
-            return std::unexpected(std::string(ac3::audio::describe(started.error())));
+            return std::unexpected(std::string(iclforge::audio::describe(started.error())));
         }
         return {};
     }
-    bool submit(std::span<const ac3::audio::DynamicObjectUpdate> dynamic,
-                std::span<const ac3::audio::StaticObjectUpdate> static_objects) override {
+    bool submit(std::span<const iclforge::audio::DynamicObjectUpdate> dynamic,
+                std::span<const iclforge::audio::StaticObjectUpdate> static_objects) override {
         return sink_.submit(dynamic, static_objects);
     }
     bool running() const override { return sink_.running(); }
     void stop() override { sink_.stop(); }
 
 private:
-    ac3::audio::SpatialObjectSink sink_;
+    iclforge::audio::SpatialObjectSink sink_;
 };
 
 class WasapiTap final : public TapSource {
@@ -102,10 +102,10 @@ public:
     std::expected<void, std::string> start(std::uint32_t process_id, std::uint32_t sample_rate,
                                            std::uint16_t channels) override {
         const auto started = capture_.start_process_loopback(
-            process_id, ac3::audio::ProcessLoopbackMode::kIncludeProcessTree,
+            process_id, iclforge::audio::ProcessLoopbackMode::kIncludeProcessTree,
             {.sample_rate = sample_rate, .channels = channels});
         if (!started) {
-            return std::unexpected(std::string(ac3::audio::describe(started.error())));
+            return std::unexpected(std::string(iclforge::audio::describe(started.error())));
         }
         return {};
     }
@@ -114,20 +114,20 @@ public:
         return ring != nullptr ? ring->read(out) : 0;
     }
     std::size_t available() const override {
-        auto* ring = const_cast<ac3::audio::Capture&>(capture_).buffer();
+        auto* ring = const_cast<iclforge::audio::Capture&>(capture_).buffer();
         return ring != nullptr ? ring->available() : 0;
     }
     void stop() override { capture_.stop(); }
 
 private:
-    ac3::audio::Capture capture_;
+    iclforge::audio::Capture capture_;
 };
 
 class WasapiDevices final : public AudioDevices {
 public:
     std::vector<DeviceFacts> render_devices(std::uint32_t sample_rate) override {
         std::vector<DeviceFacts> facts;
-        const auto devices = ac3::audio::enumerate_render_devices(sample_rate);
+        const auto devices = iclforge::audio::enumerate_render_devices(sample_rate);
         if (!devices) {
             return facts;
         }
@@ -138,7 +138,7 @@ public:
                           .accepts_eac3 = device.supports_eac3_passthrough,
                           .accepts_ac3 = device.supports_ac3_passthrough,
                           .shared_channels = device.channels};
-            if (const auto spatial = ac3::audio::probe_spatial_capability(device.id);
+            if (const auto spatial = iclforge::audio::probe_spatial_capability(device.id);
                 spatial && spatial->available) {
                 f.spatial = true;
                 f.spatial_max_objects = spatial->max_dynamic_objects;
@@ -159,4 +159,4 @@ std::shared_ptr<AudioDevices> platform_audio_devices() {
     return std::make_shared<WasapiDevices>();
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

@@ -49,7 +49,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_probe_" + scratch_pid_suffix());
@@ -60,7 +60,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -452,11 +452,11 @@ TEST_CASE("probe names a reserved dmixmod in both output forms, for both codecs"
             merged[i] = static_cast<std::byte>(static_cast<unsigned char>(first[i]) |
                                                static_cast<unsigned char>(second[i]));
         }
-        const auto frames = ac3::split_frames(merged);
+        const auto frames = iclforge::split_frames(merged);
         REQUIRE(frames.has_value());
         for (const auto frame : *frames) {
             const auto at = static_cast<std::size_t>(frame.data() - merged.data());
-            REQUIRE(ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+            REQUIRE(iclforge::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
         }
         const auto out = scratch_dir() / name;
         std::ofstream file{out, std::ios::binary};
@@ -679,11 +679,11 @@ void write_ac4_single_empty_substream_index_table(Ac4BitWriter& w) {
 }
 
 // Wraps a TOC's raw bytes (preamble + payload + trailer - exactly the span
-// ac4::parse_raw_frame() itself expects, and what tests/ac4/test_ac4.cpp
+// iclforge::ac4::parse_raw_frame() itself expects, and what tests/ac4/test_ac4.cpp
 // hands straight to it) into one Annex G.3.1 syncframe: sync_word 0xAC40 (no
 // crc_word - summarize_ac4() only counts a transmitted, failing CRC as a
 // failure, so omitting it costs this vector nothing) plus a plain 2-byte
-// frame_size, matching ac4::scan()'s own reading of both fields.
+// frame_size, matching iclforge::ac4::scan()'s own reading of both fields.
 std::vector<std::byte> wrap_ac4_syncframe(const std::vector<std::byte>& raw_frame) {
     std::vector<std::byte> out;
     out.push_back(std::byte{0xAC});

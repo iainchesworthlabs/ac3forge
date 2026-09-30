@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <span>
 
-namespace ac3::apps {
+namespace iclforge::apps {
 
 // Whether `bytes` opens with an AC-4 sync word, 0xAC40 or 0xAC41 (ETSI TS 103
 // 190-2 Annex G), where AC-3's and E-AC-3's is 0x0B77: how every front end that
@@ -14,4 +14,4 @@ namespace ac3::apps {
            (std::to_integer<unsigned>(bytes[1]) & 0xFEU) == 0x40U;
 }
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

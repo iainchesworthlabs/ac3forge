@@ -51,7 +51,7 @@ namespace {
 // see tests/CMakeLists.txt's comment on that define for why. The leaf also
 // carries this process's own PID - see tests/cli/test_cli.cpp's own
 // scratch_dir comment for why that is needed on top of the build-tree root.
-std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
+std::string scratch_pid_suffix() { return iclforge::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_stream_tools_" + scratch_pid_suffix());
@@ -65,7 +65,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -111,7 +111,7 @@ fs::path make_stream(const std::string& name, const std::string& command,
     const auto wav = dir / "stream_tools_source.wav";
     if (!fs::exists(wav)) {
         const auto channels = tone_channels(6, 68000, 48000);
-        REQUIRE(ac3::io::write_wav_f32(wav.string(), channels, 48000).has_value());
+        REQUIRE(iclforge::io::write_wav_f32(wav.string(), channels, 48000).has_value());
     }
     const auto out = dir / name;
     const auto log = dir / (name + ".log");
@@ -142,7 +142,7 @@ constexpr double kLegacyCoreSilentHz = 5000.0;
 
 std::vector<std::vector<float>> legacy_core_unit_pcm(std::span<const double> hz,
                                                       std::size_t unit) {
-    const auto frame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    const auto frame = static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     std::vector<std::vector<float>> pcm(hz.size(), std::vector<float>(frame));
     for (std::size_t c = 0; c < hz.size(); ++c) {
         for (std::size_t i = 0; i < frame; ++i) {
@@ -161,12 +161,12 @@ fs::path write_legacy_core_stream(const std::string& name) {
     if (fs::exists(out)) {
         return out;
     }
-    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
-    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 192,
-                                  .acmod = ac3::Acmod::k2_2,
-                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+    iclforge::FrameEncoder core{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 192,
+                                  .acmod = iclforge::Acmod::k2_2,
+                                  .strmtyp = iclforge::eac3::StreamType::kDependent,
                                   .substreamid = 0,
-                                  .chanmap = ac3::eac3::chanmap::k71Rear,
+                                  .chanmap = iclforge::eac3::chanmap::k71Rear,
                                   .last_dependent = true}};
     std::vector<std::byte> stream;
     for (std::size_t unit = 0; unit < 16; ++unit) {
@@ -209,7 +209,7 @@ double tone_power(std::span<const float> x, double hz) {
 
 // The strongest channel at `hz`, so a caller does not need to know which WAV
 // position a Table E2.5 location landed at.
-double best_channel_power(const ac3::io::WavData& wav, double hz) {
+double best_channel_power(const iclforge::io::WavData& wav, double hz) {
     double best = 0.0;
     for (const auto& channel : wav.channels) {
         best = std::max(best, tone_power(channel, hz));
@@ -249,7 +249,7 @@ TEST_CASE("metadata rewrites bsi and leaves the audio bit-identical", "[cli][met
     // Same length: an in-place rewrite cannot add or remove a byte.
     CHECK(fs::file_size(out) == fs::file_size(source));
 
-    const auto edited = ac3::io::read_frame_metadata(read_bytes(out));
+    const auto edited = iclforge::io::read_frame_metadata(read_bytes(out));
     REQUIRE(edited.has_value());
     CHECK(edited->dialnorm == 20);
     REQUIRE(edited->bsmod.has_value());
@@ -284,8 +284,8 @@ TEST_CASE("metadata stamps compr onto a stream that carries one", "[cli][metadat
     const auto log = dir / "meta_compr.log";
 
     REQUIRE(run_cli("metadata " + quoted(source) + " " + quoted(out) + " compr=-6", log) == 0);
-    const auto before = ac3::io::read_frame_metadata(read_bytes(source));
-    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    const auto before = iclforge::io::read_frame_metadata(read_bytes(source));
+    const auto after = iclforge::io::read_frame_metadata(read_bytes(out));
     REQUIRE(before.has_value());
     REQUIRE(after.has_value());
     REQUIRE(before->compr.has_value());
@@ -295,7 +295,7 @@ TEST_CASE("metadata stamps compr onto a stream that carries one", "[cli][metadat
     // does NOT exceed the requested one, so the ceiling stays a ceiling.
     // A small tolerance for the dB conversion itself, not for the rounding
     // rule: the stamped word must not represent a gain ABOVE the request.
-    CHECK(ac3::meta::to_db(ac3::meta::compr_gain(*after->compr)) <= -6.0 + 1e-9);
+    CHECK(iclforge::meta::to_db(iclforge::meta::compr_gain(*after->compr)) <= -6.0 + 1e-9);
     require_same_audio(source, out, "meta_compr_audio");
 }
 
@@ -314,7 +314,7 @@ TEST_CASE("normalize writes the dialnorm the measurement implies", "[cli][normal
     // Whatever it measured, the written dialnorm must be a legal §5.4.2.8
     // value and must agree with what `qc` independently derives from the same
     // stream - the two must not be able to disagree.
-    const auto written = ac3::io::read_frame_metadata(read_bytes(out));
+    const auto written = iclforge::io::read_frame_metadata(read_bytes(out));
     REQUIRE(written.has_value());
     CHECK(written->dialnorm >= 1);
     CHECK(written->dialnorm <= 31);
@@ -361,7 +361,7 @@ TEST_CASE("cut snaps to access-unit boundaries and refuses a start past the end"
     // A start inside an access unit names that whole unit - a cut is never a
     // split. 0.040 s falls inside unit 1 (units are 0.032 s each).
     REQUIRE(run_cli("cut " + quoted(source) + " " + quoted(out) + " 0.040 0.064", log) == 0);
-    const auto scanned = ac3::io::scan(read_bytes(out));
+    const auto scanned = iclforge::io::scan(read_bytes(out));
     REQUIRE(scanned.has_value());
     CHECK(scanned->access_units.size() == 2);
     const auto text = read_log(log);
@@ -379,7 +379,7 @@ TEST_CASE("cut snaps to access-unit boundaries and refuses a start past the end"
     SECTION("a duration shorter than one access unit still writes one") {
         const auto tiny = dir / "cut_tiny.ac3";
         REQUIRE(run_cli("cut " + quoted(source) + " " + quoted(tiny) + " 0 0.001", log) == 0);
-        const auto tiny_scan = ac3::io::scan(read_bytes(tiny));
+        const auto tiny_scan = iclforge::io::scan(read_bytes(tiny));
         REQUIRE(tiny_scan.has_value());
         CHECK(tiny_scan->access_units.size() == 1);
         CHECK(read_log(log).find("shorter than one access unit") != std::string::npos);
@@ -409,13 +409,13 @@ TEST_CASE("cat joins an E-AC-3 stream by whole access units", "[cli][cat]") {
     const auto log = dir / "cat_eac3.log";
 
     REQUIRE(run_cli("cat " + quoted(out) + " " + quoted(source) + " " + quoted(source), log) == 0);
-    const auto one = ac3::io::scan(read_bytes(source));
-    const auto two = ac3::io::scan(read_bytes(out));
+    const auto one = iclforge::io::scan(read_bytes(source));
+    const auto two = iclforge::io::scan(read_bytes(out));
     REQUIRE(one.has_value());
     REQUIRE(two.has_value());
     CHECK(two->access_units.size() == one->access_units.size() * 2);
-    CHECK(ac3::io::stream_duration_samples(*two) ==
-          ac3::io::stream_duration_samples(*one) * 2);
+    CHECK(iclforge::io::stream_duration_samples(*two) ==
+          iclforge::io::stream_duration_samples(*one) * 2);
 }
 
 TEST_CASE("transcode carries dialnorm and compr from DD+ into DD", "[cli][transcode]") {
@@ -430,11 +430,11 @@ TEST_CASE("transcode carries dialnorm and compr from DD+ into DD", "[cli][transc
     CHECK(text.find("carried from the source") != std::string::npos);
     CHECK(text.find("carried across verbatim") != std::string::npos);
 
-    const auto before = ac3::io::read_frame_metadata(read_bytes(source));
-    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    const auto before = iclforge::io::read_frame_metadata(read_bytes(source));
+    const auto after = iclforge::io::read_frame_metadata(read_bytes(out));
     REQUIRE(before.has_value());
     REQUIRE(after.has_value());
-    CHECK(after->kind == ac3::io::StreamKind::kAc3);
+    CHECK(after->kind == iclforge::io::StreamKind::kAc3);
     CHECK(after->dialnorm == 23);
     CHECK(after->dialnorm == before->dialnorm);
     REQUIRE(before->compr.has_value());
@@ -445,12 +445,12 @@ TEST_CASE("transcode carries dialnorm and compr from DD+ into DD", "[cli][transc
 
     // Same programme length either way - one AC-3 frame out per E-AC-3
     // access unit in, since both code 1536 samples here.
-    const auto in_scan = ac3::io::scan(read_bytes(source));
-    const auto out_scan = ac3::io::scan(read_bytes(out));
+    const auto in_scan = iclforge::io::scan(read_bytes(source));
+    const auto out_scan = iclforge::io::scan(read_bytes(out));
     REQUIRE(in_scan.has_value());
     REQUIRE(out_scan.has_value());
-    CHECK(ac3::io::stream_duration_samples(*out_scan) ==
-          ac3::io::stream_duration_samples(*in_scan));
+    CHECK(iclforge::io::stream_duration_samples(*out_scan) ==
+          iclforge::io::stream_duration_samples(*in_scan));
 }
 
 TEST_CASE("transcode overrides the carried dialnorm when told to", "[cli][transcode]") {
@@ -461,7 +461,7 @@ TEST_CASE("transcode overrides the carried dialnorm when told to", "[cli][transc
 
     REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448 51 dialnorm=12",
                     log) == 0);
-    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    const auto after = iclforge::io::read_frame_metadata(read_bytes(out));
     REQUIRE(after.has_value());
     CHECK(after->dialnorm == 12);
     CHECK(read_log(log).find("(from dialnorm=)") != std::string::npos);
@@ -480,11 +480,11 @@ TEST_CASE("transcode folds a layout AC-3 cannot code down to 5.1, and says so",
     INFO(text);
     CHECK(text.find("no AC-3 coding mode") != std::string::npos);
 
-    const auto scanned = ac3::io::scan(read_bytes(out));
+    const auto scanned = iclforge::io::scan(read_bytes(out));
     REQUIRE(scanned.has_value());
-    CHECK(scanned->kind == ac3::io::StreamKind::kAc3);
+    CHECK(scanned->kind == iclforge::io::StreamKind::kAc3);
     CHECK(scanned->channels == 6);
-    CHECK(scanned->acmod == ac3::Acmod::k3_2);
+    CHECK(scanned->acmod == iclforge::Acmod::k3_2);
     CHECK(scanned->lfe);
 }
 
@@ -504,9 +504,9 @@ TEST_CASE("transcode needs to be told the codec when the name cannot say it",
 
     REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448 \"\" codec=ac3",
                     log) == 0);
-    const auto scanned = ac3::io::scan(read_bytes(out));
+    const auto scanned = iclforge::io::scan(read_bytes(out));
     REQUIRE(scanned.has_value());
-    CHECK(scanned->kind == ac3::io::StreamKind::kAc3);
+    CHECK(scanned->kind == iclforge::io::StreamKind::kAc3);
 }
 
 TEST_CASE("transcode carries a reserved dmixmod across as not indicated", "[cli][transcode]") {
@@ -528,16 +528,16 @@ TEST_CASE("transcode carries a reserved dmixmod across as not indicated", "[cli]
     for (std::size_t i = 0; i < merged.size(); ++i) {
         merged[i] = ltrt[i] | loro[i];
     }
-    const auto frames = ac3::split_frames(merged);
+    const auto frames = iclforge::split_frames(merged);
     REQUIRE(frames.has_value());
     for (const auto frame : *frames) {
         const auto at = static_cast<std::size_t>(frame.data() - merged.data());
-        REQUIRE(ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+        REQUIRE(iclforge::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
     }
-    const auto before = ac3::io::read_frame_metadata(merged);
+    const auto before = iclforge::io::read_frame_metadata(merged);
     REQUIRE(before.has_value());
     REQUIRE(before->mix.has_value());
-    REQUIRE(before->mix->dmixmod == ac3::meta::DownmixMode::kReserved);
+    REQUIRE(before->mix->dmixmod == iclforge::meta::DownmixMode::kReserved);
     const auto source = dir / "tx_dmix_reserved.ec3";
     {
         std::ofstream file{source, std::ios::binary};
@@ -551,11 +551,11 @@ TEST_CASE("transcode carries a reserved dmixmod across as not indicated", "[cli]
     fs::remove(out);
     REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448", log) == 0);
     INFO(read_log(log));
-    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    const auto after = iclforge::io::read_frame_metadata(read_bytes(out));
     REQUIRE(after.has_value());
-    CHECK(after->kind == ac3::io::StreamKind::kEac3);
+    CHECK(after->kind == iclforge::io::StreamKind::kEac3);
     REQUIRE(after->mix.has_value());
-    CHECK(after->mix->dmixmod == ac3::meta::DownmixMode::kNotIndicated);
+    CHECK(after->mix->dmixmod == iclforge::meta::DownmixMode::kNotIndicated);
 }
 
 TEST_CASE("transcode also goes the other way, DD into DD+", "[cli][transcode]") {
@@ -565,9 +565,9 @@ TEST_CASE("transcode also goes the other way, DD into DD+", "[cli][transcode]") 
     const auto log = dir / "tx_up.log";
 
     REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448", log) == 0);
-    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    const auto after = iclforge::io::read_frame_metadata(read_bytes(out));
     REQUIRE(after.has_value());
-    CHECK(after->kind == ac3::io::StreamKind::kEac3);
+    CHECK(after->kind == iclforge::io::StreamKind::kEac3);
     CHECK(after->dialnorm == 27);
 }
 
@@ -590,9 +590,9 @@ TEST_CASE("transcode reads a legacy-core stream's Annex E dependent, not just th
     // core's 3/2+LFE bed with the dependent's k71Rear chanmap renders 8
     // channels - not something an AC-3-only read of this stream could ever
     // produce (the core alone is 6).
-    const auto scanned = ac3::io::scan(read_bytes(source));
+    const auto scanned = iclforge::io::scan(read_bytes(source));
     REQUIRE(scanned.has_value());
-    REQUIRE(scanned->kind == ac3::io::StreamKind::kAc3CoreEac3Extension);
+    REQUIRE(scanned->kind == iclforge::io::StreamKind::kAc3CoreEac3Extension);
     REQUIRE(scanned->channels == 8);
 
     // The E-AC-3 target, so the transcode has a layout (k71, "7.1") that
@@ -607,15 +607,15 @@ TEST_CASE("transcode reads a legacy-core stream's Annex E dependent, not just th
     // this is its own regression guard, not just a log spot-check.
     CHECK(read_log(log).find("16 E-AC-3 access units") != std::string::npos);
 
-    const auto out_scanned = ac3::io::scan(read_bytes(out));
+    const auto out_scanned = iclforge::io::scan(read_bytes(out));
     REQUIRE(out_scanned.has_value());
-    CHECK(out_scanned->kind == ac3::io::StreamKind::kEac3);
+    CHECK(out_scanned->kind == iclforge::io::StreamKind::kEac3);
     CHECK(out_scanned->channels == 8);
 
     const auto wav = dir / "tx_legacy_core_out.wav";
     const auto decode_log = dir / "tx_legacy_core_decode.log";
     REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(wav), decode_log) == 0);
-    const auto decoded = ac3::io::read_wav(wav.string());
+    const auto decoded = iclforge::io::read_wav(wav.string());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->channels.size() == 8);
 
@@ -649,7 +649,7 @@ TEST_CASE("transcode reads a legacy-core stream's Annex E dependent, not just th
 // same slot_to_wav position maps to within one flush - the queue's per-
 // channel append grows unevenly rather than just mismatching lengths, since
 // it has no per-call slot tracking of its own. decode_and_render now builds
-// the whole held-back unit first via ac3::apps::held_back_unit
+// the whole held-back unit first via iclforge::apps::held_back_unit
 // (apps/common/stream_playback.hpp) and pushes it exactly once per slot,
 // same as every other unit. A genuine E-AC-3 bed (not a legacy core - see
 // the separately-flagged decode_and_render dispatch gap for
@@ -658,8 +658,8 @@ TEST_CASE("transcode reads a legacy-core stream's Annex E dependent, not just th
 TEST_CASE("transcode carries a held-back last unit's samples through, not just the ones "
           "that arrived on time",
           "[cli][transcode]") {
-    namespace cm = ac3::eac3::chanmap;
-    constexpr auto kFrame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    namespace cm = iclforge::eac3::chanmap;
+    constexpr auto kFrame = static_cast<std::size_t>(iclforge::kSamplesPerFrame);
     constexpr std::size_t kOnsetSample = 960;
     constexpr int kUnits = 5;
     constexpr int kOnsetUnit = 2;
@@ -686,15 +686,15 @@ TEST_CASE("transcode carries a held-back last unit's samples through, not just t
     // A genuine E-AC-3 5.1 bed (transient-pre-noise held) with a k71Rear
     // dependent - same shape as tests/cli/test_cli.cpp's own legacy-core
     // case, except the bed itself is Annex E from the start (strmtyp 0,
-    // bsid 16), so ac3::io::scan reports StreamKind::kEac3 rather than
+    // bsid 16), so iclforge::io::scan reports StreamKind::kEac3 rather than
     // kAc3CoreEac3Extension and decode_and_render's eac3_source check
     // routes it through Eac3Decoder as intended.
-    ac3::eac3::AccessUnitEncoder encoder{
+    iclforge::eac3::AccessUnitEncoder encoder{
         {.independent = {.bitrate_kbps = 448,
-                         .acmod = ac3::Acmod::k3_2,
+                         .acmod = iclforge::Acmod::k3_2,
                          .lfe = true,
                          .transient_prenoise = true},
-         .dependents = {{.bitrate_kbps = 320, .acmod = ac3::Acmod::k2_2, .chanmap = cm::k71Rear}}}};
+         .dependents = {{.bitrate_kbps = 320, .acmod = iclforge::Acmod::k2_2, .chanmap = cm::k71Rear}}}};
     std::vector<std::byte> stream;
     for (int unit = 0; unit < kUnits; ++unit) {
         auto pcm = unit_pcm(kBedTones, unit);
@@ -724,9 +724,9 @@ TEST_CASE("transcode carries a held-back last unit's samples through, not just t
     // returns - a pre-fix build's uneven queue growth would have left this
     // short (or, depending on which slot grew, silently wrong rather than
     // short - see the WAV-level check below either way).
-    const auto out_scan = ac3::io::scan(read_bytes(out));
+    const auto out_scan = iclforge::io::scan(read_bytes(out));
     REQUIRE(out_scan.has_value());
-    CHECK(ac3::io::stream_duration_samples(*out_scan) == static_cast<std::uint64_t>(kUnits) * kFrame);
+    CHECK(iclforge::io::stream_duration_samples(*out_scan) == static_cast<std::uint64_t>(kUnits) * kFrame);
 
     // Decode the transcoded output back and check the last unit's audio
     // directly, the same way test_cli.cpp's legacy-core case does: Ls (the
@@ -735,15 +735,15 @@ TEST_CASE("transcode carries a held-back last unit's samples through, not just t
     const auto wav_out = dir / "tx_held_out.wav";
     const auto decode_log = dir / "tx_held_decode.log";
     REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(wav_out), decode_log) == 0);
-    const auto decoded = ac3::io::read_wav(wav_out.string());
+    const auto decoded = iclforge::io::read_wav(wav_out.string());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->channels.size() == 8);
     CHECK(decoded->frame_count() == static_cast<std::size_t>(kUnits) * kFrame);
 
     const auto layout =
-        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(ac3::Acmod::k3_2, true) | cm::k71Rear));
+        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(iclforge::Acmod::k3_2, true) | cm::k71Rear));
     const auto order =
-        ac3::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
+        iclforge::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
     const auto ls_slot = layout.index_of(cm::Location::kLeftSurround);
     REQUIRE(ls_slot >= 0);
     const auto ls_at = std::find(order.begin(), order.end(), static_cast<std::size_t>(ls_slot));
@@ -786,8 +786,8 @@ TEST_CASE("transcode measures dialnorm when told dialnorm=auto", "[cli][transcod
     const auto norm_out = dir / "tx_auto_norm.ec3";
     const auto norm_log = dir / "tx_auto_norm.log";
     REQUIRE(run_cli("normalize " + quoted(source) + " " + quoted(norm_out), norm_log) == 0);
-    const auto normalized = ac3::io::read_frame_metadata(read_bytes(norm_out));
-    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    const auto normalized = iclforge::io::read_frame_metadata(read_bytes(norm_out));
+    const auto after = iclforge::io::read_frame_metadata(read_bytes(out));
     REQUIRE(normalized.has_value());
     REQUIRE(after.has_value());
     CHECK(after->dialnorm == normalized->dialnorm);
@@ -813,14 +813,14 @@ TEST_CASE("transcode names the reason when the encoder refuses a carried dialnor
     // the top two of byte 6.
     for (std::size_t at = 0; at < bytes.size();) {
         const auto frame = std::span{bytes}.subspan(at);
-        const auto meta = ac3::io::read_frame_metadata(frame);
+        const auto meta = iclforge::io::read_frame_metadata(frame);
         REQUIRE(meta.has_value());
         frame[5] &= std::byte{0xF8};
         frame[6] &= std::byte{0x3F};
-        REQUIRE(ac3::io::restamp_crc(frame).has_value());
+        REQUIRE(iclforge::io::restamp_crc(frame).has_value());
         at += meta->bytes;
     }
-    const auto carried = ac3::io::read_frame_metadata(bytes);
+    const auto carried = iclforge::io::read_frame_metadata(bytes);
     REQUIRE(carried.has_value());
     REQUIRE(carried->dialnorm == 0);
     const auto source = dir / "tx_dialnorm0.ec3";

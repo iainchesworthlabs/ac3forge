@@ -24,7 +24,7 @@
 // qmf_slots (f + d_ctrl) - hfgen_slots on, and its dialogue enhancement, DRC
 // and gains to slots qmf_slots (f + d_ctrl) on.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 struct FrameTiming {
     int frame_rate_index = 13;
@@ -62,4 +62,4 @@ struct FrameTiming {
 [[nodiscard]] std::optional<FrameTiming> frame_timing(int frame_rate_index,
                                                       int sample_rate_hz) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

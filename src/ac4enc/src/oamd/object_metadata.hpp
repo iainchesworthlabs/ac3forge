@@ -22,7 +22,7 @@
 // oa_sample_offset 0, where the decoder places it at the sample the input
 // sample comes out at.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Why `p` cannot be sent, or an empty view where it can: a value off the range
 // encoder.hpp gives it, or a depth exponent other than 1 with a screen factor
@@ -159,4 +159,4 @@ class PortionWriter {
                                                  std::int64_t start, int frame_length,
                                                  bool iframe);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

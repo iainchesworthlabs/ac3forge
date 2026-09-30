@@ -40,7 +40,7 @@
 #include "iclforge/sendspin/transport.hpp"
 #include "iclforge/sendspin/websocket.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace {
 
@@ -1794,4 +1794,4 @@ std::size_t Group::members_playing() const {
                                                    [](const State::Member& member) { return member.started; }));
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

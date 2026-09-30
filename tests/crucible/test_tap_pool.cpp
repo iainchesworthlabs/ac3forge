@@ -13,9 +13,9 @@
 // not open, reads the same number of frames from each, and reads a stalled
 // tap as silence rather than holding the frame.
 
-using ac3::crucible::AppId;
-using ac3::crucible::TapPool;
-using ac3::crucible::testing::FakeDevices;
+using iclforge::crucible::AppId;
+using iclforge::crucible::TapPool;
+using iclforge::crucible::testing::FakeDevices;
 
 namespace {
 

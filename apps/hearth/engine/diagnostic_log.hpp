@@ -26,7 +26,7 @@
 // No Qt and no platform header: the engine's thread writes here, and ac3tests
 // holds the rule on every CI leg.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // Recent one-line notes: what changed and what refused, never anything per
 // block or per unit. Written from the engine thread and the window's, so
@@ -118,4 +118,4 @@ void withhold_path(Secrets& secrets, std::string_view path);
 // before the folder above it is looked for.
 [[nodiscard]] std::string scrub(std::string text, const Secrets& secrets);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

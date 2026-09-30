@@ -25,7 +25,7 @@
 // added mid-play are all decided here rather than in the transport, because
 // they are questions about a list rather than about playback.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 // What a probe found out about one item. Every field is optional in effect:
 // an item that has not been probed yet has zeros, and the transport treats
@@ -125,4 +125,4 @@ private:
 // Queue::kNone, which with no title is `an item no longer in the queue`.
 [[nodiscard]] std::string describe_item(std::size_t index, std::string_view title);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

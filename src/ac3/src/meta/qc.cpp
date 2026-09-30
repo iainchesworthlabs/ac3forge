@@ -4,7 +4,7 @@
 #include <optional>
 #include <string_view>
 
-namespace ac3::meta {
+namespace iclforge::meta {
 
 bool parse_qc_preset(std::string_view name, QcPresetId& out) {
     if (name == "ebu-r128-s2") {
@@ -50,4 +50,4 @@ QcVerdict evaluate_qc_gate(const QcPreset& preset, std::optional<double> integra
     return verdict;
 }
 
-}  // namespace ac3::meta
+}  // namespace iclforge::meta

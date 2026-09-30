@@ -14,8 +14,8 @@
 // coefficients the transform produces are widened to double on their way into
 // the rest of the encoder, which is unchanged by this variant.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 using encode_scalar_t = float;
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

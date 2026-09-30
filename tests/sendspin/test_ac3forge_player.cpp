@@ -19,8 +19,8 @@
 
 namespace {
 
-namespace ac = ac3::sendspin::ac3forge;
-namespace json = ac3::sendspin::json;
+namespace ac = iclforge::sendspin::ac3forge;
+namespace json = iclforge::sendspin::json;
 
 // A parsed object whose values stay valid while the Parsed lives.
 struct Parsed {
@@ -99,18 +99,18 @@ TEST_CASE("ac3forge_player: names and IDs", "[sendspin][ac3forge]") {
     CHECK(ac::kRole == "_ac3forge_player@v1");
     CHECK(ac::kSupportKey == "_ac3forge_player@v1_support");
     CHECK(ac::kObjectKey == "_ac3forge_player");
-    CHECK(ac3::sendspin::message_id::kAc3forgeBurst == 192);
+    CHECK(iclforge::sendspin::message_id::kAc3forgeBurst == 192);
     CHECK(ac::data_type_name(ac::DataType::kAc3) == "ac3");
     CHECK(ac::data_type_name(ac::DataType::kEac3) == "eac3");
     CHECK(ac::data_type_name(ac::DataType::kAc4) == "ac4");
-    CHECK(ac::burst_data_type(ac::DataType::kAc3) == ac3::sendspin::BurstDataType::kAc3);
-    CHECK(ac::burst_data_type(ac::DataType::kEac3) == ac3::sendspin::BurstDataType::kEac3);
-    CHECK(ac::burst_data_type(ac::DataType::kAc4) == ac3::sendspin::BurstDataType::kAc4);
+    CHECK(ac::burst_data_type(ac::DataType::kAc3) == iclforge::sendspin::BurstDataType::kAc3);
+    CHECK(ac::burst_data_type(ac::DataType::kEac3) == iclforge::sendspin::BurstDataType::kEac3);
+    CHECK(ac::burst_data_type(ac::DataType::kAc4) == iclforge::sendspin::BurstDataType::kAc4);
 }
 
 TEST_CASE("ac3forge_player: an AC-4 stream carries any of IEC 61937-14's four burst types",
           "[sendspin][ac3forge][ac4]") {
-    using ac3::sendspin::BurstDataType;
+    using iclforge::sendspin::BurstDataType;
     for (const BurstDataType burst : {BurstDataType::kAc4, BurstDataType::kAc4Hbr4,
                                       BurstDataType::kAc4Hbr16, BurstDataType::kAc4Ld}) {
         CHECK(ac::carries(ac::DataType::kAc4, burst));

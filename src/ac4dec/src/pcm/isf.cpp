@@ -7,7 +7,7 @@
 
 #include "iclforge/ac4core/tables/isf_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 using S = Speaker;
@@ -186,4 +186,4 @@ bool render_isf(std::span<const IsfInput> inputs, DownmixTarget target, std::siz
     return true;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

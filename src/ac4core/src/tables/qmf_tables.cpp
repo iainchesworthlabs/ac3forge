@@ -1,6 +1,6 @@
 #include "iclforge/ac4core/tables/qmf_tables.hpp"
 
-namespace ac4::detail::tables {
+namespace iclforge::ac4::detail::tables {
 
 const std::array<float, 640> kQwin = {
    0.0f, 1.990318758627504e-004f, 2.494762615491542e-004f, 3.021769445225078e-004f,
@@ -385,4 +385,4 @@ const std::array<std::array<float, 2>, 512> kAspxNoise = {{
    {0.998266f, 0.0588631f}, {-0.145619f, 0.989341f},
 }};
 
-}  // namespace ac4::detail::tables
+}  // namespace iclforge::ac4::detail::tables

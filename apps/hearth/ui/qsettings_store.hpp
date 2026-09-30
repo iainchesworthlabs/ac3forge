@@ -6,7 +6,7 @@
 
 // hearth_controller.hpp's Qt headers define `slots` as a macro unless
 // QT_NO_KEYWORDS is set, which this project's Qt targets do not
-// (hearth-ui-qt-slots-macro-collides-with-render-layout): ac3::render::
+// (hearth-ui-qt-slots-macro-collides-with-render-layout): iclforge::render::
 // OutputLayout::slots() is a real method name, and left alone the macro
 // rewrites its declaration into nonsense. Undefined here, before
 // settings_model.hpp's own include chain reaches it, so any translation
@@ -20,7 +20,7 @@
 #include <string>
 #include <string_view>
 
-// ac3::hearth::SettingsStore over QSettings (planning/hearth-reference-
+// iclforge::hearth::SettingsStore over QSettings (planning/hearth-reference-
 // player.md, A5: "it stores its settings through QSettings"). The key
 // strings settings_model.cpp and pairing_store.cpp already compose
 // ("playback/gapless", "queue/1/path", "pairing/1/client", ...) are plain
@@ -35,9 +35,9 @@
 // are independent the same way their engine-side objects are
 // (network_controller.hpp's own comment).
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
-class QSettingsStore final : public ac3::hearth::SettingsStore {
+class QSettingsStore final : public iclforge::hearth::SettingsStore {
 public:
     explicit QSettingsStore(QSettings& settings) : settings_(settings) {}
 
@@ -71,4 +71,4 @@ private:
     QSettings& settings_;
 };
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

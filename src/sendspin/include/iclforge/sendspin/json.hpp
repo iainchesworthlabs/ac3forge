@@ -13,7 +13,7 @@
 
 // RFC 8259 JSON for Sendspin's messages, read and written in-tree.
 //
-// The tree's other JSON reader is private to ac3::oba (scene_json.cpp) and
+// The tree's other JSON reader is private to iclforge::oba (scene_json.cpp) and
 // allocates a node per value. This one is shaped by where Sendspin's player half
 // runs: on an ESP32 inside an HTTP server task with a 6,144-byte stack and a
 // regioned heap. So the reader
@@ -44,7 +44,7 @@
 // The writer appends to a std::string, escaping as it goes, and writes doubles
 // with a fixed number of decimals for the same locale reason.
 
-namespace ac3::sendspin::json {
+namespace iclforge::sendspin::json {
 
 enum class Type : std::uint8_t {
     kNull,
@@ -329,4 +329,4 @@ class Writer {
     bool wrote_root_ = false;
 };
 
-}  // namespace ac3::sendspin::json
+}  // namespace iclforge::sendspin::json

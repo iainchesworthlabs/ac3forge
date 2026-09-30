@@ -8,7 +8,7 @@
 #include <span>
 #include <vector>
 
-namespace ac3::dsp {
+namespace iclforge::dsp {
 
 namespace {
 
@@ -200,4 +200,4 @@ std::vector<std::vector<float>> resample_planar(std::span<const std::vector<floa
     return result;
 }
 
-}  // namespace ac3::dsp
+}  // namespace iclforge::dsp

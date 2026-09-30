@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -190,4 +190,4 @@ void add_to_bed(std::span<const float> interleaved, std::uint16_t channels, floa
     }
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

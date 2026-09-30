@@ -7,7 +7,7 @@
 // function. The order of the rules below is the order they are applied, and
 // each one is a case in tests/hearth/test_output_decision.cpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -333,4 +333,4 @@ OutputChoice choose_output(const OutputRequest& request) {
     return local_pcm(*endpoint, request, because);
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

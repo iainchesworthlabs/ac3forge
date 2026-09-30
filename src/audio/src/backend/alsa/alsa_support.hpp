@@ -21,7 +21,7 @@
 // sample-format preference order (which two backends would otherwise each
 // carry a copy of).
 
-namespace ac3::alsa {
+namespace iclforge::alsa {
 
 // An alsa-lib info struct owned by scope.
 //
@@ -245,4 +245,4 @@ void for_each_pcm(snd_pcm_stream_t stream, Visitor&& visit) {
     return static_cast<int>(value);
 }
 
-}  // namespace ac3::alsa
+}  // namespace iclforge::alsa

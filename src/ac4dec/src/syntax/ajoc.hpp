@@ -20,7 +20,7 @@
 // dequantisation and the reconstruction are src/ac4core/include/iclforge/ac4core/ajoc's and
 // src/ac4dec/src/pcm/objects.cpp's.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 inline constexpr int kMaxAjocDecorr = 7;       // ajoc_num_decorr is 3 bits
 inline constexpr int kMaxAjocBands = 23;       // Table 78
@@ -131,4 +131,4 @@ struct AjocBedInfo {
 
 [[nodiscard]] ParseResult parse_ajoc_bed_info(BitReader& r, AjocBedInfo& out);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

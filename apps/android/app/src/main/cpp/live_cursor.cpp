@@ -248,7 +248,7 @@ constexpr double kSceneBlendSeconds = 0.9;
 // gesture anyone performs live, and 3750 Positions is ~90KB, which is nothing
 // next to the frame buffers this loop already holds.
 constexpr int kMaxRecordFrames = 3750;
-constexpr double kFrameSeconds = static_cast<double>(ac3::kSamplesPerFrame) / kSampleRate;
+constexpr double kFrameSeconds = static_cast<double>(iclforge::kSamplesPerFrame) / kSampleRate;
 
 enum class RecordState : std::int32_t { kIdle = 0, kRecording = 1, kPlaying = 2 };
 
@@ -364,7 +364,7 @@ double triangle01(double phase) {
     return frac < 0.5 ? frac * 2.0 : (1.0 - frac) * 2.0;
 }
 
-ac3::oba::Position trajectory_position(int scene, int obj, double time_s) {
+iclforge::oba::Position trajectory_position(int scene, int obj, double time_s) {
     const auto& p = kScenes[static_cast<std::size_t>(scene)]
                         .objects[static_cast<std::size_t>(obj)];
     const double angle = 2.0 * std::numbers::pi * p.rate_hz * time_s + p.phase_rad;
@@ -404,7 +404,7 @@ ac3::oba::Position trajectory_position(int scene, int obj, double time_s) {
 // The position an object is at, accounting for a scene change still in
 // progress. `from` is the scene being left; once the blend is complete the
 // caller stops passing one.
-ac3::oba::Position blended_position(int scene, int from, double blend, int obj, double time_s) {
+iclforge::oba::Position blended_position(int scene, int from, double blend, int obj, double time_s) {
     const auto to_pos = trajectory_position(scene, obj, time_s);
     if (blend >= 1.0 || scene == from) {
         return to_pos;
@@ -426,7 +426,7 @@ ac3::oba::Position blended_position(int scene, int from, double blend, int obj, 
 // pause/mute feature rather than complement it.
 constexpr double kDistanceFalloffK = 1.0;
 constexpr double kDistanceAttenFloor = 0.4;
-double distance_attenuation(const ac3::oba::Position& pos) {
+double distance_attenuation(const iclforge::oba::Position& pos) {
     const double dx = pos.x - 0.5;
     const double dy = pos.y - 0.5;
     const double dz = pos.z;  // z is already centred on the listener's ear height
@@ -706,7 +706,7 @@ public:
     // Called once per encode frame - this is the only place deflection_
     // decays, so the spring-back happens on its own every frame regardless
     // of whether any input arrived.
-    std::array<ac3::oba::ObjectPlacement, kObjects> advance(double time_s, int scene, int from,
+    std::array<iclforge::oba::ObjectPlacement, kObjects> advance(double time_s, int scene, int from,
                                                             double blend) {
         std::lock_guard lock(mutex_);
         for (int i = 0; i < kInteractiveObjects; ++i) {
@@ -795,7 +795,7 @@ public:
     // For the room visualization: the placements advance() last computed,
     // without advancing anything - RoomView polls this far more often
     // (every UI vsync) than the encode loop actually produces new frames.
-    std::array<ac3::oba::ObjectPlacement, kObjects> snapshot() const {
+    std::array<iclforge::oba::ObjectPlacement, kObjects> snapshot() const {
         std::lock_guard lock(mutex_);
         return placements_;
     }
@@ -847,11 +847,11 @@ public:
 private:
     mutable std::mutex mutex_;
     std::array<Deflection, kInteractiveObjects> deflection_{};
-    std::array<ac3::oba::ObjectPlacement, kObjects> placements_{};
+    std::array<iclforge::oba::ObjectPlacement, kObjects> placements_{};
     int selected_ = 0;
 
     RecordState record_state_ = RecordState::kIdle;
-    std::vector<ac3::oba::Position> recorded_;
+    std::vector<iclforge::oba::Position> recorded_;
     double playback_start_s_ = 0.0;
 };
 
@@ -891,8 +891,8 @@ void trace_loop() {
     // Heap, not stack: the decoder's Impl is large, and both examples/
     // atmos_objects.cpp and the CLI's live_audio path allocate it for exactly
     // that reason.
-    const ac3::DecoderConfig config{.skip_reconstruction = true};
-    auto decoder = std::make_unique<ac3::Eac3Decoder>(config);
+    const iclforge::DecoderConfig config{.skip_reconstruction = true};
+    auto decoder = std::make_unique<iclforge::Eac3Decoder>(config);
 
     auto& ring = trace_ring();
     std::vector<std::byte> unit;
@@ -971,15 +971,15 @@ void run_loop() {
     // the signing key asset ever sets this true.
     const bool emit_objects = ac3shield::signing_available();
     stream_stats().signed_stream.store(emit_objects, std::memory_order_relaxed);
-    ac3::oba::AtmosEncoder encoder({.bitrate_kbps = 448, .emit_object_metadata = emit_objects},
+    iclforge::oba::AtmosEncoder encoder({.bitrate_kbps = 448, .emit_object_metadata = emit_objects},
                                    kObjects);
     __android_log_print(ANDROID_LOG_INFO, kLogTag,
                         "object container: %s", emit_objects ? "objects (signed)" : "bed51 (omitted, unsigned build)");
     {
         // Asked once, here: both figures are a property of the configuration
         // this encoder was just built with, not of any frame.
-        const auto object_ms = ac3::latency_ms(encoder.latency(), ac3::SampleRate::k48000);
-        const auto bed_ms = ac3::latency_ms(encoder.bed_latency(), ac3::SampleRate::k48000);
+        const auto object_ms = iclforge::latency_ms(encoder.latency(), iclforge::SampleRate::k48000);
+        const auto bed_ms = iclforge::latency_ms(encoder.bed_latency(), iclforge::SampleRate::k48000);
         stream_stats().object_latency_ms.store(static_cast<float>(object_ms),
                                                std::memory_order_relaxed);
         stream_stats().bed_latency_ms.store(static_cast<float>(bed_ms), std::memory_order_relaxed);
@@ -988,11 +988,11 @@ void run_loop() {
                             object_ms, encoder.latency().total_samples(), bed_ms,
                             encoder.bed_latency().total_samples());
     }
-    ac3::audio::PassthroughSink sink;
-    auto started = sink.start("", 48000, ac3::audio::BitstreamFormat::kEac3);
+    iclforge::audio::PassthroughSink sink;
+    auto started = sink.start("", 48000, iclforge::audio::BitstreamFormat::kEac3);
     if (!started) {
         __android_log_print(ANDROID_LOG_ERROR, kLogTag, "PassthroughSink::start failed: %s",
-                            std::string(ac3::audio::describe(started.error())).c_str());
+                            std::string(iclforge::audio::describe(started.error())).c_str());
         return;
     }
 
@@ -1005,24 +1005,24 @@ void run_loop() {
     // roughly ten frames at 32ms, and the soundfield arrow computed from these
     // levels would visibly trail a fast pan - the exact opposite of the cue it
     // exists to give. 80ms still reads as a level rather than a twitch.
-    ac3::analysis::LevelMeter level_meter(ac3::Acmod::k3_2, /*lfe=*/true,
+    iclforge::analysis::LevelMeter level_meter(iclforge::Acmod::k3_2, /*lfe=*/true,
                                           static_cast<std::uint32_t>(kSampleRate),
-                                          ac3::analysis::MeterBallistics{
+                                          iclforge::analysis::MeterBallistics{
                                               .rms_integration_ms = 80.0,
                                           });
     // BS.1770 over the same bed. Measured for display only - see where it is
     // published below.
-    ac3::meta::LoudnessMeter loudness_meter(ac3::SampleRate::k48000, ac3::Acmod::k3_2,
+    iclforge::meta::LoudnessMeter loudness_meter(iclforge::SampleRate::k48000, iclforge::Acmod::k3_2,
                                             /*lfe=*/true);
     // Reused every frame for both meters rather than rebuilt: bed() hands back
     // a span of vectors, and both meters want a span of spans.
     std::vector<std::span<const float>> bed_views;
     bed_views.reserve(6);
 
-    ac3::iec61937::Eac3BurstPacker packer;
+    iclforge::iec61937::Eac3BurstPacker packer;
     std::array<std::vector<float>, kObjects> tones;
     for (auto& tone : tones) {
-        tone.resize(ac3::kSamplesPerFrame);
+        tone.resize(iclforge::kSamplesPerFrame);
     }
     std::array<double, kObjects> phase{};
     std::array<double, kObjects> phase_step{};
@@ -1045,7 +1045,7 @@ void run_loop() {
     // Wall-clock frame pacing, not a producer to drain (see header comment):
     // one AC-3 frame is exactly kSamplesPerFrame/48000 seconds.
     const auto frame_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::duration<double>(ac3::kSamplesPerFrame / kSampleRate));
+        std::chrono::duration<double>(iclforge::kSamplesPerFrame / kSampleRate));
     // Scene state belongs to this thread alone: g_scene is the only thing
     // crossing a thread boundary, and the blend it triggers is derived here
     // rather than shared, so nothing else has to be synchronised.
@@ -1238,12 +1238,12 @@ void run_loop() {
             // already draw, and on the same scale the desktop meters use.
             const auto levels = level_meter.levels();
             for (std::size_t ch = 0; ch < levels.size() && ch < 6; ++ch) {
-                const auto fraction = ac3::analysis::meter_fraction(levels[ch].rms_db);
+                const auto fraction = iclforge::analysis::meter_fraction(levels[ch].rms_db);
                 stream_stats().channel_levels[ch].store(static_cast<float>(fraction),
                                                         std::memory_order_relaxed);
             }
 
-            const auto vector = ac3::analysis::energy_vector(levels, ac3::Acmod::k3_2);
+            const auto vector = iclforge::analysis::energy_vector(levels, iclforge::Acmod::k3_2);
             stream_stats().energy_azimuth_deg.store(static_cast<float>(vector.azimuth_deg),
                                                     std::memory_order_relaxed);
             stream_stats().energy_magnitude.store(static_cast<float>(vector.magnitude),
@@ -1256,7 +1256,7 @@ void run_loop() {
             if (const auto lkfs = loudness_meter.integrated_lkfs()) {
                 stream_stats().integrated_lkfs.store(static_cast<float>(*lkfs),
                                                      std::memory_order_relaxed);
-                stream_stats().implied_dialnorm.store(ac3::meta::dialnorm_from_lkfs(*lkfs),
+                stream_stats().implied_dialnorm.store(iclforge::meta::dialnorm_from_lkfs(*lkfs),
                                                       std::memory_order_relaxed);
                 stream_stats().loudness_valid.store(true, std::memory_order_relaxed);
             }
@@ -1297,7 +1297,7 @@ void run_loop() {
         std::span<const std::byte> unit_bytes{unit->bytes};
         std::vector<std::byte> stripped_storage;
         if (stream_stats().objects_off.load(std::memory_order_relaxed)) {
-            auto stripped = ac3::io::strip_objects(unit->bytes);
+            auto stripped = iclforge::io::strip_objects(unit->bytes);
             if (stripped) {
                 stream_stats().stripped_bytes_per_frame.store(
                     static_cast<std::uint32_t>(stripped->bytes_removed),
@@ -1307,7 +1307,7 @@ void run_loop() {
             } else if (frames % 96 == 0) {  // ~3s apart, not once per frame
                 __android_log_print(ANDROID_LOG_WARN, kLogTag,
                                     "strip_objects failed (%s) - sending the unstripped unit",
-                                    std::string(ac3::io::describe(stripped.error())).c_str());
+                                    std::string(iclforge::io::describe(stripped.error())).c_str());
             }
         } else {
             stream_stats().stripped_bytes_per_frame.store(0, std::memory_order_relaxed);
@@ -1347,7 +1347,7 @@ void run_loop() {
             if (frames == 0) {
                 __android_log_print(ANDROID_LOG_INFO, kLogTag,
                                     "first burst ready: %zu bytes (expect %zu)",
-                                    (*push_result)->size(), ac3::iec61937::kEac3BurstBytes);
+                                    (*push_result)->size(), iclforge::iec61937::kEac3BurstBytes);
             }
             int retry_count = 0;
             bool submitted = false;

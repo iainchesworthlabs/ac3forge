@@ -23,7 +23,7 @@
 // did. The output spans must not alias the inputs (never legal here, even
 // in the direct form).
 
-namespace ac3 {
+namespace iclforge {
 
 inline constexpr int kDftLength = 512;
 
@@ -44,4 +44,4 @@ ICLFORGE_DSP_EXPORT void dft512(std::span<const float, kDftLength> real_in,
                             std::span<float, kDftLength> real_out,
                             std::span<float, kDftLength> imag_out);
 
-}  // namespace ac3
+}  // namespace iclforge

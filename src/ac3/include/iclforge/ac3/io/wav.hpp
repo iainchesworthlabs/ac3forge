@@ -32,7 +32,7 @@
 // WavPcm16StreamWriter) - because those are the only two shapes this project
 // produces: decoded audio, and an IEC 61937 burst carrier.
 
-namespace ac3::io {
+namespace iclforge::io {
 
 enum class WavError : std::uint8_t {
     kCannotOpen,
@@ -259,4 +259,4 @@ class ICLFORGE_AC3_EXPORT WavStreamReader {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

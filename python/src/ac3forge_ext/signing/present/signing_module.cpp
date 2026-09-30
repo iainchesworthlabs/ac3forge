@@ -5,7 +5,7 @@
 
 #include "binding_support.hpp"
 
-// The variant of the `ac3.signing` submodule compiled when ac3::signing is in this build.
+// The variant of the `ac3.signing` submodule compiled when iclforge::signing is in this build.
 //
 // This is the body that used to sit inside bindings.cpp's PYBIND11_MODULE
 // behind `#ifdef AC3FORGE_PY_HAVE_SIGNING`, moved verbatim. See
@@ -13,7 +13,7 @@
 // python/CMakeLists.txt for the selection that picks this file over the
 // absent/ one beside it.
 
-namespace ac3::python {
+namespace iclforge::python {
 
 namespace py = pybind11;
 using detail::to_bytes;
@@ -27,10 +27,10 @@ void register_signing(py::module_& m) {
         "EMDF object-layer signing - see docs/concepts/object-signing.md. Sign an encoded "
         "Atmos stream's frames, detect tags, verify with the matching key.");
 
-    py::class_<ac3::signing::SigningKey>(signing, "SigningKey",
+    py::class_<iclforge::signing::SigningKey>(signing, "SigningKey",
                                          "Owns the key bytes; zeroizes them on destruction.")
         .def(py::init([](const py::buffer& content) {
-                 auto decoded = ac3::signing::decode_signing_key(to_bytes(content));
+                 auto decoded = iclforge::signing::decode_signing_key(to_bytes(content));
                  if (!decoded) {
                      throw py::value_error("empty signing key");
                  }
@@ -40,12 +40,12 @@ void register_signing(py::module_& m) {
              "Decode a key from bytes: base64 when the content is valid base64 (the "
              "CI/secret transport form), raw key bytes otherwise - the same single decode "
              "every other front end uses.")
-        .def_property_readonly("empty", &ac3::signing::SigningKey::empty);
+        .def_property_readonly("empty", &iclforge::signing::SigningKey::empty);
 
     signing.def(
         "load_signing_key",
         [](const std::string& explicit_path) {
-            auto key = ac3::signing::load_signing_key(explicit_path);
+            auto key = iclforge::signing::load_signing_key(explicit_path);
             if (!key) {
                 throw py::value_error(key.error().message);
             }
@@ -58,12 +58,12 @@ void register_signing(py::module_& m) {
 
     signing.def(
         "sign_atmos_stream",
-        [](const py::buffer& stream, const ac3::signing::SigningKey& key) {
+        [](const py::buffer& stream, const iclforge::signing::SigningKey& key) {
             auto bytes = to_bytes(stream);
             int signed_count = 0;
             {
                 py::gil_scoped_release release;
-                signed_count = ac3::signing::sign_atmos_stream(bytes, key);
+                signed_count = iclforge::signing::sign_atmos_stream(bytes, key);
             }
             return py::make_tuple(
                 py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size()),
@@ -77,28 +77,28 @@ void register_signing(py::module_& m) {
     signing.def(
         "has_authenticity_tag",
         [](const py::buffer& frame) {
-            return ac3::signing::has_authenticity_tag(to_bytes(frame));
+            return iclforge::signing::has_authenticity_tag(to_bytes(frame));
         },
         py::arg("frame"),
         "Whether this frame carries an authenticity tag - answerable without any key.");
 
-    py::class_<ac3::signing::VerifySummary>(signing, "VerifySummary")
-        .def_readonly("valid", &ac3::signing::VerifySummary::valid)
-        .def_readonly("mismatch", &ac3::signing::VerifySummary::mismatch)
-        .def_readonly("no_container", &ac3::signing::VerifySummary::no_container)
-        .def_property_readonly("all_valid", [](const ac3::signing::VerifySummary& s) {
+    py::class_<iclforge::signing::VerifySummary>(signing, "VerifySummary")
+        .def_readonly("valid", &iclforge::signing::VerifySummary::valid)
+        .def_readonly("mismatch", &iclforge::signing::VerifySummary::mismatch)
+        .def_readonly("no_container", &iclforge::signing::VerifySummary::no_container)
+        .def_property_readonly("all_valid", [](const iclforge::signing::VerifySummary& s) {
             return s.valid > 0 && s.mismatch == 0;
         });
 
     signing.def(
         "verify_atmos_stream",
-        [](const py::buffer& stream, const ac3::signing::SigningKey& key) {
+        [](const py::buffer& stream, const iclforge::signing::SigningKey& key) {
             const auto bytes = to_bytes(stream);
             py::gil_scoped_release release;
-            return ac3::signing::verify_atmos_stream(bytes, key);
+            return iclforge::signing::verify_atmos_stream(bytes, key);
         },
         py::arg("stream"), py::arg("key"),
         "Verify every frame's tag against `key`. See VerifySummary.");
 }
 
-}  // namespace ac3::python
+}  // namespace iclforge::python

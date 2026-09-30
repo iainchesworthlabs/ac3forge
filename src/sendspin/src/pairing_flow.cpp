@@ -21,7 +21,7 @@
 #include "iclforge/sendspin/pairing.hpp"
 #include "iclforge/sendspin/pairing_messages.hpp"
 
-namespace ac3::sendspin::pairing_flow {
+namespace iclforge::sendspin::pairing_flow {
 
 namespace {
 
@@ -625,4 +625,4 @@ Step ServerPairing::receive(std::string_view type, json::Value payload) {
     return protocol_error();
 }
 
-}  // namespace ac3::sendspin::pairing_flow
+}  // namespace iclforge::sendspin::pairing_flow

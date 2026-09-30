@@ -10,7 +10,7 @@
 
 #include "obu_detail.hpp"
 
-// ISOBMFF-level plumbing for iamf::mux(): the generic box/FullBox primitives (ISO/IEC 14496-12
+// ISOBMFF-level plumbing for iclforge::iamf::mux(): the generic box/FullBox primitives (ISO/IEC 14496-12
 // §4.2) and builders for every box this writer's file tree needs (IAMF §6's `iamf` ISO-BMFF
 // encapsulation: ftyp / moov / trak / mdia / minf / stbl / the `iamf` IASampleEntry and its
 // `iacb` IAConfigurationBox / mdat). A fresh implementation rather than a reuse of
@@ -21,7 +21,7 @@
 //
 // Internal to src/iamf/src/, same reasoning as obu_detail.hpp.
 
-namespace iamf::detail {
+namespace iclforge::iamf::detail {
 
 inline void put_u64(Bytes& out, std::uint64_t v) {
     put_u32(out, static_cast<std::uint32_t>(v >> 32));
@@ -262,4 +262,4 @@ inline constexpr std::array<std::uint32_t, 9> kUnityMatrix{
     return out;
 }
 
-}  // namespace iamf::detail
+}  // namespace iclforge::iamf::detail

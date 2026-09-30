@@ -45,23 +45,23 @@
 
 namespace {
 
-namespace ac = ac3::sendspin::ac3forge;
-namespace m = ac3::sendspin::messages;
-namespace hs = ac3::sendspin::handshake;
-namespace flow = ac3::sendspin::pairing_flow;
-using ac3::sendspin::Clock;
-using ac3::sendspin::PlayerConfig;
-using ac3::sendspin::PlayerListener;
-using ac3::sendspin::PlayerSession;
-using ac3::sendspin::Refusal;
-using ac3::sendspin::ServerConfig;
-using ac3::sendspin::ServerListener;
-using ac3::sendspin::ServerSession;
-using ac3::sendspin::SessionOutput;
-using ac3::sendspin::crypto::Digest32;
-using ac3::sendspin::crypto::Key32;
-using ac3::sendspin::pairing_messages::AbortReason;
-using ac3::sendspin::transport::Frame;
+namespace ac = iclforge::sendspin::ac3forge;
+namespace m = iclforge::sendspin::messages;
+namespace hs = iclforge::sendspin::handshake;
+namespace flow = iclforge::sendspin::pairing_flow;
+using iclforge::sendspin::Clock;
+using iclforge::sendspin::PlayerConfig;
+using iclforge::sendspin::PlayerListener;
+using iclforge::sendspin::PlayerSession;
+using iclforge::sendspin::Refusal;
+using iclforge::sendspin::ServerConfig;
+using iclforge::sendspin::ServerListener;
+using iclforge::sendspin::ServerSession;
+using iclforge::sendspin::SessionOutput;
+using iclforge::sendspin::crypto::Digest32;
+using iclforge::sendspin::crypto::Key32;
+using iclforge::sendspin::pairing_messages::AbortReason;
+using iclforge::sendspin::transport::Frame;
 
 class TestClock final : public Clock {
    public:
@@ -160,7 +160,7 @@ struct PlayerEvents final : PlayerListener {
     void on_burst_stream_start(const ac::StreamStart& stream) override { burst_starts.push_back(stream); }
     void on_burst_stream_clear() override { ++burst_clears; }
     void on_burst_stream_end() override { ++burst_ends; }
-    void on_burst(const ac3::sendspin::BurstChunk& chunk, std::int64_t local_time) override {
+    void on_burst(const iclforge::sendspin::BurstChunk& chunk, std::int64_t local_time) override {
         bursts.push_back({.pc = chunk.pc,
                           .pd = chunk.pd,
                           .payload = {chunk.chunk.data.begin(), chunk.chunk.data.end()},
@@ -172,41 +172,41 @@ struct PlayerEvents final : PlayerListener {
 
     // The other roles.
     struct ArtworkEvent {
-        ac3::sendspin::artwork::Kind kind;
+        iclforge::sendspin::artwork::Kind kind;
         std::size_t channel;
         std::uint32_t total_size;
         std::vector<std::uint8_t> data;
     };
     std::vector<m::ServerState> server_states;
-    std::vector<ac3::sendspin::artwork::Channels> artwork_starts;
+    std::vector<iclforge::sendspin::artwork::Channels> artwork_starts;
     std::vector<ArtworkEvent> artwork;
     int artwork_ends = 0;
-    std::vector<ac3::sendspin::visualizer::StreamStart> visualizer_starts;
-    std::vector<std::pair<ac3::sendspin::visualizer::Frame, std::int64_t>> frames;
+    std::vector<iclforge::sendspin::visualizer::StreamStart> visualizer_starts;
+    std::vector<std::pair<iclforge::sendspin::visualizer::Frame, std::int64_t>> frames;
     int visualizer_clears = 0;
     int visualizer_ends = 0;
-    std::vector<ac3::sendspin::source::Command> source_commands;
+    std::vector<iclforge::sendspin::source::Command> source_commands;
 
     void on_server_state(const m::ServerState& state) override { server_states.push_back(state); }
-    void on_artwork_stream_start(const ac3::sendspin::artwork::Channels& channels) override {
+    void on_artwork_stream_start(const iclforge::sendspin::artwork::Channels& channels) override {
         artwork_starts.push_back(channels);
     }
-    void on_artwork_message(const ac3::sendspin::artwork::Message& message) override {
+    void on_artwork_message(const iclforge::sendspin::artwork::Message& message) override {
         artwork.push_back({.kind = message.kind,
                            .channel = message.channel,
                            .total_size = message.total_size,
                            .data = {message.data.begin(), message.data.end()}});
     }
     void on_artwork_stream_end() override { ++artwork_ends; }
-    void on_visualizer_stream_start(const ac3::sendspin::visualizer::StreamStart& start) override {
+    void on_visualizer_stream_start(const iclforge::sendspin::visualizer::StreamStart& start) override {
         visualizer_starts.push_back(start);
     }
-    void on_visualizer_frame(const ac3::sendspin::visualizer::Frame& frame, std::int64_t local_time) override {
+    void on_visualizer_frame(const iclforge::sendspin::visualizer::Frame& frame, std::int64_t local_time) override {
         frames.emplace_back(frame, local_time);
     }
     void on_visualizer_stream_clear() override { ++visualizer_clears; }
     void on_visualizer_stream_end() override { ++visualizer_ends; }
-    void on_source_command(ac3::sendspin::source::Command command) override { source_commands.push_back(command); }
+    void on_source_command(iclforge::sendspin::source::Command command) override { source_commands.push_back(command); }
 };
 
 struct ServerEvents final : ServerListener {
@@ -236,12 +236,12 @@ struct ServerEvents final : ServerListener {
     void on_pairing_ended(std::optional<AbortReason> reason) override { ended.push_back(reason); }
 
     // The other roles.
-    std::vector<ac3::sendspin::controller::CommandMessage> controller_commands;
+    std::vector<iclforge::sendspin::controller::CommandMessage> controller_commands;
     std::vector<m::ClientStreamStart> source_starts;
     std::vector<std::pair<std::int64_t, std::vector<std::uint8_t>>> source_audio;
     int source_ends = 0;
 
-    void on_controller_command(const ac3::sendspin::controller::CommandMessage& command) override {
+    void on_controller_command(const iclforge::sendspin::controller::CommandMessage& command) override {
         controller_commands.push_back(command);
     }
     void on_source_stream_start(const m::ClientStreamStart& start) override { source_starts.push_back(start); }
@@ -251,14 +251,14 @@ struct ServerEvents final : ServerListener {
     void on_source_stream_end() override { ++source_ends; }
 };
 
-ac3::sendspin::noise::KeyPair generated() {
-    std::optional<ac3::sendspin::noise::KeyPair> pair = ac3::sendspin::noise::KeyPair::generate();
+iclforge::sendspin::noise::KeyPair generated() {
+    std::optional<iclforge::sendspin::noise::KeyPair> pair = iclforge::sendspin::noise::KeyPair::generate();
     REQUIRE(pair.has_value());
     return *pair;
 }
 
 // The refusal an expected carries, or nothing when it holds a value.
-std::optional<ac3::sendspin::Refusal> refusal(const std::expected<SessionOutput, ac3::sendspin::Refusal>& result) {
+std::optional<iclforge::sendspin::Refusal> refusal(const std::expected<SessionOutput, iclforge::sendspin::Refusal>& result) {
     if (result) {
         return std::nullopt;
     }
@@ -337,7 +337,7 @@ struct Rig {
     ServerEvents server_events;
     PlayerEvents player_events;
     flow::ClientPairingState pairing_state;
-    ac3::sendspin::noise::KeyPair server_identity = generated();
+    iclforge::sendspin::noise::KeyPair server_identity = generated();
     ServerSession server;
     PlayerSession player;
     std::int64_t delay_us = 1'500;
@@ -383,7 +383,7 @@ struct Rig {
         player_closed = player_closed || out.close;
     }
 
-    void send(std::expected<SessionOutput, ac3::sendspin::Refusal> out) {
+    void send(std::expected<SessionOutput, iclforge::sendspin::Refusal> out) {
         REQUIRE(out.has_value());
         from_server(std::move(*out));
     }
@@ -454,7 +454,7 @@ TEST_CASE("sessions: an unpaired player on the Sentinel converges and plays PCM"
     // The first client/state goes out at once, unavailable until the clock converges.
     REQUIRE(rig.run_until([&] { return !rig.server_events.states.empty(); }, 1'000'000));
     CHECK_FALSE(rig.server_events.states.front().available);
-    CHECK(refusal(rig.server.start_stream({.format = kPcm, .codec_header = {}})) == ac3::sendspin::Refusal::kUnavailable);
+    CHECK(refusal(rig.server.start_stream({.format = kPcm, .codec_header = {}})) == iclforge::sendspin::Refusal::kUnavailable);
 
     REQUIRE(rig.run_until([&] { return rig.available(); }, 5'000'000));
     CHECK(rig.player.clock_converged());
@@ -481,7 +481,7 @@ TEST_CASE("sessions: an unpaired player on the Sentinel converges and plays PCM"
     rig.send(rig.server.end_stream());
     REQUIRE(rig.run_until([&] { return rig.player_events.ends == 1; }, 100'000));
     CHECK_FALSE(rig.player.streaming());
-    CHECK(refusal(rig.server.send_audio(rig.now, std::vector<std::uint8_t>(4))) == ac3::sendspin::Refusal::kNoStream);
+    CHECK(refusal(rig.server.send_audio(rig.now, std::vector<std::uint8_t>(4))) == iclforge::sendspin::Refusal::kNoStream);
 }
 
 TEST_CASE("sessions: a player whose host reads frames late keeps its clock by when they arrived",
@@ -523,7 +523,7 @@ TEST_CASE("sessions: commands only when listed, and the state that answers them"
     rig.send(rig.server.command({.command = m::PlayerCommand::kVolume, .volume = 30, .mute = false, .output_delay_ms = 0}));
     CHECK(refusal(rig.server.command(
               {.command = m::PlayerCommand::kSetOutputDelay, .volume = 0, .mute = false, .output_delay_ms = 20})) ==
-          ac3::sendspin::Refusal::kCommandNotListed);
+          iclforge::sendspin::Refusal::kCommandNotListed);
     REQUIRE(rig.run_until([&] { return !rig.player_events.commands.empty(); }, 100'000));
     CHECK(rig.player_events.commands[0].volume == 30);
 
@@ -540,7 +540,7 @@ TEST_CASE("sessions: commands only when listed, and the state that answers them"
     // Output taken by something else: available false, and the stream is refused.
     rig.from_player(rig.player.set_external_source(true));
     REQUIRE(rig.run_until([&] { return !rig.available(); }, 100'000));
-    CHECK(refusal(rig.server.start_stream({.format = kPcm, .codec_header = {}})) == ac3::sendspin::Refusal::kUnavailable);
+    CHECK(refusal(rig.server.start_stream({.format = kPcm, .codec_header = {}})) == iclforge::sendspin::Refusal::kUnavailable);
 }
 
 TEST_CASE("sessions: a player without unpaired access gets no playback on the Sentinel", "[sendspin][sessions]") {
@@ -548,7 +548,7 @@ TEST_CASE("sessions: a player without unpaired access gets no playback on the Se
     REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
     CHECK(refusal(rig.server.activate({.activities = {m::Activity::kPlayback},
                                        .active_roles = std::vector<std::string>{"player@v1"},
-                                       .pairing = std::nullopt})) == ac3::sendspin::Refusal::kBadActivation);
+                                       .pairing = std::nullopt})) == iclforge::sendspin::Refusal::kBadActivation);
     // An empty activation is allowed, and holds the connection.
     rig.send(rig.server.activate({.activities = {}, .active_roles = std::vector<std::string>{}, .pairing = std::nullopt}));
     REQUIRE(rig.run_until([&] { return rig.player.phase() == PlayerSession::Phase::kActive; }, 100'000));
@@ -561,7 +561,7 @@ namespace {
 
 Key32 random_key() {
     Key32 key{};
-    REQUIRE(ac3::sendspin::crypto::random_bytes(key));
+    REQUIRE(iclforge::sendspin::crypto::random_bytes(key));
     return key;
 }
 
@@ -602,7 +602,7 @@ TEST_CASE("sessions: a record the player lost gives the server the mismatch sign
     // While the server holds its record, no roles and no playback, unpaired access or not.
     CHECK(refusal(rig.server.activate({.activities = {m::Activity::kPlayback},
                                        .active_roles = std::vector<std::string>{"player@v1"},
-                                       .pairing = std::nullopt})) == ac3::sendspin::Refusal::kBadActivation);
+                                       .pairing = std::nullopt})) == iclforge::sendspin::Refusal::kBadActivation);
 }
 
 TEST_CASE("sessions: a long-term record bound to another server fails the handshake", "[sendspin][sessions]") {
@@ -627,7 +627,7 @@ TEST_CASE("sessions: a re-handshake from the Sentinel to a long-term PSK", "[sen
         {.psk = psk, .category = hs::PskCategory::kLongTerm, .server_key = rig.server_identity.public_key()});
     rig.send(rig.server.rehandshake({.psk = psk, .category = hs::PskCategory::kLongTerm}));
     CHECK(refusal(rig.server.activate({.activities = {}, .active_roles = std::nullopt, .pairing = std::nullopt})) ==
-          ac3::sendspin::Refusal::kNotReady);
+          iclforge::sendspin::Refusal::kNotReady);
     REQUIRE(rig.run_until([&] { return rig.server_events.hellos.size() == 2; }, 1'000'000));
     CHECK(rig.server.psk_category() == hs::PskCategory::kLongTerm);
     CHECK(rig.player.psk_category() == hs::PskCategory::kLongTerm);
@@ -1047,12 +1047,12 @@ TEST_CASE("sessions: _ac3forge_player@v1's commands and settings", "[sendspin][s
 
 namespace {
 
-namespace metadata = ac3::sendspin::metadata;
-namespace controller = ac3::sendspin::controller;
-namespace color = ac3::sendspin::color;
-namespace artwork = ac3::sendspin::artwork;
-namespace visualizer = ac3::sendspin::visualizer;
-namespace source = ac3::sendspin::source;
+namespace metadata = iclforge::sendspin::metadata;
+namespace controller = iclforge::sendspin::controller;
+namespace color = iclforge::sendspin::color;
+namespace artwork = iclforge::sendspin::artwork;
+namespace visualizer = iclforge::sendspin::visualizer;
+namespace source = iclforge::sendspin::source;
 
 // A client that lists `roles` beside player@v1, with unpaired access.
 PlayerConfig roles_config(std::vector<std::string> roles) {
@@ -1294,7 +1294,7 @@ struct LegacyServer {
     PlayerEvents events;
     flow::ClientPairingState pairing_state;
     PlayerSession player;
-    std::optional<ac3::sendspin::Channel> channel;
+    std::optional<iclforge::sendspin::Channel> channel;
     // The player's JSON messages in order, and how many of its client/time messages have had a reply.
     std::vector<std::string> sent;
     std::size_t answered = 0;
@@ -1306,15 +1306,15 @@ struct LegacyServer {
         const std::string client_init(opened.frames[0].text());
         const std::expected<hs::ClientInit, hs::InitError> init = hs::parse_client_init(client_init);
         REQUIRE(init.has_value());
-        const ac3::sendspin::noise::KeyPair identity = generated();
+        const iclforge::sendspin::noise::KeyPair identity = generated();
         const std::string server_init = hs::write_server_init({.server_key = identity.public_key()});
         std::vector<std::uint8_t> prologue(client_init.begin(), client_init.end());
         prologue.insert(prologue.end(), server_init.begin(), server_init.end());
-        ac3::sendspin::noise::Handshake noise(init->suite, ac3::sendspin::noise::Role::kInitiator, identity,
+        iclforge::sendspin::noise::Handshake noise(init->suite, iclforge::sendspin::noise::Role::kInitiator, identity,
                                               init->client_key, prologue);
         // aiosendspin 9.1.1's noise/driver.py names the PSK and no category.
         const std::string named =
-            R"({"psk_id":")" + ac3::sendspin::base64url::encode(hs::sentinel_psk_id()) + R"("})";
+            R"({"psk_id":")" + iclforge::sendspin::base64url::encode(hs::sentinel_psk_id()) + R"("})";
         std::vector<std::uint8_t> message_1;
         REQUIRE(noise.write_message_1(std::vector<std::uint8_t>(named.begin(), named.end()), message_1));
         CHECK(player.receive(text_frame(server_init)).frames.empty());
@@ -1324,27 +1324,27 @@ struct LegacyServer {
         REQUIRE(message_2.has_value());
         std::vector<std::uint8_t> received;
         REQUIRE(noise.read_message_2(hs::sentinel_psk(), *message_2, received));
-        std::optional<ac3::sendspin::noise::Handshake::Transport> keys = noise.split();
+        std::optional<iclforge::sendspin::noise::Handshake::Transport> keys = noise.split();
         REQUIRE(keys.has_value());
-        channel.emplace(std::move(*keys), ac3::sendspin::Dialect::kAiosendspin911, 1 << 20);
+        channel.emplace(std::move(*keys), iclforge::sendspin::Dialect::kAiosendspin911, 1 << 20);
         take(reply, 1);
         send_json(m::write_server_hello({.name = "Music Assistant", .languages = {}}));
         send_json(m::write_activate({.activities = {m::Activity::kPlayback},
                                      .active_roles = std::vector<std::string>{"player@v1"},
                                      .pairing = std::nullopt},
-                                    ac3::sendspin::Dialect::kAiosendspin911));
+                                    iclforge::sendspin::Dialect::kAiosendspin911));
     }
 
     static Frame text_frame(std::string_view text) {
-        return Frame{.kind = ac3::sendspin::transport::FrameKind::kText,
+        return Frame{.kind = iclforge::sendspin::transport::FrameKind::kText,
                      .bytes = std::vector<std::uint8_t>(text.begin(), text.end())};
     }
 
     void take(const SessionOutput& out, std::size_t first = 0) {
         for (std::size_t i = first; i < out.frames.size(); ++i) {
-            const ac3::sendspin::Channel::Opened message = channel->open(out.frames[i].bytes);
-            REQUIRE(message.error == ac3::sendspin::Channel::OpenError::kNone);
-            if (!message.message.empty() && message.message.front() == ac3::sendspin::message_id::kJson) {
+            const iclforge::sendspin::Channel::Opened message = channel->open(out.frames[i].bytes);
+            REQUIRE(message.error == iclforge::sendspin::Channel::OpenError::kNone);
+            if (!message.message.empty() && message.message.front() == iclforge::sendspin::message_id::kJson) {
                 sent.emplace_back(message.message.begin() + 1, message.message.end());
             }
         }
@@ -1354,21 +1354,21 @@ struct LegacyServer {
         std::vector<std::vector<std::uint8_t>> sealed;
         REQUIRE(channel->seal(message, sealed));
         for (std::vector<std::uint8_t>& ciphertext : sealed) {
-            take(player.receive(Frame{.kind = ac3::sendspin::transport::FrameKind::kBinary, .bytes = std::move(ciphertext)}));
+            take(player.receive(Frame{.kind = iclforge::sendspin::transport::FrameKind::kBinary, .bytes = std::move(ciphertext)}));
         }
     }
 
     void send_json(std::string_view json_text) {
-        std::vector<std::uint8_t> message{ac3::sendspin::message_id::kJson};
+        std::vector<std::uint8_t> message{iclforge::sendspin::message_id::kJson};
         message.insert(message.end(), json_text.begin(), json_text.end());
         send(message);
     }
 
     // One player@v1 chunk in 9.1.1's form, [4][int64 timestamp][frame], its four frame bytes `fill`.
     void send_audio(std::int64_t timestamp_us, std::uint8_t fill) {
-        const std::size_t header = ac3::sendspin::audio_chunk_header_bytes(ac3::sendspin::Dialect::kAiosendspin911);
+        const std::size_t header = iclforge::sendspin::audio_chunk_header_bytes(iclforge::sendspin::Dialect::kAiosendspin911);
         std::vector<std::uint8_t> message(header + 4, fill);
-        REQUIRE(ac3::sendspin::write_player_chunk_header(message, timestamp_us, 0, ac3::sendspin::Dialect::kAiosendspin911));
+        REQUIRE(iclforge::sendspin::write_player_chunk_header(message, timestamp_us, 0, iclforge::sendspin::Dialect::kAiosendspin911));
         send(message);
     }
 
@@ -1393,8 +1393,8 @@ struct LegacyServer {
             }
             std::vector<std::int64_t> pending;
             for (std::size_t i = answered; i < requests.size(); ++i) {
-                std::vector<ac3::sendspin::json::Token> tokens;
-                ac3::sendspin::json::Document document;
+                std::vector<iclforge::sendspin::json::Token> tokens;
+                iclforge::sendspin::json::Document document;
                 REQUIRE(document.parse(requests[i], tokens, 4096));
                 const std::optional<m::Envelope> envelope = m::read_envelope(document);
                 REQUIRE(envelope.has_value());
@@ -1419,16 +1419,16 @@ TEST_CASE("sessions: to an aiosendspin 9.1.1 server a player is available from i
     // aiosendspin 9.1.1 takes available: false for an external source, and its own client reports
     // available: true on activation (planning/hearth-sendspin-extension.md, C14).
     LegacyServer server;
-    CHECK(server.player.dialect() == ac3::sendspin::Dialect::kAiosendspin911);
+    CHECK(server.player.dialect() == iclforge::sendspin::Dialect::kAiosendspin911);
     const std::vector<std::string> states = server.of_type("client/state");
     REQUIRE(states.size() == 1);
-    std::vector<ac3::sendspin::json::Token> tokens;
-    ac3::sendspin::json::Document document;
+    std::vector<iclforge::sendspin::json::Token> tokens;
+    iclforge::sendspin::json::Document document;
     REQUIRE(document.parse(states[0], tokens, 4096));
     const std::optional<m::Envelope> envelope = m::read_envelope(document);
     REQUIRE(envelope.has_value());
     const std::expected<m::ClientState, m::MessageError> state =
-        m::read_client_state(envelope->payload, ac3::sendspin::Dialect::kAiosendspin911);
+        m::read_client_state(envelope->payload, iclforge::sendspin::Dialect::kAiosendspin911);
     REQUIRE(state.has_value());
     CHECK(state->available);
     CHECK_FALSE(server.player.clock_converged());
@@ -1447,7 +1447,7 @@ TEST_CASE("sessions: from an aiosendspin 9.1.1 server a player holds audio for i
     server.send_audio(3'000'000, 1);
     server.send_audio(3'010'000, 2);
     CHECK(server.events.audio.empty());
-    server.answer_time(2 * static_cast<int>(ac3::sendspin::ClockSync::kBurstLength));
+    server.answer_time(2 * static_cast<int>(iclforge::sendspin::ClockSync::kBurstLength));
     REQUIRE(server.events.audio.size() == 2);
     CHECK(server.events.audio[0].frame[0] == 1);
     CHECK(server.events.audio[1].frame[0] == 2);
@@ -1499,7 +1499,7 @@ TEST_CASE("sessions: a stream that ends before the clock's first exchange delive
         {.server_transmitted = 0, .player = m::PlayerStream{.format = kPcm, .codec_header = {}}, .ac3forge = std::nullopt}));
     server.send_audio(3'000'000, 9);
     CHECK(server.events.audio.size() == 3);
-    server.answer_time(2 * static_cast<int>(ac3::sendspin::ClockSync::kBurstLength));
+    server.answer_time(2 * static_cast<int>(iclforge::sendspin::ClockSync::kBurstLength));
     REQUIRE(server.events.audio.size() == 4);
     CHECK(server.events.audio[3].frame[0] == 9);
 }
@@ -1517,7 +1517,7 @@ TEST_CASE("sessions: deactivating a player before the clock's first exchange del
     CHECK(server.events.audio.empty());
 
     server.send_json(m::write_activate({.activities = {}, .active_roles = std::vector<std::string>{}, .pairing = std::nullopt},
-                                       ac3::sendspin::Dialect::kAiosendspin911));
+                                       iclforge::sendspin::Dialect::kAiosendspin911));
     CHECK(server.events.ends == 1);
     REQUIRE(server.events.audio.size() == 2);
     CHECK(server.events.audio[0].frame[0] == 1);

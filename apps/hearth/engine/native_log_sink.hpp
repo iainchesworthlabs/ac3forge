@@ -16,8 +16,8 @@
 // binary never register it and never interact with their own repeated
 // construct/destroy cycles (DiagnosticLog::add_observer() has no remove).
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 void install_native_log_sink();
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

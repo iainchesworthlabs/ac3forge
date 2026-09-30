@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -33,7 +33,7 @@ void PlacementSmoother::snap(int positioned_slot) {
     current_[index] = target_[index];
 }
 
-void PlacementSmoother::step(std::span<ac3::oba::ObjectPlacement> out) {
+void PlacementSmoother::step(std::span<iclforge::oba::ObjectPlacement> out) {
     for (int slot = 0; slot < kPositionedSlots && slot < static_cast<int>(out.size()); ++slot) {
         const auto index = static_cast<std::size_t>(slot);
         auto& now = current_[index];
@@ -56,4 +56,4 @@ void PlacementSmoother::step(std::span<ac3::oba::ObjectPlacement> out) {
     }
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

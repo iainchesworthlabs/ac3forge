@@ -21,12 +21,12 @@
 // layer is 7.1.4ch (IAMF §3.6.2 loudspeaker_layout = 7). Phase 2 (object elements) waits on IAMF
 // v2.0 going final; phase 3 (an OBU reader) is separate later work.
 //
-// Standalone and codec-blind by design, in exactly the sense matroska::matroska, mp4::mp4 and
-// ac3iab::ac3iab already are: it links nothing from ac3::forge and knows nothing about AC-3,
+// Standalone and codec-blind by design, in exactly the sense iclforge::matroska, iclforge::mp4 and
+// iclforge::iab already are: it links nothing from iclforge::ac3 and knows nothing about AC-3,
 // E-AC-3 or JOC (see CONTRIBUTING.md's repository-layout section on what a bare `include/iamf/`
 // prefix, with no `ac3/`, means). A caller decoding a natively-7.1.4-coded E-AC-3 stream
-// (ac3::plan::LayoutId::k714 - independent substream plus two E-AC-3 dependents) already gets the
-// 12 discrete channels straight off ac3::Eac3Decoder::decode_access_unit's DecodedAccessUnit -
+// (iclforge::plan::LayoutId::k714 - independent substream plus two E-AC-3 dependents) already gets the
+// 12 discrete channels straight off iclforge::Eac3Decoder::decode_access_unit's DecodedAccessUnit -
 // this module just needs them permuted into the channel order below and handed over as PCM; see
 // examples/mux_iamf.cpp for the full round trip.
 //
@@ -36,7 +36,7 @@
 // and Open Audio Renderer are oracles only, used to validate this writer's output after the fact -
 // never sources this code was transcribed from.
 //
-// Deliberately small, matching mp4::mux/matroska::mux's own starting point:
+// Deliberately small, matching iclforge::mp4::mux/iclforge::matroska::mux's own starting point:
 //   - one CHANNEL_BASED Audio Element, one layer (7.1.4ch, IAMF's own loudspeaker_layout = 7),
 //   - one Mix Presentation with the mandatory Stereo loudness layout plus the 7.1.4 layout,
 //   - batch API (every frame known up front) - no fragmented/live writer, no OBU reader,
@@ -46,7 +46,7 @@
 //   - ISOBMFF encapsulation only (IAMF §6's `iamf` ISO-BMFF brand / `iacb` box), not the separate
 //     standalone raw-OBU-stream representation IAMF §5 also defines.
 
-namespace iamf {
+namespace iclforge::iamf {
 
 enum class MuxError : std::uint8_t {
     kNoFrames,          // frames is empty
@@ -60,7 +60,7 @@ enum class MuxError : std::uint8_t {
 // One Temporal Unit's worth of PCM (IAMF §2.3.2.2/§2.4): samples_per_frame samples of each of
 // the 12 channels, already ordered the way this module's Audio Element OBU declares them (IAMF
 // §3.6.2, loudspeaker_layout = 7, "7.1.4ch"): L, C, R, Lss, Rss, Lrs, Rrs, Ltf, Rtf, Ltb, Rtb,
-// LFE. Planar, matching ac3::DecodedAccessUnit::channels' own storage - see
+// LFE. Planar, matching iclforge::DecodedAccessUnit::channels' own storage - see
 // examples/mux_iamf.cpp for how a caller permutes a decoded access unit's Table E2.5 bit order
 // into this one. Every frame SHALL carry exactly AudioTrack::samples_per_frame samples per
 // channel (mux() rejects anything else with kFrameSizeMismatch) - this writer never trims, so it
@@ -90,15 +90,15 @@ struct AudioTrack {
     LoudnessInfo stereo_loudness{};
     LoudnessInfo layout_714_loudness{};
     // Written into moov's hdlr name field (ISO/IEC 14496-12 §8.4.3), matching
-    // mp4::MuxOptions::writing_app's own use.
+    // iclforge::mp4::MuxOptions::writing_app's own use.
     std::string writing_app{"ac3forge"};
 };
 
 // Mux `frames` into a complete IAMF ISOBMFF file (IAMF §6: `iamf`-branded ftyp, an `iamf`
 // IASampleEntry carrying an `iacb` IAConfigurationBox, one IA Sample per frame in mdat), returned
-// as bytes - no file I/O, matching mp4::mux/matroska::mux's own reasoning: this stays testable
+// as bytes - no file I/O, matching iclforge::mp4::mux/iclforge::matroska::mux's own reasoning: this stays testable
 // without touching a disk.
 [[nodiscard]] IAMF_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
     const AudioTrack& track, std::span<const Frame> frames);
 
-}  // namespace iamf
+}  // namespace iclforge::iamf

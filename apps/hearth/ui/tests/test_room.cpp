@@ -33,11 +33,11 @@
 #include "test_outputs.hpp"
 #include "transport.hpp"
 
-namespace ac3::hearth::uitest {
+namespace iclforge::hearth::uitest {
 
 // The room: its endpoints, and the one device the engine has open among them
 // - a PcmSink is one open stream at a time, whichever endpoint it names, the
-// way DeviceSink wraps one ac3::audio::PcmOutput. Everything is under one
+// way DeviceSink wraps one iclforge::audio::PcmOutput. Everything is under one
 // lock: the engine thread submits and reads the position, the clock thread
 // plays, and the GUI thread reads the totals a suite asserts on. The shape is
 // tests/hearth/test_engine.cpp's ClockedDevice, plus what the Speakers page
@@ -328,8 +328,8 @@ std::shared_ptr<FakeRoom> make_room(std::vector<FakeEndpoint> endpoints) {
     return std::make_shared<FakeRoom>(std::move(endpoints));
 }
 
-std::shared_ptr<ac3::hearth::ui::TestOutputs> outputs_for(const std::shared_ptr<FakeRoom>& room) {
-    auto outputs = std::make_shared<ac3::hearth::ui::TestOutputs>();
+std::shared_ptr<iclforge::hearth::ui::TestOutputs> outputs_for(const std::shared_ptr<FakeRoom>& room) {
+    auto outputs = std::make_shared<iclforge::hearth::ui::TestOutputs>();
     outputs->make_pcm = [room] { return std::make_unique<RoomSink>(room); };
     outputs->endpoints = [room](std::uint32_t /*sample_rate*/) {
         std::vector<EndpointReading> readings;
@@ -381,48 +381,48 @@ constexpr double kToneAmplitude = 0.1;
     return out;
 }
 
-[[nodiscard]] ac4::EncoderConfig tones_config() {
-    ac4::EncoderConfig config;
+[[nodiscard]] iclforge::ac4::EncoderConfig tones_config() {
+    iclforge::ac4::EncoderConfig config;
     config.channels = 6;
     config.bitrate_kbps = 384;
     config.dialnorm_db = -24.0;
-    config.downmix = ac4::DownmixConfig{.loro_centre_db = -1.5,
+    config.downmix = iclforge::ac4::DownmixConfig{.loro_centre_db = -1.5,
                                         .loro_surround_db = -4.5,
                                         .ltrt_centre_db = -3.0,
                                         .ltrt_surround_db = -6.0,
                                         .lfe_db = -4.5,
-                                        .preferred = ac4::PreferredDownmix::kLtRt,
+                                        .preferred = iclforge::ac4::PreferredDownmix::kLtRt,
                                         .loro_correction_db2 = std::nullopt,
                                         .ltrt_correction_db2 = std::nullopt};
-    config.dialogue = ac4::DialogueConfig{};
+    config.dialogue = iclforge::ac4::DialogueConfig{};
     config.dialogue->max_gain_db = 9;
     return config;
 }
 
-[[nodiscard]] ac4::EncoderConfig presentations_config() {
-    ac4::EncoderConfig config;
+[[nodiscard]] iclforge::ac4::EncoderConfig presentations_config() {
+    iclforge::ac4::EncoderConfig config;
     config.bitrate_kbps = 256;
-    ac4::SubstreamConfig music;
+    iclforge::ac4::SubstreamConfig music;
     music.channels = 2;
     music.bitrate_kbps = 128;
-    music.content = ac4::ContentClassifier::kMusicAndEffects;
-    ac4::SubstreamConfig dialogue;
+    music.content = iclforge::ac4::ContentClassifier::kMusicAndEffects;
+    iclforge::ac4::SubstreamConfig dialogue;
     dialogue.channels = 1;
     dialogue.bitrate_kbps = 64;
-    dialogue.content = ac4::ContentClassifier::kDialogue;
+    dialogue.content = iclforge::ac4::ContentClassifier::kDialogue;
     dialogue.language = "en";
-    dialogue.dialogue_mix = ac4::DialogueMix{.max_gain_db = 6, .pan_degrees = {}};
-    ac4::SubstreamConfig described;
+    dialogue.dialogue_mix = iclforge::ac4::DialogueMix{.max_gain_db = 6, .pan_degrees = {}};
+    iclforge::ac4::SubstreamConfig described;
     described.channels = 1;
     described.bitrate_kbps = 48;
-    described.content = ac4::ContentClassifier::kVisuallyImpaired;
+    described.content = iclforge::ac4::ContentClassifier::kVisuallyImpaired;
     described.language = "qad";
     config.substreams = {music, dialogue, described};
-    ac4::PresentationConfig plain;
+    iclforge::ac4::PresentationConfig plain;
     plain.config = 0;
     plain.substreams = {0, 1};
     plain.presentation_id = 1;
-    ac4::PresentationConfig with_description;
+    iclforge::ac4::PresentationConfig with_description;
     with_description.config = 3;
     with_description.substreams = {0, 1, 2};
     with_description.presentation_id = 2;
@@ -439,7 +439,7 @@ bool write_ac4_stream(const std::string& path, const std::string& kind, std::str
         }
         return false;
     };
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     std::vector<std::vector<float>> input;
     if (kind == "tones") {
         config = tones_config();
@@ -454,17 +454,17 @@ bool write_ac4_stream(const std::string& path, const std::string& kind, std::str
     } else {
         return fail("no such kind of stream: " + kind);
     }
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     if (!encoder) {
-        return fail(std::string{ac4::Encoder::refusal_reason(config)});
+        return fail(std::string{iclforge::ac4::Encoder::refusal_reason(config)});
     }
     std::ofstream out(std::filesystem::path(path), std::ios::binary);
     if (!out) {
         return fail("could not open " + path);
     }
-    const auto write = [&out](const std::vector<ac4::EncodedFrame>& frames) {
-        for (const ac4::EncodedFrame& frame : frames) {
-            const std::vector<std::byte> wrapped = ac4::sync_frame(frame.raw_ac4_frame, false);
+    const auto write = [&out](const std::vector<iclforge::ac4::EncodedFrame>& frames) {
+        for (const iclforge::ac4::EncodedFrame& frame : frames) {
+            const std::vector<std::byte> wrapped = iclforge::ac4::sync_frame(frame.raw_ac4_frame, false);
             out.write(reinterpret_cast<const char*>(wrapped.data()),
                       static_cast<std::streamsize>(wrapped.size()));
         }
@@ -536,7 +536,7 @@ std::shared_ptr<TestSinkHost> start_test_sink(const std::string& name, const std
     return host;
 }
 
-void announce(ac3::hearth::NetworkSinks& sinks, const TestSinkHost& host) {
+void announce(iclforge::hearth::NetworkSinks& sinks, const TestSinkHost& host) {
     sinks.on_found(sendspin::discovery::Service{.instance = host.name,
                                                 .host = "127.0.0.1",
                                                 .addresses = {"127.0.0.1"},
@@ -569,4 +569,4 @@ std::uint32_t connections(const TestSinkHost& host) {
     return host.sink->totals().connections;
 }
 
-}  // namespace ac3::hearth::uitest
+}  // namespace iclforge::hearth::uitest

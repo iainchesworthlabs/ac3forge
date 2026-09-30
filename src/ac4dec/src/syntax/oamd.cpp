@@ -8,7 +8,7 @@
 
 #include "syntax/metadata.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -88,8 +88,8 @@ constexpr ToolNames kTbNames{"b_top_back_to_front", "b_top_back_to_side", "gain_
 constexpr ToolNames kTfNames{"b_top_front_to_front", "b_top_front_to_side", "gain_t2a_code",
                              "gain_t2b_code", "gain_t2c_code"};
 
-[[nodiscard]] ac4::GainTool parse_tool(BitReader& r, const ToolNames& names, bool side_branch) {
-    ac4::GainTool tool;
+[[nodiscard]] iclforge::ac4::GainTool parse_tool(BitReader& r, const ToolNames& names, bool side_branch) {
+    iclforge::ac4::GainTool tool;
     if (r.read_flag(names.to_front)) {
         tool.code_a = read_int(r, 3, names.gain_a);
         tool.code_b = 7;
@@ -109,8 +109,8 @@ constexpr ToolNames kTfNames{"b_top_front_to_front", "b_top_front_to_side", "gai
 }
 
 // 6.2.8.8a stereo_dmx_coeff()
-[[nodiscard]] ac4::StereoDmxCoeff parse_stereo_dmx_coeff(BitReader& r) {
-    ac4::StereoDmxCoeff c;
+[[nodiscard]] iclforge::ac4::StereoDmxCoeff parse_stereo_dmx_coeff(BitReader& r) {
+    iclforge::ac4::StereoDmxCoeff c;
     c.loro_centre_mixgain = read_int(r, 3, "loro_centre_mixgain");
     c.loro_surround_mixgain = read_int(r, 3, "loro_surround_mixgain");
     if (r.read_flag("b_ltrt_mixinfo")) {
@@ -124,11 +124,11 @@ constexpr ToolNames kTfNames{"b_top_front_to_front", "b_top_front_to_side", "gai
     return c;
 }
 
-[[nodiscard]] std::optional<ac4::BedRenderInfo> parse_bed_render_info(BitReader& r) {
+[[nodiscard]] std::optional<iclforge::ac4::BedRenderInfo> parse_bed_render_info(BitReader& r) {
     if (!r.read_flag("b_bed_render_info")) {
         return std::nullopt;
     }
-    ac4::BedRenderInfo info;
+    iclforge::ac4::BedRenderInfo info;
     if (r.read_flag("b_stereo_dmx_coeff")) {
         info.stereo_dmx_coeff = parse_stereo_dmx_coeff(r);
     }
@@ -183,11 +183,11 @@ constexpr int kNumTrimConfigs = 9;
 // trim_balance_presence[]'s five flags are one field, [4] its first bit
 // (src/ac4dec/ERRATA.md, "Arrays read as one field"), as the inspector reads
 // the table of contents' trim().
-[[nodiscard]] std::optional<ac4::Trim> parse_trim(BitReader& r) {
+[[nodiscard]] std::optional<iclforge::ac4::Trim> parse_trim(BitReader& r) {
     if (!r.read_flag("b_trim_present")) {
         return std::nullopt;
     }
-    ac4::Trim trim;
+    iclforge::ac4::Trim trim;
     trim.warp_mode = read_int(r, 2, "warp_mode");
     (void)r.read(2, "reserved");
     trim.global_trim_mode = read_int(r, 2, "global_trim_mode");
@@ -197,7 +197,7 @@ constexpr int kNumTrimConfigs = 9;
                 trim.configs.emplace_back(std::nullopt);
                 continue;
             }
-            ac4::TrimConfig config;
+            iclforge::ac4::TrimConfig config;
             config.disabled = r.read_flag("b_disable_trim");
             if (!config.disabled) {
                 config.presence = read_int(r, 5, "trim_balance_presence");
@@ -225,11 +225,11 @@ constexpr int kNumTrimConfigs = 9;
     return trim;
 }
 
-[[nodiscard]] std::optional<ac4::Headphone> parse_headphone(BitReader& r) {
+[[nodiscard]] std::optional<iclforge::ac4::Headphone> parse_headphone(BitReader& r) {
     if (!r.read_flag("b_headphone")) {
         return std::nullopt;
     }
-    ac4::Headphone headphone;
+    iclforge::ac4::Headphone headphone;
     headphone.hp_operation_mode = read_int(r, 3, "hp_operation_mode");
     if (headphone.hp_operation_mode == 0b001 || headphone.hp_operation_mode == 0b010) {
         headphone.b_head_track_disable_all = r.read_flag("b_head_track_disable_all");
@@ -617,7 +617,7 @@ ParseResult parse_oamd_dyndata_multi(BitReader& r, const OamdObjectList& objects
 
 ParseResult parse_oamd_common_data(BitReader& r, OamdCommonData& out) {
     out = OamdCommonData{};
-    ac4::OamdCommonData& data = out.data;
+    iclforge::ac4::OamdCommonData& data = out.data;
     data.b_default_screen_size_ratio = r.read_flag("b_default_screen_size_ratio");
     if (!data.b_default_screen_size_ratio) {
         data.master_screen_size_ratio_code = read_int(r, 5, "master_screen_size_ratio_code");
@@ -698,4 +698,4 @@ ParseResult parse_oamd_substream(BitReader& r, const OamdSubstreamContext& ctx,
     return check(r);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

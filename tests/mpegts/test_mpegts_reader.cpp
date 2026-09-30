@@ -229,7 +229,7 @@ Bytes to_204(std::span<const std::byte> ts) {
 }
 
 Bytes read_in_chunks(std::span<const std::byte> file, std::size_t chunk) {
-    mpegts::Reader reader{};
+    iclforge::mpegts::Reader reader{};
     Bytes got;
     const auto sink = [&got](std::span<const std::byte> payload) {
         got.insert(got.end(), payload.begin(), payload.end());
@@ -266,20 +266,20 @@ Bytes build_stream(std::span<const EsSpec> streams, const std::vector<Bytes>& fr
 TEST_CASE("MPEG-TS round-trips mux()'s access units", "[mpegts][reader]") {
     const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(512, 0x22),
                                     frame_of(1024, 0x33), frame_of(64, 0x44)};
-    const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kEac3,
+    const iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kEac3,
                                    .sample_rate = 48000,
                                    .channels = 6,
                                    .samples_per_frame = 1536};
-    const auto file = mpegts::mux(track, views_of(frames));
+    const auto file = iclforge::mpegts::mux(track, views_of(frames));
     REQUIRE(file.has_value());
 
-    const auto out = mpegts::demux(*file);
+    const auto out = iclforge::mpegts::demux(*file);
     REQUIRE(out.has_value());
     CHECK(out->stream.eac3);
     CHECK(out->stream.packet_size == 188);
     // The writer is the DVB profile: private data plus a descriptor.
     CHECK(out->stream.stream_type == 0x06);
-    CHECK(out->stream.signalling == mpegts::CodecSignalling::kDvbDescriptor);
+    CHECK(out->stream.signalling == iclforge::mpegts::CodecSignalling::kDvbDescriptor);
     CHECK(out->stream.elementary_pid == 0x0100);
     // mux() writes one access unit per PES, so here - and only here - the
     // payloads line up one-to-one with the frames. The contract is the
@@ -290,12 +290,12 @@ TEST_CASE("MPEG-TS round-trips mux()'s access units", "[mpegts][reader]") {
 TEST_CASE("MPEG-TS round-trips an AC-3 track and the Writer's own output", "[mpegts][reader]") {
     const std::vector<Bytes> frames{frame_of(400, 0xA1), frame_of(400, 0xA2),
                                     frame_of(400, 0xA3)};
-    const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+    const iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
                                    .sample_rate = 48000,
                                    .channels = 2,
                                    .samples_per_frame = 1536};
 
-    auto writer = mpegts::Writer::create(track);
+    auto writer = iclforge::mpegts::Writer::create(track);
     REQUIRE(writer.has_value());
     Bytes file;
     for (const auto& frame : frames) {
@@ -306,7 +306,7 @@ TEST_CASE("MPEG-TS round-trips an AC-3 track and the Writer's own output", "[mpe
     const auto tail = writer->finalize();
     file.insert(file.end(), tail.begin(), tail.end());
 
-    const auto out = mpegts::demux(file);
+    const auto out = iclforge::mpegts::demux(file);
     REQUIRE(out.has_value());
     CHECK_FALSE(out->stream.eac3);
     CHECK(concat(out->payloads) == concat(frames));
@@ -315,7 +315,7 @@ TEST_CASE("MPEG-TS round-trips an AC-3 track and the Writer's own output", "[mpe
 TEST_CASE("MPEG-TS Reader over arbitrary chunk boundaries matches demux()", "[mpegts][reader]") {
     const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(3, 0x22), frame_of(1500, 0x33),
                                     frame_of(64, 0x44)};
-    const auto file = mpegts::mux(mpegts::AudioTrack{.codec = mpegts::AudioCodec::kEac3,
+    const auto file = iclforge::mpegts::mux(iclforge::mpegts::AudioTrack{.codec = iclforge::mpegts::AudioCodec::kEac3,
                                                      .sample_rate = 48000,
                                                      .channels = 6,
                                                      .samples_per_frame = 1536},
@@ -334,19 +334,19 @@ TEST_CASE("MPEG-TS reads every way a PMT names the codec", "[mpegts][reader]") {
 
     SECTION("ATSC stream_type 0x81 is AC-3") {
         const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x81, .pid = 0x0100, .descriptors = {}}};
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE(out.has_value());
         CHECK_FALSE(out->stream.eac3);
-        CHECK(out->stream.signalling == mpegts::CodecSignalling::kAtscStreamType);
+        CHECK(out->stream.signalling == iclforge::mpegts::CodecSignalling::kAtscStreamType);
         CHECK(concat(out->payloads) == concat(frames));
     }
 
     SECTION("ATSC stream_type 0x87 is E-AC-3") {
         const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x87, .pid = 0x0100, .descriptors = {}}};
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE(out.has_value());
         CHECK(out->stream.eac3);
-        CHECK(out->stream.signalling == mpegts::CodecSignalling::kAtscStreamType);
+        CHECK(out->stream.signalling == iclforge::mpegts::CodecSignalling::kAtscStreamType);
     }
 
     SECTION("DVB's Enhanced_AC3_descriptor on a private-data stream_type") {
@@ -356,10 +356,10 @@ TEST_CASE("MPEG-TS reads every way a PMT names the codec", "[mpegts][reader]") {
         put_u8(descriptors, 0x00);
         const std::array<EsSpec, 1> streams{
             EsSpec{.stream_type = 0x06, .pid = 0x0100, .descriptors = descriptors}};
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE(out.has_value());
         CHECK(out->stream.eac3);
-        CHECK(out->stream.signalling == mpegts::CodecSignalling::kDvbDescriptor);
+        CHECK(out->stream.signalling == iclforge::mpegts::CodecSignalling::kDvbDescriptor);
     }
 
     SECTION("a registration descriptor's 'EAC3' format identifier") {
@@ -371,16 +371,16 @@ TEST_CASE("MPEG-TS reads every way a PMT names the codec", "[mpegts][reader]") {
         }
         const std::array<EsSpec, 1> streams{
             EsSpec{.stream_type = 0x87, .pid = 0x0100, .descriptors = descriptors}};
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE(out.has_value());
         CHECK(out->stream.eac3);
     }
 
     SECTION("a stream this reader has no use for") {
         const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x0F, .pid = 0x0100, .descriptors = {}}};  // AAC ADTS
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNoAudioStream);
     }
 
     SECTION("the audio stream is picked out of several") {
@@ -396,7 +396,7 @@ TEST_CASE("MPEG-TS reads every way a PMT names the codec", "[mpegts][reader]") {
         // build_stream puts the PES on streams.front()'s PID, so reorder:
         // the AC-3 one has to be first for the frames to land on it.
         const std::array<EsSpec, 3> reordered{streams[2], streams[0], streams[1]};
-        const auto out = mpegts::demux(build_stream(reordered, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(reordered, frames));
         REQUIRE(out.has_value());
         CHECK(out->stream.elementary_pid == 0x0103);
         CHECK(concat(out->payloads) == concat(frames));
@@ -407,7 +407,7 @@ TEST_CASE("MPEG-TS reads the M2TS and 204-byte grids", "[mpegts][reader]") {
     const std::vector<Bytes> frames{frame_of(500, 0x71), frame_of(500, 0x72),
                                     frame_of(500, 0x73), frame_of(500, 0x74),
                                     frame_of(500, 0x75), frame_of(500, 0x76)};
-    const auto plain = mpegts::mux(mpegts::AudioTrack{.codec = mpegts::AudioCodec::kEac3,
+    const auto plain = iclforge::mpegts::mux(iclforge::mpegts::AudioTrack{.codec = iclforge::mpegts::AudioCodec::kEac3,
                                                       .sample_rate = 48000,
                                                       .channels = 6,
                                                       .samples_per_frame = 1536},
@@ -416,7 +416,7 @@ TEST_CASE("MPEG-TS reads the M2TS and 204-byte grids", "[mpegts][reader]") {
 
     SECTION("M2TS, as a Blu-ray or AVCHD rip arrives") {
         const auto file = to_m2ts(*plain);
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(out->stream.packet_size == 192);
         CHECK(concat(out->payloads) == concat(frames));
@@ -425,7 +425,7 @@ TEST_CASE("MPEG-TS reads the M2TS and 204-byte grids", "[mpegts][reader]") {
 
     SECTION("204 bytes, as a capture that kept its parity arrives") {
         const auto file = to_204(*plain);
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(out->stream.packet_size == 204);
         CHECK(concat(out->payloads) == concat(frames));
@@ -440,7 +440,7 @@ TEST_CASE("MPEG-TS reads the unbounded PES length broadcast uses", "[mpegts][rea
     const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x87, .pid = 0x0100, .descriptors = {}}};
     const auto file = build_stream(streams, frames, /*unbounded_pes=*/true);
 
-    const auto out = mpegts::demux(file);
+    const auto out = iclforge::mpegts::demux(file);
     REQUIRE(out.has_value());
     CHECK(concat(out->payloads) == concat(frames));
     // And streamed, where the final packet depends on finish() emitting.
@@ -462,24 +462,24 @@ TEST_CASE("MPEG-TS locks onto a capture that starts mid-stream", "[mpegts][reade
     }
     prefixed.insert(prefixed.end(), file.begin(), file.end());
 
-    const auto out = mpegts::demux(prefixed);
+    const auto out = iclforge::mpegts::demux(prefixed);
     REQUIRE(out.has_value());
     CHECK(concat(out->payloads) == concat(frames));
 }
 
 TEST_CASE("MPEG-TS refuses what it cannot read", "[mpegts][reader]") {
     SECTION("empty input") {
-        const auto out = mpegts::demux({});
+        const auto out = iclforge::mpegts::demux({});
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNotTransportStream);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNotTransportStream);
     }
 
     SECTION("a Matroska file") {
         Bytes ebml{std::byte{0x1A}, std::byte{0x45}, std::byte{0xDF}, std::byte{0xA3}};
         ebml.resize(4096, std::byte{0x00});
-        const auto out = mpegts::demux(ebml);
+        const auto out = iclforge::mpegts::demux(ebml);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNotTransportStream);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNotTransportStream);
     }
 
     SECTION("a sync grid but no PAT") {
@@ -489,9 +489,9 @@ TEST_CASE("MPEG-TS refuses what it cannot read", "[mpegts][reader]") {
             const auto pkt = ts_packet(0x0100, false, cc, frame_of(184, 0x5A));
             file.insert(file.end(), pkt.begin(), pkt.end());
         }
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNoProgramme);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNoProgramme);
     }
 
     SECTION("a PAT whose CRC does not match is not believed") {
@@ -505,9 +505,9 @@ TEST_CASE("MPEG-TS refuses what it cannot read", "[mpegts][reader]") {
         // CRC_32's own last byte regardless of that padding, which is what
         // is flipped here - exactly what a bit error looks like.
         file[187] = static_cast<std::byte>(std::to_integer<std::uint8_t>(file[187]) ^ 0xFF);
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNoProgramme);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNoProgramme);
     }
 
     SECTION("an unbounded PES that never ends is bounded anyway") {
@@ -529,24 +529,24 @@ TEST_CASE("MPEG-TS refuses what it cannot read", "[mpegts][reader]") {
             const auto pkt = ts_packet(0x0100, false, es_cc, frame_of(184, 0xCC));
             file.insert(file.end(), pkt.begin(), pkt.end());
         }
-        const auto out = mpegts::demux(file, mpegts::ReadOptions{.max_pes_bytes = 64 * 1024});
+        const auto out = iclforge::mpegts::demux(file, iclforge::mpegts::ReadOptions{.max_pes_bytes = 64 * 1024});
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kLimitExceeded);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kLimitExceeded);
     }
 }
 
 TEST_CASE("MPEG-TS describe() names every demux error", "[mpegts][reader]") {
     for (const auto error :
-         {mpegts::DemuxError::kNotTransportStream, mpegts::DemuxError::kNoProgramme,
-          mpegts::DemuxError::kNoAudioStream, mpegts::DemuxError::kMalformed,
-          mpegts::DemuxError::kLimitExceeded}) {
-        CHECK_FALSE(mpegts::describe(error).empty());
-        CHECK(mpegts::describe(error) != "unknown error");
+         {iclforge::mpegts::DemuxError::kNotTransportStream, iclforge::mpegts::DemuxError::kNoProgramme,
+          iclforge::mpegts::DemuxError::kNoAudioStream, iclforge::mpegts::DemuxError::kMalformed,
+          iclforge::mpegts::DemuxError::kLimitExceeded}) {
+        CHECK_FALSE(iclforge::mpegts::describe(error).empty());
+        CHECK(iclforge::mpegts::describe(error) != "unknown error");
     }
     // DemuxError has an explicit uint8_t underlying type, so a value outside
     // every enumerator is well-defined to construct and switch on - describe()'s
     // fallthrough is reachable this way without invoking any UB to get there.
-    CHECK(mpegts::describe(static_cast<mpegts::DemuxError>(200)) == "unknown error");
+    CHECK(iclforge::mpegts::describe(static_cast<iclforge::mpegts::DemuxError>(200)) == "unknown error");
 }
 
 // --- error-path and less-common-shape coverage -----------------------------
@@ -573,9 +573,9 @@ TEST_CASE("MPEG-TS select_from_pmt handles malformed and foreign shapes", "[mpeg
         append_crc(section);
         const auto pmt = psi_packet(0x1000, pmt_cc, section);
         file.insert(file.end(), pmt.begin(), pmt.end());
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNoAudioStream);
     }
 
     SECTION("a private-data stream with a descriptor tag this reader does not know") {
@@ -585,9 +585,9 @@ TEST_CASE("MPEG-TS select_from_pmt handles malformed and foreign shapes", "[mpeg
         put_u8(descriptors, 0x00);
         const std::array<EsSpec, 1> streams{
             EsSpec{.stream_type = 0x06, .pid = 0x0100, .descriptors = descriptors}};
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNoAudioStream);
     }
 
     SECTION("a registration descriptor shorter than a 4-byte format_identifier") {
@@ -601,9 +601,9 @@ TEST_CASE("MPEG-TS select_from_pmt handles malformed and foreign shapes", "[mpeg
         put_u8(descriptors, 'C');
         const std::array<EsSpec, 1> streams{
             EsSpec{.stream_type = 0x06, .pid = 0x0100, .descriptors = descriptors}};
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNoAudioStream);
     }
 
     SECTION("a registration descriptor naming a format this reader does not recognise") {
@@ -615,9 +615,9 @@ TEST_CASE("MPEG-TS select_from_pmt handles malformed and foreign shapes", "[mpeg
         }
         const std::array<EsSpec, 1> streams{
             EsSpec{.stream_type = 0x06, .pid = 0x0100, .descriptors = descriptors}};
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNoAudioStream);
     }
 
     SECTION("options.program_number rejects a PMT whose own section disagrees with the PAT") {
@@ -633,9 +633,9 @@ TEST_CASE("MPEG-TS select_from_pmt handles malformed and foreign shapes", "[mpeg
         const std::array<EsSpec, 1> streams{EsSpec{.stream_type = 0x81, .pid = 0x0100, .descriptors = {}}};
         const auto pmt = psi_packet(0x1000, pmt_cc, pmt_section(7, streams));
         file.insert(file.end(), pmt.begin(), pmt.end());
-        const auto out = mpegts::demux(file, mpegts::ReadOptions{.program_number = 5});
+        const auto out = iclforge::mpegts::demux(file, iclforge::mpegts::ReadOptions{.program_number = 5});
         REQUIRE_FALSE(out.has_value());
-        CHECK(out.error() == mpegts::DemuxError::kNoAudioStream);
+        CHECK(out.error() == iclforge::mpegts::DemuxError::kNoAudioStream);
     }
 }
 
@@ -667,7 +667,7 @@ TEST_CASE("MPEG-TS select_from_pat handles more than one programme entry", "[mpe
     const std::vector<Bytes> frames{frame_of(200, 0x91)};
     emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
 
-    const auto out = mpegts::demux(file);
+    const auto out = iclforge::mpegts::demux(file);
     REQUIRE(out.has_value());
     CHECK(out->stream.program_number == 3);
     CHECK(concat(out->payloads) == concat(frames));
@@ -686,7 +686,7 @@ TEST_CASE("MPEG-TS parse_packet drops what it cannot use without losing the rest
     SECTION("a null-PID packet is skipped") {
         std::uint8_t cc = 0;
         auto [file, frames] = with_extra_packet_before(ts_packet(0x1FFF, false, cc, frame_of(184, 0xFF)));
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -702,7 +702,7 @@ TEST_CASE("MPEG-TS parse_packet drops what it cannot use without losing the rest
         pkt.insert(pkt.end(), stuffing.begin(), stuffing.end());
         REQUIRE(pkt.size() == 188);
         auto [file, frames] = with_extra_packet_before(pkt);
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -717,7 +717,7 @@ TEST_CASE("MPEG-TS parse_packet drops what it cannot use without losing the rest
         pkt.insert(pkt.end(), rest.begin(), rest.end());
         REQUIRE(pkt.size() == 188);
         auto [file, frames] = with_extra_packet_before(pkt);
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -732,7 +732,7 @@ TEST_CASE("MPEG-TS parse_packet drops what it cannot use without losing the rest
         pkt.insert(pkt.end(), rest.begin(), rest.end());
         REQUIRE(pkt.size() == 188);
         auto [file, frames] = with_extra_packet_before(pkt);
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -746,7 +746,7 @@ TEST_CASE("MPEG-TS parse_packet drops what it cannot use without losing the rest
         auto slipped = ts_packet(0x0100, false, cc, frame_of(184, 0x00));
         slipped[0] = std::byte{0x00};
         auto [file, frames] = with_extra_packet_before(slipped);
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -769,7 +769,7 @@ TEST_CASE("MPEG-TS PES reassembly handles a malformed or empty start", "[mpegts]
         const std::vector<Bytes> frames{frame_of(200, 0xB1)};
         emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
 
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -788,7 +788,7 @@ TEST_CASE("MPEG-TS PES reassembly handles a malformed or empty start", "[mpegts]
         const std::vector<Bytes> frames{frame_of(200, 0xB2)};
         emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
 
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -807,7 +807,7 @@ TEST_CASE("MPEG-TS PES reassembly handles a malformed or empty start", "[mpegts]
         const std::vector<Bytes> frames{frame_of(200, 0xB3)};
         emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
 
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -830,7 +830,7 @@ TEST_CASE("MPEG-TS PES reassembly handles a malformed or empty start", "[mpegts]
         const auto pkt = ts_packet(0x0100, true, es_cc, truncated_pes);
         file.insert(file.end(), pkt.begin(), pkt.end());
 
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(out->payloads.empty());
     }
@@ -856,7 +856,7 @@ TEST_CASE("MPEG-TS PES reassembly handles a malformed or empty start", "[mpegts]
         const std::vector<Bytes> frames{frame_of(200, 0xB4)};
         emit_pes(file, 0x0100, es_cc, pes_packet(frames.front(), false));
 
-        const auto out = mpegts::demux(file);
+        const auto out = iclforge::mpegts::demux(file);
         REQUIRE(out.has_value());
         CHECK(concat(out->payloads) == concat(frames));
     }
@@ -892,9 +892,9 @@ TEST_CASE("MPEG-TS finish_verdict distinguishes no-PAT from a PAT naming no prog
     const auto filler = ts_packet(0x2000, false, filler_cc, frame_of(184, 0x5A));
     file.insert(file.end(), filler.begin(), filler.end());
 
-    const auto out = mpegts::demux(file);
+    const auto out = iclforge::mpegts::demux(file);
     REQUIRE_FALSE(out.has_value());
-    CHECK(out.error() == mpegts::DemuxError::kNoProgramme);
+    CHECK(out.error() == iclforge::mpegts::DemuxError::kNoProgramme);
 }
 
 TEST_CASE("MPEG-TS find_sync locks onto a very short capture", "[mpegts][reader]") {
@@ -906,18 +906,18 @@ TEST_CASE("MPEG-TS find_sync locks onto a very short capture", "[mpegts][reader]
         const auto pkt = ts_packet(0x0100, false, cc, frame_of(184, 0x33));
         file.insert(file.end(), pkt.begin(), pkt.end());
     }
-    const auto out = mpegts::demux(file);
+    const auto out = iclforge::mpegts::demux(file);
     // No PAT ever arrives, but sync itself must have locked (not
     // kNotTransportStream) for the verdict to reach the programme check.
     REQUIRE_FALSE(out.has_value());
-    CHECK(out.error() == mpegts::DemuxError::kNoProgramme);
+    CHECK(out.error() == iclforge::mpegts::DemuxError::kNoProgramme);
 }
 
 TEST_CASE("MPEG-TS gives up on a sync search past its own budget", "[mpegts][reader]") {
     Bytes file(2048, std::byte{0x00});  // no 0x47 anywhere
-    const auto out = mpegts::demux(file, mpegts::ReadOptions{.max_sync_search_bytes = 512});
+    const auto out = iclforge::mpegts::demux(file, iclforge::mpegts::ReadOptions{.max_sync_search_bytes = 512});
     REQUIRE_FALSE(out.has_value());
-    CHECK(out.error() == mpegts::DemuxError::kNotTransportStream);
+    CHECK(out.error() == iclforge::mpegts::DemuxError::kNotTransportStream);
 }
 
 TEST_CASE("MPEG-TS Reader surfaces a walk error directly from push()", "[mpegts][reader]") {
@@ -925,12 +925,12 @@ TEST_CASE("MPEG-TS Reader surfaces a walk error directly from push()", "[mpegts]
     // might still hold the start of a grid, counting only what it drops
     // beyond that against the search budget - so the pushed chunk has to be
     // bigger than that tail for one push() to exceed a small budget outright.
-    mpegts::Reader reader{mpegts::ReadOptions{.max_sync_search_bytes = 64}};
+    iclforge::mpegts::Reader reader{iclforge::mpegts::ReadOptions{.max_sync_search_bytes = 64}};
     const Bytes garbage(1200, std::byte{0x00});  // no 0x47 anywhere
     const auto sink = [](std::span<const std::byte>) {};
     const auto pushed = reader.push(garbage, sink);
     REQUIRE_FALSE(pushed.has_value());
-    CHECK(pushed.error() == mpegts::DemuxError::kNotTransportStream);
+    CHECK(pushed.error() == iclforge::mpegts::DemuxError::kNotTransportStream);
 }
 
 TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
@@ -938,7 +938,7 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     const std::vector<Bytes> frames{frame_of(300, 0x11)};
 
     SECTION("DVB E-AC-3: an associated service with asvc and substreams round-trips") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kEac3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kEac3,
                                  .sample_rate = 48000,
                                  .channels = 2,
                                  .samples_per_frame = 1536};
@@ -948,10 +948,10 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
         track.service.asvc = 0x05;  // main services 0 and 2
         track.service.associated_substreams[0] = {
             .present = true, .bsmod = 3, .bsmod_present = true};
-        const auto file = mpegts::mux(track, views_of(frames));
+        const auto file = iclforge::mpegts::mux(track, views_of(frames));
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         const auto& service = *out->stream.service;
@@ -969,7 +969,7 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("DVB AC-3: a main service round-trips, full_service resolves to Table D.4's pin") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
                                  .sample_rate = 48000,
                                  .channels = 2,
                                  .samples_per_frame = 1536};
@@ -979,10 +979,10 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
         // which is exactly what the wire's own resolved bit reads back as -
         // there is no wire state distinguishing "explicit true" from "CM's
         // own pinned default", so the parser reports the resolved value.
-        const auto file = mpegts::mux(track, views_of(frames));
+        const auto file = iclforge::mpegts::mux(track, views_of(frames));
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         CHECK(out->stream.service->bsmod == 0);
@@ -993,7 +993,7 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("ATSC E-AC-3: an associated service with asvc and substreams round-trips") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kEac3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kEac3,
                                  .sample_rate = 48000,
                                  .channels = 6,
                                  .samples_per_frame = 1536};
@@ -1002,11 +1002,11 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
         track.service.asvc = 0x01;
         track.service.associated_substreams[1] = {
             .present = true, .bsmod = 4, .bsmod_present = true};
-        const auto file = mpegts::mux(track, views_of(frames),
-                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        const auto file = iclforge::mpegts::mux(track, views_of(frames),
+                                      iclforge::mpegts::MuxOptions{.profile = iclforge::mpegts::BroadcastProfile::kAtsc});
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         const auto& service = *out->stream.service;
@@ -1019,7 +1019,7 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("ATSC AC-3: a main service with mainid, priority and sample_rate_code round-trips") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
                                  .sample_rate = 44100,
                                  .channels = 2,
                                  .samples_per_frame = 1536};
@@ -1028,11 +1028,11 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
         track.service.sample_rate_code = 1;  // 44.1 kHz, Table A4.2
         track.service.mainid = 3;
         track.service.priority = 2;
-        const auto file = mpegts::mux(track, views_of(frames),
-                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        const auto file = iclforge::mpegts::mux(track, views_of(frames),
+                                      iclforge::mpegts::MuxOptions{.profile = iclforge::mpegts::BroadcastProfile::kAtsc});
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         REQUIRE(out->stream.service->mainid.has_value());
@@ -1043,15 +1043,15 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("ATSC AC-3: the plain 3-byte form (no association) still parses") {
-        const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+        const iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
                                        .sample_rate = 48000,
                                        .channels = 2,
                                        .samples_per_frame = 1536};
-        const auto file = mpegts::mux(track, views_of(frames),
-                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        const auto file = iclforge::mpegts::mux(track, views_of(frames),
+                                      iclforge::mpegts::MuxOptions{.profile = iclforge::mpegts::BroadcastProfile::kAtsc});
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         CHECK(out->stream.service->bsmod == 0);
@@ -1068,19 +1068,19 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
         }
         const std::array<EsSpec, 1> streams{
             EsSpec{.stream_type = 0x87, .pid = 0x0100, .descriptors = descriptors}};
-        const auto out = mpegts::demux(build_stream(streams, frames));
+        const auto out = iclforge::mpegts::demux(build_stream(streams, frames));
         REQUIRE(out.has_value());
         CHECK_FALSE(out->stream.service.has_value());
     }
 
     SECTION("an AC-4 stream has no A/52 descriptor to read") {
-        const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc4,
+        const iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc4,
                                        .sample_rate = 48000,
                                        .channels = 2,
                                        .samples_per_frame = 2048};
-        const auto file = mpegts::mux(track, views_of(frames));
+        const auto file = iclforge::mpegts::mux(track, views_of(frames));
         REQUIRE(file.has_value());
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         CHECK_FALSE(out->stream.service.has_value());
     }
@@ -1092,16 +1092,16 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     // rather than merely reachable in principle.
 
     SECTION("DVB AC-3: mainid round-trips (the DVB E-AC-3 section above only covers asvc)") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
                                  .sample_rate = 48000,
                                  .channels = 2,
                                  .samples_per_frame = 1536};
         track.service.bsmod = 0;
         track.service.mainid = 4;
-        const auto file = mpegts::mux(track, views_of(frames));
+        const auto file = iclforge::mpegts::mux(track, views_of(frames));
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         REQUIRE(out->stream.service->mainid.has_value());
@@ -1110,16 +1110,16 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("DVB AC-3: an associated service's asvc round-trips") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
                                  .sample_rate = 48000,
                                  .channels = 2,
                                  .samples_per_frame = 1536};
         track.service.bsmod = 4;  // dialogue
         track.service.asvc = 0x02;
-        const auto file = mpegts::mux(track, views_of(frames));
+        const auto file = iclforge::mpegts::mux(track, views_of(frames));
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         CHECK(out->stream.service->bsmod == 4);
@@ -1129,16 +1129,16 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("DVB E-AC-3: mainid round-trips (the section above only covers asvc)") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kEac3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kEac3,
                                  .sample_rate = 48000,
                                  .channels = 2,
                                  .samples_per_frame = 1536};
         track.service.bsmod = 0;
         track.service.mainid = 1;
-        const auto file = mpegts::mux(track, views_of(frames));
+        const auto file = iclforge::mpegts::mux(track, views_of(frames));
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         REQUIRE(out->stream.service->mainid.has_value());
@@ -1146,17 +1146,17 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("ATSC AC-3: an associated service's asvc round-trips (svc >= 0x2 branch)") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
                                  .sample_rate = 48000,
                                  .channels = 2,
                                  .samples_per_frame = 1536};
         track.service.bsmod = 3;  // hearing impaired
         track.service.asvc = 0x08;
-        const auto file = mpegts::mux(track, views_of(frames),
-                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        const auto file = iclforge::mpegts::mux(track, views_of(frames),
+                                      iclforge::mpegts::MuxOptions{.profile = iclforge::mpegts::BroadcastProfile::kAtsc});
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         CHECK(out->stream.service->bsmod == 3);
@@ -1165,18 +1165,18 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("ATSC AC-3: acmod 1+1 takes the langcod2 branch (num_channels_field == 0)") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
                                  .sample_rate = 48000,
                                  .channels = 2,
                                  .samples_per_frame = 1536};
         track.service.acmod = 0;  // A/52 Table 5.8's own code for 1+1 (dual mono)
         track.service.bsmod = 0;
         track.service.mainid = 2;  // forces the extended form past langcod2
-        const auto file = mpegts::mux(track, views_of(frames),
-                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        const auto file = iclforge::mpegts::mux(track, views_of(frames),
+                                      iclforge::mpegts::MuxOptions{.profile = iclforge::mpegts::BroadcastProfile::kAtsc});
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         REQUIRE(out->stream.service->mainid.has_value());
@@ -1184,18 +1184,18 @@ TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
     }
 
     SECTION("ATSC E-AC-3: mainid round-trips (the section above only covers asvc)") {
-        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kEac3,
+        iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kEac3,
                                  .sample_rate = 48000,
                                  .channels = 6,
                                  .samples_per_frame = 1536};
         track.service.bsmod = 0;
         track.service.mainid = 5;
         track.service.priority = 1;
-        const auto file = mpegts::mux(track, views_of(frames),
-                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        const auto file = iclforge::mpegts::mux(track, views_of(frames),
+                                      iclforge::mpegts::MuxOptions{.profile = iclforge::mpegts::BroadcastProfile::kAtsc});
         REQUIRE(file.has_value());
 
-        const auto out = mpegts::demux(*file);
+        const auto out = iclforge::mpegts::demux(*file);
         REQUIRE(out.has_value());
         REQUIRE(out->stream.service.has_value());
         REQUIRE(out->stream.service->mainid.has_value());
@@ -1222,65 +1222,65 @@ TEST_CASE("MPEG-TS parse_service_descriptor rejects truncated and unknown input"
     constexpr std::uint8_t kAtscEac3 = 0xCC;
 
     SECTION("an unrecognised tag is refused, not guessed at") {
-        CHECK_FALSE(mpegts::parse_service_descriptor(0x9B, Bytes{std::byte{0x00}}).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(0x9B, Bytes{std::byte{0x00}}).has_value());
     }
 
     SECTION("DVB AC-3: an empty body") {
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbAc3, {}).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbAc3, {}).has_value());
     }
 
     SECTION("DVB AC-3: component_type_flag set but the byte is missing") {
         const Bytes body{std::byte{0x80}};  // component_type_flag alone
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbAc3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbAc3, body).has_value());
     }
 
     SECTION("DVB AC-3: bsid_flag set but the byte is missing") {
         const Bytes body{std::byte{0x40}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbAc3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbAc3, body).has_value());
     }
 
     SECTION("DVB AC-3: mainid_flag set but the byte is missing") {
         const Bytes body{std::byte{0x20}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbAc3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbAc3, body).has_value());
     }
 
     SECTION("DVB AC-3: asvc_flag set but the byte is missing") {
         const Bytes body{std::byte{0x10}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbAc3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbAc3, body).has_value());
     }
 
     SECTION("DVB E-AC-3: an empty body") {
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbEac3, {}).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbEac3, {}).has_value());
     }
 
     SECTION("DVB E-AC-3: component_type_flag set but the byte is missing") {
         const Bytes body{std::byte{0x80}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
     }
 
     SECTION("DVB E-AC-3: bsid_flag set but the byte is missing") {
         const Bytes body{std::byte{0x40}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
     }
 
     SECTION("DVB E-AC-3: mainid_flag set but the byte is missing") {
         const Bytes body{std::byte{0x20}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
     }
 
     SECTION("DVB E-AC-3: asvc_flag set but the byte is missing") {
         const Bytes body{std::byte{0x10}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
     }
 
     SECTION("DVB E-AC-3: substream1_flag set but the byte is missing") {
         const Bytes body{std::byte{0x04}};  // substream1_flag alone
-        CHECK_FALSE(mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kDvbEac3, body).has_value());
     }
 
     SECTION("ATSC AC-3: a body shorter than the fixed 3-byte prefix") {
         const Bytes body{std::byte{0x00}, std::byte{0x00}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kAtscAc3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kAtscAc3, body).has_value());
     }
 
     SECTION("ATSC AC-3: longer than 3 bytes but the association byte never arrives") {
@@ -1288,46 +1288,46 @@ TEST_CASE("MPEG-TS parse_service_descriptor rejects truncated and unknown input"
         // then langcod - exactly 4 bytes, one short of the mainid/asvcflags
         // byte the 4th byte's own length implies should follow.
         const Bytes body{std::byte{0x00}, std::byte{0x00}, std::byte{0x08}, std::byte{0xFF}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kAtscAc3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kAtscAc3, body).has_value());
     }
 
     SECTION("ATSC E-AC-3: a body shorter than the fixed 3-byte prefix") {
         const Bytes body{std::byte{0x00}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kAtscEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kAtscEac3, body).has_value());
     }
 
     SECTION("ATSC E-AC-3: mainid_flag set but the byte is missing") {
         const Bytes body{std::byte{0x20}, std::byte{0x00}, std::byte{0x10}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kAtscEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kAtscEac3, body).has_value());
     }
 
     SECTION("ATSC E-AC-3: asvc_flag set but the byte is missing") {
         const Bytes body{std::byte{0x10}, std::byte{0x00}, std::byte{0x10}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kAtscEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kAtscEac3, body).has_value());
     }
 
     SECTION("ATSC E-AC-3: substream1_flag set but the byte is missing") {
         const Bytes body{std::byte{0x04}, std::byte{0x00}, std::byte{0x10}};
-        CHECK_FALSE(mpegts::parse_service_descriptor(kAtscEac3, body).has_value());
+        CHECK_FALSE(iclforge::mpegts::parse_service_descriptor(kAtscEac3, body).has_value());
     }
 }
 
 TEST_CASE("MPEG-TS round-trips an AC-4 track", "[mpegts][reader][ac4]") {
     const std::vector<Bytes> frames{frame_of(700, 0x1A), frame_of(512, 0x2B),
                                     frame_of(280, 0x3C)};
-    const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc4,
+    const iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc4,
                                    .sample_rate = 48000,
                                    .channels = 2,
                                    .samples_per_frame = 2048};
-    const auto file = mpegts::mux(track, views_of(frames));
+    const auto file = iclforge::mpegts::mux(track, views_of(frames));
     REQUIRE(file.has_value());
 
-    const auto out = mpegts::demux(*file);
+    const auto out = iclforge::mpegts::demux(*file);
     REQUIRE(out.has_value());
     CHECK(out->stream.ac4);
     CHECK_FALSE(out->stream.eac3);
     CHECK(out->stream.stream_type == 0x06);
-    CHECK(out->stream.signalling == mpegts::CodecSignalling::kDvbExtensionDescriptor);
+    CHECK(out->stream.signalling == iclforge::mpegts::CodecSignalling::kDvbExtensionDescriptor);
     // The payload passes through untouched - the reader never frames it.
     CHECK(concat(out->payloads) == concat(frames));
 }

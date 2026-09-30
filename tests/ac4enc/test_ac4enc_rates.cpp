@@ -22,7 +22,7 @@
 
 namespace {
 
-using ac3::test::kSanitized;
+using iclforge::test::kSanitized;
 
 constexpr double kRate = 48000.0;
 
@@ -63,9 +63,9 @@ std::vector<std::vector<float>> programme(
     return out;
 }
 
-std::vector<ac4::EncodedFrame> encode(const ac4::EncoderConfig& config,
+std::vector<iclforge::ac4::EncodedFrame> encode(const iclforge::ac4::EncoderConfig& config,
                                       const std::vector<std::vector<float>>& input) {
-    auto encoder = ac4::Encoder::create(config);
+    auto encoder = iclforge::ac4::Encoder::create(config);
     REQUIRE(encoder.has_value());
     const std::vector<std::span<const float>> views(input.begin(), input.end());
     auto frames = encoder->encode(views);
@@ -157,17 +157,17 @@ TEST_CASE("an average rate stream never needs more than the buffer it signals", 
     };
     for (const Leg& leg : legs) {
         CAPTURE(leg.frame_rate_index, leg.channels, leg.kbps);
-        ac4::EncoderConfig config;
+        iclforge::ac4::EncoderConfig config;
         config.channels = leg.channels;
         config.bitrate_kbps = leg.kbps;
         config.frame_rate_index = leg.frame_rate_index;
-        config.rate_mode = ac4::RateMode::kAverage;
-        const std::vector<ac4::EncodedFrame> frames = encode(config, programme(leg.channels));
+        config.rate_mode = iclforge::ac4::RateMode::kAverage;
+        const std::vector<iclforge::ac4::EncodedFrame> frames = encode(config, programme(leg.channels));
         std::vector<std::size_t> sizes;
         std::vector<int> waits;
         std::vector<int> codes;
-        ac4::Decoder decoder(ac4::DecoderConfig{});
-        for (const ac4::EncodedFrame& frame : frames) {
+        iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{});
+        for (const iclforge::ac4::EncodedFrame& frame : frames) {
             sizes.push_back(frame.raw_ac4_frame.size());
             const TocStart toc = toc_start(frame.raw_ac4_frame);
             waits.push_back(toc.wait_frames);
@@ -220,25 +220,25 @@ TEST_CASE("an average rate keeps each of several substreams at its least frame o
     // A-SPX's balance coding makes cheap: at an average rate each substream
     // is sized by what it needs, and one that needs less than its least frame
     // still gets it, the substream taking what the others leave among them.
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.bitrate_kbps = 104;
-    config.rate_mode = ac4::RateMode::kAverage;
+    config.rate_mode = iclforge::ac4::RateMode::kAverage;
     config.experimental.aspx_balance = true;
     for (const int channels : {1, 2, 2}) {
-        ac4::SubstreamConfig substream;
+        iclforge::ac4::SubstreamConfig substream;
         substream.channels = channels;
         config.substreams.push_back(substream);
-        ac4::PresentationConfig presentation;
+        iclforge::ac4::PresentationConfig presentation;
         presentation.substreams = {static_cast<int>(config.substreams.size()) - 1};
         config.presentations.push_back(presentation);
     }
     std::vector<std::vector<float>> input = programme(5);
     input[2] = input[1];
     input[4] = input[3];
-    const std::vector<ac4::EncodedFrame> frames = encode(config, input);
+    const std::vector<iclforge::ac4::EncodedFrame> frames = encode(config, input);
     REQUIRE_FALSE(frames.empty());
-    ac4::Decoder decoder(ac4::DecoderConfig{});
-    for (const ac4::EncodedFrame& frame : frames) {
+    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{});
+    for (const iclforge::ac4::EncodedFrame& frame : frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
@@ -247,18 +247,18 @@ TEST_CASE("an average rate keeps each of several substreams at its least frame o
 
 TEST_CASE("a variable rate stream sends no wait and keeps its rate over seconds",
           "[ac4enc][rate]") {
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 2;
     config.bitrate_kbps = 96;
-    config.rate_mode = ac4::RateMode::kVariable;
+    config.rate_mode = iclforge::ac4::RateMode::kVariable;
     // Four seconds, whatever the build: the rate holds over seconds.
-    const std::vector<ac4::EncodedFrame> frames =
+    const std::vector<iclforge::ac4::EncodedFrame> frames =
         encode(config, programme(2, static_cast<std::size_t>(kRate)));
     double total = 0.0;
     std::size_t longest = 0;
     std::size_t shortest = std::numeric_limits<std::size_t>::max();
-    ac4::Decoder decoder(ac4::DecoderConfig{});
-    for (const ac4::EncodedFrame& frame : frames) {
+    iclforge::ac4::Decoder decoder(iclforge::ac4::DecoderConfig{});
+    for (const iclforge::ac4::EncodedFrame& frame : frames) {
         CHECK(toc_start(frame.raw_ac4_frame).wait_frames == 7);
         total += static_cast<double>(frame.raw_ac4_frame.size());
         longest = std::max(longest, frame.raw_ac4_frame.size());
@@ -275,11 +275,11 @@ TEST_CASE("a variable rate stream sends no wait and keeps its rate over seconds"
 }
 
 TEST_CASE("a constant rate stream sends wait_frames 0 and no br_code", "[ac4enc][rate]") {
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 2;
     config.bitrate_kbps = 96;
-    const std::vector<ac4::EncodedFrame> frames = encode(config, programme(2));
-    for (const ac4::EncodedFrame& frame : frames) {
+    const std::vector<iclforge::ac4::EncodedFrame> frames = encode(config, programme(2));
+    for (const iclforge::ac4::EncodedFrame& frame : frames) {
         const TocStart toc = toc_start(frame.raw_ac4_frame);
         CHECK(toc.wait_frames == 0);
         CHECK(toc.br_code == -1);

@@ -45,10 +45,10 @@ int main() {
     const std::vector<std::span<const float>> channels{input[0], input[1]};
 
     // Four channels are no layout the encoder writes, and it says so.
-    if (ac4::Encoder::refusal_reason(ac4::EncoderConfig{.channels = 4}).empty()) {
+    if (iclforge::ac4::Encoder::refusal_reason(iclforge::ac4::EncoderConfig{.channels = 4}).empty()) {
         return fail("the encoder gave no reason for refusing four channels");
     }
-    auto encoder = ac4::Encoder::create(ac4::EncoderConfig{.channels = 2, .bitrate_kbps = 128});
+    auto encoder = iclforge::ac4::Encoder::create(iclforge::ac4::EncoderConfig{.channels = 2, .bitrate_kbps = 128});
     if (!encoder) {
         return fail("the encoder refused stereo at 128 kbps");
     }
@@ -63,28 +63,28 @@ int main() {
     frames->insert(frames->end(), rest->begin(), rest->end());
 
     std::vector<std::byte> stream;
-    for (const ac4::EncodedFrame& frame : *frames) {
-        const std::vector<std::byte> sync = ac4::sync_frame(frame.raw_ac4_frame, true);
+    for (const iclforge::ac4::EncodedFrame& frame : *frames) {
+        const std::vector<std::byte> sync = iclforge::ac4::sync_frame(frame.raw_ac4_frame, true);
         stream.insert(stream.end(), sync.begin(), sync.end());
     }
-    const ac4::ScanResult scanned = ac4::scan(stream);
+    const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(stream);
     if (scanned.stopped_at || frames->empty() || scanned.frames.size() != frames->size()) {
         return fail("the inspector did not find every frame the encoder wrote");
     }
-    for (const ac4::SyncFrame& frame : scanned.frames) {
+    for (const iclforge::ac4::SyncFrame& frame : scanned.frames) {
         if (frame.crc_ok != true) {
             return fail("a sync frame's CRC did not check");
         }
     }
-    const auto first = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+    const auto first = iclforge::ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
     if (!first || !first->toc.b_iframe_global || first->toc.n_presentations != 1) {
         return fail("the first frame's table of contents is not an I-frame of one presentation");
     }
-    if (ac4::build_dac4(encoder->toc()).empty()) {
+    if (iclforge::ac4::build_dac4(encoder->toc()).empty()) {
         return fail("no dac4 describes the encoder's table of contents");
     }
 
-    const std::string codecs = ac4::rfc6381_codec_string(encoder->toc());
+    const std::string codecs = iclforge::ac4::rfc6381_codec_string(encoder->toc());
     std::printf("consumer_ac4enc: %zu frames, %zu bytes, codecs %s, delay %d samples\n",
                 frames->size(), stream.size(), codecs.c_str(), encoder->delay_samples());
     return 0;

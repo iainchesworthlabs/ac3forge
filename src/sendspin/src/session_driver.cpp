@@ -13,7 +13,7 @@
 #include "iclforge/sendspin/session.hpp"
 #include "iclforge/sendspin/transport.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace {
 
@@ -160,4 +160,4 @@ void SessionDriver::write_loop() {
     connection_->close();
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

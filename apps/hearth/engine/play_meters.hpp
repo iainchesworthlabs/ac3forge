@@ -13,8 +13,8 @@
 
 // Meters on what the output plays (planning/hearth-reference-player.md,
 // Monitor): a level meter per output slot - peak, hold, RMS and a clip latch,
-// ac3::analysis::LevelMeter's - and the programme's loudness from
-// ac3::meta::LoudnessMeter, measured as the blocks are rendered and released
+// iclforge::analysis::LevelMeter's - and the programme's loudness from
+// iclforge::meta::LoudnessMeter, measured as the blocks are rendered and released
 // only when the device's clock reaches them.
 //
 // The GUI's stream player meters each chunk as it is queued, so its meters run
@@ -39,7 +39,7 @@
 // programme at each read, at a cost that grows with the programme's length, so
 // they are read once a second of audio and each snapshot carries the latest.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 struct MeterSnapshot {
     // The output frame the audio this describes ends on, counted since the
@@ -117,4 +117,4 @@ private:
     std::size_t count_ = 0;
 };
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

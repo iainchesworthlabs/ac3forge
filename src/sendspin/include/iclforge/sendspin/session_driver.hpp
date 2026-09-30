@@ -36,7 +36,7 @@
 //
 // A board has no driver: its WebSocket handler calls the session directly.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 // Local monotonic time from std::chrono::steady_clock.
 class SteadyClock final : public Clock {
@@ -134,4 +134,4 @@ class SessionDriver {
     std::thread writer_;
 };
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

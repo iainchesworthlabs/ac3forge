@@ -9,7 +9,7 @@
 #include "iclforge/ac4core/dsp/real_functions.hpp"
 #include "iclforge/ac4core/tables/qmf_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 constexpr std::size_t kSubbands = 64;
@@ -719,4 +719,4 @@ ParseResult decode_aspx(const AspxFrame& frame, std::span<AspxChannelIo> channel
     return {};
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -6,7 +6,7 @@
 
 #include "bit_writer.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 using Complex = dsp::Complex<double>;
@@ -536,4 +536,4 @@ void AjocEncoder::drop_before_frame(long long frame) {
     }
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

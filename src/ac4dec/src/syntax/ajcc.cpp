@@ -6,7 +6,7 @@
 
 #include "iclforge/ac4core/tables/huffman_tables.hpp"
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 namespace {
 
@@ -154,4 +154,4 @@ const Codebook& ajcc_codebook(AjccDataType data_type, int quant_mode, AjccHcbTyp
     return *sets[static_cast<std::size_t>(data_type)][static_cast<std::size_t>(hcb_type)];
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

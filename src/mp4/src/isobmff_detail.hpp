@@ -28,7 +28,7 @@
 // Every free function here is `inline`: this header is included by more
 // than one .cpp in the same target, so ODR requires it.
 
-namespace mp4::detail {
+namespace iclforge::mp4::detail {
 
 using Bytes = std::vector<std::byte>;
 
@@ -312,7 +312,7 @@ inline Bytes build_stts(std::uint32_t sample_count, std::uint32_t sample_delta) 
 }
 
 // One sample per chunk - the simplest legal stsc/stco pairing, and the same
-// minimalism matroska::mux() applies to its own one-SimpleBlock-per-frame
+// minimalism iclforge::matroska::mux() applies to its own one-SimpleBlock-per-frame
 // layout. Coarser chunking would help a player's seek performance on a very
 // long file; nothing about correctness needs it for the streams this project
 // produces. chunk_count == 0 (fragment()'s init segment) writes an empty
@@ -440,4 +440,4 @@ enum class BoxRead : std::uint8_t { kOk, kNeedMore, kBad };
     return BoxRead::kOk;
 }
 
-}  // namespace mp4::detail
+}  // namespace iclforge::mp4::detail

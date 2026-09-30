@@ -12,7 +12,7 @@
 #include "iclforge/sendspin/crypto.hpp"
 #include "iclforge/sendspin/noise.hpp"
 
-namespace ac3::sendspin::pairing {
+namespace iclforge::sendspin::pairing {
 
 namespace {
 
@@ -142,4 +142,4 @@ std::optional<Key32> unwrap(noise::Suite suite, const Key32& key, Bytes wrapped)
     return value;
 }
 
-}  // namespace ac3::sendspin::pairing
+}  // namespace iclforge::sendspin::pairing

@@ -45,7 +45,7 @@
 // innermost would put a row called "Google Chrome Helper (Renderer)" in the
 // room, which is the machine's word for it and not a person's.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 inline constexpr std::string_view kAppBundleSuffix = ".app";
 
@@ -119,4 +119,4 @@ inline constexpr std::string_view kAppBundleSuffix = ".app";
     return std::string{path_basename(executable_path)};
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

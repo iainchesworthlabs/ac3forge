@@ -38,8 +38,8 @@ TEST_CASE("AC-4 page settings at their defaults echo no token", "[gui]") {
     const Ac4EncodeSettings settings;
     CHECK(ac3gui::ac4_cli_tokens(settings, false).empty());
     CHECK(ac3gui::ac4_cli_tokens(settings, true).empty());
-    const ac4::EncoderConfig config = ac3gui::ac4_encoder_config(settings, 2, 48000, 192);
-    const ac4::EncoderConfig plain{};
+    const iclforge::ac4::EncoderConfig config = ac3gui::ac4_encoder_config(settings, 2, 48000, 192);
+    const iclforge::ac4::EncoderConfig plain{};
     CHECK(config.frame_rate_index == plain.frame_rate_index);
     CHECK(config.rate_mode == plain.rate_mode);
     CHECK(config.codec_mode == plain.codec_mode);
@@ -98,29 +98,29 @@ TEST_CASE("AC-4 page configuration follows its tokens", "[gui]") {
     s.dialogue_right = true;
     s.dialogue_max_gain = 0;
     s.iframe_interval = 48;
-    const ac4::EncoderConfig c = ac3gui::ac4_encoder_config(s, 6, 48000, 256);
+    const iclforge::ac4::EncoderConfig c = ac3gui::ac4_encoder_config(s, 6, 48000, 256);
     CHECK(c.channels == 6);
     CHECK(c.sample_rate_hz == 48000);
     CHECK(c.bitrate_kbps == 256);
     CHECK(c.frame_rate_index == 2);
-    CHECK(c.rate_mode == ac4::RateMode::kVariable);
-    CHECK(c.codec_mode == ac4::CodecMode::kAspxAcpl3);
+    CHECK(c.rate_mode == iclforge::ac4::RateMode::kVariable);
+    CHECK(c.codec_mode == iclforge::ac4::CodecMode::kAspxAcpl3);
     CHECK(c.iframe_interval == 48);
     CHECK(c.dialnorm_db == -20.5);
     REQUIRE(c.drc.has_value());
-    CHECK(c.drc->profile == ac4::DrcProfile::kSpeech);
+    CHECK(c.drc->profile == iclforge::ac4::DrcProfile::kSpeech);
     CHECK(c.drc->modes.size() == 4);
     REQUIRE(c.downmix.has_value());
     CHECK(c.downmix->loro_centre_db == 3.0);
     CHECK(std::isinf(c.downmix->loro_surround_db));
-    CHECK(c.downmix->preferred == ac4::PreferredDownmix::kLtRt);
+    CHECK(c.downmix->preferred == iclforge::ac4::PreferredDownmix::kLtRt);
     CHECK_FALSE(c.downmix->ltrt_centre_db.has_value());
     REQUIRE(c.dialogue.has_value());
     CHECK_FALSE(c.dialogue->left);
     CHECK(c.dialogue->right);
     CHECK_FALSE(c.dialogue->centre);
     CHECK(c.dialogue->max_gain_db == 3);
-    CHECK(c.dialogue->method == ac4::DialogueMethod::kChannelIndependent);
+    CHECK(c.dialogue->method == iclforge::ac4::DialogueMethod::kChannelIndependent);
     CHECK(ac3gui::ac4_loudness_practice(s) == std::nullopt);
 }
 
@@ -148,17 +148,17 @@ TEST_CASE("AC-4 presentation labels name the position and the channels", "[gui]"
         right[i] = left[i];
     }
     const std::vector<std::span<const float>> views{left, right};
-    auto encoder = ac4::Encoder::create(ac3gui::ac4_encoder_config({}, 2, 48000, 128));
+    auto encoder = iclforge::ac4::Encoder::create(ac3gui::ac4_encoder_config({}, 2, 48000, 128));
     REQUIRE(encoder.has_value());
     auto frames = encoder->encode(views);
     REQUIRE(frames.has_value());
-    const auto packaged = ac3::apps::package_ac4(*frames, encoder->toc(), false, true);
+    const auto packaged = iclforge::apps::package_ac4(*frames, encoder->toc(), false, true);
     REQUIRE(packaged.has_value());
     std::vector<std::byte> stream;
     for (const auto& chunk : packaged->chunks) {
         stream.insert(stream.end(), chunk.begin(), chunk.end());
     }
-    const ac4::ScanResult scan = ac4::scan(stream);
+    const iclforge::ac4::ScanResult scan = iclforge::ac4::scan(stream);
     REQUIRE_FALSE(scan.frames.empty());
     const auto rows = ac3gui::ac4_presentation_rows(scan.frames);
     REQUIRE(rows.size() == 1);
@@ -221,22 +221,22 @@ TEST_CASE("AC-4 object parameters follow the settings", "[gui]") {
     CHECK(params.sample_rate_hz == 44100);
     CHECK(params.bitrate_kbps == 320);
     CHECK(params.dialnorm_db == 24.0);
-    CHECK(params.coding == ac4::ObjectCoding::kDirect);
+    CHECK(params.coding == iclforge::ac4::ObjectCoding::kDirect);
     s.object_coding = 0;
-    CHECK(ac3gui::ac4_objects_params(s, 48000, 192).coding == ac4::ObjectCoding::kAjoc);
+    CHECK(ac3gui::ac4_objects_params(s, 48000, 192).coding == iclforge::ac4::ObjectCoding::kAjoc);
     // An index off the table is the first, as every choice here reads one.
     s.object_coding = 9;
-    CHECK(ac3gui::ac4_objects_params(s, 48000, 192).coding == ac4::ObjectCoding::kAjoc);
+    CHECK(ac3gui::ac4_objects_params(s, 48000, 192).coding == iclforge::ac4::ObjectCoding::kAjoc);
     CHECK(joined(ac3gui::ac4_object_cli_tokens(s, false)) == "dialnorm=24");
 }
 
 TEST_CASE("an output path names an MP4 file by its suffix, as remux does", "[gui]") {
     for (const char* name : {"out.mp4", "dir/take.m4a", "clip.mov", "a b.mp4"}) {
         CAPTURE(name);
-        CHECK(ac3::apps::ac4_output_names_mp4(name));
+        CHECK(iclforge::apps::ac4_output_names_mp4(name));
     }
     for (const char* name : {"out.ac4", "out.mp4.ac4", "mp4", "out.MP4", "", "-"}) {
         CAPTURE(name);
-        CHECK_FALSE(ac3::apps::ac4_output_names_mp4(name));
+        CHECK_FALSE(iclforge::apps::ac4_output_names_mp4(name));
     }
 }

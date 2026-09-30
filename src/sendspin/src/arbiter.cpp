@@ -9,7 +9,7 @@
 #include "iclforge/sendspin/crypto.hpp"
 #include "iclforge/sendspin/messages.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace {
 
@@ -135,4 +135,4 @@ std::optional<Arbiter::Id> Arbiter::beside() const {
     return beside_ ? std::optional<Id>(beside_->id) : std::nullopt;
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

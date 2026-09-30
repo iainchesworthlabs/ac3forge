@@ -25,7 +25,7 @@
 //
 //     [192][int64 timestamp µs][uint32 send_ahead µs][uint16 Pc][uint16 Pd][payload]
 //
-// Pc is the burst-info word as ac3::iec61937 writes it: the data type in bits 0
+// Pc is the burst-info word as iclforge::iec61937 writes it: the data type in bits 0
 // to 6 (1 AC-3, 21 E-AC-3, and 24 AC-4 with its subdata type in bits 5 and 6), the
 // error flag in bit 7, the data-type-dependent bits 8 to 12 and the data stream
 // number in 13 to 15. Pd is the payload length in bits for AC-3, AC-4 and AC-4 LD,
@@ -36,7 +36,7 @@
 // type matches the running stream, and whether its timestamp is late, are the
 // session's to judge.
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 inline constexpr std::size_t kAudioChunkHeaderBytes = 13;
 inline constexpr std::size_t kBurstChunkHeaderBytes = 17;
@@ -97,7 +97,7 @@ enum class ChunkError : std::uint8_t {
 bool write_player_chunk_header(std::span<std::uint8_t> out, std::int64_t timestamp_us,
                                std::uint32_t send_ahead_us, Dialect dialect);
 
-// Pc bits 0 to 6 (IEC 61937-2 Table 2), as ac3::iec61937::BurstDataType names them.
+// Pc bits 0 to 6 (IEC 61937-2 Table 2), as iclforge::iec61937::BurstDataType names them.
 enum class BurstDataType : std::uint8_t {
     kAc3 = 1,
     kEac3 = 21,
@@ -166,4 +166,4 @@ struct BurstChunk {
 bool write_burst_chunk_header(std::span<std::uint8_t> out, std::int64_t timestamp_us,
                               std::uint32_t send_ahead_us, std::uint16_t pc, std::uint16_t pd);
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

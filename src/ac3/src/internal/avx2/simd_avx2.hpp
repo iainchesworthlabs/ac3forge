@@ -25,7 +25,7 @@
 // CMakeLists.txt's own comment).
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::avx2 {
+namespace iclforge::internal::avx2 {
 
 struct f64x4 {
     __m256d v;
@@ -111,4 +111,4 @@ inline void transpose4x4(f64x4& r0, f64x4& r1, f64x4& r2, f64x4& r3) {
     r3.v = _mm256_permute2f128_pd(t1, t3, 0x31);        // r0[3] r1[3] r2[3] r3[3]
 }
 
-}  // namespace ac3::internal::avx2
+}  // namespace iclforge::internal::avx2

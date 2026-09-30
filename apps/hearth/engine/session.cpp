@@ -14,7 +14,7 @@
 
 // See session.hpp.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 namespace {
 
@@ -26,7 +26,7 @@ namespace {
     for (const std::span<const std::byte> frame : units.frames) {
         largest = std::max(largest, frame.size());
     }
-    const ac4::Toc& toc = units.first.toc;
+    const iclforge::ac4::Toc& toc = units.first.toc;
     const std::optional<iec61937::BurstDataType> type = iec61937::ac4_burst_type_for(
         largest, toc.sample_rate_hz == 44100 ? 0 : 1, toc.frame_rate_index);
     if (!type) {
@@ -50,13 +50,13 @@ namespace {
 // and why none of them decodes where that is so - a substream this build
 // refuses by name, such as an immersive element or objects.
 struct Ac4Reading {
-    std::vector<ac4::PresentationInfo> presentations;
+    std::vector<iclforge::ac4::PresentationInfo> presentations;
     std::string refusal;
 };
 
 [[nodiscard]] Ac4Reading read_presentations(const Ac4Units& units) {
     Ac4Reading out;
-    ac4::Decoder reader;
+    iclforge::ac4::Decoder reader;
     // The first frames whose tables of contents read; a few, since the first
     // may be damaged.
     constexpr std::size_t kFramesRead = 4;
@@ -65,12 +65,12 @@ struct Ac4Reading {
         if (!report) {
             continue;
         }
-        for (const ac4::SubstreamReport& substream : report->substreams) {
-            if (substream.refused == ac4::DecodeError::kUnsupported && out.refusal.empty()) {
+        for (const iclforge::ac4::SubstreamReport& substream : report->substreams) {
+            if (substream.refused == iclforge::ac4::DecodeError::kUnsupported && out.refusal.empty()) {
                 out.refusal = std::string{substream.refused_reason};
             }
         }
-        const std::span<const ac4::PresentationInfo> presentations = reader.presentations();
+        const std::span<const iclforge::ac4::PresentationInfo> presentations = reader.presentations();
         if (!presentations.empty()) {
             out.presentations.assign(presentations.begin(), presentations.end());
             break;
@@ -104,7 +104,7 @@ struct Ac4Reading {
 
 std::expected<Session, std::string> Session::open(const std::string& path, const ItemLoader& loader,
                                                   std::optional<int> programme,
-                                                  const ac4::PresentationChoice& presentation) {
+                                                  const iclforge::ac4::PresentationChoice& presentation) {
     if (!loader) {
         return std::unexpected(std::string{"Nothing is set up to read items."});
     }
@@ -124,7 +124,7 @@ std::expected<Session, std::string> Session::open(const std::string& path, const
             return std::unexpected(fmt::format("\"{}\" cannot be played: {}", path, units.error()));
         }
         const Ac4Reading reading = read_presentations(*units);
-        if (std::ranges::none_of(reading.presentations, &ac4::PresentationInfo::selectable)) {
+        if (std::ranges::none_of(reading.presentations, &iclforge::ac4::PresentationInfo::selectable)) {
             return std::unexpected(fmt::format(
                 "\"{}\" has no presentation this build decodes{}.", path,
                 reading.refusal.empty() ? std::string{} : fmt::format(": {}", reading.refusal)));
@@ -353,11 +353,11 @@ std::expected<std::size_t, std::string> Session::render(StreamDecoder& decoder,
     return frames;
 }
 
-std::optional<std::size_t> Session::ac4_presentation(const ac4::PresentationChoice& choice) const {
+std::optional<std::size_t> Session::ac4_presentation(const iclforge::ac4::PresentationChoice& choice) const {
     if (!ac4_) {
         return std::nullopt;
     }
-    return ac4::select_presentation(ac4_toc_, choice, ac4::DecoderConfig{}.level);
+    return iclforge::ac4::select_presentation(ac4_toc_, choice, iclforge::ac4::DecoderConfig{}.level);
 }
 
 std::size_t Session::first_decoded(std::size_t unit) const {
@@ -427,4 +427,4 @@ std::uint64_t Session::position_samples() const {
     return at - window_start_;
 }
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

@@ -16,7 +16,7 @@
 // is built without MBEDTLS_PSA_CRYPTO_KEY_ID_ENCODES_OWNER, the default in both;
 // the static_assert below says so if a configuration differs.
 
-namespace ac3::sendspin::crypto {
+namespace iclforge::sendspin::crypto {
 
 namespace {
 
@@ -222,4 +222,4 @@ bool AeadKey::decrypt(std::span<const std::uint8_t, kAeadNonceBytes> nonce, Byte
            length == ciphertext.size() - kAeadTagBytes;
 }
 
-}  // namespace ac3::sendspin::crypto
+}  // namespace iclforge::sendspin::crypto

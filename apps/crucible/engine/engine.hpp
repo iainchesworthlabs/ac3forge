@@ -22,7 +22,7 @@
 // sign, hand the unit to the output stage - and the UI talks to it through
 // the thread-safe commands below and reads back a status snapshot.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 class DiagnosticLog;  // diagnostics.hpp, which includes this header
 
@@ -80,12 +80,12 @@ struct AppStatus {
     bool fullscreen = false;
     std::optional<int> slot;  // positioned slot (the first of `width`), or nullopt: in the bed
     int width = 1;            // 2: split, a left and a right object
-    ac3::oba::Position position{0.5, 0.5, 0.0};
+    iclforge::oba::Position position{0.5, 0.5, 0.0};
     // A split pair's two objects: at the standard spread either side of
     // `position` until one is placed on its own, after which `pair_custom`
     // is true and these are wherever they were put.
-    ac3::oba::Position left{0.5, 0.5, 0.0};
-    ac3::oba::Position right{0.5, 0.5, 0.0};
+    iclforge::oba::Position left{0.5, 0.5, 0.0};
+    iclforge::oba::Position right{0.5, 0.5, 0.0};
     bool pair_custom = false;
     double size = 0.0;        // the object's extent, 0 (a point) to 1
     float level_dbfs = -120.0F;
@@ -135,13 +135,13 @@ public:
     void stop();
 
     // Commands, safe from any thread; applied at the next frame boundary.
-    void position(AppId app, ac3::oba::Position where);
+    void position(AppId app, iclforge::oba::Position where);
     void unposition(AppId app);
     // Two objects (one per channel) or one for this application.
     void set_split(AppId app, bool split);
     // Place one object of a split pair (side 0 left, 1 right) on its own;
     // the pair is then custom until reset_pair.
-    void position_side(AppId app, int side, ac3::oba::Position where);
+    void position_side(AppId app, int side, iclforge::oba::Position where);
     void reset_pair(AppId app);
     // The object's extent, 0 (a point) to 1 (the whole room), clamped.
     void set_size(AppId app, double size);
@@ -163,4 +163,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

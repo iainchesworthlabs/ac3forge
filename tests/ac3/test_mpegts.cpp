@@ -222,11 +222,11 @@ Bytes pmt_of(std::span<const std::byte> file) {
 }
 
 // A 3/2 + LFE complete-main service at 448 kbps, 48 kHz - the values
-// ac3::io::scan reads off this project's own 5.1 output, spelled out here so
+// iclforge::io::scan reads off this project's own 5.1 output, spelled out here so
 // the descriptor assertions below are against known inputs rather than
 // whatever an encoder happened to produce.
-mpegts::ServiceInfo five_one_service(int bsid) {
-    return mpegts::ServiceInfo{.bsmod = 0,
+iclforge::mpegts::ServiceInfo five_one_service(int bsid) {
+    return iclforge::mpegts::ServiceInfo{.bsmod = 0,
                                .bsmod_present = true,
                                .acmod = 7,
                                .lfe = true,
@@ -243,7 +243,7 @@ TEST_CASE("MPEG-TS output parses as well-formed TS packets with a valid PAT/PMT"
     const std::vector<Bytes> frames{frame_of(1792, 0x11), frame_of(1792, 0x22),
                                     frame_of(1792, 0x33), frame_of(1792, 0x44),
                                     frame_of(1792, 0x55)};
-    const auto file = mpegts::mux({.codec = mpegts::AudioCodec::kEac3, .channels = 6}, frames);
+    const auto file = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6}, frames);
     REQUIRE(file.has_value());
 
     const auto packets = parse_packets(*file);
@@ -284,7 +284,7 @@ TEST_CASE("MPEG-TS output parses as well-formed TS packets with a valid PAT/PMT"
 TEST_CASE("MPEG-TS access units round-trip byte-for-byte through PES", "[mpegts]") {
     const std::vector<Bytes> frames{frame_of(1792, 0x11), frame_of(1792, 0x22),
                                     frame_of(1792, 0x33), frame_of(896, 0x44)};
-    const auto file = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 2}, frames);
+    const auto file = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2}, frames);
     REQUIRE(file.has_value());
 
     const auto packets = parse_packets(*file);
@@ -313,16 +313,16 @@ TEST_CASE("MPEG-TS access units round-trip byte-for-byte through PES", "[mpegts]
 TEST_CASE("MPEG-TS descriptor identifies AC-3 vs Enhanced AC-3", "[mpegts]") {
     const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD), frame_of(64, 0xEF)};
 
-    const auto ac3_file = mpegts::mux(
-        {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+    const auto ac3_file = iclforge::mpegts::mux(
+        {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2,
          .service = {.acmod = 2, .channels = 2, .bsid = 8}},
         frames);
     REQUIRE(ac3_file.has_value());
     const auto ac3 = first_descriptor(pmt_of(*ac3_file));
     CHECK(ac3.tag == 0x6A);
 
-    const auto eac3_file = mpegts::mux(
-        {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = five_one_service(16)},
+    const auto eac3_file = iclforge::mpegts::mux(
+        {.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6, .service = five_one_service(16)},
         frames);
     REQUIRE(eac3_file.has_value());
     const auto eac3 = first_descriptor(pmt_of(*eac3_file));
@@ -330,15 +330,15 @@ TEST_CASE("MPEG-TS descriptor identifies AC-3 vs Enhanced AC-3", "[mpegts]") {
 }
 
 // ETSI EN 300 468 Table D.6/D.7 with Table D.1's component_type: the DVB
-// descriptors used to leave every optional field out because ac3::io::scan
+// descriptors used to leave every optional field out because iclforge::io::scan
 // could not supply one. Every byte below is decoded against the standard's
 // own field positions, not against what the builder happened to emit.
 TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
     const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
 
     SECTION("AC-3, 5.1 complete main") {
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 6, .service = five_one_service(8)},
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 6, .service = five_one_service(8)},
             frames);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
@@ -358,8 +358,8 @@ TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
     SECTION("E-AC-3 sets the Enhanced AC-3 flag and can go past 5.1") {
         auto service = five_one_service(16);
         service.channels = 12;  // 7.1.4, two dependents' worth of extra channels
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kEac3, .channels = 12, .service = service}, frames);
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 12, .service = service}, frames);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
         CHECK(d.tag == 0x7A);
@@ -370,8 +370,8 @@ TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
     }
 
     SECTION("a Dolby Surround encoded stereo mix reads as Table D.5's 0b011") {
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2,
              .service = {.acmod = 2, .channels = 2, .bsid = 8, .dsurmod = 2}},
             frames);
         REQUIRE(file.has_value());
@@ -381,8 +381,8 @@ TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
 
     SECTION("an associated service's full-service flag follows Table D.4") {
         // Music and effects: "full service flag ... set to 0b0".
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2,
              .service = {.bsmod = 1, .acmod = 2, .channels = 2, .bsid = 8}},
             frames);
         REQUIRE(file.has_value());
@@ -395,8 +395,8 @@ TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
         service.mainid = 3;
         service.asvc = std::uint8_t{0x0A};
         service.mix_metadata = true;
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames);
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
         REQUIRE(d.body.size() == 5);
@@ -411,9 +411,9 @@ TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
         auto service = five_one_service(16);
         service.independent_substreams = 0x03;  // I0 and I1
         service.associated_substreams[0] =
-            mpegts::SubstreamService{.present = true, .bsmod = 2, .acmod = 1};  // VI, mono
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames);
+            iclforge::mpegts::SubstreamService{.present = true, .bsmod = 2, .acmod = 1};  // VI, mono
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
         REQUIRE(d.body.size() == 4);
@@ -430,11 +430,11 @@ TEST_CASE("DVB descriptors carry component_type and bsid", "[mpegts]") {
 // stream_type and describes it in the descriptor; DVB does the reverse.
 TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]") {
     const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
-    const mpegts::MuxOptions atsc{.profile = mpegts::BroadcastProfile::kAtsc};
+    const iclforge::mpegts::MuxOptions atsc{.profile = iclforge::mpegts::BroadcastProfile::kAtsc};
 
     SECTION("AC-3: stream_type 0x81, AC-3_audio_stream_descriptor 0x81") {
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 6, .service = five_one_service(8)},
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 6, .service = five_one_service(8)},
             frames, atsc);
         REQUIRE(file.has_value());
         const auto pmt = pmt_of(*file);
@@ -455,8 +455,8 @@ TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]")
     }
 
     SECTION("E-AC-3: stream_type 0x87, E-AC-3_audio_descriptor 0xCC") {
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = five_one_service(16)},
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6, .service = five_one_service(16)},
             frames, atsc);
         REQUIRE(file.has_value());
         const auto pmt = pmt_of(*file);
@@ -478,8 +478,8 @@ TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]")
     SECTION("a wider E-AC-3 programme reads as Table G.3's 0b101") {
         auto service = five_one_service(16);
         service.channels = 8;  // 7.1
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kEac3, .channels = 8, .service = service}, frames, atsc);
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 8, .service = service}, frames, atsc);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
         CHECK(std::to_integer<std::uint8_t>(d.body[1]) == 0xC5);
@@ -489,8 +489,8 @@ TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]")
         auto service = five_one_service(8);
         service.mainid = 3;
         service.priority = 1;  // Table A4.6: primary audio
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 6, .service = service}, frames, atsc);
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 6, .service = service}, frames, atsc);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
         REQUIRE(d.body.size() == 7);
@@ -505,8 +505,8 @@ TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]")
         auto service = five_one_service(8);
         service.bsmod = 5;  // commentary
         service.asvc = std::uint8_t{0x81};
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 6, .service = service}, frames, atsc);
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 6, .service = service}, frames, atsc);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
         REQUIRE(d.body.size() == 7);
@@ -519,9 +519,9 @@ TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]")
         // Complete main is "reserved" as a substream service type (Table G.5),
         // so there is no honest byte to write for this one.
         service.associated_substreams[0] =
-            mpegts::SubstreamService{.present = true, .bsmod = 0, .acmod = 2};
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames, atsc);
+            iclforge::mpegts::SubstreamService{.present = true, .bsmod = 0, .acmod = 2};
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames, atsc);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
         REQUIRE(d.body.size() == 3);
@@ -532,9 +532,9 @@ TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]")
         auto service = five_one_service(16);
         service.independent_substreams = 0x03;
         service.associated_substreams[0] =
-            mpegts::SubstreamService{.present = true, .bsmod = 2, .acmod = 1};  // VI, mono
-        const auto file = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames, atsc);
+            iclforge::mpegts::SubstreamService{.present = true, .bsmod = 2, .acmod = 1};  // VI, mono
+        const auto file = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6, .service = service}, frames, atsc);
         REQUIRE(file.has_value());
         const auto d = first_descriptor(pmt_of(*file));
         REQUIRE(d.body.size() == 4);
@@ -552,18 +552,18 @@ TEST_CASE("ATSC profile writes its own stream_type and descriptors", "[mpegts]")
 // that carries it.
 TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
     const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
-    const mpegts::MuxOptions atsc{.profile = mpegts::BroadcastProfile::kAtsc};
+    const iclforge::mpegts::MuxOptions atsc{.profile = iclforge::mpegts::BroadcastProfile::kAtsc};
 
     SECTION("mono reads as 0b000 in both registries") {
-        const mpegts::ServiceInfo mono{.acmod = 1, .channels = 1, .bsid = 8};
-        const auto dvb = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 1,
+        const iclforge::mpegts::ServiceInfo mono{.acmod = 1, .channels = 1, .bsid = 8};
+        const auto dvb = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 1,
                                       .service = mono},
                                      frames);
         REQUIRE(dvb.has_value());
         // AC-3, full service, complete main, mono.
         CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*dvb)).body[1]) == 0x40);
 
-        const auto ac3_atsc = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 1,
+        const auto ac3_atsc = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 1,
                                            .service = mono},
                                           frames, atsc);
         REQUIRE(ac3_atsc.has_value());
@@ -572,7 +572,7 @@ TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
 
         auto eac3_mono = mono;
         eac3_mono.bsid = 16;
-        const auto eac3_atsc = mpegts::mux({.codec = mpegts::AudioCodec::kEac3, .channels = 1,
+        const auto eac3_atsc = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 1,
                                             .service = eac3_mono},
                                            frames, atsc);
         REQUIRE(eac3_atsc.has_value());
@@ -581,8 +581,8 @@ TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
     }
 
     SECTION("1+1 dual mono reads as 0b001") {
-        const mpegts::ServiceInfo dual{.acmod = 0, .channels = 2, .bsid = 8};
-        const auto dvb = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+        const iclforge::mpegts::ServiceInfo dual{.acmod = 0, .channels = 2, .bsid = 8};
+        const auto dvb = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2,
                                       .service = dual},
                                      frames);
         REQUIRE(dvb.has_value());
@@ -593,9 +593,9 @@ TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
         // Table A4.1 gates langcod2 on num_channels == 0b0000, which is
         // exactly acmod 1+1 - so the extended form is a byte longer here than
         // for any other layout.
-        mpegts::ServiceInfo dual{.acmod = 0, .channels = 2, .bsid = 8};
+        iclforge::mpegts::ServiceInfo dual{.acmod = 0, .channels = 2, .bsid = 8};
         dual.mainid = 2;
-        const auto file = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+        const auto file = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2,
                                        .service = dual},
                                       frames, atsc);
         REQUIRE(file.has_value());
@@ -609,15 +609,15 @@ TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
     SECTION("bsmod 0b111 is voice over at 1/0 and karaoke above it") {
         // Table D.4: voice over "set to 0b0", karaoke "set to 0b1" - the same
         // code, opposite full-service flags, decided by acmod alone.
-        const auto voiceover = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 1,
+        const auto voiceover = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 1,
              .service = {.bsmod = 7, .acmod = 1, .channels = 1, .bsid = 8}},
             frames);
         REQUIRE(voiceover.has_value());
         CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*voiceover)).body[1]) == 0x38);
 
-        const auto karaoke = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+        const auto karaoke = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2,
              .service = {.bsmod = 7, .acmod = 2, .channels = 2, .bsid = 8}},
             frames);
         REQUIRE(karaoke.has_value());
@@ -625,15 +625,15 @@ TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
     }
 
     SECTION("an emergency service is full by Table D.4, a dialogue one is not") {
-        const auto emergency = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 1,
+        const auto emergency = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 1,
              .service = {.bsmod = 6, .acmod = 1, .channels = 1, .bsid = 8}},
             frames);
         REQUIRE(emergency.has_value());
         CHECK(std::to_integer<std::uint8_t>(first_descriptor(pmt_of(*emergency)).body[1]) == 0x70);
 
-        const auto dialogue = mpegts::mux(
-            {.codec = mpegts::AudioCodec::kAc3, .channels = 2,
+        const auto dialogue = iclforge::mpegts::mux(
+            {.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2,
              .service = {.bsmod = 4, .acmod = 2, .channels = 2, .bsid = 8}},
             frames);
         REQUIRE(dialogue.has_value());
@@ -644,7 +644,7 @@ TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
         auto service = five_one_service(8);
         service.bsmod = 2;  // visually impaired - unconstrained either way
         service.full_service = false;
-        const auto partial = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 6,
+        const auto partial = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 6,
                                           .service = service},
                                          frames);
         REQUIRE(partial.has_value());
@@ -655,13 +655,13 @@ TEST_CASE("the narrow layouts and the voiceover/karaoke split", "[mpegts]") {
 TEST_CASE("the DVB profile is what a caller gets without asking", "[mpegts]") {
     const std::vector<Bytes> frames{frame_of(64, 0xAB), frame_of(64, 0xCD)};
     const auto implicit =
-        mpegts::mux({.codec = mpegts::AudioCodec::kEac3, .channels = 6,
+        iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6,
                      .service = five_one_service(16)},
                     frames);
     const auto explicit_dvb =
-        mpegts::mux({.codec = mpegts::AudioCodec::kEac3, .channels = 6,
+        iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kEac3, .channels = 6,
                      .service = five_one_service(16)},
-                    frames, {.profile = mpegts::BroadcastProfile::kDvb});
+                    frames, {.profile = iclforge::mpegts::BroadcastProfile::kDvb});
     REQUIRE(implicit.has_value());
     REQUIRE(explicit_dvb.has_value());
     CHECK(*implicit == *explicit_dvb);
@@ -679,7 +679,7 @@ TEST_CASE("MPEG-TS continuity counters increment per PID and wrap at 16", "[mpeg
     for (int i = 0; i < 20; ++i) {
         frames.push_back(frame_of(32, static_cast<std::uint8_t>(i)));
     }
-    const auto file = mpegts::mux({.codec = mpegts::AudioCodec::kAc3, .channels = 2}, frames,
+    const auto file = iclforge::mpegts::mux({.codec = iclforge::mpegts::AudioCodec::kAc3, .channels = 2}, frames,
                                   {.psi_repeat_every_au = 1});
     REQUIRE(file.has_value());
     const auto packets = parse_packets(*file);
@@ -704,37 +704,37 @@ TEST_CASE("MPEG-TS muxer rejects what it cannot describe", "[mpegts]") {
     const std::vector<Bytes> one{frame_of(16, 0)};
     // Explicit empty span: bare {} became ambiguous when the span-of-views
     // mux overload arrived alongside the owned-list one.
-    CHECK(mpegts::mux({.channels = 2}, std::span<const Bytes>{}).error() ==
-          mpegts::MuxError::kNoFrames);
-    CHECK(mpegts::mux({.channels = 0}, one).error() == mpegts::MuxError::kInvalidTrack);
-    CHECK(mpegts::mux({.sample_rate = 0, .channels = 2}, one).error() ==
-          mpegts::MuxError::kInvalidTrack);
-    CHECK(mpegts::mux({.channels = 2, .samples_per_frame = 0}, one).error() ==
-          mpegts::MuxError::kInvalidTrack);
-    CHECK(mpegts::mux({.channels = 2}, one, {.pmt_pid = 0x0100, .audio_pid = 0x0100}).error() ==
-          mpegts::MuxError::kInvalidOptions);
-    CHECK(mpegts::mux({.channels = 2}, one, {.pmt_pid = 0x0000}).error() ==
-          mpegts::MuxError::kInvalidOptions);
+    CHECK(iclforge::mpegts::mux({.channels = 2}, std::span<const Bytes>{}).error() ==
+          iclforge::mpegts::MuxError::kNoFrames);
+    CHECK(iclforge::mpegts::mux({.channels = 0}, one).error() == iclforge::mpegts::MuxError::kInvalidTrack);
+    CHECK(iclforge::mpegts::mux({.sample_rate = 0, .channels = 2}, one).error() ==
+          iclforge::mpegts::MuxError::kInvalidTrack);
+    CHECK(iclforge::mpegts::mux({.channels = 2, .samples_per_frame = 0}, one).error() ==
+          iclforge::mpegts::MuxError::kInvalidTrack);
+    CHECK(iclforge::mpegts::mux({.channels = 2}, one, {.pmt_pid = 0x0100, .audio_pid = 0x0100}).error() ==
+          iclforge::mpegts::MuxError::kInvalidOptions);
+    CHECK(iclforge::mpegts::mux({.channels = 2}, one, {.pmt_pid = 0x0000}).error() ==
+          iclforge::mpegts::MuxError::kInvalidOptions);
 
     const std::vector<Bytes> huge{frame_of(70'000, 0)};
-    CHECK(mpegts::mux({.channels = 2}, huge).error() == mpegts::MuxError::kFrameTooLarge);
+    CHECK(iclforge::mpegts::mux({.channels = 2}, huge).error() == iclforge::mpegts::MuxError::kFrameTooLarge);
 }
 
-TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through ac3::io::scan", "[mpegts]") {
+TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through iclforge::io::scan", "[mpegts]") {
     // Real, non-silent, multi-frame material - a silent or single-frame
     // stream would exercise almost none of the encoder and none of the
     // frame-2-onward MDCT overlap state (CONTRIBUTING.md's validation
     // discipline). Different tones per channel so a channel-order mistake
     // would show up as wrong content, not just a wrong byte count.
-    auto encoder = std::make_unique<ac3::FrameEncoder>(
-        ac3::EncoderConfig{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0});
-    std::vector<std::vector<float>> pcm(2, std::vector<float>(ac3::kSamplesPerFrame));
+    auto encoder = std::make_unique<iclforge::FrameEncoder>(
+        iclforge::EncoderConfig{.bitrate_kbps = 192, .acmod = iclforge::Acmod::k2_0});
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(iclforge::kSamplesPerFrame));
     const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
 
     Bytes elementary;
     constexpr int kFrames = 6;
     for (int frame = 0; frame < kFrames; ++frame) {
-        for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+        for (int n = 0; n < iclforge::kSamplesPerFrame; ++n) {
             const auto nf = static_cast<float>(n);
             pcm[0][static_cast<std::size_t>(n)] = 0.3F * std::sin(nf * 0.05F);
             pcm[1][static_cast<std::size_t>(n)] = 0.3F * std::sin(nf * 0.13F);
@@ -744,21 +744,21 @@ TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through ac3::io::scan", 
         elementary.insert(elementary.end(), encoded->begin(), encoded->end());
     }
 
-    const auto scanned = ac3::io::scan(elementary);
+    const auto scanned = iclforge::io::scan(elementary);
     REQUIRE(scanned.has_value());
     REQUIRE(scanned->access_units.size() == static_cast<std::size_t>(kFrames));
-    REQUIRE(scanned->kind == ac3::io::StreamKind::kAc3);
+    REQUIRE(scanned->kind == iclforge::io::StreamKind::kAc3);
 
     std::vector<Bytes> frames;
     for (const auto unit : scanned->access_units) {
         frames.emplace_back(unit.begin(), unit.end());
     }
 
-    const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
-                                   .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
+    const iclforge::mpegts::AudioTrack track{.codec = iclforge::mpegts::AudioCodec::kAc3,
+                                   .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
                                    .channels = scanned->channels,
-                                   .samples_per_frame = ac3::kSamplesPerFrame};
-    const auto file = mpegts::mux(track, frames);
+                                   .samples_per_frame = iclforge::kSamplesPerFrame};
+    const auto file = iclforge::mpegts::mux(track, frames);
     REQUIRE(file.has_value());
 
     const auto packets = parse_packets(*file);
@@ -773,25 +773,25 @@ TEST_CASE("MPEG-TS mux of real encoded AC-3 round-trips through ac3::io::scan", 
     }
 }
 
-TEST_CASE("mpegts::Writer's concatenated pushes are mux()'s bytes exactly", "[mpegts]") {
+TEST_CASE("iclforge::mpegts::Writer's concatenated pushes are mux()'s bytes exactly", "[mpegts]") {
     // The Writer's whole contract: the only state mux()'s loop carries
     // across access units lives on the Writer, so pushing the same frames
     // one at a time reproduces the batch output byte for byte - PSI repeat
     // cadence, continuity counters, PTS/PCR clock and all. Frame count
     // deliberately spans several PSI repeats and varies frame sizes.
-    const mpegts::MuxOptions options{.psi_repeat_every_au = 3};
-    for (const auto codec : {mpegts::AudioCodec::kAc3, mpegts::AudioCodec::kEac3}) {
-        const mpegts::AudioTrack track{
+    const iclforge::mpegts::MuxOptions options{.psi_repeat_every_au = 3};
+    for (const auto codec : {iclforge::mpegts::AudioCodec::kAc3, iclforge::mpegts::AudioCodec::kEac3}) {
+        const iclforge::mpegts::AudioTrack track{
             .codec = codec, .sample_rate = 48000, .channels = 6, .samples_per_frame = 1536};
         std::vector<Bytes> frames;
         for (std::size_t i = 0; i < 11; ++i) {
             frames.push_back(frame_of(600 + 40 * i, static_cast<std::uint8_t>(0x20 + i)));
         }
 
-        const auto batch = mpegts::mux(track, frames, options);
+        const auto batch = iclforge::mpegts::mux(track, frames, options);
         REQUIRE(batch.has_value());
 
-        auto writer = mpegts::Writer::create(track, options);
+        auto writer = iclforge::mpegts::Writer::create(track, options);
         REQUIRE(writer.has_value());
         Bytes streamed;
         for (const auto& frame : frames) {
@@ -810,11 +810,11 @@ TEST_CASE("mpegts::Writer's concatenated pushes are mux()'s bytes exactly", "[mp
     }
 }
 
-TEST_CASE("mpegts::Writer refuses what mux() refuses", "[mpegts]") {
-    CHECK(mpegts::Writer::create({.channels = 0}).error() == mpegts::MuxError::kInvalidTrack);
-    const mpegts::AudioTrack ok{.sample_rate = 48000, .channels = 2, .samples_per_frame = 1536};
-    CHECK(mpegts::Writer::create(ok, {.pmt_pid = 0x0031, .audio_pid = 0x0031}).error() ==
-          mpegts::MuxError::kInvalidOptions);
+TEST_CASE("iclforge::mpegts::Writer refuses what mux() refuses", "[mpegts]") {
+    CHECK(iclforge::mpegts::Writer::create({.channels = 0}).error() == iclforge::mpegts::MuxError::kInvalidTrack);
+    const iclforge::mpegts::AudioTrack ok{.sample_rate = 48000, .channels = 2, .samples_per_frame = 1536};
+    CHECK(iclforge::mpegts::Writer::create(ok, {.pmt_pid = 0x0031, .audio_pid = 0x0031}).error() ==
+          iclforge::mpegts::MuxError::kInvalidOptions);
 }
 
 // --------------------------------------------------------------------------
@@ -825,8 +825,8 @@ TEST_CASE("mpegts::Writer refuses what mux() refuses", "[mpegts]") {
 
 TEST_CASE("MPEG-TS AC-4 writes DVB extension + registration descriptors", "[mpegts][ac4]") {
     const std::vector<Bytes> frames{frame_of(320, 0x4A), frame_of(320, 0x4B)};
-    const auto file = mpegts::mux(
-        {.codec = mpegts::AudioCodec::kAc4, .channels = 2, .samples_per_frame = 2048}, frames);
+    const auto file = iclforge::mpegts::mux(
+        {.codec = iclforge::mpegts::AudioCodec::kAc4, .channels = 2, .samples_per_frame = 2048}, frames);
     REQUIRE(file.has_value());
 
     const auto pmt = pmt_of(*file);
@@ -850,11 +850,11 @@ TEST_CASE("MPEG-TS AC-4 writes DVB extension + registration descriptors", "[mpeg
 
 TEST_CASE("MPEG-TS refuses AC-4 under the ATSC profile", "[mpegts][ac4]") {
     const std::vector<Bytes> frames{frame_of(64, 0x4C)};
-    const auto file = mpegts::mux(
-        {.codec = mpegts::AudioCodec::kAc4, .channels = 2, .samples_per_frame = 2048}, frames,
-        mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+    const auto file = iclforge::mpegts::mux(
+        {.codec = iclforge::mpegts::AudioCodec::kAc4, .channels = 2, .samples_per_frame = 2048}, frames,
+        iclforge::mpegts::MuxOptions{.profile = iclforge::mpegts::BroadcastProfile::kAtsc});
     REQUIRE_FALSE(file.has_value());
     // ATSC never registered AC-4 for 13818-1 transport (A/342-2 is ATSC
     // 3.0's ROUTE/MMT) - refused, not given an invented stream_type.
-    CHECK(file.error() == mpegts::MuxError::kInvalidOptions);
+    CHECK(file.error() == iclforge::mpegts::MuxError::kInvalidOptions);
 }

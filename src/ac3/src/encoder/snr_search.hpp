@@ -28,7 +28,7 @@
 // Internal to src/ac3/src/encoder/ on purpose - this is plumbing between the
 // two encoder translation units, not library surface.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 // Largest x in [0, limit] with fits(x), where fits is monotone
 // non-increasing in x (true up to some boundary, false beyond it). Returns 0
@@ -96,4 +96,4 @@ int search_max_fitting(int limit, int hint, Fits&& fits) {
     return lo;
 }
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

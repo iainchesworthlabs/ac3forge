@@ -20,7 +20,7 @@
 // other band's, and every band's under DIFF_TIME, the codeword's index less its
 // codebook's cb_off (huff_decode_diff()).
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // One ajoc_huff_data(), 6.2.5.5.
 struct AjocSetFields {
@@ -100,4 +100,4 @@ void write_ajoc_dmx_de_data(BitWriter& w, int num_dmx_signals, const AjocDmxDeFi
 // num_obj_with_bed_render_info where `num_obj_with_bed_render_info` is 0 or more.
 void write_ajoc_bed_info(BitWriter& w, int num_obj_with_bed_render_info);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

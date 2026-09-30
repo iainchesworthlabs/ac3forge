@@ -67,7 +67,7 @@ struct RenderThreadSink {
 TEST_CASE("sink wait: a full queue is waited out until the sink takes the payload",
           "[sink-wait][concurrency]") {
     ScriptedSink sink{.full_offers = 3};
-    CHECK(ac3::apps::submit_while_running(sink, 1ms, 7));
+    CHECK(iclforge::apps::submit_while_running(sink, 1ms, 7));
     CHECK(sink.offers == 4);
     CHECK(sink.taken == std::vector<int>{7});
 }
@@ -77,7 +77,7 @@ TEST_CASE("sink wait: a sink that stops itself ends the wait with nothing queued
     // The queue stays full for longer than the test runs: only running()
     // going false can end this wait.
     ScriptedSink sink{.full_offers = 1'000'000, .gone_at_offer = 3};
-    CHECK_FALSE(ac3::apps::submit_while_running(sink, 1ms, 7));
+    CHECK_FALSE(iclforge::apps::submit_while_running(sink, 1ms, 7));
     CHECK(sink.offers == 3);
     CHECK(sink.taken.empty());
 }
@@ -85,14 +85,14 @@ TEST_CASE("sink wait: a sink that stops itself ends the wait with nothing queued
 TEST_CASE("sink wait: a sink already stopped is offered the payload once",
           "[sink-wait][concurrency]") {
     ScriptedSink sink{.gone = true};
-    CHECK_FALSE(ac3::apps::submit_while_running(sink, 1ms, 7));
+    CHECK_FALSE(iclforge::apps::submit_while_running(sink, 1ms, 7));
     CHECK(sink.offers == 1);
 }
 
 TEST_CASE("sink wait: every argument reaches submit", "[sink-wait][concurrency]") {
     // PcmOutput::submit takes the rendered channels and a frame count.
     ScriptedSink sink{.full_offers = 1};
-    CHECK(ac3::apps::submit_while_running(sink, 1ms, 7, std::size_t{480}));
+    CHECK(iclforge::apps::submit_while_running(sink, 1ms, 7, std::size_t{480}));
     CHECK(sink.taken == std::vector<int>{7});
     CHECK(sink.frames_taken == std::vector<std::size_t>{480});
 }
@@ -101,7 +101,7 @@ TEST_CASE("sink wait: waiting for the queue to play out ends once it has",
           "[sink-wait][concurrency]") {
     const ScriptedSink sink;
     int looks = 0;
-    CHECK(ac3::apps::wait_while_running(sink, 1ms, [&looks] { return ++looks == 3; }));
+    CHECK(iclforge::apps::wait_while_running(sink, 1ms, [&looks] { return ++looks == 3; }));
     CHECK(looks == 3);
 }
 
@@ -109,7 +109,7 @@ TEST_CASE("sink wait: waiting for the queue to play out ends when the sink stops
           "[sink-wait][concurrency]") {
     ScriptedSink sink;
     int looks = 0;
-    CHECK_FALSE(ac3::apps::wait_while_running(sink, 1ms, [&] {
+    CHECK_FALSE(iclforge::apps::wait_while_running(sink, 1ms, [&] {
         // The device goes on the third look, with the queue still unplayed.
         if (++looks == 3) {
             sink.gone = true;
@@ -122,7 +122,7 @@ TEST_CASE("sink wait: waiting for the queue to play out ends when the sink stops
 TEST_CASE("sink wait: a queue that played out counts even if the sink has stopped since",
           "[sink-wait][concurrency]") {
     const ScriptedSink sink{.gone = true};
-    CHECK(ac3::apps::wait_while_running(sink, 1ms, [] { return true; }));
+    CHECK(iclforge::apps::wait_while_running(sink, 1ms, [] { return true; }));
 }
 
 TEST_CASE("sink wait: a sink stopped by its own render thread ends both waits",
@@ -133,7 +133,7 @@ TEST_CASE("sink wait: a sink stopped by its own render thread ends both waits",
             std::this_thread::sleep_for(20ms);
             sink.alive.store(false, std::memory_order_release);
         });
-        CHECK_FALSE(ac3::apps::submit_while_running(sink, 1ms, 7));
+        CHECK_FALSE(iclforge::apps::submit_while_running(sink, 1ms, 7));
     }
     {
         RenderThreadSink sink;
@@ -141,6 +141,6 @@ TEST_CASE("sink wait: a sink stopped by its own render thread ends both waits",
             std::this_thread::sleep_for(20ms);
             sink.alive.store(false, std::memory_order_release);
         });
-        CHECK_FALSE(ac3::apps::wait_while_running(sink, 1ms, [] { return false; }));
+        CHECK_FALSE(iclforge::apps::wait_while_running(sink, 1ms, [] { return false; }));
     }
 }

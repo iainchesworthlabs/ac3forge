@@ -1,4 +1,4 @@
-// ac3::io::AccessUnitAccumulator - the incremental form of split_access_units.
+// iclforge::io::AccessUnitAccumulator - the incremental form of split_access_units.
 //
 // Every case here tests one property: feeding a stream through the accumulator
 // in arbitrarily small pieces must produce exactly the units
@@ -27,15 +27,15 @@
 
 namespace {
 
-using ac3::io::AccessUnitAccumulator;
+using iclforge::io::AccessUnitAccumulator;
 using Status = AccessUnitAccumulator::Status;
 
 std::vector<std::vector<float>> tone(int channels) {
     std::vector<std::vector<float>> pcm(
         static_cast<std::size_t>(channels),
-        std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+        std::vector<float>(static_cast<std::size_t>(iclforge::kSamplesPerFrame)));
     for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
-        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+        for (int i = 0; i < iclforge::kSamplesPerFrame; ++i) {
             pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
                 0.4 * std::sin(2.0 * std::numbers::pi * (500.0 * static_cast<double>(ch + 1)) *
                                i / 48000.0));
@@ -49,7 +49,7 @@ void append(std::vector<std::byte>& out, std::span<const std::byte> bytes) {
 }
 
 std::vector<std::byte> ac3_stream(int frames) {
-    ac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {
@@ -65,8 +65,8 @@ std::vector<std::byte> ac3_stream(int frames) {
 }
 
 std::vector<std::byte> eac3_stream(int frames) {
-    ac3::eac3::FrameEncoder encoder{
-        {.bitrate_kbps = 384, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder encoder{
+        {.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
     auto pcm = tone(6);
     std::vector<std::span<const float>> views;
     for (const auto& channel : pcm) {
@@ -90,11 +90,11 @@ std::vector<std::byte> eac3_stream(int frames) {
 // pair. Each access unit is therefore two syncframes, which is what makes this
 // different from every other stream in this file.
 std::vector<std::byte> multi_substream_stream(int frames) {
-    namespace cm = ac3::eac3::chanmap;
-    ac3::eac3::FrameEncoder bed{{.bitrate_kbps = 384, .acmod = ac3::Acmod::k3_2, .lfe = true}};
-    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 192,
-                                  .acmod = ac3::Acmod::k2_2,
-                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+    namespace cm = iclforge::eac3::chanmap;
+    iclforge::eac3::FrameEncoder bed{{.bitrate_kbps = 384, .acmod = iclforge::Acmod::k3_2, .lfe = true}};
+    iclforge::eac3::FrameEncoder rear{{.bitrate_kbps = 192,
+                                  .acmod = iclforge::Acmod::k2_2,
+                                  .strmtyp = iclforge::eac3::StreamType::kDependent,
                                   .substreamid = 0,
                                   .chanmap = cm::k71Rear,
                                   .last_dependent = true}};
@@ -125,7 +125,7 @@ std::vector<std::byte> multi_substream_stream(int frames) {
 // time, and returns the units it produced.
 std::vector<std::vector<std::byte>> collect(
     std::span<const std::byte> stream, std::size_t chunk,
-    std::size_t buffer_bytes = ac3::io::kRecommendedBuffer) {
+    std::size_t buffer_bytes = iclforge::io::kRecommendedBuffer) {
     std::vector<std::byte> storage(buffer_bytes);
     AccessUnitAccumulator acc{storage};
     std::vector<std::vector<std::byte>> units;
@@ -157,7 +157,7 @@ std::vector<std::vector<std::byte>> collect(
 }
 
 std::vector<std::vector<std::byte>> reference(std::span<const std::byte> stream) {
-    const auto split = ac3::split_access_units(stream);
+    const auto split = iclforge::split_access_units(stream);
     REQUIRE(split.has_value());
     std::vector<std::vector<std::byte>> out;
     for (const auto unit : *split) {
@@ -204,7 +204,7 @@ TEST_CASE("AccessUnitAccumulator keeps a dependent substream with its independen
     // as well against a reader that never grouped anything, which is the bug it
     // is meant to catch. Checked by splitting a unit back into syncframes
     // rather than by its size, so it says what it means.
-    const auto frames_in_first = ac3::split_frames(expected.front());
+    const auto frames_in_first = iclforge::split_frames(expected.front());
     REQUIRE(frames_in_first.has_value());
     REQUIRE(frames_in_first->size() == 2);
 
@@ -218,9 +218,9 @@ TEST_CASE("AccessUnitAccumulator keeps a dependent substream with its independen
 TEST_CASE("AccessUnitAccumulator decodes what it produces", "[io][stream]") {
     // Agreeing with split_access_units is only interesting if the units decode.
     const auto stream = ac3_stream(6);
-    std::vector<std::byte> storage(ac3::io::kRecommendedBuffer);
+    std::vector<std::byte> storage(iclforge::io::kRecommendedBuffer);
     AccessUnitAccumulator acc{storage};
-    ac3::FrameDecoder decoder;
+    iclforge::FrameDecoder decoder;
     std::size_t offset = 0;
     int decoded = 0;
 
@@ -290,7 +290,7 @@ TEST_CASE("AccessUnitAccumulator reports a buffer it cannot work in", "[io][stre
 }
 
 TEST_CASE("AccessUnitAccumulator ends cleanly on an empty stream", "[io][stream]") {
-    std::vector<std::byte> storage(ac3::io::kRecommendedBuffer);
+    std::vector<std::byte> storage(iclforge::io::kRecommendedBuffer);
     AccessUnitAccumulator acc{storage};
     acc.finish();
     REQUIRE(acc.next().status == Status::kEndOfStream);
@@ -303,7 +303,7 @@ TEST_CASE("AccessUnitAccumulator refuses a truncated tail", "[io][stream]") {
     const auto whole = reference(stream);
     stream.resize(stream.size() - 100);
 
-    std::vector<std::byte> storage(ac3::io::kRecommendedBuffer);
+    std::vector<std::byte> storage(iclforge::io::kRecommendedBuffer);
     AccessUnitAccumulator acc{storage};
     std::vector<std::vector<std::byte>> units;
     std::size_t offset = 0;
@@ -335,5 +335,5 @@ TEST_CASE("AccessUnitAccumulator refuses a truncated tail", "[io][stream]") {
     REQUIRE(units[0] == whole[0]);
     REQUIRE(units[1] == whole[1]);
     REQUIRE(last == Status::kError);
-    REQUIRE(acc.error() == ac3::io::ScanError::kTruncated);
+    REQUIRE(acc.error() == iclforge::io::ScanError::kTruncated);
 }

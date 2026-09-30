@@ -11,10 +11,10 @@
 // give. 'ac3cli play' falls back to that probe here - see
 // docs/platforms/android.md.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(const std::string&) {
     return std::unexpected(EdidError::kNoBackend);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

@@ -23,8 +23,8 @@
 // computed by Windows Sonic/Dolby Atmos's HRTF renderer, not by anything in
 // this repository - the whole reason it is worth building.
 //
-// This header is deliberately codec-blind, the same way ac3::iec61937's
-// framing is the only ac3::forge-adjacent thing ac3::audio depends on: it
+// This header is deliberately codec-blind, the same way iclforge::iec61937's
+// framing is the only iclforge::ac3-adjacent thing iclforge::audio depends on: it
 // knows nothing about OAMD, JOC, or which of a programme's objects are bed
 // vs dynamic. That interpretation (see apps/cli/commands/live_audio.cpp's
 // run_spatial) is the caller's job, for the same layering reason PassthroughSink
@@ -35,7 +35,7 @@
 // identity vocabulary throughout; the Windows backend privately maps
 // SPEAKER_FRONT_LEFT etc. to AudioObjectType_FrontLeft etc.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 enum class SpatialError : std::uint8_t {
     kNoBackend,        // built without a platform spatial backend
@@ -182,4 +182,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

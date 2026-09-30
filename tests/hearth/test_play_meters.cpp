@@ -11,17 +11,17 @@
 #include "iclforge/render/layout.hpp"
 #include "play_meters.hpp"
 
-// ac3::hearth::PlayMeters (apps/hearth/engine/play_meters.cpp): meters that
+// iclforge::hearth::PlayMeters (apps/hearth/engine/play_meters.cpp): meters that
 // measure the output as it is rendered and hand a reading out only when the
 // device's clock has reached the audio it describes.
 
 namespace {
 
-using ac3::hearth::MeterSnapshot;
-using ac3::hearth::PlayMeters;
+using iclforge::hearth::MeterSnapshot;
+using iclforge::hearth::PlayMeters;
 
-ac3::render::OutputLayout layout(const char* name) {
-    const auto parsed = ac3::render::OutputLayout::parse(name);
+iclforge::render::OutputLayout layout(const char* name) {
+    const auto parsed = iclforge::render::OutputLayout::parse(name);
     REQUIRE(parsed.has_value());
     return *parsed;
 }

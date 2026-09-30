@@ -25,7 +25,7 @@
 // layer over the vendored libbw64/libadm - see src/adm/CMakeLists.txt),
 // rather than round-tripping data this same code produced - the same
 // reasoning test_mpegts.cpp and test_matroska.cpp document for their own
-// independent readers/writers. ac3adm::ac3adm began as a reader only (phase 1
+// independent readers/writers. iclforge::adm began as a reader only (phase 1
 // of roadmap item B1); roadmap item IM2 later gave it write_bw64(), and the
 // write tests at the end of this file keep the same rule from the other side:
 // they check the bytes write_bw64() put on disk directly, not only what the
@@ -36,7 +36,7 @@
 // libadm and libbw64 already have their own upstream test suites for their
 // own internals (chunk-walking, XML/schema validation), so what is worth
 // re-testing here is this module's own boundary: does a real BW64 file
-// carrying a given ADM shape come out as the right ac3adm::AdmModel/
+// carrying a given ADM shape come out as the right iclforge::adm::AdmModel/
 // AdmDocument, and does a malformed one come back as the right AdmError.
 //
 // The embedded ADM XML for the "Car" fixture is adapted from Recommendation
@@ -239,7 +239,7 @@ std::string_view kHoaAdmXml = R"(<?xml version="1.0" encoding="UTF-8"?>
 )";
 
 // A Cartesian Objects channel (BS.2076-2 Table 16/17) with a jumpPosition
-// (§10.3) - exercises the cartesian branch of ac3adm::Position and the
+// (§10.3) - exercises the cartesian branch of iclforge::adm::Position and the
 // channelLock/jumpPosition fields adm_model.cpp's convert() populates.
 std::string_view kCartesianObjectAdmXml = R"(<?xml version="1.0" encoding="UTF-8"?>
 <audioFormatExtended version="ITU-R_BS.2076-2">
@@ -347,7 +347,7 @@ Bytes wrap_axml_only(std::string_view axml_xml) {
 // channel/stream/track formats, one per standard loudspeaker layout - confirmed by grepping
 // libadm's own vendored resources/common_definitions.xml). Real ADM files rely on being able to
 // reference those IDs (e.g. a stereo bed's pack format "AP_00010002") without re-declaring them
-// locally, so ac3adm::ac3adm deliberately keeps them in the resulting AdmModel rather than
+// locally, so iclforge::adm deliberately keeps them in the resulting AdmModel rather than
 // filtering them back out - phase 2 needs exactly this, a pack/channel/stream/track format
 // reference that resolves regardless of whether the file re-declared it or relied on the common
 // set. That means pack_formats/channel_formats/stream_formats/track_formats are never just "what
@@ -414,52 +414,52 @@ std::vector<std::string_view> track_uid_start_tags(std::string_view xml) {
 // own track, with that entry as its AudioTrackUid's bit depth (nullopt: has_bit_depth false). Each
 // object's audioPackFormat and audioChannelFormat are `type` - kObjects, or kDirectSpeakers, the
 // writer's other supported typeDefinition - and each channel carries one cartesian block. Built
-// with the full audioStreamFormat -> audioTrackFormat chain ac3::admbridge::write() uses rather
+// with the full audioStreamFormat -> audioTrackFormat chain iclforge::admbridge::write() uses rather
 // than BS.2076-2's plain-PCM shortcut: libadm's reassignIds() gives any audioChannelFormat no
 // audioStreamFormat references the id zero (bridge.cpp's own comment on it), and several channels
 // collapsed onto one id read back as a duplicate-ID failure, not as anything a test using this
 // means to check.
-ac3adm::AdmDocument objects_document(
+iclforge::adm::AdmDocument objects_document(
     const std::vector<std::optional<std::uint32_t>>& declared_bit_depths,
-    ac3adm::TypeDefinition type = ac3adm::TypeDefinition::kObjects) {
-    ac3adm::AdmDocument document;
+    iclforge::adm::TypeDefinition type = iclforge::adm::TypeDefinition::kObjects) {
+    iclforge::adm::AdmDocument document;
     document.audio.sample_rate = 48000;
     auto& model = document.model;
 
-    ac3adm::AudioContent content;
+    iclforge::adm::AudioContent content;
     content.id = "content";
     content.name = "Programme";
 
     for (std::size_t i = 0; i < declared_bit_depths.size(); ++i) {
         const std::string key = std::to_string(i);
 
-        ac3adm::AudioBlockFormat block;
+        iclforge::adm::AudioBlockFormat block;
         block.cartesian = true;
-        block.position = ac3adm::CartesianPosition{.x = (0.5 * static_cast<double>(i)) - 0.5, .y = 1.0, .z = 0.0};
+        block.position = iclforge::adm::CartesianPosition{.x = (0.5 * static_cast<double>(i)) - 0.5, .y = 1.0, .z = 0.0};
 
-        ac3adm::AudioChannelFormat channel_format;
+        iclforge::adm::AudioChannelFormat channel_format;
         channel_format.id = "chan" + key;
         channel_format.name = "Object " + key;
         channel_format.type = type;
         channel_format.block_formats.push_back(block);
 
-        ac3adm::AudioPackFormat pack_format;
+        iclforge::adm::AudioPackFormat pack_format;
         pack_format.id = "pack" + key;
         pack_format.name = channel_format.name;
         pack_format.type = type;
         pack_format.channel_format_refs = {channel_format.id};
 
-        ac3adm::AudioStreamFormat stream_format;
+        iclforge::adm::AudioStreamFormat stream_format;
         stream_format.id = "stream" + key;
         stream_format.name = channel_format.name;
         stream_format.channel_format_ref = channel_format.id;
 
-        ac3adm::AudioTrackFormat track_format;
+        iclforge::adm::AudioTrackFormat track_format;
         track_format.id = "track" + key;
         track_format.name = channel_format.name;
         track_format.stream_format_ref = stream_format.id;
 
-        ac3adm::AudioTrackUid track_uid;
+        iclforge::adm::AudioTrackUid track_uid;
         track_uid.uid = "atu" + key;
         track_uid.has_sample_rate = true;
         track_uid.sample_rate = 48000;
@@ -468,14 +468,14 @@ ac3adm::AdmDocument objects_document(
         track_uid.track_format_ref = track_format.id;
         track_uid.pack_format_ref = pack_format.id;
 
-        ac3adm::AudioObject object;
+        iclforge::adm::AudioObject object;
         object.id = "obj" + key;
         object.name = channel_format.name;
         object.pack_format_refs = {pack_format.id};
         object.track_uid_refs = {track_uid.uid};
         content.object_refs.push_back(object.id);
 
-        ac3adm::ChnaEntry chna_entry;
+        iclforge::adm::ChnaEntry chna_entry;
         chna_entry.track_index = static_cast<std::uint16_t>(i + 1);
         chna_entry.uid = track_uid.uid;
         document.chna.push_back(chna_entry);
@@ -491,7 +491,7 @@ ac3adm::AdmDocument objects_document(
     }
     model.contents.push_back(std::move(content));
 
-    ac3adm::AudioProgramme programme;
+    iclforge::adm::AudioProgramme programme;
     programme.id = "programme";
     programme.name = "Programme";
     programme.content_refs = {"content"};
@@ -503,7 +503,7 @@ ac3adm::AdmDocument objects_document(
 // this process's id folded in (tests/platform/process.hpp says why).
 std::filesystem::path write_scratch_dir(std::string_view name) {
     auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} /
-               (std::string(name) + "_" + ac3::test::platform::process_id());
+               (std::string(name) + "_" + iclforge::test::platform::process_id());
     std::filesystem::create_directories(dir);
     return dir;
 }
@@ -512,7 +512,7 @@ std::filesystem::path write_scratch_dir(std::string_view name) {
 
 TEST_CASE("parses a minimal RIFF/WAVE ADM file", "[adm]") {
     std::istringstream stream(minimal_fixture_bytes(false));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
 
     SECTION("PCM audio") {
@@ -548,17 +548,17 @@ TEST_CASE("parses a minimal RIFF/WAVE ADM file", "[adm]") {
         CHECK(doc->model.objects[0].track_uid_refs == std::vector<std::string>{"ATU_00000001"});
 
         const auto& pack_format = find_by_id(doc->model.pack_formats, "AP_00031001");
-        CHECK(pack_format.type == ac3adm::TypeDefinition::kObjects);
+        CHECK(pack_format.type == iclforge::adm::TypeDefinition::kObjects);
         CHECK(pack_format.channel_format_refs == std::vector<std::string>{"AC_00031001"});
 
         const auto& channel = find_by_id(doc->model.channel_formats, "AC_00031001");
-        CHECK(channel.type == ac3adm::TypeDefinition::kObjects);
+        CHECK(channel.type == iclforge::adm::TypeDefinition::kObjects);
         REQUIRE(channel.block_formats.size() == 1);
         const auto& block = channel.block_formats[0];
         CHECK(block.id == "AB_00031001_00000001");
         CHECK_FALSE(block.cartesian);
-        REQUIRE(std::holds_alternative<ac3adm::PolarPosition>(block.position));
-        const auto& polar = std::get<ac3adm::PolarPosition>(block.position);
+        REQUIRE(std::holds_alternative<iclforge::adm::PolarPosition>(block.position));
+        const auto& polar = std::get<iclforge::adm::PolarPosition>(block.position);
         CHECK(polar.azimuth_deg == Catch::Approx(-22.5));
         CHECK(polar.elevation_deg == Catch::Approx(5.0));
         CHECK(polar.distance == Catch::Approx(1.0));
@@ -575,7 +575,7 @@ TEST_CASE("parses a minimal RIFF/WAVE ADM file", "[adm]") {
 
 TEST_CASE("parses the same content via RF64 with a ds64-resolved data chunk", "[adm]") {
     std::istringstream stream(minimal_fixture_bytes(true));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     CHECK(doc->audio.sample_rate == 48000);
     REQUIRE(doc->audio.frame_count() == 4);
@@ -598,7 +598,7 @@ TEST_CASE("an audioTrackUID without bitDepth still parses", "[adm]") {
 
     std::istringstream stream(
         build_riff(build_fmt_chunk(1, 48000, 16), build_chna_chunk(), Bytes(xml), build_pcm16_data(4)));
-    const auto doc = ac3adm::parse_bw64(stream);
+    const auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     REQUIRE(doc->model.track_uids.size() == 1);
     const auto& track_uid = doc->model.track_uids[0];
@@ -611,14 +611,14 @@ TEST_CASE("an audioTrackUID without bitDepth still parses", "[adm]") {
 
 TEST_CASE("rejects a file that is not RIFF/RF64/BW64", "[adm]") {
     std::istringstream stream(std::string("NOPE") + std::string(8, '\0'));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE_FALSE(doc.has_value());
     // libbw64 reports "not a recognized container" the same way it reports
     // "could not open" - a single std::runtime_error family with no
     // distinguishing exception type (see src/adm/src/adm.cpp's own
     // comment on parse_bw64_path) - so this, too, surfaces as kCannotOpen
     // rather than the more specific kNotRiff.
-    CHECK(doc.error() == ac3adm::AdmError::kCannotOpen);
+    CHECK(doc.error() == iclforge::adm::AdmError::kCannotOpen);
 }
 
 TEST_CASE("parses a float32 (IEEE-float) fmt chunk through the ordinary libbw64 path", "[adm]") {
@@ -632,7 +632,7 @@ TEST_CASE("parses a float32 (IEEE-float) fmt chunk through the ordinary libbw64 
     const Bytes axml(kCarAdmXml);
     const auto data = build_float32_data({-0.5F, 0.0F});
     std::istringstream stream(build_riff(fmt, chna, axml, data));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
 
     CHECK(doc->audio.sample_rate == 48000);
@@ -663,7 +663,7 @@ TEST_CASE("parses a float64 (double-precision) fmt chunk", "[adm]") {
     const auto fmt = build_float_fmt_chunk(1, 48000, 64);
     const auto data = build_float64_data({-0.25, 0.75});
     std::istringstream stream(build_riff(fmt, Bytes{}, Bytes{}, data));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
 
     CHECK(doc->audio.bits_per_sample == 64);
@@ -687,9 +687,9 @@ TEST_CASE("malformed XML in axml surfaces as kMalformedXml", "[adm]") {
     const Bytes axml = "<audioFormatExtended><audioObject audioObjectID=\"AO_1";
     const auto data = build_pcm16_data(2);
     std::istringstream stream(build_riff(fmt, chna, axml, data));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE_FALSE(doc.has_value());
-    CHECK(doc.error() == ac3adm::AdmError::kMalformedXml);
+    CHECK(doc.error() == iclforge::adm::AdmError::kMalformedXml);
 }
 
 TEST_CASE("a missing required ADM attribute surfaces as kMalformedXml", "[adm]") {
@@ -700,24 +700,24 @@ TEST_CASE("a missing required ADM attribute surfaces as kMalformedXml", "[adm]")
         R"(<audioFormatExtended version="ITU-R_BS.2076-2"><audioObject audioObjectName="Nameless"/></audioFormatExtended>)";
     const auto data = build_pcm16_data(2);
     std::istringstream stream(build_riff(fmt, chna, axml, data));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE_FALSE(doc.has_value());
     // Not kMalformedAdm, despite "missing a required ADM attribute" sounding like the more
     // ADM-shaped complaint of the two: libadm's own mandatory-attribute check
     // (xml_parser_helper.hpp's parseAttribute()) throws a plain, untyped std::runtime_error
-    // rather than one of its own adm::error:: types - confirmed by catching and printing the
+    // rather than one of its own ::adm::error:: types - confirmed by catching and printing the
     // real exception during development, not assumed from the enum's own naming. See
-    // ac3adm::AdmError's own doc comment (ac3adm.hpp) and src/adm/src/adm.cpp's
+    // iclforge::adm::AdmError's own doc comment (ac3adm.hpp) and src/adm/src/adm.cpp's
     // read_adm_model() for the full explanation.
-    CHECK(doc.error() == ac3adm::AdmError::kMalformedXml);
+    CHECK(doc.error() == iclforge::adm::AdmError::kMalformedXml);
 }
 
 TEST_CASE("a duplicate ADM element ID surfaces as kMalformedAdm", "[adm]") {
     const auto fmt = build_fmt_chunk(1, 48000, 16);
     const auto chna = build_chna_chunk();
     // Two audioProgramme elements sharing one ID - libadm's own id_assignment/duplicate-id
-    // check (xml_parser.cpp) throws adm::error::XmlParsingDuplicateId, a real
-    // adm::error::AdmException subclass, unlike the missing-attribute case just above - this is
+    // check (xml_parser.cpp) throws ::adm::error::XmlParsingDuplicateId, a real
+    // ::adm::error::AdmException subclass, unlike the missing-attribute case just above - this is
     // what AdmError::kMalformedAdm is actually reachable for.
     const Bytes axml =
         R"(<audioFormatExtended version="ITU-R_BS.2076-2">
@@ -726,9 +726,9 @@ TEST_CASE("a duplicate ADM element ID surfaces as kMalformedAdm", "[adm]") {
            </audioFormatExtended>)";
     const auto data = build_pcm16_data(2);
     std::istringstream stream(build_riff(fmt, chna, axml, data));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE_FALSE(doc.has_value());
-    CHECK(doc.error() == ac3adm::AdmError::kMalformedAdm);
+    CHECK(doc.error() == iclforge::adm::AdmError::kMalformedAdm);
 }
 
 // Test name deliberately ASCII-only (no "section-sign clause number" the way this file's other
@@ -760,9 +760,9 @@ TEST_CASE("chna rows with trackIndex 0 (unused placeholders, BS.2088-1 clause 8.
     const Bytes axml(kCarAdmXml);
     const auto data = build_pcm16_data(2);
     std::istringstream stream(build_riff(fmt, chna, axml, data));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
-    // ac3adm::ac3adm surfaces every row as-is (ChnaEntry's own comment in model.hpp: "callers
+    // iclforge::adm surfaces every row as-is (ChnaEntry's own comment in model.hpp: "callers
     // that want 'the entries for track N' filter by track_index themselves") - it does not drop
     // placeholder rows itself, so both come through here.
     REQUIRE(doc->chna.size() == 2);
@@ -803,7 +803,7 @@ TEST_CASE("a chna row's NUL-padded packRef trims to empty even when the rest of 
     const Bytes axml(kCarAdmXml);
     const auto data = build_pcm16_data(2);
     std::istringstream stream(build_riff(fmt, chna, axml, data));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     REQUIRE(doc->chna.size() == 1);
     CHECK(doc->chna[0].track_index == 1);
@@ -817,7 +817,7 @@ TEST_CASE("a file with no axml chunk still parses, with an empty ADM model", "[a
     const auto chna = build_chna_chunk();
     const auto data = build_pcm16_data(2);
     std::istringstream stream(build_riff(fmt, chna, Bytes{}, data));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     CHECK(doc->model.programmes.empty());
     CHECK(doc->model.objects.empty());
@@ -850,7 +850,7 @@ TEST_CASE("an oversized declared data chunk is bounded by the real file size", "
     file += body;
 
     std::istringstream stream(file);
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     // Whether this parses or is refused is not the point - it must not try to
     // allocate the two gigabytes the <data> header asks for. What it does do
     // is read no more frames than the file could possibly hold.
@@ -888,9 +888,9 @@ TEST_CASE("a non-data chunk declaring more than the file holds is refused", "[ad
     file += body;
 
     std::istringstream stream(file);
-    const auto doc = ac3adm::parse_bw64(stream);
+    const auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE_FALSE(doc.has_value());
-    CHECK(doc.error() == ac3adm::AdmError::kNotRiff);
+    CHECK(doc.error() == iclforge::adm::AdmError::kNotRiff);
 }
 
 // The other half of that check: a recording cut off part-way through <data>
@@ -904,7 +904,7 @@ TEST_CASE("a file truncated inside its data chunk still parses", "[adm]") {
     Bytes file = minimal_fixture_bytes(false);
     file.resize(file.size() - 3);  // lose the tail of <data>, keep every header
     std::istringstream stream(file);
-    const auto doc = ac3adm::parse_bw64(stream);
+    const auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     // Not just "didn't error" - the frames actually present are the ones
     // that survive the truncation, confirming libbw64's own DataChunk size
@@ -951,7 +951,7 @@ TEST_CASE("a ds64 table entry oversizing a non-data chunk is still refused", "[a
     file += body;
 
     std::istringstream stream(file);
-    const auto doc = ac3adm::parse_bw64(stream);
+    const auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE_FALSE(doc.has_value());
 }
 
@@ -982,7 +982,7 @@ TEST_CASE("a zero-length chunk of an id libbw64 does not know still parses", "[a
     file += body;
 
     std::istringstream stream(file);
-    const auto doc = ac3adm::parse_bw64(stream);
+    const auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     CHECK(doc->audio.frame_count() == 4);
 }
@@ -1004,7 +1004,7 @@ TEST_CASE("a zero-length data chunk parses with no frames", "[adm]") {
     file += body;
 
     std::istringstream stream(file);
-    const auto doc = ac3adm::parse_bw64(stream);
+    const auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     CHECK(doc->audio.frame_count() == 0);
 }
@@ -1049,9 +1049,9 @@ TEST_CASE("a fmt whose block alignment overflows 16 bits is refused outright", "
     file += body;
 
     std::istringstream stream(file);
-    const auto doc = ac3adm::parse_bw64(stream);
+    const auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE_FALSE(doc.has_value());
-    CHECK(doc.error() == ac3adm::AdmError::kCannotOpen);
+    CHECK(doc.error() == iclforge::adm::AdmError::kCannotOpen);
 }
 
 // Found by fuzz_adm_parse 265 seconds into its first full-budget instrumented run, and at the
@@ -1081,30 +1081,30 @@ TEST_CASE("a chunk size that once wrapped the retired float-detection walk still
     file += body;
 
     std::istringstream stream(file);
-    const auto doc = ac3adm::parse_bw64(stream);
+    const auto doc = iclforge::adm::parse_bw64(stream);
     CHECK_FALSE(doc.has_value());
 }
 
 TEST_CASE("parses a DirectSpeakers channel's speakerLabel and polar position", "[adm][model]") {
     std::istringstream stream(wrap_axml_only(kDirectSpeakersAdmXml));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     const auto& channel = find_by_id(doc->model.channel_formats, "AC_00019001");
-    CHECK(channel.type == ac3adm::TypeDefinition::kDirectSpeakers);
+    CHECK(channel.type == iclforge::adm::TypeDefinition::kDirectSpeakers);
     REQUIRE(channel.block_formats.size() == 1);
     const auto& block = channel.block_formats[0];
     REQUIRE(block.speaker_labels.size() == 1);
     CHECK(block.speaker_labels[0] == "M+030");
-    REQUIRE(std::holds_alternative<ac3adm::PolarPosition>(block.position));
-    CHECK(std::get<ac3adm::PolarPosition>(block.position).azimuth_deg == Catch::Approx(30.0));
+    REQUIRE(std::holds_alternative<iclforge::adm::PolarPosition>(block.position));
+    CHECK(std::get<iclforge::adm::PolarPosition>(block.position).azimuth_deg == Catch::Approx(30.0));
 }
 
 TEST_CASE("parses HOA order/degree/normalization", "[adm][model]") {
     std::istringstream stream(wrap_axml_only(kHoaAdmXml));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     const auto& channel = find_by_id(doc->model.channel_formats, "AC_00049001");
-    CHECK(channel.type == ac3adm::TypeDefinition::kHoa);
+    CHECK(channel.type == iclforge::adm::TypeDefinition::kHoa);
     const auto& block = channel.block_formats.at(0);
     REQUIRE(block.has_hoa_order);
     CHECK(block.hoa_order == -1);
@@ -1115,13 +1115,13 @@ TEST_CASE("parses HOA order/degree/normalization", "[adm][model]") {
 
 TEST_CASE("parses Cartesian object positions and jumpPosition", "[adm][model]") {
     std::istringstream stream(wrap_axml_only(kCartesianObjectAdmXml));
-    auto doc = ac3adm::parse_bw64(stream);
+    auto doc = iclforge::adm::parse_bw64(stream);
     REQUIRE(doc.has_value());
     const auto& channel = find_by_id(doc->model.channel_formats, "AC_00031002");
     const auto& block = channel.block_formats.at(0);
     CHECK(block.cartesian);
-    REQUIRE(std::holds_alternative<ac3adm::CartesianPosition>(block.position));
-    const auto& cart = std::get<ac3adm::CartesianPosition>(block.position);
+    REQUIRE(std::holds_alternative<iclforge::adm::CartesianPosition>(block.position));
+    const auto& cart = std::get<iclforge::adm::CartesianPosition>(block.position);
     CHECK(cart.x == Catch::Approx(-0.2));
     CHECK(cart.y == Catch::Approx(0.5));
     REQUIRE(block.has_jump_position);
@@ -1146,8 +1146,8 @@ TEST_CASE("ADM sample-based time format matches the equivalent decimal form", "[
 
     std::istringstream stream_samples(build_riff(fmt, Bytes{}, axml_samples, data));
     std::istringstream stream_decimal(build_riff(fmt, Bytes{}, axml_decimal, data));
-    auto doc_samples = ac3adm::parse_bw64(stream_samples);
-    auto doc_decimal = ac3adm::parse_bw64(stream_decimal);
+    auto doc_samples = iclforge::adm::parse_bw64(stream_samples);
+    auto doc_decimal = iclforge::adm::parse_bw64(stream_decimal);
     REQUIRE(doc_samples.has_value());
     REQUIRE(doc_decimal.has_value());
     REQUIRE(doc_samples->model.objects.size() == 1);
@@ -1156,10 +1156,10 @@ TEST_CASE("ADM sample-based time format matches the equivalent decimal form", "[
 }
 
 TEST_CASE("describe() returns a non-empty string for every AdmError", "[adm]") {
-    using ac3adm::AdmError;
+    using iclforge::adm::AdmError;
     for (const auto error : {AdmError::kCannotOpen, AdmError::kNotRiff, AdmError::kMalformedXml,
                               AdmError::kMalformedAdm, AdmError::kOther}) {
-        CHECK_FALSE(ac3adm::describe(error).empty());
+        CHECK_FALSE(iclforge::adm::describe(error).empty());
     }
 }
 
@@ -1174,10 +1174,10 @@ TEST_CASE("write_bw64 gives every audioTrackUID the bit depth of the fmt chunk",
     const auto document = objects_document({std::nullopt, 16U, 24U});
 
     const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} /
-                     ("adm_write_" + ac3::test::platform::process_id());
+                     ("adm_write_" + iclforge::test::platform::process_id());
     std::filesystem::create_directories(dir);
     const auto path = (dir / "track_uid_bit_depth.wav").string();
-    const auto written = ac3adm::write_bw64(path, document);
+    const auto written = iclforge::adm::write_bw64(path, document);
     REQUIRE(written.has_value());
 
     // The raw bytes first: the same two libraries write and read this file, so a parse_bw64()
@@ -1192,7 +1192,7 @@ TEST_CASE("write_bw64 gives every audioTrackUID the bit depth of the fmt chunk",
     // build_fmt_chunk()'s layout: formatTag, channels, sampleRate, bytes per second, block
     // alignment, then bits per sample at byte 14.
     const auto bits_per_sample = get_u16le(*fmt, 14);
-    CHECK(bits_per_sample == ac3adm::kWriteBitDepth);
+    CHECK(bits_per_sample == iclforge::adm::kWriteBitDepth);
 
     const auto axml = find_chunk(file, "axml");
     REQUIRE(axml.has_value());
@@ -1206,7 +1206,7 @@ TEST_CASE("write_bw64 gives every audioTrackUID the bit depth of the fmt chunk",
 
     // Then through the reader: every audioTrackUID reports it, equal to the width the audio
     // itself was read at, and sampleRate still comes from the model.
-    const auto parsed = ac3adm::parse_bw64(path);
+    const auto parsed = iclforge::adm::parse_bw64(path);
     REQUIRE(parsed.has_value());
     CHECK(parsed->audio.bits_per_sample == bits_per_sample);
     REQUIRE(parsed->model.track_uids.size() == 3);
@@ -1228,8 +1228,8 @@ TEST_CASE("write_bw64 gives every audioTrackUID the bit depth of the fmt chunk",
 // not pass.
 TEST_CASE("write_bw64 reports a polar block as kInvalidDocument without throwing", "[adm][write]") {
     const auto type =
-        GENERATE(ac3adm::TypeDefinition::kObjects, ac3adm::TypeDefinition::kDirectSpeakers);
-    INFO("typeDefinition " << (type == ac3adm::TypeDefinition::kObjects ? "Objects"
+        GENERATE(iclforge::adm::TypeDefinition::kObjects, iclforge::adm::TypeDefinition::kDirectSpeakers);
+    INFO("typeDefinition " << (type == iclforge::adm::TypeDefinition::kObjects ? "Objects"
                                                                         : "DirectSpeakers"));
     const auto dir = write_scratch_dir("adm_write_polar");
     auto document = objects_document({std::nullopt}, type);
@@ -1239,29 +1239,29 @@ TEST_CASE("write_bw64 reports a polar block as kInvalidDocument without throwing
     blocks.push_back(second);
 
     // Unchanged, the document writes, so what is refused below is refused for the block alone.
-    REQUIRE(ac3adm::write_bw64((dir / "cartesian.wav").string(), document).has_value());
+    REQUIRE(iclforge::adm::write_bw64((dir / "cartesian.wav").string(), document).has_value());
 
     auto& block = blocks.back();
     SECTION("a polar position") {
         block.cartesian = false;
         block.position =
-            ac3adm::PolarPosition{.azimuth_deg = 30.0, .elevation_deg = 0.0, .distance = 1.0};
+            iclforge::adm::PolarPosition{.azimuth_deg = 30.0, .elevation_deg = 0.0, .distance = 1.0};
     }
     SECTION("a default-constructed block") {
-        block = ac3adm::AudioBlockFormat{};
+        block = iclforge::adm::AudioBlockFormat{};
     }
 
     const auto path = dir / "polar.wav";
     std::filesystem::remove(path);
-    const auto written = ac3adm::write_bw64(path.string(), document);
+    const auto written = iclforge::adm::write_bw64(path.string(), document);
     REQUIRE_FALSE(written.has_value());
-    CHECK(written.error() == ac3adm::AdmWriteError::kInvalidDocument);
+    CHECK(written.error() == iclforge::adm::AdmWriteError::kInvalidDocument);
     CHECK_FALSE(std::filesystem::exists(path));
 }
 
 // What write_bw64() does with the libadm document once it is built - reassignIds(), formatting
 // the <chna> rows' IDs, writeXml() - ran outside any try block, so an exception from any of it
-// left write_bw64() the same way. adm::formatId() throws for a document the translator accepts:
+// left write_bw64() the same way. ::adm::formatId() throws for a document the translator accepts:
 // it writes an audioTrackFormat's counter as two hex digits, and reassignIds() numbers the
 // audioTrackFormats on one audioStreamFormat from 01, so the 256th is 0x100, which does not fit.
 // With the <chna> row's audioTrackUID naming that track, the throw comes while the rows are
@@ -1273,7 +1273,7 @@ TEST_CASE("write_bw64 reports a libadm failure after the build as kOther without
     auto document = objects_document({std::nullopt});
     auto& model = document.model;
     for (int i = 1; i < 256; ++i) {
-        ac3adm::AudioTrackFormat track_format;
+        iclforge::adm::AudioTrackFormat track_format;
         track_format.id = "extra_track" + std::to_string(i);
         track_format.name = "Track";
         track_format.stream_format_ref = model.stream_formats.front().id;
@@ -1286,15 +1286,15 @@ TEST_CASE("write_bw64 reports a libadm failure after the build as kOther without
 
     const auto path = write_scratch_dir("adm_write_id_overflow") / "overflow.wav";
     std::filesystem::remove(path);
-    const auto written = ac3adm::write_bw64(path.string(), document);
+    const auto written = iclforge::adm::write_bw64(path.string(), document);
     REQUIRE_FALSE(written.has_value());
-    CHECK(written.error() == ac3adm::AdmWriteError::kOther);
+    CHECK(written.error() == iclforge::adm::AdmWriteError::kOther);
     CHECK_FALSE(std::filesystem::exists(path));
 }
 
 // An audioTrackUID refers to an audioTrackFormat or, for plain PCM, straight to an
 // audioChannelFormat, never both, and libadm's AudioTrackUid::setReference() throws
-// adm::error::AudioTrackUidMutuallyExclusiveReferences when given the second. That left
+// ::adm::error::AudioTrackUidMutuallyExclusiveReferences when given the second. That left
 // write_bw64() the same way a polar block's std::bad_variant_access did.
 TEST_CASE("write_bw64 reports an audioTrackUID naming a track and a channel format as "
           "kInvalidDocument",
@@ -1306,8 +1306,8 @@ TEST_CASE("write_bw64 reports an audioTrackUID naming a track and a channel form
 
     const auto path = write_scratch_dir("adm_write_track_uid_refs") / "both_refs.wav";
     std::filesystem::remove(path);
-    const auto written = ac3adm::write_bw64(path.string(), document);
+    const auto written = iclforge::adm::write_bw64(path.string(), document);
     REQUIRE_FALSE(written.has_value());
-    CHECK(written.error() == ac3adm::AdmWriteError::kInvalidDocument);
+    CHECK(written.error() == iclforge::adm::AdmWriteError::kInvalidDocument);
     CHECK_FALSE(std::filesystem::exists(path));
 }

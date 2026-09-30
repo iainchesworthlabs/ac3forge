@@ -24,7 +24,7 @@
 // some toolchains is exactly the kind of either/or this tree answers in CMake
 // rather than in the preprocessor.
 
-static_assert(sizeof(ac3::render::Speaker) == 32,
+static_assert(sizeof(iclforge::render::Speaker) == 32,
               "Speaker grew - see its field ordering comment in layout.hpp");
-static_assert(sizeof(ac3::render::OutputLayout) == 616,
+static_assert(sizeof(iclforge::render::OutputLayout) == 616,
               "OutputLayout grew - kMaxSlots copies of this live on tight ESP32 stacks");

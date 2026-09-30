@@ -10,12 +10,12 @@
 #include "iclforge/ac4core/huffman_codebook.hpp"
 
 // Writes one substream's (or the table of contents') bits, MSB first, and
-// records each syntax element it writes as an ac4::SyntaxRecord, in the shape
+// records each syntax element it writes as an iclforge::ac4::SyntaxRecord, in the shape
 // the decoder's reader records what it reads (ac4/syntax.hpp): offsets from
 // the start of this writer's bits, one record per element, none for
 // byte_align or fill_bits.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 class BitWriter {
    public:
@@ -87,4 +87,4 @@ class BitWriter {
 // The number of bits variable_bits(n_bits) takes for `value`.
 [[nodiscard]] unsigned variable_bits_width(unsigned n_bits, std::uint64_t value) noexcept;
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

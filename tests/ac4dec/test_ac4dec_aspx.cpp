@@ -32,14 +32,14 @@
 
 namespace {
 
-using ac4::detail::AspxChannel;
-using ac4::detail::AspxChannelIo;
-using ac4::detail::AspxChannelState;
-using ac4::detail::AspxConfig;
-using ac4::detail::AspxFrame;
-using ac4::detail::QmfValue;
-using ac4::detail::Real;
-namespace aspx = ac4::detail::aspx;
+using iclforge::ac4::detail::AspxChannel;
+using iclforge::ac4::detail::AspxChannelIo;
+using iclforge::ac4::detail::AspxChannelState;
+using iclforge::ac4::detail::AspxConfig;
+using iclforge::ac4::detail::AspxFrame;
+using iclforge::ac4::detail::QmfValue;
+using iclforge::ac4::detail::Real;
+namespace aspx = iclforge::ac4::detail::aspx;
 
 constexpr int kSlots = 32;                                    // num_qmf_timeslots at 2 048
 constexpr int kExtSlots = aspx::kTsOffsetHfadj + 6 + kSlots;  // Q_low_ext
@@ -82,7 +82,7 @@ AspxFrame frame_for(const AspxConfig& config, bool master_reset) {
 // (Pseudocode 80's frequency deltas of 0 after the first value).
 AspxChannel flat_channel(int sig, int noise, int first = 0, int last = 16) {
     AspxChannel c;
-    c.framing.int_class = ac4::detail::AspxIntClass::kFixFix;
+    c.framing.int_class = iclforge::ac4::detail::AspxIntClass::kFixFix;
     c.framing.num_env = 1;
     c.framing.num_noise = 1;
     c.framing.atsg_sig = {static_cast<std::int8_t>(first), static_cast<std::int8_t>(last)};
@@ -121,14 +121,14 @@ struct Channel {
 
 // NoiseTable's entry at `index` (Part 1 Table D.2).
 QmfValue noise_entry(int index) {
-    const auto& entry = ac4::detail::tables::kAspxNoise[static_cast<std::size_t>(index % 512)];
-    return {static_cast<ac4::detail::Real>(entry[0]), static_cast<ac4::detail::Real>(entry[1])};
+    const auto& entry = iclforge::ac4::detail::tables::kAspxNoise[static_cast<std::size_t>(index % 512)];
+    return {static_cast<iclforge::ac4::detail::Real>(entry[0]), static_cast<iclforge::ac4::detail::Real>(entry[1])};
 }
 
 void decode_one(const AspxFrame& frame, const AspxChannel& data, Channel& channel) {
     std::array<AspxChannelIo, 1> io{AspxChannelIo{
         .data = &data, .state = &channel.state, .ext = channel.ext, .out = channel.out}};
-    REQUIRE(ac4::detail::decode_aspx(frame, io).has_value());
+    REQUIRE(iclforge::ac4::detail::decode_aspx(frame, io).has_value());
 }
 
 }  // namespace
@@ -179,7 +179,7 @@ TEST_CASE("a sinusoid sits in its group's middle subband, a quarter turn further
     // subbands.
     const std::array<QmfValue, 4> unit = {QmfValue(1.0, 0.0), QmfValue(0.0, -1.0),
                                           QmfValue(-1.0, 0.0), QmfValue(0.0, 1.0)};
-    const ac4::detail::Real level = abs(channel.at(0, 43));
+    const iclforge::ac4::detail::Real level = abs(channel.at(0, 43));
     REQUIRE(level > Real{1});
     for (int ts = 0; ts < kSlots; ++ts) {
         CAPTURE(ts);
@@ -224,9 +224,9 @@ TEST_CASE("an interval past its frame's end reaches the output in the next frame
     const AspxConfig config = dee_128k_config();
     // FIXVAR to A-SPX slot 18 (QMF slot 36), then VARFIX from slot 2.
     AspxChannel fixvar = flat_channel(10, 0, 0, 18);
-    fixvar.framing.int_class = ac4::detail::AspxIntClass::kFixVar;
+    fixvar.framing.int_class = iclforge::ac4::detail::AspxIntClass::kFixVar;
     AspxChannel varfix = flat_channel(10, 0, 2, 16);
-    varfix.framing.int_class = ac4::detail::AspxIntClass::kVarFix;
+    varfix.framing.int_class = iclforge::ac4::detail::AspxIntClass::kVarFix;
     Channel channel;
     decode_one(frame_for(config, true), fixvar, channel);
     const QmfValue level = channel.at(0, 36) / noise_entry(1);
@@ -249,7 +249,7 @@ TEST_CASE("a balanced pair shares the sum's scale factors as the balance says", 
     AspxConfig config = dee_128k_config();
     AspxChannel sum = flat_channel(40, 20);
     AspxChannel balance = flat_channel(16, 6);
-    balance.stereo_mode = ac4::detail::AspxStereoMode::kBalance;
+    balance.stereo_mode = iclforge::ac4::detail::AspxStereoMode::kBalance;
     for (int i = 1; i < kHighGroups; ++i) {
         balance.sig[0].huff_index[static_cast<std::size_t>(i)] =
             24;  // ASPX_HCB_ENV_BALANCE_15_DF's cb_off
@@ -266,7 +266,7 @@ TEST_CASE("a balanced pair shares the sum's scale factors as the balance says", 
                                                   .state = &channels[1].state,
                                                   .ext = channels[1].ext,
                                                   .out = channels[1].out}};
-    REQUIRE(ac4::detail::decode_aspx(frame, io).has_value());
+    REQUIRE(iclforge::ac4::detail::decode_aspx(frame, io).has_value());
     const auto energy = [&](const Channel& channel) {
         double e = 0.0;
         for (int ts = 0; ts < kSlots; ++ts) {
@@ -294,12 +294,12 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
         }
     }
     const std::vector<QmfValue> before = ext;
-    ac4::detail::CompandingControl control;
+    iclforge::ac4::detail::CompandingControl control;
     control.num_chan = 1;
     control.b_compand_on[0] = true;
-    const std::array<ac4::detail::CompandingChannel, 1> channels{ac4::detail::CompandingChannel{
+    const std::array<iclforge::ac4::detail::CompandingChannel, 1> channels{iclforge::ac4::detail::CompandingChannel{
         .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
-    ac4::detail::apply_companding(control, 0, kFullScale, channels);
+    iclforge::ac4::detail::apply_companding(control, 0, kFullScale, channels);
     const double big_g = std::exp2(1.0 / 0.65);
     for (int ts = 0; ts < kSlots + 6; ++ts) {
         CAPTURE(ts);
@@ -317,7 +317,7 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
     ext = before;
     control.b_compand_on[0] = false;
     control.b_compand_avg = true;
-    ac4::detail::apply_companding(control, 0, kFullScale, channels);
+    iclforge::ac4::detail::apply_companding(control, 0, kFullScale, channels);
     double mean = 0.0;
     for (int ts = 2; ts < 34; ++ts) {
         mean += 0.9105 * 100.0 * (ts + 1) / kFullScale / 32.0;
@@ -333,7 +333,7 @@ TEST_CASE("companding's gains are libm's at double and the project's own functio
     // The same slots as above, whose level is exact in Real (a sum of 36 equal integers), so that
     // the gain is the only inexact step. At double the gain is std::pow and G is std::exp2, as
     // they always were; at float they are 2^(e log2 L) and 2^(1 / alpha) through
-    // ac3::internal::scalar_exp2 and scalar_log2, plain float multiplies and adds, and the
+    // iclforge::internal::scalar_exp2 and scalar_log2, plain float multiplies and adds, and the
     // samples that come out are pinned to the bit: the C libraries' powf and exp2f differ in
     // the last bit on some inputs, and a Cortex-M3 or an ESP32 must give the host's samples
     // (planning/ac4.md, D14a4).
@@ -348,12 +348,12 @@ TEST_CASE("companding's gains are libm's at double and the project's own functio
             slot(ts, sb) = QmfValue(static_cast<Real>(100 * (ts + 1)), Real{});
         }
     }
-    ac4::detail::CompandingControl control;
+    iclforge::ac4::detail::CompandingControl control;
     control.num_chan = 1;
     control.b_compand_on[0] = true;
-    const std::array<ac4::detail::CompandingChannel, 1> channels{ac4::detail::CompandingChannel{
+    const std::array<iclforge::ac4::detail::CompandingChannel, 1> channels{iclforge::ac4::detail::CompandingChannel{
         .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
-    ac4::detail::apply_companding(control, 0, kFullScaleReal, channels);
+    iclforge::ac4::detail::apply_companding(control, 0, kFullScaleReal, channels);
 
     constexpr Real kAlpha = Real(0.65);
     constexpr Real kExponent = (Real{1} - kAlpha) / kAlpha;
@@ -366,8 +366,8 @@ TEST_CASE("companding's gains are libm's at double and the project's own functio
             gain = std::pow(level, kExponent);
             big_g = std::exp2(Real{1} / kAlpha);
         } else {
-            gain = ac3::internal::scalar_exp2(kExponent * ac3::internal::scalar_log2(level));
-            big_g = ac3::internal::scalar_exp2(Real{1} / kAlpha);
+            gain = iclforge::internal::scalar_exp2(kExponent * iclforge::internal::scalar_log2(level));
+            big_g = iclforge::internal::scalar_exp2(Real{1} / kAlpha);
         }
         return sample * (gain * big_g);
     };

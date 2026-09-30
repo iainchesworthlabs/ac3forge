@@ -7,7 +7,7 @@
 // needs endpoint events yet. Every entry point fails with kNoBackend rather
 // than the API disappearing, matching platform/posix/device_watcher.cpp.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::string_view describe(DeviceWatchError error) {
     switch (error) {
@@ -31,4 +31,4 @@ void DeviceWatcher::stop() {}
 bool DeviceWatcher::running() const { return false; }
 DeviceWatchStats DeviceWatcher::stats() const { return {}; }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

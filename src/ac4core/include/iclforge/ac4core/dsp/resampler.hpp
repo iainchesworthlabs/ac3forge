@@ -49,7 +49,7 @@
 // double table in the order of the taps, as it always did (planning/ac4.md,
 // D14a4).
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 
 template <typename Coefficient>
 class BasicResamplerFilter {
@@ -124,4 +124,4 @@ class Resampler {
 
 extern template class Resampler<Real>;
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

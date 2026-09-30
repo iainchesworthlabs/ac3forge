@@ -27,7 +27,7 @@
 #include "iclforge/audio/speakers.hpp"
 #include "windows_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 namespace {
 
@@ -505,4 +505,4 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     return {};
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

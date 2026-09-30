@@ -14,7 +14,7 @@
 // #include "ac3adm/ac3adm.hpp" or "ac3/admbridge/bridge.hpp" itself, not even behind a
 // preprocessor guard (tools/checks/check_platform_macros.ps1 refuses ANY #if/#ifdef/#ifndef
 // under src/ or apps/cli/commands - see atmos_adm.hpp's own top comment for the full reasoning),
-// so this header is declared entirely in terms of ac3::oba's own types (always available) and
+// so this header is declared entirely in terms of iclforge::oba's own types (always available) and
 // plain strings, and apps/cli/CMakeLists.txt selects exactly one of adm/enabled/decode_adm.cpp or
 // adm/disabled/decode_adm.cpp to implement it - decode.cpp calls the function below
 // unconditionally either way, gating only on ac3cli::adm_capability() (declared in
@@ -27,22 +27,22 @@ namespace ac3cli {
 // own object_metadata->blocks in file order and adding each block's own sample_offset to a
 // running total of samples already emitted (object_audio's own length each access unit, since
 // that is the count actually written, not numblkscod*256 - see decode.cpp's own accumulation for
-// why). Mirrors ac3::admbridge::WriteObjectUpdate field for field; kept as its own type rather
+// why). Mirrors iclforge::admbridge::WriteObjectUpdate field for field; kept as its own type rather
 // than reused directly for the same reason AdmAtmosSource mirrors BridgeResult rather than
 // including bridge.hpp - see this header's own top comment.
 struct AdmObjectUpdate {
     std::uint64_t sample_offset = 0;
     int ramp_duration_samples = 0;
-    ac3::oba::DynamicObject state;
+    iclforge::oba::DynamicObject state;
 };
 
 // One channel of the master being written - a bed channel (`bed_label` set, pinned at its own
 // room position, `updates` unused) or a JOC-reconstructed dynamic object (`bed_label` empty,
-// positioned by `updates`). Mirrors ac3::admbridge::WriteChannel.
+// positioned by `updates`). Mirrors iclforge::admbridge::WriteChannel.
 struct AdmMasterChannel {
     std::string name;
     std::vector<float> pcm;
-    std::optional<ac3::oba::BedLabel> bed_label{};
+    std::optional<iclforge::oba::BedLabel> bed_label{};
     std::vector<AdmObjectUpdate> updates{};
 };
 
@@ -51,8 +51,8 @@ struct AdmMasterInput {
     std::vector<AdmMasterChannel> channels;
 };
 
-// Writes `input` to `path` as a Dolby Atmos Master ADM Profile BW64 file (ac3::admbridge::write()
-// builds the ac3adm::AdmDocument, ac3adm::write_bw64() writes it) - or a single diagnostic string
+// Writes `input` to `path` as a Dolby Atmos Master ADM Profile BW64 file (iclforge::admbridge::write()
+// builds the iclforge::adm::AdmDocument, iclforge::adm::write_bw64() writes it) - or a single diagnostic string
 // already run through both BridgeError's and AdmWriteError's own describe(), the same
 // "main.cpp/decode.cpp never needs either error enum's type" convention
 // load_adm_atmos_source's own doc comment states for the read direction. Caller checks

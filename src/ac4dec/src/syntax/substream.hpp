@@ -16,7 +16,7 @@
 // (6.2.3.2) for a direct-coded object one - and metadata(), reached through
 // audio_size as Part 1 clause 4.3.4.1 allows.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // audio_data_ajoc(n_fb_upmix_signals, b_static_dmx, n_fb_dmx_signals, b_lfe,
 // b_iframe) besides its channel element: the first OAMD portion, for core
@@ -106,4 +106,4 @@ struct AudioSubstream {
                                                 BitReader* hsf_reader = nullptr,
                                                 const ObjectAudioContext* objects = nullptr);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

@@ -1,4 +1,4 @@
-// The AC-4 decoder probe (planning/ac4.md, D14a): ac4::decoder decoding committed AC-4
+// The AC-4 decoder probe (planning/ac4.md, D14a): iclforge::ac4dec decoding committed AC-4
 // streams on a target with no operating system, no filesystem and no C++ exceptions, and
 // reporting what that cost. The AC-4 half of what probe.cpp is for AC-3 and E-AC-3, and
 // like probe.cpp it is neither a demo nor a unit test.
@@ -293,7 +293,7 @@ std::size_t g_stack_peak_bytes = 0;
 int decode_fixture(const Fixture& fixture) {
     const std::span<const std::byte> bytes{
         reinterpret_cast<const std::byte*>(fixture.stream.data()), fixture.stream.size()};
-    const ac4::ScanResult scanned = ac4::scan(bytes);
+    const iclforge::ac4::ScanResult scanned = iclforge::ac4::scan(bytes);
     if (scanned.stopped_at.has_value() ||
         static_cast<int>(scanned.frames.size()) != fixture.frames) {
         fail(fixture.name, "sync_frames", static_cast<long>(scanned.frames.size()), fixture.frames);
@@ -314,8 +314,8 @@ int decode_fixture(const Fixture& fixture) {
     g_fixture_peak_bytes = g_live_bytes;
 
     {
-        ac4::Decoder decoder;
-        const auto sink = [&](const ac4::PcmBlock& block) {
+        iclforge::ac4::Decoder decoder;
+        const auto sink = [&](const iclforge::ac4::PcmBlock& block) {
             const std::uint64_t t0 = ac3probe::now_us();
             sink_channels = block.channels.size();
             for (std::size_t channel = 0; channel < block.channels.size() && channel < kMaxChannels;
@@ -330,7 +330,7 @@ int decode_fixture(const Fixture& fixture) {
         // Nothing that prints between here and read_stack() below.
         paint(0);
         int index = 0;
-        for (const ac4::SyncFrame& frame : scanned.frames) {
+        for (const iclforge::ac4::SyncFrame& frame : scanned.frames) {
             const std::size_t allocs_before = g_alloc_calls;
             const std::size_t bytes_before = g_alloc_bytes_total;
             const std::uint64_t sink_before = measured.sink_us;
@@ -453,7 +453,7 @@ bool over_budget(const Fixture& fixture) {
 int ac3probe::run() {
     std::printf("profile=ac4-decoder\n");
     std::printf("static.decoder_bytes=%lu stack.window_bytes=%lu\n",
-                static_cast<unsigned long>(sizeof(ac4::Decoder)),
+                static_cast<unsigned long>(sizeof(iclforge::ac4::Decoder)),
                 static_cast<unsigned long>(kStackWindowBytes));
 
     for (const Fixture& fixture : kFixtures) {

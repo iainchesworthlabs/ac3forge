@@ -32,10 +32,10 @@
 // vcpkg port defines it, and it has cpp-httplib resolve the host through getaddrinfo_a, whose
 // worker threads TSan does not track. A TSan run of these tests needs the macro undefined.
 
-using ac3::sendspin::transport::Connection;
-using ac3::sendspin::transport::Frame;
-using ac3::sendspin::transport::FrameKind;
-namespace websocket = ac3::sendspin::transport::websocket;
+using iclforge::sendspin::transport::Connection;
+using iclforge::sendspin::transport::Frame;
+using iclforge::sendspin::transport::FrameKind;
+namespace websocket = iclforge::sendspin::transport::websocket;
 
 namespace {
 

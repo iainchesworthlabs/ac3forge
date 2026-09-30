@@ -86,11 +86,11 @@ TEST_CASE("the DEE fixture's EMDF container uses configurations Table 56 does no
     // decode succeeds at all is itself the check on audblk's cplfgaincod,
     // which used to be skipped and desynchronised the frame three bits later.
     const auto data = read_fixture();
-    const auto units = ac3::split_access_units(data);
+    const auto units = iclforge::split_access_units(data);
     REQUIRE(units.has_value());
     REQUIRE(units->size() > 3);  // real audio over more than three frames
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(units->front());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -100,10 +100,10 @@ TEST_CASE("the DEE fixture's EMDF container uses configurations Table 56 does no
 TEST_CASE("the DEE fixture's OAMD is a twelve-channel bed with a trim element",
           "[oba][fixture]") {
     const auto data = read_fixture();
-    const auto units = ac3::split_access_units(data);
+    const auto units = iclforge::split_access_units(data);
     REQUIRE(units.has_value());
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(units->front());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -115,18 +115,18 @@ TEST_CASE("the DEE fixture's OAMD is a twelve-channel bed with a trim element",
     CHECK_FALSE(program.program.dynamic_only);
     CHECK(program.program.bed_chan_distribute);
     CHECK(program.program.dynamic_objects == 0);
-    CHECK(ac3::oba::object_count(program.program) == 12);
+    CHECK(iclforge::oba::object_count(program.program) == 12);
     CHECK(program.program.bed ==
-          (ac3::oba::bed::kLR | ac3::oba::bed::kC | ac3::oba::bed::kLfe |
-           ac3::oba::bed::kLsRs | ac3::oba::bed::kLbRb | ac3::oba::bed::kTflTfr |
-           ac3::oba::bed::kTblTbr));
+          (iclforge::oba::bed::kLR | iclforge::oba::bed::kC | iclforge::oba::bed::kLfe |
+           iclforge::oba::bed::kLsRs | iclforge::oba::bed::kLbRb | iclforge::oba::bed::kTflTfr |
+           iclforge::oba::bed::kTblTbr));
 
     // Two oa_elements, where exactly one used to be allowed.
     REQUIRE(program.trim.has_value());
     CHECK(program.trim->warp_mode == 1);
     CHECK(program.trim->global_trim_mode == 2);  // custom_trim
     CHECK(program.trim->configs.size() ==
-          static_cast<std::size_t>(ac3::oba::kNumTrimConfigs));
+          static_cast<std::size_t>(iclforge::oba::kNumTrimConfigs));
     CHECK(program.trim->disable_per_object.size() == 12);
     CHECK(program.skipped_elements.empty());
 
@@ -143,10 +143,10 @@ TEST_CASE("the DEE fixture's JOC is sparse, phase-shifted and twelve-band",
     // Straight at the payload: the decoder consumes JOC internally, so the
     // header fields it does not surface are only visible from here.
     const auto data = read_fixture();
-    const auto units = ac3::split_access_units(data);
+    const auto units = iclforge::split_access_units(data);
     REQUIRE(units.has_value());
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     const auto decoded = decoder.decode_access_unit(units->front());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
@@ -162,10 +162,10 @@ TEST_CASE("the DEE fixture's JOC is sparse, phase-shifted and twelve-band",
 TEST_CASE("every JOC object the DEE fixture reconstructs carries its own bed channel's tone",
           "[oba][fixture]") {
     const auto data = read_fixture();
-    const auto units = ac3::split_access_units(data);
+    const auto units = iclforge::split_access_units(data);
     REQUIRE(units.has_value());
 
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     // Objects 5 and 6 are Lb/Rb: a 5.1.4 source has nothing for them, so DEE
     // fills them from Ls/Rs and they reconstruct as near-copies. They are
     // deliberately not asserted against a tone of their own.

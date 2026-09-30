@@ -16,7 +16,7 @@
 // meet the Princen-Bradley condition KBD_LEFT(N, n)^2 + KBD_RIGHT(N, N + n)^2
 // = 1, since W(N, p) = W(N, N - p).
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 
 // Table 186's alpha for a transform length of `length` samples at a sampling
 // frequency `rate_multiplier` times the 44.1/48 kHz base (1, 2 or 4). 0 for a
@@ -31,4 +31,4 @@ namespace ac4::detail::dsp {
 // the clause gives: sum_{k>=0} ((x/2)^k / k!)^2.
 [[nodiscard]] double bessel_i0(double x) noexcept;
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

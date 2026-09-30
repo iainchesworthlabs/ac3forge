@@ -9,7 +9,7 @@
 // high-frequency generator, A-CPL's and A-JOC's decorrelation) is templated on
 // Real and names its sample through this type or the QmfValue alias built on
 // it, so a later phase's fixed-point tier (D14d) can instantiate the same
-// code: `std::complex<ac3::internal::Fixed32>` is not a valid type (the
+// code: `std::complex<iclforge::internal::Fixed32>` is not a valid type (the
 // standard requires a floating-point scalar), where this one only asks of
 // Real what the operators below use.
 //
@@ -38,7 +38,7 @@
 // handling (C99 Annex G's proviso for multiplication), which never matters
 // for one.
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 
 template <typename Real>
 struct Complex {
@@ -129,4 +129,4 @@ template <typename Real>
     return std::hypot(z.re, z.im);
 }
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

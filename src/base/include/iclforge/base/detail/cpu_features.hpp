@@ -28,7 +28,7 @@
 // per platform the way the arch seam's own primitives sometimes have to be.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::cpu {
+namespace iclforge::internal::cpu {
 
 // True if it is safe to execute AVX2 instructions on the CPU this process is
 // currently running on. Resolved exactly once per process via a
@@ -48,4 +48,4 @@ namespace ac3::internal::cpu {
 // instruction fault stand in for one.
 [[nodiscard]] ICLFORGE_BASE_EXPORT bool has_avx2() noexcept;
 
-} // namespace ac3::internal::cpu
+} // namespace iclforge::internal::cpu

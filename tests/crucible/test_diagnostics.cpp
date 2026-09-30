@@ -16,12 +16,12 @@
 // the path to it, the status line that names the file, or an executable's
 // path - the rule docs/crucible/troubleshooting.md promises.
 
-using ac3::crucible::AppStatus;
-using ac3::crucible::DiagnosticLog;
-using ac3::crucible::EngineStatus;
-using ac3::crucible::KeySource;
-using ac3::crucible::ReportFacts;
-using ac3::crucible::Secrets;
+using iclforge::crucible::AppStatus;
+using iclforge::crucible::DiagnosticLog;
+using iclforge::crucible::EngineStatus;
+using iclforge::crucible::KeySource;
+using iclforge::crucible::ReportFacts;
+using iclforge::crucible::Secrets;
 
 namespace {
 
@@ -122,7 +122,7 @@ TEST_CASE("the report never carries the key path, the key bytes or the signing s
     facts.signing.source = KeySource::kFile;
     facts.settings.emplace_back("signing/keyPath", "a file is chosen");
 
-    const std::string report = lowercase(ac3::crucible::render_report(facts, status, log, secrets));
+    const std::string report = lowercase(iclforge::crucible::render_report(facts, status, log, secrets));
     CHECK_FALSE(has(report, "secret/atmos.key"));
     CHECK_FALSE(has(report, "secret\\atmos.key"));
     CHECK_FALSE(has(report, "c2vjcmv0"));
@@ -146,7 +146,7 @@ TEST_CASE("a settings key under signing/ is withheld whatever value arrives", "[
     facts.settings.emplace_back("output/pinned", "auto");
     facts.settings.emplace_back("signing/keyPath", "D:/keys/k.bin");
     facts.settings.emplace_back("signing/blob", "AQID");
-    const std::string report = ac3::crucible::render_report(facts, EngineStatus{}, DiagnosticLog{}, Secrets{});
+    const std::string report = iclforge::crucible::render_report(facts, EngineStatus{}, DiagnosticLog{}, Secrets{});
     CHECK(has(report, "output/pinned = auto"));
     CHECK(has(report, "signing/keyPath = <withheld>"));
     CHECK(has(report, "signing/blob = <withheld>"));
@@ -156,16 +156,16 @@ TEST_CASE("a settings key under signing/ is withheld whatever value arrives", "[
 
 TEST_CASE("scrub is case-insensitive and leaves other text alone", "[crucible][diagnostics]") {
     const Secrets secrets{.strings = {"C:\\K\\Key.TXT", "C:/K/Key.TXT", ""}};
-    CHECK(ac3::crucible::scrub("Path C:\\K\\Key.TXT and c:/k/key.txt keyboard", secrets) ==
+    CHECK(iclforge::crucible::scrub("Path C:\\K\\Key.TXT and c:/k/key.txt keyboard", secrets) ==
           "Path <withheld> and <withheld> keyboard");
     // A secret that is itself the marker's text cannot loop.
-    CHECK(ac3::crucible::scrub("a <withheld> b", Secrets{.strings = {"<withheld>"}}) == "a <withheld> b");
+    CHECK(iclforge::crucible::scrub("a <withheld> b", Secrets{.strings = {"<withheld>"}}) == "a <withheld> b");
     // Nothing to scrub leaves the text as it was.
-    CHECK(ac3::crucible::scrub("plain", Secrets{}) == "plain");
+    CHECK(iclforge::crucible::scrub("plain", Secrets{}) == "plain");
 }
 
 TEST_CASE("the report renders every section with an idle engine", "[crucible][diagnostics]") {
-    const std::string report = ac3::crucible::render_report(ReportFacts{}, EngineStatus{}, DiagnosticLog{}, Secrets{});
+    const std::string report = iclforge::crucible::render_report(ReportFacts{}, EngineStatus{}, DiagnosticLog{}, Secrets{});
     const std::vector<std::string> sections{"# version",       "# platform",       "# signing",
                                             "# engine",        "# endpoints (last probe)",
                                             "# applications",  "# default output", "# silent device",
@@ -190,8 +190,8 @@ TEST_CASE("the report renders every section with an idle engine", "[crucible][di
 }
 
 TEST_CASE("the process log survives and is shared", "[crucible][diagnostics]") {
-    DiagnosticLog& one = ac3::crucible::process_diagnostics();
-    DiagnosticLog& two = ac3::crucible::process_diagnostics();
+    DiagnosticLog& one = iclforge::crucible::process_diagnostics();
+    DiagnosticLog& two = iclforge::crucible::process_diagnostics();
     CHECK(&one == &two);
     const auto before = one.lines().size();
     one.note("shared note");
@@ -239,7 +239,7 @@ TEST_CASE("the report renders a busy engine: endpoints, placed and paired applic
     background.has_session = false;
     engine.apps = {fullscreen, pair, custom, background};
 
-    const std::string report = ac3::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{});
+    const std::string report = iclforge::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{});
     CHECK(has(report, "key source: AC3FORGE_SIGNING_KEY_FILE (path withheld)"));
     CHECK(has(report, "\"Headphones\"  id=hp"));
     CHECK(has(report, "spatial=yes (max 17 objects)"));
@@ -259,7 +259,7 @@ TEST_CASE("the report renders a busy engine: endpoints, placed and paired applic
          {std::pair{KeySource::kFile, "a file chosen in Settings (path withheld)"},
           std::pair{KeySource::kEnvironmentInline, "AC3FORGE_SIGNING_KEY (value withheld)"}}) {
         facts.signing.source = source;
-        CHECK(has(ac3::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{}), text));
+        CHECK(has(iclforge::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{}), text));
     }
 }
 

@@ -20,8 +20,8 @@
 #include "block_norm.hpp"
 #include "iclforge/arithmetic/fixed32.hpp"
 
-using ac3::internal::Fixed32;
-namespace bn = ac3::internal;
+using iclforge::internal::Fixed32;
+namespace bn = iclforge::internal;
 
 TEST_CASE("the store exponent follows the smallest coded exponent, one bit down", "[fixed32]") {
     CHECK(bn::store_norm(bn::kNoExponent) == 0);

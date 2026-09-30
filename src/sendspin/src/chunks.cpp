@@ -8,7 +8,7 @@
 
 #include "iclforge/sendspin/frames.hpp"
 
-namespace ac3::sendspin {
+namespace iclforge::sendspin {
 
 namespace {
 
@@ -177,4 +177,4 @@ bool write_burst_chunk_header(std::span<std::uint8_t> out, std::int64_t timestam
     return true;
 }
 
-}  // namespace ac3::sendspin
+}  // namespace iclforge::sendspin

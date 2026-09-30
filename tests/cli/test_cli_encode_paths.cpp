@@ -42,7 +42,7 @@ namespace {
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
 std::string scratch_pid_suffix() {
-    return ac3::test::platform::process_id();
+    return iclforge::test::platform::process_id();
 }
 
 fs::path scratch_dir() {
@@ -54,7 +54,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    return ac3::test::platform::run_shell(command);
+    return iclforge::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -93,7 +93,7 @@ fs::path write_wav(const fs::path& path, std::size_t channels, std::uint32_t rat
                                                            static_cast<double>(n) / rate));
         }
     }
-    REQUIRE(ac3::io::write_wav_f32(path.string(), data, rate).has_value());
+    REQUIRE(iclforge::io::write_wav_f32(path.string(), data, rate).has_value());
     return path;
 }
 
@@ -189,7 +189,7 @@ TEST_CASE("a VBR E-AC-3 encode reports the access-unit sizes it really wrote, on
         const auto min_bytes = number_after(text, "access unit size: ");
         const auto max_bytes = number_after(text, std::to_string(min_bytes) + "-");
         const auto bytes = read_bytes(out_path);
-        const auto frames = ac3::split_frames(bytes);
+        const auto frames = iclforge::split_frames(bytes);
         REQUIRE(frames.has_value());
         REQUIRE(frames->size() == 16u);
         const auto [smallest, largest] = std::ranges::minmax_element(
@@ -347,7 +347,7 @@ TEST_CASE("offset= on a src=/map= encode delays its source and lengthens the pro
                             " offset=1:0.05",
                         log) == 0);
         const auto bytes = read_bytes(out_path);
-        const auto frames = ac3::split_frames(bytes);
+        const auto frames = iclforge::split_frames(bytes);
         REQUIRE(frames.has_value());
         CHECK(frames->size() == 18u);
     }

@@ -35,11 +35,11 @@
 // any of those corrupts the bit pattern and the receiver hears static or
 // loses lock. Exclusive mode hands the endpoint our bytes untouched.
 //
-// The burst packing itself lives in ac3::iec61937 (byte-exact against
+// The burst packing itself lives in iclforge::iec61937 (byte-exact against
 // FFmpeg's spdif muxer, and for E-AC-3 also cross-checked against Microsoft's
 // own IEC 61937 documentation); this is only delivery.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 enum class PassthroughError : std::uint8_t {
     kNoBackend,  // built without a platform passthrough backend
@@ -60,14 +60,14 @@ enum class PassthroughError : std::uint8_t {
 // WASAPI subformats and different carrier (link) sample rates - Dolby Digital
 // Plus runs the carrier at 4x the content rate (Microsoft's "Representing
 // Formats for IEC 61937 Transmissions") - and different burst sizes
-// (ac3::iec61937::kBurstBytes vs kEac3BurstBytes).
+// (iclforge::iec61937::kBurstBytes vs kEac3BurstBytes).
 //
 // The AC-4 formats are its links rather than its data types: kAc4 carries
 // IEC 61937-14's AC-4 and AC-4 LD data-bursts on a link at the content rate,
 // kAc4Hbr4 its HBR4 ones at four times it, as E-AC-3's, and kAc4Hbr16 its
 // HBR16 ones at sixteen times it. An AC-4 burst is as long as its own
 // repetition period, which follows the stream's frame rate
-// (ac3::iec61937::Ac4BurstPacker).
+// (iclforge::iec61937::Ac4BurstPacker).
 enum class BitstreamFormat : std::uint8_t { kAc3, kEac3, kAc4, kAc4Hbr4, kAc4Hbr16 };
 
 [[nodiscard]] constexpr bool is_ac4(BitstreamFormat format) {
@@ -110,7 +110,7 @@ enum class BitstreamFormat : std::uint8_t { kAc3, kEac3, kAc4, kAc4Hbr4, kAc4Hbr
 
 // The longest burst `format` has, in bytes: every AC-3 and E-AC-3 burst is
 // this long, and an AC-4 one is as long as its own repetition period, the
-// longest of which this is (ac3::iec61937::repetition_period()).
+// longest of which this is (iclforge::iec61937::repetition_period()).
 [[nodiscard]] inline std::size_t max_burst_bytes(BitstreamFormat format) {
     switch (format) {
         case BitstreamFormat::kAc3:
@@ -165,7 +165,7 @@ struct RenderDeviceInfo {
     // say. 0 means it cannot - not "no channels" - and a caller must treat
     // the two differently: the only safe reading of "unknown" is to leave
     // the audio alone. It exists so a decoded programme wider than the
-    // endpoint can be folded (§7.8, ac3::OutputStage) before it is played,
+    // endpoint can be folded (§7.8, iclforge::OutputStage) before it is played,
     // rather than handed to a shared-mode mixer to average down however it
     // sees fit. MonitorSink opens in SHARED mode, so a wider programme is
     // not refused - which is exactly why the narrowing has to be noticed
@@ -224,8 +224,8 @@ public:
         const std::string& device_id, std::uint32_t sample_rate = 48000,
         BitstreamFormat format = BitstreamFormat::kAc3);
 
-    // Queues one complete burst (ac3::iec61937::kBurstBytes for AC-3,
-    // kEac3BurstBytes for E-AC-3 - see ac3::iec61937::wrap_frame /
+    // Queues one complete burst (iclforge::iec61937::kBurstBytes for AC-3,
+    // kEac3BurstBytes for E-AC-3 - see iclforge::iec61937::wrap_frame /
     // Eac3BurstPacker). Returns false if the queue is full - the caller is
     // running ahead of real time and should wait rather than spin - and
     // whenever the sink is not running(), which no wait will change: a caller
@@ -290,4 +290,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

@@ -27,7 +27,7 @@
 // src/core/transform/{reference,stub}/reference_transform.cpp - exactly as
 // ac3/internal/profiling.hpp and src/audio's platform backends are selected,
 // and for the same reason (tools/checks/check_platform_macros.ps1: no
-// #ifdef). ac3::internal::kReferenceTransformAvailable
+// #ifdef). iclforge::internal::kReferenceTransformAvailable
 // (ac3/internal/profile.hpp, selected the same way) says which one is in the
 // build, and the public API refuses a configuration that would need the
 // missing one rather than silently substituting the fast path - see
@@ -36,7 +36,7 @@
 // The stub variant's bodies are unreachable by construction, not merely
 // unused: every caller checks kReferenceTransformAvailable first.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 // §8.2.3.2 direct form, alpha = 0 (long), -1 and +1 (the two halves of a
 // block-switched block). Same phase formula, same std::cos, same accumulation
@@ -62,4 +62,4 @@ void reference_inner_sum_128(std::span<const double, 128> z_re,
 void reference_inner_sum_64(std::span<const double, 64> z_re, std::span<const double, 64> z_im,
                             std::span<double, 64> t_re, std::span<double, 64> t_im);
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

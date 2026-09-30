@@ -5,15 +5,15 @@
 
 #include "placement.hpp"
 
-using ac3::crucible::kObjectSlots;
-using ac3::crucible::kPositionedSlots;
-using ac3::crucible::PlacementSmoother;
-using ac3::crucible::PlacementTarget;
+using iclforge::crucible::kObjectSlots;
+using iclforge::crucible::kPositionedSlots;
+using iclforge::crucible::PlacementSmoother;
+using iclforge::crucible::PlacementTarget;
 using Catch::Approx;
 
 TEST_CASE("a positioned slot glides to its target and settles exactly", "[crucible]") {
     PlacementSmoother smoother(3.0);
-    std::vector<ac3::oba::ObjectPlacement> out(kObjectSlots);
+    std::vector<iclforge::oba::ObjectPlacement> out(kObjectSlots);
     smoother.set_target(0, {.position = {1.0, 0.0, 0.5}, .gain = 1.0});
 
     smoother.step(out);
@@ -33,7 +33,7 @@ TEST_CASE("a positioned slot glides to its target and settles exactly", "[crucib
 
 TEST_CASE("snap jumps a slot to its target with no lag", "[crucible]") {
     PlacementSmoother smoother(3.0);
-    std::vector<ac3::oba::ObjectPlacement> out(kObjectSlots);
+    std::vector<iclforge::oba::ObjectPlacement> out(kObjectSlots);
     smoother.set_target(4, {.position = {0.2, 0.8, -1.0}, .gain = 0.7});
     smoother.snap(4);
     smoother.step(out);
@@ -44,7 +44,7 @@ TEST_CASE("snap jumps a slot to its target with no lag", "[crucible]") {
 
 TEST_CASE("freeing a slot fades the gain out in place", "[crucible]") {
     PlacementSmoother smoother(3.0);
-    std::vector<ac3::oba::ObjectPlacement> out(kObjectSlots);
+    std::vector<iclforge::oba::ObjectPlacement> out(kObjectSlots);
     smoother.set_target(2, {.position = {0.9, 0.9, 0.0}, .gain = 1.0});
     smoother.snap(2);
     smoother.set_gain(2, 0.0);
@@ -58,7 +58,7 @@ TEST_CASE("freeing a slot fades the gain out in place", "[crucible]") {
 
 TEST_CASE("the bed slots are always the pinned speaker placements", "[crucible]") {
     PlacementSmoother smoother(3.0);
-    std::vector<ac3::oba::ObjectPlacement> out(kObjectSlots);
+    std::vector<iclforge::oba::ObjectPlacement> out(kObjectSlots);
     smoother.step(out);
     for (int slot = kPositionedSlots; slot < kObjectSlots; ++slot) {
         CHECK(out[static_cast<std::size_t>(slot)].snap);
@@ -70,7 +70,7 @@ TEST_CASE("the bed slots are always the pinned speaker placements", "[crucible]"
 
 TEST_CASE("an idle positioned slot is silent at the centre", "[crucible]") {
     PlacementSmoother smoother(3.0);
-    std::vector<ac3::oba::ObjectPlacement> out(kObjectSlots);
+    std::vector<iclforge::oba::ObjectPlacement> out(kObjectSlots);
     smoother.step(out);
     CHECK(out[7].gain == 0.0);
     CHECK(out[7].position.x == Approx(0.5));
@@ -79,7 +79,7 @@ TEST_CASE("an idle positioned slot is silent at the centre", "[crucible]") {
 
 TEST_CASE("a zero time constant is immediate", "[crucible]") {
     PlacementSmoother smoother(0.0);
-    std::vector<ac3::oba::ObjectPlacement> out(kObjectSlots);
+    std::vector<iclforge::oba::ObjectPlacement> out(kObjectSlots);
     smoother.set_target(0, {.position = {1.0, 1.0, 1.0}, .gain = 1.0});
     smoother.step(out);
     CHECK(out[0].position.x == 1.0);
@@ -88,7 +88,7 @@ TEST_CASE("a zero time constant is immediate", "[crucible]") {
 
 TEST_CASE("an object's size glides like its position and reaches the placement", "[crucible]") {
     PlacementSmoother smoother(3.0);
-    std::vector<ac3::oba::ObjectPlacement> out(kObjectSlots);
+    std::vector<iclforge::oba::ObjectPlacement> out(kObjectSlots);
     smoother.set_target(2, {.position = {0.5, 0.5, 0.0}, .gain = 1.0, .size = 0.6});
     smoother.snap(2);
     smoother.step(out);

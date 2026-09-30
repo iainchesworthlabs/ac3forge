@@ -5,7 +5,7 @@
 
 #include "iclforge/ac3/meta/qc.hpp"
 
-// ac3::meta::qc.hpp's own surface: the named delivery-gate presets (roadmap
+// iclforge::meta::qc.hpp's own surface: the named delivery-gate presets (roadmap
 // C2, refreshed by IO11) and the pure gate-evaluation math ac3cli qc and
 // examples/qc_report.cpp both call. The presets' numeric values are copied
 // here as CHECKs against the primary sources cited in qc.hpp's own
@@ -14,11 +14,11 @@
 // Apple's Immersive Audio Source Profile) - a wrong number here is caught the
 // same way a wrong DRC profile edge would be in test_drc.cpp.
 
-using ac3::meta::evaluate_qc_gate;
-using ac3::meta::parse_qc_preset;
-using ac3::meta::qc_preset;
-using ac3::meta::qc_preset_name;
-using ac3::meta::QcPresetId;
+using iclforge::meta::evaluate_qc_gate;
+using iclforge::meta::parse_qc_preset;
+using iclforge::meta::qc_preset;
+using iclforge::meta::qc_preset_name;
+using iclforge::meta::QcPresetId;
 using Catch::Approx;
 
 TEST_CASE("qc preset numbers match their cited primary sources", "[qc]") {
@@ -68,7 +68,7 @@ TEST_CASE("qc preset numbers match their cited primary sources", "[qc]") {
         const auto p = qc_preset(QcPresetId::kAppleMusicAtmos);
         CHECK(p.target_lkfs == Approx(-18.0));
         CHECK(p.max_true_peak_dbtp == Approx(-1.0));
-        CHECK(p.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling);
+        CHECK(p.loudness_limit == iclforge::meta::QcLoudnessLimit::kCeiling);
         CHECK(qc_preset_name(QcPresetId::kAppleMusicAtmos) == "apple-music-atmos");
     }
     SECTION("every preset names the document it was read out of") {
@@ -76,11 +76,11 @@ TEST_CASE("qc preset numbers match their cited primary sources", "[qc]") {
         // whole point was that the edition had gone stale. Every row must
         // carry its source, and every band row must carry a real tolerance
         // (a ceiling row deliberately does not).
-        for (const auto id : ac3::meta::kQcPresetIds) {
+        for (const auto id : iclforge::meta::kQcPresetIds) {
             CAPTURE(qc_preset_name(id));
             const auto p = qc_preset(id);
             CHECK_FALSE(p.source.empty());
-            if (p.loudness_limit == ac3::meta::QcLoudnessLimit::kBand) {
+            if (p.loudness_limit == iclforge::meta::QcLoudnessLimit::kBand) {
                 CHECK(p.tolerance_lu > 0.0);
             }
         }
@@ -95,7 +95,7 @@ TEST_CASE("evaluate_qc_gate: a ceiling preset passes anything at or under its le
     // accepts, so this is the behaviour QcLoudnessLimit::kCeiling was added
     // to get right.
     const auto preset = qc_preset(QcPresetId::kAppleMusicAtmos);
-    REQUIRE(preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling);
+    REQUIRE(preset.loudness_limit == iclforge::meta::QcLoudnessLimit::kCeiling);
 
     // Exactly on the ceiling passes ("not exceed" is inclusive).
     CHECK(evaluate_qc_gate(preset, -18.0, -2.0).loudness_pass);
@@ -118,7 +118,7 @@ TEST_CASE("evaluate_qc_gate: a ceiling preset passes anything at or under its le
 
 TEST_CASE("parse_qc_preset round-trips every name qc_preset_name emits, and rejects garbage",
           "[qc]") {
-    for (const auto id : ac3::meta::kQcPresetIds) {
+    for (const auto id : iclforge::meta::kQcPresetIds) {
         QcPresetId parsed{};
         REQUIRE(parse_qc_preset(qc_preset_name(id), parsed));
         CHECK(parsed == id);
@@ -133,7 +133,7 @@ TEST_CASE("parse_qc_preset round-trips every name qc_preset_name emits, and reje
 
 TEST_CASE("evaluate_qc_gate: loudness gates on |measured - target| <= tolerance, inclusive",
           "[qc]") {
-    const ac3::meta::QcPreset preset{
+    const iclforge::meta::QcPreset preset{
         .target_lkfs = -23.0, .tolerance_lu = 1.0, .max_true_peak_dbtp = -1.0};
 
     SECTION("exactly on target passes") {
@@ -169,7 +169,7 @@ TEST_CASE("evaluate_qc_gate: loudness gates on |measured - target| <= tolerance,
 }
 
 TEST_CASE("evaluate_qc_gate: true peak gates on a one-sided ceiling, not a band", "[qc]") {
-    const ac3::meta::QcPreset preset{
+    const iclforge::meta::QcPreset preset{
         .target_lkfs = -24.0, .tolerance_lu = 2.0, .max_true_peak_dbtp = -2.0};
 
     SECTION("well under the ceiling passes") {
@@ -193,7 +193,7 @@ TEST_CASE("evaluate_qc_gate: true peak gates on a one-sided ceiling, not a band"
 }
 
 TEST_CASE("QcVerdict::pass() is both halves together, not either alone", "[qc]") {
-    const ac3::meta::QcPreset preset{
+    const iclforge::meta::QcPreset preset{
         .target_lkfs = -23.0, .tolerance_lu = 1.0, .max_true_peak_dbtp = -1.0};
 
     CHECK(evaluate_qc_gate(preset, -23.0, -1.0).pass());        // both pass

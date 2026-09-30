@@ -1,7 +1,7 @@
 // The "absent" half of ac3forge_c's AC-4 support (src/capi/CMakeLists.txt
 // compiles this file instead of ac4.cpp/ac4_encoder.cpp when
 // AC3FORGE_BUILD_AC4 is off): every function ac3forge.h's AC-4 section
-// declares, given a body that names no ac4:: C++ type. The public header
+// declares, given a body that names no iclforge::ac4:: C++ type. The public header
 // declares them unconditionally either way (that header's own comment), so a
 // caller sees the same 76 symbols whatever this library was built with; here
 // every fallible one returns AC3FORGE_ERROR_UNSUPPORTED, a *_create()
@@ -18,11 +18,11 @@
 #include "iclforge_c/iclforge.h"
 
 // --- config initializers -----------------------------------------------
-// Pure C structs; the defaults below are ac4::OutputConfig{}'s,
-// ac4::DecoderConfig{}'s and ac4::EncoderConfig{}'s (src/ac4dec/include/
+// Pure C structs; the defaults below are iclforge::ac4::OutputConfig{}'s,
+// iclforge::ac4::DecoderConfig{}'s and iclforge::ac4::EncoderConfig{}'s (src/ac4dec/include/
 // ac4dec/decoder.hpp, src/ac4enc/include/iclforge/ac4enc/encoder.hpp) spelled as C
 // literals, so a config built by this library is the same whichever way
-// AC3FORGE_BUILD_AC4 was set - naming no ac4:: type does not have to mean
+// AC3FORGE_BUILD_AC4 was set - naming no iclforge::ac4:: type does not have to mean
 // guessing at its defaults.
 
 void ac3forge_ac4_output_config_init(ac3forge_ac4_output_config_t* config) {
@@ -66,7 +66,7 @@ void ac3forge_ac4_decoder_config_init(ac3forge_ac4_decoder_config_t* config) {
     config->decoding = AC3FORGE_AC4_DECODING_FULL;
 }
 
-// ac4::ObjectProperties{}'s defaults (src/ac4/include/iclforge/ac4/ac4.hpp).
+// iclforge::ac4::ObjectProperties{}'s defaults (src/ac4/include/iclforge/ac4/ac4.hpp).
 void ac3forge_ac4_object_properties_init(ac3forge_ac4_object_properties_t* properties) {
     if (properties == nullptr) {
         return;

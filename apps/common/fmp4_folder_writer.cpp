@@ -54,12 +54,12 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
         track_ = described_->audio;
         hls_ = described_->hls;
         dash_ = described_->dash;
-        mp4::FragmentOptions options;
+        iclforge::mp4::FragmentOptions options;
         options.playlist_window_segments = window_segments_;
         options.brands = described_->brands;
-        auto writer = mp4::FragmentWriter::create(track_, options);
+        auto writer = iclforge::mp4::FragmentWriter::create(track_, options);
         if (!writer.has_value()) {
-            return std::string{mp4::describe(writer.error())};
+            return std::string{iclforge::mp4::describe(writer.error())};
         }
         writer_.emplace(std::move(*writer));
         if (!write_bytes(dir_ / "init.mp4", writer_->init_segment())) {
@@ -76,36 +76,36 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
     // EncoderController::writeOutput and ac3cli's own fmp4 already do before
     // wrapping frames they just encoded - done here on the first frame
     // instead, because a live session has no finished stream to scan.
-    const auto scanned = ac3::io::scan(first_frame);
+    const auto scanned = iclforge::io::scan(first_frame);
     if (!scanned.has_value()) {
         return "Could not describe the encoded stream for the fragmented MP4 folder.";
     }
-    const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
-    track_ = mp4::AudioTrack{.codec_id = std::string{eac3 ? mp4::kCodecEac3 : mp4::kCodecAc3},
-                             .sample_rate = ac3::sample_rate_hz(scanned->sample_rate),
+    const bool eac3 = scanned->kind == iclforge::io::StreamKind::kEac3;
+    track_ = iclforge::mp4::AudioTrack{.codec_id = std::string{eac3 ? iclforge::mp4::kCodecEac3 : iclforge::mp4::kCodecAc3},
+                             .sample_rate = iclforge::sample_rate_hz(scanned->sample_rate),
                              .channels = scanned->channels,
-                             .samples_per_frame = ac3::kSamplesPerFrame,
-                             .codec_config = ac3::io::build_codec_config_box(*scanned)};
+                             .samples_per_frame = iclforge::kSamplesPerFrame,
+                             .codec_config = iclforge::io::build_codec_config_box(*scanned)};
     // The Atmos/JOC signalling, identical to what
     // EncoderController::writeOutput's own fMP4 branch and ac3cli's fmp4
     // build: CHANNELS="<N>/JOC" for HLS (mp4/hls.hpp), TS 103 420 §D.2's two
     // SupplementalProperty descriptors and TS 102 366 clause I.1.2.1's
     // AudioChannelConfiguration for DASH (mp4/dash.hpp), and §E.5's 'ceao'
     // brand on the segments themselves.
-    hls_ = mp4::HlsOptions{.channels_attribute =
+    hls_ = iclforge::mp4::HlsOptions{.channels_attribute =
                                scanned->oba_complexity_index
                                    ? fmt::format("{}/JOC", *scanned->oba_complexity_index)
                                    : std::string{}};
-    dash_ = mp4::DashOptions{
+    dash_ = iclforge::mp4::DashOptions{
         .joc_complexity_index = scanned->oba_complexity_index,
-        .dolby_channel_configuration = ac3::io::dash_channel_configuration(*scanned)};
+        .dolby_channel_configuration = iclforge::io::dash_channel_configuration(*scanned)};
 
-    auto writer = mp4::FragmentWriter::create(
+    auto writer = iclforge::mp4::FragmentWriter::create(
         track_,
-        mp4::FragmentOptions{.object_audio_brand = scanned->oba_complexity_index.has_value(),
+        iclforge::mp4::FragmentOptions{.object_audio_brand = scanned->oba_complexity_index.has_value(),
                              .playlist_window_segments = window_segments_});
     if (!writer.has_value()) {
-        return std::string{mp4::describe(writer.error())};
+        return std::string{iclforge::mp4::describe(writer.error())};
     }
     writer_.emplace(std::move(*writer));
     if (!write_bytes(dir_ / "init.mp4", writer_->init_segment())) {
@@ -116,17 +116,17 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
     return {};
 }
 
-std::string Fmp4FolderWriter::write_manifests(const mp4::FragmentWriter& writer,
+std::string Fmp4FolderWriter::write_manifests(const iclforge::mp4::FragmentWriter& writer,
                                              bool finished) {
     const auto window = writer.window();
     auto hls = hls_;
     hls.vod = finished;
-    if (!write_text(dir_ / "audio.m3u8", mp4::build_hls_media_playlist(track_, window, hls)) ||
+    if (!write_text(dir_ / "audio.m3u8", iclforge::mp4::build_hls_media_playlist(track_, window, hls)) ||
         !write_text(dir_ / "master.m3u8",
-                    mp4::build_hls_master_playlist(track_, window, "audio.m3u8", hls))) {
+                    iclforge::mp4::build_hls_master_playlist(track_, window, "audio.m3u8", hls))) {
         return kWriteFailed;
     }
-    const auto adaptation_set = mp4::build_dash_adaptation_set(track_, window, dash_);
+    const auto adaptation_set = iclforge::mp4::build_dash_adaptation_set(track_, window, dash_);
     // Dynamic while the take runs, static once it stops - the MPD's half of
     // the before/after the HLS playlist's #EXT-X-ENDLIST makes.
     // timeShiftBufferDepth matches the rolling window when there is one;
@@ -137,12 +137,12 @@ std::string Fmp4FolderWriter::write_manifests(const mp4::FragmentWriter& writer,
                                       : static_cast<double>(window.back().base_media_decode_time +
                                                             window.back().duration_samples -
                                                             window.front().base_media_decode_time) /
-                                            static_cast<double>(mp4::timescale_of(track_));
-    const mp4::MpdOptions mpd_options{.is_static = finished,
+                                            static_cast<double>(iclforge::mp4::timescale_of(track_));
+    const iclforge::mp4::MpdOptions mpd_options{.is_static = finished,
                                       .availability_start_time = availability_start_,
                                       .time_shift_buffer_depth_seconds = window_seconds};
     if (!write_text(dir_ / "manifest.mpd",
-                    mp4::build_dash_mpd(track_, window, adaptation_set, mpd_options))) {
+                    iclforge::mp4::build_dash_mpd(track_, window, adaptation_set, mpd_options))) {
         return kWriteFailed;
     }
     return {};
@@ -165,7 +165,7 @@ std::string Fmp4FolderWriter::push(std::span<const std::byte> frame, bool sync) 
     // are every one a sync sample, as every AC-3 and E-AC-3 access unit is.
     auto segment = described_.has_value() ? writer.push(frame, sync) : writer.push(frame);
     if (!segment.has_value()) {
-        return std::string{mp4::describe(segment.error())};
+        return std::string{iclforge::mp4::describe(segment.error())};
     }
     if (!segment->has_value()) {
         return {};
@@ -185,7 +185,7 @@ std::string Fmp4FolderWriter::close() {
     auto& writer = *writer_;
     auto segment = writer.finalize();
     if (!segment.has_value()) {
-        return std::string{mp4::describe(segment.error())};
+        return std::string{iclforge::mp4::describe(segment.error())};
     }
     if (segment->has_value()) {
         const auto name = fmt::format("segment{}.m4s", (*segment)->sequence_number);

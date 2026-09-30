@@ -7,7 +7,7 @@
 // tools/checks/check_platform_macros.ps1's header comment says why, and
 // src/audio/CMakeLists.txt is the worked example it points at.
 
-namespace ac3::cli::platform {
+namespace iclforge::cli::platform {
 
 namespace {
 
@@ -58,4 +58,4 @@ void restore_console_encoding(unsigned int previous) {
     (void)SetConsoleOutputCP(previous);
 }
 
-}  // namespace ac3::cli::platform
+}  // namespace iclforge::cli::platform

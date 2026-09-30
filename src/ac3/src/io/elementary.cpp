@@ -17,7 +17,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "iclforge/ac3/meta/mixing.hpp"
 
-namespace ac3::io {
+namespace iclforge::io {
 
 namespace {
 
@@ -81,7 +81,7 @@ constexpr int kBsidBitOffset = 40;
 // consumers need them off the wire: build_codec_config_box()
 // (ac3/io/dec3.hpp) fills in AC3SpecificBox's own bsid/bsmod fields from them
 // (ETSI TS 102 366 Annex F §F.4), `ac3cli probe` reports them directly, and
-// the MPEG-TS PMT descriptors (mpegts::ServiceInfo) need bsmod/dsurmod for
+// the MPEG-TS PMT descriptors (iclforge::mpegts::ServiceInfo) need bsmod/dsurmod for
 // their own service-type/surround-mode fields. bsmod_present is always true
 // here - §5.4.2.2 puts bsmod in every AC-3 syncframe unconditionally, unlike
 // Annex E, which moved it into infomdate (see skip_informational_metadata's
@@ -196,7 +196,7 @@ std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byt
 // every one of them per frame, and scan() below keeps only the first
 // programme's own units - two consumers of one walk, not two walks.
 // bsmod_present, dsurmod and mix_metadata ride along the same way, for the
-// MPEG-TS PMT descriptors (mpegts::ServiceInfo) that need them one level
+// MPEG-TS PMT descriptors (iclforge::mpegts::ServiceInfo) that need them one level
 // further out still, and dmixmod for probe's report and ac3cli's
 // downmix=auto.
 //
@@ -552,7 +552,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
         } else if (current == nullptr) {
             // A dependent ahead of any independent substream has no parent to
             // extend, so there is nothing to attribute it to - the same
-            // constraint ac3::split_access_units enforces on the decode side.
+            // constraint iclforge::split_access_units enforces on the decode side.
             return std::unexpected(ScanError::kUnsupportedStructure);
         } else if (current->first_unit) {
             // §E3.8.2: a dependent's channels overwrite the bed's where they
@@ -904,4 +904,4 @@ std::optional<std::uint32_t> uniform_access_unit_samples(const ScannedStream& st
     return first;
 }
 
-}  // namespace ac3::io
+}  // namespace iclforge::io

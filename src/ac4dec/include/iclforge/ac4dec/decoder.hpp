@@ -52,7 +52,7 @@
 // object's PCM and the properties its object audio metadata sets (clause
 // 6.3.9, Annex F), for the application to render (DecodedFrame::objects); it
 // renders an intermediate spatial format itself (clause 5.10.3). The table of
-// contents and the substream framing come from ac4::parse_raw_frame (the
+// contents and the substream framing come from iclforge::ac4::parse_raw_frame (the
 // inspector, src/ac4); this library starts where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
@@ -70,11 +70,11 @@
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
 
-namespace ac4 {
+namespace iclforge::ac4 {
 
 enum class DecodeError : std::uint8_t {
     kTruncated,        // a syntax element ran past the end of its substream
-    kInvalidToc,       // ac4::parse_raw_frame refused the table of contents
+    kInvalidToc,       // iclforge::ac4::parse_raw_frame refused the table of contents
     kInvalidStream,    // a value the syntax cannot follow (a reserved code, an impossible count)
     kUnsupported,      // legal AC-4 this decoder does not decode - see the header comment
     kMissingIFrame,    // a non-I-frame that needs configuration no I-frame has supplied
@@ -85,7 +85,7 @@ enum class DecodeError : std::uint8_t {
 // --- The syntax trace -------------------------------------------------------
 //
 // One record per syntax element read, in bitstream order, for tests and for
-// diagnosing a stream: ac4::SyntaxRecord and ac4::SyntaxTrace, in
+// diagnosing a stream: iclforge::ac4::SyntaxRecord and iclforge::ac4::SyntaxTrace, in
 // ac4/syntax.hpp, whose comment states what a record holds. The encoder writes
 // records of the same shape, and so does tools/references/ac4_syntax.py.
 
@@ -433,7 +433,7 @@ struct DecodedFrame {
 // --- Decoding by block ---------------------------------------------------------
 //
 // decode_by_block() hands the output over in blocks of kBlockSamples samples,
-// the size ac3::forge's decoders hand over, whatever a frame's length: a frame
+// the size iclforge::ac3's decoders hand over, whatever a frame's length: a frame
 // of 2 002 samples at 23.976 fps gives seven blocks and holds 210 samples back
 // for the next. flush() hands over what is held back.
 
@@ -455,7 +455,7 @@ struct PcmBlock {
 };
 
 // A non-owning reference to any callable taking a const PcmBlock&, in the shape
-// of ac3::BlockSink: no allocation, and the callable must outlive the call it
+// of iclforge::BlockSink: no allocation, and the callable must outlive the call it
 // is handed to, which a lambda written in the call's arguments does.
 class BlockSink {
    public:
@@ -540,7 +540,7 @@ struct PresentationInfo {
     std::string name;
     // An alternative presentation's targets as its presentation substream
     // last sent them (Part 2 clauses 6.3.3.1.5 to 6.3.3.1.8): each
-    // target_level and target_device_category, as ac4::AlternativeTarget
+    // target_level and target_device_category, as iclforge::ac4::AlternativeTarget
     // holds them, which is what Annex E.12's alternative_info() repeats;
     // empty for a presentation that is not an alternative one.
     std::vector<AlternativeTarget> targets;
@@ -676,7 +676,7 @@ class AC4DEC_EXPORT Decoder {
     Decoder(const Decoder&) = delete;
     Decoder& operator=(const Decoder&) = delete;
 
-    // Reads one raw_ac4_frame - an ac4::SyncFrame's raw_ac4_frame, or an MP4
+    // Reads one raw_ac4_frame - an iclforge::ac4::SyncFrame's raw_ac4_frame, or an MP4
     // sample. An error in one substream is recorded in that substream's
     // report and the others are still read; the frame itself fails only
     // when its table of contents does. Updates presentations() and
@@ -746,4 +746,4 @@ class AC4DEC_EXPORT Decoder {
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac4
+}  // namespace iclforge::ac4

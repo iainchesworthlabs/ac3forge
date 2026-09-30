@@ -18,9 +18,9 @@
 
 namespace {
 
-using ac3::sendspin::Dialect;
-namespace m = ac3::sendspin::messages;
-namespace json = ac3::sendspin::json;
+using iclforge::sendspin::Dialect;
+namespace m = iclforge::sendspin::messages;
+namespace json = iclforge::sendspin::json;
 
 // A parsed message whose payload stays valid while the Parsed lives.
 struct Parsed {
@@ -508,7 +508,7 @@ TEST_CASE("messages: stream/start, stream/clear and stream/end", "[sendspin][mes
 }
 
 TEST_CASE("messages: the extension role's objects in the messages that carry them", "[sendspin][messages][ac3forge]") {
-    namespace ac = ac3::sendspin::ac3forge;
+    namespace ac = iclforge::sendspin::ac3forge;
 
     // client/hello carries the support object in both dialects; one the reader refuses leaves the
     // hello standing without it.
@@ -617,16 +617,16 @@ TEST_CASE("messages: the extension role's objects in the messages that carry the
 }
 
 TEST_CASE("messages: server/state and client/command", "[sendspin][messages][roles]") {
-    ac3::sendspin::metadata::State metadata;
+    iclforge::sendspin::metadata::State metadata;
     metadata.timestamp = 12;
     metadata.title = "Blue in Green";
     m::ServerState state;
     state.metadata = metadata;
     // Null: the controller state cleared.
     state.controller.emplace(std::nullopt);
-    ac3::sendspin::color::State colours;
+    iclforge::sendspin::color::State colours;
     colours.timestamp = 12;
-    colours.accent = ac3::sendspin::color::Rgb{.r = 1, .g = 2, .b = 3};
+    colours.accent = iclforge::sendspin::color::Rgb{.r = 1, .g = 2, .b = 3};
     state.color = colours;
     const std::string spec = m::write_server_state(state, Dialect::kSpecification);
     CHECK(spec == R"({"type":"server/state","payload":{"metadata":{"timestamp":12,"title":"Blue in Green"},)"
@@ -652,8 +652,8 @@ TEST_CASE("messages: server/state and client/command", "[sendspin][messages][rol
     CHECK_FALSE(m::read_server_state(Parsed(R"({"type":"server/state","payload":{"color":{"accent":[1,2,3]}}})").payload()));
 
     m::ClientCommand command;
-    command.controller = ac3::sendspin::controller::CommandMessage{};
-    command.controller->command = ac3::sendspin::controller::Command::kSwitch;
+    command.controller = iclforge::sendspin::controller::CommandMessage{};
+    command.controller->command = iclforge::sendspin::controller::Command::kSwitch;
     const std::string command_text = m::write_client_command(command);
     CHECK(command_text == R"({"type":"client/command","payload":{"controller":{"command":"switch"}}})");
     const auto command_read = m::read_client_command(Parsed(command_text).payload());
@@ -663,9 +663,9 @@ TEST_CASE("messages: server/state and client/command", "[sendspin][messages][rol
 }
 
 TEST_CASE("messages: the source@v1 artwork@v1 and visualizer@v1 objects in the core messages", "[sendspin][messages][roles]") {
-    namespace artwork = ac3::sendspin::artwork;
-    namespace visualizer = ac3::sendspin::visualizer;
-    namespace source = ac3::sendspin::source;
+    namespace artwork = iclforge::sendspin::artwork;
+    namespace visualizer = iclforge::sendspin::visualizer;
+    namespace source = iclforge::sendspin::source;
 
     m::ClientHello hello = sample_hello();
     hello.supported_roles = {"source@v1", "visualizer@v1"};

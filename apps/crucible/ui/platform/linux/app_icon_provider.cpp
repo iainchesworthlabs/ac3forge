@@ -80,7 +80,7 @@
 // variables a desktop theme reads and falls back to hicolor, which is also
 // what lets the test suite point XDG_DATA_DIRS at a fixture theme.
 
-namespace ac3::crucible::ui {
+namespace iclforge::crucible::ui {
 
 namespace {
 
@@ -341,4 +341,4 @@ QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize
     return image;
 }
 
-}  // namespace ac3::crucible::ui
+}  // namespace iclforge::crucible::ui

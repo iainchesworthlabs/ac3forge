@@ -18,7 +18,7 @@
 #include "iclforge/ac3/core/tables.hpp"
 #include "background_jobs.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 class MonitorSink;
 }
 
@@ -38,9 +38,9 @@ namespace splayer_detail {
 
 struct RawResult {
     QString codec_label;              // "AC-3" or "E-AC-3"
-    QString layout_label;             // ac3::analysis::layout_name(acmod, lfe)
+    QString layout_label;             // iclforge::analysis::layout_name(acmod, lfe)
     std::uint32_t sample_rate_hz = 0;
-    ac3::Acmod acmod = ac3::Acmod::k2_0;
+    iclforge::Acmod acmod = iclforge::Acmod::k2_0;
     bool lfe = false;
     std::uint64_t frame_count = 0;    // samples per channel, whole file
     std::uint64_t unit_count = 0;     // syncframes/access units decoded
@@ -48,13 +48,13 @@ struct RawResult {
     bool has_objects = false;
     int object_count = 0;
     // Planar bed audio, one vector per channel, already reordered to
-    // monitor/WAV playback order (ac3::io::wav_channel_order /
-    // ac3::plan::monitor_order) - channels[i] is playback position i's
+    // monitor/WAV playback order (iclforge::io::wav_channel_order /
+    // iclforge::plan::monitor_order) - channels[i] is playback position i's
     // whole-file audio, ready to hand straight to write_wav_f32 for export.
     std::vector<std::vector<float>> channels;
     // Location per channel, parallel to `channels` above - drives
     // channelMeta()/the soundfield ring's geometry.
-    std::vector<ac3::eac3::chanmap::Location> locations;
+    std::vector<iclforge::eac3::chanmap::Location> locations;
     // One mono buffer per JOC-reconstructed object, present only for an
     // Atmos E-AC-3 stream - export only (exportObjects()), never shown as a
     // QVariantList property the way the bed's channels are.
@@ -131,7 +131,7 @@ class StreamPlayerController : public QObject {
     Q_PROPERTY(bool exporting READ exporting NOTIFY exportingChanged)
     Q_PROPERTY(QString exportError READ exportError NOTIFY exportFinished)
 
-    // AC-4, decoded through ac4::Decoder as `ac3cli play` and Hearth's engine
+    // AC-4, decoded through iclforge::ac4::Decoder as `ac3cli play` and Hearth's engine
     // decode it: whether the open file is AC-4, its presentations, and which
     // one plays - `presentation=<n>`'s n, or -1 for the decoder's own choice.
     // Setting it decodes the file again.
@@ -196,7 +196,7 @@ class StreamPlayerController : public QObject {
     Q_INVOKABLE void clearClipLatch(int channel);
 
     // Writes the whole decoded bed to `url` as a float32 WAV
-    // (ac3::io::write_wav_f32) - the GUI twin of `ac3cli decode`'s primary
+    // (iclforge::io::write_wav_f32) - the GUI twin of `ac3cli decode`'s primary
     // output, from data already resident rather than a second decode pass.
     Q_INVOKABLE void exportDecodedWav(const QUrl& url);
     // Writes one object_NN.wav per JOC-reconstructed object into the
@@ -226,7 +226,7 @@ class StreamPlayerController : public QObject {
     // while this one was still mid-flight) must never let its OWN geometry
     // leak into whatever result_ points to by the time this runs.
     void publishLevels(const splayer_detail::RawResult& source,
-                       std::span<const ac3::analysis::ChannelLevel> levels);
+                       std::span<const iclforge::analysis::ChannelLevel> levels);
 
     QString file_path_;
     bool busy_ = false;
@@ -234,7 +234,7 @@ class StreamPlayerController : public QObject {
     std::shared_ptr<const splayer_detail::RawResult> result_;
 
     bool playing_ = false;
-    std::unique_ptr<ac3::audio::MonitorSink> sink_;
+    std::unique_ptr<iclforge::audio::MonitorSink> sink_;
     bool worker_active_ = false;
     std::atomic<bool> should_play_{false};
     std::atomic<std::uint64_t> read_frame_{0};

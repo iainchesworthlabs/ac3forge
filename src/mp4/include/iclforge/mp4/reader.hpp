@@ -13,16 +13,16 @@
 
 #include "iclforge/mp4/export.hpp"
 
-// The read side of mp4::mux()/mp4::fragment(): pulling one audio track's
+// The read side of iclforge::mp4::mux()/iclforge::mp4::fragment(): pulling one audio track's
 // samples back out of an MP4, plain or fragmented.
 //
 // A container reader and nothing more, in the sense mp4/mp4.hpp's writer is a
 // container writer and nothing more: it walks ISOBMFF boxes, finds the
 // 'ac-3'/'ec-3'/'ac-4' track, and hands each sample back as opaque bytes. It links
-// nothing from ac3::forge. The one place MP4 forces a codec-shaped decision on
+// nothing from iclforge::ac3. The one place MP4 forces a codec-shaped decision on
 // this module is the same place the writer already had one - the sample
 // entry's dac3/dec3 configuration box - and CodecConfig below is where that
-// lands: the read twin of ac3::io::build_codec_config_box (ac3/io/dec3.hpp),
+// lands: the read twin of iclforge::io::build_codec_config_box (ac3/io/dec3.hpp),
 // parsed here because the box is an ISOBMFF structure the walk is already
 // standing on, and reported as plain numbers for a caller that knows what
 // they mean.
@@ -46,7 +46,7 @@
 // range is checked against the data actually present rather than trusted.
 // fuzz/fuzz_mp4_demux.cpp drives the walker with arbitrary bytes.
 
-namespace mp4 {
+namespace iclforge::mp4 {
 
 namespace detail {
 // Reader's parse state, defined in src/mp4/src/reader.cpp - a namespace-scope
@@ -67,11 +67,11 @@ enum class DemuxError : std::uint8_t {
 [[nodiscard]] MP4_EXPORT std::string_view describe(DemuxError error);
 
 // The parsed dac3/dec3 sample-entry configuration box - the read twin of
-// ac3::io::build_codec_config_box, whose own comments carry the field
+// iclforge::io::build_codec_config_box, whose own comments carry the field
 // derivations and the primary sources (ETSI TS 102 366 Annex F §F.4/§F.6,
 // TS 103 420 §8.3.1/§8.3.2.2 for the Atmos extension).
 //
-// Reported as the raw syntax values, not as ac3:: enums: this module has no
+// Reported as the raw syntax values, not as iclforge:: enums: this module has no
 // dependency on the codec library and no business deciding what fscod 0
 // means. `payload` keeps the bytes verbatim so a caller remuxing into
 // another container can hand them straight back without this struct having
@@ -80,7 +80,7 @@ struct CodecConfig {
     bool eac3 = false;  // dec3 (true) or dac3 (false)
     // dac4 (TS 103 190-2 Annex E.5): the box shares no field with dac3/dec3,
     // so when this is set only `payload` below is meaningful - the AC-3-shaped
-    // fields stay at their defaults and ac4::'s own parser is the authority.
+    // fields stay at their defaults and iclforge::ac4::'s own parser is the authority.
     bool ac4 = false;
     int fscod = 0;
     int bsid = 0;
@@ -231,4 +231,4 @@ class MP4_EXPORT Reader {
     std::unique_ptr<detail::ReaderState> state_;
 };
 
-}  // namespace mp4
+}  // namespace iclforge::mp4

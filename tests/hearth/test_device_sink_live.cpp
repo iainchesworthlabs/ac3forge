@@ -25,10 +25,10 @@
 
 TEST_CASE("device sink live: the default output opens at an item's own rate and plays",
           "[.][hearth-device]") {
-    using ac3::hearth::OutputMode;
-    using ac3::hearth::PcmSink;
+    using iclforge::hearth::OutputMode;
+    using iclforge::hearth::PcmSink;
 
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    const auto layout = iclforge::render::OutputLayout::parse("5.1");
     REQUIRE(layout.has_value());
 
     // 44.1 kHz is what most songs are and 48 kHz what most AC-3 is; the third
@@ -36,13 +36,13 @@ TEST_CASE("device sink live: the default output opens at an item's own rate and 
     // runs at, so at least two of them have to be converted.
     for (const std::uint32_t rate : {44'100U, 48'000U, 96'000U}) {
         CAPTURE(rate);
-        const auto sink = ac3::hearth::make_device_sink(std::string{});
+        const auto sink = iclforge::hearth::make_device_sink(std::string{});
         const auto opened = sink->open(PcmSink::Format{.sample_rate = rate, .layout = *layout});
         if (!opened) {
             INFO("open() said: " << opened.error());
             // A machine with no output says something else; this refusal is the bug.
             const std::string_view refusal =
-                ac3::audio::describe(ac3::audio::MonitorError::kFormatRejected);
+                iclforge::audio::describe(iclforge::audio::MonitorError::kFormatRejected);
             REQUIRE(std::string_view{opened.error()}.find(refusal) == std::string_view::npos);
             WARN("no default output device: " << opened.error());
             return;

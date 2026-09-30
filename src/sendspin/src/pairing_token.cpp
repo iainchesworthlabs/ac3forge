@@ -12,7 +12,7 @@
 // with 2 transliterated to 9 so a token needs only QR alphanumeric characters.
 // Needs no crypto, so it builds in the dependency-free core.
 
-namespace ac3::sendspin::pairing {
+namespace iclforge::sendspin::pairing {
 
 namespace {
 
@@ -125,4 +125,4 @@ std::optional<PairingPskToken> decode_pairing_psk_token(std::string_view text) {
     return out;
 }
 
-}  // namespace ac3::sendspin::pairing
+}  // namespace iclforge::sendspin::pairing

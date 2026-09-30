@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstddef>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 namespace {
 
 [[nodiscard]] std::size_t at(int index) noexcept {
@@ -205,4 +205,4 @@ void AjocStage::enhance_core(const AjocFrameValues& values, double dialogue_db, 
                                   values.coeff);
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

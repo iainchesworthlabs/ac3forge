@@ -129,29 +129,29 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
     }
 
     if (config.container == Container::kMatroska) {
-        auto writer = matroska::Writer::create(matroska::AudioTrack{
-            .codec_id = std::string{config.eac3 ? matroska::kCodecEac3 : matroska::kCodecAc3},
+        auto writer = iclforge::matroska::Writer::create(iclforge::matroska::AudioTrack{
+            .codec_id = std::string{config.eac3 ? iclforge::matroska::kCodecEac3 : iclforge::matroska::kCodecAc3},
             .sample_rate = config.sample_rate,
             .channels = config.channels,
-            .samples_per_frame = ac3::kSamplesPerFrame});
+            .samples_per_frame = iclforge::kSamplesPerFrame});
         if (!writer.has_value()) {
-            return std::string{matroska::describe(writer.error())};
+            return std::string{iclforge::matroska::describe(writer.error())};
         }
         matroska_.emplace(std::move(*writer));
     } else if (config.container == Container::kMpegts) {
         // An AC-4 track's PMT says no more than its codec (the presentation
         // detail lives in the table of contents), as 'ac3cli ts' writes it.
         const bool ac4 = config.ac4.has_value();
-        auto writer = mpegts::Writer::create(mpegts::AudioTrack{
-            .codec = ac4           ? mpegts::AudioCodec::kAc4
-                     : config.eac3 ? mpegts::AudioCodec::kEac3
-                                   : mpegts::AudioCodec::kAc3,
+        auto writer = iclforge::mpegts::Writer::create(iclforge::mpegts::AudioTrack{
+            .codec = ac4           ? iclforge::mpegts::AudioCodec::kAc4
+                     : config.eac3 ? iclforge::mpegts::AudioCodec::kEac3
+                                   : iclforge::mpegts::AudioCodec::kAc3,
             .sample_rate = config.sample_rate,
             .channels = ac4 ? 2 : config.channels,
             .samples_per_frame = ac4 ? config.ac4->samples_per_frame
-                                     : static_cast<std::uint32_t>(ac3::kSamplesPerFrame)});
+                                     : static_cast<std::uint32_t>(iclforge::kSamplesPerFrame)});
         if (!writer.has_value()) {
-            return std::string{mpegts::describe(writer.error())};
+            return std::string{iclforge::mpegts::describe(writer.error())};
         }
         mpegts_.emplace(std::move(*writer));
     }
@@ -177,7 +177,7 @@ std::string RecordingSink::push(std::span<const std::byte> frame, bool sync) {
         case Container::kMatroska: {
             auto closed = matroska_->push(frame);
             if (!closed.has_value()) {
-                return std::string{matroska::describe(closed.error())};
+                return std::string{iclforge::matroska::describe(closed.error())};
             }
             if (!closed->empty() && !write_file(*closed)) {
                 return write_failed_for(config_.container);
@@ -187,7 +187,7 @@ std::string RecordingSink::push(std::span<const std::byte> frame, bool sync) {
         case Container::kMpegts: {
             auto packets = mpegts_->push(frame);
             if (!packets.has_value()) {
-                return std::string{mpegts::describe(packets.error())};
+                return std::string{iclforge::mpegts::describe(packets.error())};
             }
             if (!write_file(*packets)) {
                 return write_failed_for(config_.container);
@@ -226,7 +226,7 @@ std::string RecordingSink::push(std::span<const std::byte> frame, bool sync) {
                     return write_failed_for(config_.container);
                 }
             } else {
-                auto burst = ac3::iec61937::wrap_frame(frame);
+                auto burst = iclforge::iec61937::wrap_frame(frame);
                 if (!burst.has_value()) {
                     return kCannotWrap;
                 }

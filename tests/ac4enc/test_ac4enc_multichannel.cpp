@@ -24,8 +24,8 @@
 
 namespace {
 
-using ac4::detail::Channel;
-using ac4::detail::StereoChoice;
+using iclforge::ac4::detail::Channel;
+using iclforge::ac4::detail::StereoChoice;
 using ac4dec_test::Abcd;
 
 // A small linear congruential generator: the same draws everywhere.
@@ -41,13 +41,13 @@ struct Lcg {
 
 // A channel of random lines in a frame's layout, each band allowed a hundredth
 // of its energy.
-Channel random_channel(Lcg& rng, const ac4::detail::FrameLayout& layout, std::array<int, 2> max_sfb, double scale) {
+Channel random_channel(Lcg& rng, const iclforge::ac4::detail::FrameLayout& layout, std::array<int, 2> max_sfb, double scale) {
     std::vector<double> spectrum(2048);
     for (double& x : spectrum) {
         x = scale * rng.uniform();
     }
     Channel c;
-    c.grouped = ac4::detail::regroup(spectrum, layout, max_sfb);
+    c.grouped = iclforge::ac4::detail::regroup(spectrum, layout, max_sfb);
     c.allowed.resize(c.grouped.offset.size());
     for (std::size_t g = 0; g < c.grouped.offset.size(); ++g) {
         for (std::size_t b = 0; b + 1 < c.grouped.offset[g].size(); ++b) {
@@ -109,7 +109,7 @@ Abcd parameters(const StereoChoice& s, std::size_t g, std::size_t b) {
 // matrix of the parameters `sets` chose, applied to the tracks now in `unit`.
 void check_printed(std::string_view printed, std::span<const StereoChoice> sets, const std::vector<Channel>& outputs,
                    const std::vector<Channel*>& unit) {
-    const ac4::detail::Grouped& first = unit.front()->grouped;
+    const iclforge::ac4::detail::Grouped& first = unit.front()->grouped;
     std::size_t mismatches = 0;
     double worst = 0.0;
     for (std::size_t g = 0; g < first.offset.size(); ++g) {
@@ -139,10 +139,10 @@ void check_printed(std::string_view printed, std::span<const StereoChoice> sets,
     CHECK(mismatches == 0);
 }
 
-const std::array<ac4::detail::FrameLayout, 2> kLayouts = {
-    ac4::detail::long_layout(2048), ac4::detail::split_layout(2048, {0, 3}, {2, -1})};
+const std::array<iclforge::ac4::detail::FrameLayout, 2> kLayouts = {
+    iclforge::ac4::detail::long_layout(2048), iclforge::ac4::detail::split_layout(2048, {0, 3}, {2, -1})};
 
-std::array<int, 2> max_sfb_of(const ac4::detail::FrameLayout& layout) {
+std::array<int, 2> max_sfb_of(const iclforge::ac4::detail::FrameLayout& layout) {
     return layout.long_frame ? std::array<int, 2>{40, 40} : std::array<int, 2>{12, 30};
 }
 
@@ -163,8 +163,8 @@ TEST_CASE("every chel_matsel's cascade undone comes back through Table 178 as pr
                 if (!chosen) {
                     forced = {random_choice(rng, outputs[0]), random_choice(rng, outputs[0])};
                 }
-                const ac4::detail::UnitChoice choice =
-                    ac4::detail::undo_three(matsel, {&unit[0], &unit[1], &unit[2]}, forced);
+                const iclforge::ac4::detail::UnitChoice choice =
+                    iclforge::ac4::detail::undo_three(matsel, {&unit[0], &unit[1], &unit[2]}, forced);
                 REQUIRE(choice.sets.size() == 2);
                 CHECK(choice.chel_matsel == matsel);
                 CHECK(std::isfinite(choice.bits));
@@ -192,8 +192,8 @@ TEST_CASE("four_channel_data()'s steps undone come back through clause 5.3.3.4's
                         forced.push_back(random_choice(rng, outputs[0]));
                     }
                 }
-                const ac4::detail::UnitChoice choice =
-                    ac4::detail::undo_four({&unit[0], &unit[1], &unit[2], &unit[3]}, forced);
+                const iclforge::ac4::detail::UnitChoice choice =
+                    iclforge::ac4::detail::undo_four({&unit[0], &unit[1], &unit[2], &unit[3]}, forced);
                 REQUIRE(choice.sets.size() == 4);
                 check_printed(ac4dec_test::kFourChannel, choice.sets, outputs, {&unit[0], &unit[1], &unit[2], &unit[3]});
             }
@@ -219,8 +219,8 @@ TEST_CASE("every chel_matsel's five channel matrix undone comes back through Tab
                         forced.push_back(random_choice(rng, outputs[0]));
                     }
                 }
-                const ac4::detail::UnitChoice choice =
-                    ac4::detail::undo_five(matsel, {&unit[0], &unit[1], &unit[2], &unit[3], &unit[4]}, forced);
+                const iclforge::ac4::detail::UnitChoice choice =
+                    iclforge::ac4::detail::undo_five(matsel, {&unit[0], &unit[1], &unit[2], &unit[3], &unit[4]}, forced);
                 REQUIRE(choice.sets.size() == 5);
                 CHECK(choice.chel_matsel == matsel);
                 check_printed(ac4dec_test::kTable179[static_cast<std::size_t>(matsel)], choice.sets, outputs,
@@ -250,7 +250,7 @@ TEST_CASE("a pair undone comes back through its chparam_info()'s matrix", "[ac4e
                 if (!chosen) {
                     forced = {random_choice(rng, outputs[0])};
                 }
-                const ac4::detail::UnitChoice choice = ac4::detail::undo_pair({&unit[0], &unit[1]}, forced);
+                const iclforge::ac4::detail::UnitChoice choice = iclforge::ac4::detail::undo_pair({&unit[0], &unit[1]}, forced);
                 REQUIRE(choice.sets.size() == 1);
                 check_printed("a0 b0 | c0 d0", choice.sets, outputs, {&unit[0], &unit[1]});
             }
@@ -263,7 +263,7 @@ TEST_CASE("perceptual entropy prefers the matrix that takes out what the channel
     // cost fewer bits than every step left and right, which is what the
     // experimental coding configurations weigh.
     Lcg rng;
-    const auto layout = ac4::detail::long_layout(2048);
+    const auto layout = iclforge::ac4::detail::long_layout(2048);
     const Channel base = random_channel(rng, layout, {40, 40}, 1.0);
     std::vector<Channel> outputs(3, base);
     for (std::size_t c = 1; c < 3; ++c) {
@@ -274,11 +274,11 @@ TEST_CASE("perceptual entropy prefers the matrix that takes out what the channel
     std::vector<Channel> unit = outputs;
     StereoChoice identity;
     const std::vector<StereoChoice> left_right = {identity, identity};
-    const double apart = ac4::detail::undo_three(0, {&unit[0], &unit[1], &unit[2]}, left_right).bits;
+    const double apart = iclforge::ac4::detail::undo_three(0, {&unit[0], &unit[1], &unit[2]}, left_right).bits;
     double best = apart;
     for (int matsel = 0; matsel < 12; ++matsel) {
         unit = outputs;
-        best = std::min(best, ac4::detail::undo_three(matsel, {&unit[0], &unit[1], &unit[2]}).bits);
+        best = std::min(best, iclforge::ac4::detail::undo_three(matsel, {&unit[0], &unit[1], &unit[2]}).bits);
     }
     CHECK(best < 0.6 * apart);
 }

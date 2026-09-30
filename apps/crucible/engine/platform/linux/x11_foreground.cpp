@@ -21,7 +21,7 @@
 // readers hand back literals (x11_foreground.hpp says so), and a literal
 // never goes away.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 X11Foreground::X11Foreground(std::unique_ptr<X11WindowReader> reader)
     : reader_(std::move(reader)) {}
@@ -59,4 +59,4 @@ ForegroundSupport X11Foreground::support() const {
             .reason = reason == nullptr ? std::string_view{} : std::string_view{reason}};
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

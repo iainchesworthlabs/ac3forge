@@ -21,11 +21,11 @@
 
 #include "pipewire_support.hpp"
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
 std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(
     const std::string& device_id) {
-    for (const auto& sink : ac3::pipewire::audio_sinks_with_info()) {
+    for (const auto& sink : iclforge::pipewire::audio_sinks_with_info()) {
         if (sink.name != device_id) {
             continue;
         }
@@ -33,12 +33,12 @@ std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(
             return std::unexpected(EdidError::kNoEdid);
         }
         SinkAudioCapabilities capabilities;
-        capabilities.pcm = ac3::pipewire::codec_listed(sink.codecs, "PCM");
-        capabilities.ac3 = ac3::pipewire::codec_listed(sink.codecs, "AC3");
-        capabilities.eac3 = ac3::pipewire::codec_listed(sink.codecs, "EAC3");
+        capabilities.pcm = iclforge::pipewire::codec_listed(sink.codecs, "PCM");
+        capabilities.ac3 = iclforge::pipewire::codec_listed(sink.codecs, "AC3");
+        capabilities.eac3 = iclforge::pipewire::codec_listed(sink.codecs, "EAC3");
         return capabilities;
     }
     return std::unexpected(EdidError::kDeviceNotFound);
 }
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

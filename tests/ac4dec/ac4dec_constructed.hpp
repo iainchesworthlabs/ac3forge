@@ -91,8 +91,8 @@ struct ElementCase {
 
 struct BuiltStream {
     std::vector<std::vector<std::byte>> frames;          // raw_ac4_frame()s
-    std::vector<std::vector<ac4::SyntaxRecord>> traces;  // the writer's records, frame by frame
-    std::vector<ac4::Speaker> speakers;                  // the decoder's channels, in its order
+    std::vector<std::vector<iclforge::ac4::SyntaxRecord>> traces;  // the writer's records, frame by frame
+    std::vector<iclforge::ac4::Speaker> speakers;                  // the decoder's channels, in its order
     std::vector<double> tone_hz;                         // each of those channels' tone; 0 when silent
 };
 
@@ -107,7 +107,7 @@ struct BuiltStream {
 // the aspx_data elements of an element in ASPX (codec mode 1) or an A-CPL mode
 // in syntax order, each the channels it carries; for ch_mode 11 and 12,
 // `codec_mode` is the immersive element's.
-[[nodiscard]] std::vector<std::vector<ac4::Speaker>> aspx_elements(int ch_mode, int codec_mode = 1);
+[[nodiscard]] std::vector<std::vector<iclforge::ac4::Speaker>> aspx_elements(int ch_mode, int codec_mode = 1);
 
 // The cases committed as tests/golden/ac4dec/constructed/<name>.ac4, with
 // kCommittedFrames frames each, whose digests tools/references/ac4_syntax.py

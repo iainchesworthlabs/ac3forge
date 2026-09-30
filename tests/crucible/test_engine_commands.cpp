@@ -37,8 +37,8 @@
 // the ThreadSanitizer leg should see both sides. Every wait is a poll on the
 // status snapshot with a generous deadline that a passing run never reaches.
 
-using namespace ac3::crucible;
-using namespace ac3::crucible::testing;
+using namespace iclforge::crucible;
+using namespace iclforge::crucible::testing;
 
 namespace {
 
@@ -119,15 +119,15 @@ bool tapped_and_running(const Engine& engine, std::size_t apps) {
 }
 
 std::string scratch_pid_suffix() {
-    return ac3::test::platform::process_id();
+    return iclforge::test::platform::process_id();
 }
 
 // This process's environment only (tests/platform/process.hpp's seam).
 void set_env(const char* name, const char* value) {
-    ac3::test::platform::set_environment(name, value);
+    iclforge::test::platform::set_environment(name, value);
 }
 
-void unset_env(const char* name) { ac3::test::platform::unset_environment(name); }
+void unset_env(const char* name) { iclforge::test::platform::unset_environment(name); }
 
 // A scratch directory of this process's own, for key files.
 std::filesystem::path scratch() {

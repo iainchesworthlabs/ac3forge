@@ -9,7 +9,7 @@
 #include "iclforge/base/bitreader.hpp"
 #include "iclforge/base/detail/profiling.hpp"
 
-namespace ac3 {
+namespace iclforge {
 
 std::uint32_t quantize_mantissa(std::int32_t mantissa, int bap) {
     assert(bap >= 1 && bap <= 15);
@@ -180,4 +180,4 @@ std::uint32_t MantissaBlockReader::read(BitReader& reader, int bap) {
     }
 }
 
-}  // namespace ac3
+}  // namespace iclforge

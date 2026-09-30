@@ -5,7 +5,7 @@
 
 #include <immintrin.h>
 
-namespace ac3::internal::avx2 {
+namespace iclforge::internal::avx2 {
 
 bool avx2_probe_matches_expected() noexcept {
     // Four independent lanes, plain add - no FMA, matching the project-wide
@@ -35,4 +35,4 @@ bool avx2_probe_matches_expected() noexcept {
     return true;
 }
 
-}  // namespace ac3::internal::avx2
+}  // namespace iclforge::internal::avx2

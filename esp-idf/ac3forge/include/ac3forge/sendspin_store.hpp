@@ -42,9 +42,9 @@
 
 namespace ac3forge {
 
-class SendspinStore final : public ac3::sendspin::handshake::ClientKeyring {
+class SendspinStore final : public iclforge::sendspin::handshake::ClientKeyring {
    public:
-    using Key32 = ac3::sendspin::crypto::Key32;
+    using Key32 = iclforge::sendspin::crypto::Key32;
 
     // pairing.md's minimum is five. A board holds at most three connections at
     // once (sendspin_host.hpp), so there is always a record no connection rests
@@ -57,12 +57,12 @@ class SendspinStore final : public ac3::sendspin::handshake::ClientKeyring {
     // said why on the console, when NVS cannot be opened or the RNG fails.
     [[nodiscard]] bool load();
 
-    [[nodiscard]] const ac3::sendspin::noise::KeyPair& identity() const { return identity_; }
+    [[nodiscard]] const iclforge::sendspin::noise::KeyPair& identity() const { return identity_; }
     [[nodiscard]] const Key32& pairing_psk() const { return pairing_psk_; }
 
-    [[nodiscard]] std::optional<ac3::sendspin::handshake::PskCandidate> find(
-        const ac3::sendspin::crypto::Digest32& id,
-        std::optional<ac3::sendspin::handshake::PskCategory> category) const override;
+    [[nodiscard]] std::optional<iclforge::sendspin::handshake::PskCandidate> find(
+        const iclforge::sendspin::crypto::Digest32& id,
+        std::optional<iclforge::sendspin::handshake::PskCategory> category) const override;
 
     // Stores the record for `server_key` as the most recently used, replacing
     // any earlier one. At the capacity the least recently used record goes,
@@ -110,7 +110,7 @@ class SendspinStore final : public ac3::sendspin::handshake::ClientKeyring {
     [[nodiscard]] bool create_keys();
 
     mutable std::mutex mutex_;
-    ac3::sendspin::noise::KeyPair identity_;
+    iclforge::sendspin::noise::KeyPair identity_;
     Key32 pairing_psk_{};
     PairingRecords<kRecordCapacity> records_;
     std::optional<Key32> last_playback_;

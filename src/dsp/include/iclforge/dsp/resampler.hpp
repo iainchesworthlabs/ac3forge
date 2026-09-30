@@ -7,7 +7,7 @@
 #include "iclforge/dsp/export.hpp"
 
 // Offline, whole-buffer sample-rate conversion for a loaded file - NOT the
-// live capture drift-correction resampler (ac3::audio::DriftResampler,
+// live capture drift-correction resampler (iclforge::audio::DriftResampler,
 // src/audio/include/iclforge/audio/resampler.hpp). That one runs once per
 // audio-thread callback, correcting tens-of-ppm clock drift between two
 // devices, so it deliberately spends nothing on kernel quality: linear
@@ -20,7 +20,7 @@
 // kernel instead of a cheap two-tap interpolation. See resampler.cpp for the
 // window choice, kernel width and cutoff backoff, and why each was picked.
 
-namespace ac3::dsp {
+namespace iclforge::dsp {
 
 // Resamples one channel of audio from input_rate to output_rate via a
 // windowed-sinc polyphase FIR filter, computed offline over the whole
@@ -45,7 +45,7 @@ namespace ac3::dsp {
                                                            std::uint32_t output_rate);
 
 // Convenience over resample(): resamples every channel of a planar
-// multi-channel buffer independently - the same shape ac3::io::WavData::
+// multi-channel buffer independently - the same shape iclforge::io::WavData::
 // channels uses (one std::vector<float> per channel, not interleaved).
 // Each output channel is exactly what calling resample() on that channel
 // alone would produce; channels never influence one another (no shared
@@ -56,4 +56,4 @@ namespace ac3::dsp {
     std::span<const std::vector<float>> channels, std::uint32_t input_rate,
     std::uint32_t output_rate);
 
-}  // namespace ac3::dsp
+}  // namespace iclforge::dsp

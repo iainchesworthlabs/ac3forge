@@ -17,7 +17,7 @@
 // out of apps/cli so a test can hold both without a render device - neither
 // command gets past opening one on a headless CI leg.
 
-namespace ac3::apps {
+namespace iclforge::apps {
 
 // True when `stream` is read an access unit at a time (split_access_units and
 // Eac3Decoder); false when FrameDecoder reads it a frame at a time, which is
@@ -26,7 +26,7 @@ namespace ac3::apps {
 // §E2.3.1.2's legacy-core delivery opens with an AC-3 syncframe and carries
 // Annex E dependents behind it, and FrameDecoder refuses the first dependent
 // it reaches. 'ac3cli decode' makes the same test; see
-// ac3::has_eac3_extension_substreams.
+// iclforge::has_eac3_extension_substreams.
 [[nodiscard]] bool reads_as_access_units(std::span<const std::byte> stream);
 
 // Eac3Decoder::flush()'s substreams as one access unit, laid out the way
@@ -61,8 +61,8 @@ namespace ac3::apps {
 //
 // A flushed dependent with no bed beside it has nothing to extend, and gives
 // std::nullopt.
-[[nodiscard]] std::optional<ac3::DecodedAccessUnit> held_back_unit(
-    std::vector<ac3::DecodedSubstream> flushed,
-    const std::optional<ac3::eac3::chanmap::Layout>& programme, bool folded);
+[[nodiscard]] std::optional<iclforge::DecodedAccessUnit> held_back_unit(
+    std::vector<iclforge::DecodedSubstream> flushed,
+    const std::optional<iclforge::eac3::chanmap::Layout>& programme, bool folded);
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

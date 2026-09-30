@@ -26,7 +26,7 @@
 // build with no platform half at all, which is what lets the engine's tests
 // run on a Linux CI leg that has no audio hardware.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 // Render endpoints, sinks and taps: the production set for this platform.
 [[nodiscard]] std::shared_ptr<AudioDevices> platform_audio_devices();
@@ -43,4 +43,4 @@ namespace ac3::crucible {
 // The silent device applications play into.
 [[nodiscard]] std::shared_ptr<VirtualDevice> platform_virtual_device();
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

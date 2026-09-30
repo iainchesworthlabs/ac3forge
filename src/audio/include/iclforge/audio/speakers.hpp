@@ -9,7 +9,7 @@
 #include "iclforge/base/layout.hpp"
 
 // The channel mask WAVEFORMATEXTENSIBLE defines, and how its speaker positions
-// relate to the locations the renderer places (ac3::base::Location,
+// relate to the locations the renderer places (iclforge::base::Location,
 // Table E2.5).
 //
 // Every output backend here already speaks some version of this vocabulary:
@@ -27,9 +27,9 @@
 // the ALSA, PipeWire and CoreAudio backends need the same numbers to report a
 // mask of their own.
 
-namespace ac3::audio {
+namespace iclforge::audio {
 
-using Location = ac3::base::Location;
+using Location = iclforge::base::Location;
 
 inline constexpr std::uint32_t kSpeakerFrontLeft = 0x1;
 inline constexpr std::uint32_t kSpeakerFrontRight = 0x2;
@@ -97,7 +97,7 @@ inline constexpr std::uint32_t kSpeakers7_1_4 = kSpeakers7_1_2 | kSpeakerTopBack
 // they keep, so it cannot be read off one bit: with SPEAKER_SIDE_LEFT and
 // SPEAKER_SIDE_RIGHT present the sides are the surrounds and the backs the
 // rears, which is how ITU-R BS.2051 lays 7.1 out and how
-// ac3::spatial::direction_of resolves the same pair of names
+// iclforge::spatial::direction_of resolves the same pair of names
 // (render/layout.hpp's header). A bit with no location of its own is left out,
 // so the result can be shorter than speaker_count(mask) - a caller that needs
 // one entry per channel must check.
@@ -117,7 +117,7 @@ inline constexpr std::uint32_t kSpeakers7_1_4 = kSpeakers7_1_2 | kSpeakerTopBack
 [[nodiscard]] std::uint32_t default_speakers(std::uint16_t channels);
 
 // The locations a mask names, by the names the bitstream gives them
-// (ac3::base::name): "L R C LFE Ls Rs". Empty for an empty mask, and
+// (iclforge::base::name): "L R C LFE Ls Rs". Empty for an empty mask, and
 // a trailing count of the positions with no location of their own.
 [[nodiscard]] std::string describe_speakers(std::uint32_t mask);
 
@@ -147,4 +147,4 @@ inline constexpr std::uint32_t kSpeakers7_1_4 = kSpeakers7_1_2 | kSpeakerTopBack
 // caller's own output count is the one the routing grid actually draws.
 [[nodiscard]] std::vector<std::string> output_names(std::uint32_t mask, std::uint16_t outputs);
 
-}  // namespace ac3::audio
+}  // namespace iclforge::audio

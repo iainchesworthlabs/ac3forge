@@ -50,7 +50,7 @@
 // Internal to src/ac3/src/encoder/ on purpose, like snr_search.hpp beside
 // it - shared between the AC-3 and E-AC-3 encoders, not library surface.
 
-namespace ac3::internal {
+namespace iclforge::internal {
 
 // §7.3.4's "uniform distribution of values between +1 and -1 ... scaled by
 // 0.707": variance (2 * 0.707)^2 / 12, in units of the bin's own 2^-exponent
@@ -107,4 +107,4 @@ class BasicDitherBallot {
 
 using DitherBallot = BasicDitherBallot<double>;
 
-}  // namespace ac3::internal
+}  // namespace iclforge::internal

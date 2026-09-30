@@ -9,13 +9,13 @@
 #include "iclforge/audio/ring_buffer.hpp"
 
 TEST_CASE("ring buffer rounds capacity up to a power of two", "[ring][concurrency]") {
-    CHECK(ac3::audio::RingBuffer(1000).capacity() == 1024);
-    CHECK(ac3::audio::RingBuffer(1024).capacity() == 1024);
-    CHECK(ac3::audio::RingBuffer(1).capacity() == 2);
+    CHECK(iclforge::audio::RingBuffer(1000).capacity() == 1024);
+    CHECK(iclforge::audio::RingBuffer(1024).capacity() == 1024);
+    CHECK(iclforge::audio::RingBuffer(1).capacity() == 2);
 }
 
 TEST_CASE("write then read returns the same samples in order", "[ring][concurrency]") {
-    ac3::audio::RingBuffer ring(64);
+    iclforge::audio::RingBuffer ring(64);
     std::vector<float> in(40);
     std::iota(in.begin(), in.end(), 1.0f);
     CHECK(ring.write(in) == in.size());
@@ -29,7 +29,7 @@ TEST_CASE("write then read returns the same samples in order", "[ring][concurren
 }
 
 TEST_CASE("writes wrap around the buffer end", "[ring][concurrency]") {
-    ac3::audio::RingBuffer ring(16);  // capacity 16, usable 15
+    iclforge::audio::RingBuffer ring(16);  // capacity 16, usable 15
     std::vector<float> chunk(10);
     std::vector<float> out(10);
     // Three passes push the write index past the wrap point twice.
@@ -42,7 +42,7 @@ TEST_CASE("writes wrap around the buffer end", "[ring][concurrency]") {
 }
 
 TEST_CASE("a full buffer drops the overflow and counts it", "[ring][concurrency]") {
-    ac3::audio::RingBuffer ring(8);  // capacity 8, one slot reserved
+    iclforge::audio::RingBuffer ring(8);  // capacity 8, one slot reserved
     const std::vector<float> in(20, 0.5f);
     const auto written = ring.write(in);
     CHECK(written == 7);
@@ -60,7 +60,7 @@ TEST_CASE("a frame-aligned write stops a full buffer on a whole frame", "[ring][
     // whole, where a plain write would keep its left sample and leave every
     // later read a channel out of step. The refusal counts the half frame
     // too, so dropped() stays a whole number of frames.
-    ac3::audio::RingBuffer ring(8);
+    iclforge::audio::RingBuffer ring(8);
     std::vector<float> in(10);
     std::iota(in.begin(), in.end(), 0.0f);
     CHECK(ring.write_frames(in, 2) == 6);
@@ -75,7 +75,7 @@ TEST_CASE("a frame-aligned write stops a full buffer on a whole frame", "[ring][
 }
 
 TEST_CASE("reads never exceed what was written", "[ring][concurrency]") {
-    ac3::audio::RingBuffer ring(32);
+    iclforge::audio::RingBuffer ring(32);
     std::vector<float> out(10);
     CHECK(ring.read(out) == 0);  // empty
     const std::vector<float> in(3, 2.0f);
@@ -85,7 +85,7 @@ TEST_CASE("reads never exceed what was written", "[ring][concurrency]") {
 
 TEST_CASE("a discard drops what came before the mark and keeps what came after",
           "[ring][concurrency]") {
-    ac3::audio::RingBuffer ring(32);
+    iclforge::audio::RingBuffer ring(32);
     std::vector<float> first(10);
     std::iota(first.begin(), first.end(), 1.0f);
     REQUIRE(ring.write(first) == first.size());
@@ -124,7 +124,7 @@ TEST_CASE("a discard while the producer writes loses nothing written after the m
     constexpr std::size_t kTotal = kChunk * 1600;
     // Every sample from here on is written after the mark.
     constexpr std::size_t kMarkAt = kChunk * 800;
-    ac3::audio::RingBuffer ring(1024);
+    iclforge::audio::RingBuffer ring(1024);
     std::atomic<std::size_t> mark{0};
     std::atomic_bool marked{false};
 
@@ -187,7 +187,7 @@ TEST_CASE("concurrent producer and consumer preserve the sample sequence", "[rin
     // The real usage: the WASAPI thread writes while the encoder reads. Every
     // sample that survives must appear exactly once, in order.
     constexpr std::size_t kTotal = 200'000;
-    ac3::audio::RingBuffer ring(1024);
+    iclforge::audio::RingBuffer ring(1024);
     std::atomic<std::size_t> produced{0};
 
     std::jthread producer([&] {

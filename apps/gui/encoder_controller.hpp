@@ -42,10 +42,10 @@
 #include "gui_diagnostics.hpp"
 
 // The QObject facade the QML layer talks to. All codec and capture work
-// happens in ac3::forge; this type owns nothing but the presentation state
+// happens in iclforge::ac3; this type owns nothing but the presentation state
 // and the workers that keep encoding off the GUI thread.
 //
-// Every choice a user makes here ends up in one ac3::plan::Plan, which is the
+// Every choice a user makes here ends up in one iclforge::plan::Plan, which is the
 // same value ac3cli builds from its command line. Nothing about layouts,
 // coding tools or metadata is decided in this file - if it were, the two front
 // ends could disagree about what "5.1.4" or "all" means and neither would be
@@ -217,7 +217,7 @@ class EncoderController : public QObject {
     // resampled to track the master (see docs/forge/gui/live-session.md). One row
     // per selection - {slotIndex, deviceIndex, name, channels, rateText,
     // isMaster} - deviceIndex is captureDevices()'s own numbering, the same
-    // ac3::audio::enumerate_devices() index startLiveSession/
+    // iclforge::audio::enumerate_devices() index startLiveSession/
     // addLiveObject already take. Monitor/Record (the rail's own buttons,
     // outside a real session) only ever use row 0 - see RailBlock's live
     // branch in Main.qml.
@@ -345,7 +345,7 @@ class EncoderController : public QObject {
     // over a 5.1 bed. ac4Objects says that is the plan; the coding, A-JOC or
     // direct-coded, is the one choice it adds, and its dialnorm and CRC the
     // AC-4 tab's own. The stream is written at 2 048 samples a frame, one
-    // metadata update a frame (ac3::apps::kAc4ObjectFrameRateIndex), and holds
+    // metadata update a frame (iclforge::apps::kAc4ObjectFrameRateIndex), and holds
     // 64 objects at most - what ac4ObjectsLimits says in the page's words.
     Q_PROPERTY(bool ac4Objects READ ac4Objects NOTIFY planChanged)
     Q_PROPERTY(int ac4ObjectCodingIndex READ ac4ObjectCodingIndex WRITE setAc4ObjectCodingIndex
@@ -371,7 +371,7 @@ class EncoderController : public QObject {
     // Tier 1: exactly one bed, always - one of Table 5.8's seven speaker
     // shapes - plus an independent LFE toggle. Tier 2: additive "extras"
     // pairs/singles on top. Replaces layoutNames() as a UI concept entirely;
-    // every combination resolves through the same ac3::eac3::chanmap::allocate()
+    // every combination resolves through the same iclforge::eac3::chanmap::allocate()
     // a hand-typed comma list already did, so the picker can never express
     // something the encoder would then refuse.
     Q_PROPERTY(int bedIndex READ bedIndex WRITE setBedIndex NOTIFY planChanged)
@@ -575,7 +575,7 @@ class EncoderController : public QObject {
     // slots rather than overstating what is left.
     Q_PROPERTY(int pinnedObjectCount READ pinnedObjectCount NOTIFY sourceChanged)
     // The Objects tab's audible motion preview: every object rendered
-    // through ac3::oba::AtmosEncoder exactly as encodeObjects() would, its
+    // through iclforge::oba::AtmosEncoder exactly as encodeObjects() would, its
     // 5.1 bed played back live through the same MonitorSink path a live
     // session uses, paced in real time rather than run flat-out - see
     // startMotionPreview(). motionPreviewActive is true only while that
@@ -694,8 +694,8 @@ class EncoderController : public QObject {
 
     // ---- live object-position source over OSC (live OSC object positions) ----------------
     // A real live position source for the live room's objects instead of
-    // manual placement - ac3::audio::LivePositionSource drained into an
-    // ac3::oba::SceneCursor once per encode frame, the same seam
+    // manual placement - iclforge::audio::LivePositionSource drained into an
+    // iclforge::oba::SceneCursor once per encode frame, the same seam
     // 'ac3cli live mode=atmos positions=osc:<port>' lands on. Pre-flight
     // only, same reasoning as liveWavSafetyCopy above: startLiveSession
     // reads these once, at session start, and they are fixed for that
@@ -758,7 +758,7 @@ public:
     [[nodiscard]] int bitrateKbps() const { return bitrate_kbps_; }
     [[nodiscard]] QVariantList bitrates() const;
     [[nodiscard]] bool vbrAvailable() const {
-        return codec_ == ac3::plan::Codec::kEac3 && !atmos_enabled_ && !live_active_;
+        return codec_ == iclforge::plan::Codec::kEac3 && !atmos_enabled_ && !live_active_;
     }
     [[nodiscard]] bool vbrEnabled() const { return vbr_enabled_; }
     [[nodiscard]] int vbrQuality() const { return vbr_quality_; }
@@ -826,7 +826,7 @@ public:
     [[nodiscard]] bool ac4Crc() const { return ac4_.crc; }
     [[nodiscard]] QString ac4Tokens() const;
     [[nodiscard]] bool ac4Objects() const {
-        return atmos_enabled_ && codec_ == ac3::plan::Codec::kAc4;
+        return atmos_enabled_ && codec_ == iclforge::plan::Codec::kAc4;
     }
     [[nodiscard]] int ac4ObjectCodingIndex() const { return static_cast<int>(ac4_.object_coding); }
     [[nodiscard]] QStringList ac4ObjectCodingNames() const;
@@ -854,7 +854,7 @@ public:
     [[nodiscard]] QString channelLocationsText() const;
 
     [[nodiscard]] bool toolsAvailable() const {
-        return codec_ == ac3::plan::Codec::kEac3 && !atmos_enabled_;
+        return codec_ == iclforge::plan::Codec::kEac3 && !atmos_enabled_;
     }
     [[nodiscard]] bool coupling() const { return tools_.coupling; }
     [[nodiscard]] bool spx() const { return tools_.spx; }
@@ -882,14 +882,14 @@ public:
     [[nodiscard]] QStringList cmixNames() const;
     [[nodiscard]] int surmixIndex() const { return static_cast<int>(meta_.surmixlev); }
     [[nodiscard]] QStringList surmixNames() const;
-    [[nodiscard]] bool mixmetaAvailable() const { return codec_ == ac3::plan::Codec::kEac3; }
+    [[nodiscard]] bool mixmetaAvailable() const { return codec_ == iclforge::plan::Codec::kEac3; }
     [[nodiscard]] bool mixmeta() const { return meta_.mixmeta; }
     [[nodiscard]] int lfeMix() const { return meta_.lfemix.value_or(-1); }
     [[nodiscard]] int dmixIndex() const { return static_cast<int>(meta_.dmixmod); }
     [[nodiscard]] QStringList dmixNames() const;
     [[nodiscard]] int bsmodIndex() const { return static_cast<int>(meta_.info.bsmod); }
     [[nodiscard]] QStringList bsmodNames() const;
-    [[nodiscard]] bool surroundModeAvailable() const { return bed_acmod_ == ac3::Acmod::k2_0; }
+    [[nodiscard]] bool surroundModeAvailable() const { return bed_acmod_ == iclforge::Acmod::k2_0; }
     [[nodiscard]] int dsurmodIndex() const { return static_cast<int>(meta_.info.dsurmod); }
     [[nodiscard]] QStringList dsurmodNames() const;
     [[nodiscard]] int dheadphonIndex() const {
@@ -902,7 +902,7 @@ public:
     [[nodiscard]] int dsurexIndex() const { return static_cast<int>(meta_.info.dsurexmod); }
     [[nodiscard]] QStringList dsurexNames() const;
     [[nodiscard]] int mixLevelDbSpl() const {
-        return meta_.info.audprod ? ac3::meta::mix_level_db_spl(meta_.info.audprod->mixlevel)
+        return meta_.info.audprod ? iclforge::meta::mix_level_db_spl(meta_.info.audprod->mixlevel)
                                   : -1;
     }
     [[nodiscard]] int roomTypeIndex() const {
@@ -913,7 +913,7 @@ public:
     [[nodiscard]] QStringList adConvNames() const;
     [[nodiscard]] bool copyrightBit() const { return meta_.info.copyrightb; }
     [[nodiscard]] bool originalBitstream() const { return meta_.info.origbs; }
-    [[nodiscard]] bool annexDAvailable() const { return codec_ == ac3::plan::Codec::kAc3; }
+    [[nodiscard]] bool annexDAvailable() const { return codec_ == iclforge::plan::Codec::kAc3; }
     [[nodiscard]] bool annexD() const { return meta_.annexd; }
 
     [[nodiscard]] QString routingSummary() const { return routing_summary_; }
@@ -930,8 +930,8 @@ public:
     // soundstage between them - fullbw_channel_count alone would say
     // otherwise, so this checks acmod_ directly rather than trust it here.
     [[nodiscard]] bool surround() const {
-        return hasLevels() && acmod_ != ac3::Acmod::kDualMono &&
-              ac3::fullbw_channel_count(acmod_) >= 2;
+        return hasLevels() && acmod_ != iclforge::Acmod::kDualMono &&
+              iclforge::fullbw_channel_count(acmod_) >= 2;
     }
     [[nodiscard]] QVariantList channelLevels() const { return channel_levels_; }
     [[nodiscard]] QVariantMap soundfield() const { return soundfield_; }
@@ -1116,7 +1116,7 @@ public:
     // Where an object sits at timeS: along its authored path if it has one,
     // else its static position, unmoving. What the motion timeline's preview
     // playhead reads so the room plan animates exactly what encodeObjects()
-    // will actually place - the same ac3::oba::KeyframePath, not a second
+    // will actually place - the same iclforge::oba::KeyframePath, not a second
     // interpolation that could disagree with it.
     Q_INVOKABLE [[nodiscard]] QVariantMap evaluateObjectPath(int objectIndex, double timeS) const;
     // Writes every dynamic object's authored path - or, for a path-less
@@ -1131,7 +1131,7 @@ public:
     // channels have no equivalent in atmos-encode's model and are not
     // written. Returns false if the file could not be opened for writing.
     Q_INVOKABLE bool exportObjectPaths(const QUrl& url) const;
-    // The same objects as an ac3::oba::ObjectScene in JSON (ac3/oba/scene.hpp)
+    // The same objects as an iclforge::oba::ObjectScene in JSON (ac3/oba/scene.hpp)
     // rather than as keyframe columns: named, with per-segment interpolation
     // and an orientation the columns have nowhere to put, and reloadable
     // without loss. ac3cli's atmos-path and atmos-encode read this form too,
@@ -1144,7 +1144,7 @@ public:
     // written.
     Q_INVOKABLE bool exportObjectScene(const QUrl& url) const;
     // Starts the audible motion preview: every current object rendered
-    // through ac3::oba::AtmosEncoder the same way encodeObjects() would,
+    // through iclforge::oba::AtmosEncoder the same way encodeObjects() would,
     // its 5.1 bed played back live and paced in real time (not run flat-
     // out) through the same MonitorSink path a live session already uses.
     // Refused (silently, the usual convention for a start-a-thing entry
@@ -1355,7 +1355,7 @@ public:
     // gridline labels. The bars themselves get their positions in
     // channelLevels; this exists so the ticks cannot disagree with them.
     Q_INVOKABLE [[nodiscard]] double meterFraction(double db) const {
-        return ac3::analysis::meter_fraction(db, kMeterFloorDb);
+        return iclforge::analysis::meter_fraction(db, kMeterFloorDb);
     }
     // "48 000" / "7 891" - the mockup's space-grouped integers, offered here
     // so every readout groups digits the same way.
@@ -1438,7 +1438,7 @@ private:
     static constexpr double kMeterFloorDb = -60.0;
 
     // Everything the user has chosen, as the one value ac3cli also builds.
-    [[nodiscard]] ac3::plan::Plan currentPlan() const;
+    [[nodiscard]] iclforge::plan::Plan currentPlan() const;
     // The bed's own acmod/lfeon plus every selected extra's bits, OR'd
     // together - what a request to chanmap::allocate() looks like from here.
     // Object mode overrides this entirely (see currentPlan()), so this never
@@ -1447,7 +1447,7 @@ private:
     // currentPlan() resolved to its actual channels - what every display and
     // routing computation below should read. Assumes currentPlan() validates,
     // the way ac3cli's own resolve() does.
-    [[nodiscard]] ac3::plan::ChannelPlan effectiveChannelPlan() const;
+    [[nodiscard]] iclforge::plan::ChannelPlan effectiveChannelPlan() const;
     // What the routing summary calls this plan: "5.1 bed" for object mode,
     // else the derived shape name (channelShapeName()).
     [[nodiscard]] QString effectiveLabel() const;
@@ -1456,13 +1456,13 @@ private:
     // a location mask (see kBeds' own comment and acmod_map's "not a
     // layout" one in eac3_tables.hpp), so every one of those call sites has
     // to branch on this rather than run the general chanmap path.
-    [[nodiscard]] bool isDualMono() const { return bed_acmod_ == ac3::Acmod::kDualMono; }
+    [[nodiscard]] bool isDualMono() const { return bed_acmod_ == iclforge::Acmod::kDualMono; }
 
     // The primary source plus every extra, in load order - the same
     // concatenation order encodeTo() builds `planes` in, and what
-    // ac3::plan::Assignment's (source, channel) addressing means here.
+    // iclforge::plan::Assignment's (source, channel) addressing means here.
     // Empty when nothing is loaded.
-    [[nodiscard]] std::vector<ac3::plan::SourceShape> sourceShapes() const;
+    [[nodiscard]] std::vector<iclforge::plan::SourceShape> sourceShapes() const;
     // sourceShapes()'s own flat addressing, but each entry is that
     // channel's SOURCE's start offset, in samples at `sample_rate` -
     // encodeChannels/encodeObjects/previewPlanMeters all read this
@@ -1495,8 +1495,8 @@ private:
     // than one source is loaded with no explicit assignment (automatic
     // panning has no defined meaning there), or if the assignment/automatic
     // routing itself cannot be built.
-    [[nodiscard]] std::optional<ac3::plan::Routing> routingForSources(
-        const ac3::plan::ChannelPlan& target, const ac3::plan::Plan& p) const;
+    [[nodiscard]] std::optional<iclforge::plan::Routing> routingForSources(
+        const iclforge::plan::ChannelPlan& target, const iclforge::plan::Plan& p) const;
     // The object-count/meter-preview/status bookkeeping addSourceFile and
     // removeSource both need after the source list changes - loadSourceFile
     // keeps its own equivalent tail untouched (see its own comments) rather
@@ -1512,8 +1512,8 @@ private:
     // cannot silently disagree with what the pre-encode preview already
     // showed.
     void encodeChannels(const QString& path, std::vector<std::vector<float>> planes,
-                        const ac3::plan::Routing& routing, std::uint32_t sample_rate);
-    // AC-4: the source's own channels through ac4::Encoder, the steps
+                        const iclforge::plan::Routing& routing, std::uint32_t sample_rate);
+    // AC-4: the source's own channels through iclforge::ac4::Encoder, the steps
     // `ac3cli ac4-encode` takes (apps/common/ac4_encode_core.hpp), so the
     // command line the page echoes writes these bytes.
     void encodeAc4(const QString& path, std::vector<std::vector<float>> planes,
@@ -1533,27 +1533,27 @@ private:
     //
     // The assignment those steps read: the explicit one, else every channel of
     // every source an object.
-    [[nodiscard]] ac3::plan::Assignment ac4ObjectAssignment() const;
+    [[nodiscard]] iclforge::plan::Assignment ac4ObjectAssignment() const;
     // The dynamic objects' automation, in the stream's order (the slots' kDynamic
     // ones): each object's authored keyframes where it has them, else its
     // static position, under the inverse-root gain law E-AC-3's fallback uses.
     // Nothing where a scene cannot be built from them (two keys at one instant).
-    [[nodiscard]] std::optional<ac3::oba::ObjectScene> ac4ObjectScene(
-        const std::vector<ac3::apps::Ac4ObjectSlot>& stream_objects) const;
+    [[nodiscard]] std::optional<iclforge::oba::ObjectScene> ac4ObjectScene(
+        const std::vector<iclforge::apps::Ac4ObjectSlot>& stream_objects) const;
     // What ac4ObjectsRefusal() leaves to Encode, found the way the encoder finds
     // it: an object's keyframe outside the gain and the room AC-4 codes, and the
     // configuration the writer refuses for this many objects at this rate.
     [[nodiscard]] QString ac4ObjectsDeepRefusal(
-        const std::vector<ac3::apps::Ac4ObjectSlot>& stream_objects,
-        const ac3::oba::ObjectScene& scene) const;
+        const std::vector<iclforge::apps::Ac4ObjectSlot>& stream_objects,
+        const iclforge::oba::ObjectScene& scene) const;
     // Encodes them to `path` and writes ac4PathsName() beside it.
     void encodeAc4Objects(const QString& path);
     // Whether what a run writes is an E-AC-3 stream, which the Play button and
     // the containers key on: E-AC-3 itself, or object mode under any codec but
     // AC-4.
     [[nodiscard]] bool eac3Stream() const {
-        return codec_ == ac3::plan::Codec::kEac3 ||
-               (atmos_enabled_ && codec_ != ac3::plan::Codec::kAc4);
+        return codec_ == iclforge::plan::Codec::kEac3 ||
+               (atmos_enabled_ && codec_ != iclforge::plan::Codec::kAc4);
     }
     // The bed that is the loaded source's own layout, where AC-4 encodes it:
     // mono, stereo, 5.0 or 5.1. Other channel counts leave the bed alone, and
@@ -1582,13 +1582,13 @@ private:
     // objectKeyframes/evaluateObjectPath all build on: object_keyframes_'s
     // entry for this index's (source, channel) identity, sorted by time, or
     // empty if it has none.
-    [[nodiscard]] std::vector<ac3::oba::Keyframe> sortedKeyframes(int objectIndex) const;
-    // Every object both export paths write, as ac3::oba::SceneObjects indexed
+    [[nodiscard]] std::vector<iclforge::oba::Keyframe> sortedKeyframes(int objectIndex) const;
+    // Every object both export paths write, as iclforge::oba::SceneObjects indexed
     // by FLAT channel index - so a bed-pinned channel's index is present but
     // empty, which is how the keyframe column form spells a skipped object.
     // exportObjectScene fills those in; exportObjectPaths leaves them out, the
     // behaviour that form has always had.
-    [[nodiscard]] std::vector<ac3::oba::SceneObject> exportableSceneObjects() const;
+    [[nodiscard]] std::vector<iclforge::oba::SceneObject> exportableSceneObjects() const;
     // Writes `text` to `url` (a local file where it names one), returning
     // false if it could not be opened or fully written - the return both
     // export entry points give QML.
@@ -1621,11 +1621,11 @@ private:
     // failure, just "there is nothing to open" - runLiveSession itself reads
     // write_to_disk again to tell the two apart. A unique_ptr rather than
     // a plain return-by-value: LiveOutputWriters is only forward-declared
-    // here (its definition, alongside ac3::io::WavStreamWriter, has no
+    // here (its definition, alongside iclforge::io::WavStreamWriter, has no
     // business in this header), and unique_ptr is the one smart pointer that
     // tolerates an incomplete type at the declaration site.
     [[nodiscard]] std::unique_ptr<LiveOutputWriters> openLiveOutputWriters(
-        const QString& path, bool write_to_disk, const ac3::audio::DeviceInfo& device);
+        const QString& path, bool write_to_disk, const iclforge::audio::DeviceInfo& device);
     // The live session worker. One function for both channel and object mode
     // (mirrors ac3cli's own `live` command, which combines them the same way)
     // rather than split like encodeChannels/encodeObjects: almost everything
@@ -1637,8 +1637,8 @@ private:
     // successfully - nullopt for an ordinary single-device session, which
     // then behaves exactly as it always has. See docs/forge/gui/live-session.md
     // for the clock-master model this implements.
-    void runLiveSession(ac3::audio::DeviceInfo device,
-                        std::optional<ac3::audio::DeviceInfo> device2, bool monitor,
+    void runLiveSession(iclforge::audio::DeviceInfo device,
+                        std::optional<iclforge::audio::DeviceInfo> device2, bool monitor,
                         bool passthrough, bool write_to_disk, QString file_path,
                         std::unique_ptr<LiveOutputWriters> writers);
     // A snapshot of object_configs_ that setObjectPosition/setObjectLfeSend
@@ -1653,7 +1653,7 @@ private:
     // live Atmos session.
     [[nodiscard]] std::vector<int> liveSlotChannels() const;
     // Parallel to liveObjectSnapshot, same guard: which slots
-    // ac3::audio::LivePositionSource is currently driving. Empty (never
+    // iclforge::audio::LivePositionSource is currently driving. Empty (never
     // true) whenever liveOscEnabled was off at session start.
     [[nodiscard]] std::vector<bool> liveObjectNetworkDriven() const;
 
@@ -1746,7 +1746,7 @@ private:
     // IS the panned objects, so "carried as a channel" and "an object that
     // never moves off the L speaker" are the same coded thing. The LFE
     // position pins as a pure lfe_send object (no direction points at it).
-    [[nodiscard]] std::vector<std::pair<std::size_t, ac3::eac3::chanmap::Location>>
+    [[nodiscard]] std::vector<std::pair<std::size_t, iclforge::eac3::chanmap::Location>>
     pinnedObjectChannels() const;
     // object_count_ from dynamicObjectChannels(), then refreshObjectConfigs().
     // Called wherever the source list or the assignment changes.
@@ -1771,8 +1771,8 @@ private:
     // A channel the source cannot fill reads -inf for a legitimate reason, and
     // that is a different thing from a meter wired to nothing; an empty vector
     // means every channel is fed.
-    void setLayout(ac3::Acmod acmod, bool lfe, const QStringList& names, const QString& label,
-                   const std::vector<ac3::plan::CodedChannel>& coded,
+    void setLayout(iclforge::Acmod acmod, bool lfe, const QStringList& names, const QString& label,
+                   const std::vector<iclforge::plan::CodedChannel>& coded,
                    const std::vector<bool>& fed = {});
     // Which coded channels the current plan feeds, sized to the layout.
     [[nodiscard]] std::vector<bool> fedChannels() const;
@@ -1784,11 +1784,11 @@ private:
     // field is always the latched value, so QML never has to know latching
     // exists (see clearClipLatch/clearClipLatches for the only two ways a
     // latch ever comes back down).
-    void publishLevels(std::span<const ac3::analysis::ChannelLevel> levels);
+    void publishLevels(std::span<const iclforge::analysis::ChannelLevel> levels);
     // The same, built from a meter's exact whole-run statistics rather than
     // its ballistics: what a finished encode or a freshly loaded file should
     // leave on the display.
-    void publishSummary(const ac3::analysis::LevelMeter& meter);
+    void publishSummary(const iclforge::analysis::LevelMeter& meter);
     // Zeroes every channel's latched CLIP flag (not the ballistic levels
     // themselves) - called once at the start of every real transport (see
     // encodeChannels/encodeObjects/runLiveSession/startRecording/
@@ -1805,11 +1805,11 @@ private:
     void resetSourceLevels();
     // sourceLevels' real half - one whole-programme peak/RMS reduction per
     // loaded source, pooling every one of that source's own channels into a
-    // single ac3::analysis::ChannelSummary (not per-channel: a rail row is
+    // single iclforge::analysis::ChannelSummary (not per-channel: a rail row is
     // one pip, not one per channel) - published by previewPlanMeters'
     // background pass once it lands, the exact same async-then-overwrite
     // shape channelLevels already follows via publishLevels.
-    void publishSourceLevels(std::span<const ac3::analysis::ChannelSummary> levels);
+    void publishSourceLevels(std::span<const iclforge::analysis::ChannelSummary> levels);
 
     QString source_path_;
     QString source_info_;
@@ -1844,18 +1844,18 @@ private:
     bool vbr_max_enabled_ = false;
     std::uint32_t vbr_max_kbps_ = 640;
 
-    ac3::plan::Codec codec_ = ac3::plan::Codec::kAc3;
+    iclforge::plan::Codec codec_ = iclforge::plan::Codec::kAc3;
     ac3gui::Ac4EncodeSettings ac4_{};
     // Tier 1: the bed and its independent LFE. Defaults to stereo, matching
     // what a freshly opened window always used to call itself; loading a
     // source or picking a preset moves it.
-    ac3::Acmod bed_acmod_ = ac3::Acmod::k2_0;
+    iclforge::Acmod bed_acmod_ = iclforge::Acmod::k2_0;
     bool bed_lfe_ = false;
     // Tier 2: OR of the selected extras' Table E2.5 bits (kLwRw, kLrsRrs,
     // kVhlVhr, kLtsRts, kLfe2 - see kExtras in the .cpp).
     std::uint16_t extras_mask_ = 0;
-    ac3::plan::Tools tools_{};
-    ac3::plan::Metadata meta_{};
+    iclforge::plan::Tools tools_{};
+    iclforge::plan::Metadata meta_{};
     int container_index_ = 0;
     // Held apart from meta_.drc because the combo box's "none" entry has no
     // Profile to point at, and apart from meta_.heavy because the two level
@@ -1894,7 +1894,7 @@ private:
     // Authored motion, keyed the same way. An identity absent here (the
     // common case) falls back to the object's static ObjectConfig placement
     // in encodeObjects, held constant for the whole file.
-    std::map<ObjectKey, std::vector<ac3::oba::Keyframe>> object_keyframes_;
+    std::map<ObjectKey, std::vector<iclforge::oba::Keyframe>> object_keyframes_;
     // The preset name that authored an object's path ("orbit", "lift"),
     // absent for hand-authored or hand-edited paths - what the object
     // table's Path column prints instead of a bare "path". Kept strictly in
@@ -1916,7 +1916,7 @@ private:
     struct LiveObjectBackup {
         int count = 0;
         std::map<ObjectKey, ObjectConfig> configs;
-        std::map<ObjectKey, std::vector<ac3::oba::Keyframe>> keyframes;
+        std::map<ObjectKey, std::vector<iclforge::oba::Keyframe>> keyframes;
         std::map<ObjectKey, QString> path_labels;
         int selected_index = 0;
     };
@@ -1951,8 +1951,8 @@ private:
     bool output_eac3_ = false;
     QStringList capture_devices_;
     QStringList output_devices_;
-    std::vector<ac3::audio::DeviceInfo> devices_;
-    std::vector<ac3::audio::RenderDeviceInfo> outputs_;
+    std::vector<iclforge::audio::DeviceInfo> devices_;
+    std::vector<iclforge::audio::RenderDeviceInfo> outputs_;
     // captureDeviceRows' own selection - indices into devices_, size 0..2,
     // row 0 the master. Mutated only by addCaptureDevice/removeCaptureDevice
     // and clamped by refreshCaptureDevices when a device disappears; a
@@ -1961,7 +1961,7 @@ private:
     // through LiveSessionRequest.
     std::vector<int> live_selected_devices_;
 
-    ac3::Acmod acmod_ = ac3::Acmod::k2_0;
+    iclforge::Acmod acmod_ = iclforge::Acmod::k2_0;
     bool lfe_ = false;
     bool metering_ = false;
     QStringList channel_names_;
@@ -1969,7 +1969,7 @@ private:
     // Parallel to channel_names_/channel_fed_: each entry's Table E2.5
     // location (for soundfield placement) and whether it is a bed channel a
     // dependent substream replaces (for the Coded/Rendered meter split).
-    std::vector<ac3::eac3::chanmap::Location> channel_locations_;
+    std::vector<iclforge::eac3::chanmap::Location> channel_locations_;
     std::vector<bool> channel_replaced_;
     QString layout_name_;
     QVariantList channel_levels_;
@@ -2022,7 +2022,7 @@ private:
     // Empty (every row implicitly kUnassigned) until setAssignment is
     // called at least once; see routingForSources for what that means for
     // which routing actually gets used.
-    ac3::plan::Assignment assignment_;
+    iclforge::plan::Assignment assignment_;
     bool has_explicit_assignment_ = false;
     // Every (source, channel) setAssignment has ever been called for, "none"
     // included - Assignment itself cannot tell an explicit "none" apart from
@@ -2033,7 +2033,7 @@ private:
     // subtract this from Assignment::unassigned()'s raw inventory and stop
     // nagging about a channel the user deliberately silenced.
     std::set<std::pair<std::size_t, std::size_t>> touched_channels_;
-    std::unique_ptr<ac3::audio::Capture> capture_;
+    std::unique_ptr<iclforge::audio::Capture> capture_;
     std::atomic_bool cancel_requested_{false};
     std::atomic_bool stop_recording_{false};
     // Set only by the destructor: nothing in the window stops a file that is
@@ -2109,7 +2109,7 @@ private:
     // running): every read and write goes through live_object_mutex_. With
     // liveOscEnabled on, the DIRECTION reverses for whichever objects are
     // network-driven - the worker writes live_object_snapshot_ (the
-    // position ac3::audio::LivePositionSource most recently pushed) instead
+    // position iclforge::audio::LivePositionSource most recently pushed) instead
     // of only reading it, and the GUI thread's setObjectPosition/
     // setObjectLfeSend refuse to write a driven object rather than racing
     // the worker's own write - see live_object_network_driven_ below and
@@ -2117,8 +2117,8 @@ private:
     mutable std::mutex live_object_mutex_;
     std::vector<ObjectConfig> live_object_snapshot_;
     // Parallel to live_object_snapshot_, same size, same guard: true for a
-    // slot ac3::oba::SceneCursor::is_live() currently reports live - i.e.
-    // ac3::audio::LivePositionSource has pushed a placement for it and
+    // slot iclforge::oba::SceneCursor::is_live() currently reports live - i.e.
+    // iclforge::audio::LivePositionSource has pushed a placement for it and
     // nothing has since released it. Read by objectModel() (which object to
     // take from the snapshot instead of object_configs_) and by
     // setObjectPosition/setObjectLfeSend (which object a manual drag must
@@ -2133,20 +2133,20 @@ private:
     // Opened and (via the worker's final invokeMethod) closed on the GUI
     // thread, matching capture_'s own convention - only buffer()/submit()/
     // stats() are called from the worker while a session runs.
-    std::unique_ptr<ac3::audio::Capture> live_capture_;
+    std::unique_ptr<iclforge::audio::Capture> live_capture_;
     // Same convention as live_capture_ immediately above: opened on the GUI
     // thread before the worker starts (startLiveSession), only
     // drain_into()/stats() called from the worker while running, closed on
     // the GUI thread once the session ends. Null whenever liveOscEnabled
     // was off at session start - the orbit (or manual placement) path is
     // then unchanged from before this existed.
-    std::unique_ptr<ac3::audio::LivePositionSource> live_position_source_;
+    std::unique_ptr<iclforge::audio::LivePositionSource> live_position_source_;
     // The slave device, when a two-device session opened one - same
     // GUI-thread-owns-open/close, worker-thread-only-reads convention as
     // live_capture_ itself. Null for an ordinary single-device session.
-    std::unique_ptr<ac3::audio::Capture> live_capture2_;
-    std::unique_ptr<ac3::audio::MonitorSink> live_monitor_sink_;
-    std::unique_ptr<ac3::audio::PassthroughSink> live_passthrough_sink_;
+    std::unique_ptr<iclforge::audio::Capture> live_capture2_;
+    std::unique_ptr<iclforge::audio::MonitorSink> live_monitor_sink_;
+    std::unique_ptr<iclforge::audio::PassthroughSink> live_passthrough_sink_;
     // switchLiveReceiver's handoff to the worker thread: the GUI thread
     // writes a request here, the worker thread claims it (and clears it)
     // once per outer-loop iteration and does the actual close-old/open-new
@@ -2158,7 +2158,7 @@ private:
     // the worker never has to touch outputs_ (GUI-thread-owned state) itself.
     struct PendingReceiverSwitch {
         bool want_passthrough = false;
-        ac3::audio::RenderDeviceInfo receiver;  // valid only if want_passthrough
+        iclforge::audio::RenderDeviceInfo receiver;  // valid only if want_passthrough
     };
     std::mutex live_receiver_switch_mutex_;
     std::optional<PendingReceiverSwitch> live_receiver_switch_request_;
@@ -2178,7 +2178,7 @@ private:
     // exclusive (busy_ already guards that), but sharing one member would
     // tie this feature's lifecycle to liveActive's own signals for no
     // reason.
-    std::unique_ptr<ac3::audio::MonitorSink> motion_preview_monitor_sink_;
+    std::unique_ptr<iclforge::audio::MonitorSink> motion_preview_monitor_sink_;
 
     // Where every worker above runs. ~EncoderController() sets the flag each of
     // them polls and waits for all of them before any member is destroyed;

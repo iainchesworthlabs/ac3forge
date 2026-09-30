@@ -20,7 +20,7 @@
 // selection tests/audio/backend/alsa, tests/audio/backend/android and tests/audio/backend/macos
 // already use for their own backend's internal header.
 
-using ac3::windows_audio::stream_gone;
+using iclforge::windows_audio::stream_gone;
 
 TEST_CASE("an invalidated or stopped device ends the stream") {
     // The two answers Microsoft's own "Recovering from an Invalid-Device

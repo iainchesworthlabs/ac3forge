@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace ac3::sendspin::base64url {
+namespace iclforge::sendspin::base64url {
 
 namespace {
 
@@ -114,4 +114,4 @@ bool decode_exact(std::string_view text, std::span<std::uint8_t> out) {
     return size && *size == out.size() && decode_into(text, out);
 }
 
-}  // namespace ac3::sendspin::base64url
+}  // namespace iclforge::sendspin::base64url

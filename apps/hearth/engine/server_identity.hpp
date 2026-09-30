@@ -20,7 +20,7 @@
 // diagnostics file withholds everything under "identity/"
 // (diagnostics_report.hpp).
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
 inline constexpr std::string_view kServerIdentityKey = "identity/server";
 
@@ -35,4 +35,4 @@ inline constexpr std::string_view kServerIdentityKey = "identity/server";
 // its PairingStore's own writes, exist).
 [[nodiscard]] std::optional<sendspin::noise::KeyPair> load_or_make_server_identity(SettingsStore& store);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

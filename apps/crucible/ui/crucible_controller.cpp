@@ -39,7 +39,7 @@
 
 namespace {
 
-using ac3::crucible::OutputMode;
+using iclforge::crucible::OutputMode;
 
 constexpr int kPollMs = 60;  // the meters read at this rate; 120 stepped visibly
 
@@ -79,7 +79,7 @@ std::optional<OutputMode> mode_from_key(const QString& key) {
 // The pin the engine is given, which is the stored one unless this build
 // cannot reach it. Only headphones can be out of reach that way: it hands
 // decoded objects to the platform's own object renderer, and
-// ac3::audio::audio_backend().spatial.available is true only on the Windows
+// iclforge::audio::audio_backend().spatial.available is true only on the Windows
 // backend. Where it is false the policy refuses that mode on every endpoint
 // anyway - library_devices.cpp never sets DeviceFacts::spatial, the flag
 // output_stage.cpp copies into EndpointFacts::spatial, because
@@ -104,7 +104,7 @@ std::optional<OutputMode> mode_from_key(const QString& key) {
 // renderer still gets the pin.
 std::optional<OutputMode> engine_pin(const QString& key) {
     const auto mode = mode_from_key(key);
-    if (mode == OutputMode::kHeadphones && !ac3::audio::audio_backend().spatial.available) {
+    if (mode == OutputMode::kHeadphones && !iclforge::audio::audio_backend().spatial.available) {
         return std::nullopt;
     }
     return mode;
@@ -146,12 +146,12 @@ CrucibleController::CrucibleController(QObject* parent)
     // settings for a whole afternoon. This one honours the default format,
     // so the tests' isolation (an INI file in a temporary directory) holds.
     : QObject(parent),
-      default_device_(ac3::crucible::platform_default_device()),
-      virtual_device_(ac3::crucible::platform_virtual_device()),
+      default_device_(iclforge::crucible::platform_default_device()),
+      virtual_device_(iclforge::crucible::platform_virtual_device()),
       settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"), QStringLiteral("Crucible")),
-      log_(ac3::crucible::process_diagnostics()),
-      foreground_(ac3::crucible::platform_foreground()),
-      sessions_(ac3::crucible::platform_session_monitor()) {
+      log_(iclforge::crucible::process_diagnostics()),
+      foreground_(iclforge::crucible::platform_foreground()),
+      sessions_(iclforge::crucible::platform_session_monitor()) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &CrucibleController::poll);
     driver_timer_.setInterval(250);
@@ -171,8 +171,8 @@ CrucibleController::~CrucibleController() {
     stop();
 }
 
-ac3::crucible::EngineConfig CrucibleController::engine_config() const {
-    ac3::crucible::EngineConfig config;
+iclforge::crucible::EngineConfig CrucibleController::engine_config() const {
+    iclforge::crucible::EngineConfig config;
     config.null_sink_substring = nullSinkName().toStdString();
     config.signing_key_path = keyPath().toStdString();
     config.low_latency = lowLatency();
@@ -194,11 +194,11 @@ ac3::crucible::EngineConfig CrucibleController::engine_config() const {
     return config;
 }
 
-void CrucibleController::set_test_services(std::shared_ptr<ac3::crucible::SessionMonitor> sessions,
-                                           std::shared_ptr<ac3::crucible::AudioDevices> devices,
-                                           std::shared_ptr<ac3::crucible::Foreground> foreground,
-                                           std::shared_ptr<ac3::crucible::DefaultDevice> default_device,
-                                           std::shared_ptr<ac3::crucible::VirtualDevice> virtual_device) {
+void CrucibleController::set_test_services(std::shared_ptr<iclforge::crucible::SessionMonitor> sessions,
+                                           std::shared_ptr<iclforge::crucible::AudioDevices> devices,
+                                           std::shared_ptr<iclforge::crucible::Foreground> foreground,
+                                           std::shared_ptr<iclforge::crucible::DefaultDevice> default_device,
+                                           std::shared_ptr<iclforge::crucible::VirtualDevice> virtual_device) {
     // The engine is built from these at start(), so an engine built over the
     // machine has to go before the machine is swapped out from under it.
     stop();
@@ -210,12 +210,12 @@ void CrucibleController::set_test_services(std::shared_ptr<ac3::crucible::Sessio
     // held rather than passed to the engine, and movesDefault and
     // silentDeviceFromPackage are CONSTANT properties, so a swap that stuck
     // would answer for every case that ran after it in the same process.
-    default_device_ = default_device ? std::move(default_device) : ac3::crucible::platform_default_device();
+    default_device_ = default_device ? std::move(default_device) : iclforge::crucible::platform_default_device();
     previous_default_id_ = default_device_->default_id();
     // Nothing has been moved on a seam this object has only just met.
     moved_default_by_us_ = false;
     previous_default_name_.clear();
-    virtual_device_ = virtual_device ? std::move(virtual_device) : ac3::crucible::platform_virtual_device();
+    virtual_device_ = virtual_device ? std::move(virtual_device) : iclforge::crucible::platform_virtual_device();
     log_.note(test_sessions_ ? "platform seams replaced by a test harness"
                              : "platform seams restored by a test harness");
     refreshDefault();
@@ -230,7 +230,7 @@ void CrucibleController::start() {
     if (engine_) {
         return;
     }
-    engine_ = std::make_unique<ac3::crucible::Engine>(engine_config());
+    engine_ = std::make_unique<iclforge::crucible::Engine>(engine_config());
     if (const auto started = engine_->start(); !started) {
         last_error_ = from_utf8(started.error());
         log_.note("engine start refused: " + started.error());
@@ -339,9 +339,9 @@ void CrucibleController::poll() {
             ++sounding;
         }
         const int id = static_cast<int>(app.app);
-        auto* entry = qobject_cast<ac3::crucible::ui::AppEntry*>(entries_.value(id, nullptr));
+        auto* entry = qobject_cast<iclforge::crucible::ui::AppEntry*>(entries_.value(id, nullptr));
         if (entry == nullptr) {
-            entry = new ac3::crucible::ui::AppEntry(id, this);
+            entry = new iclforge::crucible::ui::AppEntry(id, this);
             entries_.insert(id, entry);
             membership_changed = true;
         }
@@ -363,8 +363,8 @@ void CrucibleController::poll() {
     // Sound first, then a session without sound, then silent; by name
     // within each, so the rail reads top to bottom.
     std::stable_sort(apps.begin(), apps.end(), [](QObject* a, QObject* b) {
-        auto* ea = qobject_cast<ac3::crucible::ui::AppEntry*>(a);
-        auto* eb = qobject_cast<ac3::crucible::ui::AppEntry*>(b);
+        auto* ea = qobject_cast<iclforge::crucible::ui::AppEntry*>(a);
+        auto* eb = qobject_cast<iclforge::crucible::ui::AppEntry*>(b);
         const int ra = ea->silent() ? 2 : (ea->active() ? 0 : 1);
         const int rb = eb->silent() ? 2 : (eb->active() ? 0 : 1);
         if (ra != rb) {
@@ -516,19 +516,19 @@ QString CrucibleController::nullSinkName() const {
 }
 
 bool CrucibleController::trayAvailable() {
-    return ac3::crucible::ui::tray_is_published();
+    return iclforge::crucible::ui::tray_is_published();
 }
 
 QString CrucibleController::trayAbsentReason() {
-    return ac3::crucible::ui::tray_absent_reason();
+    return iclforge::crucible::ui::tray_absent_reason();
 }
 
 bool CrucibleController::spatialAvailable() {
-    return ac3::audio::audio_backend().spatial.available;
+    return iclforge::audio::audio_backend().spatial.available;
 }
 
 QString CrucibleController::spatialAbsentReason() {
-    const auto& spatial = ac3::audio::audio_backend().spatial;
+    const auto& spatial = iclforge::audio::audio_backend().spatial;
     // A string_view over a literal in the backend's own file, so there is
     // nothing to own here; empty where the renderer is there.
     return spatial.available ? QString{}
@@ -739,7 +739,7 @@ void CrucibleController::setRoomLayout(const QString& layout) {
 }
 
 QString CrucibleController::versionDetails() const {
-    return QString::fromStdString(ac3::version_details());
+    return QString::fromStdString(iclforge::version_details());
 }
 
 QString CrucibleController::licenceNotices() const {
@@ -803,39 +803,39 @@ bool CrucibleController::migratedFromDemo() const {
 
 void CrucibleController::position(int app, double x, double y, double z) {
     if (engine_) {
-        engine_->position(static_cast<ac3::crucible::AppId>(app),
+        engine_->position(static_cast<iclforge::crucible::AppId>(app),
                           {std::clamp(x, 0.0, 1.0), std::clamp(y, 0.0, 1.0), std::clamp(z, -1.0, 1.0)});
     }
 }
 
 void CrucibleController::unposition(int app) {
     if (engine_) {
-        engine_->unposition(static_cast<ac3::crucible::AppId>(app));
+        engine_->unposition(static_cast<iclforge::crucible::AppId>(app));
     }
 }
 
 void CrucibleController::setSize(int app, double size) {
     if (engine_) {
-        engine_->set_size(static_cast<ac3::crucible::AppId>(app), std::clamp(size, 0.0, 1.0));
+        engine_->set_size(static_cast<iclforge::crucible::AppId>(app), std::clamp(size, 0.0, 1.0));
     }
 }
 
 void CrucibleController::positionSide(int app, int side, double x, double y, double z) {
     if (engine_) {
-        engine_->position_side(static_cast<ac3::crucible::AppId>(app), side,
+        engine_->position_side(static_cast<iclforge::crucible::AppId>(app), side,
                                {std::clamp(x, 0.0, 1.0), std::clamp(y, 0.0, 1.0), std::clamp(z, -1.0, 1.0)});
     }
 }
 
 void CrucibleController::resetPair(int app) {
     if (engine_) {
-        engine_->reset_pair(static_cast<ac3::crucible::AppId>(app));
+        engine_->reset_pair(static_cast<iclforge::crucible::AppId>(app));
     }
 }
 
 void CrucibleController::setSplit(int app, bool split) {
     if (engine_) {
-        engine_->set_split(static_cast<ac3::crucible::AppId>(app), split);
+        engine_->set_split(static_cast<iclforge::crucible::AppId>(app), split);
     }
 }
 
@@ -1019,7 +1019,7 @@ void CrucibleController::refreshDriver() {
     // Windows-only reasoning (test signing, memory integrity, a built
     // package) out of this file and out of the QML.
     virtual_device_->set_package_dir(driverDir().toStdString());
-    const ac3::crucible::SilentDeviceQuery query{
+    const iclforge::crucible::SilentDeviceQuery query{
         .endpoint_present = null_sink_present_,
         .endpoint_is_default = defaultIsNullSink()};
     silent_state_ = virtual_device_->state(query);
@@ -1096,8 +1096,8 @@ void CrucibleController::poll_driver() {
 // fixed list rather than settings_.allKeys(); and every spelling of the key
 // path and of the inline key value is scrubbed from the finished text.
 
-ac3::crucible::Secrets CrucibleController::secrets() const {
-    ac3::crucible::Secrets out;
+iclforge::crucible::Secrets CrucibleController::secrets() const {
+    iclforge::crucible::Secrets out;
     auto add = [&out](const QString& value) {
         if (!value.isEmpty()) {
             out.strings.push_back(value.toStdString());
@@ -1120,15 +1120,15 @@ ac3::crucible::Secrets CrucibleController::secrets() const {
     return out;
 }
 
-ac3::crucible::ReportFacts CrucibleController::build_report_facts() const {
-    using ac3::crucible::KeySource;
-    ac3::crucible::ReportFacts facts;
+iclforge::crucible::ReportFacts CrucibleController::build_report_facts() const {
+    using iclforge::crucible::KeySource;
+    iclforge::crucible::ReportFacts facts;
     facts.written_at = QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString();
     const auto started_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(log_.started_at().time_since_epoch()).count();
     facts.log_started_at =
         QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(started_ms)).toString(Qt::ISODateWithMs).toStdString();
-    facts.version = ac3::version_details();
+    facts.version = iclforge::version_details();
 
     auto platform_row = [&facts](const char* name, const QString& value) {
         facts.platform.emplace_back(name, value.toStdString());
@@ -1144,8 +1144,8 @@ ac3::crucible::ReportFacts CrucibleController::build_report_facts() const {
     // never enumerated.
     platform_row("render loop", qEnvironmentVariable("QSG_RENDER_LOOP"));
     platform_row("3d room", has3D() ? QStringLiteral("built") : QStringLiteral("not built"));
-    const auto& backend = ac3::audio::audio_backend();
-    auto capability_row = [&facts](const char* name, const ac3::audio::Capability& capability) {
+    const auto& backend = iclforge::audio::audio_backend();
+    auto capability_row = [&facts](const char* name, const iclforge::audio::Capability& capability) {
         facts.platform.emplace_back(name, capability.available ? std::string("yes")
                                                                : "no: " + std::string(capability.reason));
     };
@@ -1212,8 +1212,8 @@ ac3::crucible::ReportFacts CrucibleController::build_report_facts() const {
 }
 
 QString CrucibleController::diagnosticsReport() const {
-    const auto status = engine_ ? engine_->status() : ac3::crucible::EngineStatus{};
-    return QString::fromStdString(ac3::crucible::render_report(build_report_facts(), status, log_, secrets()));
+    const auto status = engine_ ? engine_->status() : iclforge::crucible::EngineStatus{};
+    return QString::fromStdString(iclforge::crucible::render_report(build_report_facts(), status, log_, secrets()));
 }
 
 QString CrucibleController::suggestedDiagnosticsFile() const {

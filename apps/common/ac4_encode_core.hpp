@@ -21,24 +21,24 @@
 // as the rest of apps/common is (recording_sink.hpp says why there is no
 // library target).
 
-namespace ac3::apps {
+namespace iclforge::apps {
 
-// The encoder's input channels, in ac4::Decoder's order, for a WAV file of
+// The encoder's input channels, in iclforge::ac4::Decoder's order, for a WAV file of
 // `count` channels, the 7.X element's additional pair, which seven or eight
 // channels need and the other counts leave to another substream, whether the
 // 3.0 element is asked for, and whether the immersive layouts' back pair is:
 // nine and ten channels are 5.0.4 and 5.1.4, eleven and twelve 7.0.4 and
 // 7.1.4. Empty for a count the encoder does not take so.
-[[nodiscard]] std::vector<ac4::Speaker> ac4_input_speakers(std::size_t count,
-                                                           ac4::AdditionalPair pair,
+[[nodiscard]] std::vector<iclforge::ac4::Speaker> ac4_input_speakers(std::size_t count,
+                                                           iclforge::ac4::AdditionalPair pair,
                                                            bool three_zero, bool back_pair);
 
 // The layout `ac4_input_speakers` makes of `count` channels, by name.
-[[nodiscard]] std::string_view ac4_layout_name(std::size_t count, ac4::AdditionalPair pair);
+[[nodiscard]] std::string_view ac4_layout_name(std::size_t count, iclforge::ac4::AdditionalPair pair);
 
 // For each of the encoder's input channels, the WAV file's channel it takes
 // (ac4_channels.hpp's order).
-[[nodiscard]] std::vector<std::size_t> ac4_wav_index(std::span<const ac4::Speaker> speakers);
+[[nodiscard]] std::vector<std::size_t> ac4_wav_index(std::span<const iclforge::ac4::Speaker> speakers);
 
 // BS.1770's measurements of the programme, for dialnorm=auto and loudness=:
 // the integrated loudness, the loudness range, the true peak, and the highest
@@ -66,7 +66,7 @@ struct Ac4Measured {
 // loudness='s values for a measured programme, each within what its code
 // holds: -102.4 to +102.3, the range 0 to 102.3 LU (Part 1 clauses 4.3.12.3.8
 // to 4.3.12.3.30).
-[[nodiscard]] ac4::FurtherLoudness ac4_further_loudness(ac4::LoudnessPractice practice,
+[[nodiscard]] iclforge::ac4::FurtherLoudness ac4_further_loudness(iclforge::ac4::LoudnessPractice practice,
                                                         const Ac4Measured& measured);
 
 // The encoded frames as a file: each a raw stream's sync frame, with the CRC
@@ -85,7 +85,7 @@ struct Ac4PackageError {
 };
 
 [[nodiscard]] std::expected<Ac4Packaged, Ac4PackageError> package_ac4(
-    std::span<const ac4::EncodedFrame> frames, const ac4::Toc& toc, bool mp4, bool crc);
+    std::span<const iclforge::ac4::EncodedFrame> frames, const iclforge::ac4::Toc& toc, bool mp4, bool crc);
 
 // Whether an output path names an MP4 file, as `remux` matches them: by the
 // path's extension, case kept, .mp4, .m4a or .mov. What ac3cli's ac4-encode and
@@ -93,4 +93,4 @@ struct Ac4PackageError {
 // container.
 [[nodiscard]] bool ac4_output_names_mp4(std::string_view out_path);
 
-}  // namespace ac3::apps
+}  // namespace iclforge::apps

@@ -20,13 +20,13 @@
 #include "iclforge/iab/ac3iab.hpp"
 #include "iclforge/iab/model.hpp"
 
-// ac3::admbridge::build_iab - IAB reader bridge, phase 3 ("IAB (SMPTE ST 2098-2) reader", see
-// ROADMAP.md). Most cases here construct ac3iab::IABitstreamFrame/IaFrame/BedDefinition/
+// iclforge::admbridge::build_iab - IAB reader bridge, phase 3 ("IAB (SMPTE ST 2098-2) reader", see
+// ROADMAP.md). Most cases here construct iclforge::iab::IABitstreamFrame/IaFrame/BedDefinition/
 // ObjectDefinition values directly (plain aggregates, per ac3iab/model.hpp's own design - no
 // parser needed to build one), the same "construct the model directly, no byte-level round trip"
 // approach test_adm_bridge.cpp already uses for its own non-flagship cases. The one flagship test
-// at the bottom goes through a REAL byte-level IABitstream fixture and ac3iab::parse_iabitstream()
-// end to end, then through a real ac3::oba::AtmosEncoder/ac3::Eac3Decoder round trip, per this
+// at the bottom goes through a REAL byte-level IABitstream fixture and iclforge::iab::parse_iabitstream()
+// end to end, then through a real iclforge::oba::AtmosEncoder/iclforge::Eac3Decoder round trip, per this
 // project's own standard for codec-adjacent behaviour.
 
 namespace {
@@ -36,10 +36,10 @@ namespace {
 // for a simpler fixture (the flagship test likewise uses its own frame rate).
 constexpr std::uint8_t kFrameRateCode = 0x0;
 
-ac3iab::IABitstreamFrame make_frame(std::vector<ac3iab::BedDefinition> beds = {},
-                                    std::vector<ac3iab::ObjectDefinition> objects = {},
+iclforge::iab::IABitstreamFrame make_frame(std::vector<iclforge::iab::BedDefinition> beds = {},
+                                    std::vector<iclforge::iab::ObjectDefinition> objects = {},
                                     std::uint32_t sample_rate = 48000) {
-    ac3iab::IABitstreamFrame entry;
+    iclforge::iab::IABitstreamFrame entry;
     entry.frame.version = 1;
     entry.frame.sample_rate = sample_rate;
     entry.frame.bit_depth = 16;
@@ -49,36 +49,36 @@ ac3iab::IABitstreamFrame make_frame(std::vector<ac3iab::BedDefinition> beds = {}
     return entry;
 }
 
-ac3iab::BedChannel make_bed_channel(std::uint32_t channel_id, std::uint32_t audio_data_id = 0,
+iclforge::iab::BedChannel make_bed_channel(std::uint32_t channel_id, std::uint32_t audio_data_id = 0,
                                     double gain = 1.0) {
-    ac3iab::BedChannel channel;
+    iclforge::iab::BedChannel channel;
     channel.channel_id = channel_id;
     channel.audio_data_id = audio_data_id;
     channel.gain = gain;
     return channel;
 }
 
-ac3iab::BedDefinition make_bed(std::uint32_t meta_id, std::vector<ac3iab::BedChannel> channels,
+iclforge::iab::BedDefinition make_bed(std::uint32_t meta_id, std::vector<iclforge::iab::BedChannel> channels,
                                bool conditional = false) {
-    ac3iab::BedDefinition bed;
+    iclforge::iab::BedDefinition bed;
     bed.meta_id = meta_id;
     bed.activation.conditional = conditional;
     bed.channels = std::move(channels);
     return bed;
 }
 
-ac3iab::ObjectPanSubBlock make_sub_block(double x, double y, double z, double gain = 1.0) {
-    ac3iab::ObjectPanSubBlock block;
+iclforge::iab::ObjectPanSubBlock make_sub_block(double x, double y, double z, double gain = 1.0) {
+    iclforge::iab::ObjectPanSubBlock block;
     block.has_pan_info = true;
     block.gain = gain;
     block.position = {.x = x, .y = y, .z = z};
     return block;
 }
 
-ac3iab::ObjectDefinition make_object(std::uint32_t meta_id,
-                                     std::vector<ac3iab::ObjectPanSubBlock> sub_blocks,
+iclforge::iab::ObjectDefinition make_object(std::uint32_t meta_id,
+                                     std::vector<iclforge::iab::ObjectPanSubBlock> sub_blocks,
                                      std::uint32_t audio_data_id = 0, bool conditional = false) {
-    ac3iab::ObjectDefinition object;
+    iclforge::iab::ObjectDefinition object;
     object.meta_id = meta_id;
     object.audio_data_id = audio_data_id;
     object.activation.conditional = conditional;
@@ -86,8 +86,8 @@ ac3iab::ObjectDefinition make_object(std::uint32_t meta_id,
     return object;
 }
 
-ac3iab::AudioDataPcm make_pcm(std::uint32_t audio_data_id, std::size_t count, float value = 0.0f) {
-    ac3iab::AudioDataPcm pcm;
+iclforge::iab::AudioDataPcm make_pcm(std::uint32_t audio_data_id, std::size_t count, float value = 0.0f) {
+    iclforge::iab::AudioDataPcm pcm;
     pcm.audio_data_id = audio_data_id;
     pcm.samples.assign(count, value);
     return pcm;
@@ -104,19 +104,19 @@ TEST_CASE("iab_position_to_room is a direct passthrough", "[admbridge][iab][coor
     // formula is needed: x/y already share the same convention, and z's zero is the same
     // screen/ear-height reference, just never negative on the IAB side.
     SECTION("front left corner, screen height") {
-        const auto room = ac3::admbridge::iab_position_to_room({.x = 0.0, .y = 0.0, .z = 0.0});
+        const auto room = iclforge::admbridge::iab_position_to_room({.x = 0.0, .y = 0.0, .z = 0.0});
         CHECK_THAT(room.x, Catch::Matchers::WithinAbs(0.0, 1e-9));
         CHECK_THAT(room.y, Catch::Matchers::WithinAbs(0.0, 1e-9));
         CHECK_THAT(room.z, Catch::Matchers::WithinAbs(0.0, 1e-9));
     }
     SECTION("middle of ceiling") {
-        const auto room = ac3::admbridge::iab_position_to_room({.x = 0.5, .y = 0.5, .z = 1.0});
+        const auto room = iclforge::admbridge::iab_position_to_room({.x = 0.5, .y = 0.5, .z = 1.0});
         CHECK_THAT(room.x, Catch::Matchers::WithinAbs(0.5, 1e-9));
         CHECK_THAT(room.y, Catch::Matchers::WithinAbs(0.5, 1e-9));
         CHECK_THAT(room.z, Catch::Matchers::WithinAbs(1.0, 1e-9));
     }
     SECTION("back right corner, screen height") {
-        const auto room = ac3::admbridge::iab_position_to_room({.x = 1.0, .y = 1.0, .z = 0.0});
+        const auto room = iclforge::admbridge::iab_position_to_room({.x = 1.0, .y = 1.0, .z = 0.0});
         CHECK_THAT(room.x, Catch::Matchers::WithinAbs(1.0, 1e-9));
         CHECK_THAT(room.y, Catch::Matchers::WithinAbs(1.0, 1e-9));
         CHECK_THAT(room.z, Catch::Matchers::WithinAbs(0.0, 1e-9));
@@ -133,26 +133,26 @@ TEST_CASE("build_iab maps supported Table 19 ChannelIDs to the right BedLabel po
           "[admbridge][iab]") {
     struct Case {
         std::uint32_t channel_id;
-        ac3::oba::BedLabel label;
+        iclforge::oba::BedLabel label;
     };
     // A representative subset, not the full table - see iab_bridge.cpp's own comment for the rest.
     const auto test_case =
-        GENERATE(Case{0x0, ac3::oba::BedLabel::kL}, Case{0x2, ac3::oba::BedLabel::kC},
-                 Case{0x4, ac3::oba::BedLabel::kR}, Case{0x6, ac3::oba::BedLabel::kLs},
-                 Case{0xA, ac3::oba::BedLabel::kRs}, Case{0x7, ac3::oba::BedLabel::kLb},
-                 Case{0x8, ac3::oba::BedLabel::kRb}, Case{0x86, ac3::oba::BedLabel::kLfe},
-                 Case{0x87, ac3::oba::BedLabel::kLfe2}, Case{0x88, ac3::oba::BedLabel::kLw},
-                 Case{0x89, ac3::oba::BedLabel::kRw}, Case{0x80, ac3::oba::BedLabel::kTfl},
-                 Case{0x84, ac3::oba::BedLabel::kTsl});
+        GENERATE(Case{0x0, iclforge::oba::BedLabel::kL}, Case{0x2, iclforge::oba::BedLabel::kC},
+                 Case{0x4, iclforge::oba::BedLabel::kR}, Case{0x6, iclforge::oba::BedLabel::kLs},
+                 Case{0xA, iclforge::oba::BedLabel::kRs}, Case{0x7, iclforge::oba::BedLabel::kLb},
+                 Case{0x8, iclforge::oba::BedLabel::kRb}, Case{0x86, iclforge::oba::BedLabel::kLfe},
+                 Case{0x87, iclforge::oba::BedLabel::kLfe2}, Case{0x88, iclforge::oba::BedLabel::kLw},
+                 Case{0x89, iclforge::oba::BedLabel::kRw}, Case{0x80, iclforge::oba::BedLabel::kTfl},
+                 Case{0x84, iclforge::oba::BedLabel::kTsl});
     CAPTURE(test_case.channel_id);
 
     auto frame = make_frame({make_bed(1, {make_bed_channel(test_case.channel_id)})});
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE(result.has_value());
     REQUIRE(result->channel_count() == 1);
     CHECK(result->is_bed[0]);
 
-    const auto expected = ac3::oba::bed_label_position(test_case.label);
+    const auto expected = iclforge::oba::bed_label_position(test_case.label);
     const auto placement = result->paths[0].evaluate(0.0);
     CHECK_THAT(placement.position.x, Catch::Matchers::WithinAbs(expected.x, 1e-9));
     CHECK_THAT(placement.position.y, Catch::Matchers::WithinAbs(expected.y, 1e-9));
@@ -168,14 +168,14 @@ TEST_CASE("build_iab refuses a Table 19 ChannelID with no BedLabel equivalent",
     CAPTURE(channel_id);
     auto frame =
         make_frame({make_bed(1, {make_bed_channel(static_cast<std::uint32_t>(channel_id))})});
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac3::admbridge::BridgeError::kUnsupportedIabChannel);
+    CHECK(result.error() == iclforge::admbridge::BridgeError::kUnsupportedIabChannel);
 }
 
 TEST_CASE("build_iab routes an LFE bed channel at gain 0 / lfe_send 1", "[admbridge][iab]") {
     auto frame = make_frame({make_bed(1, {make_bed_channel(0xD /* LFE */)})});
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE(result.has_value());
     REQUIRE(result->is_lfe[0]);
     const auto placement = result->paths[0].evaluate(0.0);
@@ -190,27 +190,27 @@ TEST_CASE("build_iab routes an LFE bed channel at gain 0 / lfe_send 1", "[admbri
 TEST_CASE("build_iab tracks a channel's identity by MetaID across frames", "[admbridge][iab]") {
     // AudioDataID left at its default (0) - legitimate silence per §10.3.6, so this fixture stays
     // focused on identity tracking and does not also need a matching AudioDataPCM element.
-    std::vector<ac3iab::IABitstreamFrame> frames;
+    std::vector<iclforge::iab::IABitstreamFrame> frames;
     frames.push_back(make_frame({make_bed(7, {make_bed_channel(0x2)})}));
     frames.push_back(make_frame({make_bed(7, {make_bed_channel(0x2)})}));
     frames.push_back(make_frame({make_bed(7, {make_bed_channel(0x2)})}));
 
-    const auto result = ac3::admbridge::build_iab(frames);
+    const auto result = iclforge::admbridge::build_iab(frames);
     REQUIRE(result.has_value());
     // Same MetaID+ChannelID every frame -> ONE channel, not three.
     CHECK(result->channel_count() == 1);
 }
 
 TEST_CASE("build_iab silence-fills a frame where a channel is absent", "[admbridge][iab]") {
-    const auto samples_per_frame = *ac3iab::sample_count(kFrameRateCode, false);
+    const auto samples_per_frame = *iclforge::iab::sample_count(kFrameRateCode, false);
 
-    std::vector<ac3iab::IABitstreamFrame> frames;
+    std::vector<iclforge::iab::IABitstreamFrame> frames;
     auto present = make_frame({make_bed(1, {make_bed_channel(0x2, 1)})});
     present.frame.audio_pcm.push_back(make_pcm(1, samples_per_frame, 0.5f));
     frames.push_back(present);
     frames.push_back(make_frame());  // the bed is entirely absent this frame
 
-    const auto result = ac3::admbridge::build_iab(frames);
+    const auto result = iclforge::admbridge::build_iab(frames);
     REQUIRE(result.has_value());
     REQUIRE(result->channel_count() == 1);
     REQUIRE(result->pcm[0].size() == 2 * samples_per_frame);
@@ -225,7 +225,7 @@ TEST_CASE("build_iab silence-fills a frame where a channel is absent", "[admbrid
 TEST_CASE("build_iab excludes a conditionally-Activated Bed from the channel set",
           "[admbridge][iab]") {
     auto frame = make_frame({make_bed(1, {make_bed_channel(0x2)}, /*conditional=*/true)});
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE(result.has_value());
     CHECK(result->channel_count() == 0);
 }
@@ -237,7 +237,7 @@ TEST_CASE("build_iab excludes a conditionally-Activated Bed from the channel set
 TEST_CASE("build_iab places an Object via iab_position_to_room and its own gain",
           "[admbridge][iab]") {
     auto frame = make_frame({}, {make_object(2, {make_sub_block(0.9, 0.5, 0.0, 0.5)})});
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE(result.has_value());
     REQUIRE(result->channel_count() == 1);
     CHECK_FALSE(result->is_bed[0]);
@@ -248,7 +248,7 @@ TEST_CASE("build_iab places an Object via iab_position_to_room and its own gain"
     // see the dedicated timing test below for a fixture that actually distinguishes "at the
     // sub-block's end" from "at its start".
     const auto duration =
-        static_cast<double>(*ac3iab::sample_count(kFrameRateCode, false)) / 48000.0;
+        static_cast<double>(*iclforge::iab::sample_count(kFrameRateCode, false)) / 48000.0;
     const auto placement = result->paths[0].evaluate(duration / 8.0);
     CHECK_THAT(placement.position.x, Catch::Matchers::WithinAbs(0.9, 1e-9));
     CHECK_THAT(placement.position.y, Catch::Matchers::WithinAbs(0.5, 1e-9));
@@ -263,7 +263,7 @@ TEST_CASE("build_iab places each active Object sub block's keyframe at its own e
     // sub-block (i+1)/N * duration" apart from "at i/N * duration" (see iab_bridge.cpp's own
     // sub-block loop comment for the citation this proves).
     constexpr std::uint8_t kTwoSubBlockRate = 0x8;
-    ac3iab::IABitstreamFrame frame;
+    iclforge::iab::IABitstreamFrame frame;
     frame.frame.version = 1;
     frame.frame.sample_rate = 48000;
     frame.frame.bit_depth = 16;
@@ -271,11 +271,11 @@ TEST_CASE("build_iab places each active Object sub block's keyframe at its own e
     frame.frame.objects = {
         make_object(2, {make_sub_block(0.0, 0.5, 0.0), make_sub_block(1.0, 0.5, 0.0)})};
 
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE(result.has_value());
 
     const auto duration =
-        static_cast<double>(*ac3iab::sample_count(kTwoSubBlockRate, false)) / 48000.0;
+        static_cast<double>(*iclforge::iab::sample_count(kTwoSubBlockRate, false)) / 48000.0;
     // With the correct "keyframe at (sb+1)/N * duration" formula, the two keyframes land at
     // (duration/2, x=0.0) and (duration, x=1.0). A quarter of the way through the frame is BEFORE
     // the first keyframe, so KeyframePath holds x at 0.0 there; a wrong "at sb/N * duration"
@@ -295,32 +295,32 @@ TEST_CASE("build_iab places each active Object sub block's keyframe at its own e
 // ---------------------------------------------------------------------------
 
 TEST_CASE("build_iab refuses an empty frame span", "[admbridge][iab]") {
-    const auto result = ac3::admbridge::build_iab({});
+    const auto result = iclforge::admbridge::build_iab({});
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac3::admbridge::BridgeError::kEmptyIabStream);
+    CHECK(result.error() == iclforge::admbridge::BridgeError::kEmptyIabStream);
 }
 
 TEST_CASE("build_iab refuses a non-zero AudioDataID with no matching essence", "[admbridge][iab]") {
     auto frame = make_frame({make_bed(1, {make_bed_channel(0x2, /*audio_data_id=*/9)})});
     // No AudioDataPCM element with audio_data_id == 9 anywhere in the frame.
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac3::admbridge::BridgeError::kNoIabEssenceForChannel);
+    CHECK(result.error() == iclforge::admbridge::BridgeError::kNoIabEssenceForChannel);
 }
 
 TEST_CASE("build_iab treats AudioDataID 0 as legitimate silence, not an error",
           "[admbridge][iab]") {
     auto frame = make_frame({make_bed(1, {make_bed_channel(0x2, /*audio_data_id=*/0)})});
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE(result.has_value());
-    REQUIRE(result->pcm[0].size() == *ac3iab::sample_count(kFrameRateCode, false));
+    REQUIRE(result->pcm[0].size() == *iclforge::iab::sample_count(kFrameRateCode, false));
     for (const float sample : result->pcm[0]) {
         CHECK(sample == 0.0f);
     }
 }
 
 TEST_CASE("build_iab refuses more than 15 channels", "[admbridge][iab]") {
-    std::vector<ac3iab::BedChannel> channels;
+    std::vector<iclforge::iab::BedChannel> channels;
     // Every ChannelID in this loop maps to a distinct BedLabel (§10.3.5's own uniqueness rule -
     // "A ChannelID shall not be indicated more than once within a BedDefinition element"), so this
     // exercises the count cap itself, not the mapping table.
@@ -330,9 +330,9 @@ TEST_CASE("build_iab refuses more than 15 channels", "[admbridge][iab]") {
         channels.push_back(make_bed_channel(id));
     }
     auto frame = make_frame({make_bed(1, channels)});
-    const auto result = ac3::admbridge::build_iab(std::span{&frame, 1});
+    const auto result = iclforge::admbridge::build_iab(std::span{&frame, 1});
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac3::admbridge::BridgeError::kTooManyChannels);
+    CHECK(result.error() == iclforge::admbridge::BridgeError::kTooManyChannels);
 }
 
 namespace {
@@ -540,23 +540,23 @@ TEST_CASE(
     std::string view(reinterpret_cast<const char*>(file.data()), file.size());
     std::istringstream in(std::move(view), std::ios::binary);
 
-    const auto frames = ac3iab::parse_iabitstream(in);
+    const auto frames = iclforge::iab::parse_iabitstream(in);
     REQUIRE(frames.has_value());
     REQUIRE(frames->size() == kFlagshipTotalFrames);
 
-    const auto result = ac3::admbridge::build_iab(*frames);
+    const auto result = iclforge::admbridge::build_iab(*frames);
     REQUIRE(result.has_value());
     REQUIRE(result->channel_count() == 2);
     CHECK(result->is_bed[0]);
     CHECK_FALSE(result->is_bed[1]);
     CHECK(result->sample_rate == 48000);
 
-    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
+    iclforge::oba::AtmosEncoder encoder{{.bitrate_kbps = 448},
                                    static_cast<int>(result->channel_count())};
-    ac3::Eac3Decoder decoder;
+    iclforge::Eac3Decoder decoder;
     std::vector<std::span<const float>> views(result->channel_count());
 
-    constexpr int kFrame = ac3::kSamplesPerFrame;
+    constexpr int kFrame = iclforge::kSamplesPerFrame;
     const auto total_samples = result->pcm.front().size();
     const auto total_ac3_frames = total_samples / static_cast<std::size_t>(kFrame);
     REQUIRE(total_ac3_frames >= 3);  // real content, more than one AC-3 frame - CONTRIBUTING's rule
@@ -575,7 +575,7 @@ TEST_CASE(
                             .subspan(start, static_cast<std::size_t>(kFrame));
         }
         const double t = static_cast<double>(start + static_cast<std::size_t>(kFrame)) / 48000.0;
-        const auto placement = ac3::oba::evaluate_placements(result->paths, t);
+        const auto placement = iclforge::oba::evaluate_placements(result->paths, t);
         const auto unit = encoder.encode_frame(views, placement);
         REQUIRE(unit.has_value());
 

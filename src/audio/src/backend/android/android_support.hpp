@@ -13,7 +13,7 @@
 // real Android toolchain. Not part of the library's public interface -
 // backend-internal, like alsa_support.hpp/device_names.hpp are for ALSA.
 
-namespace ac3::android_audio {
+namespace iclforge::android_audio {
 
 // Which IEC 61937 burst size a format uses - the longest, for AC-4, whose
 // bursts follow its frame rate (audio::max_burst_bytes()). AudioTrack.write()
@@ -83,4 +83,4 @@ inline constexpr int kAudioTrackErrorDeadObject = -6;
     return info;
 }
 
-}  // namespace ac3::android_audio
+}  // namespace iclforge::android_audio

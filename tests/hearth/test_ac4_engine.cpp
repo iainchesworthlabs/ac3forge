@@ -40,13 +40,13 @@
 #include "stream_decoder.hpp"
 
 // The Hearth engine's AC-4 path (planning/ac4.md, phase I2): an AC-4 item
-// opened by Session, decoded by StreamDecoder through ac4::Decoder's public API
+// opened by Session, decoded by StreamDecoder through iclforge::ac4::Decoder's public API
 // alone, rendered onto the output layout, and played by Player.
 //
 // The exit: "the engine plays every committed AC-4 stream through the
 // decoder's public API; each control ... changes the decoded output as its
 // formula says, measured with tones". The first is held sample for sample
-// against ac4::Decoder's own decode() of the same frames, placed by speaker on
+// against iclforge::ac4::Decoder's own decode() of the same frames, placed by speaker on
 // a layout with a slot for each; the second on streams of tones, the encoder's
 // here and E6's committed ones, each control's effect measured at its tone's
 // frequency against ETSI TS 103 190-1's formula for it, with the stream's own
@@ -63,21 +63,21 @@
 namespace {
 
 namespace fs = std::filesystem;
-using ac3::hearth::Ac4Settings;
-using ac3::hearth::DecoderSettings;
-using ac3::hearth::ItemLoader;
-using ac3::hearth::LoadedItem;
-using ac3::hearth::OpenOutputFormat;
-using ac3::hearth::OutputMode;
-using ac3::hearth::PcmSink;
-using ac3::hearth::Player;
-using ac3::hearth::QueueItem;
-using ac3::hearth::Session;
-using ac3::hearth::StreamDecoder;
-using ac3::hearth::UnitReport;
-using ac3::test::kSanitized;
+using iclforge::hearth::Ac4Settings;
+using iclforge::hearth::DecoderSettings;
+using iclforge::hearth::ItemLoader;
+using iclforge::hearth::LoadedItem;
+using iclforge::hearth::OpenOutputFormat;
+using iclforge::hearth::OutputMode;
+using iclforge::hearth::PcmSink;
+using iclforge::hearth::Player;
+using iclforge::hearth::QueueItem;
+using iclforge::hearth::Session;
+using iclforge::hearth::StreamDecoder;
+using iclforge::hearth::UnitReport;
+using iclforge::test::kSanitized;
 
-// A slot for every speaker ac4::Decoder names, each at its own location, so
+// A slot for every speaker iclforge::ac4::Decoder names, each at its own location, so
 // the renderer puts each decoded channel on one slot at a gain of exactly 1.
 // The top back and top side pairs share Lts and Rts, as ac4_bed() maps them:
 // no stream has both.
@@ -126,8 +126,8 @@ ItemLoader loader_of(std::map<std::string, std::vector<std::byte>> items) {
     };
 }
 
-ac3::render::OutputLayout layout_of(std::string_view text) {
-    const auto layout = ac3::render::OutputLayout::parse(text);
+iclforge::render::OutputLayout layout_of(std::string_view text) {
+    const auto layout = iclforge::render::OutputLayout::parse(text);
     REQUIRE(layout.has_value());
     return *layout;
 }
@@ -136,7 +136,7 @@ ac3::render::OutputLayout layout_of(std::string_view text) {
 DecoderSettings as_coded() {
     DecoderSettings settings;
     settings.ac4.normalise = false;
-    settings.ac4.drc = ac4::DrcMode::kOff;
+    settings.ac4.drc = iclforge::ac4::DrcMode::kOff;
     return settings;
 }
 
@@ -173,17 +173,17 @@ Played play(Session& session, StreamDecoder& decoder) {
 }
 
 // Opens `bytes` as an item and plays it through a StreamDecoder on `layout`.
-Played play_item(const std::vector<std::byte>& bytes, const ac3::render::OutputLayout& layout,
+Played play_item(const std::vector<std::byte>& bytes, const iclforge::render::OutputLayout& layout,
                  const DecoderSettings& settings) {
     auto session = Session::open("item", loader_of({{"item", bytes}}), std::nullopt,
-                                 ac3::hearth::presentation_choice(settings));
+                                 iclforge::hearth::presentation_choice(settings));
     INFO((session ? std::string{} : session.error()));
     REQUIRE(session.has_value());
     StreamDecoder decoder{layout, session->facts().sample_rate, settings};
     return play(*session, decoder);
 }
 
-// ac4::Decoder's own decode() of `bytes` with `config`, each channel on the
+// iclforge::ac4::Decoder's own decode() of `bytes` with `config`, each channel on the
 // slot of `layout` at its speaker's location, and a frame that waits for an
 // I-frame as silence of its length. A presentation with objects (planning/
 // ac4.md, I5) renders them the same way place_ac4_frame() (stream_decoder.cpp)
@@ -191,16 +191,16 @@ Played play_item(const std::vector<std::byte>& bytes, const ac3::render::OutputL
 // meaningful, independently-computed check of what the engine now does with
 // them, not just of the channels beside them.
 std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
-                                          const ac3::render::OutputLayout& layout,
-                                          const ac4::DecoderConfig& config) {
-    const auto units = ac3::hearth::read_ac4_units(bytes);
+                                          const iclforge::render::OutputLayout& layout,
+                                          const iclforge::ac4::DecoderConfig& config) {
+    const auto units = iclforge::hearth::read_ac4_units(bytes);
     REQUIRE(units.has_value());
     std::vector<std::vector<float>> out(layout.slots());
-    ac4::Decoder decoder(config);
-    std::optional<ac3::apps::Ac4ObjectRenderer> objects;
+    iclforge::ac4::Decoder decoder(config);
+    std::optional<iclforge::apps::Ac4ObjectRenderer> objects;
     std::vector<std::vector<float>> rendered;
     for (std::size_t i = 0; i < units->frames.size(); ++i) {
-        const auto decoded = decoder.decode(ac3::hearth::raw_frame_of(units->frames[i]));
+        const auto decoded = decoder.decode(iclforge::hearth::raw_frame_of(units->frames[i]));
         INFO("frame " << i << ": " << decoder.refusal_reason());
         REQUIRE(decoded.has_value());
         if (!decoded->has_value()) {
@@ -209,7 +209,7 @@ std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
             }
             continue;
         }
-        const ac4::DecodedFrame& frame = **decoded;
+        const iclforge::ac4::DecodedFrame& frame = **decoded;
         CHECK(frame.samples == units->samples[i]);
         const std::size_t start = out.front().size();
         for (std::vector<float>& slot : out) {
@@ -221,10 +221,10 @@ std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
                                 static_cast<std::uint32_t>(frame.sample_rate_hz));
             }
             objects->render(frame, rendered);
-            const std::span<const ac4::Speaker> speakers = objects->speakers();
+            const std::span<const iclforge::ac4::Speaker> speakers = objects->speakers();
             for (std::size_t c = 0; c < rendered.size(); ++c) {
                 const int slot =
-                    layout.index_of(ac3::hearth::ac4_bed(speakers.subspan(c, 1))[0]);
+                    layout.index_of(iclforge::hearth::ac4_bed(speakers.subspan(c, 1))[0]);
                 REQUIRE(slot >= 0);
                 std::copy(rendered[c].begin(), rendered[c].end(),
                           out[static_cast<std::size_t>(slot)].begin() +
@@ -233,8 +233,8 @@ std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
             continue;
         }
         for (std::size_t c = 0; c < frame.channels.size(); ++c) {
-            const ac3::eac3::chanmap::Layout bed =
-                ac3::hearth::ac4_bed(std::span<const ac4::Speaker>(&frame.speakers[c], 1));
+            const iclforge::eac3::chanmap::Layout bed =
+                iclforge::hearth::ac4_bed(std::span<const iclforge::ac4::Speaker>(&frame.speakers[c], 1));
             const int slot = layout.index_of(bed[0]);
             REQUIRE(slot >= 0);
             std::copy(
@@ -249,14 +249,14 @@ std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
 
 constexpr int kRate = 48000;
 constexpr std::size_t kFrame = 2048;
-// One tone a channel, in the order ac4::Encoder takes 5.1 (L R C LFE Ls Rs):
+// One tone a channel, in the order iclforge::ac4::Encoder takes 5.1 (L R C LFE Ls Rs):
 // under Table 173's last dialogue enhancement band, the LFE's under 140 Hz.
 constexpr std::array<double, 6> kTonesHz = {440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0};
 // Where each is heard: a "5.1" layout's slots are in A/52's order, not this.
-constexpr std::array<ac3::eac3::chanmap::Location, 6> kToneLocations = {
-    ac3::eac3::chanmap::Location::kLeft,         ac3::eac3::chanmap::Location::kRight,
-    ac3::eac3::chanmap::Location::kCentre,       ac3::eac3::chanmap::Location::kLfe,
-    ac3::eac3::chanmap::Location::kLeftSurround, ac3::eac3::chanmap::Location::kRightSurround};
+constexpr std::array<iclforge::eac3::chanmap::Location, 6> kToneLocations = {
+    iclforge::eac3::chanmap::Location::kLeft,         iclforge::eac3::chanmap::Location::kRight,
+    iclforge::eac3::chanmap::Location::kCentre,       iclforge::eac3::chanmap::Location::kLfe,
+    iclforge::eac3::chanmap::Location::kLeftSurround, iclforge::eac3::chanmap::Location::kRightSurround};
 constexpr double kAmplitude = 0.1;
 constexpr std::size_t kToneFrames = 32;
 // The analysis window: past the encoder's delay, the decoder's and the first
@@ -283,27 +283,27 @@ double db(double x) {
     return 20.0 * std::log10(x);
 }
 
-// 5.1 tones as ac4::Encoder writes them, in sync frames: dialnorm, the
+// 5.1 tones as iclforge::ac4::Encoder writes them, in sync frames: dialnorm, the
 // downmix's gains and the LFE's, Lt/Rt preferred, and dialogue enhancement's
 // channel-independent method on C, whose parameters are then 1 in every band.
 std::vector<std::byte> tone_stream(int iframe_interval = 8) {
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.channels = 6;
     config.bitrate_kbps = 384;
     config.iframe_interval = iframe_interval;
     config.dialnorm_db = kDialnorm;
-    config.downmix = ac4::DownmixConfig{.loro_centre_db = kLoroCentreDb,
+    config.downmix = iclforge::ac4::DownmixConfig{.loro_centre_db = kLoroCentreDb,
                                         .loro_surround_db = kLoroSurroundDb,
                                         .ltrt_centre_db = kLtrtCentreDb,
                                         .ltrt_surround_db = kLtrtSurroundDb,
                                         .lfe_db = kLfeDb,
-                                        .preferred = ac4::PreferredDownmix::kLtRt,
+                                        .preferred = iclforge::ac4::PreferredDownmix::kLtRt,
                                         .loro_correction_db2 = std::nullopt,
                                         .ltrt_correction_db2 = std::nullopt};
-    config.dialogue = ac4::DialogueConfig{};
+    config.dialogue = iclforge::ac4::DialogueConfig{};
     config.dialogue->max_gain_db = kDeCapDb;
-    auto encoder = ac4::Encoder::create(config);
-    INFO(ac4::Encoder::refusal_reason(config));
+    auto encoder = iclforge::ac4::Encoder::create(config);
+    INFO(iclforge::ac4::Encoder::refusal_reason(config));
     REQUIRE(encoder.has_value());
     std::vector<std::vector<float>> input(6, std::vector<float>(kToneFrames * kFrame));
     for (std::size_t c = 0; c < input.size(); ++c) {
@@ -314,9 +314,9 @@ std::vector<std::byte> tone_stream(int iframe_interval = 8) {
         }
     }
     std::vector<std::byte> out;
-    const auto append = [&out](const std::vector<ac4::EncodedFrame>& frames) {
-        for (const ac4::EncodedFrame& frame : frames) {
-            const std::vector<std::byte> wrapped = ac4::sync_frame(frame.raw_ac4_frame, false);
+    const auto append = [&out](const std::vector<iclforge::ac4::EncodedFrame>& frames) {
+        for (const iclforge::ac4::EncodedFrame& frame : frames) {
+            const std::vector<std::byte> wrapped = iclforge::ac4::sync_frame(frame.raw_ac4_frame, false);
             out.insert(out.end(), wrapped.begin(), wrapped.end());
         }
     };
@@ -356,8 +356,8 @@ std::complex<double> component(std::span<const float> samples, double hz, std::s
 }
 
 // A slot's tone, by the slot's name on `layout`.
-std::complex<double> tone_in(const Played& played, const ac3::render::OutputLayout& layout,
-                             ac3::eac3::chanmap::Location location, double hz) {
+std::complex<double> tone_in(const Played& played, const iclforge::render::OutputLayout& layout,
+                             iclforge::eac3::chanmap::Location location, double hz) {
     const int slot = layout.index_of(location);
     REQUIRE(slot >= 0);
     return component(played.slots[static_cast<std::size_t>(slot)], hz);
@@ -394,11 +394,11 @@ class CaptureSink final : public PcmSink {
         log_->played += frames;
         return true;
     }
-    [[nodiscard]] std::optional<ac3::audio::MonitorPosition> position() const override {
+    [[nodiscard]] std::optional<iclforge::audio::MonitorPosition> position() const override {
         if (!log_->open) {
             return std::nullopt;
         }
-        return ac3::audio::MonitorPosition{
+        return iclforge::audio::MonitorPosition{
             .frames_played = log_->played, .frames_queued = 0, .latency_frames = 0};
     }
     void flush() override {
@@ -433,13 +433,13 @@ TEST_CASE("hearth ac4: an item's units last what the decoder puts out for each",
          {"ac4-ims-music-64-2997", "ac4-ims-music-128-25", "ac4-20-tones-192"}) {
         INFO(leg);
         const std::vector<std::byte> bytes = read_file(baseline(leg));
-        const auto units = ac3::hearth::read_ac4_units(bytes);
+        const auto units = iclforge::hearth::read_ac4_units(bytes);
         REQUIRE(units.has_value());
         CHECK(units->unread == 0);
-        ac4::Decoder decoder;
+        iclforge::ac4::Decoder decoder;
         std::uint64_t decoded = 0;
         for (std::size_t i = 0; i < units->frames.size(); ++i) {
-            const auto frame = decoder.decode(ac3::hearth::raw_frame_of(units->frames[i]));
+            const auto frame = decoder.decode(iclforge::hearth::raw_frame_of(units->frames[i]));
             REQUIRE(frame.has_value());
             if (frame->has_value()) {
                 CHECK((*frame)->samples == units->samples[i]);
@@ -457,9 +457,9 @@ TEST_CASE("hearth ac4: an item's units last what the decoder puts out for each",
             total += samples;
         }
         CHECK(session->total_samples() == total);
-        const ac3::hearth::ItemFacts& facts = session->facts();
+        const iclforge::hearth::ItemFacts& facts = session->facts();
         REQUIRE(facts.stream.has_value());
-        CHECK(ac3::audio::is_ac4(*facts.stream));
+        CHECK(iclforge::audio::is_ac4(*facts.stream));
         CHECK(facts.sample_rate == 48000U);
         CHECK(facts.channels == 2U);
         REQUIRE(facts.duration.has_value());
@@ -468,7 +468,7 @@ TEST_CASE("hearth ac4: an item's units last what the decoder puts out for each",
         CHECK(*facts.bitrate_kbps > 32.0);
     }
     // The alternation itself, which Table 47 gives phase by phase.
-    const auto ims = ac3::hearth::read_ac4_units(read_file(baseline("ac4-ims-music-64-2997")));
+    const auto ims = iclforge::hearth::read_ac4_units(read_file(baseline("ac4-ims-music-64-2997")));
     REQUIRE(ims.has_value());
     CHECK(std::ranges::count(ims->samples, 1601U) + std::ranges::count(ims->samples, 1602U) ==
           static_cast<std::ptrdiff_t>(ims->samples.size()));
@@ -491,24 +491,24 @@ TEST_CASE(
     "[hearth][ac4]") {
     const std::vector<fs::path> streams = committed_streams();
     REQUIRE(streams.size() >= 42);
-    const std::vector<fs::path> to_play = ac3::test::streams_to_play(streams);
-    const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
+    const std::vector<fs::path> to_play = iclforge::test::streams_to_play(streams);
+    const iclforge::render::OutputLayout layout = layout_of(kEverySpeaker);
     // What a listener gets: dialogue to -31 dBFS, the DRC mode for it.
     const DecoderSettings settings;
-    const ac4::DecoderConfig config = ac3::hearth::decoder_setup(settings, layout).ac4;
+    const iclforge::ac4::DecoderConfig config = iclforge::hearth::decoder_setup(settings, layout).ac4;
     int played_whole = 0;
     std::map<std::string, int> refused;
     for (const fs::path& path : to_play) {
         INFO("stream " << path.string());
         std::vector<std::byte> bytes = read_file(path);
         if (kSanitized) {
-            bytes.resize(ac3::test::first_frames(bytes, ac3::test::kSanitizedFrames).size());
+            bytes.resize(iclforge::test::first_frames(bytes, iclforge::test::kSanitizedFrames).size());
         }
         // A stream none of whose presentations the decoder decodes - the
         // immersive legs, until the decoder has their channel elements - is
         // refused when it opens, with the decoder's own reason.
         const auto opened = Session::open("item", loader_of({{"item", bytes}}), std::nullopt,
-                                          ac3::hearth::presentation_choice(settings));
+                                          iclforge::hearth::presentation_choice(settings));
         if (!opened) {
             const std::string& why = opened.error();
             const std::string_view refusal = "has no presentation this build decodes: ";
@@ -560,14 +560,14 @@ TEST_CASE("hearth ac4: the engine plays the streams of AC4DEC_API_STREAM_DIR", "
     }
     std::ranges::sort(streams);
     REQUIRE_FALSE(streams.empty());
-    const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
+    const iclforge::render::OutputLayout layout = layout_of(kEverySpeaker);
     const DecoderSettings settings;
     std::map<std::string, int> refused;
     int played_whole = 0;
     for (const fs::path& path : streams) {
         const std::vector<std::byte> bytes = read_file(path);
         auto session = Session::open("item", loader_of({{"item", bytes}}), std::nullopt,
-                                     ac3::hearth::presentation_choice(settings));
+                                     iclforge::hearth::presentation_choice(settings));
         if (!session) {
             ++refused[session.error().substr(session.error().find(' ') + 1)];
             continue;
@@ -596,7 +596,7 @@ TEST_CASE("hearth ac4: the engine plays the streams of AC4DEC_API_STREAM_DIR", "
 
 TEST_CASE("hearth ac4: the output level takes dialogue to it as Part 1 clause 5.7.9.3.3 says",
           "[hearth][ac4]") {
-    const ac3::render::OutputLayout layout = layout_of("5.1");
+    const iclforge::render::OutputLayout layout = layout_of("5.1");
     const Played coded = play_item(tones(), layout, as_coded());
     for (const double level : {-31.0, -24.0, -17.0, -6.0}) {
         DecoderSettings settings = as_coded();
@@ -619,7 +619,7 @@ TEST_CASE("hearth ac4: the output level takes dialogue to it as Part 1 clause 5.
 
 TEST_CASE("hearth ac4: dialogue enhancement raises the dialogue by its gain up to the stream's cap",
           "[hearth][ac4]") {
-    const ac3::render::OutputLayout layout = layout_of("5.1");
+    const iclforge::render::OutputLayout layout = layout_of("5.1");
     const Played off = play_item(tones(), layout, as_coded());
     for (const double gain : {3.0, 6.0, 12.0}) {
         DecoderSettings settings = as_coded();
@@ -635,7 +635,7 @@ TEST_CASE("hearth ac4: dialogue enhancement raises the dialogue by its gain up t
             REQUIRE(std::abs(before) > kAmplitude / 2.0);
             const double change = db(std::abs(tone_in(on, layout, kToneLocations[c], kTonesHz[c])) /
                                      std::abs(before));
-            const bool centre = kToneLocations[c] == ac3::eac3::chanmap::Location::kCentre;
+            const bool centre = kToneLocations[c] == iclforge::eac3::chanmap::Location::kCentre;
             CHECK(std::abs(change - (centre ? std::min(gain, static_cast<double>(kDeCapDb))
                                             : 0.0)) < kToleranceDb);
         }
@@ -644,10 +644,10 @@ TEST_CASE("hearth ac4: dialogue enhancement raises the dialogue by its gain up t
 
 TEST_CASE("hearth ac4: a stereo or mono layout takes the downmix Part 1 clause 6.2.17 gives",
           "[hearth][ac4]") {
-    using ac3::eac3::chanmap::Location;
-    const ac3::render::OutputLayout wide = layout_of("5.1");
-    const ac3::render::OutputLayout stereo = layout_of("2.0");
-    const ac3::render::OutputLayout mono = layout_of("1.0");
+    using iclforge::eac3::chanmap::Location;
+    const iclforge::render::OutputLayout wide = layout_of("5.1");
+    const iclforge::render::OutputLayout stereo = layout_of("2.0");
+    const iclforge::render::OutputLayout mono = layout_of("1.0");
     const Played coded = play_item(tones(), wide, as_coded());
     // Each coded tone, as it came out of its own channel.
     std::array<std::complex<double>, 6> source{};
@@ -657,7 +657,7 @@ TEST_CASE("hearth ac4: a stereo or mono layout takes the downmix Part 1 clause 6
     }
     // 5.1 in the encoder's order, L R C LFE Ls Rs, as each tone reaches an
     // output: Tables 217 and 218 with the stream's gains.
-    const auto holds = [&](const Played& played, const ac3::render::OutputLayout& layout,
+    const auto holds = [&](const Played& played, const iclforge::render::OutputLayout& layout,
                            Location out, const std::array<double, 6>& weights) {
         for (std::size_t c = 0; c < kTonesHz.size(); ++c) {
             CAPTURE(static_cast<int>(out), c, weights[c]);
@@ -692,7 +692,7 @@ TEST_CASE("hearth ac4: a stereo or mono layout takes the downmix Part 1 clause 6
     }
     SECTION("Lt/Rt") {
         DecoderSettings settings = as_coded();
-        settings.stereo_fold = ac3::DownmixTarget::kLtRt;
+        settings.stereo_fold = iclforge::DownmixTarget::kLtRt;
         const Played played = play_item(tones(), stereo, settings);
         holds(played, stereo, Location::kLeft, {1.0, 0.0, ltrt_c, lfe, -ltrt_s, -ltrt_s});
         holds(played, stereo, Location::kRight, {0.0, 1.0, ltrt_c, lfe, ltrt_s, ltrt_s});
@@ -805,31 +805,31 @@ TEST_CASE("hearth ac4: each DRC decoder mode compresses as the decoder's own doe
     constexpr std::size_t kSanitizedDrcFrames = 12;
     std::vector<std::byte> bytes = read_file(baseline("ac4-51-drc-ltrt-192"));
     if (kSanitized) {
-        bytes.resize(ac3::test::first_frames(bytes, kSanitizedDrcFrames).size());
+        bytes.resize(iclforge::test::first_frames(bytes, kSanitizedDrcFrames).size());
     }
-    const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
+    const iclforge::render::OutputLayout layout = layout_of(kEverySpeaker);
     std::vector<std::vector<float>> off;
     std::vector<std::vector<float>> home;
-    for (const ac4::DrcMode mode :
-         {ac4::DrcMode::kOff, ac4::DrcMode::kDefault, ac4::DrcMode::kHomeTheatre,
-          ac4::DrcMode::kFlatPanelTv, ac4::DrcMode::kPortableSpeakers,
-          ac4::DrcMode::kPortableHeadphones}) {
-        CAPTURE(ac4::describe(mode));
+    for (const iclforge::ac4::DrcMode mode :
+         {iclforge::ac4::DrcMode::kOff, iclforge::ac4::DrcMode::kDefault, iclforge::ac4::DrcMode::kHomeTheatre,
+          iclforge::ac4::DrcMode::kFlatPanelTv, iclforge::ac4::DrcMode::kPortableSpeakers,
+          iclforge::ac4::DrcMode::kPortableHeadphones}) {
+        CAPTURE(iclforge::ac4::describe(mode));
         DecoderSettings settings;
         settings.ac4.drc = mode;
         const Played played = play_item(bytes, layout, settings);
-        const ac4::DecoderConfig config = ac3::hearth::decoder_setup(settings, layout).ac4;
+        const iclforge::ac4::DecoderConfig config = iclforge::hearth::decoder_setup(settings, layout).ac4;
         CHECK(config.output.output_level_dbfs == -31.0);
         CHECK(config.output.drc == mode);
-        CHECK(config.output.headphones == (mode == ac4::DrcMode::kPortableHeadphones));
+        CHECK(config.output.headphones == (mode == iclforge::ac4::DrcMode::kPortableHeadphones));
         CHECK(played.slots == reference(bytes, layout, config));
         REQUIRE_FALSE(played.reports.empty());
         REQUIRE(played.reports.back().ac4.has_value());
         const std::optional<int> applied = played.reports.back().ac4->drc_mode;
-        CHECK(applied.has_value() == (mode != ac4::DrcMode::kOff));
-        if (mode == ac4::DrcMode::kOff) {
+        CHECK(applied.has_value() == (mode != iclforge::ac4::DrcMode::kOff));
+        if (mode == iclforge::ac4::DrcMode::kOff) {
             off = played.slots;
-        } else if (mode == ac4::DrcMode::kHomeTheatre) {
+        } else if (mode == iclforge::ac4::DrcMode::kHomeTheatre) {
             home = played.slots;
             CHECK(applied == 0);
         }
@@ -842,7 +842,7 @@ TEST_CASE("hearth ac4: each DRC decoder mode compresses as the decoder's own doe
 
 TEST_CASE("hearth ac4: the player plays an item as the session and decoder put it out",
           "[hearth][ac4]") {
-    const ac3::render::OutputLayout layout = layout_of("5.1");
+    const iclforge::render::OutputLayout layout = layout_of("5.1");
     const DecoderSettings settings;
     const Played expected = play_item(tones(), layout, settings);
     auto log = std::make_shared<CaptureSink::Log>();
@@ -860,7 +860,7 @@ TEST_CASE("hearth ac4: the player plays an item as the session and decoder put i
 
 TEST_CASE("hearth ac4: a change of settings reaches the playing item at its next frame, in place",
           "[hearth][ac4]") {
-    const ac3::render::OutputLayout layout = layout_of("5.1");
+    const iclforge::render::OutputLayout layout = layout_of("5.1");
     DecoderSettings before = as_coded();
     const Played unchanged = play_item(tones(), layout, before);
     auto log = std::make_shared<CaptureSink::Log>();
@@ -896,22 +896,22 @@ TEST_CASE("hearth ac4: a change of settings reaches the playing item at its next
     heard.slots = log->slots;
     const double expected = db(std::pow(2.0, (-17.0 - kDialnorm) / 6.0));
     const std::complex<double> was =
-        tone_in(unchanged, layout, ac3::eac3::chanmap::Location::kLeft, kTonesHz[0]);
+        tone_in(unchanged, layout, iclforge::eac3::chanmap::Location::kLeft, kTonesHz[0]);
     const std::complex<double> is =
-        tone_in(heard, layout, ac3::eac3::chanmap::Location::kLeft, kTonesHz[0]);
+        tone_in(heard, layout, iclforge::eac3::chanmap::Location::kLeft, kTonesHz[0]);
     CHECK(std::abs(db(std::abs(is) / std::abs(was)) - expected) < kToleranceDb);
 }
 
 TEST_CASE("hearth ac4: an AC-4 decoder takes settings in place, and an E-AC-3 one does not",
           "[hearth][ac4]") {
-    const ac3::render::OutputLayout layout = layout_of("5.1");
+    const iclforge::render::OutputLayout layout = layout_of("5.1");
     StreamDecoder decoder{layout, 48000};
     DecoderSettings changed;
     changed.ac4.dialogue_enhancement_db = 6.0;
     // Nothing decoded yet: in place.
     CHECK(decoder.apply(changed));
     CHECK(decoder.settings() == changed);
-    const auto units = ac3::hearth::read_ac4_units(tones());
+    const auto units = iclforge::hearth::read_ac4_units(tones());
     REQUIRE(units.has_value());
     const StreamDecoder::BlockFn ignore = [](std::span<const std::span<const float>>, std::size_t) {
     };
@@ -919,17 +919,17 @@ TEST_CASE("hearth ac4: an AC-4 decoder takes settings in place, and an E-AC-3 on
     changed.ac4.output_level_dbfs = -20.0;
     CHECK(decoder.apply(changed));
     // A concealment policy is fixed for an AC-4 decoder.
-    changed.concealment = ac3::ConcealmentPolicy::kMute;
+    changed.concealment = iclforge::ConcealmentPolicy::kMute;
     CHECK_FALSE(decoder.apply(changed));
 
     // E-AC-3 in progress: a new decoder is the way.
     StreamDecoder eac3{layout, 48000};
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.bitrate_kbps = 384;
-    config.acmod = ac3::Acmod::k3_2;
+    config.acmod = iclforge::Acmod::k3_2;
     config.lfe = true;
-    ac3::eac3::FrameEncoder encoder{config};
-    const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0F);
+    iclforge::eac3::FrameEncoder encoder{config};
+    const std::vector<float> silence(iclforge::kSamplesPerFrame, 0.0F);
     const std::vector<std::span<const float>> views(6, silence);
     const auto frame = encoder.encode_frame(views);
     REQUIRE(frame.has_value());
@@ -939,7 +939,7 @@ TEST_CASE("hearth ac4: an AC-4 decoder takes settings in place, and an E-AC-3 on
 
 TEST_CASE("hearth ac4: a seek starts at an I-frame and plays on as an unbroken decode",
           "[hearth][ac4]") {
-    const ac3::render::OutputLayout layout = layout_of("5.1");
+    const iclforge::render::OutputLayout layout = layout_of("5.1");
     const DecoderSettings settings = as_coded();
     const Played unbroken = play_item(tones(), layout, settings);
     auto session = Session::open("tones", loader_of({{"tones", tones()}}));
@@ -965,19 +965,19 @@ TEST_CASE("hearth ac4: a seek starts at an I-frame and plays on as an unbroken d
 }
 
 TEST_CASE("hearth ac4: an AC-4 item joins an E-AC-3 one in the same output", "[hearth][ac4]") {
-    ac3::eac3::FrameConfig config;
+    iclforge::eac3::FrameConfig config;
     config.bitrate_kbps = 384;
-    config.acmod = ac3::Acmod::k3_2;
+    config.acmod = iclforge::Acmod::k3_2;
     config.lfe = true;
-    ac3::eac3::FrameEncoder encoder{config};
+    iclforge::eac3::FrameEncoder encoder{config};
     std::vector<std::byte> eac3;
     for (int f = 0; f < 12; ++f) {
-        std::vector<float> samples(ac3::kSamplesPerFrame);
+        std::vector<float> samples(iclforge::kSamplesPerFrame);
         for (std::size_t n = 0; n < samples.size(); ++n) {
             samples[n] = static_cast<float>(
                 0.1 * std::sin(2.0 * std::numbers::pi * 440.0 *
                                static_cast<double>(
-                                   n + (static_cast<std::size_t>(f) * ac3::kSamplesPerFrame)) /
+                                   n + (static_cast<std::size_t>(f) * iclforge::kSamplesPerFrame)) /
                                kRate));
         }
         const std::vector<std::span<const float>> views(6, samples);
@@ -985,7 +985,7 @@ TEST_CASE("hearth ac4: an AC-4 item joins an E-AC-3 one in the same output", "[h
         REQUIRE(frame.has_value());
         eac3.insert(eac3.end(), frame->begin(), frame->end());
     }
-    const ac3::render::OutputLayout layout = layout_of("5.1");
+    const iclforge::render::OutputLayout layout = layout_of("5.1");
     auto log = std::make_shared<CaptureSink::Log>();
     Player player(std::make_unique<CaptureSink>(log), loader_of({{"eac3", eac3}, {"ac4", tones()}}),
                   layout);
@@ -995,7 +995,7 @@ TEST_CASE("hearth ac4: an AC-4 item joins an E-AC-3 one in the same output", "[h
     pump_out(player);
     REQUIRE(player.history().size() == 2);
     CHECK(log->opens == 1U);
-    for (const ac3::hearth::PlayedItem& item : player.history()) {
+    for (const iclforge::hearth::PlayedItem& item : player.history()) {
         CAPTURE(item.title);
         CHECK(item.frames == item.expected_frames);
         CHECK(item.output_opens == 1U);
@@ -1009,22 +1009,22 @@ TEST_CASE("hearth ac4: a presentation with objects is rendered through Ac4Object
           "[hearth][ac4]") {
     // frame_rate_index 13 is the only rate an object substream takes
     // (ac4enc/encoder.hpp), which kFrame (2 048 samples) already assumes.
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.sample_rate_hz = kRate;
     config.frame_rate_index = 13;
     config.bitrate_kbps = 128;
     config.experimental.objects = true;
-    ac4::ObjectsConfig objects_config;
+    iclforge::ac4::ObjectsConfig objects_config;
     objects_config.objects.resize(1);
     // Hard left (x 0), front wall (y 0, not mid-depth - that would pan towards a side speaker
     // instead), ear height - Ac4ObjectRenderer's own header comment gives this room (TS 103 420's),
-    // the one ac3::spatial::position_direction reads.
+    // the one iclforge::spatial::position_direction reads.
     objects_config.objects[0].properties.position = {0.0, 0.0, 0.0};
-    ac4::SubstreamConfig substream;
+    iclforge::ac4::SubstreamConfig substream;
     substream.objects = objects_config;
     config.substreams = {substream};
-    auto encoder = ac4::Encoder::create(config);
-    INFO(ac4::Encoder::refusal_reason(config));
+    auto encoder = iclforge::ac4::Encoder::create(config);
+    INFO(iclforge::ac4::Encoder::refusal_reason(config));
     REQUIRE(encoder.has_value());
 
     constexpr double kObjectHz = 700.0;
@@ -1035,14 +1035,14 @@ TEST_CASE("hearth ac4: a presentation with objects is rendered through Ac4Object
                                                     static_cast<double>(n) / kRate));
     }
     const std::vector<std::span<const float>> views{object_pcm};
-    auto frames = encoder->encode(views, std::span<const ac4::ObjectMetadataUpdate>{});
+    auto frames = encoder->encode(views, std::span<const iclforge::ac4::ObjectMetadataUpdate>{});
     REQUIRE(frames.has_value());
     auto rest = encoder->flush();
     REQUIRE(rest.has_value());
     std::vector<std::byte> bytes;
-    const auto append = [&bytes](const std::vector<ac4::EncodedFrame>& fs) {
-        for (const ac4::EncodedFrame& f : fs) {
-            const std::vector<std::byte> wrapped = ac4::sync_frame(f.raw_ac4_frame, false);
+    const auto append = [&bytes](const std::vector<iclforge::ac4::EncodedFrame>& fs) {
+        for (const iclforge::ac4::EncodedFrame& f : fs) {
+            const std::vector<std::byte> wrapped = iclforge::ac4::sync_frame(f.raw_ac4_frame, false);
             bytes.insert(bytes.end(), wrapped.begin(), wrapped.end());
         }
     };
@@ -1052,11 +1052,11 @@ TEST_CASE("hearth ac4: a presentation with objects is rendered through Ac4Object
     // kAsCoded (as_coded()'s settings ask for nothing else, and kEverySpeaker
     // does not fold): the object renders to the full 7.1.4 speaker set
     // Ac4ObjectRenderer gives that target, silent but for where it is panned.
-    const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
+    const iclforge::render::OutputLayout layout = layout_of(kEverySpeaker);
     const Played played = play_item(bytes, layout, as_coded());
 
-    const auto left = tone_in(played, layout, ac3::eac3::chanmap::Location::kLeft, kObjectHz);
-    const auto right = tone_in(played, layout, ac3::eac3::chanmap::Location::kRight, kObjectHz);
+    const auto left = tone_in(played, layout, iclforge::eac3::chanmap::Location::kLeft, kObjectHz);
+    const auto right = tone_in(played, layout, iclforge::eac3::chanmap::Location::kRight, kObjectHz);
     CHECK(std::abs(left) > 0.01);
     CHECK(std::abs(left) > std::abs(right) * 3.0);
 }
@@ -1064,19 +1064,19 @@ TEST_CASE("hearth ac4: a presentation with objects is rendered through Ac4Object
 TEST_CASE("hearth ac4: the immersive layout control folds an object presentation the same way "
           "as a channel one",
           "[hearth][ac4]") {
-    ac4::EncoderConfig config;
+    iclforge::ac4::EncoderConfig config;
     config.sample_rate_hz = kRate;
     config.frame_rate_index = 13;
     config.bitrate_kbps = 128;
     config.experimental.objects = true;
-    ac4::ObjectsConfig objects_config;
+    iclforge::ac4::ObjectsConfig objects_config;
     objects_config.objects.resize(1);
     objects_config.objects[0].properties.position = {0.5, 0.0, 0.0};  // dead centre, front wall
-    ac4::SubstreamConfig substream;
+    iclforge::ac4::SubstreamConfig substream;
     substream.objects = objects_config;
     config.substreams = {substream};
-    auto encoder = ac4::Encoder::create(config);
-    INFO(ac4::Encoder::refusal_reason(config));
+    auto encoder = iclforge::ac4::Encoder::create(config);
+    INFO(iclforge::ac4::Encoder::refusal_reason(config));
     REQUIRE(encoder.has_value());
 
     constexpr double kObjectHz = 900.0;
@@ -1087,17 +1087,17 @@ TEST_CASE("hearth ac4: the immersive layout control folds an object presentation
                                                     static_cast<double>(n) / kRate));
     }
     const std::vector<std::span<const float>> views{object_pcm};
-    auto frames = encoder->encode(views, std::span<const ac4::ObjectMetadataUpdate>{});
+    auto frames = encoder->encode(views, std::span<const iclforge::ac4::ObjectMetadataUpdate>{});
     REQUIRE(frames.has_value());
     auto rest = encoder->flush();
     REQUIRE(rest.has_value());
     std::vector<std::byte> bytes;
-    for (const ac4::EncodedFrame& f : *frames) {
-        const std::vector<std::byte> wrapped = ac4::sync_frame(f.raw_ac4_frame, false);
+    for (const iclforge::ac4::EncodedFrame& f : *frames) {
+        const std::vector<std::byte> wrapped = iclforge::ac4::sync_frame(f.raw_ac4_frame, false);
         bytes.insert(bytes.end(), wrapped.begin(), wrapped.end());
     }
-    for (const ac4::EncodedFrame& f : *rest) {
-        const std::vector<std::byte> wrapped = ac4::sync_frame(f.raw_ac4_frame, false);
+    for (const iclforge::ac4::EncodedFrame& f : *rest) {
+        const std::vector<std::byte> wrapped = iclforge::ac4::sync_frame(f.raw_ac4_frame, false);
         bytes.insert(bytes.end(), wrapped.begin(), wrapped.end());
     }
 
@@ -1106,14 +1106,14 @@ TEST_CASE("hearth ac4: the immersive layout control folds an object presentation
     // place_ac4_frame() rebuilds the renderer's bed for it (decoder_settings.cpp's
     // own ac4_setup(), the "does not itself fold" branch this control uses).
     DecoderSettings settings = as_coded();
-    settings.ac4.immersive_layout = ac4::DownmixTarget::k5X2;
-    const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
+    settings.ac4.immersive_layout = iclforge::ac4::DownmixTarget::k5X2;
+    const iclforge::render::OutputLayout layout = layout_of(kEverySpeaker);
     const Played played = play_item(bytes, layout, settings);
 
-    const auto centre = tone_in(played, layout, ac3::eac3::chanmap::Location::kCentre, kObjectHz);
+    const auto centre = tone_in(played, layout, iclforge::eac3::chanmap::Location::kCentre, kObjectHz);
     CHECK(std::abs(centre) > 0.01);
     // Table 44's 5.X.2 core/output layout has no top back pair; a centre-front,
     // ear-height object should not need one either.
-    const auto top_back = tone_in(played, layout, ac3::eac3::chanmap::Location::kVhl, kObjectHz);
+    const auto top_back = tone_in(played, layout, iclforge::eac3::chanmap::Location::kVhl, kObjectHz);
     CHECK(std::abs(top_back) < std::abs(centre));
 }

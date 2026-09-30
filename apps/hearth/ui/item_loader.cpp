@@ -9,7 +9,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace ac3::hearth::ui {
+namespace iclforge::hearth::ui {
 
 namespace {
 
@@ -36,7 +36,7 @@ constexpr std::array<std::string_view, 6> kFolderMediaExtensions{".ac3", ".ec3",
 
 }  // namespace
 
-ac3::hearth::ItemLoader make_file_item_loader() {
+iclforge::hearth::ItemLoader make_file_item_loader() {
     return [](const std::string& path) -> std::expected<LoadedItem, std::string> {
         const std::string extension = lowercase_extension(path);
         // The three elementary streams: AC-3 and E-AC-3, which io::scan()
@@ -91,4 +91,4 @@ std::vector<std::string> list_folder_items(const std::string& folder) {
     return paths;
 }
 
-}  // namespace ac3::hearth::ui
+}  // namespace iclforge::hearth::ui

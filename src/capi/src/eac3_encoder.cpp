@@ -14,8 +14,8 @@ using ac3forge_c::to_cpp;
 // -Wreturn-type-c-linkage.
 namespace {
 
-ac3::eac3::FrameConfig eac3_frame_config_to_cpp(const ac3forge_eac3_frame_config_t& config) {
-    ac3::eac3::FrameConfig out;
+iclforge::eac3::FrameConfig eac3_frame_config_to_cpp(const ac3forge_eac3_frame_config_t& config) {
+    iclforge::eac3::FrameConfig out;
     out.sample_rate = to_cpp(config.sample_rate);
     out.bitrate_kbps = config.bitrate_kbps;
     out.acmod = to_cpp(config.acmod);
@@ -41,8 +41,8 @@ ac3::eac3::FrameConfig eac3_frame_config_to_cpp(const ac3forge_eac3_frame_config
     return out;
 }
 
-ac3::eac3::FrameMetadata eac3_frame_metadata_to_cpp(const ac3forge_eac3_frame_metadata_t& metadata) {
-    ac3::eac3::FrameMetadata out;
+iclforge::eac3::FrameMetadata eac3_frame_metadata_to_cpp(const ac3forge_eac3_frame_metadata_t& metadata) {
+    iclforge::eac3::FrameMetadata out;
     std::copy(std::begin(metadata.dynrng), std::end(metadata.dynrng), out.dynrng.begin());
     out.compr = metadata.has_compr ? std::optional<std::uint8_t>(metadata.compr) : std::nullopt;
     std::copy(std::begin(metadata.dynrng2), std::end(metadata.dynrng2), out.dynrng2.begin());
@@ -58,7 +58,7 @@ void ac3forge_eac3_frame_config_init(ac3forge_eac3_frame_config_t* config) {
     if (config == nullptr) {
         return;
     }
-    const ac3::eac3::FrameConfig defaults{};
+    const iclforge::eac3::FrameConfig defaults{};
     *config = ac3forge_eac3_frame_config_t{
         .sample_rate = ac3forge_c::from_cpp(defaults.sample_rate),
         .bitrate_kbps = defaults.bitrate_kbps,
@@ -145,7 +145,7 @@ ac3forge_status_t ac3forge_eac3_encoder_encode_frame(
             }
             spans.emplace_back(channels[i], samples_per_channel);
         }
-        const ac3::eac3::AuxPayload aux_payload(reinterpret_cast<const std::byte*>(aux), aux_size);
+        const iclforge::eac3::AuxPayload aux_payload(reinterpret_cast<const std::byte*>(aux), aux_size);
         auto result = metadata != nullptr
                            ? encoder->impl.encode_frame(spans, eac3_frame_metadata_to_cpp(*metadata),
                                                          aux_payload)
@@ -175,7 +175,7 @@ ac3forge_status_t ac3forge_eac3_access_unit_encoder_create(
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&independent, &dependents, &dependent_count, &out_encoder] {
-        ac3::eac3::AccessUnitConfig config;
+        iclforge::eac3::AccessUnitConfig config;
         config.independent = eac3_frame_config_to_cpp(*independent);
         config.dependents.reserve(dependent_count);
         for (size_t i = 0; i < dependent_count; ++i) {
@@ -215,7 +215,7 @@ ac3forge_status_t ac3forge_eac3_access_unit_encoder_encode(
     // channels may be NULL when channel_count is 0 - a config the constructor
     // could not build any substreams from (an invalid chanmap, a dependent at
     // another sample rate, ...) reports channel_count() == 0 exactly as
-    // ac3::eac3::AccessUnitEncoder does, and encode() below is how a caller
+    // iclforge::eac3::AccessUnitEncoder does, and encode() below is how a caller
     // discovers the real reason (see the C++ constructor's own comment).
     if (encoder == nullptr || out_unit == nullptr || (channel_count > 0 && channels == nullptr) ||
         (aux_size > 0 && aux == nullptr)) {
@@ -235,7 +235,7 @@ ac3forge_status_t ac3forge_eac3_access_unit_encoder_encode(
             }
             spans.emplace_back(channels[i], samples_per_channel);
         }
-        const ac3::eac3::AuxPayload aux_payload(reinterpret_cast<const std::byte*>(aux), aux_size);
+        const iclforge::eac3::AuxPayload aux_payload(reinterpret_cast<const std::byte*>(aux), aux_size);
         auto result = encoder->impl.encode_access_unit(spans, aux_payload);
         if (!result) {
             return ac3forge_c::from_cpp(result.error());

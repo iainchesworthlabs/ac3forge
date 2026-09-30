@@ -5,7 +5,7 @@
 #include "iclforge/sendspin/messages.hpp"
 #include "codecs.hpp"
 
-namespace ac3::sendspin::codec {
+namespace iclforge::sendspin::codec {
 
 std::unique_ptr<Encoder> make_encoder(const messages::AudioFormat& format, const EncoderOptions& options) {
     switch (format.codec) {
@@ -31,4 +31,4 @@ std::unique_ptr<Decoder> make_decoder(const messages::PlayerStream& stream) {
     return nullptr;
 }
 
-}  // namespace ac3::sendspin::codec
+}  // namespace iclforge::sendspin::codec

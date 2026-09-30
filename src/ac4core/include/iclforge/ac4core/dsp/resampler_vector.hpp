@@ -23,11 +23,11 @@
 // At double the converter's sum stays a sequential loop, as it always was: the encoder's
 // converters and the default build's decoder keep their output.
 
-namespace ac4::detail::dsp {
+namespace iclforge::ac4::detail::dsp {
 
 [[nodiscard]] inline float dot_four_lanes(const float* coefficients, const float* samples,
                                           std::size_t taps) noexcept {
-    namespace arch = ac3::internal::arch;
+    namespace arch = iclforge::internal::arch;
     arch::f32x4 lanes = arch::f32x4::broadcast(0.0F);
     std::size_t k = 0;
     for (; k + 4 <= taps; k += 4) {
@@ -40,4 +40,4 @@ namespace ac4::detail::dsp {
     return sum;
 }
 
-}  // namespace ac4::detail::dsp
+}  // namespace iclforge::ac4::detail::dsp

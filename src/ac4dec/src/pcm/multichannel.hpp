@@ -33,7 +33,7 @@
 // tests/ac4dec/test_ac4dec_multichannel.cpp holds the table's 300 printed
 // entries and checks every one against this.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 using Abcd = std::array<Real, 4>;
 
@@ -74,4 +74,4 @@ using Matrix = std::array<std::array<Real, N>, N>;
                                                 std::span<const int> other_lengths, std::span<Real> base_lines,
                                                 std::span<Real> other_lines);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

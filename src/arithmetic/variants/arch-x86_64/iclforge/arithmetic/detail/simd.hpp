@@ -29,7 +29,7 @@
 // docs/building.md.
 // ---------------------------------------------------------------------------
 
-namespace ac3::internal::arch {
+namespace iclforge::internal::arch {
 
 inline constexpr const char* kSimdName = "x86_64-sse2";
 
@@ -188,4 +188,4 @@ template <int Bits>
     return i32x4{_mm_slli_epi32(a.v, Bits)};
 }
 
-}  // namespace ac3::internal::arch
+}  // namespace iclforge::internal::arch

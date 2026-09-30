@@ -5,7 +5,7 @@
 #include <numbers>
 #include <numeric>
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 std::vector<int> downmix_groups(std::span<const std::array<double, 3>> positions, int signals) {
     const std::size_t n = positions.size();
@@ -60,4 +60,4 @@ int ajoc_input_track(int i, int m) noexcept {
     return i;
 }
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail

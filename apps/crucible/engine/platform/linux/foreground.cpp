@@ -39,7 +39,7 @@
 // says so instead, and the Room page prints it. Which case this is comes
 // from display_session.hpp, from the seat's own word first.
 
-namespace ac3::crucible {
+namespace iclforge::crucible {
 
 namespace {
 
@@ -110,4 +110,4 @@ std::shared_ptr<Foreground> platform_foreground() {
     return std::make_shared<UnavailableForeground>(kNoDisplayReason);
 }
 
-}  // namespace ac3::crucible
+}  // namespace iclforge::crucible

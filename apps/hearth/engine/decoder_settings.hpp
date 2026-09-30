@@ -30,9 +30,9 @@
 // keeps apart from E-AC-3's operating mode, dialogue enhancement, and the
 // dialogue and associated audio levels.
 
-namespace ac3::hearth {
+namespace iclforge::hearth {
 
-// AC-4's own controls, each a field of ac4::DecoderConfig (ac4dec/decoder.hpp)
+// AC-4's own controls, each a field of iclforge::ac4::DecoderConfig (ac4dec/decoder.hpp)
 // once decoder_setup() has made one of them.
 struct Ac4Settings {
     // The presentation to play: the one that carries this presentation_id,
@@ -64,7 +64,7 @@ struct Ac4Settings {
     // Table 161's DRC decoder mode. kDefault takes the mode the output level
     // falls in; kPortableHeadphones also prefers a presentation made for
     // headphones (b_pre_virtualized).
-    ac4::DrcMode drc = ac4::DrcMode::kDefault;
+    iclforge::ac4::DrcMode drc = iclforge::ac4::DrcMode::kDefault;
     // A stereo fold by the stream's preferred_dmx_method (Table 150), Lo/Ro
     // where it names none, rather than by DecoderSettings::stereo_fold.
     bool preferred_downmix = false;
@@ -74,7 +74,7 @@ struct Ac4Settings {
     // own comment): unset plays the source's coded layout; k7X4, k7X2, k7X0,
     // k5X4 or k5X2 fold Part 2's renderer down to a narrower one, the same
     // six ac3cli decode's own speakers= takes (planning/ac4.md, I5).
-    std::optional<ac4::DownmixTarget> immersive_layout = std::nullopt;
+    std::optional<iclforge::ac4::DownmixTarget> immersive_layout = std::nullopt;
     // Part 2 clause 4.7: full decoding (the default) reconstructs A-CPL,
     // A-JCC and A-JOC in full; core decoding replaces or skips them for
     // low-complexity playback, and renders to the core layout alone.
@@ -153,7 +153,7 @@ struct DecoderSettings {
 struct DecoderSetup {
     render::Serving serving{};
     DecoderConfig config{};
-    ac4::DecoderConfig ac4{};
+    iclforge::ac4::DecoderConfig ac4{};
 };
 
 [[nodiscard]] DecoderSetup decoder_setup(const DecoderSettings& settings,
@@ -161,7 +161,7 @@ struct DecoderSetup {
 
 // The presentation an AC-4 decoder is asked for: DecoderSetup::ac4's
 // presentation, which does not depend on the layout.
-[[nodiscard]] ac4::PresentationChoice presentation_choice(const DecoderSettings& settings);
+[[nodiscard]] iclforge::ac4::PresentationChoice presentation_choice(const DecoderSettings& settings);
 
 // Every control's value on one line, for the diagnostics file: "line mode,
 // stereo fold Lo/Ro, no LFE in folds, the stream's mix levels, ...".
@@ -176,4 +176,4 @@ struct DecoderSetup {
 // choice of units in any case.
 [[nodiscard]] DecoderSettings transcode_settings(const DecoderSettings& listener);
 
-}  // namespace ac3::hearth
+}  // namespace iclforge::hearth

@@ -25,9 +25,9 @@
 // counted down from 63 - the values are gathered and scattered through the seam's
 // set() and lane accessors, which are a load or a store each and no arithmetic.
 
-namespace ac4::detail::dsp::qmf::vec {
+namespace iclforge::ac4::detail::dsp::qmf::vec {
 
-namespace arch = ac3::internal::arch;
+namespace arch = iclforge::internal::arch;
 
 template <typename Real>
 struct Lanes;
@@ -310,4 +310,4 @@ inline void synthesis_window(const Real* filt, std::size_t head, Real* out) noex
     }
 }
 
-}  // namespace ac4::detail::dsp::qmf::vec
+}  // namespace iclforge::ac4::detail::dsp::qmf::vec

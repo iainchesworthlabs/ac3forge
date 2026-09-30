@@ -18,7 +18,7 @@
 // FLAC for player@v1 over libFLAC: each unit is one FLAC frame, and codec_header is the fLaC
 // marker with the STREAMINFO block (roles/player/v1.md, Codec framing).
 
-namespace ac3::sendspin::codec {
+namespace iclforge::sendspin::codec {
 
 namespace {
 
@@ -253,4 +253,4 @@ std::unique_ptr<Decoder> make_flac_decoder(const messages::PlayerStream& stream)
     return decoder;
 }
 
-}  // namespace ac3::sendspin::codec
+}  // namespace iclforge::sendspin::codec

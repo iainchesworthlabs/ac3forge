@@ -18,7 +18,7 @@
 // de_data()). A transcription of the syntax tables separate from the
 // decoder's reader.
 
-namespace ac4::detail {
+namespace iclforge::ac4::detail {
 
 // Part 1 clause 4.3.14: dialogue enhancement's parameter bands.
 inline constexpr std::size_t kDeBands = 8;
@@ -308,4 +308,4 @@ void write_extended_metadata(BitWriter& w, int ch_mode, const DialogueMixCodes* 
 // b_name_present to the last target's substreams.
 void write_alternative(BitWriter& w, const AlternativeCodes& codes);
 
-}  // namespace ac4::detail
+}  // namespace iclforge::ac4::detail
